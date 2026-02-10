@@ -28,6 +28,8 @@ public:
     const std::string& currentLayer() const { return m_currentLayer; }
     void setCurrentLayer(const std::string& name);
 
+    void clear();
+
 private:
     std::unordered_map<std::string, LayerProperties> m_layers;
     std::string m_currentLayer;

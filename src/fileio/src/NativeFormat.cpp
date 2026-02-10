@@ -13,17 +13,35 @@ using json = nlohmann::json;
 namespace hz::io {
 
 bool NativeFormat::save(const std::string& filePath,
-                        const draft::DraftDocument& doc) {
+                        const doc::Document& doc) {
     json root;
-    root["version"] = 2;
+    root["version"] = 3;
     root["type"] = "hcad";
 
+    // --- Layer table ---
+    json layersArray = json::array();
+    for (const auto& name : doc.layerManager().layerNames()) {
+        const auto* lp = doc.layerManager().getLayer(name);
+        if (!lp) continue;
+        json layerObj;
+        layerObj["name"] = lp->name;
+        layerObj["color"] = lp->color;
+        layerObj["lineWidth"] = lp->lineWidth;
+        layerObj["visible"] = lp->visible;
+        layerObj["locked"] = lp->locked;
+        layersArray.push_back(layerObj);
+    }
+    root["layers"] = layersArray;
+    root["currentLayer"] = doc.layerManager().currentLayer();
+
+    // --- Entities ---
     json entitiesArray = json::array();
-    for (const auto& entity : doc.entities()) {
+    for (const auto& entity : doc.draftDocument().entities()) {
         json obj;
         obj["id"] = entity->id();
         obj["layer"] = entity->layer();
         obj["color"] = entity->color();
+        obj["lineWidth"] = entity->lineWidth();
 
         if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
             obj["type"] = "line";
@@ -64,7 +82,7 @@ bool NativeFormat::save(const std::string& filePath,
 }
 
 bool NativeFormat::load(const std::string& filePath,
-                        draft::DraftDocument& doc) {
+                        doc::Document& doc) {
     std::ifstream file(filePath);
     if (!file.is_open()) return false;
 
@@ -77,67 +95,80 @@ bool NativeFormat::load(const std::string& filePath,
 
     if (!root.contains("version") || !root.contains("entities")) return false;
 
-    doc.clear();
+    doc.draftDocument().clear();
+    doc.layerManager().clear();
 
+    // --- Load layer table (v3+) ---
+    if (root.contains("layers")) {
+        for (const auto& layerObj : root["layers"]) {
+            draft::LayerProperties props;
+            props.name = layerObj.value("name", "0");
+            props.color = layerObj.value("color", 0xFFFFFFFFu);
+            props.lineWidth = layerObj.value("lineWidth", 1.0);
+            props.visible = layerObj.value("visible", true);
+            props.locked = layerObj.value("locked", false);
+            if (props.name == "0") {
+                // Update default layer properties instead of adding duplicate.
+                auto* defaultLayer = doc.layerManager().getLayer("0");
+                if (defaultLayer) *defaultLayer = props;
+            } else {
+                doc.layerManager().addLayer(props);
+            }
+        }
+        if (root.contains("currentLayer")) {
+            doc.layerManager().setCurrentLayer(root["currentLayer"].get<std::string>());
+        }
+    }
+
+    // --- Load entities ---
     for (const auto& obj : root["entities"]) {
         std::string type = obj.value("type", "");
         std::string layer = obj.value("layer", "0");
         uint32_t color = obj.value("color", 0xFFFFFFFFu);
+        double lineWidth = obj.value("lineWidth", 0.0);
+
+        std::shared_ptr<draft::DraftEntity> entity;
 
         if (type == "line") {
             double sx = obj["start"]["x"].get<double>();
             double sy = obj["start"]["y"].get<double>();
             double ex = obj["end"]["x"].get<double>();
             double ey = obj["end"]["y"].get<double>();
-
-            auto line = std::make_shared<draft::DraftLine>(
+            entity = std::make_shared<draft::DraftLine>(
                 math::Vec2(sx, sy), math::Vec2(ex, ey));
-            line->setLayer(layer);
-            line->setColor(color);
-            doc.addEntity(line);
         } else if (type == "circle") {
             double cx = obj["center"]["x"].get<double>();
             double cy = obj["center"]["y"].get<double>();
             double r = obj["radius"].get<double>();
-
-            auto circle = std::make_shared<draft::DraftCircle>(
-                math::Vec2(cx, cy), r);
-            circle->setLayer(layer);
-            circle->setColor(color);
-            doc.addEntity(circle);
+            entity = std::make_shared<draft::DraftCircle>(math::Vec2(cx, cy), r);
         } else if (type == "arc") {
             double cx = obj["center"]["x"].get<double>();
             double cy = obj["center"]["y"].get<double>();
             double r = obj["radius"].get<double>();
             double sa = obj["startAngle"].get<double>();
             double ea = obj["endAngle"].get<double>();
-
-            auto arc = std::make_shared<draft::DraftArc>(
-                math::Vec2(cx, cy), r, sa, ea);
-            arc->setLayer(layer);
-            arc->setColor(color);
-            doc.addEntity(arc);
+            entity = std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
         } else if (type == "rectangle") {
             double c1x = obj["corner1"]["x"].get<double>();
             double c1y = obj["corner1"]["y"].get<double>();
             double c2x = obj["corner2"]["x"].get<double>();
             double c2y = obj["corner2"]["y"].get<double>();
-
-            auto rect = std::make_shared<draft::DraftRectangle>(
+            entity = std::make_shared<draft::DraftRectangle>(
                 math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
-            rect->setLayer(layer);
-            rect->setColor(color);
-            doc.addEntity(rect);
         } else if (type == "polyline") {
             bool closed = obj.value("closed", false);
             std::vector<math::Vec2> points;
             for (const auto& pt : obj["points"]) {
                 points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
             }
-            auto polyline = std::make_shared<draft::DraftPolyline>(points, closed);
-            polyline->setLayer(layer);
-            polyline->setColor(color);
-            doc.addEntity(polyline);
+            entity = std::make_shared<draft::DraftPolyline>(points, closed);
+        }
+
+        if (entity) {
+            entity->setLayer(layer);
+            entity->setColor(color);
+            entity->setLineWidth(lineWidth);
+            doc.draftDocument().addEntity(entity);
         }
     }
 

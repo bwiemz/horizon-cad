@@ -3,8 +3,10 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/math/Vec2.h"
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace hz::doc {
@@ -63,6 +65,7 @@ public:
     explicit CompositeCommand(const std::string& desc);
 
     void addCommand(std::unique_ptr<Command> cmd);
+    bool empty() const { return m_commands.empty(); }
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -156,6 +159,126 @@ private:
     math::Vec2 m_basePoint;
     double m_factor;
     std::vector<std::shared_ptr<draft::DraftEntity>> m_scaledEntities;
+};
+
+// ---------------------------------------------------------------------------
+// Property commands
+// ---------------------------------------------------------------------------
+
+/// Command to change the layer of one or more entities.
+class ChangeEntityLayerCommand : public Command {
+public:
+    ChangeEntityLayerCommand(draft::DraftDocument& doc,
+                             const std::vector<uint64_t>& entityIds,
+                             const std::string& newLayer);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    std::string m_newLayer;
+    std::vector<std::pair<uint64_t, std::string>> m_oldLayers;
+};
+
+/// Command to change the color of one or more entities.
+class ChangeEntityColorCommand : public Command {
+public:
+    ChangeEntityColorCommand(draft::DraftDocument& doc,
+                             const std::vector<uint64_t>& entityIds,
+                             uint32_t newColor);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    uint32_t m_newColor;
+    std::vector<std::pair<uint64_t, uint32_t>> m_oldColors;
+};
+
+/// Command to change the line width of one or more entities.
+class ChangeEntityLineWidthCommand : public Command {
+public:
+    ChangeEntityLineWidthCommand(draft::DraftDocument& doc,
+                                 const std::vector<uint64_t>& entityIds,
+                                 double newWidth);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    double m_newWidth;
+    std::vector<std::pair<uint64_t, double>> m_oldWidths;
+};
+
+// ---------------------------------------------------------------------------
+// Layer commands
+// ---------------------------------------------------------------------------
+
+/// Command to add a new layer.
+class AddLayerCommand : public Command {
+public:
+    AddLayerCommand(draft::LayerManager& mgr, const draft::LayerProperties& props);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::LayerManager& m_mgr;
+    draft::LayerProperties m_props;
+};
+
+/// Command to remove a layer (moves entities on it to layer "0").
+class RemoveLayerCommand : public Command {
+public:
+    RemoveLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
+                       const std::string& layerName);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::LayerManager& m_mgr;
+    draft::DraftDocument& m_doc;
+    std::string m_name;
+    draft::LayerProperties m_savedProps;
+    std::vector<std::pair<uint64_t, std::string>> m_movedEntities;
+    bool m_wasCurrentLayer = false;
+};
+
+/// Command to modify layer properties.
+class ModifyLayerCommand : public Command {
+public:
+    ModifyLayerCommand(draft::LayerManager& mgr, const std::string& layerName,
+                       const draft::LayerProperties& newProps);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::LayerManager& m_mgr;
+    std::string m_name;
+    draft::LayerProperties m_newProps;
+    draft::LayerProperties m_oldProps;
+};
+
+/// Command to set the current drawing layer.
+class SetCurrentLayerCommand : public Command {
+public:
+    SetCurrentLayerCommand(draft::LayerManager& mgr, const std::string& layerName);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::LayerManager& m_mgr;
+    std::string m_newLayer;
+    std::string m_oldLayer;
 };
 
 }  // namespace hz::doc

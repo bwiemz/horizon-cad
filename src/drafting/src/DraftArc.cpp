@@ -92,6 +92,7 @@ std::shared_ptr<DraftEntity> DraftArc::clone() const {
     auto copy = std::make_shared<DraftArc>(m_center, m_radius, m_startAngle, m_endAngle);
     copy->setLayer(layer());
     copy->setColor(color());
+    copy->setLineWidth(lineWidth());
     return copy;
 }
 

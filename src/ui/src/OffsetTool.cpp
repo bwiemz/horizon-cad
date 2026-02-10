@@ -205,8 +205,11 @@ bool OffsetTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     double tolerance = std::max(10.0 * pixelScale, 0.15);
 
     if (m_state == State::SelectEntity) {
-        // Hit-test to find entity under cursor.
+        // Hit-test to find entity under cursor (skip hidden/locked layers).
+        const auto& layerMgr = m_viewport->document()->layerManager();
         for (const auto& entity : doc.entities()) {
+            const auto* lp = layerMgr.getLayer(entity->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
             if (entity->hitTest(worldPos, tolerance)) {
                 m_sourceEntity = entity;
                 m_currentPos = worldPos;
@@ -222,6 +225,7 @@ bool OffsetTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         if (offset) {
             offset->setLayer(m_sourceEntity->layer());
             offset->setColor(m_sourceEntity->color());
+            offset->setLineWidth(m_sourceEntity->lineWidth());
             auto cmd = std::make_unique<doc::AddEntityCommand>(doc, offset);
             m_viewport->document()->undoStack().push(std::move(cmd));
         }

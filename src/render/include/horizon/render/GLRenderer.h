@@ -44,12 +44,12 @@ public:
     /// Draw a set of line segments given flat vertex data (x,y,z per vertex, pairs).
     void drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                    const std::vector<float>& lineVertices,
-                   const math::Vec3& color);
+                   const math::Vec3& color, float lineWidth = 1.5f);
 
     /// Draw a circle approximation given flat vertex data (line segments forming the circle).
     void drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                     const std::vector<float>& circleVertices,
-                    const math::Vec3& color);
+                    const math::Vec3& color, float lineWidth = 1.5f);
 
     bool isInitialized() const { return m_initialized; }
 

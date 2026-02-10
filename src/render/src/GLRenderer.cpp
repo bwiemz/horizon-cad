@@ -194,7 +194,7 @@ void GLRenderer::setBackgroundColor(float r, float g, float b) {
 
 void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                             const std::vector<float>& lineVertices,
-                            const math::Vec3& color) {
+                            const math::Vec3& color, float lineWidth) {
     if (!m_initialized || lineVertices.empty()) return;
 
     math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
@@ -217,7 +217,7 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     gl->glEnableVertexAttribArray(0);
     gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
-    gl->glLineWidth(1.5f);
+    gl->glLineWidth(lineWidth);
     gl->glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineVertices.size() / 3));
 
     gl->glBindVertexArray(0);
@@ -229,8 +229,8 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
 
 void GLRenderer::drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                               const std::vector<float>& circleVertices,
-                              const math::Vec3& color) {
-    drawLines(gl, camera, circleVertices, color);
+                              const math::Vec3& color, float lineWidth) {
+    drawLines(gl, camera, circleVertices, color, lineWidth);
 }
 
 void GLRenderer::uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node) {

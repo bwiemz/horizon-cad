@@ -12,6 +12,8 @@ namespace hz::ui {
 
 class ViewportWidget;
 class ToolManager;
+class PropertyPanel;
+class LayerPanel;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -57,6 +59,7 @@ private slots:
     void onPolarArray();
 
     void onMouseMoved(const hz::math::Vec2& worldPos);
+    void onSelectionChanged();
 
 private:
     void createMenus();
@@ -68,6 +71,8 @@ private:
     std::unique_ptr<ToolManager> m_toolManager;
     std::unique_ptr<doc::Document> m_document;
     Clipboard m_clipboard;
+    PropertyPanel* m_propertyPanel = nullptr;
+    LayerPanel* m_layerPanel = nullptr;
 };
 
 }  // namespace hz::ui

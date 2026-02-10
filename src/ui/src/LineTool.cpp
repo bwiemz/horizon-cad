@@ -45,6 +45,7 @@ bool LineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
             // Commit the line via undo command.
             if (m_viewport && m_viewport->document()) {
                 auto line = std::make_shared<draft::DraftLine>(m_startPoint, snappedPos);
+                line->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
                     m_viewport->document()->draftDocument(), line);
                 m_viewport->document()->undoStack().push(std::move(cmd));

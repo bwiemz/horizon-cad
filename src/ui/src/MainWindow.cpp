@@ -19,6 +19,8 @@
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/RectArrayDialog.h"
 #include "horizon/ui/PolarArrayDialog.h"
+#include "horizon/ui/PropertyPanel.h"
+#include "horizon/ui/LayerPanel.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/document/UndoStack.h"
@@ -59,9 +61,23 @@ MainWindow::MainWindow(QWidget* parent)
     createStatusBar();
     registerTools();
 
+    // Dock panels.
+    m_propertyPanel = new PropertyPanel(this, this);
+    addDockWidget(Qt::RightDockWidgetArea, m_propertyPanel);
+
+    m_layerPanel = new LayerPanel(this, this);
+    addDockWidget(Qt::RightDockWidgetArea, m_layerPanel);
+
+    tabifyDockWidget(m_propertyPanel, m_layerPanel);
+    m_propertyPanel->raise();
+
     // Wire up the status bar coordinate display.
     connect(m_viewport, &ViewportWidget::mouseMoved,
             this, &MainWindow::onMouseMoved);
+
+    // Wire up selection changes to property panel.
+    connect(m_viewport, &ViewportWidget::selectionChanged,
+            this, &MainWindow::onSelectionChanged);
 
     // Start with the Select tool active.
     onSelectTool();
@@ -128,6 +144,9 @@ void MainWindow::createMenus() {
     viewMenu->addAction(tr("&Isometric"), this, &MainWindow::onViewIsometric);
     viewMenu->addSeparator();
     viewMenu->addAction(tr("Fit &All"), this, &MainWindow::onFitAll);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_propertyPanel->toggleViewAction());
+    viewMenu->addAction(m_layerPanel->toggleViewAction());
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -287,6 +306,9 @@ void MainWindow::onNewFile() {
     m_document->clear();
     m_viewport->selectionManager().clearSelection();
     m_viewport->update();
+    m_layerPanel->refresh();
+    m_propertyPanel->refreshLayerList();
+    onSelectionChanged();
     setWindowTitle("Horizon CAD");
 }
 
@@ -296,16 +318,31 @@ void MainWindow::onOpenFile() {
         tr("Horizon CAD Files (*.hcad);;All Files (*)"));
     if (fileName.isEmpty()) return;
 
-    draft::DraftDocument tempDoc;
+    doc::Document tempDoc;
     if (io::NativeFormat::load(fileName.toStdString(), tempDoc)) {
         m_document->clear();
         m_document->setFilePath(fileName.toStdString());
-        for (const auto& entity : tempDoc.entities()) {
+        // Copy layers.
+        for (const auto& name : tempDoc.layerManager().layerNames()) {
+            const auto* lp = tempDoc.layerManager().getLayer(name);
+            if (lp && name == "0") {
+                auto* dst = m_document->layerManager().getLayer("0");
+                if (dst) *dst = *lp;
+            } else if (lp) {
+                m_document->layerManager().addLayer(*lp);
+            }
+        }
+        m_document->layerManager().setCurrentLayer(tempDoc.layerManager().currentLayer());
+        // Copy entities.
+        for (const auto& entity : tempDoc.draftDocument().entities()) {
             m_document->draftDocument().addEntity(entity);
         }
         m_document->setDirty(false);
         m_viewport->selectionManager().clearSelection();
         m_viewport->update();
+        m_layerPanel->refresh();
+        m_propertyPanel->refreshLayerList();
+        onSelectionChanged();
         setWindowTitle(QString("Horizon CAD - %1").arg(fileName));
     } else {
         QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
@@ -317,7 +354,7 @@ void MainWindow::onSaveFile() {
         onSaveFileAs();
         return;
     }
-    if (io::NativeFormat::save(m_document->filePath(), m_document->draftDocument())) {
+    if (io::NativeFormat::save(m_document->filePath(), *m_document)) {
         m_document->setDirty(false);
         statusBar()->showMessage(tr("File saved."), 3000);
     } else {
@@ -342,11 +379,15 @@ void MainWindow::onSaveFileAs() {
 void MainWindow::onUndo() {
     m_document->undoStack().undo();
     m_viewport->update();
+    m_layerPanel->refresh();
+    onSelectionChanged();
 }
 
 void MainWindow::onRedo() {
     m_document->undoStack().redo();
     m_viewport->update();
+    m_layerPanel->refresh();
+    onSelectionChanged();
 }
 
 void MainWindow::onDuplicate() {
@@ -354,7 +395,17 @@ void MainWindow::onDuplicate() {
     auto ids = sel.selectedIds();
     if (ids.empty()) return;
 
-    std::vector<uint64_t> idVec(ids.begin(), ids.end());
+    // Filter out entities on hidden/locked layers.
+    const auto& layerMgr = m_document->layerManager();
+    std::vector<uint64_t> idVec;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        idVec.push_back(entity->id());
+    }
+    if (idVec.empty()) return;
+
     math::Vec2 offset(1.0, -1.0);
     auto cmd = std::make_unique<doc::DuplicateEntityCommand>(
         m_document->draftDocument(), idVec, offset);
@@ -367,6 +418,7 @@ void MainWindow::onDuplicate() {
         sel.select(id);
     }
     m_viewport->update();
+    onSelectionChanged();
 }
 
 void MainWindow::onCopy() {
@@ -390,15 +442,23 @@ void MainWindow::onCut() {
     auto ids = sel.selectedIds();
     if (ids.empty()) return;
 
+    // Only remove entities on visible/unlocked layers.
+    const auto& layerMgr = m_document->layerManager();
     auto composite = std::make_unique<doc::CompositeCommand>("Cut");
-    for (uint64_t id : ids) {
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
         composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(
-            m_document->draftDocument(), id));
+            m_document->draftDocument(), entity->id()));
     }
-    m_document->undoStack().push(std::move(composite));
+    if (!composite->empty()) {
+        m_document->undoStack().push(std::move(composite));
+    }
 
     sel.clearSelection();
     m_viewport->update();
+    onSelectionChanged();
 }
 
 void MainWindow::onPaste() {
@@ -521,6 +581,17 @@ void MainWindow::onRectangularArray() {
     auto ids = sel.selectedIds();
     if (ids.empty()) return;
 
+    // Filter out entities on hidden/locked layers.
+    const auto& layerMgr = m_document->layerManager();
+    std::vector<uint64_t> filteredIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        filteredIds.push_back(entity->id());
+    }
+    if (filteredIds.empty()) return;
+
     RectArrayDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted) return;
 
@@ -536,7 +607,7 @@ void MainWindow::onRectangularArray() {
         for (int c = 0; c < cols; ++c) {
             if (r == 0 && c == 0) continue;  // Skip original position.
             math::Vec2 offset(c * sx, r * sy);
-            for (uint64_t id : ids) {
+            for (uint64_t id : filteredIds) {
                 for (const auto& entity : m_document->draftDocument().entities()) {
                     if (entity->id() == id) {
                         auto clone = entity->clone();
@@ -558,12 +629,24 @@ void MainWindow::onRectangularArray() {
         sel.select(id);
     }
     m_viewport->update();
+    onSelectionChanged();
 }
 
 void MainWindow::onPolarArray() {
     auto& sel = m_viewport->selectionManager();
     auto ids = sel.selectedIds();
     if (ids.empty()) return;
+
+    // Filter out entities on hidden/locked layers.
+    const auto& layerMgr = m_document->layerManager();
+    std::vector<uint64_t> filteredIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        filteredIds.push_back(entity->id());
+    }
+    if (filteredIds.empty()) return;
 
     PolarArrayDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted) return;
@@ -579,7 +662,7 @@ void MainWindow::onPolarArray() {
 
     for (int i = 1; i < count; ++i) {
         double angle = step * i;
-        for (uint64_t id : ids) {
+        for (uint64_t id : filteredIds) {
             for (const auto& entity : m_document->draftDocument().entities()) {
                 if (entity->id() == id) {
                     auto clone = entity->clone();
@@ -600,6 +683,7 @@ void MainWindow::onPolarArray() {
         sel.select(id);
     }
     m_viewport->update();
+    onSelectionChanged();
 }
 
 // ---------------------------------------------------------------------------
@@ -611,6 +695,12 @@ void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
         QString("X: %1  Y: %2")
             .arg(worldPos.x, 0, 'f', 3)
             .arg(worldPos.y, 0, 'f', 3));
+}
+
+void MainWindow::onSelectionChanged() {
+    auto ids = m_viewport->selectionManager().selectedIds();
+    std::vector<uint64_t> idVec(ids.begin(), ids.end());
+    m_propertyPanel->updateForSelection(idVec);
 }
 
 }  // namespace hz::ui

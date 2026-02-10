@@ -23,6 +23,8 @@ add_library(hz_ui STATIC
     include/horizon/ui/PasteTool.h
     include/horizon/ui/RectArrayDialog.h
     include/horizon/ui/PolarArrayDialog.h
+    include/horizon/ui/PropertyPanel.h
+    include/horizon/ui/LayerPanel.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -43,6 +45,8 @@ add_library(hz_ui STATIC
     src/PasteTool.cpp
     src/RectArrayDialog.cpp
     src/PolarArrayDialog.cpp
+    src/PropertyPanel.cpp
+    src/LayerPanel.cpp
 )
 
 target_include_directories(hz_ui

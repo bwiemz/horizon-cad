@@ -21,9 +21,12 @@ bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     double pixelScale = m_viewport->pixelToWorldScale();
     const double tolerance = std::max(10.0 * pixelScale, 0.15);
 
-    // Find the first entity under the cursor.
+    // Find the first entity under the cursor (skip hidden/locked layers).
+    const auto& layerMgr = m_viewport->document()->layerManager();
     uint64_t hitId = 0;
     for (const auto& entity : doc.entities()) {
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
         if (entity->hitTest(worldPos, tolerance)) {
             hitId = entity->id();
             break;
@@ -64,11 +67,25 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
         auto ids = sel.selectedIds();
         if (ids.empty()) return false;
 
-        auto& undoStack = m_viewport->document()->undoStack();
+        const auto& layerMgr = m_viewport->document()->layerManager();
+        auto& doc = m_viewport->document()->draftDocument();
+
+        auto composite = std::make_unique<doc::CompositeCommand>("Delete");
         for (uint64_t id : ids) {
-            auto cmd = std::make_unique<doc::RemoveEntityCommand>(
-                m_viewport->document()->draftDocument(), id);
-            undoStack.push(std::move(cmd));
+            // Skip entities on hidden or locked layers.
+            bool canDelete = true;
+            for (const auto& e : doc.entities()) {
+                if (e->id() == id) {
+                    const auto* lp = layerMgr.getLayer(e->layer());
+                    if (!lp || !lp->visible || lp->locked) canDelete = false;
+                    break;
+                }
+            }
+            if (!canDelete) continue;
+            composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, id));
+        }
+        if (!composite->empty()) {
+            m_viewport->document()->undoStack().push(std::move(composite));
         }
         sel.clearSelection();
         return true;

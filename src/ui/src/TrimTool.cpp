@@ -69,6 +69,7 @@ static void trimLine(const draft::DraftLine* line,
         auto newLine = std::make_shared<draft::DraftLine>(segStart, segEnd);
         newLine->setLayer(line->layer());
         newLine->setColor(line->color());
+        newLine->setLineWidth(line->lineWidth());
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLine));
     }
 }
@@ -127,6 +128,7 @@ static void trimCircle(const draft::DraftCircle* circle,
         auto arc = std::make_shared<draft::DraftArc>(circle->center(), circle->radius(), sa, ea);
         arc->setLayer(circle->layer());
         arc->setColor(circle->color());
+        arc->setLineWidth(circle->lineWidth());
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, arc));
     }
 }
@@ -186,6 +188,7 @@ static void trimArc(const draft::DraftArc* arc,
         auto newArc = std::make_shared<draft::DraftArc>(arc->center(), arc->radius(), sa, ea);
         newArc->setLayer(arc->layer());
         newArc->setColor(arc->color());
+        newArc->setLineWidth(arc->lineWidth());
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, newArc));
     }
 }
@@ -202,9 +205,12 @@ bool TrimTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     double pixelScale = m_viewport->pixelToWorldScale();
     double tolerance = std::max(10.0 * pixelScale, 0.15);
 
-    // Find the entity under the cursor.
+    // Find the entity under the cursor (skip hidden/locked layers).
+    const auto& layerMgr = m_viewport->document()->layerManager();
     std::shared_ptr<draft::DraftEntity> target;
     for (const auto& entity : doc.entities()) {
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
         if (entity->hitTest(worldPos, tolerance)) {
             target = entity;
             break;

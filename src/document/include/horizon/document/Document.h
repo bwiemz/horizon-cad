@@ -2,6 +2,7 @@
 
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
+#include "horizon/drafting/Layer.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -31,6 +32,9 @@ public:
     UndoStack& undoStack();
     const UndoStack& undoStack() const;
 
+    draft::LayerManager& layerManager() { return m_layerManager; }
+    const draft::LayerManager& layerManager() const { return m_layerManager; }
+
     // --- Dirty tracking ---
 
     bool isDirty() const { return m_dirty; }
@@ -43,6 +47,7 @@ public:
 
 private:
     draft::DraftDocument m_draftDoc;
+    draft::LayerManager m_layerManager;
     std::unique_ptr<UndoStack> m_undoStack;
     bool m_dirty = false;
     std::string m_filePath;

@@ -280,4 +280,228 @@ std::vector<uint64_t> ScaleEntityCommand::scaledIds() const {
     return ids;
 }
 
+// --- ChangeEntityLayerCommand ---
+
+ChangeEntityLayerCommand::ChangeEntityLayerCommand(draft::DraftDocument& doc,
+                                                   const std::vector<uint64_t>& entityIds,
+                                                   const std::string& newLayer)
+    : m_doc(doc), m_entityIds(entityIds), m_newLayer(newLayer) {}
+
+void ChangeEntityLayerCommand::execute() {
+    m_oldLayers.clear();
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_oldLayers.emplace_back(id, e->layer());
+                e->setLayer(m_newLayer);
+                break;
+            }
+        }
+    }
+}
+
+void ChangeEntityLayerCommand::undo() {
+    for (const auto& [id, oldLayer] : m_oldLayers) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setLayer(oldLayer);
+                break;
+            }
+        }
+    }
+}
+
+std::string ChangeEntityLayerCommand::description() const {
+    return "Change Layer";
+}
+
+// --- ChangeEntityColorCommand ---
+
+ChangeEntityColorCommand::ChangeEntityColorCommand(draft::DraftDocument& doc,
+                                                   const std::vector<uint64_t>& entityIds,
+                                                   uint32_t newColor)
+    : m_doc(doc), m_entityIds(entityIds), m_newColor(newColor) {}
+
+void ChangeEntityColorCommand::execute() {
+    m_oldColors.clear();
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_oldColors.emplace_back(id, e->color());
+                e->setColor(m_newColor);
+                break;
+            }
+        }
+    }
+}
+
+void ChangeEntityColorCommand::undo() {
+    for (const auto& [id, oldColor] : m_oldColors) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setColor(oldColor);
+                break;
+            }
+        }
+    }
+}
+
+std::string ChangeEntityColorCommand::description() const {
+    return "Change Color";
+}
+
+// --- ChangeEntityLineWidthCommand ---
+
+ChangeEntityLineWidthCommand::ChangeEntityLineWidthCommand(draft::DraftDocument& doc,
+                                                           const std::vector<uint64_t>& entityIds,
+                                                           double newWidth)
+    : m_doc(doc), m_entityIds(entityIds), m_newWidth(newWidth) {}
+
+void ChangeEntityLineWidthCommand::execute() {
+    m_oldWidths.clear();
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_oldWidths.emplace_back(id, e->lineWidth());
+                e->setLineWidth(m_newWidth);
+                break;
+            }
+        }
+    }
+}
+
+void ChangeEntityLineWidthCommand::undo() {
+    for (const auto& [id, oldWidth] : m_oldWidths) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setLineWidth(oldWidth);
+                break;
+            }
+        }
+    }
+}
+
+std::string ChangeEntityLineWidthCommand::description() const {
+    return "Change Line Width";
+}
+
+// --- AddLayerCommand ---
+
+AddLayerCommand::AddLayerCommand(draft::LayerManager& mgr,
+                                 const draft::LayerProperties& props)
+    : m_mgr(mgr), m_props(props) {}
+
+void AddLayerCommand::execute() {
+    m_mgr.addLayer(m_props);
+}
+
+void AddLayerCommand::undo() {
+    m_mgr.removeLayer(m_props.name);
+}
+
+std::string AddLayerCommand::description() const {
+    return "Add Layer";
+}
+
+// --- RemoveLayerCommand ---
+
+RemoveLayerCommand::RemoveLayerCommand(draft::LayerManager& mgr,
+                                       draft::DraftDocument& doc,
+                                       const std::string& layerName)
+    : m_mgr(mgr), m_doc(doc), m_name(layerName) {}
+
+void RemoveLayerCommand::execute() {
+    if (m_name == "0") return;  // Never remove the default layer.
+
+    // Save layer properties.
+    const auto* lp = m_mgr.getLayer(m_name);
+    if (lp) m_savedProps = *lp;
+
+    // Move entities on this layer to "0".
+    m_movedEntities.clear();
+    for (const auto& e : m_doc.entities()) {
+        if (e->layer() == m_name) {
+            m_movedEntities.emplace_back(e->id(), e->layer());
+            e->setLayer("0");
+        }
+    }
+
+    // If this is the current layer, switch to "0" first.
+    m_wasCurrentLayer = (m_mgr.currentLayer() == m_name);
+    if (m_wasCurrentLayer) {
+        m_mgr.setCurrentLayer("0");
+    }
+    m_mgr.removeLayer(m_name);
+}
+
+void RemoveLayerCommand::undo() {
+    if (m_name == "0") return;
+
+    m_mgr.addLayer(m_savedProps);
+
+    // Restore current layer if it was current before removal.
+    if (m_wasCurrentLayer) {
+        m_mgr.setCurrentLayer(m_name);
+    }
+
+    // Restore entity layers.
+    for (const auto& [id, oldLayer] : m_movedEntities) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setLayer(oldLayer);
+                break;
+            }
+        }
+    }
+}
+
+std::string RemoveLayerCommand::description() const {
+    return "Remove Layer";
+}
+
+// --- ModifyLayerCommand ---
+
+ModifyLayerCommand::ModifyLayerCommand(draft::LayerManager& mgr,
+                                       const std::string& layerName,
+                                       const draft::LayerProperties& newProps)
+    : m_mgr(mgr), m_name(layerName), m_newProps(newProps) {}
+
+void ModifyLayerCommand::execute() {
+    auto* lp = m_mgr.getLayer(m_name);
+    if (lp) {
+        m_oldProps = *lp;
+        *lp = m_newProps;
+    }
+}
+
+void ModifyLayerCommand::undo() {
+    auto* lp = m_mgr.getLayer(m_name);
+    if (lp) {
+        *lp = m_oldProps;
+    }
+}
+
+std::string ModifyLayerCommand::description() const {
+    return "Modify Layer";
+}
+
+// --- SetCurrentLayerCommand ---
+
+SetCurrentLayerCommand::SetCurrentLayerCommand(draft::LayerManager& mgr,
+                                               const std::string& layerName)
+    : m_mgr(mgr), m_newLayer(layerName) {}
+
+void SetCurrentLayerCommand::execute() {
+    m_oldLayer = m_mgr.currentLayer();
+    m_mgr.setCurrentLayer(m_newLayer);
+}
+
+void SetCurrentLayerCommand::undo() {
+    m_mgr.setCurrentLayer(m_oldLayer);
+}
+
+std::string SetCurrentLayerCommand::description() const {
+    return "Set Current Layer";
+}
+
 }  // namespace hz::doc

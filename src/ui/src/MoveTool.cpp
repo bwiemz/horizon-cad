@@ -24,8 +24,12 @@ bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     double tolerance = std::max(10.0 * pixelScale, 0.15);
 
     bool hitSelected = false;
+    const auto& layerMgr = m_viewport->document()->layerManager();
     for (const auto& entity : doc.entities()) {
-        if (sel.isSelected(entity->id()) && entity->hitTest(worldPos, tolerance)) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        if (entity->hitTest(worldPos, tolerance)) {
             hitSelected = true;
             break;
         }
@@ -57,13 +61,15 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
 
     math::Vec2 delta{snappedPos.x - m_dragCurrent.x, snappedPos.y - m_dragCurrent.y};
 
-    // Translate selected entities in real-time.
+    // Translate selected entities in real-time (skip locked/hidden layers).
     auto& doc = m_viewport->document()->draftDocument();
     auto& sel = m_viewport->selectionManager();
+    const auto& layerMgr = m_viewport->document()->layerManager();
     for (const auto& entity : doc.entities()) {
-        if (sel.isSelected(entity->id())) {
-            entity->translate(delta);
-        }
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        entity->translate(delta);
     }
 
     m_dragCurrent = snappedPos;
@@ -83,16 +89,24 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
     math::Vec2 neg{-m_totalDelta.x, -m_totalDelta.y};
     auto& doc = m_viewport->document()->draftDocument();
     auto& sel = m_viewport->selectionManager();
+    const auto& layerMgr = m_viewport->document()->layerManager();
 
     for (const auto& entity : doc.entities()) {
-        if (sel.isSelected(entity->id())) {
-            entity->translate(neg);
-        }
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        entity->translate(neg);
     }
 
     if (std::abs(m_totalDelta.x) > 1e-10 || std::abs(m_totalDelta.y) > 1e-10) {
-        auto ids = sel.selectedIds();
-        std::vector<uint64_t> idVec(ids.begin(), ids.end());
+        // Build ID list excluding locked/hidden entities.
+        std::vector<uint64_t> idVec;
+        for (const auto& entity : doc.entities()) {
+            if (!sel.isSelected(entity->id())) continue;
+            const auto* lp2 = layerMgr.getLayer(entity->layer());
+            if (!lp2 || !lp2->visible || lp2->locked) continue;
+            idVec.push_back(entity->id());
+        }
         auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
@@ -112,14 +126,16 @@ bool MoveTool::keyPressEvent(QKeyEvent* event) {
 
 void MoveTool::cancel() {
     if (m_dragging && m_viewport && m_viewport->document()) {
-        // Undo the real-time translation.
+        // Undo the real-time translation (skip locked/hidden layers).
         math::Vec2 neg{-m_totalDelta.x, -m_totalDelta.y};
         auto& doc = m_viewport->document()->draftDocument();
         auto& sel = m_viewport->selectionManager();
+        const auto& layerMgr = m_viewport->document()->layerManager();
         for (const auto& entity : doc.entities()) {
-            if (sel.isSelected(entity->id())) {
-                entity->translate(neg);
-            }
+            if (!sel.isSelected(entity->id())) continue;
+            const auto* lp = layerMgr.getLayer(entity->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
+            entity->translate(neg);
         }
     }
     m_dragging = false;

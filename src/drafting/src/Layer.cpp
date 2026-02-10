@@ -59,4 +59,16 @@ void LayerManager::setCurrentLayer(const std::string& name) {
     }
 }
 
+void LayerManager::clear() {
+    m_layers.clear();
+    LayerProperties defaultLayer;
+    defaultLayer.name = "0";
+    defaultLayer.color = 0xFFFFFFFF;
+    defaultLayer.lineWidth = 1.0;
+    defaultLayer.visible = true;
+    defaultLayer.locked = false;
+    m_layers["0"] = defaultLayer;
+    m_currentLayer = "0";
+}
+
 }  // namespace hz::draft

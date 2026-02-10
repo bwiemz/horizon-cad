@@ -77,8 +77,15 @@ bool ScaleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
         if (factor < 1e-6) return false;
 
         auto& sel = m_viewport->selectionManager();
-        auto ids = sel.selectedIds();
-        std::vector<uint64_t> idVec(ids.begin(), ids.end());
+        const auto& layerMgr = m_viewport->document()->layerManager();
+        std::vector<uint64_t> idVec;
+        for (const auto& entity : doc.entities()) {
+            if (!sel.isSelected(entity->id())) continue;
+            const auto* lp = layerMgr.getLayer(entity->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
+            idVec.push_back(entity->id());
+        }
+        if (idVec.empty()) return false;
 
         auto cmd = std::make_unique<doc::ScaleEntityCommand>(doc, idVec, m_basePoint, factor);
         auto* rawCmd = cmd.get();
@@ -139,8 +146,15 @@ bool ScaleTool::keyPressEvent(QKeyEvent* event) {
 
                     auto& doc = m_viewport->document()->draftDocument();
                     auto& sel = m_viewport->selectionManager();
-                    auto ids = sel.selectedIds();
-                    std::vector<uint64_t> idVec(ids.begin(), ids.end());
+                    const auto& layerMgr = m_viewport->document()->layerManager();
+                    std::vector<uint64_t> idVec;
+                    for (const auto& entity : doc.entities()) {
+                        if (!sel.isSelected(entity->id())) continue;
+                        const auto* lp2 = layerMgr.getLayer(entity->layer());
+                        if (!lp2 || !lp2->visible || lp2->locked) continue;
+                        idVec.push_back(entity->id());
+                    }
+                    if (idVec.empty()) { m_factorInput.clear(); return true; }
 
                     auto cmd = std::make_unique<doc::ScaleEntityCommand>(
                         doc, idVec, m_basePoint, factor);

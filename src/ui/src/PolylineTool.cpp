@@ -92,6 +92,7 @@ void PolylineTool::cancel() {
 void PolylineTool::finishPolyline() {
     if (m_points.size() >= 2 && m_viewport && m_viewport->document()) {
         auto polyline = std::make_shared<draft::DraftPolyline>(m_points);
+        polyline->setLayer(m_viewport->document()->layerManager().currentLayer());
         auto cmd = std::make_unique<doc::AddEntityCommand>(
             m_viewport->document()->draftDocument(), polyline);
         m_viewport->document()->undoStack().push(std::move(cmd));

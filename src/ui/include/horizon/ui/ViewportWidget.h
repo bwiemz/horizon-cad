@@ -77,6 +77,9 @@ signals:
     /// Emitted when the mouse moves.  Carries the world-space position on the XY plane.
     void mouseMoved(const hz::math::Vec2& worldPos);
 
+    /// Emitted when the selection changes.
+    void selectionChanged();
+
 protected:
     // QOpenGLWidget overrides
     void initializeGL() override;

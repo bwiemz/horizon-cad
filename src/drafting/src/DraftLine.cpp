@@ -56,6 +56,7 @@ std::shared_ptr<DraftEntity> DraftLine::clone() const {
     auto copy = std::make_shared<DraftLine>(m_start, m_end);
     copy->setLayer(layer());
     copy->setColor(color());
+    copy->setLineWidth(lineWidth());
     return copy;
 }
 

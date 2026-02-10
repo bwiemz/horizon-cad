@@ -57,6 +57,7 @@ bool ArcTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
             if (m_viewport && m_viewport->document()) {
                 auto arc = std::make_shared<draft::DraftArc>(
                     m_center, m_radius, m_startAngle, endAngle);
+                arc->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
                     m_viewport->document()->draftDocument(), arc);
                 m_viewport->document()->undoStack().push(std::move(cmd));

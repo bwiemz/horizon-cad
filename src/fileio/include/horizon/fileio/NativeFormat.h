@@ -1,18 +1,18 @@
 #pragma once
 
-#include "horizon/drafting/DraftDocument.h"
+#include "horizon/document/Document.h"
 #include <string>
 
 namespace hz::io {
 
-/// Save/load DraftDocument to/from JSON-based .hcad files.
+/// Save/load Document to/from JSON-based .hcad files.
 class NativeFormat {
 public:
     static bool save(const std::string& filePath,
-                     const draft::DraftDocument& doc);
+                     const doc::Document& doc);
 
     static bool load(const std::string& filePath,
-                     draft::DraftDocument& doc);
+                     doc::Document& doc);
 };
 
 }  // namespace hz::io

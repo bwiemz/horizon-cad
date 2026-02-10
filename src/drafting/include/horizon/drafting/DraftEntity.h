@@ -22,6 +22,9 @@ public:
     uint32_t color() const { return m_color; }
     void setColor(uint32_t argb) { m_color = argb; }
 
+    double lineWidth() const { return m_lineWidth; }
+    void setLineWidth(double width) { m_lineWidth = width; }
+
     virtual math::BoundingBox boundingBox() const = 0;
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
@@ -35,6 +38,7 @@ private:
     uint64_t m_id;
     std::string m_layer;
     uint32_t m_color;
+    double m_lineWidth;
 
     static uint64_t s_nextId;
 };

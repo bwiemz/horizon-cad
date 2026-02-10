@@ -32,6 +32,7 @@ std::shared_ptr<draft::DraftEntity> Document::removeEntity(uint64_t id) {
 
 void Document::clear() {
     m_draftDoc.clear();
+    m_layerManager.clear();
     m_undoStack->clear();
     m_dirty = false;
     m_filePath.clear();

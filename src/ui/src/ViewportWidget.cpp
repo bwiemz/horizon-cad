@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
 
 #include <QMouseEvent>
@@ -16,6 +17,24 @@
 #include <QOpenGLExtraFunctions>
 
 #include <cmath>
+
+namespace {
+
+static hz::math::Vec3 argbToVec3(uint32_t argb) {
+    return { static_cast<double>((argb >> 16) & 0xFF) / 255.0,
+             static_cast<double>((argb >> 8)  & 0xFF) / 255.0,
+             static_cast<double>( argb        & 0xFF) / 255.0 };
+}
+
+struct BatchKey {
+    uint32_t colorARGB;
+    float lineWidth;
+    bool operator==(const BatchKey& o) const {
+        return colorARGB == o.colorARGB && lineWidth == o.lineWidth;
+    }
+};
+
+}  // anonymous namespace
 
 namespace hz::ui {
 
@@ -153,6 +172,7 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton && m_activeTool) {
         math::Vec2 wp = worldPositionAtCursor(event->pos().x(), event->pos().y());
         if (m_activeTool->mousePressEvent(event, wp)) {
+            emit selectionChanged();
             update();
             return;
         }
@@ -229,6 +249,7 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event) {
     }
 
     if (m_activeTool && m_activeTool->keyPressEvent(event)) {
+        emit selectionChanged();
         update();
         return;
     }
@@ -246,15 +267,48 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
     const auto& entities = m_document->draftDocument().entities();
     if (entities.empty()) return;
 
-    // Batch line vertices by selection state for efficient rendering.
-    std::vector<float> lineVerts;
-    std::vector<float> selectedLineVerts;
+    const auto& layerMgr = m_document->layerManager();
+
+    // Batches keyed by (color, lineWidth).
+    std::vector<std::pair<BatchKey, std::vector<float>>> batches;
+
+    auto findOrCreateBatch = [&](const BatchKey& key) -> std::vector<float>& {
+        for (auto& [k, v] : batches) {
+            if (k == key) return v;
+        }
+        batches.push_back({key, {}});
+        return batches.back().second;
+    };
 
     for (const auto& entity : entities) {
+        // Layer visibility check.
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (lp && !lp->visible) continue;
+
         bool selected = m_selectionManager.isSelected(entity->id());
 
+        // Resolve color.
+        uint32_t resolvedColor;
+        if (selected) {
+            resolvedColor = 0xFFFF9900;  // orange
+        } else if (entity->color() == 0x00000000) {
+            resolvedColor = lp ? lp->color : 0xFFFFFFFF;
+        } else {
+            resolvedColor = entity->color();
+        }
+
+        // Resolve lineWidth.
+        float resolvedWidth;
+        if (entity->lineWidth() == 0.0) {
+            resolvedWidth = lp ? static_cast<float>(lp->lineWidth) : 1.0f;
+        } else {
+            resolvedWidth = static_cast<float>(entity->lineWidth());
+        }
+
+        BatchKey key{resolvedColor, resolvedWidth};
+
         if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
-            auto& verts = selected ? selectedLineVerts : lineVerts;
+            auto& verts = findOrCreateBatch(key);
             verts.push_back(static_cast<float>(line->start().x));
             verts.push_back(static_cast<float>(line->start().y));
             verts.push_back(0.0f);
@@ -263,20 +317,16 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
             verts.push_back(0.0f);
         } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
             auto verts = circleVertices(circle->center(), circle->radius());
-            math::Vec3 color = selected
-                ? math::Vec3{1.0, 0.6, 0.0}
-                : math::Vec3{1.0, 1.0, 1.0};
-            m_renderer->drawLines(gl, m_camera, verts, color);
+            m_renderer->drawCircle(gl, m_camera, verts,
+                                   argbToVec3(resolvedColor), resolvedWidth);
         } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
             auto verts = arcVertices(arc->center(), arc->radius(),
                                      arc->startAngle(), arc->endAngle());
-            math::Vec3 color = selected
-                ? math::Vec3{1.0, 0.6, 0.0}
-                : math::Vec3{1.0, 1.0, 1.0};
-            m_renderer->drawLines(gl, m_camera, verts, color);
+            m_renderer->drawLines(gl, m_camera, verts,
+                                  argbToVec3(resolvedColor), resolvedWidth);
         } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
             auto c = rect->corners();
-            auto& verts = selected ? selectedLineVerts : lineVerts;
+            auto& verts = findOrCreateBatch(key);
             for (int i = 0; i < 4; ++i) {
                 int j = (i + 1) % 4;
                 verts.push_back(static_cast<float>(c[i].x));
@@ -287,7 +337,7 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
                 verts.push_back(0.0f);
             }
         } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
-            auto& verts = selected ? selectedLineVerts : lineVerts;
+            auto& verts = findOrCreateBatch(key);
             const auto& pts = polyline->points();
             for (size_t i = 0; i + 1 < pts.size(); ++i) {
                 verts.push_back(static_cast<float>(pts[i].x));
@@ -308,14 +358,12 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
         }
     }
 
-    if (!lineVerts.empty()) {
-        math::Vec3 white{1.0, 1.0, 1.0};
-        m_renderer->drawLines(gl, m_camera, lineVerts, white);
-    }
-
-    if (!selectedLineVerts.empty()) {
-        math::Vec3 orange{1.0, 0.6, 0.0};
-        m_renderer->drawLines(gl, m_camera, selectedLineVerts, orange);
+    // Draw all batches.
+    for (const auto& [key, verts] : batches) {
+        if (!verts.empty()) {
+            m_renderer->drawLines(gl, m_camera, verts,
+                                  argbToVec3(key.colorARGB), key.lineWidth);
+        }
     }
 }
 

@@ -44,6 +44,7 @@ bool RectangleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldP
         case State::WaitingForSecondCorner:
             if (m_viewport && m_viewport->document()) {
                 auto rect = std::make_shared<draft::DraftRectangle>(m_firstCorner, snappedPos);
+                rect->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
                     m_viewport->document()->draftDocument(), rect);
                 m_viewport->document()->undoStack().push(std::move(cmd));

@@ -15,6 +15,7 @@ target_link_libraries(hz_fileio
         Horizon::Geometry
         Horizon::Topology
         Horizon::Drafting
+        Horizon::Document
         nlohmann_json::nlohmann_json
 )
 
