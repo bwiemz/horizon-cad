@@ -52,6 +52,17 @@ public:
     /// Return preview circles (center, radius) to draw while the tool is active.
     virtual std::vector<std::pair<math::Vec2, double>> getPreviewCircles() const { return {}; }
 
+    /// Arc preview data.
+    struct ArcPreview {
+        math::Vec2 center;
+        double radius;
+        double startAngle;
+        double endAngle;
+    };
+
+    /// Return preview arcs to draw while the tool is active.
+    virtual std::vector<ArcPreview> getPreviewArcs() const { return {}; }
+
 protected:
     ViewportWidget* m_viewport = nullptr;
 };

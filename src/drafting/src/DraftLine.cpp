@@ -39,4 +39,9 @@ std::vector<math::Vec2> DraftLine::snapPoints() const {
     return { m_start, m_end };
 }
 
+void DraftLine::translate(const math::Vec2& delta) {
+    m_start += delta;
+    m_end += delta;
+}
+
 }  // namespace hz::draft

@@ -38,6 +38,10 @@ private slots:
     void onSelectTool();
     void onLineTool();
     void onCircleTool();
+    void onArcTool();
+    void onRectangleTool();
+    void onPolylineTool();
+    void onMoveTool();
 
     void onMouseMoved(const hz::math::Vec2& worldPos);
 

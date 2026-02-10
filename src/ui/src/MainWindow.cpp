@@ -5,6 +5,10 @@
 #include "horizon/ui/SelectTool.h"
 #include "horizon/ui/LineTool.h"
 #include "horizon/ui/CircleTool.h"
+#include "horizon/ui/ArcTool.h"
+#include "horizon/ui/RectangleTool.h"
+#include "horizon/ui/PolylineTool.h"
+#include "horizon/ui/MoveTool.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -103,6 +107,11 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Select"), this, &MainWindow::onSelectTool);
     toolsMenu->addAction(tr("&Line"), this, &MainWindow::onLineTool);
     toolsMenu->addAction(tr("&Circle"), this, &MainWindow::onCircleTool);
+    toolsMenu->addAction(tr("&Arc"), this, &MainWindow::onArcTool);
+    toolsMenu->addAction(tr("&Rectangle"), this, &MainWindow::onRectangleTool);
+    toolsMenu->addAction(tr("&Polyline"), this, &MainWindow::onPolylineTool);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("&Move"), this, &MainWindow::onMoveTool);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +152,24 @@ void MainWindow::createToolBar() {
     circleAction->setCheckable(true);
     toolGroup->addAction(circleAction);
 
+    QAction* arcAction = mainToolBar->addAction(tr("Arc"), this, &MainWindow::onArcTool);
+    arcAction->setCheckable(true);
+    toolGroup->addAction(arcAction);
+
+    QAction* rectAction = mainToolBar->addAction(tr("Rectangle"), this, &MainWindow::onRectangleTool);
+    rectAction->setCheckable(true);
+    toolGroup->addAction(rectAction);
+
+    QAction* polylineAction = mainToolBar->addAction(tr("Polyline"), this, &MainWindow::onPolylineTool);
+    polylineAction->setCheckable(true);
+    toolGroup->addAction(polylineAction);
+
+    mainToolBar->addSeparator();
+
+    QAction* moveAction = mainToolBar->addAction(tr("Move"), this, &MainWindow::onMoveTool);
+    moveAction->setCheckable(true);
+    toolGroup->addAction(moveAction);
+
     mainToolBar->addSeparator();
 
     // View presets.
@@ -165,6 +192,10 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<SelectTool>());
     m_toolManager->registerTool(std::make_unique<LineTool>());
     m_toolManager->registerTool(std::make_unique<CircleTool>());
+    m_toolManager->registerTool(std::make_unique<ArcTool>());
+    m_toolManager->registerTool(std::make_unique<RectangleTool>());
+    m_toolManager->registerTool(std::make_unique<PolylineTool>());
+    m_toolManager->registerTool(std::make_unique<MoveTool>());
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +334,26 @@ void MainWindow::onLineTool() {
 
 void MainWindow::onCircleTool() {
     m_toolManager->setActiveTool("Circle");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onArcTool() {
+    m_toolManager->setActiveTool("Arc");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onRectangleTool() {
+    m_toolManager->setActiveTool("Rectangle");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onPolylineTool() {
+    m_toolManager->setActiveTool("Polyline");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onMoveTool() {
+    m_toolManager->setActiveTool("Move");
     m_viewport->setActiveTool(m_toolManager->activeTool());
 }
 

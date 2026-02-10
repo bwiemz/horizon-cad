@@ -24,6 +24,7 @@ public:
     virtual math::BoundingBox boundingBox() const = 0;
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
+    virtual void translate(const math::Vec2& delta) = 0;
 
 private:
     uint64_t m_id;

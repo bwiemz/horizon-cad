@@ -5,6 +5,9 @@ add_library(hz_drafting STATIC
     src/SnapEngine.cpp
     src/DraftLine.cpp
     src/DraftCircle.cpp
+    src/DraftArc.cpp
+    src/DraftRectangle.cpp
+    src/DraftPolyline.cpp
 )
 
 target_include_directories(hz_drafting

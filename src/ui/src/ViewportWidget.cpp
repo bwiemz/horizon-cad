@@ -5,6 +5,10 @@
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/Constants.h"
 
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -263,6 +267,44 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
                 ? math::Vec3{1.0, 0.6, 0.0}
                 : math::Vec3{1.0, 1.0, 1.0};
             m_renderer->drawLines(gl, m_camera, verts, color);
+        } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
+            auto verts = arcVertices(arc->center(), arc->radius(),
+                                     arc->startAngle(), arc->endAngle());
+            math::Vec3 color = selected
+                ? math::Vec3{1.0, 0.6, 0.0}
+                : math::Vec3{1.0, 1.0, 1.0};
+            m_renderer->drawLines(gl, m_camera, verts, color);
+        } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
+            auto c = rect->corners();
+            auto& verts = selected ? selectedLineVerts : lineVerts;
+            for (int i = 0; i < 4; ++i) {
+                int j = (i + 1) % 4;
+                verts.push_back(static_cast<float>(c[i].x));
+                verts.push_back(static_cast<float>(c[i].y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(c[j].x));
+                verts.push_back(static_cast<float>(c[j].y));
+                verts.push_back(0.0f);
+            }
+        } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
+            auto& verts = selected ? selectedLineVerts : lineVerts;
+            const auto& pts = polyline->points();
+            for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                verts.push_back(static_cast<float>(pts[i].x));
+                verts.push_back(static_cast<float>(pts[i].y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(pts[i + 1].x));
+                verts.push_back(static_cast<float>(pts[i + 1].y));
+                verts.push_back(0.0f);
+            }
+            if (polyline->closed() && pts.size() >= 2) {
+                verts.push_back(static_cast<float>(pts.back().x));
+                verts.push_back(static_cast<float>(pts.back().y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(pts[0].x));
+                verts.push_back(static_cast<float>(pts[0].y));
+                verts.push_back(0.0f);
+            }
         }
     }
 
@@ -307,6 +349,17 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
         }
     }
 
+    // Preview arcs (e.g. rubber-band for ArcTool).
+    auto previewArcs = m_activeTool->getPreviewArcs();
+    if (!previewArcs.empty()) {
+        math::Vec3 cyan{0.0, 0.8, 1.0};
+        for (const auto& arc : previewArcs) {
+            auto verts = arcVertices(arc.center, arc.radius,
+                                     arc.startAngle, arc.endAngle);
+            m_renderer->drawLines(gl, m_camera, verts, cyan);
+        }
+    }
+
     // Snap indicator (yellow cross).
     if (m_lastSnapResult.type != draft::SnapType::None) {
         math::Vec2 sp = m_lastSnapResult.point;
@@ -343,6 +396,32 @@ std::vector<float> ViewportWidget::circleVertices(const math::Vec2& center, doub
         verts.push_back(x1);
         verts.push_back(y1);
         verts.push_back(0.0f);
+    }
+    return verts;
+}
+
+std::vector<float> ViewportWidget::arcVertices(const math::Vec2& center, double radius,
+                                                double startAngle, double endAngle,
+                                                int segments) const {
+    double sweep = endAngle - startAngle;
+    if (sweep <= 0.0) sweep += math::kTwoPi;
+
+    int arcSegments = std::max(4, static_cast<int>(segments * sweep / math::kTwoPi));
+    std::vector<float> verts;
+    verts.reserve(static_cast<size_t>(arcSegments) * 6);
+
+    double step = sweep / static_cast<double>(arcSegments);
+    for (int i = 0; i < arcSegments; ++i) {
+        double a0 = startAngle + step * static_cast<double>(i);
+        double a1 = startAngle + step * static_cast<double>(i + 1);
+
+        float x0 = static_cast<float>(center.x + radius * std::cos(a0));
+        float y0 = static_cast<float>(center.y + radius * std::sin(a0));
+        float x1 = static_cast<float>(center.x + radius * std::cos(a1));
+        float y1 = static_cast<float>(center.y + radius * std::sin(a1));
+
+        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f);
+        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f);
     }
     return verts;
 }

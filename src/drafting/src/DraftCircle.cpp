@@ -30,4 +30,8 @@ std::vector<math::Vec2> DraftCircle::snapPoints() const {
     };
 }
 
+void DraftCircle::translate(const math::Vec2& delta) {
+    m_center += delta;
+}
+
 }  // namespace hz::draft

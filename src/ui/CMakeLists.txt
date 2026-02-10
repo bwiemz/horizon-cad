@@ -9,12 +9,20 @@ add_library(hz_ui STATIC
     include/horizon/ui/LineTool.h
     include/horizon/ui/CircleTool.h
     include/horizon/ui/SelectTool.h
+    include/horizon/ui/ArcTool.h
+    include/horizon/ui/RectangleTool.h
+    include/horizon/ui/PolylineTool.h
+    include/horizon/ui/MoveTool.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
     src/LineTool.cpp
     src/CircleTool.cpp
     src/SelectTool.cpp
+    src/ArcTool.cpp
+    src/RectangleTool.cpp
+    src/PolylineTool.cpp
+    src/MoveTool.cpp
 )
 
 target_include_directories(hz_ui

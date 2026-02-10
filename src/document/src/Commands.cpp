@@ -50,4 +50,38 @@ std::string RemoveEntityCommand::description() const {
     return "Remove Entity";
 }
 
+// --- MoveEntityCommand ---
+
+MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
+                                     const std::vector<uint64_t>& entityIds,
+                                     const math::Vec2& delta)
+    : m_doc(doc), m_entityIds(entityIds), m_delta(delta) {}
+
+void MoveEntityCommand::execute() {
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->translate(m_delta);
+                break;
+            }
+        }
+    }
+}
+
+void MoveEntityCommand::undo() {
+    math::Vec2 neg{-m_delta.x, -m_delta.y};
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->translate(neg);
+                break;
+            }
+        }
+    }
+}
+
+std::string MoveEntityCommand::description() const {
+    return "Move Entity";
+}
+
 }  // namespace hz::doc

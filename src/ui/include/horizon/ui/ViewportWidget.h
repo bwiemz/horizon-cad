@@ -98,6 +98,10 @@ private:
     /// Generate vertices for a circle approximation.
     std::vector<float> circleVertices(const math::Vec2& center, double radius, int segments = 64) const;
 
+    /// Generate vertices for an arc (partial circle).
+    std::vector<float> arcVertices(const math::Vec2& center, double radius,
+                                   double startAngle, double endAngle, int segments = 64) const;
+
     // Camera
     render::Camera m_camera;
 
