@@ -167,8 +167,8 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
     QPoint delta = event->pos() - m_lastMousePos;
 
     if (m_orbiting) {
-        double yaw   = static_cast<double>(delta.x()) * 0.5;
-        double pitch  = static_cast<double>(delta.y()) * 0.5;
+        double yaw   = static_cast<double>(delta.x()) * 0.005;
+        double pitch  = static_cast<double>(delta.y()) * 0.005;
         m_camera.orbit(yaw, pitch);
         m_lastMousePos = event->pos();
         update();

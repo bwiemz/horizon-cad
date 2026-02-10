@@ -69,12 +69,13 @@ void ShaderProgram::release() {
 
 void ShaderProgram::setUniform(const char* name, const math::Mat4& mat) {
     if (!m_program) return;
-    // Convert double[4][4] to float[16] in column-major order for OpenGL
+    // Convert double[4][4] to float[16] in row-major order for QMatrix4x4 constructor.
+    // Our Mat4::data() returns row-major (m[row][col]), and QMatrix4x4(const float*)
+    // expects row-major input.
     float glMat[16];
-    for (int col = 0; col < 4; ++col) {
-        for (int row = 0; row < 4; ++row) {
-            glMat[col * 4 + row] = static_cast<float>(mat.at(row, col));
-        }
+    const double* src = mat.data();
+    for (int i = 0; i < 16; ++i) {
+        glMat[i] = static_cast<float>(src[i]);
     }
     m_program->setUniformValue(name, QMatrix4x4(glMat));
 }
