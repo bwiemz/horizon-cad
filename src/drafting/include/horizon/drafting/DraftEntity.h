@@ -3,6 +3,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/BoundingBox.h"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,8 @@ public:
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
     virtual void translate(const math::Vec2& delta) = 0;
+    virtual std::shared_ptr<DraftEntity> clone() const = 0;
+    virtual void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) = 0;
 
 private:
     uint64_t m_id;

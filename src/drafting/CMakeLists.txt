@@ -8,6 +8,7 @@ add_library(hz_drafting STATIC
     src/DraftArc.cpp
     src/DraftRectangle.cpp
     src/DraftPolyline.cpp
+    src/Intersection.cpp
 )
 
 target_include_directories(hz_drafting

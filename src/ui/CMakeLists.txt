@@ -13,6 +13,10 @@ add_library(hz_ui STATIC
     include/horizon/ui/RectangleTool.h
     include/horizon/ui/PolylineTool.h
     include/horizon/ui/MoveTool.h
+    include/horizon/ui/OffsetTool.h
+    include/horizon/ui/TrimTool.h
+    include/horizon/ui/FilletTool.h
+    include/horizon/ui/MirrorTool.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -23,6 +27,10 @@ add_library(hz_ui STATIC
     src/RectangleTool.cpp
     src/PolylineTool.cpp
     src/MoveTool.cpp
+    src/OffsetTool.cpp
+    src/TrimTool.cpp
+    src/FilletTool.cpp
+    src/MirrorTool.cpp
 )
 
 target_include_directories(hz_ui

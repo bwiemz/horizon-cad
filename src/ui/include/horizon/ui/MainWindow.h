@@ -28,6 +28,7 @@ private slots:
 
     void onUndo();
     void onRedo();
+    void onDuplicate();
 
     void onViewFront();
     void onViewTop();
@@ -42,6 +43,10 @@ private slots:
     void onRectangleTool();
     void onPolylineTool();
     void onMoveTool();
+    void onOffsetTool();
+    void onMirrorTool();
+    void onTrimTool();
+    void onFilletTool();
 
     void onMouseMoved(const hz::math::Vec2& worldPos);
 

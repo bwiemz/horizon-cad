@@ -84,4 +84,114 @@ std::string MoveEntityCommand::description() const {
     return "Move Entity";
 }
 
+// --- CompositeCommand ---
+
+CompositeCommand::CompositeCommand(const std::string& desc)
+    : m_description(desc) {}
+
+void CompositeCommand::addCommand(std::unique_ptr<Command> cmd) {
+    m_commands.push_back(std::move(cmd));
+}
+
+void CompositeCommand::execute() {
+    for (auto& cmd : m_commands) {
+        cmd->execute();
+    }
+}
+
+void CompositeCommand::undo() {
+    for (auto it = m_commands.rbegin(); it != m_commands.rend(); ++it) {
+        (*it)->undo();
+    }
+}
+
+std::string CompositeCommand::description() const {
+    return m_description;
+}
+
+// --- DuplicateEntityCommand ---
+
+DuplicateEntityCommand::DuplicateEntityCommand(draft::DraftDocument& doc,
+                                               const std::vector<uint64_t>& sourceIds,
+                                               const math::Vec2& offset)
+    : m_doc(doc), m_sourceIds(sourceIds), m_offset(offset) {}
+
+void DuplicateEntityCommand::execute() {
+    m_clones.clear();
+    for (uint64_t id : m_sourceIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                auto clone = e->clone();
+                clone->translate(m_offset);
+                m_clones.push_back(clone);
+                m_doc.addEntity(clone);
+                break;
+            }
+        }
+    }
+}
+
+void DuplicateEntityCommand::undo() {
+    for (const auto& clone : m_clones) {
+        m_doc.removeEntity(clone->id());
+    }
+    m_clones.clear();
+}
+
+std::string DuplicateEntityCommand::description() const {
+    return "Duplicate";
+}
+
+std::vector<uint64_t> DuplicateEntityCommand::clonedIds() const {
+    std::vector<uint64_t> ids;
+    ids.reserve(m_clones.size());
+    for (const auto& clone : m_clones) {
+        ids.push_back(clone->id());
+    }
+    return ids;
+}
+
+// --- MirrorEntityCommand ---
+
+MirrorEntityCommand::MirrorEntityCommand(draft::DraftDocument& doc,
+                                         const std::vector<uint64_t>& entityIds,
+                                         const math::Vec2& axisP1,
+                                         const math::Vec2& axisP2)
+    : m_doc(doc), m_sourceIds(entityIds), m_axisP1(axisP1), m_axisP2(axisP2) {}
+
+void MirrorEntityCommand::execute() {
+    m_mirroredEntities.clear();
+    for (uint64_t id : m_sourceIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                auto mirrored = e->clone();
+                mirrored->mirror(m_axisP1, m_axisP2);
+                m_mirroredEntities.push_back(mirrored);
+                m_doc.addEntity(mirrored);
+                break;
+            }
+        }
+    }
+}
+
+void MirrorEntityCommand::undo() {
+    for (const auto& e : m_mirroredEntities) {
+        m_doc.removeEntity(e->id());
+    }
+    m_mirroredEntities.clear();
+}
+
+std::string MirrorEntityCommand::description() const {
+    return "Mirror";
+}
+
+std::vector<uint64_t> MirrorEntityCommand::mirroredIds() const {
+    std::vector<uint64_t> ids;
+    ids.reserve(m_mirroredEntities.size());
+    for (const auto& e : m_mirroredEntities) {
+        ids.push_back(e->id());
+    }
+    return ids;
+}
+
 }  // namespace hz::doc

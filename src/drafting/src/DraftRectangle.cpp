@@ -60,4 +60,24 @@ void DraftRectangle::translate(const math::Vec2& delta) {
     m_corner2 += delta;
 }
 
+static math::Vec2 mirrorPoint(const math::Vec2& p,
+                               const math::Vec2& axisP1,
+                               const math::Vec2& axisP2) {
+    math::Vec2 d = (axisP2 - axisP1).normalized();
+    math::Vec2 v = p - axisP1;
+    return axisP1 + d * (2.0 * v.dot(d)) - v;
+}
+
+std::shared_ptr<DraftEntity> DraftRectangle::clone() const {
+    auto copy = std::make_shared<DraftRectangle>(m_corner1, m_corner2);
+    copy->setLayer(layer());
+    copy->setColor(color());
+    return copy;
+}
+
+void DraftRectangle::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
+    m_corner1 = mirrorPoint(m_corner1, axisP1, axisP2);
+    m_corner2 = mirrorPoint(m_corner2, axisP1, axisP2);
+}
+
 }  // namespace hz::draft

@@ -75,4 +75,25 @@ void DraftPolyline::translate(const math::Vec2& delta) {
     }
 }
 
+static math::Vec2 mirrorPoint(const math::Vec2& p,
+                               const math::Vec2& axisP1,
+                               const math::Vec2& axisP2) {
+    math::Vec2 d = (axisP2 - axisP1).normalized();
+    math::Vec2 v = p - axisP1;
+    return axisP1 + d * (2.0 * v.dot(d)) - v;
+}
+
+std::shared_ptr<DraftEntity> DraftPolyline::clone() const {
+    auto copy = std::make_shared<DraftPolyline>(m_points, m_closed);
+    copy->setLayer(layer());
+    copy->setColor(color());
+    return copy;
+}
+
+void DraftPolyline::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
+    for (auto& pt : m_points) {
+        pt = mirrorPoint(pt, axisP1, axisP2);
+    }
+}
+
 }  // namespace hz::draft

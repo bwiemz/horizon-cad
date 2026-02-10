@@ -57,4 +57,61 @@ private:
     math::Vec2 m_delta;
 };
 
+/// Composite command that bundles multiple sub-commands into one undo step.
+class CompositeCommand : public Command {
+public:
+    explicit CompositeCommand(const std::string& desc);
+
+    void addCommand(std::unique_ptr<Command> cmd);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    std::string m_description;
+    std::vector<std::unique_ptr<Command>> m_commands;
+};
+
+/// Command to duplicate (clone) one or more entities with an offset.
+class DuplicateEntityCommand : public Command {
+public:
+    DuplicateEntityCommand(draft::DraftDocument& doc,
+                           const std::vector<uint64_t>& sourceIds,
+                           const math::Vec2& offset);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    /// IDs of the cloned entities (valid after execute).
+    std::vector<uint64_t> clonedIds() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_sourceIds;
+    math::Vec2 m_offset;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_clones;
+};
+
+/// Command to mirror one or more entities across an axis, creating copies.
+class MirrorEntityCommand : public Command {
+public:
+    MirrorEntityCommand(draft::DraftDocument& doc,
+                        const std::vector<uint64_t>& entityIds,
+                        const math::Vec2& axisP1,
+                        const math::Vec2& axisP2);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    std::vector<uint64_t> mirroredIds() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_sourceIds;
+    math::Vec2 m_axisP1, m_axisP2;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_mirroredEntities;
+};
+
 }  // namespace hz::doc

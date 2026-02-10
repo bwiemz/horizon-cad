@@ -9,8 +9,13 @@
 #include "horizon/ui/RectangleTool.h"
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/MoveTool.h"
+#include "horizon/ui/OffsetTool.h"
+#include "horizon/ui/TrimTool.h"
+#include "horizon/ui/FilletTool.h"
+#include "horizon/ui/MirrorTool.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/document/Commands.h"
 #include "horizon/fileio/NativeFormat.h"
 
 #include <QAction>
@@ -91,6 +96,11 @@ void MainWindow::createMenus() {
     QAction* redoAction = editMenu->addAction(tr("&Redo"), this, &MainWindow::onRedo);
     redoAction->setShortcut(QKeySequence::Redo);
 
+    editMenu->addSeparator();
+
+    QAction* duplicateAction = editMenu->addAction(tr("&Duplicate"), this, &MainWindow::onDuplicate);
+    duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+
     // ---- View ----
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
 
@@ -112,6 +122,11 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Polyline"), this, &MainWindow::onPolylineTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Move"), this, &MainWindow::onMoveTool);
+    toolsMenu->addAction(tr("&Offset"), this, &MainWindow::onOffsetTool);
+    toolsMenu->addAction(tr("M&irror"), this, &MainWindow::onMirrorTool);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("&Trim"), this, &MainWindow::onTrimTool);
+    toolsMenu->addAction(tr("&Fillet"), this, &MainWindow::onFilletTool);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +185,24 @@ void MainWindow::createToolBar() {
     moveAction->setCheckable(true);
     toolGroup->addAction(moveAction);
 
+    QAction* offsetAction = mainToolBar->addAction(tr("Offset"), this, &MainWindow::onOffsetTool);
+    offsetAction->setCheckable(true);
+    toolGroup->addAction(offsetAction);
+
+    QAction* mirrorAction = mainToolBar->addAction(tr("Mirror"), this, &MainWindow::onMirrorTool);
+    mirrorAction->setCheckable(true);
+    toolGroup->addAction(mirrorAction);
+
+    mainToolBar->addSeparator();
+
+    QAction* trimAction = mainToolBar->addAction(tr("Trim"), this, &MainWindow::onTrimTool);
+    trimAction->setCheckable(true);
+    toolGroup->addAction(trimAction);
+
+    QAction* filletAction = mainToolBar->addAction(tr("Fillet"), this, &MainWindow::onFilletTool);
+    filletAction->setCheckable(true);
+    toolGroup->addAction(filletAction);
+
     mainToolBar->addSeparator();
 
     // View presets.
@@ -196,6 +229,10 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<RectangleTool>());
     m_toolManager->registerTool(std::make_unique<PolylineTool>());
     m_toolManager->registerTool(std::make_unique<MoveTool>());
+    m_toolManager->registerTool(std::make_unique<OffsetTool>());
+    m_toolManager->registerTool(std::make_unique<TrimTool>());
+    m_toolManager->registerTool(std::make_unique<FilletTool>());
+    m_toolManager->registerTool(std::make_unique<MirrorTool>());
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +315,26 @@ void MainWindow::onRedo() {
     m_viewport->update();
 }
 
+void MainWindow::onDuplicate() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    std::vector<uint64_t> idVec(ids.begin(), ids.end());
+    math::Vec2 offset(1.0, -1.0);
+    auto cmd = std::make_unique<doc::DuplicateEntityCommand>(
+        m_document->draftDocument(), idVec, offset);
+    auto* rawCmd = cmd.get();
+    m_document->undoStack().push(std::move(cmd));
+
+    // Select the clones.
+    sel.clearSelection();
+    for (uint64_t id : rawCmd->clonedIds()) {
+        sel.select(id);
+    }
+    m_viewport->update();
+}
+
 // ---------------------------------------------------------------------------
 // Slots -- View
 // ---------------------------------------------------------------------------
@@ -354,6 +411,26 @@ void MainWindow::onPolylineTool() {
 
 void MainWindow::onMoveTool() {
     m_toolManager->setActiveTool("Move");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onOffsetTool() {
+    m_toolManager->setActiveTool("Offset");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onMirrorTool() {
+    m_toolManager->setActiveTool("Mirror");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onTrimTool() {
+    m_toolManager->setActiveTool("Trim");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onFilletTool() {
+    m_toolManager->setActiveTool("Fillet");
     m_viewport->setActiveTool(m_toolManager->activeTool());
 }
 

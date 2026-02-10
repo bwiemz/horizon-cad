@@ -80,4 +80,33 @@ void DraftArc::translate(const math::Vec2& delta) {
     m_center += delta;
 }
 
+static math::Vec2 mirrorPoint(const math::Vec2& p,
+                               const math::Vec2& axisP1,
+                               const math::Vec2& axisP2) {
+    math::Vec2 d = (axisP2 - axisP1).normalized();
+    math::Vec2 v = p - axisP1;
+    return axisP1 + d * (2.0 * v.dot(d)) - v;
+}
+
+std::shared_ptr<DraftEntity> DraftArc::clone() const {
+    auto copy = std::make_shared<DraftArc>(m_center, m_radius, m_startAngle, m_endAngle);
+    copy->setLayer(layer());
+    copy->setColor(color());
+    return copy;
+}
+
+void DraftArc::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
+    // Mirror center.
+    m_center = mirrorPoint(m_center, axisP1, axisP2);
+
+    // Mirror the start and end points, then recompute angles.
+    // Mirroring reverses the winding, so swap start/end.
+    math::Vec2 sp = mirrorPoint(startPoint(), axisP1, axisP2);
+    math::Vec2 ep = mirrorPoint(endPoint(), axisP1, axisP2);
+
+    // After mirror, the old start becomes new end and vice versa.
+    m_startAngle = math::normalizeAngle(std::atan2(ep.y - m_center.y, ep.x - m_center.x));
+    m_endAngle = math::normalizeAngle(std::atan2(sp.y - m_center.y, sp.x - m_center.x));
+}
+
 }  // namespace hz::draft

@@ -13,6 +13,8 @@ public:
     bool hitTest(const math::Vec2& point, double tolerance) const override;
     std::vector<math::Vec2> snapPoints() const override;
     void translate(const math::Vec2& delta) override;
+    std::shared_ptr<DraftEntity> clone() const override;
+    void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) override;
 
     const std::vector<math::Vec2>& points() const { return m_points; }
     void setPoints(const std::vector<math::Vec2>& points) { m_points = points; }
