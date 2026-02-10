@@ -1,0 +1,16 @@
+{
+  "name": "horizon-cad",
+  "version": "0.1.0",
+  "description": "Open-source parametric 2D/3D CAD software",
+  "dependencies": [
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": ["widgets", "opengl"]
+    },
+    "spdlog",
+    "nlohmann-json",
+    "gtest",
+    "eigen3"
+  ]
+}
