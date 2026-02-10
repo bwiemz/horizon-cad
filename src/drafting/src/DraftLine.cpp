@@ -64,4 +64,24 @@ void DraftLine::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
     m_end = mirrorPoint(m_end, axisP1, axisP2);
 }
 
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
+    double c = std::cos(angle), s = std::sin(angle);
+    math::Vec2 v = p - center;
+    return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
+}
+
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
+    return center + (p - center) * factor;
+}
+
+void DraftLine::rotate(const math::Vec2& center, double angle) {
+    m_start = rotatePoint(m_start, center, angle);
+    m_end = rotatePoint(m_end, center, angle);
+}
+
+void DraftLine::scale(const math::Vec2& center, double factor) {
+    m_start = scalePoint(m_start, center, factor);
+    m_end = scalePoint(m_end, center, factor);
+}
+
 }  // namespace hz::draft

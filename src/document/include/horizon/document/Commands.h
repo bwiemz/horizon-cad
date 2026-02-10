@@ -114,4 +114,48 @@ private:
     std::vector<std::shared_ptr<draft::DraftEntity>> m_mirroredEntities;
 };
 
+/// Command to rotate-copy one or more entities around a center point.
+class RotateEntityCommand : public Command {
+public:
+    RotateEntityCommand(draft::DraftDocument& doc,
+                        const std::vector<uint64_t>& entityIds,
+                        const math::Vec2& center,
+                        double angle);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    std::vector<uint64_t> rotatedIds() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_sourceIds;
+    math::Vec2 m_center;
+    double m_angle;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_rotatedEntities;
+};
+
+/// Command to scale-copy one or more entities from a base point.
+class ScaleEntityCommand : public Command {
+public:
+    ScaleEntityCommand(draft::DraftDocument& doc,
+                       const std::vector<uint64_t>& entityIds,
+                       const math::Vec2& basePoint,
+                       double factor);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    std::vector<uint64_t> scaledIds() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_sourceIds;
+    math::Vec2 m_basePoint;
+    double m_factor;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_scaledEntities;
+};
+
 }  // namespace hz::doc

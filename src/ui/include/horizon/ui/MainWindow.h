@@ -4,6 +4,7 @@
 
 #include "horizon/math/Vec2.h"
 #include "horizon/document/Document.h"
+#include "horizon/ui/Clipboard.h"
 
 #include <memory>
 
@@ -29,6 +30,9 @@ private slots:
     void onUndo();
     void onRedo();
     void onDuplicate();
+    void onCopy();
+    void onCut();
+    void onPaste();
 
     void onViewFront();
     void onViewTop();
@@ -45,8 +49,12 @@ private slots:
     void onMoveTool();
     void onOffsetTool();
     void onMirrorTool();
+    void onRotateTool();
+    void onScaleTool();
     void onTrimTool();
     void onFilletTool();
+    void onRectangularArray();
+    void onPolarArray();
 
     void onMouseMoved(const hz::math::Vec2& worldPos);
 
@@ -59,6 +67,7 @@ private:
     ViewportWidget* m_viewport = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
     std::unique_ptr<doc::Document> m_document;
+    Clipboard m_clipboard;
 };
 
 }  // namespace hz::ui

@@ -14,6 +14,8 @@ public:
     void translate(const math::Vec2& delta) override;
     std::shared_ptr<DraftEntity> clone() const override;
     void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) override;
+    void rotate(const math::Vec2& center, double angle) override;
+    void scale(const math::Vec2& center, double factor) override;
 
     const math::Vec2& start() const { return m_start; }
     const math::Vec2& end() const { return m_end; }

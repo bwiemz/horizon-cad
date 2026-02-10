@@ -17,6 +17,12 @@ add_library(hz_ui STATIC
     include/horizon/ui/TrimTool.h
     include/horizon/ui/FilletTool.h
     include/horizon/ui/MirrorTool.h
+    include/horizon/ui/RotateTool.h
+    include/horizon/ui/ScaleTool.h
+    include/horizon/ui/Clipboard.h
+    include/horizon/ui/PasteTool.h
+    include/horizon/ui/RectArrayDialog.h
+    include/horizon/ui/PolarArrayDialog.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -31,6 +37,12 @@ add_library(hz_ui STATIC
     src/TrimTool.cpp
     src/FilletTool.cpp
     src/MirrorTool.cpp
+    src/RotateTool.cpp
+    src/ScaleTool.cpp
+    src/Clipboard.cpp
+    src/PasteTool.cpp
+    src/RectArrayDialog.cpp
+    src/PolarArrayDialog.cpp
 )
 
 target_include_directories(hz_ui

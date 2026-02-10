@@ -109,4 +109,25 @@ void DraftArc::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
     m_endAngle = math::normalizeAngle(std::atan2(sp.y - m_center.y, sp.x - m_center.x));
 }
 
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
+    double c = std::cos(angle), s = std::sin(angle);
+    math::Vec2 v = p - center;
+    return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
+}
+
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
+    return center + (p - center) * factor;
+}
+
+void DraftArc::rotate(const math::Vec2& center, double angle) {
+    m_center = rotatePoint(m_center, center, angle);
+    m_startAngle = math::normalizeAngle(m_startAngle + angle);
+    m_endAngle = math::normalizeAngle(m_endAngle + angle);
+}
+
+void DraftArc::scale(const math::Vec2& center, double factor) {
+    m_center = scalePoint(m_center, center, factor);
+    m_radius *= std::abs(factor);
+}
+
 }  // namespace hz::draft

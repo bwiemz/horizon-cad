@@ -194,4 +194,90 @@ std::vector<uint64_t> MirrorEntityCommand::mirroredIds() const {
     return ids;
 }
 
+// --- RotateEntityCommand ---
+
+RotateEntityCommand::RotateEntityCommand(draft::DraftDocument& doc,
+                                         const std::vector<uint64_t>& entityIds,
+                                         const math::Vec2& center,
+                                         double angle)
+    : m_doc(doc), m_sourceIds(entityIds), m_center(center), m_angle(angle) {}
+
+void RotateEntityCommand::execute() {
+    m_rotatedEntities.clear();
+    for (uint64_t id : m_sourceIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                auto rotated = e->clone();
+                rotated->rotate(m_center, m_angle);
+                m_rotatedEntities.push_back(rotated);
+                m_doc.addEntity(rotated);
+                break;
+            }
+        }
+    }
+}
+
+void RotateEntityCommand::undo() {
+    for (const auto& e : m_rotatedEntities) {
+        m_doc.removeEntity(e->id());
+    }
+    m_rotatedEntities.clear();
+}
+
+std::string RotateEntityCommand::description() const {
+    return "Rotate";
+}
+
+std::vector<uint64_t> RotateEntityCommand::rotatedIds() const {
+    std::vector<uint64_t> ids;
+    ids.reserve(m_rotatedEntities.size());
+    for (const auto& e : m_rotatedEntities) {
+        ids.push_back(e->id());
+    }
+    return ids;
+}
+
+// --- ScaleEntityCommand ---
+
+ScaleEntityCommand::ScaleEntityCommand(draft::DraftDocument& doc,
+                                       const std::vector<uint64_t>& entityIds,
+                                       const math::Vec2& basePoint,
+                                       double factor)
+    : m_doc(doc), m_sourceIds(entityIds), m_basePoint(basePoint), m_factor(factor) {}
+
+void ScaleEntityCommand::execute() {
+    m_scaledEntities.clear();
+    for (uint64_t id : m_sourceIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                auto scaled = e->clone();
+                scaled->scale(m_basePoint, m_factor);
+                m_scaledEntities.push_back(scaled);
+                m_doc.addEntity(scaled);
+                break;
+            }
+        }
+    }
+}
+
+void ScaleEntityCommand::undo() {
+    for (const auto& e : m_scaledEntities) {
+        m_doc.removeEntity(e->id());
+    }
+    m_scaledEntities.clear();
+}
+
+std::string ScaleEntityCommand::description() const {
+    return "Scale";
+}
+
+std::vector<uint64_t> ScaleEntityCommand::scaledIds() const {
+    std::vector<uint64_t> ids;
+    ids.reserve(m_scaledEntities.size());
+    for (const auto& e : m_scaledEntities) {
+        ids.push_back(e->id());
+    }
+    return ids;
+}
+
 }  // namespace hz::doc

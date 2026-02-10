@@ -28,6 +28,8 @@ public:
     virtual void translate(const math::Vec2& delta) = 0;
     virtual std::shared_ptr<DraftEntity> clone() const = 0;
     virtual void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) = 0;
+    virtual void rotate(const math::Vec2& center, double angle) = 0;
+    virtual void scale(const math::Vec2& center, double factor) = 0;
 
 private:
     uint64_t m_id;

@@ -13,7 +13,14 @@
 #include "horizon/ui/TrimTool.h"
 #include "horizon/ui/FilletTool.h"
 #include "horizon/ui/MirrorTool.h"
+#include "horizon/ui/RotateTool.h"
+#include "horizon/ui/ScaleTool.h"
+#include "horizon/ui/PasteTool.h"
+#include "horizon/ui/Clipboard.h"
+#include "horizon/ui/RectArrayDialog.h"
+#include "horizon/ui/PolarArrayDialog.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/MathUtils.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/document/Commands.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -101,6 +108,17 @@ void MainWindow::createMenus() {
     QAction* duplicateAction = editMenu->addAction(tr("&Duplicate"), this, &MainWindow::onDuplicate);
     duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
+    editMenu->addSeparator();
+
+    QAction* copyAction = editMenu->addAction(tr("&Copy"), this, &MainWindow::onCopy);
+    copyAction->setShortcut(QKeySequence::Copy);
+
+    QAction* cutAction = editMenu->addAction(tr("Cu&t"), this, &MainWindow::onCut);
+    cutAction->setShortcut(QKeySequence::Cut);
+
+    QAction* pasteAction = editMenu->addAction(tr("&Paste"), this, &MainWindow::onPaste);
+    pasteAction->setShortcut(QKeySequence::Paste);
+
     // ---- View ----
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
 
@@ -124,9 +142,14 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Move"), this, &MainWindow::onMoveTool);
     toolsMenu->addAction(tr("&Offset"), this, &MainWindow::onOffsetTool);
     toolsMenu->addAction(tr("M&irror"), this, &MainWindow::onMirrorTool);
+    toolsMenu->addAction(tr("&Rotate"), this, &MainWindow::onRotateTool);
+    toolsMenu->addAction(tr("&Scale"), this, &MainWindow::onScaleTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Trim"), this, &MainWindow::onTrimTool);
     toolsMenu->addAction(tr("&Fillet"), this, &MainWindow::onFilletTool);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
+    toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +216,14 @@ void MainWindow::createToolBar() {
     mirrorAction->setCheckable(true);
     toolGroup->addAction(mirrorAction);
 
+    QAction* rotateAction = mainToolBar->addAction(tr("Rotate"), this, &MainWindow::onRotateTool);
+    rotateAction->setCheckable(true);
+    toolGroup->addAction(rotateAction);
+
+    QAction* scaleAction = mainToolBar->addAction(tr("Scale"), this, &MainWindow::onScaleTool);
+    scaleAction->setCheckable(true);
+    toolGroup->addAction(scaleAction);
+
     mainToolBar->addSeparator();
 
     QAction* trimAction = mainToolBar->addAction(tr("Trim"), this, &MainWindow::onTrimTool);
@@ -233,6 +264,9 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<TrimTool>());
     m_toolManager->registerTool(std::make_unique<FilletTool>());
     m_toolManager->registerTool(std::make_unique<MirrorTool>());
+    m_toolManager->registerTool(std::make_unique<RotateTool>());
+    m_toolManager->registerTool(std::make_unique<ScaleTool>());
+    m_toolManager->registerTool(std::make_unique<PasteTool>(&m_clipboard));
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +369,44 @@ void MainWindow::onDuplicate() {
     m_viewport->update();
 }
 
+void MainWindow::onCopy() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    std::vector<std::shared_ptr<draft::DraftEntity>> entities;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (sel.isSelected(entity->id())) {
+            entities.push_back(entity);
+        }
+    }
+    m_clipboard.copy(entities);
+}
+
+void MainWindow::onCut() {
+    onCopy();
+
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    auto composite = std::make_unique<doc::CompositeCommand>("Cut");
+    for (uint64_t id : ids) {
+        composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(
+            m_document->draftDocument(), id));
+    }
+    m_document->undoStack().push(std::move(composite));
+
+    sel.clearSelection();
+    m_viewport->update();
+}
+
+void MainWindow::onPaste() {
+    if (!m_clipboard.hasContent()) return;
+    m_toolManager->setActiveTool("Paste");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
 // ---------------------------------------------------------------------------
 // Slots -- View
 // ---------------------------------------------------------------------------
@@ -432,6 +504,102 @@ void MainWindow::onTrimTool() {
 void MainWindow::onFilletTool() {
     m_toolManager->setActiveTool("Fillet");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onRotateTool() {
+    m_toolManager->setActiveTool("Rotate");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onScaleTool() {
+    m_toolManager->setActiveTool("Scale");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onRectangularArray() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    RectArrayDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    int cols = dlg.columns();
+    int rows = dlg.rows();
+    double sx = dlg.spacingX();
+    double sy = dlg.spacingY();
+
+    auto composite = std::make_unique<doc::CompositeCommand>("Rectangular Array");
+    std::vector<uint64_t> newIds;
+
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            if (r == 0 && c == 0) continue;  // Skip original position.
+            math::Vec2 offset(c * sx, r * sy);
+            for (uint64_t id : ids) {
+                for (const auto& entity : m_document->draftDocument().entities()) {
+                    if (entity->id() == id) {
+                        auto clone = entity->clone();
+                        clone->translate(offset);
+                        newIds.push_back(clone->id());
+                        composite->addCommand(std::make_unique<doc::AddEntityCommand>(
+                            m_document->draftDocument(), clone));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    m_document->undoStack().push(std::move(composite));
+
+    sel.clearSelection();
+    for (uint64_t id : newIds) {
+        sel.select(id);
+    }
+    m_viewport->update();
+}
+
+void MainWindow::onPolarArray() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    PolarArrayDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    int count = dlg.count();
+    double totalAngleDeg = dlg.totalAngle();
+    math::Vec2 center(dlg.centerX(), dlg.centerY());
+    double totalAngleRad = math::degToRad(totalAngleDeg);
+    double step = totalAngleRad / count;
+
+    auto composite = std::make_unique<doc::CompositeCommand>("Polar Array");
+    std::vector<uint64_t> newIds;
+
+    for (int i = 1; i < count; ++i) {
+        double angle = step * i;
+        for (uint64_t id : ids) {
+            for (const auto& entity : m_document->draftDocument().entities()) {
+                if (entity->id() == id) {
+                    auto clone = entity->clone();
+                    clone->rotate(center, angle);
+                    newIds.push_back(clone->id());
+                    composite->addCommand(std::make_unique<doc::AddEntityCommand>(
+                        m_document->draftDocument(), clone));
+                    break;
+                }
+            }
+        }
+    }
+
+    m_document->undoStack().push(std::move(composite));
+
+    sel.clearSelection();
+    for (uint64_t id : newIds) {
+        sel.select(id);
+    }
+    m_viewport->update();
 }
 
 // ---------------------------------------------------------------------------

@@ -80,4 +80,24 @@ void DraftRectangle::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) 
     m_corner2 = mirrorPoint(m_corner2, axisP1, axisP2);
 }
 
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
+    double c = std::cos(angle), s = std::sin(angle);
+    math::Vec2 v = p - center;
+    return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
+}
+
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
+    return center + (p - center) * factor;
+}
+
+void DraftRectangle::rotate(const math::Vec2& center, double angle) {
+    m_corner1 = rotatePoint(m_corner1, center, angle);
+    m_corner2 = rotatePoint(m_corner2, center, angle);
+}
+
+void DraftRectangle::scale(const math::Vec2& center, double factor) {
+    m_corner1 = scalePoint(m_corner1, center, factor);
+    m_corner2 = scalePoint(m_corner2, center, factor);
+}
+
 }  // namespace hz::draft
