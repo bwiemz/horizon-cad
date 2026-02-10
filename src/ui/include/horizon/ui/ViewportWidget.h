@@ -6,17 +6,21 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/render/Camera.h"
+#include "horizon/render/SelectionManager.h"
+#include "horizon/drafting/SnapEngine.h"
 
 #include <memory>
-#include <utility>
 #include <vector>
 
 class QOpenGLExtraFunctions;
 
 namespace hz::render {
 class GLRenderer;
-class Grid;
 }  // namespace hz::render
+
+namespace hz::doc {
+class Document;
+}  // namespace hz::doc
 
 namespace hz::ui {
 
@@ -33,11 +37,25 @@ public:
     explicit ViewportWidget(QWidget* parent = nullptr);
     ~ViewportWidget() override;
 
+    // ---- Document ----
+
+    void setDocument(doc::Document* doc);
+    doc::Document* document() const { return m_document; }
+
     // ---- Camera ----
 
-    /// Access the viewport camera.
     render::Camera& camera() { return m_camera; }
     const render::Camera& camera() const { return m_camera; }
+
+    // ---- Selection ----
+
+    render::SelectionManager& selectionManager() { return m_selectionManager; }
+    const render::SelectionManager& selectionManager() const { return m_selectionManager; }
+
+    // ---- Snapping ----
+
+    draft::SnapEngine& snapEngine() { return m_snapEngine; }
+    void setLastSnapResult(const draft::SnapResult& result) { m_lastSnapResult = result; }
 
     // ---- Tools ----
 
@@ -47,24 +65,13 @@ public:
     /// Returns the active tool, or nullptr.
     Tool* activeTool() const { return m_activeTool; }
 
-    // ---- Geometry storage (Phase 1: simple in-memory lists) ----
-
-    /// Add a line segment to the scene.
-    void addLine(const math::Vec2& start, const math::Vec2& end);
-
-    /// Add a circle to the scene.
-    void addCircle(const math::Vec2& center, double radius);
-
-    /// Clear all drawn geometry.
-    void clearGeometry();
-
-    const std::vector<std::pair<math::Vec2, math::Vec2>>& lines() const { return m_lines; }
-    const std::vector<std::pair<math::Vec2, double>>& circles() const { return m_circles; }
-
     // ---- Coordinate helpers ----
 
     /// Project a screen-space position to the world XY plane (Z = 0).
     math::Vec2 worldPositionAtCursor(int screenX, int screenY) const;
+
+    /// Returns the world-space distance that corresponds to one pixel at the current zoom.
+    double pixelToWorldScale() const;
 
 signals:
     /// Emitted when the mouse moves.  Carries the world-space position on the XY plane.
@@ -85,8 +92,7 @@ protected:
 
 private:
     // Rendering
-    void renderLines(QOpenGLExtraFunctions* gl);
-    void renderCircles(QOpenGLExtraFunctions* gl);
+    void renderEntities(QOpenGLExtraFunctions* gl);
     void renderToolPreview(QOpenGLExtraFunctions* gl);
 
     /// Generate vertices for a circle approximation.
@@ -95,8 +101,18 @@ private:
     // Camera
     render::Camera m_camera;
 
-    // Renderer / Grid
+    // Renderer
     std::unique_ptr<render::GLRenderer> m_renderer;
+
+    // Document (non-owning)
+    doc::Document* m_document = nullptr;
+
+    // Selection
+    render::SelectionManager m_selectionManager;
+
+    // Snapping
+    draft::SnapEngine m_snapEngine;
+    draft::SnapResult m_lastSnapResult;
 
     // Active tool
     Tool* m_activeTool = nullptr;
@@ -105,10 +121,6 @@ private:
     bool m_orbiting = false;
     bool m_panning = false;
     QPoint m_lastMousePos;
-
-    // Phase 1 geometry storage
-    std::vector<std::pair<math::Vec2, math::Vec2>> m_lines;
-    std::vector<std::pair<math::Vec2, double>> m_circles;
 };
 
 }  // namespace hz::ui

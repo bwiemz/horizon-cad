@@ -12,19 +12,19 @@ public:
     SelectionManager();
     ~SelectionManager();
 
-    void select(uint32_t id);
-    void deselect(uint32_t id);
-    void toggle(uint32_t id);
+    void select(uint64_t id);
+    void deselect(uint64_t id);
+    void toggle(uint64_t id);
     void clearSelection();
 
-    bool isSelected(uint32_t id) const;
+    bool isSelected(uint64_t id) const;
 
-    std::vector<uint32_t> selectedIds() const;
+    std::vector<uint64_t> selectedIds() const;
     size_t count() const { return m_selected.size(); }
     bool empty() const { return m_selected.empty(); }
 
 private:
-    std::set<uint32_t> m_selected;
+    std::set<uint64_t> m_selected;
 };
 
 }  // namespace hz::render

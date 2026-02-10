@@ -2,6 +2,7 @@ add_library(hz_document STATIC
     src/Document.cpp
     src/FeatureTree.cpp
     src/UndoStack.cpp
+    src/Commands.cpp
 )
 
 target_include_directories(hz_document

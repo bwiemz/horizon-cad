@@ -3,6 +3,7 @@
 #include <QMainWindow>
 
 #include "horizon/math/Vec2.h"
+#include "horizon/document/Document.h"
 
 #include <memory>
 
@@ -48,6 +49,7 @@ private:
 
     ViewportWidget* m_viewport = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
+    std::unique_ptr<doc::Document> m_document;
 };
 
 }  // namespace hz::ui

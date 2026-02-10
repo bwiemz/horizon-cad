@@ -6,6 +6,8 @@
 #include "horizon/ui/LineTool.h"
 #include "horizon/ui/CircleTool.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/fileio/NativeFormat.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -25,12 +27,14 @@ namespace hz::ui {
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
-    , m_toolManager(std::make_unique<ToolManager>()) {
+    , m_toolManager(std::make_unique<ToolManager>())
+    , m_document(std::make_unique<doc::Document>()) {
     setWindowTitle("Horizon CAD");
     resize(1280, 800);
 
     // Central viewport widget.
     m_viewport = new ViewportWidget(this);
+    m_viewport->setDocument(m_document.get());
     setCentralWidget(m_viewport);
 
     // Build UI chrome.
@@ -168,8 +172,20 @@ void MainWindow::registerTools() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::onNewFile() {
-    m_viewport->clearGeometry();
+    if (m_document->isDirty()) {
+        auto result = QMessageBox::question(this, tr("Unsaved Changes"),
+            tr("Save changes before creating a new file?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+        if (result == QMessageBox::Save) {
+            onSaveFile();
+        } else if (result == QMessageBox::Cancel) {
+            return;
+        }
+    }
+    m_document->clear();
+    m_viewport->selectionManager().clearSelection();
     m_viewport->update();
+    setWindowTitle("Horizon CAD");
 }
 
 void MainWindow::onOpenFile() {
@@ -177,12 +193,34 @@ void MainWindow::onOpenFile() {
         this, tr("Open File"), QString(),
         tr("Horizon CAD Files (*.hcad);;All Files (*)"));
     if (fileName.isEmpty()) return;
-    // TODO: implement file loading.
+
+    draft::DraftDocument tempDoc;
+    if (io::NativeFormat::load(fileName.toStdString(), tempDoc)) {
+        m_document->clear();
+        m_document->setFilePath(fileName.toStdString());
+        for (const auto& entity : tempDoc.entities()) {
+            m_document->draftDocument().addEntity(entity);
+        }
+        m_document->setDirty(false);
+        m_viewport->selectionManager().clearSelection();
+        m_viewport->update();
+        setWindowTitle(QString("Horizon CAD - %1").arg(fileName));
+    } else {
+        QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+    }
 }
 
 void MainWindow::onSaveFile() {
-    // TODO: implement save (use current path or delegate to Save As).
-    onSaveFileAs();
+    if (m_document->filePath().empty()) {
+        onSaveFileAs();
+        return;
+    }
+    if (io::NativeFormat::save(m_document->filePath(), m_document->draftDocument())) {
+        m_document->setDirty(false);
+        statusBar()->showMessage(tr("File saved."), 3000);
+    } else {
+        QMessageBox::warning(this, tr("Error"), tr("Failed to save file."));
+    }
 }
 
 void MainWindow::onSaveFileAs() {
@@ -190,7 +228,9 @@ void MainWindow::onSaveFileAs() {
         this, tr("Save File"), QString(),
         tr("Horizon CAD Files (*.hcad);;All Files (*)"));
     if (fileName.isEmpty()) return;
-    // TODO: implement file saving.
+
+    m_document->setFilePath(fileName.toStdString());
+    onSaveFile();
 }
 
 // ---------------------------------------------------------------------------
@@ -198,11 +238,13 @@ void MainWindow::onSaveFileAs() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::onUndo() {
-    // TODO: undo/redo system not yet implemented.
+    m_document->undoStack().undo();
+    m_viewport->update();
 }
 
 void MainWindow::onRedo() {
-    // TODO: undo/redo system not yet implemented.
+    m_document->undoStack().redo();
+    m_viewport->update();
 }
 
 // ---------------------------------------------------------------------------
@@ -230,15 +272,12 @@ void MainWindow::onViewIsometric() {
 }
 
 void MainWindow::onFitAll() {
-    // Build a bounding box from the drawn geometry.
     math::BoundingBox bbox;
-    for (const auto& [start, end] : m_viewport->lines()) {
-        bbox.expand(math::Vec3{start.x, start.y, 0.0});
-        bbox.expand(math::Vec3{end.x, end.y, 0.0});
-    }
-    for (const auto& [center, radius] : m_viewport->circles()) {
-        bbox.expand(math::Vec3{center.x - radius, center.y - radius, 0.0});
-        bbox.expand(math::Vec3{center.x + radius, center.y + radius, 0.0});
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        auto entityBBox = entity->boundingBox();
+        if (entityBBox.isValid()) {
+            bbox.expand(entityBBox);
+        }
     }
     if (bbox.isValid()) {
         m_viewport->camera().fitAll(bbox);

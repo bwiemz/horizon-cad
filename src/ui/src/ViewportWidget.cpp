@@ -2,6 +2,9 @@
 #include "horizon/ui/Tool.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftCircle.h"
 
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -33,6 +36,16 @@ ViewportWidget::~ViewportWidget() {
 }
 
 // ---------------------------------------------------------------------------
+// Document
+// ---------------------------------------------------------------------------
+
+void ViewportWidget::setDocument(doc::Document* doc) {
+    m_document = doc;
+    m_selectionManager.clearSelection();
+    update();
+}
+
+// ---------------------------------------------------------------------------
 // Tool management
 // ---------------------------------------------------------------------------
 
@@ -47,50 +60,32 @@ void ViewportWidget::setActiveTool(Tool* tool) {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry storage (Phase 1)
-// ---------------------------------------------------------------------------
-
-void ViewportWidget::addLine(const math::Vec2& start, const math::Vec2& end) {
-    m_lines.emplace_back(start, end);
-    update();  // request repaint
-}
-
-void ViewportWidget::addCircle(const math::Vec2& center, double radius) {
-    m_circles.emplace_back(center, radius);
-    update();
-}
-
-void ViewportWidget::clearGeometry() {
-    m_lines.clear();
-    m_circles.clear();
-    update();
-}
-
-// ---------------------------------------------------------------------------
 // Coordinate helpers
 // ---------------------------------------------------------------------------
 
 math::Vec2 ViewportWidget::worldPositionAtCursor(int screenX, int screenY) const {
-    // Flip Y: Qt has origin top-left, OpenGL bottom-left.
-    int flippedY = height() - screenY;
-
-    // Cast a ray from the screen point through the scene.
+    // screenToRay expects Qt-style coordinates (0 = top), so pass screenY directly.
     auto [rayOrigin, rayDir] = m_camera.screenToRay(
         static_cast<double>(screenX),
-        static_cast<double>(flippedY),
+        static_cast<double>(screenY),
         width(), height());
 
     // Intersect with the XY plane (Z = 0).
-    // Ray: P = origin + t * dir
-    // Plane: Z = 0  =>  origin.z + t * dir.z = 0  =>  t = -origin.z / dir.z
     if (std::abs(rayDir.z) < 1e-12) {
-        // Ray is parallel to the XY plane; return projection of origin.
         return {rayOrigin.x, rayOrigin.y};
     }
 
     double t = -rayOrigin.z / rayDir.z;
     math::Vec3 hit = rayOrigin + rayDir * t;
     return {hit.x, hit.y};
+}
+
+double ViewportWidget::pixelToWorldScale() const {
+    int cx = width() / 2;
+    int cy = height() / 2;
+    math::Vec2 p0 = worldPositionAtCursor(cx, cy);
+    math::Vec2 p1 = worldPositionAtCursor(cx + 1, cy);
+    return p0.distanceTo(p1);
 }
 
 // ---------------------------------------------------------------------------
@@ -128,9 +123,8 @@ void ViewportWidget::paintGL() {
     // Render the grid.
     m_renderer->renderGrid(gl, m_camera);
 
-    // Render committed geometry.
-    renderLines(gl);
-    renderCircles(gl);
+    // Render document entities.
+    renderEntities(gl);
 
     // Render tool preview (rubber-band).
     renderToolPreview(gl);
@@ -242,32 +236,44 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event) {
 // Rendering helpers
 // ---------------------------------------------------------------------------
 
-void ViewportWidget::renderLines(QOpenGLExtraFunctions* gl) {
-    if (m_lines.empty()) return;
+void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
+    if (!m_document) return;
 
-    // Build vertex data: each line is 2 vertices with xyz (z=0).
-    std::vector<float> verts;
-    verts.reserve(m_lines.size() * 6);
-    for (const auto& [start, end] : m_lines) {
-        verts.push_back(static_cast<float>(start.x));
-        verts.push_back(static_cast<float>(start.y));
-        verts.push_back(0.0f);
-        verts.push_back(static_cast<float>(end.x));
-        verts.push_back(static_cast<float>(end.y));
-        verts.push_back(0.0f);
+    const auto& entities = m_document->draftDocument().entities();
+    if (entities.empty()) return;
+
+    // Batch line vertices by selection state for efficient rendering.
+    std::vector<float> lineVerts;
+    std::vector<float> selectedLineVerts;
+
+    for (const auto& entity : entities) {
+        bool selected = m_selectionManager.isSelected(entity->id());
+
+        if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
+            auto& verts = selected ? selectedLineVerts : lineVerts;
+            verts.push_back(static_cast<float>(line->start().x));
+            verts.push_back(static_cast<float>(line->start().y));
+            verts.push_back(0.0f);
+            verts.push_back(static_cast<float>(line->end().x));
+            verts.push_back(static_cast<float>(line->end().y));
+            verts.push_back(0.0f);
+        } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
+            auto verts = circleVertices(circle->center(), circle->radius());
+            math::Vec3 color = selected
+                ? math::Vec3{1.0, 0.6, 0.0}
+                : math::Vec3{1.0, 1.0, 1.0};
+            m_renderer->drawLines(gl, m_camera, verts, color);
+        }
     }
 
-    math::Vec3 white{1.0, 1.0, 1.0};
-    m_renderer->drawLines(gl, m_camera, verts, white);
-}
+    if (!lineVerts.empty()) {
+        math::Vec3 white{1.0, 1.0, 1.0};
+        m_renderer->drawLines(gl, m_camera, lineVerts, white);
+    }
 
-void ViewportWidget::renderCircles(QOpenGLExtraFunctions* gl) {
-    if (m_circles.empty()) return;
-
-    math::Vec3 white{1.0, 1.0, 1.0};
-    for (const auto& [center, radius] : m_circles) {
-        auto verts = circleVertices(center, radius);
-        m_renderer->drawCircle(gl, m_camera, verts, white);
+    if (!selectedLineVerts.empty()) {
+        math::Vec3 orange{1.0, 0.6, 0.0};
+        m_renderer->drawLines(gl, m_camera, selectedLineVerts, orange);
     }
 }
 
@@ -300,11 +306,24 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
             m_renderer->drawCircle(gl, m_camera, verts, cyan);
         }
     }
+
+    // Snap indicator (yellow cross).
+    if (m_lastSnapResult.type != draft::SnapType::None) {
+        math::Vec2 sp = m_lastSnapResult.point;
+        float s = 0.15f;
+        std::vector<float> indicator = {
+            static_cast<float>(sp.x - s), static_cast<float>(sp.y), 0.0f,
+            static_cast<float>(sp.x + s), static_cast<float>(sp.y), 0.0f,
+            static_cast<float>(sp.x), static_cast<float>(sp.y - s), 0.0f,
+            static_cast<float>(sp.x), static_cast<float>(sp.y + s), 0.0f,
+        };
+        math::Vec3 yellow{1.0, 1.0, 0.0};
+        m_renderer->drawLines(gl, m_camera, indicator, yellow);
+    }
 }
 
 std::vector<float> ViewportWidget::circleVertices(const math::Vec2& center, double radius,
                                                    int segments) const {
-    // Generate a line-loop approximation as pairs of consecutive vertices (for GL_LINES).
     std::vector<float> verts;
     verts.reserve(static_cast<size_t>(segments) * 6);
 

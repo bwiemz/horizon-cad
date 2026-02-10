@@ -6,7 +6,7 @@ namespace hz::draft {
 
 SnapEngine::SnapEngine()
     : m_gridSpacing(1.0)
-    , m_snapTolerance(5.0) {}
+    , m_snapTolerance(0.5) {}
 
 void SnapEngine::setGridSpacing(double spacing) {
     if (spacing > 0.0) {
