@@ -58,6 +58,11 @@ private slots:
     void onRectangularArray();
     void onPolarArray();
 
+    void onLinearDimTool();
+    void onRadialDimTool();
+    void onAngularDimTool();
+    void onLeaderTool();
+
     void onMouseMoved(const hz::math::Vec2& worldPos);
     void onSelectionChanged();
 

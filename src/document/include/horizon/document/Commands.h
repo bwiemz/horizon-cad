@@ -216,6 +216,23 @@ private:
     std::vector<std::pair<uint64_t, double>> m_oldWidths;
 };
 
+/// Command to change the text override of a dimension entity.
+class ChangeTextOverrideCommand : public Command {
+public:
+    ChangeTextOverrideCommand(draft::DraftDocument& doc,
+                              uint64_t entityId,
+                              const std::string& newText);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    std::string m_newText;
+    std::string m_oldText;
+};
+
 // ---------------------------------------------------------------------------
 // Layer commands
 // ---------------------------------------------------------------------------

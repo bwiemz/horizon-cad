@@ -2,6 +2,7 @@
 
 #include <QOpenGLWidget>
 #include <QPoint>
+#include <QPointF>
 
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
@@ -10,6 +11,7 @@
 #include "horizon/drafting/SnapEngine.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 class QOpenGLExtraFunctions;
@@ -97,6 +99,18 @@ private:
     // Rendering
     void renderEntities(QOpenGLExtraFunctions* gl);
     void renderToolPreview(QOpenGLExtraFunctions* gl);
+    void renderDimensionText();
+
+    /// Project a world-space 2D point to screen coordinates.
+    QPointF worldToScreen(const math::Vec2& wp) const;
+
+    /// Dimension text data collected during renderEntities() for QPainter overlay.
+    struct DimTextInfo {
+        math::Vec2 worldPos;
+        std::string text;
+        uint32_t color;
+    };
+    std::vector<DimTextInfo> m_dimTexts;
 
     /// Generate vertices for a circle approximation.
     std::vector<float> circleVertices(const math::Vec2& center, double radius, int segments = 64) const;

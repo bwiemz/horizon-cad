@@ -8,13 +8,19 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Vec4.h"
+#include "horizon/math/Mat4.h"
 
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QOpenGLExtraFunctions>
+#include <QPainter>
+#include <QFont>
+#include <QFontMetrics>
 
 #include <cmath>
 
@@ -146,11 +152,15 @@ void ViewportWidget::paintGL() {
     // Render the grid.
     m_renderer->renderGrid(gl, m_camera);
 
-    // Render document entities.
+    // Render document entities (collects dimension text info).
+    m_dimTexts.clear();
     renderEntities(gl);
 
     // Render tool preview (rubber-band).
     renderToolPreview(gl);
+
+    // QPainter overlay for dimension text.
+    renderDimensionText();
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +365,28 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
                 verts.push_back(static_cast<float>(pts[0].y));
                 verts.push_back(0.0f);
             }
+        } else if (auto* dim = dynamic_cast<const draft::DraftDimension*>(entity.get())) {
+            const auto& style = m_document->draftDocument().dimensionStyle();
+            auto& verts = findOrCreateBatch(key);
+
+            auto addSegments = [&](const std::vector<std::pair<math::Vec2, math::Vec2>>& segs) {
+                for (const auto& [a, b] : segs) {
+                    verts.push_back(static_cast<float>(a.x));
+                    verts.push_back(static_cast<float>(a.y));
+                    verts.push_back(0.0f);
+                    verts.push_back(static_cast<float>(b.x));
+                    verts.push_back(static_cast<float>(b.y));
+                    verts.push_back(0.0f);
+                }
+            };
+
+            addSegments(dim->extensionLines(style));
+            addSegments(dim->dimensionLines(style));
+            addSegments(dim->arrowheadLines(style));
+
+            // Collect text for QPainter overlay.
+            m_dimTexts.push_back({dim->textPosition(),
+                                  dim->displayText(style), resolvedColor});
         }
     }
 
@@ -472,6 +504,56 @@ std::vector<float> ViewportWidget::arcVertices(const math::Vec2& center, double 
         verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f);
     }
     return verts;
+}
+
+// ---------------------------------------------------------------------------
+// Dimension text rendering
+// ---------------------------------------------------------------------------
+
+QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
+    math::Vec4 clip = m_camera.viewProjectionMatrix()
+                      * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);
+    if (std::abs(clip.w) < 1e-15) return {0.0, 0.0};
+
+    math::Vec3 ndc = clip.perspectiveDivide();
+    double sx = (ndc.x + 1.0) * 0.5 * width();
+    double sy = (1.0 - ndc.y) * 0.5 * height();  // flip Y for Qt screen coords
+    return {sx, sy};
+}
+
+void ViewportWidget::renderDimensionText() {
+    if (m_dimTexts.empty() || !m_document) return;
+
+    // Compute a font size: textHeight in world units → screen pixels.
+    const auto& style = m_document->draftDocument().dimensionStyle();
+    double pxPerWorld = 1.0 / pixelToWorldScale();
+    int fontSize = std::max(8, std::min(48,
+        static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QFont font("Arial", fontSize);
+    painter.setFont(font);
+    QFontMetrics fm(font);
+
+    for (const auto& dt : m_dimTexts) {
+        QPointF sp = worldToScreen(dt.worldPos);
+
+        // Color from ARGB.
+        QColor qc(static_cast<int>((dt.color >> 16) & 0xFF),
+                   static_cast<int>((dt.color >> 8)  & 0xFF),
+                   static_cast<int>( dt.color        & 0xFF));
+        painter.setPen(qc);
+
+        QString text = QString::fromStdString(dt.text);
+        int tw = fm.horizontalAdvance(text);
+        int th = fm.ascent();
+
+        // Draw centered on the projected position.
+        painter.drawText(QPointF(sp.x() - tw * 0.5, sp.y() + th * 0.25), text);
+    }
+
+    painter.end();
 }
 
 }  // namespace hz::ui

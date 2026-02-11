@@ -9,6 +9,11 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftLeader.h"
 
 #include <QColorDialog>
 #include <QComboBox>
@@ -16,6 +21,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -67,7 +73,20 @@ void PropertyPanel::createWidgets() {
             this, &PropertyPanel::onLineWidthChanged);
     form->addRow(tr("Width:"), m_lineWidthSpin);
 
+    // Dimension-specific properties (hidden by default).
+    m_dimPropsWidget = new QWidget(this);
+    auto* dimForm = new QFormLayout(m_dimPropsWidget);
+    dimForm->setContentsMargins(0, 0, 0, 0);
+
+    m_textOverrideEdit = new QLineEdit(m_dimPropsWidget);
+    m_textOverrideEdit->setPlaceholderText(tr("Auto"));
+    connect(m_textOverrideEdit, &QLineEdit::editingFinished,
+            this, &PropertyPanel::onTextOverrideChanged);
+    dimForm->addRow(tr("Text:"), m_textOverrideEdit);
+    m_dimPropsWidget->hide();
+
     layout->addLayout(form);
+    layout->addWidget(m_dimPropsWidget);
     layout->addStretch();
     setWidget(container);
 }
@@ -98,6 +117,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_byLayerButton->setEnabled(false);
         m_lineWidthSpin->setEnabled(false);
         m_colorButton->setStyleSheet("");
+        m_dimPropsWidget->hide();
         return;
     }
 
@@ -121,6 +141,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_byLayerButton->setEnabled(false);
         m_lineWidthSpin->setEnabled(false);
         m_colorButton->setStyleSheet("");
+        m_dimPropsWidget->hide();
         m_currentIds.clear();
         return;
     }
@@ -128,6 +149,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     m_updatingUI = true;
 
     // Type label.
+    const draft::DraftDimension* dimEntity = nullptr;
     if (selectedIds.size() == 1) {
         QString typeName = "Entity";
         if (dynamic_cast<const draft::DraftLine*>(first)) typeName = "Line";
@@ -135,7 +157,12 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         else if (dynamic_cast<const draft::DraftArc*>(first)) typeName = "Arc";
         else if (dynamic_cast<const draft::DraftRectangle*>(first)) typeName = "Rectangle";
         else if (dynamic_cast<const draft::DraftPolyline*>(first)) typeName = "Polyline";
+        else if (dynamic_cast<const draft::DraftLinearDimension*>(first)) typeName = "Linear Dim";
+        else if (dynamic_cast<const draft::DraftRadialDimension*>(first)) typeName = "Radial Dim";
+        else if (dynamic_cast<const draft::DraftAngularDimension*>(first)) typeName = "Angular Dim";
+        else if (dynamic_cast<const draft::DraftLeader*>(first)) typeName = "Leader";
         m_typeLabel->setText(typeName);
+        dimEntity = dynamic_cast<const draft::DraftDimension*>(first);
     } else {
         m_typeLabel->setText(tr("%1 entities").arg(selectedIds.size()));
     }
@@ -164,6 +191,14 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     // Line width.
     m_lineWidthSpin->setValue(first->lineWidth());
     m_lineWidthSpin->setEnabled(true);
+
+    // Dimension text override (single dimension selection only).
+    if (dimEntity) {
+        m_textOverrideEdit->setText(QString::fromStdString(dimEntity->textOverride()));
+        m_dimPropsWidget->show();
+    } else {
+        m_dimPropsWidget->hide();
+    }
 
     m_updatingUI = false;
 }
@@ -239,6 +274,19 @@ void PropertyPanel::onLineWidthChanged(double value) {
 
     auto cmd = std::make_unique<doc::ChangeEntityLineWidthCommand>(
         viewport->document()->draftDocument(), m_currentIds, value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onTextOverrideChanged() {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    std::string newText = m_textOverrideEdit->text().toStdString();
+    auto cmd = std::make_unique<doc::ChangeTextOverrideCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), newText);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }

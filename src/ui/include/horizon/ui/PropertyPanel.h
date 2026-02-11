@@ -6,6 +6,7 @@
 
 class QLabel;
 class QComboBox;
+class QLineEdit;
 class QPushButton;
 class QDoubleSpinBox;
 
@@ -27,6 +28,7 @@ private slots:
     void onColorClicked();
     void onByLayerColorClicked();
     void onLineWidthChanged(double value);
+    void onTextOverrideChanged();
 
 private:
     void createWidgets();
@@ -40,6 +42,10 @@ private:
     QPushButton* m_colorButton = nullptr;
     QPushButton* m_byLayerButton = nullptr;
     QDoubleSpinBox* m_lineWidthSpin = nullptr;
+
+    // Dimension-specific
+    QWidget* m_dimPropsWidget = nullptr;
+    QLineEdit* m_textOverrideEdit = nullptr;
 };
 
 }  // namespace hz::ui

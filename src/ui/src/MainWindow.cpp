@@ -21,6 +21,10 @@
 #include "horizon/ui/PolarArrayDialog.h"
 #include "horizon/ui/PropertyPanel.h"
 #include "horizon/ui/LayerPanel.h"
+#include "horizon/ui/LinearDimensionTool.h"
+#include "horizon/ui/RadialDimensionTool.h"
+#include "horizon/ui/AngularDimensionTool.h"
+#include "horizon/ui/LeaderTool.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/document/UndoStack.h"
@@ -169,6 +173,14 @@ void MainWindow::createMenus() {
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
     toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
+
+    // ---- Dimension ----
+    QMenu* dimMenu = menuBar()->addMenu(tr("&Dimension"));
+    dimMenu->addAction(tr("&Linear"), this, &MainWindow::onLinearDimTool);
+    dimMenu->addAction(tr("&Radial"), this, &MainWindow::onRadialDimTool);
+    dimMenu->addAction(tr("&Angular"), this, &MainWindow::onAngularDimTool);
+    dimMenu->addSeparator();
+    dimMenu->addAction(tr("L&eader"), this, &MainWindow::onLeaderTool);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +267,25 @@ void MainWindow::createToolBar() {
 
     mainToolBar->addSeparator();
 
+    // Dimension tools.
+    QAction* linearDimAction = mainToolBar->addAction(tr("LinDim"), this, &MainWindow::onLinearDimTool);
+    linearDimAction->setCheckable(true);
+    toolGroup->addAction(linearDimAction);
+
+    QAction* radialDimAction = mainToolBar->addAction(tr("RadDim"), this, &MainWindow::onRadialDimTool);
+    radialDimAction->setCheckable(true);
+    toolGroup->addAction(radialDimAction);
+
+    QAction* angularDimAction = mainToolBar->addAction(tr("AngDim"), this, &MainWindow::onAngularDimTool);
+    angularDimAction->setCheckable(true);
+    toolGroup->addAction(angularDimAction);
+
+    QAction* leaderAction = mainToolBar->addAction(tr("Leader"), this, &MainWindow::onLeaderTool);
+    leaderAction->setCheckable(true);
+    toolGroup->addAction(leaderAction);
+
+    mainToolBar->addSeparator();
+
     // View presets.
     mainToolBar->addAction(tr("Fit All"), this, &MainWindow::onFitAll);
 }
@@ -286,6 +317,10 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<RotateTool>());
     m_toolManager->registerTool(std::make_unique<ScaleTool>());
     m_toolManager->registerTool(std::make_unique<PasteTool>(&m_clipboard));
+    m_toolManager->registerTool(std::make_unique<LinearDimensionTool>());
+    m_toolManager->registerTool(std::make_unique<RadialDimensionTool>());
+    m_toolManager->registerTool(std::make_unique<AngularDimensionTool>());
+    m_toolManager->registerTool(std::make_unique<LeaderTool>());
 }
 
 // ---------------------------------------------------------------------------
@@ -684,6 +719,30 @@ void MainWindow::onPolarArray() {
     }
     m_viewport->update();
     onSelectionChanged();
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Dimension tools
+// ---------------------------------------------------------------------------
+
+void MainWindow::onLinearDimTool() {
+    m_toolManager->setActiveTool("Linear Dimension");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onRadialDimTool() {
+    m_toolManager->setActiveTool("Radial Dimension");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onAngularDimTool() {
+    m_toolManager->setActiveTool("Angular Dimension");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onLeaderTool() {
+    m_toolManager->setActiveTool("Leader");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
 }
 
 // ---------------------------------------------------------------------------

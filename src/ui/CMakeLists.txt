@@ -25,6 +25,10 @@ add_library(hz_ui STATIC
     include/horizon/ui/PolarArrayDialog.h
     include/horizon/ui/PropertyPanel.h
     include/horizon/ui/LayerPanel.h
+    include/horizon/ui/LinearDimensionTool.h
+    include/horizon/ui/RadialDimensionTool.h
+    include/horizon/ui/AngularDimensionTool.h
+    include/horizon/ui/LeaderTool.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -47,6 +51,10 @@ add_library(hz_ui STATIC
     src/PolarArrayDialog.cpp
     src/PropertyPanel.cpp
     src/LayerPanel.cpp
+    src/LinearDimensionTool.cpp
+    src/RadialDimensionTool.cpp
+    src/AngularDimensionTool.cpp
+    src/LeaderTool.cpp
 )
 
 target_include_directories(hz_ui

@@ -4,6 +4,10 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftLeader.h"
 
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -15,8 +19,20 @@ namespace hz::io {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 3;
+    root["version"] = 4;
     root["type"] = "hcad";
+
+    // --- Dimension style ---
+    const auto& ds = doc.draftDocument().dimensionStyle();
+    root["dimensionStyle"] = {
+        {"textHeight",         ds.textHeight},
+        {"arrowSize",          ds.arrowSize},
+        {"arrowAngle",         ds.arrowAngle},
+        {"extensionGap",       ds.extensionGap},
+        {"extensionOvershoot", ds.extensionOvershoot},
+        {"precision",          ds.precision},
+        {"showUnits",          ds.showUnits}
+    };
 
     // --- Layer table ---
     json layersArray = json::array();
@@ -69,6 +85,36 @@ bool NativeFormat::save(const std::string& filePath,
                 pointsArray.push_back({{"x", pt.x}, {"y", pt.y}});
             }
             obj["points"] = pointsArray;
+        } else if (auto* ld = dynamic_cast<const draft::DraftLinearDimension*>(entity.get())) {
+            obj["type"] = "linearDimension";
+            obj["defPoint1"] = {{"x", ld->defPoint1().x}, {"y", ld->defPoint1().y}};
+            obj["defPoint2"] = {{"x", ld->defPoint2().x}, {"y", ld->defPoint2().y}};
+            obj["dimLinePoint"] = {{"x", ld->dimLinePoint().x}, {"y", ld->dimLinePoint().y}};
+            obj["orientation"] = static_cast<int>(ld->orientation());
+            if (ld->hasTextOverride()) obj["textOverride"] = ld->textOverride();
+        } else if (auto* rd = dynamic_cast<const draft::DraftRadialDimension*>(entity.get())) {
+            obj["type"] = "radialDimension";
+            obj["center"] = {{"x", rd->center().x}, {"y", rd->center().y}};
+            obj["radius"] = rd->radius();
+            obj["textPoint"] = {{"x", rd->textPoint().x}, {"y", rd->textPoint().y}};
+            obj["isDiameter"] = rd->isDiameter();
+            if (rd->hasTextOverride()) obj["textOverride"] = rd->textOverride();
+        } else if (auto* ad = dynamic_cast<const draft::DraftAngularDimension*>(entity.get())) {
+            obj["type"] = "angularDimension";
+            obj["vertex"] = {{"x", ad->vertex().x}, {"y", ad->vertex().y}};
+            obj["line1Point"] = {{"x", ad->line1Point().x}, {"y", ad->line1Point().y}};
+            obj["line2Point"] = {{"x", ad->line2Point().x}, {"y", ad->line2Point().y}};
+            obj["arcRadius"] = ad->arcRadius();
+            if (ad->hasTextOverride()) obj["textOverride"] = ad->textOverride();
+        } else if (auto* leader = dynamic_cast<const draft::DraftLeader*>(entity.get())) {
+            obj["type"] = "leader";
+            obj["text"] = leader->text();
+            json ptsArray = json::array();
+            for (const auto& pt : leader->points()) {
+                ptsArray.push_back({{"x", pt.x}, {"y", pt.y}});
+            }
+            obj["points"] = ptsArray;
+            if (leader->hasTextOverride()) obj["textOverride"] = leader->textOverride();
         }
 
         entitiesArray.push_back(obj);
@@ -97,6 +143,20 @@ bool NativeFormat::load(const std::string& filePath,
 
     doc.draftDocument().clear();
     doc.layerManager().clear();
+
+    // --- Load dimension style (v4+) ---
+    if (root.contains("dimensionStyle")) {
+        const auto& dsObj = root["dimensionStyle"];
+        draft::DimensionStyle ds;
+        ds.textHeight         = dsObj.value("textHeight", 2.5);
+        ds.arrowSize          = dsObj.value("arrowSize", 1.5);
+        ds.arrowAngle         = dsObj.value("arrowAngle", 0.3);
+        ds.extensionGap       = dsObj.value("extensionGap", 0.5);
+        ds.extensionOvershoot = dsObj.value("extensionOvershoot", 1.0);
+        ds.precision          = dsObj.value("precision", 2);
+        ds.showUnits          = dsObj.value("showUnits", false);
+        doc.draftDocument().setDimensionStyle(ds);
+    }
 
     // --- Load layer table (v3+) ---
     if (root.contains("layers")) {
@@ -162,6 +222,54 @@ bool NativeFormat::load(const std::string& filePath,
                 points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
             }
             entity = std::make_shared<draft::DraftPolyline>(points, closed);
+        } else if (type == "linearDimension") {
+            auto p1 = math::Vec2(obj["defPoint1"]["x"].get<double>(),
+                                  obj["defPoint1"]["y"].get<double>());
+            auto p2 = math::Vec2(obj["defPoint2"]["x"].get<double>(),
+                                  obj["defPoint2"]["y"].get<double>());
+            auto dp = math::Vec2(obj["dimLinePoint"]["x"].get<double>(),
+                                  obj["dimLinePoint"]["y"].get<double>());
+            auto orient = static_cast<draft::DraftLinearDimension::Orientation>(
+                obj.value("orientation", 0));
+            auto dim = std::make_shared<draft::DraftLinearDimension>(p1, p2, dp, orient);
+            if (obj.contains("textOverride"))
+                dim->setTextOverride(obj["textOverride"].get<std::string>());
+            entity = dim;
+        } else if (type == "radialDimension") {
+            auto center = math::Vec2(obj["center"]["x"].get<double>(),
+                                      obj["center"]["y"].get<double>());
+            double radius = obj["radius"].get<double>();
+            auto textPt = math::Vec2(obj["textPoint"]["x"].get<double>(),
+                                      obj["textPoint"]["y"].get<double>());
+            bool isDiam = obj.value("isDiameter", false);
+            auto dim = std::make_shared<draft::DraftRadialDimension>(
+                center, radius, textPt, isDiam);
+            if (obj.contains("textOverride"))
+                dim->setTextOverride(obj["textOverride"].get<std::string>());
+            entity = dim;
+        } else if (type == "angularDimension") {
+            auto vertex = math::Vec2(obj["vertex"]["x"].get<double>(),
+                                      obj["vertex"]["y"].get<double>());
+            auto l1 = math::Vec2(obj["line1Point"]["x"].get<double>(),
+                                  obj["line1Point"]["y"].get<double>());
+            auto l2 = math::Vec2(obj["line2Point"]["x"].get<double>(),
+                                  obj["line2Point"]["y"].get<double>());
+            double arcR = obj["arcRadius"].get<double>();
+            auto dim = std::make_shared<draft::DraftAngularDimension>(
+                vertex, l1, l2, arcR);
+            if (obj.contains("textOverride"))
+                dim->setTextOverride(obj["textOverride"].get<std::string>());
+            entity = dim;
+        } else if (type == "leader") {
+            std::vector<math::Vec2> points;
+            for (const auto& pt : obj["points"]) {
+                points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+            }
+            std::string text = obj.value("text", "");
+            auto ldr = std::make_shared<draft::DraftLeader>(points, text);
+            if (obj.contains("textOverride"))
+                ldr->setTextOverride(obj["textOverride"].get<std::string>());
+            entity = ldr;
         }
 
         if (entity) {

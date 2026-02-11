@@ -1,4 +1,5 @@
 #include "horizon/document/Commands.h"
+#include "horizon/drafting/DraftDimension.h"
 
 namespace hz::doc {
 
@@ -383,6 +384,40 @@ void ChangeEntityLineWidthCommand::undo() {
 
 std::string ChangeEntityLineWidthCommand::description() const {
     return "Change Line Width";
+}
+
+// --- ChangeTextOverrideCommand ---
+
+ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc,
+                                                     uint64_t entityId,
+                                                     const std::string& newText)
+    : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
+
+void ChangeTextOverrideCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
+                m_oldText = dim->textOverride();
+                dim->setTextOverride(m_newText);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeTextOverrideCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
+                dim->setTextOverride(m_oldText);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeTextOverrideCommand::description() const {
+    return "Change Text Override";
 }
 
 // --- AddLayerCommand ---

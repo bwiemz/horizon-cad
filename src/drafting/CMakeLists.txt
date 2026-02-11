@@ -9,6 +9,11 @@ add_library(hz_drafting STATIC
     src/DraftRectangle.cpp
     src/DraftPolyline.cpp
     src/Intersection.cpp
+    src/DraftDimension.cpp
+    src/DraftLinearDimension.cpp
+    src/DraftRadialDimension.cpp
+    src/DraftAngularDimension.cpp
+    src/DraftLeader.cpp
 )
 
 target_include_directories(hz_drafting
