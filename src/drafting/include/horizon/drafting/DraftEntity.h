@@ -16,6 +16,14 @@ public:
 
     uint64_t id() const { return m_id; }
 
+    /// Override the auto-generated ID (used when loading from file).
+    void setId(uint64_t newId) { m_id = newId; }
+
+    /// Ensure the next auto-generated ID is greater than the given value.
+    static void advanceIdCounter(uint64_t minId) {
+        if (s_nextId <= minId) s_nextId = minId + 1;
+    }
+
     const std::string& layer() const { return m_layer; }
     void setLayer(const std::string& layer) { m_layer = layer; }
 

@@ -5,6 +5,7 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 
@@ -165,6 +166,15 @@ std::vector<std::pair<math::Vec2, math::Vec2>> extractSegments(const DraftEntity
         }
         if (poly->closed() && pts.size() >= 2) {
             segs.emplace_back(pts.back(), pts.front());
+        }
+    }
+    // Block reference: extract and transform sub-entity segments.
+    if (auto* ref = dynamic_cast<const DraftBlockRef*>(&entity)) {
+        for (const auto& subEnt : ref->definition()->entities) {
+            auto subSegs = extractSegments(*subEnt);
+            for (const auto& [s, e] : subSegs) {
+                segs.emplace_back(ref->transformPoint(s), ref->transformPoint(e));
+            }
         }
     }
     // Circles and arcs have no line segments.

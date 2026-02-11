@@ -15,6 +15,11 @@ namespace hz::ui {
 PasteTool::PasteTool(Clipboard* clipboard)
     : m_clipboard(clipboard) {}
 
+void PasteTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
 bool PasteTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
@@ -51,7 +56,7 @@ bool PasteTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
 
 bool PasteTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     m_currentPos = worldPos;
-    if (m_viewport) {
+    if (m_viewport && m_viewport->document()) {
         auto& doc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
         m_currentPos = result.point;

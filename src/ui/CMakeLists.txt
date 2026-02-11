@@ -29,6 +29,9 @@ add_library(hz_ui STATIC
     include/horizon/ui/RadialDimensionTool.h
     include/horizon/ui/AngularDimensionTool.h
     include/horizon/ui/LeaderTool.h
+    include/horizon/ui/ConstraintTool.h
+    include/horizon/ui/InsertBlockTool.h
+    include/horizon/ui/InsertBlockDialog.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -55,6 +58,9 @@ add_library(hz_ui STATIC
     src/RadialDimensionTool.cpp
     src/AngularDimensionTool.cpp
     src/LeaderTool.cpp
+    src/ConstraintTool.cpp
+    src/InsertBlockTool.cpp
+    src/InsertBlockDialog.cpp
 )
 
 target_include_directories(hz_ui
@@ -71,6 +77,7 @@ target_link_libraries(hz_ui
         Horizon::Drafting
         Horizon::Document
         Horizon::FileIO
+        Horizon::Constraint
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets

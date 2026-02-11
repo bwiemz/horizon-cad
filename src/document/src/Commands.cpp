@@ -1,4 +1,5 @@
 #include "horizon/document/Commands.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDimension.h"
 
 namespace hz::doc {
@@ -537,6 +538,211 @@ void SetCurrentLayerCommand::undo() {
 
 std::string SetCurrentLayerCommand::description() const {
     return "Set Current Layer";
+}
+
+// --- CreateBlockCommand ---
+
+CreateBlockCommand::CreateBlockCommand(draft::DraftDocument& doc,
+                                       const std::string& blockName,
+                                       const std::vector<uint64_t>& entityIds)
+    : m_doc(doc), m_blockName(blockName), m_entityIds(entityIds) {}
+
+void CreateBlockCommand::execute() {
+    // Gather the source entities.
+    m_savedEntities.clear();
+    math::Vec2 centroid;
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_savedEntities.push_back(e);
+                auto bb = e->boundingBox();
+                if (bb.isValid()) {
+                    auto c = bb.center();
+                    centroid += math::Vec2(c.x, c.y);
+                }
+                break;
+            }
+        }
+    }
+    if (!m_savedEntities.empty()) {
+        centroid = centroid * (1.0 / static_cast<double>(m_savedEntities.size()));
+    }
+
+    // Create block definition with cloned entities.
+    m_definition = std::make_shared<draft::BlockDefinition>();
+    m_definition->name = m_blockName;
+    m_definition->basePoint = centroid;
+    for (const auto& e : m_savedEntities) {
+        m_definition->entities.push_back(e->clone());
+    }
+    m_doc.blockTable().addBlock(m_definition);
+
+    // Remove originals from document.
+    for (uint64_t id : m_entityIds) {
+        m_doc.removeEntity(id);
+    }
+
+    // Insert a block reference at the centroid.
+    m_blockRef = std::make_shared<draft::DraftBlockRef>(m_definition, centroid);
+    m_doc.addEntity(m_blockRef);
+}
+
+void CreateBlockCommand::undo() {
+    // Remove the block reference.
+    if (m_blockRef) {
+        m_doc.removeEntity(m_blockRef->id());
+    }
+    // Remove the block definition.
+    m_doc.blockTable().removeBlock(m_blockName);
+    // Restore original entities.
+    for (const auto& e : m_savedEntities) {
+        m_doc.addEntity(e);
+    }
+}
+
+std::string CreateBlockCommand::description() const {
+    return "Create Block";
+}
+
+uint64_t CreateBlockCommand::blockRefId() const {
+    return m_blockRef ? m_blockRef->id() : 0;
+}
+
+// --- ExplodeBlockCommand ---
+
+ExplodeBlockCommand::ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blockRefId)
+    : m_doc(doc), m_blockRefId(blockRefId) {}
+
+void ExplodeBlockCommand::execute() {
+    // Find the block reference.
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_blockRefId) {
+            m_savedBlockRef = e;
+            break;
+        }
+    }
+    auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
+    if (!ref) return;
+
+    // Create transformed copies of all definition entities.
+    m_explodedEntities.clear();
+    for (const auto& defEnt : ref->definition()->entities) {
+        auto worldEnt = defEnt->clone();
+        // Apply the block ref transform: scale, rotate, translate.
+        worldEnt->scale(ref->definition()->basePoint, ref->uniformScale());
+        worldEnt->rotate(ref->definition()->basePoint, ref->rotation());
+        worldEnt->translate(ref->insertPos() - ref->definition()->basePoint);
+        // Inherit layer from block ref if entity is on default layer.
+        if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
+            worldEnt->setLayer(ref->layer());
+        }
+        // ByBlock color: if entity color is 0, inherit from block ref.
+        if (worldEnt->color() == 0x00000000) {
+            worldEnt->setColor(ref->color());
+        }
+        // ByBlock lineWidth: if entity lineWidth is 0, inherit from block ref.
+        if (worldEnt->lineWidth() == 0.0) {
+            worldEnt->setLineWidth(ref->lineWidth());
+        }
+        m_explodedEntities.push_back(worldEnt);
+        m_doc.addEntity(worldEnt);
+    }
+
+    // Remove the block reference.
+    m_doc.removeEntity(m_blockRefId);
+}
+
+void ExplodeBlockCommand::undo() {
+    // Remove exploded entities.
+    for (const auto& e : m_explodedEntities) {
+        m_doc.removeEntity(e->id());
+    }
+    m_explodedEntities.clear();
+    // Restore the block reference.
+    if (m_savedBlockRef) {
+        m_doc.addEntity(m_savedBlockRef);
+    }
+}
+
+std::string ExplodeBlockCommand::description() const {
+    return "Explode Block";
+}
+
+std::vector<uint64_t> ExplodeBlockCommand::explodedIds() const {
+    std::vector<uint64_t> ids;
+    ids.reserve(m_explodedEntities.size());
+    for (const auto& e : m_explodedEntities) {
+        ids.push_back(e->id());
+    }
+    return ids;
+}
+
+// --- ChangeBlockRefRotationCommand ---
+
+ChangeBlockRefRotationCommand::ChangeBlockRefRotationCommand(draft::DraftDocument& doc,
+                                                             uint64_t entityId,
+                                                             double newRotation)
+    : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
+
+void ChangeBlockRefRotationCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+                m_oldRotation = ref->rotation();
+                ref->setRotation(m_newRotation);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeBlockRefRotationCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+                ref->setRotation(m_oldRotation);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeBlockRefRotationCommand::description() const {
+    return "Change Block Rotation";
+}
+
+// --- ChangeBlockRefScaleCommand ---
+
+ChangeBlockRefScaleCommand::ChangeBlockRefScaleCommand(draft::DraftDocument& doc,
+                                                       uint64_t entityId,
+                                                       double newScale)
+    : m_doc(doc), m_entityId(entityId), m_newScale(newScale) {}
+
+void ChangeBlockRefScaleCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+                m_oldScale = ref->uniformScale();
+                ref->setUniformScale(m_newScale);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeBlockRefScaleCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+                ref->setUniformScale(m_oldScale);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeBlockRefScaleCommand::description() const {
+    return "Change Block Scale";
 }
 
 }  // namespace hz::doc

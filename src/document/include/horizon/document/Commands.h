@@ -1,11 +1,13 @@
 #pragma once
 
 #include "horizon/document/UndoStack.h"
+#include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Vec2.h"
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -296,6 +298,84 @@ private:
     draft::LayerManager& m_mgr;
     std::string m_newLayer;
     std::string m_oldLayer;
+};
+
+// ---------------------------------------------------------------------------
+// Block commands
+// ---------------------------------------------------------------------------
+
+/// Command to create a block definition from selected entities.
+/// Removes originals and inserts a block reference at the centroid.
+class CreateBlockCommand : public Command {
+public:
+    CreateBlockCommand(draft::DraftDocument& doc,
+                       const std::string& blockName,
+                       const std::vector<uint64_t>& entityIds);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    uint64_t blockRefId() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::string m_blockName;
+    std::vector<uint64_t> m_entityIds;
+    // Saved for undo.
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_savedEntities;
+    std::shared_ptr<draft::DraftEntity> m_blockRef;
+    std::shared_ptr<draft::BlockDefinition> m_definition;
+};
+
+/// Command to explode a block reference into individual entities.
+class ExplodeBlockCommand : public Command {
+public:
+    ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blockRefId);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    std::vector<uint64_t> explodedIds() const;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_blockRefId;
+    std::shared_ptr<draft::DraftEntity> m_savedBlockRef;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_explodedEntities;
+};
+
+/// Command to change a block reference's rotation.
+class ChangeBlockRefRotationCommand : public Command {
+public:
+    ChangeBlockRefRotationCommand(draft::DraftDocument& doc,
+                                  uint64_t entityId,
+                                  double newRotation);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newRotation;
+    double m_oldRotation = 0.0;
+};
+
+/// Command to change a block reference's uniform scale.
+class ChangeBlockRefScaleCommand : public Command {
+public:
+    ChangeBlockRefScaleCommand(draft::DraftDocument& doc,
+                               uint64_t entityId,
+                               double newScale);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newScale;
+    double m_oldScale = 1.0;
 };
 
 }  // namespace hz::doc

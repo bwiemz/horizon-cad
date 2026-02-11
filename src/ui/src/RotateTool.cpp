@@ -19,6 +19,12 @@
 
 namespace hz::ui {
 
+void RotateTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
+
 static math::Vec2 rotatePoint(const math::Vec2& p,
                                const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);

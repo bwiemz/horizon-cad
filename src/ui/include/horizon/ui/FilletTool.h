@@ -15,6 +15,7 @@ public:
     std::string name() const override { return "Fillet"; }
 
     void activate(ViewportWidget* viewport) override;
+    void deactivate() override;
     bool mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) override;

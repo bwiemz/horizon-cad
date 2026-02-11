@@ -145,6 +145,7 @@ static void trimArc(const draft::DraftArc* arc,
     // Convert intersection points to angles within the arc's range.
     double arcStart = arc->startAngle();
     double arcSweep = arc->sweepAngle();
+    if (std::abs(arcSweep) < 1e-10) return;  // Degenerate arc.
 
     std::vector<double> params;  // Parameterized as fraction of sweep [0, 1].
     params.push_back(0.0);
@@ -238,8 +239,10 @@ bool TrimTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     }
     // Rectangles and polylines: skip for now (complex decomposition).
 
-    m_viewport->document()->undoStack().push(std::move(composite));
-    m_viewport->selectionManager().deselect(target->id());
+    if (!composite->empty()) {
+        m_viewport->document()->undoStack().push(std::move(composite));
+        m_viewport->selectionManager().deselect(target->id());
+    }
     return true;
 }
 

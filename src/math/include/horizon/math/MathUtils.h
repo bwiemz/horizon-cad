@@ -17,6 +17,7 @@ inline double lerp(double a, double b, double t) { return a + t * (b - a); }
 inline double normalizeAngle(double radians) {
     radians = std::fmod(radians, kTwoPi);
     if (radians < 0.0) radians += kTwoPi;
+    if (radians >= kTwoPi) radians = 0.0;  // Guard floating-point edge case.
     return radians;
 }
 

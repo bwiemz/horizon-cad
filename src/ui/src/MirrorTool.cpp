@@ -19,6 +19,12 @@
 
 namespace hz::ui {
 
+void MirrorTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
+
 static math::Vec2 mirrorPoint(const math::Vec2& p,
                                const math::Vec2& axisP1,
                                const math::Vec2& axisP2) {
@@ -84,7 +90,7 @@ bool MirrorTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
 
 bool MirrorTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     m_currentPos = worldPos;
-    if (m_state == State::SelectSecondPoint && m_viewport) {
+    if (m_state == State::SelectSecondPoint && m_viewport && m_viewport->document()) {
         auto& doc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
         m_currentPos = result.point;

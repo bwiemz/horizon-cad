@@ -22,6 +22,11 @@ void FilletTool::activate(ViewportWidget* viewport) {
     m_hasPreview = false;
 }
 
+void FilletTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
 // ---------------------------------------------------------------------------
 // Fillet computation (line-line only)
 // ---------------------------------------------------------------------------

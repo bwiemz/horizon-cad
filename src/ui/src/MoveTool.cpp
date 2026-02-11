@@ -2,13 +2,23 @@
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/constraint/ParameterTable.h"
+#include "horizon/constraint/SketchSolver.h"
 
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <algorithm>
+#include <set>
 
 namespace hz::ui {
+
+void MoveTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
 
 bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     if (event->button() != Qt::LeftButton) return false;
@@ -109,6 +119,70 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
         }
         auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta);
         m_viewport->document()->undoStack().push(std::move(cmd));
+
+        // Post-move constraint solve: if any moved entity is constrained, re-solve.
+        auto& cstrSys = m_viewport->document()->constraintSystem();
+        if (!cstrSys.empty()) {
+            // Collect all constrained entity IDs.
+            std::set<uint64_t> constrainedIds;
+            for (const auto& c : cstrSys.constraints()) {
+                for (uint64_t eid : c->referencedEntityIds()) {
+                    constrainedIds.insert(eid);
+                }
+            }
+
+            // Check if any moved entity is constrained.
+            bool needsSolve = false;
+            for (uint64_t id : idVec) {
+                if (constrainedIds.count(id)) {
+                    needsSolve = true;
+                    break;
+                }
+            }
+
+            if (needsSolve) {
+                // Snapshot before-solve state (entities are already moved).
+                std::vector<doc::ApplyConstraintSolveCommand::EntitySnapshot> snapshots;
+                for (uint64_t eid : constrainedIds) {
+                    for (const auto& entity : doc.entities()) {
+                        if (entity->id() == eid) {
+                            doc::ApplyConstraintSolveCommand::EntitySnapshot snap;
+                            snap.entityId = eid;
+                            snap.beforeState = entity->clone();
+                            snapshots.push_back(std::move(snap));
+                            break;
+                        }
+                    }
+                }
+
+                // Build parameter table and solve.
+                auto params = cstr::ParameterTable::buildFromEntities(
+                    doc.entities(), cstrSys);
+                cstr::SketchSolver solver;
+                auto result = solver.solve(params, cstrSys);
+
+                if (result.status == cstr::SolveStatus::Success ||
+                    result.status == cstr::SolveStatus::UnderConstrained) {
+                    params.applyToEntities(doc.entities());
+
+                    // Snapshot after-solve state.
+                    for (auto& snap : snapshots) {
+                        for (const auto& entity : doc.entities()) {
+                            if (entity->id() == snap.entityId) {
+                                snap.afterState = entity->clone();
+                                break;
+                            }
+                        }
+                    }
+
+                    // Push solve command. Entities are already in afterState;
+                    // execute() applies afterState (no-op), undo() restores beforeState.
+                    auto solveCmd = std::make_unique<doc::ApplyConstraintSolveCommand>(
+                        doc, std::move(snapshots));
+                    m_viewport->document()->undoStack().push(std::move(solveCmd));
+                }
+            }
+        }
     }
 
     m_dragging = false;

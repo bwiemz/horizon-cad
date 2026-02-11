@@ -18,6 +18,7 @@ public:
     bool mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool keyPressEvent(QKeyEvent* event) override;
+    void deactivate() override;
     void cancel() override;
 
 private:

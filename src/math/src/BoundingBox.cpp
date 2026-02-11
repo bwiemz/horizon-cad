@@ -55,10 +55,12 @@ bool BoundingBox::intersects(const BoundingBox& other) const {
 bool BoundingBox::isValid() const { return m_valid; }
 
 Vec3 BoundingBox::center() const {
+    if (!m_valid) return Vec3::Zero;
     return {(m_min.x + m_max.x) / 2.0, (m_min.y + m_max.y) / 2.0, (m_min.z + m_max.z) / 2.0};
 }
 
 Vec3 BoundingBox::size() const {
+    if (!m_valid) return Vec3::Zero;
     return {m_max.x - m_min.x, m_max.y - m_min.y, m_max.z - m_min.z};
 }
 

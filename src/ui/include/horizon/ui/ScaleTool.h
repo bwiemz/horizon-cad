@@ -19,6 +19,7 @@ public:
     bool mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool keyPressEvent(QKeyEvent* event) override;
+    void deactivate() override;
     void cancel() override;
 
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;

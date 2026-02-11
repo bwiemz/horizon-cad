@@ -14,6 +14,8 @@ add_library(hz_drafting STATIC
     src/DraftRadialDimension.cpp
     src/DraftAngularDimension.cpp
     src/DraftLeader.cpp
+    src/BlockTable.cpp
+    src/DraftBlockRef.cpp
 )
 
 target_include_directories(hz_drafting

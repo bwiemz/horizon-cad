@@ -20,6 +20,7 @@ void DraftDocument::removeEntity(uint64_t id) {
 
 void DraftDocument::clear() {
     m_entities.clear();
+    m_blockTable.clear();
 }
 
 }  // namespace hz::draft

@@ -79,7 +79,9 @@ float computeLinearDepth(vec3 pos) {
 
 void main() {
     // Find where the ray from near to far intersects the XY plane (Z = 0)
-    float t = -vNearPoint.z / (vFarPoint.z - vNearPoint.z);
+    float denom = vFarPoint.z - vNearPoint.z;
+    if (abs(denom) < 1e-7) discard;  // Camera parallel to XY plane.
+    float t = -vNearPoint.z / denom;
 
     // Discard fragments that don't intersect the plane
     if (t < 0.0) discard;

@@ -2,11 +2,14 @@
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/constraint/ConstraintSystem.h"
 
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <algorithm>
+#include <set>
 
 namespace hz::ui {
 
@@ -71,6 +74,20 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
         auto& doc = m_viewport->document()->draftDocument();
 
         auto composite = std::make_unique<doc::CompositeCommand>("Delete");
+
+        // First, remove any constraints referencing the entities being deleted.
+        auto& cstrSys = m_viewport->document()->constraintSystem();
+        std::set<uint64_t> removedConstraints;
+        for (uint64_t id : ids) {
+            auto constrs = cstrSys.constraintsForEntity(id);
+            for (const auto* c : constrs) {
+                if (removedConstraints.insert(c->id()).second) {
+                    composite->addCommand(std::make_unique<doc::RemoveConstraintCommand>(
+                        cstrSys, c->id()));
+                }
+            }
+        }
+
         for (uint64_t id : ids) {
             // Skip entities on hidden or locked layers.
             bool canDelete = true;

@@ -1,6 +1,8 @@
 add_library(hz_constraint STATIC
-    src/ParameterTable.cpp
+    src/GeometryRef.cpp
+    src/Constraint.cpp
     src/ConstraintSystem.cpp
+    src/ParameterTable.cpp
     src/SketchSolver.cpp
 )
 
@@ -16,7 +18,7 @@ target_link_libraries(hz_constraint
     PUBLIC
         Horizon::Math
         Horizon::Geometry
-    PRIVATE
+        Horizon::Drafting
         Eigen3::Eigen
 )
 

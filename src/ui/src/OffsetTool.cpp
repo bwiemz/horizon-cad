@@ -18,6 +18,11 @@
 
 namespace hz::ui {
 
+void OffsetTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
 double OffsetTool::computeDistanceAndSide(int& side) const {
     if (!m_sourceEntity) { side = 1; return 0.0; }
 

@@ -1,4 +1,7 @@
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/constraint/GeometryRef.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
@@ -8,18 +11,70 @@
 #include "horizon/drafting/DraftRadialDimension.h"
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/BlockTable.h"
 
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <set>
 
 using json = nlohmann::json;
 
 namespace hz::io {
 
+// ---------------------------------------------------------------------------
+// Constraint serialization helpers
+// ---------------------------------------------------------------------------
+
+static std::string featureTypeToString(cstr::FeatureType ft) {
+    switch (ft) {
+        case cstr::FeatureType::Point:  return "point";
+        case cstr::FeatureType::Line:   return "line";
+        case cstr::FeatureType::Circle: return "circle";
+    }
+    return "point";
+}
+
+static cstr::FeatureType featureTypeFromString(const std::string& s) {
+    if (s == "line")   return cstr::FeatureType::Line;
+    if (s == "circle") return cstr::FeatureType::Circle;
+    return cstr::FeatureType::Point;
+}
+
+static json serializeRef(const cstr::GeometryRef& ref) {
+    return {{"entityId", ref.entityId},
+            {"featureType", featureTypeToString(ref.featureType)},
+            {"featureIndex", ref.featureIndex}};
+}
+
+static cstr::GeometryRef deserializeRef(const json& obj) {
+    cstr::GeometryRef ref;
+    ref.entityId = obj.value("entityId", uint64_t(0));
+    ref.featureType = featureTypeFromString(obj.value("featureType", "point"));
+    ref.featureIndex = obj.value("featureIndex", 0);
+    return ref;
+}
+
+static std::string constraintTypeToString(cstr::ConstraintType ct) {
+    switch (ct) {
+        case cstr::ConstraintType::Coincident:     return "coincident";
+        case cstr::ConstraintType::Horizontal:     return "horizontal";
+        case cstr::ConstraintType::Vertical:       return "vertical";
+        case cstr::ConstraintType::Perpendicular:  return "perpendicular";
+        case cstr::ConstraintType::Parallel:       return "parallel";
+        case cstr::ConstraintType::Tangent:        return "tangent";
+        case cstr::ConstraintType::Equal:          return "equal";
+        case cstr::ConstraintType::Fixed:          return "fixed";
+        case cstr::ConstraintType::Distance:       return "distance";
+        case cstr::ConstraintType::Angle:          return "angle";
+    }
+    return "unknown";
+}
+
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 4;
+    root["version"] = 6;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -49,6 +104,52 @@ bool NativeFormat::save(const std::string& filePath,
     }
     root["layers"] = layersArray;
     root["currentLayer"] = doc.layerManager().currentLayer();
+
+    // --- Block definitions ---
+    json blocksArray = json::array();
+    for (const auto& name : doc.draftDocument().blockTable().blockNames()) {
+        auto def = doc.draftDocument().blockTable().findBlock(name);
+        if (!def) continue;
+        json blockObj;
+        blockObj["name"] = def->name;
+        blockObj["basePoint"] = {{"x", def->basePoint.x}, {"y", def->basePoint.y}};
+        json defEnts = json::array();
+        for (const auto& subEnt : def->entities) {
+            json se;
+            se["layer"] = subEnt->layer();
+            se["color"] = subEnt->color();
+            se["lineWidth"] = subEnt->lineWidth();
+            if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
+                se["type"] = "line";
+                se["start"] = {{"x", ln->start().x}, {"y", ln->start().y}};
+                se["end"]   = {{"x", ln->end().x},   {"y", ln->end().y}};
+            } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
+                se["type"] = "circle";
+                se["center"] = {{"x", ci->center().x}, {"y", ci->center().y}};
+                se["radius"] = ci->radius();
+            } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
+                se["type"] = "arc";
+                se["center"] = {{"x", ar->center().x}, {"y", ar->center().y}};
+                se["radius"] = ar->radius();
+                se["startAngle"] = ar->startAngle();
+                se["endAngle"] = ar->endAngle();
+            } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
+                se["type"] = "rectangle";
+                se["corner1"] = {{"x", re->corner1().x}, {"y", re->corner1().y}};
+                se["corner2"] = {{"x", re->corner2().x}, {"y", re->corner2().y}};
+            } else if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(subEnt.get())) {
+                se["type"] = "polyline";
+                se["closed"] = pl->closed();
+                json pts = json::array();
+                for (const auto& pt : pl->points()) pts.push_back({{"x", pt.x}, {"y", pt.y}});
+                se["points"] = pts;
+            }
+            defEnts.push_back(se);
+        }
+        blockObj["entities"] = defEnts;
+        blocksArray.push_back(blockObj);
+    }
+    root["blocks"] = blocksArray;
 
     // --- Entities ---
     json entitiesArray = json::array();
@@ -115,11 +216,93 @@ bool NativeFormat::save(const std::string& filePath,
             }
             obj["points"] = ptsArray;
             if (leader->hasTextOverride()) obj["textOverride"] = leader->textOverride();
+        } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
+            obj["type"] = "blockRef";
+            obj["blockName"] = bref->blockName();
+            obj["insertPos"] = {{"x", bref->insertPos().x}, {"y", bref->insertPos().y}};
+            obj["rotation"] = bref->rotation();
+            obj["scale"] = bref->uniformScale();
         }
 
         entitiesArray.push_back(obj);
     }
     root["entities"] = entitiesArray;
+
+    // --- Constraints ---
+    json constraintsArray = json::array();
+    for (const auto& c : doc.constraintSystem().constraints()) {
+        json cObj;
+        cObj["id"] = c->id();
+        cObj["type"] = constraintTypeToString(c->type());
+
+        switch (c->type()) {
+            case cstr::ConstraintType::Coincident: {
+                auto* cc = dynamic_cast<const cstr::CoincidentConstraint*>(c.get());
+                cObj["refA"] = serializeRef(cc->pointA());
+                cObj["refB"] = serializeRef(cc->pointB());
+                break;
+            }
+            case cstr::ConstraintType::Horizontal: {
+                auto* hc = dynamic_cast<const cstr::HorizontalConstraint*>(c.get());
+                cObj["refA"] = serializeRef(hc->refA());
+                cObj["refB"] = serializeRef(hc->refB());
+                break;
+            }
+            case cstr::ConstraintType::Vertical: {
+                auto* vc = dynamic_cast<const cstr::VerticalConstraint*>(c.get());
+                cObj["refA"] = serializeRef(vc->refA());
+                cObj["refB"] = serializeRef(vc->refB());
+                break;
+            }
+            case cstr::ConstraintType::Perpendicular: {
+                auto* pc = dynamic_cast<const cstr::PerpendicularConstraint*>(c.get());
+                cObj["refA"] = serializeRef(pc->lineA());
+                cObj["refB"] = serializeRef(pc->lineB());
+                break;
+            }
+            case cstr::ConstraintType::Parallel: {
+                auto* pc = dynamic_cast<const cstr::ParallelConstraint*>(c.get());
+                cObj["refA"] = serializeRef(pc->lineA());
+                cObj["refB"] = serializeRef(pc->lineB());
+                break;
+            }
+            case cstr::ConstraintType::Tangent: {
+                auto* tc = dynamic_cast<const cstr::TangentConstraint*>(c.get());
+                cObj["refA"] = serializeRef(tc->lineRef());
+                cObj["refB"] = serializeRef(tc->circleRef());
+                break;
+            }
+            case cstr::ConstraintType::Equal: {
+                auto* ec = dynamic_cast<const cstr::EqualConstraint*>(c.get());
+                cObj["refA"] = serializeRef(ec->refA());
+                cObj["refB"] = serializeRef(ec->refB());
+                break;
+            }
+            case cstr::ConstraintType::Fixed: {
+                auto* fc = dynamic_cast<const cstr::FixedConstraint*>(c.get());
+                cObj["ref"] = serializeRef(fc->pointRef());
+                cObj["position"] = {{"x", fc->position().x}, {"y", fc->position().y}};
+                break;
+            }
+            case cstr::ConstraintType::Distance: {
+                auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
+                cObj["refA"] = serializeRef(dc->refA());
+                cObj["refB"] = serializeRef(dc->refB());
+                cObj["value"] = dc->dimensionalValue();
+                break;
+            }
+            case cstr::ConstraintType::Angle: {
+                auto* ac = dynamic_cast<const cstr::AngleConstraint*>(c.get());
+                cObj["refA"] = serializeRef(ac->lineA());
+                cObj["refB"] = serializeRef(ac->lineB());
+                cObj["value"] = ac->dimensionalValue();
+                break;
+            }
+        }
+
+        constraintsArray.push_back(cObj);
+    }
+    root["constraints"] = constraintsArray;
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
@@ -143,6 +326,7 @@ bool NativeFormat::load(const std::string& filePath,
 
     doc.draftDocument().clear();
     doc.layerManager().clear();
+    doc.constraintSystem().clear();
 
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
@@ -177,6 +361,54 @@ bool NativeFormat::load(const std::string& filePath,
         }
         if (root.contains("currentLayer")) {
             doc.layerManager().setCurrentLayer(root["currentLayer"].get<std::string>());
+        }
+    }
+
+    // --- Load block definitions (v6+) ---
+    if (root.contains("blocks")) {
+        for (const auto& blockObj : root["blocks"]) {
+            auto def = std::make_shared<draft::BlockDefinition>();
+            def->name = blockObj.value("name", "");
+            def->basePoint = math::Vec2(
+                blockObj["basePoint"]["x"].get<double>(),
+                blockObj["basePoint"]["y"].get<double>());
+            if (blockObj.contains("entities")) {
+                for (const auto& se : blockObj["entities"]) {
+                    std::string stype = se.value("type", "");
+                    std::shared_ptr<draft::DraftEntity> subEnt;
+                    if (stype == "line") {
+                        subEnt = std::make_shared<draft::DraftLine>(
+                            math::Vec2(se["start"]["x"].get<double>(), se["start"]["y"].get<double>()),
+                            math::Vec2(se["end"]["x"].get<double>(), se["end"]["y"].get<double>()));
+                    } else if (stype == "circle") {
+                        subEnt = std::make_shared<draft::DraftCircle>(
+                            math::Vec2(se["center"]["x"].get<double>(), se["center"]["y"].get<double>()),
+                            se["radius"].get<double>());
+                    } else if (stype == "arc") {
+                        subEnt = std::make_shared<draft::DraftArc>(
+                            math::Vec2(se["center"]["x"].get<double>(), se["center"]["y"].get<double>()),
+                            se["radius"].get<double>(),
+                            se["startAngle"].get<double>(),
+                            se["endAngle"].get<double>());
+                    } else if (stype == "rectangle") {
+                        subEnt = std::make_shared<draft::DraftRectangle>(
+                            math::Vec2(se["corner1"]["x"].get<double>(), se["corner1"]["y"].get<double>()),
+                            math::Vec2(se["corner2"]["x"].get<double>(), se["corner2"]["y"].get<double>()));
+                    } else if (stype == "polyline") {
+                        std::vector<math::Vec2> pts;
+                        for (const auto& pt : se["points"])
+                            pts.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                        subEnt = std::make_shared<draft::DraftPolyline>(pts, se.value("closed", false));
+                    }
+                    if (subEnt) {
+                        subEnt->setLayer(se.value("layer", "0"));
+                        subEnt->setColor(se.value("color", 0u));
+                        subEnt->setLineWidth(se.value("lineWidth", 0.0));
+                        def->entities.push_back(subEnt);
+                    }
+                }
+            }
+            doc.draftDocument().blockTable().addBlock(def);
         }
     }
 
@@ -270,13 +502,102 @@ bool NativeFormat::load(const std::string& filePath,
             if (obj.contains("textOverride"))
                 ldr->setTextOverride(obj["textOverride"].get<std::string>());
             entity = ldr;
+        } else if (type == "blockRef") {
+            std::string blockName = obj.value("blockName", "");
+            auto def = doc.draftDocument().blockTable().findBlock(blockName);
+            if (def) {
+                auto pos = math::Vec2(obj["insertPos"]["x"].get<double>(),
+                                       obj["insertPos"]["y"].get<double>());
+                double rot = obj.value("rotation", 0.0);
+                double scl = obj.value("scale", 1.0);
+                entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
+            }
         }
 
         if (entity) {
+            // Restore the original entity ID from the file.
+            if (obj.contains("id")) {
+                uint64_t savedId = obj["id"].get<uint64_t>();
+                entity->setId(savedId);
+                draft::DraftEntity::advanceIdCounter(savedId);
+            }
             entity->setLayer(layer);
             entity->setColor(color);
             entity->setLineWidth(lineWidth);
             doc.draftDocument().addEntity(entity);
+        }
+    }
+
+    // --- Load constraints (v5+) ---
+    if (root.contains("constraints")) {
+        for (const auto& cObj : root["constraints"]) {
+            std::string ctype = cObj.value("type", "");
+            std::shared_ptr<cstr::Constraint> constraint;
+
+            if (ctype == "coincident") {
+                constraint = std::make_shared<cstr::CoincidentConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "horizontal") {
+                constraint = std::make_shared<cstr::HorizontalConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "vertical") {
+                constraint = std::make_shared<cstr::VerticalConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "perpendicular") {
+                constraint = std::make_shared<cstr::PerpendicularConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "parallel") {
+                constraint = std::make_shared<cstr::ParallelConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "tangent") {
+                constraint = std::make_shared<cstr::TangentConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "equal") {
+                constraint = std::make_shared<cstr::EqualConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+            } else if (ctype == "fixed") {
+                auto pos = math::Vec2(cObj["position"]["x"].get<double>(),
+                                       cObj["position"]["y"].get<double>());
+                constraint = std::make_shared<cstr::FixedConstraint>(
+                    deserializeRef(cObj["ref"]), pos);
+            } else if (ctype == "distance") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::DistanceConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]), val);
+            } else if (ctype == "angle") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::AngleConstraint>(
+                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]), val);
+            }
+
+            if (constraint) {
+                // Restore the original constraint ID from the file.
+                if (cObj.contains("id")) {
+                    uint64_t savedId = cObj["id"].get<uint64_t>();
+                    constraint->setId(savedId);
+                    cstr::Constraint::advanceIdCounter(savedId);
+                }
+                doc.constraintSystem().addConstraint(constraint);
+            }
+        }
+
+        // Validate constraint entity references — remove any that reference
+        // non-existent entities (corrupted or manually-edited files).
+        std::set<uint64_t> entityIds;
+        for (const auto& e : doc.draftDocument().entities()) {
+            entityIds.insert(e->id());
+        }
+        std::vector<uint64_t> invalidConstraints;
+        for (const auto& c : doc.constraintSystem().constraints()) {
+            for (uint64_t eid : c->referencedEntityIds()) {
+                if (entityIds.find(eid) == entityIds.end()) {
+                    invalidConstraints.push_back(c->id());
+                    break;
+                }
+            }
+        }
+        for (uint64_t cid : invalidConstraints) {
+            doc.constraintSystem().removeConstraint(cid);
         }
     }
 

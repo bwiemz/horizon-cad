@@ -9,6 +9,7 @@ class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QDoubleSpinBox;
+class QListWidget;
 
 namespace hz::ui {
 
@@ -29,9 +30,13 @@ private slots:
     void onByLayerColorClicked();
     void onLineWidthChanged(double value);
     void onTextOverrideChanged();
+    void onDeleteConstraint();
+    void onBlockRotationChanged(double value);
+    void onBlockScaleChanged(double value);
 
 private:
     void createWidgets();
+    void updateConstraintList();
 
     MainWindow* m_mainWindow;
     std::vector<uint64_t> m_currentIds;
@@ -46,6 +51,17 @@ private:
     // Dimension-specific
     QWidget* m_dimPropsWidget = nullptr;
     QLineEdit* m_textOverrideEdit = nullptr;
+
+    // Block-ref specific
+    QWidget* m_blockPropsWidget = nullptr;
+    QLabel* m_blockNameLabel = nullptr;
+    QDoubleSpinBox* m_blockRotationSpin = nullptr;
+    QDoubleSpinBox* m_blockScaleSpin = nullptr;
+
+    // Constraint info
+    QWidget* m_constraintWidget = nullptr;
+    QListWidget* m_constraintList = nullptr;
+    QPushButton* m_deleteConstraintBtn = nullptr;
 };
 
 }  // namespace hz::ui

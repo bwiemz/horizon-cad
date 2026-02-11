@@ -29,7 +29,8 @@ void Camera::setOrthographic(double width, double height, double nearPlane, doub
 void Camera::lookAt(const math::Vec3& eye, const math::Vec3& target, const math::Vec3& up) {
     m_eye = eye;
     m_target = target;
-    m_up = up.normalized();
+    math::Vec3 n = up.normalized();
+    m_up = (n.lengthSquared() < 1e-10) ? math::Vec3(0.0, 0.0, 1.0) : n;
 }
 
 void Camera::orbit(double deltaYaw, double deltaPitch) {
@@ -104,7 +105,9 @@ void Camera::fitAll(const math::BoundingBox& bbox) {
     double distance;
     if (m_projType == ProjectionType::Perspective) {
         double halfFovRad = (m_fov * math::kDegToRad) * 0.5;
-        distance = (diag * 0.5) / std::tan(halfFovRad);
+        double tanHalf = std::tan(halfFovRad);
+        if (tanHalf < 1e-10) tanHalf = 1e-10;  // Guard against zero/tiny FOV.
+        distance = (diag * 0.5) / tanHalf;
         distance *= 1.2;  // add some margin
     } else {
         distance = diag * 1.5;

@@ -3,6 +3,7 @@
 #include <QOpenGLWidget>
 #include <QPoint>
 #include <QPointF>
+#include <QWidget>
 
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
@@ -27,6 +28,34 @@ class Document;
 namespace hz::ui {
 
 class Tool;
+class ViewportWidget;
+
+/// Transparent overlay widget for text rendering on top of the GL viewport.
+/// Uses a regular QWidget (not QOpenGLWidget) to avoid the Qt 6.10 Windows
+/// qpixmap_win.cpp assertion when using QPainter on QOpenGLWidget.
+class ViewportOverlay : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit ViewportOverlay(ViewportWidget* viewport);
+
+    struct TextItem {
+        math::Vec2 worldPos;
+        std::string text;
+        uint32_t color;
+        int fontSize;
+        bool bold;
+    };
+
+    void setItems(std::vector<TextItem> items);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    ViewportWidget* m_viewport;
+    std::vector<TextItem> m_items;
+};
 
 /// The main 2D/3D viewport widget backed by OpenGL.
 ///
@@ -75,6 +104,9 @@ public:
     /// Returns the world-space distance that corresponds to one pixel at the current zoom.
     double pixelToWorldScale() const;
 
+    /// Project a world-space 2D point to screen coordinates.
+    QPointF worldToScreen(const math::Vec2& wp) const;
+
 signals:
     /// Emitted when the mouse moves.  Carries the world-space position on the XY plane.
     void mouseMoved(const hz::math::Vec2& worldPos);
@@ -99,12 +131,9 @@ private:
     // Rendering
     void renderEntities(QOpenGLExtraFunctions* gl);
     void renderToolPreview(QOpenGLExtraFunctions* gl);
-    void renderDimensionText();
+    void updateOverlayText();
 
-    /// Project a world-space 2D point to screen coordinates.
-    QPointF worldToScreen(const math::Vec2& wp) const;
-
-    /// Dimension text data collected during renderEntities() for QPainter overlay.
+    /// Dimension text data collected during renderEntities() for overlay.
     struct DimTextInfo {
         math::Vec2 worldPos;
         std::string text;
@@ -137,6 +166,9 @@ private:
 
     // Active tool
     Tool* m_activeTool = nullptr;
+
+    // Text overlay (non-owning, child widget)
+    ViewportOverlay* m_overlay = nullptr;
 
     // Navigation state
     bool m_orbiting = false;

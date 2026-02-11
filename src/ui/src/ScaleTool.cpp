@@ -19,6 +19,11 @@
 
 namespace hz::ui {
 
+void ScaleTool::deactivate() {
+    cancel();
+    Tool::deactivate();
+}
+
 static math::Vec2 scalePoint(const math::Vec2& p,
                               const math::Vec2& center, double factor) {
     return center + (p - center) * factor;

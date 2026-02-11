@@ -14,6 +14,9 @@
 #include "horizon/drafting/DraftRadialDimension.h"
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ConstraintCommands.h"
 
 #include <QColorDialog>
 #include <QComboBox>
@@ -22,6 +25,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -85,8 +89,51 @@ void PropertyPanel::createWidgets() {
     dimForm->addRow(tr("Text:"), m_textOverrideEdit);
     m_dimPropsWidget->hide();
 
+    // Block-ref specific properties (hidden by default).
+    m_blockPropsWidget = new QWidget(this);
+    auto* blockForm = new QFormLayout(m_blockPropsWidget);
+    blockForm->setContentsMargins(0, 0, 0, 0);
+
+    m_blockNameLabel = new QLabel(m_blockPropsWidget);
+    blockForm->addRow(tr("Block:"), m_blockNameLabel);
+
+    m_blockRotationSpin = new QDoubleSpinBox(m_blockPropsWidget);
+    m_blockRotationSpin->setRange(-360.0, 360.0);
+    m_blockRotationSpin->setDecimals(2);
+    m_blockRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
+    connect(m_blockRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onBlockRotationChanged);
+    blockForm->addRow(tr("Rotation:"), m_blockRotationSpin);
+
+    m_blockScaleSpin = new QDoubleSpinBox(m_blockPropsWidget);
+    m_blockScaleSpin->setRange(-1000.0, 1000.0);
+    m_blockScaleSpin->setDecimals(3);
+    connect(m_blockScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onBlockScaleChanged);
+    blockForm->addRow(tr("Scale:"), m_blockScaleSpin);
+
+    m_blockPropsWidget->hide();
+
+    // Constraint info (hidden by default).
+    m_constraintWidget = new QWidget(this);
+    auto* cstrLayout = new QVBoxLayout(m_constraintWidget);
+    cstrLayout->setContentsMargins(0, 0, 0, 0);
+    cstrLayout->addWidget(new QLabel(tr("Constraints:"), m_constraintWidget));
+    m_constraintList = new QListWidget(m_constraintWidget);
+    m_constraintList->setMaximumHeight(120);
+    cstrLayout->addWidget(m_constraintList);
+    m_deleteConstraintBtn = new QPushButton(tr("Delete Constraint"), m_constraintWidget);
+    m_deleteConstraintBtn->setEnabled(false);
+    connect(m_deleteConstraintBtn, &QPushButton::clicked, this, &PropertyPanel::onDeleteConstraint);
+    connect(m_constraintList, &QListWidget::currentRowChanged,
+            this, [this](int row) { m_deleteConstraintBtn->setEnabled(row >= 0); });
+    cstrLayout->addWidget(m_deleteConstraintBtn);
+    m_constraintWidget->hide();
+
     layout->addLayout(form);
     layout->addWidget(m_dimPropsWidget);
+    layout->addWidget(m_blockPropsWidget);
+    layout->addWidget(m_constraintWidget);
     layout->addStretch();
     setWidget(container);
 }
@@ -118,6 +165,8 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_lineWidthSpin->setEnabled(false);
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
+        m_blockPropsWidget->hide();
+        m_constraintWidget->hide();
         return;
     }
 
@@ -142,6 +191,8 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_lineWidthSpin->setEnabled(false);
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
+        m_blockPropsWidget->hide();
+        m_constraintWidget->hide();
         m_currentIds.clear();
         return;
     }
@@ -161,6 +212,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         else if (dynamic_cast<const draft::DraftRadialDimension*>(first)) typeName = "Radial Dim";
         else if (dynamic_cast<const draft::DraftAngularDimension*>(first)) typeName = "Angular Dim";
         else if (dynamic_cast<const draft::DraftLeader*>(first)) typeName = "Leader";
+        else if (dynamic_cast<const draft::DraftBlockRef*>(first)) typeName = "Block Ref";
         m_typeLabel->setText(typeName);
         dimEntity = dynamic_cast<const draft::DraftDimension*>(first);
     } else {
@@ -199,6 +251,24 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     } else {
         m_dimPropsWidget->hide();
     }
+
+    // Block ref properties (single block ref selection only).
+    if (selectedIds.size() == 1) {
+        auto* bref = dynamic_cast<const draft::DraftBlockRef*>(first);
+        if (bref) {
+            m_blockNameLabel->setText(QString::fromStdString(bref->blockName()));
+            m_blockRotationSpin->setValue(bref->rotation() * 180.0 / 3.14159265358979323846);
+            m_blockScaleSpin->setValue(bref->uniformScale());
+            m_blockPropsWidget->show();
+        } else {
+            m_blockPropsWidget->hide();
+        }
+    } else {
+        m_blockPropsWidget->hide();
+    }
+
+    // Constraint info.
+    updateConstraintList();
 
     m_updatingUI = false;
 }
@@ -287,6 +357,95 @@ void PropertyPanel::onTextOverrideChanged() {
     std::string newText = m_textOverrideEdit->text().toStdString();
     auto cmd = std::make_unique<doc::ChangeTextOverrideCommand>(
         viewport->document()->draftDocument(), m_currentIds.front(), newText);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::updateConstraintList() {
+    m_constraintList->clear();
+    m_deleteConstraintBtn->setEnabled(false);
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document() || m_currentIds.empty()) {
+        m_constraintWidget->hide();
+        return;
+    }
+
+    auto& cstrSys = viewport->document()->constraintSystem();
+    bool hasConstraints = false;
+
+    for (uint64_t entityId : m_currentIds) {
+        auto constrs = cstrSys.constraintsForEntity(entityId);
+        for (const auto* c : constrs) {
+            QString text = QString("[%1] %2")
+                .arg(c->id())
+                .arg(QString::fromStdString(c->typeName()));
+            if (c->hasDimensionalValue()) {
+                text += QString(" = %1").arg(c->dimensionalValue(), 0, 'f', 4);
+            }
+            // Avoid duplicates if constraint references multiple selected entities.
+            bool found = false;
+            for (int i = 0; i < m_constraintList->count(); ++i) {
+                if (m_constraintList->item(i)->data(Qt::UserRole).toULongLong() == c->id()) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                auto* item = new QListWidgetItem(text);
+                item->setData(Qt::UserRole, QVariant::fromValue<quint64>(c->id()));
+                m_constraintList->addItem(item);
+                hasConstraints = true;
+            }
+        }
+    }
+
+    if (hasConstraints) {
+        m_constraintWidget->show();
+    } else {
+        m_constraintWidget->hide();
+    }
+}
+
+void PropertyPanel::onDeleteConstraint() {
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto* item = m_constraintList->currentItem();
+    if (!item) return;
+
+    uint64_t constraintId = item->data(Qt::UserRole).toULongLong();
+    auto cmd = std::make_unique<doc::RemoveConstraintCommand>(
+        viewport->document()->constraintSystem(), constraintId);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+
+    // Refresh the list.
+    updateConstraintList();
+}
+
+void PropertyPanel::onBlockRotationChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    double radians = value * 3.14159265358979323846 / 180.0;
+    auto cmd = std::make_unique<doc::ChangeBlockRefRotationCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onBlockScaleChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (std::abs(value) < 1e-6) return;  // Prevent zero scale.
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeBlockRefScaleCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }

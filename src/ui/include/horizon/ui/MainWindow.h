@@ -63,6 +63,21 @@ private slots:
     void onAngularDimTool();
     void onLeaderTool();
 
+    void onConstraintCoincident();
+    void onConstraintHorizontal();
+    void onConstraintVertical();
+    void onConstraintPerpendicular();
+    void onConstraintParallel();
+    void onConstraintTangent();
+    void onConstraintEqual();
+    void onConstraintFixed();
+    void onConstraintDistance();
+    void onConstraintAngle();
+
+    void onCreateBlock();
+    void onInsertBlock();
+    void onExplode();
+
     void onMouseMoved(const hz::math::Vec2& worldPos);
     void onSelectionChanged();
 

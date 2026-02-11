@@ -3,12 +3,16 @@
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/document/Document.h"
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/constraint/GeometryRef.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec4.h"
@@ -48,10 +52,68 @@ namespace hz::ui {
 // Construction / destruction
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// ViewportOverlay
+// ---------------------------------------------------------------------------
+
+ViewportOverlay::ViewportOverlay(ViewportWidget* viewport)
+    : QWidget(viewport)
+    , m_viewport(viewport) {
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_TranslucentBackground);
+}
+
+void ViewportOverlay::setItems(std::vector<TextItem> items) {
+    m_items = std::move(items);
+    update();
+}
+
+void ViewportOverlay::paintEvent(QPaintEvent* /*event*/) {
+    if (m_items.empty()) return;
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    int lastFontSize = -1;
+    bool lastBold = false;
+
+    for (const auto& item : m_items) {
+        if (item.fontSize != lastFontSize || item.bold != lastBold) {
+            QFont font("Arial", item.fontSize);
+            font.setBold(item.bold);
+            painter.setFont(font);
+            lastFontSize = item.fontSize;
+            lastBold = item.bold;
+        }
+
+        QPointF sp = m_viewport->worldToScreen(item.worldPos);
+        QColor qc(static_cast<int>((item.color >> 16) & 0xFF),
+                   static_cast<int>((item.color >> 8) & 0xFF),
+                   static_cast<int>(item.color & 0xFF));
+        painter.setPen(qc);
+
+        QString text = QString::fromUtf8(item.text.c_str());
+        QFontMetrics fm(painter.font());
+        int tw = fm.horizontalAdvance(text);
+        int th = fm.ascent();
+        painter.drawText(QPointF(sp.x() - tw * 0.5, sp.y() + th * 0.25), text);
+    }
+
+    painter.end();
+}
+
+// ---------------------------------------------------------------------------
+// ViewportWidget
+// ---------------------------------------------------------------------------
+
 ViewportWidget::ViewportWidget(QWidget* parent)
     : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+
+    // Transparent overlay for text (avoids QPainter-on-QOpenGLWidget Qt bug).
+    m_overlay = new ViewportOverlay(this);
 
     // Default camera looking at origin from an isometric-ish angle.
     m_camera.setIsometricView();
@@ -133,6 +195,7 @@ void ViewportWidget::resizeGL(int w, int h) {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
 
     m_renderer->resize(gl, w, h);
+    m_overlay->resize(w, h);
 
     double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
     m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
@@ -159,8 +222,9 @@ void ViewportWidget::paintGL() {
     // Render tool preview (rubber-band).
     renderToolPreview(gl);
 
-    // QPainter overlay for dimension text.
-    renderDimensionText();
+    // Update the text overlay widget (QPainter runs on a regular QWidget,
+    // not the QOpenGLWidget, avoiding the Qt 6.10 qpixmap_win.cpp assert).
+    updateOverlayText();
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +451,64 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
             // Collect text for QPainter overlay.
             m_dimTexts.push_back({dim->textPosition(),
                                   dim->displayText(style), resolvedColor});
+        } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
+            // Render each sub-entity of the block definition, transformed to world space.
+            for (const auto& subEnt : bref->definition()->entities) {
+                // ByBlock color resolution: sub-entity color 0 → use block ref's resolved color.
+                uint32_t subColor = subEnt->color();
+                if (subColor == 0x00000000) subColor = resolvedColor;
+                float subWidth = static_cast<float>(subEnt->lineWidth());
+                if (subWidth == 0.0f) subWidth = resolvedWidth;
+                BatchKey subKey{subColor, subWidth};
+
+                if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
+                    auto p1 = bref->transformPoint(ln->start());
+                    auto p2 = bref->transformPoint(ln->end());
+                    auto& v = findOrCreateBatch(subKey);
+                    v.push_back(static_cast<float>(p1.x)); v.push_back(static_cast<float>(p1.y)); v.push_back(0.0f);
+                    v.push_back(static_cast<float>(p2.x)); v.push_back(static_cast<float>(p2.y)); v.push_back(0.0f);
+                } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
+                    auto wc = bref->transformPoint(ci->center());
+                    double wr = ci->radius() * std::abs(bref->uniformScale());
+                    auto cv = circleVertices(wc, wr);
+                    m_renderer->drawCircle(gl, m_camera, cv, argbToVec3(subColor), subWidth);
+                } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
+                    auto wc = bref->transformPoint(ar->center());
+                    double wr = ar->radius() * std::abs(bref->uniformScale());
+                    double sa = ar->startAngle() + bref->rotation();
+                    double ea = ar->endAngle() + bref->rotation();
+                    if (bref->uniformScale() < 0.0) {
+                        // Mirrored: reverse arc direction.
+                        double tmp = sa; sa = -ea; ea = -tmp;
+                    }
+                    auto av = arcVertices(wc, wr, sa, ea);
+                    m_renderer->drawLines(gl, m_camera, av, argbToVec3(subColor), subWidth);
+                } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
+                    auto c = re->corners();
+                    auto& v = findOrCreateBatch(subKey);
+                    for (int i = 0; i < 4; ++i) {
+                        auto wp1 = bref->transformPoint(c[i]);
+                        auto wp2 = bref->transformPoint(c[(i + 1) % 4]);
+                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
+                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                    }
+                } else if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(subEnt.get())) {
+                    auto& v = findOrCreateBatch(subKey);
+                    const auto& pts = pl->points();
+                    for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                        auto wp1 = bref->transformPoint(pts[i]);
+                        auto wp2 = bref->transformPoint(pts[i + 1]);
+                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
+                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                    }
+                    if (pl->closed() && pts.size() >= 2) {
+                        auto wp1 = bref->transformPoint(pts.back());
+                        auto wp2 = bref->transformPoint(pts[0]);
+                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
+                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                    }
+                }
+            }
         }
     }
 
@@ -521,39 +643,97 @@ QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
     return {sx, sy};
 }
 
-void ViewportWidget::renderDimensionText() {
-    if (m_dimTexts.empty() || !m_document) return;
+void ViewportWidget::updateOverlayText() {
+    std::vector<ViewportOverlay::TextItem> items;
 
-    // Compute a font size: textHeight in world units → screen pixels.
-    const auto& style = m_document->draftDocument().dimensionStyle();
-    double pxPerWorld = 1.0 / pixelToWorldScale();
-    int fontSize = std::max(8, std::min(48,
-        static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
+    // --- Dimension text ---
+    if (!m_dimTexts.empty() && m_document) {
+        const auto& style = m_document->draftDocument().dimensionStyle();
+        double pxPerWorld = 1.0 / pixelToWorldScale();
+        int fontSize = std::max(8, std::min(48,
+            static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
 
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    QFont font("Arial", fontSize);
-    painter.setFont(font);
-    QFontMetrics fm(font);
-
-    for (const auto& dt : m_dimTexts) {
-        QPointF sp = worldToScreen(dt.worldPos);
-
-        // Color from ARGB.
-        QColor qc(static_cast<int>((dt.color >> 16) & 0xFF),
-                   static_cast<int>((dt.color >> 8)  & 0xFF),
-                   static_cast<int>( dt.color        & 0xFF));
-        painter.setPen(qc);
-
-        QString text = QString::fromStdString(dt.text);
-        int tw = fm.horizontalAdvance(text);
-        int th = fm.ascent();
-
-        // Draw centered on the projected position.
-        painter.drawText(QPointF(sp.x() - tw * 0.5, sp.y() + th * 0.25), text);
+        for (const auto& dt : m_dimTexts) {
+            items.push_back({dt.worldPos, dt.text, dt.color, fontSize, false});
+        }
     }
 
-    painter.end();
+    // --- Constraint indicators ---
+    if (m_document) {
+        const auto& csys = m_document->constraintSystem();
+        if (!csys.empty()) {
+            const auto& entities = m_document->draftDocument().entities();
+            double pxPerWorld = 1.0 / pixelToWorldScale();
+            int fontSize = std::max(8, std::min(24, static_cast<int>(pxPerWorld * 0.3)));
+
+            for (const auto& c : csys.constraints()) {
+                math::Vec2 pos{0.0, 0.0};
+                std::string symbol;
+                uint32_t color = 0xFF00CC00;  // Green (satisfied)
+
+                switch (c->type()) {
+                    case cstr::ConstraintType::Coincident:  symbol = "\xE2\x97\x8F"; break;
+                    case cstr::ConstraintType::Horizontal:  symbol = "H"; break;
+                    case cstr::ConstraintType::Vertical:    symbol = "V"; break;
+                    case cstr::ConstraintType::Perpendicular: symbol = "\xE2\x9F\x82"; break;
+                    case cstr::ConstraintType::Parallel:    symbol = "\xE2\x88\xA5"; break;
+                    case cstr::ConstraintType::Tangent:     symbol = "T"; break;
+                    case cstr::ConstraintType::Equal:       symbol = "="; break;
+                    case cstr::ConstraintType::Fixed:       symbol = "\xE2\x96\xA1"; break;
+                    case cstr::ConstraintType::Distance: {
+                        auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
+                        if (dc) {
+                            char buf[32];
+                            snprintf(buf, sizeof(buf), "%.2f", dc->dimensionalValue());
+                            symbol = buf;
+                        }
+                        color = 0xFF0066CC;
+                        break;
+                    }
+                    case cstr::ConstraintType::Angle: {
+                        auto* ac = dynamic_cast<const cstr::AngleConstraint*>(c.get());
+                        if (ac) {
+                            char buf[32];
+                            snprintf(buf, sizeof(buf), "%.1f\xC2\xB0",
+                                     ac->dimensionalValue() * 180.0 / 3.14159265358979323846);
+                            symbol = buf;
+                        }
+                        color = 0xFF0066CC;
+                        break;
+                    }
+                }
+
+                // Compute indicator position: midpoint of referenced features.
+                try {
+                    auto ids = c->referencedEntityIds();
+                    if (!ids.empty()) {
+                        const auto* e1 = cstr::findEntity(ids[0], entities);
+                        if (e1) {
+                            auto snaps = e1->snapPoints();
+                            if (!snaps.empty()) pos = snaps[0];
+                            if (ids.size() > 1) {
+                                const auto* e2 = cstr::findEntity(ids.back(), entities);
+                                if (e2) {
+                                    auto snaps2 = e2->snapPoints();
+                                    if (!snaps2.empty()) {
+                                        pos = {(pos.x + snaps2[0].x) * 0.5,
+                                               (pos.y + snaps2[0].y) * 0.5};
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (...) {}
+
+                // Offset slightly above the position.
+                pos.y += pixelToWorldScale() * 12.0;
+
+                items.push_back({pos, symbol, color, fontSize, true});
+            }
+        }
+    }
+
+    m_overlay->setItems(std::move(items));
 }
 
 }  // namespace hz::ui

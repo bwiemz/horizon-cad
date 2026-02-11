@@ -25,6 +25,10 @@
 #include "horizon/ui/RadialDimensionTool.h"
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/LeaderTool.h"
+#include "horizon/ui/ConstraintTool.h"
+#include "horizon/ui/InsertBlockTool.h"
+#include "horizon/ui/InsertBlockDialog.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/document/UndoStack.h"
@@ -37,6 +41,7 @@
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenuBar>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QToolBar>
@@ -59,13 +64,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_viewport->setDocument(m_document.get());
     setCentralWidget(m_viewport);
 
-    // Build UI chrome.
-    createMenus();
-    createToolBar();
-    createStatusBar();
-    registerTools();
-
-    // Dock panels.
+    // Dock panels (must exist before createMenus, which adds toggleViewAction).
     m_propertyPanel = new PropertyPanel(this, this);
     addDockWidget(Qt::RightDockWidgetArea, m_propertyPanel);
 
@@ -74,6 +73,12 @@ MainWindow::MainWindow(QWidget* parent)
 
     tabifyDockWidget(m_propertyPanel, m_layerPanel);
     m_propertyPanel->raise();
+
+    // Build UI chrome.
+    createMenus();
+    createToolBar();
+    createStatusBar();
+    registerTools();
 
     // Wire up the status bar coordinate display.
     connect(m_viewport, &ViewportWidget::mouseMoved,
@@ -181,6 +186,28 @@ void MainWindow::createMenus() {
     dimMenu->addAction(tr("&Angular"), this, &MainWindow::onAngularDimTool);
     dimMenu->addSeparator();
     dimMenu->addAction(tr("L&eader"), this, &MainWindow::onLeaderTool);
+
+    // ---- Constraint ----
+    QMenu* cstrMenu = menuBar()->addMenu(tr("&Constraint"));
+    cstrMenu->addAction(tr("&Coincident"), this, &MainWindow::onConstraintCoincident);
+    cstrMenu->addAction(tr("&Horizontal"), this, &MainWindow::onConstraintHorizontal);
+    cstrMenu->addAction(tr("&Vertical"), this, &MainWindow::onConstraintVertical);
+    cstrMenu->addSeparator();
+    cstrMenu->addAction(tr("Per&pendicular"), this, &MainWindow::onConstraintPerpendicular);
+    cstrMenu->addAction(tr("P&arallel"), this, &MainWindow::onConstraintParallel);
+    cstrMenu->addAction(tr("&Tangent"), this, &MainWindow::onConstraintTangent);
+    cstrMenu->addAction(tr("&Equal"), this, &MainWindow::onConstraintEqual);
+    cstrMenu->addSeparator();
+    cstrMenu->addAction(tr("&Fixed"), this, &MainWindow::onConstraintFixed);
+    cstrMenu->addAction(tr("&Distance"), this, &MainWindow::onConstraintDistance);
+    cstrMenu->addAction(tr("A&ngle"), this, &MainWindow::onConstraintAngle);
+
+    // ---- Block ----
+    QMenu* blockMenu = menuBar()->addMenu(tr("&Block"));
+    blockMenu->addAction(tr("&Create Block..."), this, &MainWindow::onCreateBlock);
+    blockMenu->addAction(tr("&Insert Block..."), this, &MainWindow::onInsertBlock);
+    blockMenu->addSeparator();
+    blockMenu->addAction(tr("&Explode"), this, &MainWindow::onExplode);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +313,37 @@ void MainWindow::createToolBar() {
 
     mainToolBar->addSeparator();
 
+    // Constraint tools.
+    QAction* coincidentAction = mainToolBar->addAction(tr("Coinc"), this, &MainWindow::onConstraintCoincident);
+    coincidentAction->setCheckable(true);
+    toolGroup->addAction(coincidentAction);
+
+    QAction* horizAction = mainToolBar->addAction(tr("Horiz"), this, &MainWindow::onConstraintHorizontal);
+    horizAction->setCheckable(true);
+    toolGroup->addAction(horizAction);
+
+    QAction* vertAction = mainToolBar->addAction(tr("Vert"), this, &MainWindow::onConstraintVertical);
+    vertAction->setCheckable(true);
+    toolGroup->addAction(vertAction);
+
+    QAction* perpAction = mainToolBar->addAction(tr("Perp"), this, &MainWindow::onConstraintPerpendicular);
+    perpAction->setCheckable(true);
+    toolGroup->addAction(perpAction);
+
+    QAction* parallelAction = mainToolBar->addAction(tr("Para"), this, &MainWindow::onConstraintParallel);
+    parallelAction->setCheckable(true);
+    toolGroup->addAction(parallelAction);
+
+    QAction* distAction = mainToolBar->addAction(tr("Dist"), this, &MainWindow::onConstraintDistance);
+    distAction->setCheckable(true);
+    toolGroup->addAction(distAction);
+
+    QAction* angleAction = mainToolBar->addAction(tr("Angle"), this, &MainWindow::onConstraintAngle);
+    angleAction->setCheckable(true);
+    toolGroup->addAction(angleAction);
+
+    mainToolBar->addSeparator();
+
     // View presets.
     mainToolBar->addAction(tr("Fit All"), this, &MainWindow::onFitAll);
 }
@@ -321,6 +379,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<RadialDimensionTool>());
     m_toolManager->registerTool(std::make_unique<AngularDimensionTool>());
     m_toolManager->registerTool(std::make_unique<LeaderTool>());
+    m_toolManager->registerTool(std::make_unique<ConstraintTool>());
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +430,15 @@ void MainWindow::onOpenFile() {
         // Copy entities.
         for (const auto& entity : tempDoc.draftDocument().entities()) {
             m_document->draftDocument().addEntity(entity);
+        }
+        // Copy block definitions.
+        for (const auto& name : tempDoc.draftDocument().blockTable().blockNames()) {
+            auto def = tempDoc.draftDocument().blockTable().findBlock(name);
+            if (def) m_document->draftDocument().blockTable().addBlock(def);
+        }
+        // Copy constraints.
+        for (const auto& c : tempDoc.constraintSystem().constraints()) {
+            m_document->constraintSystem().addConstraint(c);
         }
         m_document->setDirty(false);
         m_viewport->selectionManager().clearSelection();
@@ -743,6 +811,167 @@ void MainWindow::onAngularDimTool() {
 void MainWindow::onLeaderTool() {
     m_toolManager->setActiveTool("Leader");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Constraint tools
+// ---------------------------------------------------------------------------
+
+static void activateConstraintMode(ToolManager& tm, ViewportWidget* vp,
+                                    ConstraintTool::Mode mode) {
+    tm.setActiveTool("Constraint");
+    auto* tool = dynamic_cast<ConstraintTool*>(tm.activeTool());
+    if (tool) tool->setMode(mode);
+    vp->setActiveTool(tm.activeTool());
+}
+
+void MainWindow::onConstraintCoincident() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Coincident);
+}
+
+void MainWindow::onConstraintHorizontal() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Horizontal);
+}
+
+void MainWindow::onConstraintVertical() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Vertical);
+}
+
+void MainWindow::onConstraintPerpendicular() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Perpendicular);
+}
+
+void MainWindow::onConstraintParallel() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Parallel);
+}
+
+void MainWindow::onConstraintTangent() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Tangent);
+}
+
+void MainWindow::onConstraintEqual() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Equal);
+}
+
+void MainWindow::onConstraintFixed() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Fixed);
+}
+
+void MainWindow::onConstraintDistance() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Distance);
+}
+
+void MainWindow::onConstraintAngle() {
+    activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Angle);
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Block operations
+// ---------------------------------------------------------------------------
+
+void MainWindow::onCreateBlock() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) {
+        QMessageBox::information(this, tr("Create Block"),
+                                 tr("Select entities first."));
+        return;
+    }
+
+    // Filter to visible/unlocked layers.
+    const auto& layerMgr = m_document->layerManager();
+    std::vector<uint64_t> filteredIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        filteredIds.push_back(entity->id());
+    }
+    if (filteredIds.empty()) return;
+
+    bool ok = false;
+    QString name = QInputDialog::getText(this, tr("Create Block"),
+                                          tr("Block name:"), QLineEdit::Normal,
+                                          QString(), &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    std::string blockName = name.trimmed().toStdString();
+    if (m_document->draftDocument().blockTable().findBlock(blockName)) {
+        QMessageBox::warning(this, tr("Create Block"),
+                             tr("A block with that name already exists."));
+        return;
+    }
+
+    auto cmd = std::make_unique<doc::CreateBlockCommand>(
+        m_document->draftDocument(), blockName, filteredIds);
+    auto* rawCmd = cmd.get();
+    m_document->undoStack().push(std::move(cmd));
+
+    sel.clearSelection();
+    sel.select(rawCmd->blockRefId());
+    m_viewport->update();
+    onSelectionChanged();
+}
+
+void MainWindow::onInsertBlock() {
+    auto names = m_document->draftDocument().blockTable().blockNames();
+    if (names.empty()) {
+        QMessageBox::information(this, tr("Insert Block"),
+                                 tr("No blocks defined. Create a block first."));
+        return;
+    }
+
+    InsertBlockDialog dlg(names, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    auto def = m_document->draftDocument().blockTable().findBlock(dlg.selectedBlock());
+    if (!def) return;
+
+    // Create the tool and set it active.  The tool is owned by ToolManager lifetime
+    // so we manage it independently (it replaces any existing active tool).
+    auto tool = std::make_unique<InsertBlockTool>(def, dlg.rotation(), dlg.scale());
+    m_toolManager->registerTool(std::move(tool));
+    m_toolManager->setActiveTool("Insert Block");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onExplode() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    // Find block refs among the selection.
+    std::vector<uint64_t> blockRefIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        if (dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
+            blockRefIds.push_back(entity->id());
+        }
+    }
+    if (blockRefIds.empty()) {
+        QMessageBox::information(this, tr("Explode"),
+                                 tr("Select one or more block references to explode."));
+        return;
+    }
+
+    auto composite = std::make_unique<doc::CompositeCommand>("Explode");
+    std::vector<doc::ExplodeBlockCommand*> explodeCmds;
+    for (uint64_t id : blockRefIds) {
+        auto cmd = std::make_unique<doc::ExplodeBlockCommand>(m_document->draftDocument(), id);
+        explodeCmds.push_back(cmd.get());
+        composite->addCommand(std::move(cmd));
+    }
+    m_document->undoStack().push(std::move(composite));
+
+    // Select the exploded entities.
+    sel.clearSelection();
+    for (auto* cmd : explodeCmds) {
+        for (uint64_t id : cmd->explodedIds()) {
+            sel.select(id);
+        }
+    }
+    m_viewport->update();
+    onSelectionChanged();
 }
 
 // ---------------------------------------------------------------------------
