@@ -1,6 +1,7 @@
 add_library(hz_fileio STATIC
     src/NativeFormat.cpp
     src/StlExporter.cpp
+    src/DxfFormat.cpp
 )
 
 target_include_directories(hz_fileio

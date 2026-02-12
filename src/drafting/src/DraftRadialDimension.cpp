@@ -50,7 +50,7 @@ double DraftRadialDimension::computedValue() const {
 std::string DraftRadialDimension::displayText(const DimensionStyle& style) const {
     if (hasTextOverride()) return m_textOverride;
 
-    std::string prefix = m_isDiameter ? "\xC3\xB8" : "R";  // UTF-8 ⌀ or R
+    std::string prefix = m_isDiameter ? "\xE2\x8C\x80" : "R";  // UTF-8 ⌀ (U+2300) or R
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(style.precision) << computedValue();
     return prefix + oss.str();

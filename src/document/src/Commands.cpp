@@ -1,6 +1,10 @@
 #include "horizon/document/Commands.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftEllipse.h"
 
 namespace hz::doc {
 
@@ -743,6 +747,434 @@ void ChangeBlockRefScaleCommand::undo() {
 
 std::string ChangeBlockRefScaleCommand::description() const {
     return "Change Block Scale";
+}
+
+// --- ChangeTextContentCommand ---
+
+ChangeTextContentCommand::ChangeTextContentCommand(draft::DraftDocument& doc,
+                                                   uint64_t entityId,
+                                                   const std::string& newText)
+    : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
+
+void ChangeTextContentCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                m_oldText = txt->text();
+                txt->setText(m_newText);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeTextContentCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                txt->setText(m_oldText);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeTextContentCommand::description() const {
+    return "Change Text Content";
+}
+
+// --- ChangeTextHeightCommand ---
+
+ChangeTextHeightCommand::ChangeTextHeightCommand(draft::DraftDocument& doc,
+                                                 uint64_t entityId,
+                                                 double newHeight)
+    : m_doc(doc), m_entityId(entityId), m_newHeight(newHeight) {}
+
+void ChangeTextHeightCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                m_oldHeight = txt->textHeight();
+                txt->setTextHeight(m_newHeight);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeTextHeightCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                txt->setTextHeight(m_oldHeight);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeTextHeightCommand::description() const {
+    return "Change Text Height";
+}
+
+// --- ChangeTextRotationCommand ---
+
+ChangeTextRotationCommand::ChangeTextRotationCommand(draft::DraftDocument& doc,
+                                                     uint64_t entityId,
+                                                     double newRotation)
+    : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
+
+void ChangeTextRotationCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                m_oldRotation = txt->rotation();
+                txt->setRotation(m_newRotation);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeTextRotationCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                txt->setRotation(m_oldRotation);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeTextRotationCommand::description() const {
+    return "Change Text Rotation";
+}
+
+// --- ChangeTextAlignmentCommand ---
+
+ChangeTextAlignmentCommand::ChangeTextAlignmentCommand(draft::DraftDocument& doc,
+                                                       uint64_t entityId,
+                                                       int newAlignment)
+    : m_doc(doc), m_entityId(entityId), m_newAlignment(newAlignment) {}
+
+void ChangeTextAlignmentCommand::execute() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                m_oldAlignment = static_cast<int>(txt->alignment());
+                txt->setAlignment(static_cast<draft::TextAlignment>(m_newAlignment));
+            }
+            break;
+        }
+    }
+}
+
+void ChangeTextAlignmentCommand::undo() {
+    for (const auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+                txt->setAlignment(static_cast<draft::TextAlignment>(m_oldAlignment));
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeTextAlignmentCommand::description() const {
+    return "Change Text Alignment";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeSplineClosedCommand
+// ---------------------------------------------------------------------------
+
+ChangeSplineClosedCommand::ChangeSplineClosedCommand(draft::DraftDocument& doc,
+                                                     uint64_t entityId,
+                                                     bool newClosed)
+    : m_doc(doc), m_entityId(entityId), m_newClosed(newClosed) {}
+
+void ChangeSplineClosedCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
+                m_oldClosed = sp->closed();
+                sp->setClosed(m_newClosed);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeSplineClosedCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
+                sp->setClosed(m_oldClosed);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeSplineClosedCommand::description() const {
+    return "Change Spline Closed";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeHatchPatternCommand
+// ---------------------------------------------------------------------------
+
+ChangeHatchPatternCommand::ChangeHatchPatternCommand(draft::DraftDocument& doc,
+                                                     uint64_t entityId,
+                                                     int newPattern)
+    : m_doc(doc), m_entityId(entityId), m_newPattern(newPattern) {}
+
+void ChangeHatchPatternCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                m_oldPattern = static_cast<int>(h->pattern());
+                h->setPattern(static_cast<draft::HatchPattern>(m_newPattern));
+            }
+            break;
+        }
+    }
+}
+
+void ChangeHatchPatternCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                h->setPattern(static_cast<draft::HatchPattern>(m_oldPattern));
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeHatchPatternCommand::description() const {
+    return "Change Hatch Pattern";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeHatchAngleCommand
+// ---------------------------------------------------------------------------
+
+ChangeHatchAngleCommand::ChangeHatchAngleCommand(draft::DraftDocument& doc,
+                                                 uint64_t entityId,
+                                                 double newAngle)
+    : m_doc(doc), m_entityId(entityId), m_newAngle(newAngle) {}
+
+void ChangeHatchAngleCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                m_oldAngle = h->angle();
+                h->setAngle(m_newAngle);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeHatchAngleCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                h->setAngle(m_oldAngle);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeHatchAngleCommand::description() const {
+    return "Change Hatch Angle";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeHatchSpacingCommand
+// ---------------------------------------------------------------------------
+
+ChangeHatchSpacingCommand::ChangeHatchSpacingCommand(draft::DraftDocument& doc,
+                                                     uint64_t entityId,
+                                                     double newSpacing)
+    : m_doc(doc), m_entityId(entityId), m_newSpacing(newSpacing) {}
+
+void ChangeHatchSpacingCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                m_oldSpacing = h->spacing();
+                h->setSpacing(m_newSpacing);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeHatchSpacingCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+                h->setSpacing(m_oldSpacing);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeHatchSpacingCommand::description() const {
+    return "Change Hatch Spacing";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeEllipseSemiMajorCommand
+// ---------------------------------------------------------------------------
+
+ChangeEllipseSemiMajorCommand::ChangeEllipseSemiMajorCommand(
+    draft::DraftDocument& doc, uint64_t entityId, double newValue)
+    : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
+
+void ChangeEllipseSemiMajorCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                m_oldValue = el->semiMajor();
+                el->setSemiMajor(m_newValue);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeEllipseSemiMajorCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                el->setSemiMajor(m_oldValue);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeEllipseSemiMajorCommand::description() const {
+    return "Change Ellipse Semi-Major";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeEllipseSemiMinorCommand
+// ---------------------------------------------------------------------------
+
+ChangeEllipseSemiMinorCommand::ChangeEllipseSemiMinorCommand(
+    draft::DraftDocument& doc, uint64_t entityId, double newValue)
+    : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
+
+void ChangeEllipseSemiMinorCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                m_oldValue = el->semiMinor();
+                el->setSemiMinor(m_newValue);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeEllipseSemiMinorCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                el->setSemiMinor(m_oldValue);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeEllipseSemiMinorCommand::description() const {
+    return "Change Ellipse Semi-Minor";
+}
+
+// ---------------------------------------------------------------------------
+// ChangeEllipseRotationCommand
+// ---------------------------------------------------------------------------
+
+ChangeEllipseRotationCommand::ChangeEllipseRotationCommand(
+    draft::DraftDocument& doc, uint64_t entityId, double newRotation)
+    : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
+
+void ChangeEllipseRotationCommand::execute() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                m_oldRotation = el->rotation();
+                el->setRotation(m_newRotation);
+            }
+            break;
+        }
+    }
+}
+
+void ChangeEllipseRotationCommand::undo() {
+    for (auto& e : m_doc.entities()) {
+        if (e->id() == m_entityId) {
+            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+                el->setRotation(m_oldRotation);
+            }
+            break;
+        }
+    }
+}
+
+std::string ChangeEllipseRotationCommand::description() const {
+    return "Change Ellipse Rotation";
+}
+
+// ---------------------------------------------------------------------------
+// GripMoveCommand
+// ---------------------------------------------------------------------------
+
+GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
+                                  std::shared_ptr<draft::DraftEntity> beforeState,
+                                  std::shared_ptr<draft::DraftEntity> afterState)
+    : m_doc(doc), m_entityId(entityId),
+      m_beforeState(std::move(beforeState)),
+      m_afterState(std::move(afterState)) {}
+
+void GripMoveCommand::execute() {
+    if (m_firstExec) {
+        // State is already applied by the caller (live grip drag).
+        m_firstExec = false;
+        return;
+    }
+    applyState(*m_afterState);
+}
+
+void GripMoveCommand::undo() {
+    applyState(*m_beforeState);
+}
+
+std::string GripMoveCommand::description() const {
+    return "Grip Edit";
+}
+
+void GripMoveCommand::applyState(const draft::DraftEntity& state) {
+    auto& entities = m_doc.entities();
+    for (auto& e : entities) {
+        if (e->id() == m_entityId) {
+            auto replacement = state.clone();
+            replacement->setId(m_entityId);
+            replacement->setLayer(state.layer());
+            replacement->setColor(state.color());
+            replacement->setLineWidth(state.lineWidth());
+            e = replacement;
+            return;
+        }
+    }
 }
 
 }  // namespace hz::doc

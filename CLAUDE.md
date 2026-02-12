@@ -14,7 +14,7 @@ cmake --preset debug
 # Build
 cmake --build build/debug --config Debug
 
-# Test (85 math tests)
+# Test (109 tests)
 ctest --test-dir build/debug -C Debug
 
 # Executable
@@ -29,7 +29,7 @@ build/debug/src/app/Debug/horizon.exe
 | document | `hz::doc` | Document, UndoStack, Command subclasses |
 | render | `hz::render` | GLRenderer, Camera, Grid, ShaderProgram, SelectionManager |
 | ui | `hz::ui` | MainWindow, ViewportWidget, Tool subclasses, PropertyPanel, LayerPanel |
-| fileio | `hz::io` | NativeFormat (v4 JSON) |
+| fileio | `hz::io` | NativeFormat (v9 JSON), DxfFormat |
 
 ## Code Conventions
 - Namespaces: `hz::math`, `hz::draft`, `hz::doc`, `hz::render`, `hz::ui`, `hz::io`
@@ -48,8 +48,9 @@ build/debug/src/app/Debug/horizon.exe
 - `Camera::screenToRay()` expects Qt-style Y coords (0=top) — do NOT flip Y before calling
 
 ## File Format
-- NativeFormat v4 (.hcad JSON): entities, layers, dimension style
-- Backward-compatible with v1-v3 files
+- NativeFormat v9 (.hcad JSON): entities, layers, dimension style, constraints, blocks, text, splines, hatches
+- DxfFormat (.dxf): import/export of LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT
+- Backward-compatible with v1-v8 .hcad files
 
 ## Testing
 - Math tests in `tests/math/` using Google Test

@@ -16,6 +16,10 @@ add_library(hz_drafting STATIC
     src/DraftLeader.cpp
     src/BlockTable.cpp
     src/DraftBlockRef.cpp
+    src/DraftText.cpp
+    src/DraftSpline.cpp
+    src/DraftHatch.cpp
+    src/DraftEllipse.cpp
 )
 
 target_include_directories(hz_drafting

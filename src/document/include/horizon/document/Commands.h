@@ -378,4 +378,235 @@ private:
     double m_oldScale = 1.0;
 };
 
+// ---------------------------------------------------------------------------
+// Text entity commands
+// ---------------------------------------------------------------------------
+
+/// Command to change a text entity's content string.
+class ChangeTextContentCommand : public Command {
+public:
+    ChangeTextContentCommand(draft::DraftDocument& doc,
+                             uint64_t entityId,
+                             const std::string& newText);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    std::string m_newText;
+    std::string m_oldText;
+};
+
+/// Command to change a text entity's height.
+class ChangeTextHeightCommand : public Command {
+public:
+    ChangeTextHeightCommand(draft::DraftDocument& doc,
+                            uint64_t entityId,
+                            double newHeight);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newHeight;
+    double m_oldHeight = 2.5;
+};
+
+/// Command to change a text entity's rotation.
+class ChangeTextRotationCommand : public Command {
+public:
+    ChangeTextRotationCommand(draft::DraftDocument& doc,
+                              uint64_t entityId,
+                              double newRotation);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newRotation;
+    double m_oldRotation = 0.0;
+};
+
+/// Command to change a text entity's alignment.
+class ChangeTextAlignmentCommand : public Command {
+public:
+    ChangeTextAlignmentCommand(draft::DraftDocument& doc,
+                               uint64_t entityId,
+                               int newAlignment);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    int m_newAlignment;
+    int m_oldAlignment = 1;  // Center
+};
+
+// ---------------------------------------------------------------------------
+// Spline entity commands
+// ---------------------------------------------------------------------------
+
+/// Command to toggle a spline's closed/open state.
+class ChangeSplineClosedCommand : public Command {
+public:
+    ChangeSplineClosedCommand(draft::DraftDocument& doc,
+                              uint64_t entityId,
+                              bool newClosed);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    bool m_newClosed;
+    bool m_oldClosed = false;
+};
+
+// ---------------------------------------------------------------------------
+// Hatch entity commands
+// ---------------------------------------------------------------------------
+
+/// Command to change a hatch entity's pattern type.
+class ChangeHatchPatternCommand : public Command {
+public:
+    ChangeHatchPatternCommand(draft::DraftDocument& doc,
+                              uint64_t entityId,
+                              int newPattern);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    int m_newPattern;
+    int m_oldPattern = 1;
+};
+
+/// Command to change a hatch entity's angle.
+class ChangeHatchAngleCommand : public Command {
+public:
+    ChangeHatchAngleCommand(draft::DraftDocument& doc,
+                            uint64_t entityId,
+                            double newAngle);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newAngle;
+    double m_oldAngle = 0.0;
+};
+
+/// Command to change a hatch entity's spacing.
+class ChangeHatchSpacingCommand : public Command {
+public:
+    ChangeHatchSpacingCommand(draft::DraftDocument& doc,
+                              uint64_t entityId,
+                              double newSpacing);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newSpacing;
+    double m_oldSpacing = 1.0;
+};
+
+// ---------------------------------------------------------------------------
+// Ellipse entity commands
+// ---------------------------------------------------------------------------
+
+/// Command to change an ellipse's semi-major radius.
+class ChangeEllipseSemiMajorCommand : public Command {
+public:
+    ChangeEllipseSemiMajorCommand(draft::DraftDocument& doc,
+                                  uint64_t entityId, double newValue);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newValue;
+    double m_oldValue = 1.0;
+};
+
+/// Command to change an ellipse's semi-minor radius.
+class ChangeEllipseSemiMinorCommand : public Command {
+public:
+    ChangeEllipseSemiMinorCommand(draft::DraftDocument& doc,
+                                  uint64_t entityId, double newValue);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newValue;
+    double m_oldValue = 1.0;
+};
+
+/// Command to change an ellipse's rotation.
+class ChangeEllipseRotationCommand : public Command {
+public:
+    ChangeEllipseRotationCommand(draft::DraftDocument& doc,
+                                 uint64_t entityId, double newRotation);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    double m_newRotation;
+    double m_oldRotation = 0.0;
+};
+
+// ---------------------------------------------------------------------------
+// Grip editing command
+// ---------------------------------------------------------------------------
+
+/// Snapshot-based command for grip editing.
+/// Stores the entity state before and after a grip move.
+/// The caller applies the grip move BEFORE pushing this command;
+/// execute() is a no-op on first call.  Undo/redo swaps the snapshots.
+class GripMoveCommand : public Command {
+public:
+    /// \param doc        The document
+    /// \param entityId   ID of the entity being grip-edited
+    /// \param beforeState  Clone of the entity BEFORE the grip move
+    /// \param afterState   Clone of the entity AFTER the grip move
+    GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
+                    std::shared_ptr<draft::DraftEntity> beforeState,
+                    std::shared_ptr<draft::DraftEntity> afterState);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    void applyState(const draft::DraftEntity& state);
+
+    draft::DraftDocument& m_doc;
+    uint64_t m_entityId;
+    std::shared_ptr<draft::DraftEntity> m_beforeState;
+    std::shared_ptr<draft::DraftEntity> m_afterState;
+    bool m_firstExec = true;
+};
+
 }  // namespace hz::doc

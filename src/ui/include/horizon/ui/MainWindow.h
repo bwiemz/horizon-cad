@@ -62,6 +62,14 @@ private slots:
     void onRadialDimTool();
     void onAngularDimTool();
     void onLeaderTool();
+    void onTextTool();
+    void onSplineTool();
+    void onHatchTool();
+    void onEllipseTool();
+
+    void onMeasureDistanceTool();
+    void onMeasureAngleTool();
+    void onMeasureAreaTool();
 
     void onConstraintCoincident();
     void onConstraintHorizontal();

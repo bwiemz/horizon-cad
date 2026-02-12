@@ -15,6 +15,11 @@
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/math/Constants.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ConstraintCommands.h"
 
@@ -114,6 +119,121 @@ void PropertyPanel::createWidgets() {
 
     m_blockPropsWidget->hide();
 
+    // Text entity specific properties (hidden by default).
+    m_textPropsWidget = new QWidget(this);
+    auto* textForm = new QFormLayout(m_textPropsWidget);
+    textForm->setContentsMargins(0, 0, 0, 0);
+
+    m_textContentEdit = new QLineEdit(m_textPropsWidget);
+    connect(m_textContentEdit, &QLineEdit::editingFinished,
+            this, &PropertyPanel::onTextContentChanged);
+    textForm->addRow(tr("Content:"), m_textContentEdit);
+
+    m_textHeightSpin = new QDoubleSpinBox(m_textPropsWidget);
+    m_textHeightSpin->setRange(0.1, 1000.0);
+    m_textHeightSpin->setDecimals(2);
+    m_textHeightSpin->setSingleStep(0.5);
+    connect(m_textHeightSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onTextHeightChanged);
+    textForm->addRow(tr("Height:"), m_textHeightSpin);
+
+    m_textRotationSpin = new QDoubleSpinBox(m_textPropsWidget);
+    m_textRotationSpin->setRange(-360.0, 360.0);
+    m_textRotationSpin->setDecimals(2);
+    m_textRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
+    connect(m_textRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onTextRotationChanged);
+    textForm->addRow(tr("Rotation:"), m_textRotationSpin);
+
+    m_textAlignCombo = new QComboBox(m_textPropsWidget);
+    m_textAlignCombo->addItem(tr("Left"));
+    m_textAlignCombo->addItem(tr("Center"));
+    m_textAlignCombo->addItem(tr("Right"));
+    connect(m_textAlignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onTextAlignmentChanged);
+    textForm->addRow(tr("Align:"), m_textAlignCombo);
+
+    m_textPropsWidget->hide();
+
+    // Spline-specific properties (hidden by default).
+    m_splinePropsWidget = new QWidget(this);
+    auto* splineForm = new QFormLayout(m_splinePropsWidget);
+    splineForm->setContentsMargins(0, 0, 0, 0);
+
+    m_splinePointCountLabel = new QLabel(m_splinePropsWidget);
+    splineForm->addRow(tr("Points:"), m_splinePointCountLabel);
+
+    m_splineClosedCombo = new QComboBox(m_splinePropsWidget);
+    m_splineClosedCombo->addItem(tr("Open"));
+    m_splineClosedCombo->addItem(tr("Closed"));
+    connect(m_splineClosedCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onSplineClosedChanged);
+    splineForm->addRow(tr("Type:"), m_splineClosedCombo);
+
+    m_splinePropsWidget->hide();
+
+    // Hatch-specific properties (hidden by default).
+    m_hatchPropsWidget = new QWidget(this);
+    auto* hatchForm = new QFormLayout(m_hatchPropsWidget);
+    hatchForm->setContentsMargins(0, 0, 0, 0);
+
+    m_hatchPatternCombo = new QComboBox(m_hatchPropsWidget);
+    m_hatchPatternCombo->addItem(tr("Solid"));
+    m_hatchPatternCombo->addItem(tr("Lines"));
+    m_hatchPatternCombo->addItem(tr("CrossHatch"));
+    connect(m_hatchPatternCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onHatchPatternChanged);
+    hatchForm->addRow(tr("Pattern:"), m_hatchPatternCombo);
+
+    m_hatchAngleSpin = new QDoubleSpinBox(m_hatchPropsWidget);
+    m_hatchAngleSpin->setRange(-360.0, 360.0);
+    m_hatchAngleSpin->setDecimals(2);
+    m_hatchAngleSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
+    connect(m_hatchAngleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onHatchAngleChanged);
+    hatchForm->addRow(tr("Angle:"), m_hatchAngleSpin);
+
+    m_hatchSpacingSpin = new QDoubleSpinBox(m_hatchPropsWidget);
+    m_hatchSpacingSpin->setRange(0.01, 100.0);
+    m_hatchSpacingSpin->setDecimals(3);
+    m_hatchSpacingSpin->setSingleStep(0.1);
+    connect(m_hatchSpacingSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onHatchSpacingChanged);
+    hatchForm->addRow(tr("Spacing:"), m_hatchSpacingSpin);
+
+    m_hatchPropsWidget->hide();
+
+    // Ellipse-specific properties.
+    m_ellipsePropsWidget = new QWidget(this);
+    auto* ellipseForm = new QFormLayout(m_ellipsePropsWidget);
+    ellipseForm->setContentsMargins(0, 0, 0, 0);
+
+    m_ellipseSemiMajorSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseSemiMajorSpin->setRange(0.001, 1e6);
+    m_ellipseSemiMajorSpin->setDecimals(4);
+    m_ellipseSemiMajorSpin->setSingleStep(0.1);
+    connect(m_ellipseSemiMajorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onEllipseSemiMajorChanged);
+    ellipseForm->addRow(tr("Semi-Major:"), m_ellipseSemiMajorSpin);
+
+    m_ellipseSemiMinorSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseSemiMinorSpin->setRange(0.001, 1e6);
+    m_ellipseSemiMinorSpin->setDecimals(4);
+    m_ellipseSemiMinorSpin->setSingleStep(0.1);
+    connect(m_ellipseSemiMinorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onEllipseSemiMinorChanged);
+    ellipseForm->addRow(tr("Semi-Minor:"), m_ellipseSemiMinorSpin);
+
+    m_ellipseRotationSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseRotationSpin->setRange(-360.0, 360.0);
+    m_ellipseRotationSpin->setDecimals(2);
+    m_ellipseRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
+    connect(m_ellipseRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onEllipseRotationChanged);
+    ellipseForm->addRow(tr("Rotation:"), m_ellipseRotationSpin);
+
+    m_ellipsePropsWidget->hide();
+
     // Constraint info (hidden by default).
     m_constraintWidget = new QWidget(this);
     auto* cstrLayout = new QVBoxLayout(m_constraintWidget);
@@ -133,6 +253,10 @@ void PropertyPanel::createWidgets() {
     layout->addLayout(form);
     layout->addWidget(m_dimPropsWidget);
     layout->addWidget(m_blockPropsWidget);
+    layout->addWidget(m_textPropsWidget);
+    layout->addWidget(m_splinePropsWidget);
+    layout->addWidget(m_hatchPropsWidget);
+    layout->addWidget(m_ellipsePropsWidget);
     layout->addWidget(m_constraintWidget);
     layout->addStretch();
     setWidget(container);
@@ -166,6 +290,10 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
         m_blockPropsWidget->hide();
+        m_textPropsWidget->hide();
+        m_splinePropsWidget->hide();
+        m_hatchPropsWidget->hide();
+        m_ellipsePropsWidget->hide();
         m_constraintWidget->hide();
         return;
     }
@@ -177,6 +305,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
 
     // Find first selected entity.
     const draft::DraftEntity* first = nullptr;
+    if (selectedIds.empty()) return;  // Defensive guard.
     for (const auto& e : doc.entities()) {
         if (e->id() == selectedIds.front()) {
             first = e.get();
@@ -192,6 +321,10 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
         m_blockPropsWidget->hide();
+        m_textPropsWidget->hide();
+        m_splinePropsWidget->hide();
+        m_hatchPropsWidget->hide();
+        m_ellipsePropsWidget->hide();
         m_constraintWidget->hide();
         m_currentIds.clear();
         return;
@@ -213,6 +346,10 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         else if (dynamic_cast<const draft::DraftAngularDimension*>(first)) typeName = "Angular Dim";
         else if (dynamic_cast<const draft::DraftLeader*>(first)) typeName = "Leader";
         else if (dynamic_cast<const draft::DraftBlockRef*>(first)) typeName = "Block Ref";
+        else if (dynamic_cast<const draft::DraftText*>(first)) typeName = "Text";
+        else if (dynamic_cast<const draft::DraftSpline*>(first)) typeName = "Spline";
+        else if (dynamic_cast<const draft::DraftHatch*>(first)) typeName = "Hatch";
+        else if (dynamic_cast<const draft::DraftEllipse*>(first)) typeName = "Ellipse";
         m_typeLabel->setText(typeName);
         dimEntity = dynamic_cast<const draft::DraftDimension*>(first);
     } else {
@@ -257,7 +394,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         auto* bref = dynamic_cast<const draft::DraftBlockRef*>(first);
         if (bref) {
             m_blockNameLabel->setText(QString::fromStdString(bref->blockName()));
-            m_blockRotationSpin->setValue(bref->rotation() * 180.0 / 3.14159265358979323846);
+            m_blockRotationSpin->setValue(bref->rotation() * math::kRadToDeg);
             m_blockScaleSpin->setValue(bref->uniformScale());
             m_blockPropsWidget->show();
         } else {
@@ -265,6 +402,66 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         }
     } else {
         m_blockPropsWidget->hide();
+    }
+
+    // Text entity properties (single text selection only).
+    if (selectedIds.size() == 1) {
+        auto* textEnt = dynamic_cast<const draft::DraftText*>(first);
+        if (textEnt) {
+            m_textContentEdit->setText(QString::fromStdString(textEnt->text()));
+            m_textHeightSpin->setValue(textEnt->textHeight());
+            m_textRotationSpin->setValue(textEnt->rotation() * math::kRadToDeg);
+            m_textAlignCombo->setCurrentIndex(static_cast<int>(textEnt->alignment()));
+            m_textPropsWidget->show();
+        } else {
+            m_textPropsWidget->hide();
+        }
+    } else {
+        m_textPropsWidget->hide();
+    }
+
+    // Spline entity properties (single spline selection only).
+    if (selectedIds.size() == 1) {
+        auto* splineEnt = dynamic_cast<const draft::DraftSpline*>(first);
+        if (splineEnt) {
+            m_splinePointCountLabel->setText(QString::number(splineEnt->controlPointCount()));
+            m_splineClosedCombo->setCurrentIndex(splineEnt->closed() ? 1 : 0);
+            m_splinePropsWidget->show();
+        } else {
+            m_splinePropsWidget->hide();
+        }
+    } else {
+        m_splinePropsWidget->hide();
+    }
+
+    // Hatch entity properties (single hatch selection only).
+    if (selectedIds.size() == 1) {
+        auto* hatchEnt = dynamic_cast<const draft::DraftHatch*>(first);
+        if (hatchEnt) {
+            m_hatchPatternCombo->setCurrentIndex(static_cast<int>(hatchEnt->pattern()));
+            m_hatchAngleSpin->setValue(hatchEnt->angle() * math::kRadToDeg);
+            m_hatchSpacingSpin->setValue(hatchEnt->spacing());
+            m_hatchPropsWidget->show();
+        } else {
+            m_hatchPropsWidget->hide();
+        }
+    } else {
+        m_hatchPropsWidget->hide();
+    }
+
+    // Ellipse entity properties (single ellipse selection only).
+    if (selectedIds.size() == 1) {
+        auto* ellipseEnt = dynamic_cast<const draft::DraftEllipse*>(first);
+        if (ellipseEnt) {
+            m_ellipseSemiMajorSpin->setValue(ellipseEnt->semiMajor());
+            m_ellipseSemiMinorSpin->setValue(ellipseEnt->semiMinor());
+            m_ellipseRotationSpin->setValue(ellipseEnt->rotation() * math::kRadToDeg);
+            m_ellipsePropsWidget->show();
+        } else {
+            m_ellipsePropsWidget->hide();
+        }
+    } else {
+        m_ellipsePropsWidget->hide();
     }
 
     // Constraint info.
@@ -430,7 +627,7 @@ void PropertyPanel::onBlockRotationChanged(double value) {
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    double radians = value * 3.14159265358979323846 / 180.0;
+    double radians = value * math::kDegToRad;
     auto cmd = std::make_unique<doc::ChangeBlockRefRotationCommand>(
         viewport->document()->draftDocument(), m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
@@ -446,6 +643,149 @@ void PropertyPanel::onBlockScaleChanged(double value) {
 
     auto cmd = std::make_unique<doc::ChangeBlockRefScaleCommand>(
         viewport->document()->draftDocument(), m_currentIds.front(), value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onTextContentChanged() {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    std::string newText = m_textContentEdit->text().toStdString();
+    auto cmd = std::make_unique<doc::ChangeTextContentCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), newText);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onTextHeightChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeTextHeightCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onTextRotationChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    double radians = value * math::kDegToRad;
+    auto cmd = std::make_unique<doc::ChangeTextRotationCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onTextAlignmentChanged(int index) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (index < 0 || index > 2) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeTextAlignmentCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), index);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onSplineClosedChanged(int index) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (index < 0 || index > 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    bool closed = (index == 1);
+    auto cmd = std::make_unique<doc::ChangeSplineClosedCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), closed);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onHatchPatternChanged(int index) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (index < 0 || index > 2) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeHatchPatternCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), index);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onHatchAngleChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    double radians = value * math::kDegToRad;
+    auto cmd = std::make_unique<doc::ChangeHatchAngleCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onHatchSpacingChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (value < 0.01) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeHatchSpacingCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onEllipseSemiMajorChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (value < 0.001) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeEllipseSemiMajorCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onEllipseSemiMinorChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    if (value < 0.001) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeEllipseSemiMinorCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onEllipseRotationChanged(double value) {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    double radians = value * math::kDegToRad;
+    auto cmd = std::make_unique<doc::ChangeEllipseRotationCommand>(
+        viewport->document()->draftDocument(), m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }

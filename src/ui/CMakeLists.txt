@@ -32,6 +32,14 @@ add_library(hz_ui STATIC
     include/horizon/ui/ConstraintTool.h
     include/horizon/ui/InsertBlockTool.h
     include/horizon/ui/InsertBlockDialog.h
+    include/horizon/ui/TextTool.h
+    include/horizon/ui/SplineTool.h
+    include/horizon/ui/HatchTool.h
+    include/horizon/ui/EllipseTool.h
+    include/horizon/ui/GripManager.h
+    include/horizon/ui/MeasureDistanceTool.h
+    include/horizon/ui/MeasureAngleTool.h
+    include/horizon/ui/MeasureAreaTool.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -61,6 +69,14 @@ add_library(hz_ui STATIC
     src/ConstraintTool.cpp
     src/InsertBlockTool.cpp
     src/InsertBlockDialog.cpp
+    src/TextTool.cpp
+    src/SplineTool.cpp
+    src/HatchTool.cpp
+    src/EllipseTool.cpp
+    src/GripManager.cpp
+    src/MeasureDistanceTool.cpp
+    src/MeasureAngleTool.cpp
+    src/MeasureAreaTool.cpp
 )
 
 target_include_directories(hz_ui

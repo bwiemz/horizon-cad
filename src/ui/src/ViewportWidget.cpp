@@ -13,6 +13,11 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/ui/GripManager.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec4.h"
@@ -97,7 +102,25 @@ void ViewportOverlay::paintEvent(QPaintEvent* /*event*/) {
         QFontMetrics fm(painter.font());
         int tw = fm.horizontalAdvance(text);
         int th = fm.ascent();
-        painter.drawText(QPointF(sp.x() - tw * 0.5, sp.y() + th * 0.25), text);
+
+        if (std::abs(item.rotation) > 1e-6) {
+            painter.save();
+            painter.translate(sp);
+            // QPainter rotates clockwise in degrees; world rotation is CCW radians.
+            painter.rotate(-item.rotation * 180.0 / 3.14159265358979323846);
+            double dx = 0.0;
+            if (item.alignment == 0)      dx = 0.0;           // Left
+            else if (item.alignment == 1)  dx = -tw * 0.5;    // Center
+            else                           dx = -tw;           // Right
+            painter.drawText(QPointF(dx, th * 0.25), text);
+            painter.restore();
+        } else {
+            double dx = 0.0;
+            if (item.alignment == 0)      dx = 0.0;
+            else if (item.alignment == 1)  dx = -tw * 0.5;
+            else                           dx = -tw;
+            painter.drawText(QPointF(sp.x() + dx, sp.y() + th * 0.25), text);
+        }
     }
 
     painter.end();
@@ -218,6 +241,9 @@ void ViewportWidget::paintGL() {
     // Render document entities (collects dimension text info).
     m_dimTexts.clear();
     renderEntities(gl);
+
+    // Render grip squares on selected entities.
+    renderGrips(gl);
 
     // Render tool preview (rubber-band).
     renderToolPreview(gl);
@@ -429,6 +455,51 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
                 verts.push_back(static_cast<float>(pts[0].y));
                 verts.push_back(0.0f);
             }
+        } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(entity.get())) {
+            auto& verts = findOrCreateBatch(key);
+            auto evalPts = spline->evaluate();
+            for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
+                verts.push_back(static_cast<float>(evalPts[i].x));
+                verts.push_back(static_cast<float>(evalPts[i].y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(evalPts[i + 1].x));
+                verts.push_back(static_cast<float>(evalPts[i + 1].y));
+                verts.push_back(0.0f);
+            }
+        } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(entity.get())) {
+            auto& verts = findOrCreateBatch(key);
+            // Draw boundary outline.
+            const auto& bnd = hatch->boundary();
+            for (size_t i = 0; i < bnd.size(); ++i) {
+                size_t j = (i + 1) % bnd.size();
+                verts.push_back(static_cast<float>(bnd[i].x));
+                verts.push_back(static_cast<float>(bnd[i].y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(bnd[j].x));
+                verts.push_back(static_cast<float>(bnd[j].y));
+                verts.push_back(0.0f);
+            }
+            // Draw hatch fill lines.
+            auto hatchLines = hatch->generateHatchLines();
+            for (const auto& [a, b] : hatchLines) {
+                verts.push_back(static_cast<float>(a.x));
+                verts.push_back(static_cast<float>(a.y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(b.x));
+                verts.push_back(static_cast<float>(b.y));
+                verts.push_back(0.0f);
+            }
+        } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(entity.get())) {
+            auto& verts = findOrCreateBatch(key);
+            auto evalPts = ellipse->evaluate();
+            for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
+                verts.push_back(static_cast<float>(evalPts[i].x));
+                verts.push_back(static_cast<float>(evalPts[i].y));
+                verts.push_back(0.0f);
+                verts.push_back(static_cast<float>(evalPts[i + 1].x));
+                verts.push_back(static_cast<float>(evalPts[i + 1].y));
+                verts.push_back(0.0f);
+            }
         } else if (auto* dim = dynamic_cast<const draft::DraftDimension*>(entity.get())) {
             const auto& style = m_document->draftDocument().dimensionStyle();
             auto& verts = findOrCreateBatch(key);
@@ -507,8 +578,31 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
                         v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
                         v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
                     }
+                } else if (auto* sp = dynamic_cast<const draft::DraftSpline*>(subEnt.get())) {
+                    auto& v = findOrCreateBatch(subKey);
+                    auto evalPts = sp->evaluate();
+                    for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
+                        auto wp1 = bref->transformPoint(evalPts[i]);
+                        auto wp2 = bref->transformPoint(evalPts[i + 1]);
+                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
+                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                    }
+                } else if (auto* el = dynamic_cast<const draft::DraftEllipse*>(subEnt.get())) {
+                    auto& v = findOrCreateBatch(subKey);
+                    auto evalPts = el->evaluate();
+                    for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
+                        auto wp1 = bref->transformPoint(evalPts[i]);
+                        auto wp2 = bref->transformPoint(evalPts[i + 1]);
+                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
+                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                    }
                 }
             }
+        } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
+            // Text entity — collect for QPainter overlay.
+            m_dimTexts.push_back({txt->position(), txt->text(), resolvedColor,
+                                  txt->textHeight(), txt->rotation(),
+                                  static_cast<int>(txt->alignment())});
         }
     }
 
@@ -574,6 +668,48 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
         };
         math::Vec3 yellow{1.0, 1.0, 0.0};
         m_renderer->drawLines(gl, m_camera, indicator, yellow);
+    }
+}
+
+void ViewportWidget::renderGrips(QOpenGLExtraFunctions* gl) {
+    if (!m_document) return;
+    auto selectedIds = m_selectionManager.selectedIds();
+    if (selectedIds.empty()) return;
+
+    // Grip square size in world units (6 pixels).
+    double s = 6.0 * pixelToWorldScale();
+
+    std::vector<float> verts;
+    math::Vec3 green{0.0, 1.0, 0.3};
+
+    const auto& doc = m_document->draftDocument();
+    for (uint64_t id : selectedIds) {
+        for (const auto& e : doc.entities()) {
+            if (e->id() != id) continue;
+            auto grips = GripManager::gripPoints(*e);
+            for (const auto& g : grips) {
+                float gx = static_cast<float>(g.x);
+                float gy = static_cast<float>(g.y);
+                float hs = static_cast<float>(s * 0.5);
+                // Draw a small square (4 line segments).
+                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+
+                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+
+                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+
+                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+            }
+            break;
+        }
+    }
+
+    if (!verts.empty()) {
+        m_renderer->drawLines(gl, m_camera, verts, green, 1.5f);
     }
 }
 
@@ -646,15 +782,22 @@ QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
 void ViewportWidget::updateOverlayText() {
     std::vector<ViewportOverlay::TextItem> items;
 
-    // --- Dimension text ---
+    // --- Dimension + text entity text ---
     if (!m_dimTexts.empty() && m_document) {
         const auto& style = m_document->draftDocument().dimensionStyle();
         double pxPerWorld = 1.0 / pixelToWorldScale();
-        int fontSize = std::max(8, std::min(48,
+        int defaultFontSize = std::max(8, std::min(48,
             static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
 
         for (const auto& dt : m_dimTexts) {
-            items.push_back({dt.worldPos, dt.text, dt.color, fontSize, false});
+            int fs = defaultFontSize;
+            if (dt.textHeight > 0.0) {
+                // Text entity with its own height.
+                fs = std::max(8, std::min(200,
+                    static_cast<int>(dt.textHeight * pxPerWorld * 0.4)));
+            }
+            items.push_back({dt.worldPos, dt.text, dt.color, fs, false,
+                             dt.rotation, dt.alignment});
         }
     }
 

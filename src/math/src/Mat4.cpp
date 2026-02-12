@@ -85,6 +85,8 @@ Mat4 Mat4::lookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
 
 Mat4 Mat4::perspective(double fovY, double aspect, double nearPlane, double farPlane) {
     double tanHalf = std::tan(fovY / 2.0);
+    if (std::abs(tanHalf) < 1e-10) tanHalf = 1e-10;  // Prevent division by zero.
+    if (std::abs(aspect) < 1e-10) aspect = 1e-10;
     Mat4 r;
     std::memset(r.m, 0, sizeof(r.m));
     r.m[0][0] = 1.0 / (aspect * tanHalf);

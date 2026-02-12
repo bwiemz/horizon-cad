@@ -6,6 +6,9 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 
@@ -167,7 +170,26 @@ std::vector<std::pair<math::Vec2, math::Vec2>> extractSegments(const DraftEntity
         if (poly->closed() && pts.size() >= 2) {
             segs.emplace_back(pts.back(), pts.front());
         }
+    } else if (auto* spline = dynamic_cast<const DraftSpline*>(&entity)) {
+        auto pts = spline->evaluate();
+        for (size_t i = 0; i + 1 < pts.size(); ++i) {
+            segs.emplace_back(pts[i], pts[i + 1]);
+        }
+    } else if (auto* hatch = dynamic_cast<const DraftHatch*>(&entity)) {
+        const auto& boundary = hatch->boundary();
+        for (size_t i = 0; i + 1 < boundary.size(); ++i) {
+            segs.emplace_back(boundary[i], boundary[i + 1]);
+        }
+        if (boundary.size() >= 2) {
+            segs.emplace_back(boundary.back(), boundary.front());
+        }
+    } else if (auto* ellipse = dynamic_cast<const DraftEllipse*>(&entity)) {
+        auto pts = ellipse->evaluate();
+        for (size_t i = 0; i + 1 < pts.size(); ++i) {
+            segs.emplace_back(pts[i], pts[i + 1]);
+        }
     }
+    // Text and dimension entities have no geometric segments for intersection.
     // Block reference: extract and transform sub-entity segments.
     if (auto* ref = dynamic_cast<const DraftBlockRef*>(&entity)) {
         for (const auto& subEnt : ref->definition()->entities) {

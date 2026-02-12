@@ -45,6 +45,8 @@ public:
         uint32_t color;
         int fontSize;
         bool bold;
+        double rotation = 0.0;   // radians (0 = horizontal)
+        int alignment = 1;       // 0=Left, 1=Center, 2=Right
     };
 
     void setItems(std::vector<TextItem> items);
@@ -131,13 +133,17 @@ private:
     // Rendering
     void renderEntities(QOpenGLExtraFunctions* gl);
     void renderToolPreview(QOpenGLExtraFunctions* gl);
+    void renderGrips(QOpenGLExtraFunctions* gl);
     void updateOverlayText();
 
-    /// Dimension text data collected during renderEntities() for overlay.
+    /// Text data collected during renderEntities() for overlay.
     struct DimTextInfo {
         math::Vec2 worldPos;
         std::string text;
         uint32_t color;
+        double textHeight = 0.0;   // 0 = use dimension style default
+        double rotation = 0.0;
+        int alignment = 1;         // 0=Left, 1=Center, 2=Right
     };
     std::vector<DimTextInfo> m_dimTexts;
 

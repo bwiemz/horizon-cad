@@ -33,6 +33,17 @@ private slots:
     void onDeleteConstraint();
     void onBlockRotationChanged(double value);
     void onBlockScaleChanged(double value);
+    void onTextContentChanged();
+    void onTextHeightChanged(double value);
+    void onTextRotationChanged(double value);
+    void onTextAlignmentChanged(int index);
+    void onSplineClosedChanged(int index);
+    void onHatchPatternChanged(int index);
+    void onHatchAngleChanged(double value);
+    void onHatchSpacingChanged(double value);
+    void onEllipseSemiMajorChanged(double value);
+    void onEllipseSemiMinorChanged(double value);
+    void onEllipseRotationChanged(double value);
 
 private:
     void createWidgets();
@@ -57,6 +68,30 @@ private:
     QLabel* m_blockNameLabel = nullptr;
     QDoubleSpinBox* m_blockRotationSpin = nullptr;
     QDoubleSpinBox* m_blockScaleSpin = nullptr;
+
+    // Text entity specific
+    QWidget* m_textPropsWidget = nullptr;
+    QLineEdit* m_textContentEdit = nullptr;
+    QDoubleSpinBox* m_textHeightSpin = nullptr;
+    QDoubleSpinBox* m_textRotationSpin = nullptr;
+    QComboBox* m_textAlignCombo = nullptr;
+
+    // Spline-specific
+    QWidget* m_splinePropsWidget = nullptr;
+    QLabel* m_splinePointCountLabel = nullptr;
+    QComboBox* m_splineClosedCombo = nullptr;
+
+    // Hatch-specific
+    QWidget* m_hatchPropsWidget = nullptr;
+    QComboBox* m_hatchPatternCombo = nullptr;
+    QDoubleSpinBox* m_hatchAngleSpin = nullptr;
+    QDoubleSpinBox* m_hatchSpacingSpin = nullptr;
+
+    // Ellipse-specific
+    QWidget* m_ellipsePropsWidget = nullptr;
+    QDoubleSpinBox* m_ellipseSemiMajorSpin = nullptr;
+    QDoubleSpinBox* m_ellipseSemiMinorSpin = nullptr;
+    QDoubleSpinBox* m_ellipseRotationSpin = nullptr;
 
     // Constraint info
     QWidget* m_constraintWidget = nullptr;

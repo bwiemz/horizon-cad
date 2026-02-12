@@ -12,6 +12,10 @@
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/BlockTable.h"
 
 #include <nlohmann/json.hpp>
@@ -74,7 +78,7 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 6;
+    root["version"] = 10;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -143,6 +147,33 @@ bool NativeFormat::save(const std::string& filePath,
                 json pts = json::array();
                 for (const auto& pt : pl->points()) pts.push_back({{"x", pt.x}, {"y", pt.y}});
                 se["points"] = pts;
+            } else if (auto* sp = dynamic_cast<const draft::DraftSpline*>(subEnt.get())) {
+                se["type"] = "spline";
+                se["closed"] = sp->closed();
+                json cps = json::array();
+                for (const auto& cp : sp->controlPoints()) cps.push_back({{"x", cp.x}, {"y", cp.y}});
+                se["controlPoints"] = cps;
+            } else if (auto* txt = dynamic_cast<const draft::DraftText*>(subEnt.get())) {
+                se["type"] = "text";
+                se["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
+                se["text"] = txt->text();
+                se["textHeight"] = txt->textHeight();
+                se["rotation"] = txt->rotation();
+                se["alignment"] = static_cast<int>(txt->alignment());
+            } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(subEnt.get())) {
+                se["type"] = "hatch";
+                se["pattern"] = static_cast<int>(hatch->pattern());
+                se["angle"] = hatch->angle();
+                se["spacing"] = hatch->spacing();
+                json bnd = json::array();
+                for (const auto& pt : hatch->boundary()) bnd.push_back({{"x", pt.x}, {"y", pt.y}});
+                se["boundary"] = bnd;
+            } else if (auto* el = dynamic_cast<const draft::DraftEllipse*>(subEnt.get())) {
+                se["type"] = "ellipse";
+                se["center"] = {{"x", el->center().x}, {"y", el->center().y}};
+                se["semiMajor"] = el->semiMajor();
+                se["semiMinor"] = el->semiMinor();
+                se["rotation"] = el->rotation();
             }
             defEnts.push_back(se);
         }
@@ -222,6 +253,37 @@ bool NativeFormat::save(const std::string& filePath,
             obj["insertPos"] = {{"x", bref->insertPos().x}, {"y", bref->insertPos().y}};
             obj["rotation"] = bref->rotation();
             obj["scale"] = bref->uniformScale();
+        } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
+            obj["type"] = "text";
+            obj["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
+            obj["text"] = txt->text();
+            obj["textHeight"] = txt->textHeight();
+            obj["rotation"] = txt->rotation();
+            obj["alignment"] = static_cast<int>(txt->alignment());
+        } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(entity.get())) {
+            obj["type"] = "spline";
+            obj["closed"] = spline->closed();
+            json cpArray = json::array();
+            for (const auto& cp : spline->controlPoints()) {
+                cpArray.push_back({{"x", cp.x}, {"y", cp.y}});
+            }
+            obj["controlPoints"] = cpArray;
+        } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(entity.get())) {
+            obj["type"] = "hatch";
+            obj["pattern"] = static_cast<int>(hatch->pattern());
+            obj["angle"] = hatch->angle();
+            obj["spacing"] = hatch->spacing();
+            json bndArray = json::array();
+            for (const auto& pt : hatch->boundary()) {
+                bndArray.push_back({{"x", pt.x}, {"y", pt.y}});
+            }
+            obj["boundary"] = bndArray;
+        } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(entity.get())) {
+            obj["type"] = "ellipse";
+            obj["center"] = {{"x", ellipse->center().x}, {"y", ellipse->center().y}};
+            obj["semiMajor"] = ellipse->semiMajor();
+            obj["semiMinor"] = ellipse->semiMinor();
+            obj["rotation"] = ellipse->rotation();
         }
 
         entitiesArray.push_back(obj);
@@ -367,6 +429,7 @@ bool NativeFormat::load(const std::string& filePath,
     // --- Load block definitions (v6+) ---
     if (root.contains("blocks")) {
         for (const auto& blockObj : root["blocks"]) {
+            try {
             auto def = std::make_shared<draft::BlockDefinition>();
             def->name = blockObj.value("name", "");
             def->basePoint = math::Vec2(
@@ -399,6 +462,35 @@ bool NativeFormat::load(const std::string& filePath,
                         for (const auto& pt : se["points"])
                             pts.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
                         subEnt = std::make_shared<draft::DraftPolyline>(pts, se.value("closed", false));
+                    } else if (stype == "spline") {
+                        std::vector<math::Vec2> cps;
+                        for (const auto& cp : se["controlPoints"])
+                            cps.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+                        subEnt = std::make_shared<draft::DraftSpline>(cps, se.value("closed", false));
+                    } else if (stype == "text") {
+                        auto pos = math::Vec2(se["position"]["x"].get<double>(),
+                                               se["position"]["y"].get<double>());
+                        auto txt = std::make_shared<draft::DraftText>(
+                            pos, se.value("text", ""), se.value("textHeight", 2.5));
+                        if (se.contains("rotation"))
+                            txt->setRotation(se["rotation"].get<double>());
+                        if (se.contains("alignment"))
+                            txt->setAlignment(static_cast<draft::TextAlignment>(se["alignment"].get<int>()));
+                        subEnt = txt;
+                    } else if (stype == "hatch") {
+                        std::vector<math::Vec2> boundary;
+                        for (const auto& pt : se["boundary"])
+                            boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                        subEnt = std::make_shared<draft::DraftHatch>(
+                            boundary,
+                            static_cast<draft::HatchPattern>(se.value("pattern", 1)),
+                            se.value("angle", 0.0), se.value("spacing", 1.0));
+                    } else if (stype == "ellipse") {
+                        auto ctr = math::Vec2(se["center"]["x"].get<double>(),
+                                               se["center"]["y"].get<double>());
+                        subEnt = std::make_shared<draft::DraftEllipse>(
+                            ctr, se.value("semiMajor", 1.0),
+                            se.value("semiMinor", 1.0), se.value("rotation", 0.0));
                     }
                     if (subEnt) {
                         subEnt->setLayer(se.value("layer", "0"));
@@ -409,11 +501,15 @@ bool NativeFormat::load(const std::string& filePath,
                 }
             }
             doc.draftDocument().blockTable().addBlock(def);
+            } catch (const nlohmann::json::exception&) {
+                continue;  // Skip malformed block definitions.
+            }
         }
     }
 
     // --- Load entities ---
     for (const auto& obj : root["entities"]) {
+        try {
         std::string type = obj.value("type", "");
         std::string layer = obj.value("layer", "0");
         uint32_t color = obj.value("color", 0xFFFFFFFFu);
@@ -512,6 +608,41 @@ bool NativeFormat::load(const std::string& filePath,
                 double scl = obj.value("scale", 1.0);
                 entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
             }
+        } else if (type == "text") {
+            auto pos = math::Vec2(obj["position"]["x"].get<double>(),
+                                   obj["position"]["y"].get<double>());
+            std::string text = obj.value("text", "");
+            double textHeight = obj.value("textHeight", 2.5);
+            auto txt = std::make_shared<draft::DraftText>(pos, text, textHeight);
+            if (obj.contains("rotation"))
+                txt->setRotation(obj["rotation"].get<double>());
+            if (obj.contains("alignment"))
+                txt->setAlignment(static_cast<draft::TextAlignment>(obj["alignment"].get<int>()));
+            entity = txt;
+        } else if (type == "spline") {
+            bool closed = obj.value("closed", false);
+            std::vector<math::Vec2> controlPoints;
+            for (const auto& cp : obj["controlPoints"]) {
+                controlPoints.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+            }
+            entity = std::make_shared<draft::DraftSpline>(controlPoints, closed);
+        } else if (type == "hatch") {
+            std::vector<math::Vec2> boundary;
+            for (const auto& pt : obj["boundary"]) {
+                boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+            }
+            auto hatchPattern = static_cast<draft::HatchPattern>(obj.value("pattern", 1));
+            double hatchAngle = obj.value("angle", 0.0);
+            double hatchSpacing = obj.value("spacing", 1.0);
+            entity = std::make_shared<draft::DraftHatch>(boundary, hatchPattern,
+                                                          hatchAngle, hatchSpacing);
+        } else if (type == "ellipse") {
+            auto center = math::Vec2(obj["center"]["x"].get<double>(),
+                                      obj["center"]["y"].get<double>());
+            double semiMajor = obj.value("semiMajor", 1.0);
+            double semiMinor = obj.value("semiMinor", 1.0);
+            double rot = obj.value("rotation", 0.0);
+            entity = std::make_shared<draft::DraftEllipse>(center, semiMajor, semiMinor, rot);
         }
 
         if (entity) {
@@ -525,6 +656,9 @@ bool NativeFormat::load(const std::string& filePath,
             entity->setColor(color);
             entity->setLineWidth(lineWidth);
             doc.draftDocument().addEntity(entity);
+        }
+        } catch (const nlohmann::json::exception&) {
+            continue;  // Skip malformed entities.
         }
     }
 

@@ -25,6 +25,13 @@
 #include "horizon/ui/RadialDimensionTool.h"
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/LeaderTool.h"
+#include "horizon/ui/TextTool.h"
+#include "horizon/ui/SplineTool.h"
+#include "horizon/ui/HatchTool.h"
+#include "horizon/ui/EllipseTool.h"
+#include "horizon/ui/MeasureDistanceTool.h"
+#include "horizon/ui/MeasureAngleTool.h"
+#include "horizon/ui/MeasureAreaTool.h"
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/InsertBlockTool.h"
 #include "horizon/ui/InsertBlockDialog.h"
@@ -34,6 +41,7 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/document/Commands.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/DxfFormat.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -166,6 +174,10 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Arc"), this, &MainWindow::onArcTool);
     toolsMenu->addAction(tr("&Rectangle"), this, &MainWindow::onRectangleTool);
     toolsMenu->addAction(tr("&Polyline"), this, &MainWindow::onPolylineTool);
+    toolsMenu->addAction(tr("&Text"), this, &MainWindow::onTextTool);
+    toolsMenu->addAction(tr("&Spline"), this, &MainWindow::onSplineTool);
+    toolsMenu->addAction(tr("&Hatch"), this, &MainWindow::onHatchTool);
+    toolsMenu->addAction(tr("&Ellipse"), this, &MainWindow::onEllipseTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Move"), this, &MainWindow::onMoveTool);
     toolsMenu->addAction(tr("&Offset"), this, &MainWindow::onOffsetTool);
@@ -178,6 +190,12 @@ void MainWindow::createMenus() {
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
     toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
+
+    // ---- Measure ----
+    QMenu* measureMenu = menuBar()->addMenu(tr("&Measure"));
+    measureMenu->addAction(tr("&Distance"), this, &MainWindow::onMeasureDistanceTool);
+    measureMenu->addAction(tr("&Angle"), this, &MainWindow::onMeasureAngleTool);
+    measureMenu->addAction(tr("A&rea"), this, &MainWindow::onMeasureAreaTool);
 
     // ---- Dimension ----
     QMenu* dimMenu = menuBar()->addMenu(tr("&Dimension"));
@@ -380,6 +398,13 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<AngularDimensionTool>());
     m_toolManager->registerTool(std::make_unique<LeaderTool>());
     m_toolManager->registerTool(std::make_unique<ConstraintTool>());
+    m_toolManager->registerTool(std::make_unique<TextTool>());
+    m_toolManager->registerTool(std::make_unique<SplineTool>());
+    m_toolManager->registerTool(std::make_unique<HatchTool>());
+    m_toolManager->registerTool(std::make_unique<EllipseTool>());
+    m_toolManager->registerTool(std::make_unique<MeasureDistanceTool>());
+    m_toolManager->registerTool(std::make_unique<MeasureAngleTool>());
+    m_toolManager->registerTool(std::make_unique<MeasureAreaTool>());
 }
 
 // ---------------------------------------------------------------------------
@@ -409,11 +434,18 @@ void MainWindow::onNewFile() {
 void MainWindow::onOpenFile() {
     QString fileName = QFileDialog::getOpenFileName(
         this, tr("Open File"), QString(),
-        tr("Horizon CAD Files (*.hcad);;All Files (*)"));
+        tr("All Supported Files (*.hcad *.dxf);;Horizon CAD Files (*.hcad);;DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
 
     doc::Document tempDoc;
-    if (io::NativeFormat::load(fileName.toStdString(), tempDoc)) {
+    std::string path = fileName.toStdString();
+    bool ok = false;
+    if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
+        ok = io::DxfFormat::load(path, tempDoc);
+    } else {
+        ok = io::NativeFormat::load(path, tempDoc);
+    }
+    if (ok) {
         m_document->clear();
         m_document->setFilePath(fileName.toStdString());
         // Copy layers.
@@ -457,7 +489,14 @@ void MainWindow::onSaveFile() {
         onSaveFileAs();
         return;
     }
-    if (io::NativeFormat::save(m_document->filePath(), *m_document)) {
+    std::string path = m_document->filePath();
+    bool ok = false;
+    if (QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive)) {
+        ok = io::DxfFormat::save(path, *m_document);
+    } else {
+        ok = io::NativeFormat::save(path, *m_document);
+    }
+    if (ok) {
         m_document->setDirty(false);
         statusBar()->showMessage(tr("File saved."), 3000);
     } else {
@@ -468,7 +507,7 @@ void MainWindow::onSaveFile() {
 void MainWindow::onSaveFileAs() {
     QString fileName = QFileDialog::getSaveFileName(
         this, tr("Save File"), QString(),
-        tr("Horizon CAD Files (*.hcad);;All Files (*)"));
+        tr("Horizon CAD Files (*.hcad);;DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
 
     m_document->setFilePath(fileName.toStdString());
@@ -810,6 +849,45 @@ void MainWindow::onAngularDimTool() {
 
 void MainWindow::onLeaderTool() {
     m_toolManager->setActiveTool("Leader");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onTextTool() {
+    m_toolManager->setActiveTool("Text");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onSplineTool() {
+    m_toolManager->setActiveTool("Spline");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onHatchTool() {
+    m_toolManager->setActiveTool("Hatch");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onEllipseTool() {
+    m_toolManager->setActiveTool("Ellipse");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Measure tools
+// ---------------------------------------------------------------------------
+
+void MainWindow::onMeasureDistanceTool() {
+    m_toolManager->setActiveTool("MeasureDistance");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onMeasureAngleTool() {
+    m_toolManager->setActiveTool("MeasureAngle");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+}
+
+void MainWindow::onMeasureAreaTool() {
+    m_toolManager->setActiveTool("MeasureArea");
     m_viewport->setActiveTool(m_toolManager->activeTool());
 }
 
