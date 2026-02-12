@@ -165,4 +165,15 @@ std::vector<std::pair<math::Vec2, math::Vec2>> EllipseTool::getPreviewLines() co
     return lines;
 }
 
+std::string EllipseTool::promptText() const {
+    switch (m_state) {
+        case State::Center: return "Specify center point";
+        case State::MajorAxis: return "Specify major axis endpoint";
+        case State::MinorAxis: return "Specify minor axis radius";
+    }
+    return "";
+}
+
+bool EllipseTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

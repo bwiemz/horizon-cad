@@ -100,4 +100,14 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RectangleTool::getPreviewLines() 
     return {{bl, br}, {br, tr}, {tr, tl}, {tl, bl}};
 }
 
+std::string RectangleTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForFirstCorner: return "Specify first corner";
+        case State::WaitingForSecondCorner: return "Specify opposite corner";
+    }
+    return "";
+}
+
+bool RectangleTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

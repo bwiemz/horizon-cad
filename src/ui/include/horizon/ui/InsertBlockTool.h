@@ -28,6 +28,9 @@ public:
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
     std::vector<std::pair<math::Vec2, double>> getPreviewCircles() const override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     std::shared_ptr<draft::BlockDefinition> m_definition;
     double m_rotation;

@@ -13,6 +13,9 @@ public:
     bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool keyPressEvent(QKeyEvent* event) override;
     void cancel() override;
+
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
 };
 
 }  // namespace hz::ui

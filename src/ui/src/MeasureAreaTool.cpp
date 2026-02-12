@@ -150,4 +150,11 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MeasureAreaTool::getPreviewLines(
     return lines;
 }
 
+std::string MeasureAreaTool::promptText() const {
+    if (!m_active || m_points.empty()) return "Specify first vertex";
+    return "Specify next vertex, Enter to finish";
+}
+
+bool MeasureAreaTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

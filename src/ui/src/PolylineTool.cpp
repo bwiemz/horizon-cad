@@ -116,4 +116,11 @@ std::vector<std::pair<math::Vec2, math::Vec2>> PolylineTool::getPreviewLines() c
     return lines;
 }
 
+std::string PolylineTool::promptText() const {
+    if (!m_active || m_points.empty()) return "Specify first point";
+    return "Specify next point, Enter to finish";
+}
+
+bool PolylineTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

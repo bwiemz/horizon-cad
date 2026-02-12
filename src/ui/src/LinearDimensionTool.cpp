@@ -154,4 +154,15 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LinearDimensionTool::getPreviewLi
     return {};
 }
 
+std::string LinearDimensionTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForPoint1: return "Specify first dimension point";
+        case State::WaitingForPoint2: return "Specify second dimension point";
+        case State::WaitingForDimLine: return "Specify dimension line position";
+    }
+    return "";
+}
+
+bool LinearDimensionTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

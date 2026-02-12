@@ -218,4 +218,11 @@ void MoveTool::cancel() {
     }
 }
 
+std::string MoveTool::promptText() const {
+    if (m_dragging) return "Specify destination";
+    return "Select entities and click to drag";
+}
+
+bool MoveTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

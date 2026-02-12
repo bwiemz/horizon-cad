@@ -26,6 +26,9 @@ public:
 
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     enum class State { WaitingForStart, WaitingForEnd };
     State m_state = State::WaitingForStart;

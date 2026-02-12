@@ -25,6 +25,9 @@ public:
 
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     // Grip dragging state.
     bool m_draggingGrip = false;

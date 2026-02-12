@@ -114,4 +114,10 @@ std::vector<std::pair<math::Vec2, double>> PasteTool::getPreviewCircles() const 
     return result;
 }
 
+std::string PasteTool::promptText() const {
+    return "Click to place pasted entities";
+}
+
+bool PasteTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

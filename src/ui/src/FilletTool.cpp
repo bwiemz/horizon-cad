@@ -302,4 +302,14 @@ std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
     return {};
 }
 
+std::string FilletTool::promptText() const {
+    switch (m_state) {
+        case State::SelectFirstLine: return "Select first line for fillet";
+        case State::SelectSecondLine: return "Select second line for fillet";
+    }
+    return "";
+}
+
+bool FilletTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

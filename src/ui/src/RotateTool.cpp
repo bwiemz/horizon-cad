@@ -247,4 +247,14 @@ std::vector<Tool::ArcPreview> RotateTool::getPreviewArcs() const {
     return {};
 }
 
+std::string RotateTool::promptText() const {
+    switch (m_state) {
+        case State::SelectCenter: return "Specify center of rotation";
+        case State::SelectAngle: return "Specify rotation angle or type degrees";
+    }
+    return "";
+}
+
+bool RotateTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

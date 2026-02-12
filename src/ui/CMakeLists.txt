@@ -40,6 +40,9 @@ add_library(hz_ui STATIC
     include/horizon/ui/MeasureDistanceTool.h
     include/horizon/ui/MeasureAngleTool.h
     include/horizon/ui/MeasureAreaTool.h
+    include/horizon/ui/IconGenerator.h
+    include/horizon/ui/RibbonBar.h
+    include/horizon/ui/OverlayRenderer.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ToolManager.cpp
@@ -77,6 +80,9 @@ add_library(hz_ui STATIC
     src/MeasureDistanceTool.cpp
     src/MeasureAngleTool.cpp
     src/MeasureAreaTool.cpp
+    src/IconGenerator.cpp
+    src/RibbonBar.cpp
+    src/OverlayRenderer.cpp
 )
 
 target_include_directories(hz_ui

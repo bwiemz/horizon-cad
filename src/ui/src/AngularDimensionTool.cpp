@@ -177,4 +177,15 @@ std::vector<std::pair<math::Vec2, math::Vec2>> AngularDimensionTool::getPreviewL
     return lines;
 }
 
+std::string AngularDimensionTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForLine1: return "Select first line";
+        case State::WaitingForLine2: return "Select second line";
+        case State::WaitingForArcPos: return "Specify dimension arc position";
+    }
+    return "";
+}
+
+bool AngularDimensionTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

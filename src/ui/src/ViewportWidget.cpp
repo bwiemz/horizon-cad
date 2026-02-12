@@ -30,6 +30,7 @@
 #include <QPainter>
 #include <QFont>
 #include <QFontMetrics>
+#include <QImage>
 
 #include <cmath>
 
@@ -58,75 +59,6 @@ namespace hz::ui {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// ViewportOverlay
-// ---------------------------------------------------------------------------
-
-ViewportOverlay::ViewportOverlay(ViewportWidget* viewport)
-    : QWidget(viewport)
-    , m_viewport(viewport) {
-    setAttribute(Qt::WA_TransparentForMouseEvents);
-    setAttribute(Qt::WA_NoSystemBackground);
-    setAttribute(Qt::WA_TranslucentBackground);
-}
-
-void ViewportOverlay::setItems(std::vector<TextItem> items) {
-    m_items = std::move(items);
-    update();
-}
-
-void ViewportOverlay::paintEvent(QPaintEvent* /*event*/) {
-    if (m_items.empty()) return;
-
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    int lastFontSize = -1;
-    bool lastBold = false;
-
-    for (const auto& item : m_items) {
-        if (item.fontSize != lastFontSize || item.bold != lastBold) {
-            QFont font("Arial", item.fontSize);
-            font.setBold(item.bold);
-            painter.setFont(font);
-            lastFontSize = item.fontSize;
-            lastBold = item.bold;
-        }
-
-        QPointF sp = m_viewport->worldToScreen(item.worldPos);
-        QColor qc(static_cast<int>((item.color >> 16) & 0xFF),
-                   static_cast<int>((item.color >> 8) & 0xFF),
-                   static_cast<int>(item.color & 0xFF));
-        painter.setPen(qc);
-
-        QString text = QString::fromUtf8(item.text.c_str());
-        QFontMetrics fm(painter.font());
-        int tw = fm.horizontalAdvance(text);
-        int th = fm.ascent();
-
-        if (std::abs(item.rotation) > 1e-6) {
-            painter.save();
-            painter.translate(sp);
-            // QPainter rotates clockwise in degrees; world rotation is CCW radians.
-            painter.rotate(-item.rotation * 180.0 / 3.14159265358979323846);
-            double dx = 0.0;
-            if (item.alignment == 0)      dx = 0.0;           // Left
-            else if (item.alignment == 1)  dx = -tw * 0.5;    // Center
-            else                           dx = -tw;           // Right
-            painter.drawText(QPointF(dx, th * 0.25), text);
-            painter.restore();
-        } else {
-            double dx = 0.0;
-            if (item.alignment == 0)      dx = 0.0;
-            else if (item.alignment == 1)  dx = -tw * 0.5;
-            else                           dx = -tw;
-            painter.drawText(QPointF(sp.x() + dx, sp.y() + th * 0.25), text);
-        }
-    }
-
-    painter.end();
-}
-
-// ---------------------------------------------------------------------------
 // ViewportWidget
 // ---------------------------------------------------------------------------
 
@@ -135,9 +67,6 @@ ViewportWidget::ViewportWidget(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
 
-    // Transparent overlay for text (avoids QPainter-on-QOpenGLWidget Qt bug).
-    m_overlay = new ViewportOverlay(this);
-
     // Default camera looking at origin from an isometric-ish angle.
     m_camera.setIsometricView();
 }
@@ -145,6 +74,11 @@ ViewportWidget::ViewportWidget(QWidget* parent)
 ViewportWidget::~ViewportWidget() {
     // Make the context current before destroying GL resources.
     makeCurrent();
+    auto* gl = QOpenGLContext::currentContext()->extraFunctions();
+    if (m_textOverlayTex) gl->glDeleteTextures(1, &m_textOverlayTex);
+    if (m_textOverlayVAO) gl->glDeleteVertexArrays(1, &m_textOverlayVAO);
+    if (m_textOverlayVBO) gl->glDeleteBuffers(1, &m_textOverlayVBO);
+    if (m_textOverlayShader) gl->glDeleteProgram(m_textOverlayShader);
     m_renderer.reset();
     doneCurrent();
 }
@@ -170,6 +104,9 @@ void ViewportWidget::setActiveTool(Tool* tool) {
     m_activeTool = tool;
     if (m_activeTool) {
         m_activeTool->activate(this);
+        m_overlayRenderer.setCrosshairEnabled(m_activeTool->wantsCrosshair());
+    } else {
+        m_overlayRenderer.setCrosshairEnabled(false);
     }
 }
 
@@ -212,13 +149,15 @@ void ViewportWidget::initializeGL() {
     m_renderer = std::make_unique<render::GLRenderer>();
     m_renderer->initialize(gl);
     m_renderer->setBackgroundColor(0.18f, 0.18f, 0.20f);
+
+    // Set up GL resources for text overlay (QImage → texture → quad).
+    initTextOverlayGL(gl);
 }
 
 void ViewportWidget::resizeGL(int w, int h) {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
 
     m_renderer->resize(gl, w, h);
-    m_overlay->resize(w, h);
 
     double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
     m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
@@ -248,9 +187,16 @@ void ViewportWidget::paintGL() {
     // Render tool preview (rubber-band).
     renderToolPreview(gl);
 
-    // Update the text overlay widget (QPainter runs on a regular QWidget,
-    // not the QOpenGLWidget, avoiding the Qt 6.10 qpixmap_win.cpp assert).
-    updateOverlayText();
+    // GL overlays: crosshair, snap markers, axis indicator.
+    m_overlayRenderer.setSnapResult(m_lastSnapResult);
+    m_overlayRenderer.render(gl, m_camera, m_renderer.get(),
+                             width(), height(), pixelToWorldScale());
+
+    // Render text overlay: paint to an offscreen QImage (QPainter on QImage
+    // is pure CPU — no Windows bitmap mask operations), then upload as a GL
+    // texture and draw a fullscreen quad.  This avoids the Qt 6.10
+    // qpixmap_win.cpp assertion triggered by QPainter on QOpenGLWidget.
+    blitTextOverlay(gl);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +251,9 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
     // Compute the world position and emit signal for status bar.
     math::Vec2 wp = worldPositionAtCursor(event->pos().x(), event->pos().y());
     emit mouseMoved(wp);
+
+    // Update crosshair position for overlay renderer.
+    m_overlayRenderer.setCrosshairWorldPos(wp);
 
     // Delegate to tool.
     if (m_activeTool) {
@@ -656,19 +605,7 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
         }
     }
 
-    // Snap indicator (yellow cross).
-    if (m_lastSnapResult.type != draft::SnapType::None) {
-        math::Vec2 sp = m_lastSnapResult.point;
-        float s = 0.15f;
-        std::vector<float> indicator = {
-            static_cast<float>(sp.x - s), static_cast<float>(sp.y), 0.0f,
-            static_cast<float>(sp.x + s), static_cast<float>(sp.y), 0.0f,
-            static_cast<float>(sp.x), static_cast<float>(sp.y - s), 0.0f,
-            static_cast<float>(sp.x), static_cast<float>(sp.y + s), 0.0f,
-        };
-        math::Vec3 yellow{1.0, 1.0, 0.0};
-        m_renderer->drawLines(gl, m_camera, indicator, yellow);
-    }
+    // Snap indicator is now rendered by OverlayRenderer in paintGL().
 }
 
 void ViewportWidget::renderGrips(QOpenGLExtraFunctions* gl) {
@@ -779,8 +716,56 @@ QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
     return {sx, sy};
 }
 
-void ViewportWidget::updateOverlayText() {
-    std::vector<ViewportOverlay::TextItem> items;
+void ViewportWidget::renderTextToImage(QImage& image) {
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // Helper to draw a single text item at a world position.
+    struct TextItem {
+        math::Vec2 worldPos;
+        std::string text;
+        uint32_t color;
+        int fontSize;
+        bool bold;
+        double rotation = 0.0;
+        int alignment = 1;  // 0=Left, 1=Center, 2=Right
+    };
+
+    auto drawItem = [&](const TextItem& item) {
+        QPointF sp = worldToScreen(item.worldPos);
+        QColor qc(static_cast<int>((item.color >> 16) & 0xFF),
+                   static_cast<int>((item.color >> 8) & 0xFF),
+                   static_cast<int>(item.color & 0xFF));
+        painter.setPen(qc);
+
+        QFont font("Arial", item.fontSize);
+        font.setBold(item.bold);
+        painter.setFont(font);
+
+        QString text = QString::fromUtf8(item.text.c_str());
+        QFontMetrics fm(painter.font());
+        int tw = fm.horizontalAdvance(text);
+        int th = fm.ascent();
+
+        if (std::abs(item.rotation) > 1e-6) {
+            painter.save();
+            painter.translate(sp);
+            // QPainter rotates clockwise in degrees; world rotation is CCW radians.
+            painter.rotate(-item.rotation * 180.0 / 3.14159265358979323846);
+            double dx = 0.0;
+            if (item.alignment == 0)      dx = 0.0;
+            else if (item.alignment == 1)  dx = -tw * 0.5;
+            else                           dx = -tw;
+            painter.drawText(QPointF(dx, th * 0.25), text);
+            painter.restore();
+        } else {
+            double dx = 0.0;
+            if (item.alignment == 0)      dx = 0.0;
+            else if (item.alignment == 1)  dx = -tw * 0.5;
+            else                           dx = -tw;
+            painter.drawText(QPointF(sp.x() + dx, sp.y() + th * 0.25), text);
+        }
+    };
 
     // --- Dimension + text entity text ---
     if (!m_dimTexts.empty() && m_document) {
@@ -792,12 +777,11 @@ void ViewportWidget::updateOverlayText() {
         for (const auto& dt : m_dimTexts) {
             int fs = defaultFontSize;
             if (dt.textHeight > 0.0) {
-                // Text entity with its own height.
                 fs = std::max(8, std::min(200,
                     static_cast<int>(dt.textHeight * pxPerWorld * 0.4)));
             }
-            items.push_back({dt.worldPos, dt.text, dt.color, fs, false,
-                             dt.rotation, dt.alignment});
+            drawItem({dt.worldPos, dt.text, dt.color, fs, false,
+                      dt.rotation, dt.alignment});
         }
     }
 
@@ -871,12 +855,125 @@ void ViewportWidget::updateOverlayText() {
                 // Offset slightly above the position.
                 pos.y += pixelToWorldScale() * 12.0;
 
-                items.push_back({pos, symbol, color, fontSize, true});
+                drawItem({pos, symbol, color, fontSize, true});
             }
         }
     }
 
-    m_overlay->setItems(std::move(items));
+    painter.end();
+}
+
+// ---------------------------------------------------------------------------
+// Text overlay GL resources — render text to QImage then blit via GL texture
+// ---------------------------------------------------------------------------
+
+void ViewportWidget::initTextOverlayGL(QOpenGLExtraFunctions* gl) {
+    // --- Shader program ---
+    const char* vertSrc = R"(
+        #version 330 core
+        layout(location = 0) in vec2 aPos;
+        layout(location = 1) in vec2 aUV;
+        out vec2 vUV;
+        void main() {
+            gl_Position = vec4(aPos, 0.0, 1.0);
+            vUV = aUV;
+        }
+    )";
+    const char* fragSrc = R"(
+        #version 330 core
+        in vec2 vUV;
+        out vec4 FragColor;
+        uniform sampler2D uTex;
+        void main() {
+            FragColor = texture(uTex, vUV);
+        }
+    )";
+
+    auto compileShader = [&](unsigned int type, const char* src) -> unsigned int {
+        unsigned int s = gl->glCreateShader(type);
+        gl->glShaderSource(s, 1, &src, nullptr);
+        gl->glCompileShader(s);
+        return s;
+    };
+
+    unsigned int vs = compileShader(GL_VERTEX_SHADER, vertSrc);
+    unsigned int fs = compileShader(GL_FRAGMENT_SHADER, fragSrc);
+    m_textOverlayShader = gl->glCreateProgram();
+    gl->glAttachShader(m_textOverlayShader, vs);
+    gl->glAttachShader(m_textOverlayShader, fs);
+    gl->glLinkProgram(m_textOverlayShader);
+    gl->glDeleteShader(vs);
+    gl->glDeleteShader(fs);
+
+    // --- Fullscreen quad (NDC coords + UVs) ---
+    // Two triangles covering [-1,1] in clip space.
+    float quadVerts[] = {
+        // pos        uv
+        -1.f, -1.f,  0.f, 0.f,
+         1.f, -1.f,  1.f, 0.f,
+         1.f,  1.f,  1.f, 1.f,
+
+        -1.f, -1.f,  0.f, 0.f,
+         1.f,  1.f,  1.f, 1.f,
+        -1.f,  1.f,  0.f, 1.f,
+    };
+
+    gl->glGenVertexArrays(1, &m_textOverlayVAO);
+    gl->glGenBuffers(1, &m_textOverlayVBO);
+    gl->glBindVertexArray(m_textOverlayVAO);
+    gl->glBindBuffer(GL_ARRAY_BUFFER, m_textOverlayVBO);
+    gl->glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+    gl->glEnableVertexAttribArray(0);
+    gl->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
+    gl->glEnableVertexAttribArray(1);
+    gl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                              reinterpret_cast<void*>(2 * sizeof(float)));
+    gl->glBindVertexArray(0);
+
+    // --- Texture ---
+    gl->glGenTextures(1, &m_textOverlayTex);
+    gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl->glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void ViewportWidget::blitTextOverlay(QOpenGLExtraFunctions* gl) {
+    int w = width();
+    int h = height();
+    if (w <= 0 || h <= 0) return;
+
+    // 1. Render text to a QImage (QPainter on QImage is pure CPU).
+    QImage image(w, h, QImage::Format_RGBA8888_Premultiplied);
+    image.fill(Qt::transparent);
+    renderTextToImage(image);
+
+    // 2. Upload QImage pixels to the GL texture.
+    gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
+    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, image.constBits());
+
+    // 3. Draw a fullscreen quad with alpha blending.
+    // Use premultiplied-alpha blend (GL_ONE) since the QImage is premultiplied.
+    gl->glDisable(GL_DEPTH_TEST);
+    gl->glEnable(GL_BLEND);
+    gl->glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    gl->glUseProgram(m_textOverlayShader);
+    int loc = gl->glGetUniformLocation(m_textOverlayShader, "uTex");
+    gl->glUniform1i(loc, 0);
+    gl->glActiveTexture(GL_TEXTURE0);
+    gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
+
+    gl->glBindVertexArray(m_textOverlayVAO);
+    gl->glDrawArrays(GL_TRIANGLES, 0, 6);
+    gl->glBindVertexArray(0);
+
+    gl->glUseProgram(0);
+    gl->glBindTexture(GL_TEXTURE_2D, 0);
+    gl->glEnable(GL_DEPTH_TEST);
 }
 
 }  // namespace hz::ui

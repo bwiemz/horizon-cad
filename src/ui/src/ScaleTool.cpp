@@ -251,4 +251,14 @@ std::vector<Tool::ArcPreview> ScaleTool::getPreviewArcs() const {
     return {};
 }
 
+std::string ScaleTool::promptText() const {
+    switch (m_state) {
+        case State::SelectBasePoint: return "Specify base point";
+        case State::SelectScaleFactor: return "Specify scale factor or type value";
+    }
+    return "";
+}
+
+bool ScaleTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

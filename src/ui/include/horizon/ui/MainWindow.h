@@ -8,12 +8,15 @@
 
 #include <memory>
 
+class QLabel;
+
 namespace hz::ui {
 
 class ViewportWidget;
 class ToolManager;
 class PropertyPanel;
 class LayerPanel;
+class RibbonBar;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -91,9 +94,10 @@ private slots:
 
 private:
     void createMenus();
-    void createToolBar();
+    void createRibbonBar();
     void createStatusBar();
     void registerTools();
+    void updateStatusBar();
 
     ViewportWidget* m_viewport = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
@@ -101,6 +105,14 @@ private:
     Clipboard m_clipboard;
     PropertyPanel* m_propertyPanel = nullptr;
     LayerPanel* m_layerPanel = nullptr;
+    RibbonBar* m_ribbonBar = nullptr;
+
+    // Status bar widgets
+    QLabel* m_statusCoords = nullptr;
+    QLabel* m_statusPrompt = nullptr;
+    QLabel* m_statusSnap = nullptr;
+    QLabel* m_statusSelection = nullptr;
+    QLabel* m_statusTool = nullptr;
 };
 
 }  // namespace hz::ui

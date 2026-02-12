@@ -10,12 +10,14 @@
 #include "horizon/render/Camera.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/drafting/SnapEngine.h"
+#include "horizon/ui/OverlayRenderer.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 class QOpenGLExtraFunctions;
+class QImage;
 
 namespace hz::render {
 class GLRenderer;
@@ -28,36 +30,6 @@ class Document;
 namespace hz::ui {
 
 class Tool;
-class ViewportWidget;
-
-/// Transparent overlay widget for text rendering on top of the GL viewport.
-/// Uses a regular QWidget (not QOpenGLWidget) to avoid the Qt 6.10 Windows
-/// qpixmap_win.cpp assertion when using QPainter on QOpenGLWidget.
-class ViewportOverlay : public QWidget {
-    Q_OBJECT
-
-public:
-    explicit ViewportOverlay(ViewportWidget* viewport);
-
-    struct TextItem {
-        math::Vec2 worldPos;
-        std::string text;
-        uint32_t color;
-        int fontSize;
-        bool bold;
-        double rotation = 0.0;   // radians (0 = horizontal)
-        int alignment = 1;       // 0=Left, 1=Center, 2=Right
-    };
-
-    void setItems(std::vector<TextItem> items);
-
-protected:
-    void paintEvent(QPaintEvent* event) override;
-
-private:
-    ViewportWidget* m_viewport;
-    std::vector<TextItem> m_items;
-};
 
 /// The main 2D/3D viewport widget backed by OpenGL.
 ///
@@ -134,7 +106,9 @@ private:
     void renderEntities(QOpenGLExtraFunctions* gl);
     void renderToolPreview(QOpenGLExtraFunctions* gl);
     void renderGrips(QOpenGLExtraFunctions* gl);
-    void updateOverlayText();
+    void renderTextToImage(QImage& image);
+    void initTextOverlayGL(QOpenGLExtraFunctions* gl);
+    void blitTextOverlay(QOpenGLExtraFunctions* gl);
 
     /// Text data collected during renderEntities() for overlay.
     struct DimTextInfo {
@@ -173,8 +147,14 @@ private:
     // Active tool
     Tool* m_activeTool = nullptr;
 
-    // Text overlay (non-owning, child widget)
-    ViewportOverlay* m_overlay = nullptr;
+    // GL overlay renderer (crosshair, snap markers, axis indicator)
+    OverlayRenderer m_overlayRenderer;
+
+    // Text overlay GL resources (renders to QImage, uploads as texture)
+    unsigned int m_textOverlayTex = 0;
+    unsigned int m_textOverlayVAO = 0;
+    unsigned int m_textOverlayVBO = 0;
+    unsigned int m_textOverlayShader = 0;
 
     // Navigation state
     bool m_orbiting = false;

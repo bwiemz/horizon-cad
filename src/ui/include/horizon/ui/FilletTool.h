@@ -24,6 +24,9 @@ public:
 
     std::vector<ArcPreview> getPreviewArcs() const override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     enum class State { SelectFirstLine, SelectSecondLine };
     State m_state = State::SelectFirstLine;

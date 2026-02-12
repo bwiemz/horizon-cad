@@ -128,4 +128,14 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RadialDimensionTool::getPreviewLi
     return lines;
 }
 
+std::string RadialDimensionTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForCircle: return "Select circle or arc to dimension";
+        case State::WaitingForTextPos: return "Specify dimension text position";
+    }
+    return "";
+}
+
+bool RadialDimensionTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

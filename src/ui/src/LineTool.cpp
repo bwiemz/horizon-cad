@@ -97,4 +97,14 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LineTool::getPreviewLines() const
     return {};
 }
 
+std::string LineTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForStart: return "Specify first point";
+        case State::WaitingForEnd: return "Specify next point or press Escape";
+    }
+    return "";
+}
+
+bool LineTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

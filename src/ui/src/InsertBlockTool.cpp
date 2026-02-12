@@ -150,4 +150,10 @@ std::vector<std::pair<math::Vec2, double>> InsertBlockTool::getPreviewCircles() 
     return circles;
 }
 
+std::string InsertBlockTool::promptText() const {
+    return "Click to place block";
+}
+
+bool InsertBlockTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

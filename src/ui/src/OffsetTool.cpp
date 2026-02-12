@@ -291,4 +291,14 @@ std::vector<Tool::ArcPreview> OffsetTool::getPreviewArcs() const {
     return {};
 }
 
+std::string OffsetTool::promptText() const {
+    switch (m_state) {
+        case State::SelectEntity: return "Select entity to offset";
+        case State::SpecifyDistance: return "Specify offset distance and side";
+    }
+    return "";
+}
+
+bool OffsetTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

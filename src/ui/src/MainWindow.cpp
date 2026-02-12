@@ -35,6 +35,8 @@
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/InsertBlockTool.h"
 #include "horizon/ui/InsertBlockDialog.h"
+#include "horizon/ui/RibbonBar.h"
+#include "horizon/ui/IconGenerator.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
@@ -84,7 +86,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Build UI chrome.
     createMenus();
-    createToolBar();
+    createRibbonBar();
     createStatusBar();
     registerTools();
 
@@ -229,141 +231,164 @@ void MainWindow::createMenus() {
 }
 
 // ---------------------------------------------------------------------------
-// Toolbar
+// Ribbon toolbar
 // ---------------------------------------------------------------------------
 
-void MainWindow::createToolBar() {
-    QToolBar* mainToolBar = addToolBar(tr("Main"));
-    mainToolBar->setObjectName("MainToolBar");
+void MainWindow::createRibbonBar() {
+    m_ribbonBar = new RibbonBar(this);
 
-    // File actions.
-    mainToolBar->addAction(tr("New"), this, &MainWindow::onNewFile);
-    mainToolBar->addAction(tr("Open"), this, &MainWindow::onOpenFile);
-    mainToolBar->addAction(tr("Save"), this, &MainWindow::onSaveFile);
-
-    mainToolBar->addSeparator();
-
-    // Edit actions.
-    mainToolBar->addAction(tr("Undo"), this, &MainWindow::onUndo);
-    mainToolBar->addAction(tr("Redo"), this, &MainWindow::onRedo);
-
-    mainToolBar->addSeparator();
-
-    // Tool actions (checkable in an exclusive group).
+    // Helper: add a checkable tool action to a toolbar with icon & shortcut.
     auto* toolGroup = new QActionGroup(this);
     toolGroup->setExclusive(true);
 
-    QAction* selectAction = mainToolBar->addAction(tr("Select"), this, &MainWindow::onSelectTool);
-    selectAction->setCheckable(true);
-    selectAction->setChecked(true);
-    toolGroup->addAction(selectAction);
+    auto addToolAction = [&](QToolBar* tb, const QString& iconName,
+                             const QString& tooltip, auto slot,
+                             const QKeySequence& shortcut = {}) -> QAction* {
+        auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, this, slot);
+        act->setCheckable(true);
+        act->setToolTip(shortcut.isEmpty()
+            ? tooltip
+            : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
+        if (!shortcut.isEmpty()) act->setShortcut(shortcut);
+        toolGroup->addAction(act);
+        return act;
+    };
 
-    QAction* lineAction = mainToolBar->addAction(tr("Line"), this, &MainWindow::onLineTool);
-    lineAction->setCheckable(true);
-    toolGroup->addAction(lineAction);
+    auto addAction = [](QToolBar* tb, const QString& iconName,
+                        const QString& tooltip, auto* receiver, auto slot,
+                        const QKeySequence& shortcut = {}) -> QAction* {
+        auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);
+        act->setToolTip(shortcut.isEmpty()
+            ? tooltip
+            : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
+        if (!shortcut.isEmpty()) act->setShortcut(shortcut);
+        return act;
+    };
 
-    QAction* circleAction = mainToolBar->addAction(tr("Circle"), this, &MainWindow::onCircleTool);
-    circleAction->setCheckable(true);
-    toolGroup->addAction(circleAction);
+    // ---- Home tab ----
+    auto* homeBar = new QToolBar(this);
+    addAction(homeBar, "new", tr("New"), this, &MainWindow::onNewFile, QKeySequence::New);
+    addAction(homeBar, "open", tr("Open"), this, &MainWindow::onOpenFile, QKeySequence::Open);
+    addAction(homeBar, "save", tr("Save"), this, &MainWindow::onSaveFile, QKeySequence::Save);
+    homeBar->addSeparator();
+    addAction(homeBar, "undo", tr("Undo"), this, &MainWindow::onUndo, QKeySequence::Undo);
+    addAction(homeBar, "redo", tr("Redo"), this, &MainWindow::onRedo, QKeySequence::Redo);
+    homeBar->addSeparator();
+    addAction(homeBar, "copy", tr("Copy"), this, &MainWindow::onCopy, QKeySequence::Copy);
+    addAction(homeBar, "paste", tr("Paste"), this, &MainWindow::onPaste, QKeySequence::Paste);
+    addAction(homeBar, "duplicate", tr("Duplicate"), this, &MainWindow::onDuplicate,
+              QKeySequence(Qt::CTRL | Qt::Key_D));
+    homeBar->addSeparator();
+    auto* selectAct = addToolAction(homeBar, "select", tr("Select"),
+                                     &MainWindow::onSelectTool, QKeySequence(Qt::Key_Space));
+    selectAct->setChecked(true);
+    addAction(homeBar, "fit-all", tr("Fit All"), this, &MainWindow::onFitAll,
+              QKeySequence(Qt::Key_F));
+    m_ribbonBar->addTab(tr("Home"), homeBar);
 
-    QAction* arcAction = mainToolBar->addAction(tr("Arc"), this, &MainWindow::onArcTool);
-    arcAction->setCheckable(true);
-    toolGroup->addAction(arcAction);
+    // ---- Draw tab ----
+    auto* drawBar = new QToolBar(this);
+    addToolAction(drawBar, "line", tr("Line"), &MainWindow::onLineTool,
+                  QKeySequence(Qt::Key_L));
+    addToolAction(drawBar, "circle", tr("Circle"), &MainWindow::onCircleTool,
+                  QKeySequence(Qt::Key_C));
+    addToolAction(drawBar, "arc", tr("Arc"), &MainWindow::onArcTool,
+                  QKeySequence(Qt::Key_A));
+    addToolAction(drawBar, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
+                  QKeySequence(Qt::Key_R));
+    addToolAction(drawBar, "polyline", tr("Polyline"), &MainWindow::onPolylineTool,
+                  QKeySequence(Qt::Key_P));
+    addToolAction(drawBar, "ellipse", tr("Ellipse"), &MainWindow::onEllipseTool,
+                  QKeySequence(Qt::Key_E));
+    addToolAction(drawBar, "spline", tr("Spline"), &MainWindow::onSplineTool,
+                  QKeySequence(Qt::Key_S));
+    addToolAction(drawBar, "text", tr("Text"), &MainWindow::onTextTool,
+                  QKeySequence(Qt::Key_T));
+    addToolAction(drawBar, "hatch", tr("Hatch"), &MainWindow::onHatchTool,
+                  QKeySequence(Qt::Key_H));
+    m_ribbonBar->addTab(tr("Draw"), drawBar);
 
-    QAction* rectAction = mainToolBar->addAction(tr("Rectangle"), this, &MainWindow::onRectangleTool);
-    rectAction->setCheckable(true);
-    toolGroup->addAction(rectAction);
+    // ---- Modify tab ----
+    auto* modifyBar = new QToolBar(this);
+    addToolAction(modifyBar, "move", tr("Move"), &MainWindow::onMoveTool,
+                  QKeySequence(Qt::Key_M));
+    addToolAction(modifyBar, "offset", tr("Offset"), &MainWindow::onOffsetTool,
+                  QKeySequence(Qt::Key_O));
+    addToolAction(modifyBar, "mirror", tr("Mirror"), &MainWindow::onMirrorTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_M));
+    addToolAction(modifyBar, "rotate", tr("Rotate"), &MainWindow::onRotateTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_R));
+    addToolAction(modifyBar, "scale", tr("Scale"), &MainWindow::onScaleTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_S));
+    modifyBar->addSeparator();
+    addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool,
+                  QKeySequence(Qt::Key_X));
+    addToolAction(modifyBar, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
+    modifyBar->addSeparator();
+    addAction(modifyBar, "rect-array", tr("Rect Array"), this,
+              &MainWindow::onRectangularArray);
+    addAction(modifyBar, "polar-array", tr("Polar Array"), this,
+              &MainWindow::onPolarArray);
+    m_ribbonBar->addTab(tr("Modify"), modifyBar);
 
-    QAction* polylineAction = mainToolBar->addAction(tr("Polyline"), this, &MainWindow::onPolylineTool);
-    polylineAction->setCheckable(true);
-    toolGroup->addAction(polylineAction);
+    // ---- Annotate tab ----
+    auto* annotateBar = new QToolBar(this);
+    addToolAction(annotateBar, "dim-linear", tr("Linear Dim"), &MainWindow::onLinearDimTool,
+                  QKeySequence(Qt::Key_D));
+    addToolAction(annotateBar, "dim-radial", tr("Radial Dim"), &MainWindow::onRadialDimTool);
+    addToolAction(annotateBar, "dim-angular", tr("Angular Dim"), &MainWindow::onAngularDimTool);
+    addToolAction(annotateBar, "leader", tr("Leader"), &MainWindow::onLeaderTool);
+    annotateBar->addSeparator();
+    addAction(annotateBar, "measure-distance", tr("Measure Distance"), this,
+              &MainWindow::onMeasureDistanceTool);
+    addAction(annotateBar, "measure-angle", tr("Measure Angle"), this,
+              &MainWindow::onMeasureAngleTool);
+    addAction(annotateBar, "measure-area", tr("Measure Area"), this,
+              &MainWindow::onMeasureAreaTool);
+    m_ribbonBar->addTab(tr("Annotate"), annotateBar);
 
-    mainToolBar->addSeparator();
+    // ---- Constrain tab ----
+    auto* constrainBar = new QToolBar(this);
+    addAction(constrainBar, "cstr-coincident", tr("Coincident"), this,
+              &MainWindow::onConstraintCoincident);
+    addAction(constrainBar, "cstr-horizontal", tr("Horizontal"), this,
+              &MainWindow::onConstraintHorizontal);
+    addAction(constrainBar, "cstr-vertical", tr("Vertical"), this,
+              &MainWindow::onConstraintVertical);
+    addAction(constrainBar, "cstr-perpendicular", tr("Perpendicular"), this,
+              &MainWindow::onConstraintPerpendicular);
+    addAction(constrainBar, "cstr-parallel", tr("Parallel"), this,
+              &MainWindow::onConstraintParallel);
+    addAction(constrainBar, "cstr-tangent", tr("Tangent"), this,
+              &MainWindow::onConstraintTangent);
+    addAction(constrainBar, "cstr-equal", tr("Equal"), this,
+              &MainWindow::onConstraintEqual);
+    constrainBar->addSeparator();
+    addAction(constrainBar, "cstr-fixed", tr("Fixed"), this,
+              &MainWindow::onConstraintFixed);
+    addAction(constrainBar, "cstr-distance", tr("Distance"), this,
+              &MainWindow::onConstraintDistance);
+    addAction(constrainBar, "cstr-angle", tr("Angle"), this,
+              &MainWindow::onConstraintAngle);
+    m_ribbonBar->addTab(tr("Constrain"), constrainBar);
 
-    QAction* moveAction = mainToolBar->addAction(tr("Move"), this, &MainWindow::onMoveTool);
-    moveAction->setCheckable(true);
-    toolGroup->addAction(moveAction);
+    // ---- Block tab ----
+    auto* blockBar = new QToolBar(this);
+    addAction(blockBar, "block-create", tr("Create Block"), this,
+              &MainWindow::onCreateBlock);
+    addAction(blockBar, "block-insert", tr("Insert Block"), this,
+              &MainWindow::onInsertBlock);
+    addAction(blockBar, "block-explode", tr("Explode"), this,
+              &MainWindow::onExplode);
+    m_ribbonBar->addTab(tr("Block"), blockBar);
 
-    QAction* offsetAction = mainToolBar->addAction(tr("Offset"), this, &MainWindow::onOffsetTool);
-    offsetAction->setCheckable(true);
-    toolGroup->addAction(offsetAction);
-
-    QAction* mirrorAction = mainToolBar->addAction(tr("Mirror"), this, &MainWindow::onMirrorTool);
-    mirrorAction->setCheckable(true);
-    toolGroup->addAction(mirrorAction);
-
-    QAction* rotateAction = mainToolBar->addAction(tr("Rotate"), this, &MainWindow::onRotateTool);
-    rotateAction->setCheckable(true);
-    toolGroup->addAction(rotateAction);
-
-    QAction* scaleAction = mainToolBar->addAction(tr("Scale"), this, &MainWindow::onScaleTool);
-    scaleAction->setCheckable(true);
-    toolGroup->addAction(scaleAction);
-
-    mainToolBar->addSeparator();
-
-    QAction* trimAction = mainToolBar->addAction(tr("Trim"), this, &MainWindow::onTrimTool);
-    trimAction->setCheckable(true);
-    toolGroup->addAction(trimAction);
-
-    QAction* filletAction = mainToolBar->addAction(tr("Fillet"), this, &MainWindow::onFilletTool);
-    filletAction->setCheckable(true);
-    toolGroup->addAction(filletAction);
-
-    mainToolBar->addSeparator();
-
-    // Dimension tools.
-    QAction* linearDimAction = mainToolBar->addAction(tr("LinDim"), this, &MainWindow::onLinearDimTool);
-    linearDimAction->setCheckable(true);
-    toolGroup->addAction(linearDimAction);
-
-    QAction* radialDimAction = mainToolBar->addAction(tr("RadDim"), this, &MainWindow::onRadialDimTool);
-    radialDimAction->setCheckable(true);
-    toolGroup->addAction(radialDimAction);
-
-    QAction* angularDimAction = mainToolBar->addAction(tr("AngDim"), this, &MainWindow::onAngularDimTool);
-    angularDimAction->setCheckable(true);
-    toolGroup->addAction(angularDimAction);
-
-    QAction* leaderAction = mainToolBar->addAction(tr("Leader"), this, &MainWindow::onLeaderTool);
-    leaderAction->setCheckable(true);
-    toolGroup->addAction(leaderAction);
-
-    mainToolBar->addSeparator();
-
-    // Constraint tools.
-    QAction* coincidentAction = mainToolBar->addAction(tr("Coinc"), this, &MainWindow::onConstraintCoincident);
-    coincidentAction->setCheckable(true);
-    toolGroup->addAction(coincidentAction);
-
-    QAction* horizAction = mainToolBar->addAction(tr("Horiz"), this, &MainWindow::onConstraintHorizontal);
-    horizAction->setCheckable(true);
-    toolGroup->addAction(horizAction);
-
-    QAction* vertAction = mainToolBar->addAction(tr("Vert"), this, &MainWindow::onConstraintVertical);
-    vertAction->setCheckable(true);
-    toolGroup->addAction(vertAction);
-
-    QAction* perpAction = mainToolBar->addAction(tr("Perp"), this, &MainWindow::onConstraintPerpendicular);
-    perpAction->setCheckable(true);
-    toolGroup->addAction(perpAction);
-
-    QAction* parallelAction = mainToolBar->addAction(tr("Para"), this, &MainWindow::onConstraintParallel);
-    parallelAction->setCheckable(true);
-    toolGroup->addAction(parallelAction);
-
-    QAction* distAction = mainToolBar->addAction(tr("Dist"), this, &MainWindow::onConstraintDistance);
-    distAction->setCheckable(true);
-    toolGroup->addAction(distAction);
-
-    QAction* angleAction = mainToolBar->addAction(tr("Angle"), this, &MainWindow::onConstraintAngle);
-    angleAction->setCheckable(true);
-    toolGroup->addAction(angleAction);
-
-    mainToolBar->addSeparator();
-
-    // View presets.
-    mainToolBar->addAction(tr("Fit All"), this, &MainWindow::onFitAll);
+    // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
+    auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);
+    ribbonToolBar->setObjectName("RibbonToolBar");
+    ribbonToolBar->setMovable(false);
+    ribbonToolBar->setFloatable(false);
+    ribbonToolBar->addWidget(m_ribbonBar);
+    addToolBar(Qt::TopToolBarArea, ribbonToolBar);
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +396,56 @@ void MainWindow::createToolBar() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::createStatusBar() {
-    statusBar()->showMessage(tr("Ready"));
+    auto* sb = statusBar();
+
+    // Coordinates (left).
+    m_statusCoords = new QLabel(tr("X: 0.000  Y: 0.000"), this);
+    m_statusCoords->setMinimumWidth(180);
+    m_statusCoords->setStyleSheet("QLabel { padding: 0 6px; }");
+    sb->addWidget(m_statusCoords);
+
+    // Tool prompt (center, stretch).
+    m_statusPrompt = new QLabel(tr("Ready"), this);
+    m_statusPrompt->setStyleSheet("QLabel { padding: 0 6px; color: #a0c4ff; }");
+    sb->addWidget(m_statusPrompt, 1);
+
+    // Snap/grid indicator.
+    m_statusSnap = new QLabel(tr("SNAP  GRID"), this);
+    m_statusSnap->setStyleSheet("QLabel { padding: 0 6px; color: #80cc80; }");
+    sb->addPermanentWidget(m_statusSnap);
+
+    // Selection count.
+    m_statusSelection = new QLabel(tr("0 selected"), this);
+    m_statusSelection->setMinimumWidth(80);
+    m_statusSelection->setStyleSheet("QLabel { padding: 0 6px; }");
+    sb->addPermanentWidget(m_statusSelection);
+
+    // Active tool name.
+    m_statusTool = new QLabel(tr("Select"), this);
+    m_statusTool->setMinimumWidth(80);
+    m_statusTool->setStyleSheet("QLabel { padding: 0 6px; font-weight: bold; color: #ffd080; }");
+    sb->addPermanentWidget(m_statusTool);
+}
+
+void MainWindow::updateStatusBar() {
+    if (m_viewport && m_viewport->activeTool()) {
+        auto* tool = m_viewport->activeTool();
+        m_statusTool->setText(QString::fromStdString(tool->name()));
+        auto prompt = tool->promptText();
+        if (!prompt.empty()) {
+            m_statusPrompt->setText(QString::fromStdString(prompt));
+        } else {
+            m_statusPrompt->setText(tr("Ready"));
+        }
+    } else {
+        m_statusTool->setText(tr("None"));
+        m_statusPrompt->setText(tr("Ready"));
+    }
+
+    auto ids = m_viewport->selectionManager().selectedIds();
+    int count = static_cast<int>(ids.size());
+    m_statusSelection->setText(count == 1 ? tr("1 selected")
+                                          : tr("%1 selected").arg(count));
 }
 
 // ---------------------------------------------------------------------------
@@ -498,7 +572,7 @@ void MainWindow::onSaveFile() {
     }
     if (ok) {
         m_document->setDirty(false);
-        statusBar()->showMessage(tr("File saved."), 3000);
+        m_statusPrompt->setText(tr("File saved."));
     } else {
         QMessageBox::warning(this, tr("Error"), tr("Failed to save file."));
     }
@@ -607,6 +681,7 @@ void MainWindow::onPaste() {
     if (!m_clipboard.hasContent()) return;
     m_toolManager->setActiveTool("Paste");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 // ---------------------------------------------------------------------------
@@ -656,66 +731,79 @@ void MainWindow::onFitAll() {
 void MainWindow::onSelectTool() {
     m_toolManager->setActiveTool("Select");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onLineTool() {
     m_toolManager->setActiveTool("Line");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onCircleTool() {
     m_toolManager->setActiveTool("Circle");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onArcTool() {
     m_toolManager->setActiveTool("Arc");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onRectangleTool() {
     m_toolManager->setActiveTool("Rectangle");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onPolylineTool() {
     m_toolManager->setActiveTool("Polyline");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onMoveTool() {
     m_toolManager->setActiveTool("Move");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onOffsetTool() {
     m_toolManager->setActiveTool("Offset");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onMirrorTool() {
     m_toolManager->setActiveTool("Mirror");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onTrimTool() {
     m_toolManager->setActiveTool("Trim");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onFilletTool() {
     m_toolManager->setActiveTool("Fillet");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onRotateTool() {
     m_toolManager->setActiveTool("Rotate");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onScaleTool() {
     m_toolManager->setActiveTool("Scale");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onRectangularArray() {
@@ -835,41 +923,49 @@ void MainWindow::onPolarArray() {
 void MainWindow::onLinearDimTool() {
     m_toolManager->setActiveTool("Linear Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onRadialDimTool() {
     m_toolManager->setActiveTool("Radial Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onAngularDimTool() {
     m_toolManager->setActiveTool("Angular Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onLeaderTool() {
     m_toolManager->setActiveTool("Leader");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onTextTool() {
     m_toolManager->setActiveTool("Text");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onSplineTool() {
     m_toolManager->setActiveTool("Spline");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onHatchTool() {
     m_toolManager->setActiveTool("Hatch");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onEllipseTool() {
     m_toolManager->setActiveTool("Ellipse");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 // ---------------------------------------------------------------------------
@@ -879,16 +975,19 @@ void MainWindow::onEllipseTool() {
 void MainWindow::onMeasureDistanceTool() {
     m_toolManager->setActiveTool("MeasureDistance");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onMeasureAngleTool() {
     m_toolManager->setActiveTool("MeasureAngle");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onMeasureAreaTool() {
     m_toolManager->setActiveTool("MeasureArea");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 // ---------------------------------------------------------------------------
@@ -905,42 +1004,52 @@ static void activateConstraintMode(ToolManager& tm, ViewportWidget* vp,
 
 void MainWindow::onConstraintCoincident() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Coincident);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintHorizontal() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Horizontal);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintVertical() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Vertical);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintPerpendicular() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Perpendicular);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintParallel() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Parallel);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintTangent() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Tangent);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintEqual() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Equal);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintFixed() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Fixed);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintDistance() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Distance);
+    updateStatusBar();
 }
 
 void MainWindow::onConstraintAngle() {
     activateConstraintMode(*m_toolManager, m_viewport, ConstraintTool::Mode::Angle);
+    updateStatusBar();
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,6 +1120,7 @@ void MainWindow::onInsertBlock() {
     m_toolManager->registerTool(std::move(tool));
     m_toolManager->setActiveTool("Insert Block");
     m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
 }
 
 void MainWindow::onExplode() {
@@ -1053,20 +1163,29 @@ void MainWindow::onExplode() {
 }
 
 // ---------------------------------------------------------------------------
-// Slots -- Status bar
+// Slots -- Status bar updates
 // ---------------------------------------------------------------------------
 
 void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
-    statusBar()->showMessage(
+    m_statusCoords->setText(
         QString("X: %1  Y: %2")
             .arg(worldPos.x, 0, 'f', 3)
             .arg(worldPos.y, 0, 'f', 3));
+
+    // Update tool prompt dynamically as mouse moves.
+    if (m_viewport && m_viewport->activeTool()) {
+        auto prompt = m_viewport->activeTool()->promptText();
+        if (!prompt.empty()) {
+            m_statusPrompt->setText(QString::fromStdString(prompt));
+        }
+    }
 }
 
 void MainWindow::onSelectionChanged() {
     auto ids = m_viewport->selectionManager().selectedIds();
     std::vector<uint64_t> idVec(ids.begin(), ids.end());
     m_propertyPanel->updateForSelection(idVec);
+    updateStatusBar();
 }
 
 }  // namespace hz::ui

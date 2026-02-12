@@ -154,4 +154,10 @@ std::vector<std::pair<math::Vec2, math::Vec2>> SplineTool::getPreviewLines() con
     return lines;
 }
 
+std::string SplineTool::promptText() const {
+    return "Click to add control points, Enter to finish";
+}
+
+bool SplineTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

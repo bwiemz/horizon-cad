@@ -178,4 +178,14 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MirrorTool::getPreviewLines() con
     return result;
 }
 
+std::string MirrorTool::promptText() const {
+    switch (m_state) {
+        case State::SelectFirstPoint: return "Specify first point of mirror axis";
+        case State::SelectSecondPoint: return "Specify second point of mirror axis";
+    }
+    return "";
+}
+
+bool MirrorTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

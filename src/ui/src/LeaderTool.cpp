@@ -122,4 +122,11 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LeaderTool::getPreviewLines() con
     return lines;
 }
 
+std::string LeaderTool::promptText() const {
+    if (!m_active || m_points.empty()) return "Specify leader start point";
+    return "Specify next point, Enter to finish";
+}
+
+bool LeaderTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

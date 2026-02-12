@@ -101,4 +101,14 @@ std::vector<std::pair<math::Vec2, double>> CircleTool::getPreviewCircles() const
     return {};
 }
 
+std::string CircleTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForCenter: return "Specify center point";
+        case State::WaitingForRadius: return "Specify radius";
+    }
+    return "";
+}
+
+bool CircleTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

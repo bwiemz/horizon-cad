@@ -125,4 +125,15 @@ std::vector<Tool::ArcPreview> ArcTool::getPreviewArcs() const {
     return {};
 }
 
+std::string ArcTool::promptText() const {
+    switch (m_state) {
+        case State::WaitingForCenter: return "Specify center point";
+        case State::WaitingForStart: return "Specify start point";
+        case State::WaitingForEnd: return "Specify end point";
+    }
+    return "";
+}
+
+bool ArcTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

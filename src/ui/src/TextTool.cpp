@@ -75,4 +75,10 @@ void TextTool::cancel() {
     }
 }
 
+std::string TextTool::promptText() const {
+    return "Click to place text";
+}
+
+bool TextTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

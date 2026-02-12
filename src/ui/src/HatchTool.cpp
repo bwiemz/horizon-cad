@@ -115,4 +115,10 @@ std::vector<std::pair<math::Vec2, math::Vec2>> HatchTool::getPreviewLines() cons
     return {};  // No preview for hatch tool.
 }
 
+std::string HatchTool::promptText() const {
+    return "Click a closed entity to hatch";
+}
+
+bool HatchTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

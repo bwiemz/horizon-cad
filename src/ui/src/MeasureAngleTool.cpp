@@ -126,4 +126,15 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MeasureAngleTool::getPreviewLines
     return lines;
 }
 
+std::string MeasureAngleTool::promptText() const {
+    switch (m_state) {
+        case State::Vertex: return "Specify vertex point";
+        case State::Ray1: return "Specify point on first ray";
+        case State::Ray2: return "Specify point on second ray";
+    }
+    return "";
+}
+
+bool MeasureAngleTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

@@ -63,6 +63,12 @@ public:
     /// Return preview arcs to draw while the tool is active.
     virtual std::vector<ArcPreview> getPreviewArcs() const { return {}; }
 
+    /// Returns the current tool prompt text for the status bar (e.g. "Specify first point").
+    virtual std::string promptText() const { return ""; }
+
+    /// Returns true if this tool wants a full-viewport crosshair cursor.
+    virtual bool wantsCrosshair() const { return false; }
+
 protected:
     ViewportWidget* m_viewport = nullptr;
 };

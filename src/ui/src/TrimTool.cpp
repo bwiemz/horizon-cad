@@ -266,4 +266,10 @@ void TrimTool::cancel() {
     // Nothing to cancel — trim is a single-click operation.
 }
 
+std::string TrimTool::promptText() const {
+    return "Select entity to trim";
+}
+
+bool TrimTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

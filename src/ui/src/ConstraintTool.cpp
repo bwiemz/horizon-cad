@@ -505,4 +505,19 @@ std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() c
     return circles;
 }
 
+std::string ConstraintTool::promptText() const {
+    static const char* modeNames[] = {
+        "Coincident", "Horizontal", "Vertical", "Perpendicular",
+        "Parallel", "Tangent", "Equal", "Fixed", "Distance", "Angle"
+    };
+    int idx = static_cast<int>(m_mode);
+    const char* modeName = (idx >= 0 && idx < 10) ? modeNames[idx] : "constraint";
+
+    if (m_state == State::WaitingForFirst)
+        return std::string("Select first entity for ") + modeName;
+    return std::string("Select second entity for ") + modeName;
+}
+
+bool ConstraintTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

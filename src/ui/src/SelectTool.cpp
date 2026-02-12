@@ -230,4 +230,10 @@ std::vector<std::pair<math::Vec2, math::Vec2>> SelectTool::getPreviewLines() con
     return {{m_gripOrigPos, m_gripCurrentPos}};
 }
 
+std::string SelectTool::promptText() const {
+    return "Click to select, Shift+click for multi-select";
+}
+
+bool SelectTool::wantsCrosshair() const { return false; }
+
 }  // namespace hz::ui

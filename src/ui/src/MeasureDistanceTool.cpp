@@ -104,4 +104,14 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MeasureDistanceTool::getPreviewLi
     return {};
 }
 
+std::string MeasureDistanceTool::promptText() const {
+    switch (m_state) {
+        case State::First: return "Specify first point";
+        case State::Second: return "Specify second point";
+    }
+    return "";
+}
+
+bool MeasureDistanceTool::wantsCrosshair() const { return true; }
+
 }  // namespace hz::ui

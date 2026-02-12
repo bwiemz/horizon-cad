@@ -21,6 +21,9 @@ public:
     void deactivate() override;
     void cancel() override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     bool m_dragging = false;
     math::Vec2 m_dragStart;

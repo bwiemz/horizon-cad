@@ -25,6 +25,9 @@ public:
     std::vector<std::pair<math::Vec2, double>> getPreviewCircles() const override;
     std::vector<ArcPreview> getPreviewArcs() const override;
 
+    std::string promptText() const override;
+    bool wantsCrosshair() const override;
+
 private:
     enum class State { SelectCenter, SelectAngle };
     State m_state = State::SelectCenter;
