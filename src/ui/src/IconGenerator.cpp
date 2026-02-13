@@ -120,6 +120,8 @@ QIcon IconGenerator::icon(const QString& name) {
         {"scale",         drawScale},
         {"trim",          drawTrim},
         {"fillet",         drawFillet},
+        {"break",          drawBreak},
+        {"extend",         drawExtend},
         {"rect-array",    drawRectArray},
         {"polar-array",   drawPolarArray},
         // Dimension
@@ -658,6 +660,43 @@ QIcon IconGenerator::drawFillet(int s) {
     // Small radius indicator
     p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
     p.drawLine(QPointF(4, 20), QPointF(9, 15));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawBreak(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Line with a gap in the middle (break point)
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(3, 18), QPointF(10, 11));
+    p.drawLine(QPointF(14, 7), QPointF(21, 3));
+    // Break indicator — small zigzag at the gap
+    p.setPen(accentPen(2.0));
+    p.drawLine(QPointF(10, 11), QPointF(12, 7));
+    p.drawLine(QPointF(12, 7), QPointF(14, 11));
+    p.drawLine(QPointF(14, 11), QPointF(14, 7));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawExtend(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Boundary line (vertical)
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(18, 3), QPointF(18, 21));
+    // Original short line
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(3, 14), QPointF(12, 14));
+    // Extension (dashed)
+    p.setPen(QPen(kAccent, 1.5, Qt::DashLine, Qt::RoundCap));
+    p.drawLine(QPointF(12, 14), QPointF(18, 14));
+    // Arrow at the extension tip
+    p.setPen(accentPen(1.5));
+    drawArrowhead(p, QPointF(18, 14), 0.0, 4.0, kAccent);
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

@@ -12,6 +12,8 @@
 #include "horizon/ui/OffsetTool.h"
 #include "horizon/ui/TrimTool.h"
 #include "horizon/ui/FilletTool.h"
+#include "horizon/ui/BreakTool.h"
+#include "horizon/ui/ExtendTool.h"
 #include "horizon/ui/MirrorTool.h"
 #include "horizon/ui/RotateTool.h"
 #include "horizon/ui/ScaleTool.h"
@@ -189,6 +191,8 @@ void MainWindow::createMenus() {
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Trim"), this, &MainWindow::onTrimTool);
     toolsMenu->addAction(tr("&Fillet"), this, &MainWindow::onFilletTool);
+    toolsMenu->addAction(tr("&Break"), this, &MainWindow::onBreakTool);
+    toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
     toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
@@ -324,6 +328,10 @@ void MainWindow::createRibbonBar() {
     addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool,
                   QKeySequence(Qt::Key_X));
     addToolAction(modifyBar, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
+    addToolAction(modifyBar, "break", tr("Break"), &MainWindow::onBreakTool,
+                  QKeySequence(Qt::Key_B));
+    addToolAction(modifyBar, "extend", tr("Extend"), &MainWindow::onExtendTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_E));
     modifyBar->addSeparator();
     addAction(modifyBar, "rect-array", tr("Rect Array"), this,
               &MainWindow::onRectangularArray);
@@ -463,6 +471,8 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<OffsetTool>());
     m_toolManager->registerTool(std::make_unique<TrimTool>());
     m_toolManager->registerTool(std::make_unique<FilletTool>());
+    m_toolManager->registerTool(std::make_unique<BreakTool>());
+    m_toolManager->registerTool(std::make_unique<ExtendTool>());
     m_toolManager->registerTool(std::make_unique<MirrorTool>());
     m_toolManager->registerTool(std::make_unique<RotateTool>());
     m_toolManager->registerTool(std::make_unique<ScaleTool>());
@@ -790,6 +800,18 @@ void MainWindow::onTrimTool() {
 
 void MainWindow::onFilletTool() {
     m_toolManager->setActiveTool("Fillet");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onBreakTool() {
+    m_toolManager->setActiveTool("Break");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onExtendTool() {
+    m_toolManager->setActiveTool("Extend");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
 }

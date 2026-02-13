@@ -58,6 +58,8 @@ private slots:
     void onScaleTool();
     void onTrimTool();
     void onFilletTool();
+    void onBreakTool();
+    void onExtendTool();
     void onRectangularArray();
     void onPolarArray();
 

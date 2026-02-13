@@ -13,7 +13,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 
 ### Editing Tools
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
-- Move, Duplicate, Offset, Trim, Fillet, Mirror, Rotate, Scale
+- Move, Duplicate, Offset, Trim, Fillet, Break, Extend, Mirror, Rotate, Scale
 - Copy/Paste with clipboard support (Ctrl+C/X/V)
 - Rectangular and Polar array operations
 - Grip editing for direct point manipulation
@@ -148,7 +148,8 @@ Horizon is under active development. Completed and planned work:
 | 17 | Done | UI modernization (dark theme, ribbon toolbar, icons, shortcuts) |
 | 18 | Done | Box/window selection (drag-rectangle with window and crossing modes) |
 | 19 | Done | Line types (dashed, dotted, center, hidden, phantom) with GPU shader rendering |
-| 20+ | Planned | Parametric geometry, 3D modeling |
+| 20 | Done | Break and Extend tools |
+| 21+ | Planned | Parametric geometry, 3D modeling |
 
 ## Contributing
 

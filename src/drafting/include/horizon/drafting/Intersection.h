@@ -45,4 +45,27 @@ std::vector<math::Vec2> intersectLineArc(
 /// Returns empty for circles/arcs.
 std::vector<std::pair<math::Vec2, math::Vec2>> extractSegments(const DraftEntity& entity);
 
+// Ray intersection primitives (for Extend tool):
+
+/// Ray (origin, forward direction) vs line segment. Returns 0 or 1 points (t >= 0 on ray).
+std::vector<math::Vec2> intersectRaySegment(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& segStart, const math::Vec2& segEnd);
+
+/// Ray vs circle. Returns 0-2 points in the forward direction (t >= 0).
+std::vector<math::Vec2> intersectRayCircle(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& center, double radius);
+
+/// Ray vs arc. Returns points on the arc in the forward ray direction.
+std::vector<math::Vec2> intersectRayArc(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& center, double radius,
+    double startAngle, double endAngle);
+
+/// Find all intersections of a ray with an entity (using segments, circles, and arcs).
+std::vector<math::Vec2> intersectRayEntity(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const DraftEntity& entity);
+
 }  // namespace hz::draft

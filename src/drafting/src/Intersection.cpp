@@ -327,4 +327,96 @@ IntersectionResult intersect(const DraftEntity& a, const DraftEntity& b) {
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// Ray intersection primitives (for Extend tool)
+// ---------------------------------------------------------------------------
+
+std::vector<math::Vec2> intersectRaySegment(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& segStart, const math::Vec2& segEnd) {
+
+    math::Vec2 d2 = segEnd - segStart;
+    double denom = rayDir.cross(d2);
+    if (std::abs(denom) < kTol) return {};  // Parallel.
+
+    math::Vec2 d3 = segStart - rayOrigin;
+    double t = d3.cross(d2) / denom;   // Parameter on the ray.
+    double s = d3.cross(rayDir) / denom; // Parameter on the segment.
+
+    if (t >= 0.0 && s >= -kTol && s <= 1.0 + kTol) {
+        return {rayOrigin + rayDir * t};
+    }
+    return {};
+}
+
+std::vector<math::Vec2> intersectRayCircle(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& center, double radius) {
+
+    math::Vec2 f = rayOrigin - center;
+    double a = rayDir.dot(rayDir);
+    double b = 2.0 * f.dot(rayDir);
+    double c = f.dot(f) - radius * radius;
+
+    double discriminant = b * b - 4.0 * a * c;
+    if (discriminant < -kTol) return {};
+
+    std::vector<math::Vec2> result;
+    if (discriminant < kTol) {
+        double t = -b / (2.0 * a);
+        if (t >= 0.0) {
+            result.push_back(rayOrigin + rayDir * t);
+        }
+    } else {
+        double sqrtDisc = std::sqrt(discriminant);
+        double t1 = (-b - sqrtDisc) / (2.0 * a);
+        double t2 = (-b + sqrtDisc) / (2.0 * a);
+        if (t1 >= 0.0) result.push_back(rayOrigin + rayDir * t1);
+        if (t2 >= 0.0) result.push_back(rayOrigin + rayDir * t2);
+    }
+    return result;
+}
+
+std::vector<math::Vec2> intersectRayArc(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const math::Vec2& center, double radius,
+    double startAngle, double endAngle) {
+
+    auto pts = intersectRayCircle(rayOrigin, rayDir, center, radius);
+    std::vector<math::Vec2> result;
+    for (const auto& pt : pts) {
+        double angle = std::atan2(pt.y - center.y, pt.x - center.x);
+        if (angleInArcRange(angle, startAngle, endAngle)) {
+            result.push_back(pt);
+        }
+    }
+    return result;
+}
+
+std::vector<math::Vec2> intersectRayEntity(
+    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+    const DraftEntity& entity) {
+
+    std::vector<math::Vec2> result;
+
+    // Check circular entities.
+    if (auto* circ = dynamic_cast<const DraftCircle*>(&entity)) {
+        auto pts = intersectRayCircle(rayOrigin, rayDir, circ->center(), circ->radius());
+        result.insert(result.end(), pts.begin(), pts.end());
+    } else if (auto* arc = dynamic_cast<const DraftArc*>(&entity)) {
+        auto pts = intersectRayArc(rayOrigin, rayDir, arc->center(), arc->radius(),
+                                   arc->startAngle(), arc->endAngle());
+        result.insert(result.end(), pts.begin(), pts.end());
+    }
+
+    // Check segment-based entities.
+    auto segs = extractSegments(entity);
+    for (const auto& [s, e] : segs) {
+        auto pts = intersectRaySegment(rayOrigin, rayDir, s, e);
+        result.insert(result.end(), pts.begin(), pts.end());
+    }
+
+    return result;
+}
+
 }  // namespace hz::draft
