@@ -60,6 +60,7 @@ private slots:
     void onFilletTool();
     void onBreakTool();
     void onExtendTool();
+    void onStretchTool();
     void onRectangularArray();
     void onPolarArray();
 

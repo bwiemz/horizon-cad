@@ -122,6 +122,7 @@ QIcon IconGenerator::icon(const QString& name) {
         {"fillet",         drawFillet},
         {"break",          drawBreak},
         {"extend",         drawExtend},
+        {"stretch",        drawStretch},
         {"rect-array",    drawRectArray},
         {"polar-array",   drawPolarArray},
         // Dimension
@@ -697,6 +698,28 @@ QIcon IconGenerator::drawExtend(int s) {
     // Arrow at the extension tip
     p.setPen(accentPen(1.5));
     drawArrowhead(p, QPointF(18, 14), 0.0, 4.0, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawStretch(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Original rectangle (bottom-left portion stays, top-right corner stretches)
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(4, 20), QPointF(14, 20));   // bottom edge
+    p.drawLine(QPointF(4, 20), QPointF(4, 8));      // left edge
+    p.drawLine(QPointF(4, 8), QPointF(14, 8));       // top edge (original)
+    p.drawLine(QPointF(14, 20), QPointF(14, 8));     // right edge (original)
+    // Stretched corner displaced to top-right
+    p.setPen(accentPen(1.5));
+    p.drawLine(QPointF(14, 8), QPointF(20, 4));      // arrow from corner to new position
+    drawArrowhead(p, QPointF(20, 4), -M_PI / 4.0, 4.0, kAccent);
+    // Stretched edges (dashed to show new position)
+    p.setPen(QPen(kAccent, 1.2, Qt::DashLine, Qt::RoundCap));
+    p.drawLine(QPointF(4, 8), QPointF(20, 4));       // new top edge hint
+    p.drawLine(QPointF(14, 20), QPointF(20, 4));      // new right edge hint
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
