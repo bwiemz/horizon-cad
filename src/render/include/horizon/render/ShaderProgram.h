@@ -2,6 +2,7 @@
 
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/math/Vec4.h"
 
 #include <QOpenGLShaderProgram>
 
@@ -33,6 +34,7 @@ public:
 
     void setUniform(const char* name, const math::Mat4& mat);
     void setUniform(const char* name, const math::Vec3& vec);
+    void setUniform(const char* name, const math::Vec4& vec);
     void setUniform(const char* name, float value);
     void setUniform(const char* name, int value);
 

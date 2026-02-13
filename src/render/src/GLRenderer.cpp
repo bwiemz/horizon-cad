@@ -66,6 +66,32 @@ void main() {
 }
 )glsl";
 
+// ---- Embedded Fill Shader Sources (alpha-blended quads) ----
+
+static const char* kFillVertSrc = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec3 aPos;
+
+uniform mat4 uMVP;
+
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+}
+)glsl";
+
+static const char* kFillFragSrc = R"glsl(
+#version 330 core
+
+out vec4 FragColor;
+
+uniform vec4 uFillColor;
+
+void main() {
+    FragColor = uFillColor;
+}
+)glsl";
+
 // ---- Embedded Line Shader Sources ----
 
 static const char* kLineVertSrc = R"glsl(
@@ -108,6 +134,11 @@ void GLRenderer::initialize(QOpenGLExtraFunctions* gl) {
 
     if (!m_lineShader.create(kLineVertSrc, kLineFragSrc)) {
         qWarning("GLRenderer: failed to create line shader");
+        return;
+    }
+
+    if (!m_fillShader.create(kFillVertSrc, kFillFragSrc)) {
+        qWarning("GLRenderer: failed to create fill shader");
         return;
     }
 
@@ -231,6 +262,54 @@ void GLRenderer::drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                               const std::vector<float>& circleVertices,
                               const math::Vec3& color, float lineWidth) {
     drawLines(gl, camera, circleVertices, color, lineWidth);
+}
+
+void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
+                                 const math::Vec2& corner1, const math::Vec2& corner2,
+                                 const math::Vec4& color) {
+    if (!m_initialized) return;
+
+    float x0 = static_cast<float>(std::min(corner1.x, corner2.x));
+    float y0 = static_cast<float>(std::min(corner1.y, corner2.y));
+    float x1 = static_cast<float>(std::max(corner1.x, corner2.x));
+    float y1 = static_cast<float>(std::max(corner1.y, corner2.y));
+
+    // Two triangles forming a quad.
+    float verts[] = {
+        x0, y0, 0.0f,  x1, y0, 0.0f,  x1, y1, 0.0f,
+        x0, y0, 0.0f,  x1, y1, 0.0f,  x0, y1, 0.0f,
+    };
+
+    math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
+
+    m_fillShader.bind();
+    m_fillShader.setUniform("uMVP", vp);
+    m_fillShader.setUniform("uFillColor", color);
+
+    GLuint vao, vbo;
+    gl->glGenVertexArrays(1, &vao);
+    gl->glBindVertexArray(vao);
+
+    gl->glGenBuffers(1, &vbo);
+    gl->glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    gl->glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
+
+    gl->glEnableVertexAttribArray(0);
+    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+
+    gl->glEnable(GL_BLEND);
+    gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl->glDepthMask(GL_FALSE);
+
+    gl->glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    gl->glDepthMask(GL_TRUE);
+    gl->glDisable(GL_BLEND);
+    gl->glBindVertexArray(0);
+    gl->glDeleteBuffers(1, &vbo);
+    gl->glDeleteVertexArrays(1, &vao);
+
+    m_fillShader.release();
 }
 
 void GLRenderer::uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node) {

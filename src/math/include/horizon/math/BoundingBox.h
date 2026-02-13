@@ -14,6 +14,7 @@ public:
     void reset();
 
     bool contains(const Vec3& point) const;
+    bool contains(const BoundingBox& other) const;
     bool intersects(const BoundingBox& other) const;
     bool isValid() const;
 

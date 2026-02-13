@@ -2,6 +2,7 @@
 
 #include "horizon/ui/Tool.h"
 #include "horizon/math/Vec2.h"
+#include <QPoint>
 #include <cstdint>
 #include <memory>
 
@@ -27,6 +28,17 @@ public:
 
     std::string promptText() const override;
     bool wantsCrosshair() const override;
+    math::Vec3 previewColor() const override;
+
+    /// Whether the tool is currently performing a box-selection drag.
+    bool isDraggingBox() const { return m_draggingBox; }
+
+    /// Returns true if box-drag direction is left-to-right (window mode).
+    bool isWindowSelection() const;
+
+    /// Selection rectangle corners in world space (valid only when isDraggingBox()).
+    math::Vec2 boxCorner1() const { return m_dragStart; }
+    math::Vec2 boxCorner2() const { return m_dragCurrent; }
 
 private:
     // Grip dragging state.
@@ -36,6 +48,14 @@ private:
     math::Vec2 m_gripOrigPos;
     math::Vec2 m_gripCurrentPos;
     std::shared_ptr<draft::DraftEntity> m_gripBeforeClone;
+
+    // Box selection state.
+    bool m_leftButtonDown = false;
+    bool m_draggingBox = false;
+    math::Vec2 m_dragStart;
+    math::Vec2 m_dragCurrent;
+    QPoint m_dragStartScreen;
+    static constexpr int kDragThreshold = 5;
 };
 
 }  // namespace hz::ui

@@ -87,6 +87,14 @@ void ShaderProgram::setUniform(const char* name, const math::Vec3& vec) {
                                                 static_cast<float>(vec.z)));
 }
 
+void ShaderProgram::setUniform(const char* name, const math::Vec4& vec) {
+    if (!m_program) return;
+    m_program->setUniformValue(name, QVector4D(static_cast<float>(vec.x),
+                                                static_cast<float>(vec.y),
+                                                static_cast<float>(vec.z),
+                                                static_cast<float>(vec.w)));
+}
+
 void ShaderProgram::setUniform(const char* name, float value) {
     if (!m_program) return;
     m_program->setUniformValue(name, value);

@@ -18,6 +18,7 @@
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/ui/GripManager.h"
+#include "horizon/ui/SelectTool.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec4.h"
@@ -275,6 +276,7 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton && m_activeTool) {
         math::Vec2 wp = worldPositionAtCursor(event->pos().x(), event->pos().y());
         if (m_activeTool->mouseReleaseEvent(event, wp)) {
+            emit selectionChanged();
             update();
             return;
         }
@@ -567,7 +569,9 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
 void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
     if (!m_activeTool) return;
 
-    // Preview lines (e.g. rubber-band for LineTool).
+    math::Vec3 previewCol = m_activeTool->previewColor();
+
+    // Preview lines (e.g. rubber-band for LineTool, selection rectangle for SelectTool).
     auto previewLines = m_activeTool->getPreviewLines();
     if (!previewLines.empty()) {
         std::vector<float> verts;
@@ -580,28 +584,39 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
             verts.push_back(static_cast<float>(end.y));
             verts.push_back(0.0f);
         }
-        math::Vec3 cyan{0.0, 0.8, 1.0};
-        m_renderer->drawLines(gl, m_camera, verts, cyan);
+        m_renderer->drawLines(gl, m_camera, verts, previewCol);
     }
 
     // Preview circles (e.g. rubber-band for CircleTool).
     auto previewCircles = m_activeTool->getPreviewCircles();
     if (!previewCircles.empty()) {
-        math::Vec3 cyan{0.0, 0.8, 1.0};
         for (const auto& [center, radius] : previewCircles) {
             auto verts = circleVertices(center, radius);
-            m_renderer->drawCircle(gl, m_camera, verts, cyan);
+            m_renderer->drawCircle(gl, m_camera, verts, previewCol);
         }
     }
 
     // Preview arcs (e.g. rubber-band for ArcTool).
     auto previewArcs = m_activeTool->getPreviewArcs();
     if (!previewArcs.empty()) {
-        math::Vec3 cyan{0.0, 0.8, 1.0};
         for (const auto& arc : previewArcs) {
             auto verts = arcVertices(arc.center, arc.radius,
                                      arc.startAngle, arc.endAngle);
-            m_renderer->drawLines(gl, m_camera, verts, cyan);
+            m_renderer->drawLines(gl, m_camera, verts, previewCol);
+        }
+    }
+
+    // Filled selection rectangle for SelectTool box selection.
+    if (auto* selectTool = dynamic_cast<SelectTool*>(m_activeTool)) {
+        if (selectTool->isDraggingBox()) {
+            bool isWindow = selectTool->isWindowSelection();
+            math::Vec4 fillColor = isWindow
+                ? math::Vec4{0.2, 0.4, 0.8, 0.12}    // Blue tint
+                : math::Vec4{0.2, 0.8, 0.4, 0.12};   // Green tint
+            m_renderer->drawFilledQuad(gl, m_camera,
+                                       selectTool->boxCorner1(),
+                                       selectTool->boxCorner2(),
+                                       fillColor);
         }
     }
 

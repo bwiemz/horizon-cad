@@ -6,6 +6,9 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/ShaderProgram.h"
 
+#include "horizon/math/Vec2.h"
+#include "horizon/math/Vec4.h"
+
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
@@ -51,6 +54,11 @@ public:
                     const std::vector<float>& circleVertices,
                     const math::Vec3& color, float lineWidth = 1.5f);
 
+    /// Draw a filled, semi-transparent quad between two world-space corners.
+    void drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
+                        const math::Vec2& corner1, const math::Vec2& corner2,
+                        const math::Vec4& color);
+
     bool isInitialized() const { return m_initialized; }
 
 private:
@@ -58,6 +66,7 @@ private:
 
     ShaderProgram m_phongShader;
     ShaderProgram m_lineShader;
+    ShaderProgram m_fillShader;
     Grid m_grid;
 
     // Cached GPU mesh buffers keyed by node ID.

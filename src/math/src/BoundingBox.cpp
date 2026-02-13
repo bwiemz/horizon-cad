@@ -45,6 +45,13 @@ bool BoundingBox::contains(const Vec3& point) const {
            point.y <= m_max.y && point.z >= m_min.z && point.z <= m_max.z;
 }
 
+bool BoundingBox::contains(const BoundingBox& other) const {
+    if (!m_valid || !other.m_valid) return false;
+    return other.m_min.x >= m_min.x && other.m_max.x <= m_max.x &&
+           other.m_min.y >= m_min.y && other.m_max.y <= m_max.y &&
+           other.m_min.z >= m_min.z && other.m_max.z <= m_max.z;
+}
+
 bool BoundingBox::intersects(const BoundingBox& other) const {
     if (!m_valid || !other.m_valid) return false;
     return m_min.x <= other.m_max.x && m_max.x >= other.m_min.x &&

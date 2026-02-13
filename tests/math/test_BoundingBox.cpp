@@ -146,3 +146,50 @@ TEST(BoundingBoxTest, ContainsPointOnBoundary) {
     EXPECT_TRUE(bb.contains(Vec3(1.0, 1.0, 1.0)));
     EXPECT_TRUE(bb.contains(Vec3(1.0, 0.5, 0.5)));
 }
+
+// ---------------------------------------------------------------------------
+// 14. Contains bounding box fully inside
+// ---------------------------------------------------------------------------
+TEST(BoundingBoxTest, ContainsBoundingBoxInside) {
+    BoundingBox outer(Vec3(-5.0, -5.0, -5.0), Vec3(5.0, 5.0, 5.0));
+    BoundingBox inner(Vec3(-1.0, -1.0, -1.0), Vec3(1.0, 1.0, 1.0));
+    EXPECT_TRUE(outer.contains(inner));
+}
+
+// ---------------------------------------------------------------------------
+// 15. Does not contain bounding box that extends outside
+// ---------------------------------------------------------------------------
+TEST(BoundingBoxTest, DoesNotContainBoundingBoxOutside) {
+    BoundingBox outer(Vec3(-1.0, -1.0, -1.0), Vec3(1.0, 1.0, 1.0));
+    BoundingBox bigger(Vec3(-2.0, -2.0, -2.0), Vec3(2.0, 2.0, 2.0));
+    EXPECT_FALSE(outer.contains(bigger));
+}
+
+// ---------------------------------------------------------------------------
+// 16. Contains bounding box with shared boundary
+// ---------------------------------------------------------------------------
+TEST(BoundingBoxTest, ContainsBoundingBoxOnBoundary) {
+    BoundingBox outer(Vec3(0.0, 0.0, 0.0), Vec3(4.0, 4.0, 4.0));
+    BoundingBox edge(Vec3(0.0, 0.0, 0.0), Vec3(4.0, 4.0, 4.0));
+    EXPECT_TRUE(outer.contains(edge));
+}
+
+// ---------------------------------------------------------------------------
+// 17. Does not contain bounding box partially overlapping
+// ---------------------------------------------------------------------------
+TEST(BoundingBoxTest, DoesNotContainPartialOverlap) {
+    BoundingBox a(Vec3(0.0, 0.0, 0.0), Vec3(3.0, 3.0, 3.0));
+    BoundingBox b(Vec3(1.0, 1.0, 1.0), Vec3(5.0, 5.0, 5.0));
+    EXPECT_FALSE(a.contains(b));
+    EXPECT_TRUE(a.intersects(b));
+}
+
+// ---------------------------------------------------------------------------
+// 18. Invalid box does not contain anything
+// ---------------------------------------------------------------------------
+TEST(BoundingBoxTest, InvalidBoxContainsNothing) {
+    BoundingBox invalid;
+    BoundingBox valid(Vec3(0.0, 0.0, 0.0), Vec3(1.0, 1.0, 1.0));
+    EXPECT_FALSE(invalid.contains(valid));
+    EXPECT_FALSE(valid.contains(invalid));
+}

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "horizon/math/Vec2.h"
+#include "horizon/math/Vec3.h"
 
 class QMouseEvent;
 class QKeyEvent;
@@ -68,6 +69,9 @@ public:
 
     /// Returns true if this tool wants a full-viewport crosshair cursor.
     virtual bool wantsCrosshair() const { return false; }
+
+    /// Returns the color for preview geometry (lines, circles, arcs).
+    virtual math::Vec3 previewColor() const { return {0.0, 0.8, 1.0}; }
 
 protected:
     ViewportWidget* m_viewport = nullptr;

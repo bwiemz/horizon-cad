@@ -12,7 +12,8 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Snap-to-geometry engine with endpoint, midpoint, center, and intersection snapping
 
 ### Editing Tools
-- Select (click or box selection), Move, Duplicate, Offset, Trim, Fillet, Mirror, Rotate, Scale
+- Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
+- Move, Duplicate, Offset, Trim, Fillet, Mirror, Rotate, Scale
 - Copy/Paste with clipboard support (Ctrl+C/X/V)
 - Rectangular and Polar array operations
 - Grip editing for direct point manipulation
@@ -144,7 +145,8 @@ Horizon is under active development. Completed and planned work:
 | 15 | Done | Grip editing |
 | 16 | Done | Measurement tools |
 | 17 | Done | UI modernization (dark theme, ribbon toolbar, icons, shortcuts) |
-| 18+ | Planned | Box selection, parametric geometry, 3D modeling |
+| 18 | Done | Box/window selection (drag-rectangle with window and crossing modes) |
+| 19+ | Planned | Parametric geometry, 3D modeling |
 
 ## Contributing
 
