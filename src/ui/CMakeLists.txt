@@ -16,6 +16,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/OffsetTool.h
     include/horizon/ui/TrimTool.h
     include/horizon/ui/FilletTool.h
+    include/horizon/ui/ChamferTool.h
     include/horizon/ui/BreakTool.h
     include/horizon/ui/ExtendTool.h
     include/horizon/ui/StretchTool.h
@@ -59,6 +60,7 @@ add_library(hz_ui STATIC
     src/OffsetTool.cpp
     src/TrimTool.cpp
     src/FilletTool.cpp
+    src/ChamferTool.cpp
     src/BreakTool.cpp
     src/ExtendTool.cpp
     src/StretchTool.cpp

@@ -16,7 +16,7 @@ public:
     /// Tools:      "select", "line", "circle", "arc", "rectangle", "polyline",
     ///             "ellipse", "spline", "text", "hatch"
     /// Modify:     "move", "offset", "mirror", "rotate", "scale", "trim",
-    ///             "fillet", "break", "extend", "stretch", "rect-array", "polar-array"
+    ///             "fillet", "chamfer", "break", "extend", "stretch", "rect-array", "polar-array"
     /// Dimension:  "dim-linear", "dim-radial", "dim-angular", "leader"
     /// Constraint: "cstr-coincident", "cstr-horizontal", "cstr-vertical",
     ///             "cstr-perpendicular", "cstr-parallel", "cstr-tangent",
@@ -65,6 +65,7 @@ private:
     static QIcon drawScale(int s);
     static QIcon drawTrim(int s);
     static QIcon drawFillet(int s);
+    static QIcon drawChamfer(int s);
     static QIcon drawBreak(int s);
     static QIcon drawExtend(int s);
     static QIcon drawStretch(int s);

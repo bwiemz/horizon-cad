@@ -120,6 +120,7 @@ QIcon IconGenerator::icon(const QString& name) {
         {"scale",         drawScale},
         {"trim",          drawTrim},
         {"fillet",         drawFillet},
+        {"chamfer",        drawChamfer},
         {"break",          drawBreak},
         {"extend",         drawExtend},
         {"stretch",        drawStretch},
@@ -661,6 +662,25 @@ QIcon IconGenerator::drawFillet(int s) {
     // Small radius indicator
     p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
     p.drawLine(QPointF(4, 20), QPointF(9, 15));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawChamfer(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Two lines meeting at a corner (bottom-left)
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(4, 20), QPointF(4, 8));
+    p.drawLine(QPointF(4, 20), QPointF(20, 20));
+    // Chamfer bevel line (diagonal cut)
+    p.setPen(accentPen(2.0));
+    p.drawLine(QPointF(4, 10), QPointF(14, 20));
+    // Dashed lines showing removed corner
+    p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
+    p.drawLine(QPointF(4, 10), QPointF(4, 20));
+    p.drawLine(QPointF(4, 20), QPointF(14, 20));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

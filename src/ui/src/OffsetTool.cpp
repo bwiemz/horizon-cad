@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/MathUtils.h"
 
@@ -100,6 +101,20 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
         } else {
             side = 1;
         }
+        return minDist;
+    }
+
+    if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(m_sourceEntity.get())) {
+        auto pts = ellipse->evaluate(64);
+        double minDist = 1e18;
+        for (const auto& pt : pts) {
+            double d = m_currentPos.distanceTo(pt);
+            if (d < minDist) minDist = d;
+        }
+        // Inside/outside: compare cursor distance to center vs average radius.
+        double distToCenter = m_currentPos.distanceTo(ellipse->center());
+        double avgRadius = (ellipse->semiMajor() + ellipse->semiMinor()) * 0.5;
+        side = (distToCenter >= avgRadius) ? 1 : -1;
         return minDist;
     }
 
@@ -198,6 +213,15 @@ std::shared_ptr<draft::DraftEntity> OffsetTool::computeOffset() const {
         return std::make_shared<draft::DraftPolyline>(offsetPts, poly->closed());
     }
 
+    if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(m_sourceEntity.get())) {
+        double newMajor = ellipse->semiMajor() + side * dist;
+        double newMinor = ellipse->semiMinor() + side * dist;
+        if (newMajor < 0.01) newMajor = 0.01;
+        if (newMinor < 0.01) newMinor = 0.01;
+        return std::make_shared<draft::DraftEllipse>(
+            ellipse->center(), newMajor, newMinor, ellipse->rotation());
+    }
+
     return nullptr;
 }
 
@@ -231,6 +255,7 @@ bool OffsetTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
             offset->setLayer(m_sourceEntity->layer());
             offset->setColor(m_sourceEntity->color());
             offset->setLineWidth(m_sourceEntity->lineWidth());
+            offset->setLineType(m_sourceEntity->lineType());
             auto cmd = std::make_unique<doc::AddEntityCommand>(doc, offset);
             m_viewport->document()->undoStack().push(std::move(cmd));
         }

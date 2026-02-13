@@ -12,6 +12,7 @@
 #include "horizon/ui/OffsetTool.h"
 #include "horizon/ui/TrimTool.h"
 #include "horizon/ui/FilletTool.h"
+#include "horizon/ui/ChamferTool.h"
 #include "horizon/ui/BreakTool.h"
 #include "horizon/ui/ExtendTool.h"
 #include "horizon/ui/StretchTool.h"
@@ -192,6 +193,7 @@ void MainWindow::createMenus() {
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Trim"), this, &MainWindow::onTrimTool);
     toolsMenu->addAction(tr("&Fillet"), this, &MainWindow::onFilletTool);
+    toolsMenu->addAction(tr("C&hamfer"), this, &MainWindow::onChamferTool);
     toolsMenu->addAction(tr("&Break"), this, &MainWindow::onBreakTool);
     toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
@@ -330,6 +332,7 @@ void MainWindow::createRibbonBar() {
     addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool,
                   QKeySequence(Qt::Key_X));
     addToolAction(modifyBar, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
+    addToolAction(modifyBar, "chamfer", tr("Chamfer"), &MainWindow::onChamferTool);
     addToolAction(modifyBar, "break", tr("Break"), &MainWindow::onBreakTool,
                   QKeySequence(Qt::Key_B));
     addToolAction(modifyBar, "extend", tr("Extend"), &MainWindow::onExtendTool,
@@ -475,6 +478,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<OffsetTool>());
     m_toolManager->registerTool(std::make_unique<TrimTool>());
     m_toolManager->registerTool(std::make_unique<FilletTool>());
+    m_toolManager->registerTool(std::make_unique<ChamferTool>());
     m_toolManager->registerTool(std::make_unique<BreakTool>());
     m_toolManager->registerTool(std::make_unique<ExtendTool>());
     m_toolManager->registerTool(std::make_unique<StretchTool>());
@@ -805,6 +809,12 @@ void MainWindow::onTrimTool() {
 
 void MainWindow::onFilletTool() {
     m_toolManager->setActiveTool("Fillet");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onChamferTool() {
+    m_toolManager->setActiveTool("Chamfer");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
 }

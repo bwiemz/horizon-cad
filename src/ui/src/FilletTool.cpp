@@ -199,16 +199,16 @@ bool FilletTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
                 }
 
                 auto newLineA = std::make_shared<draft::DraftLine>(trimA_start, trimA_end);
-                if (origA) { newLineA->setLayer(origA->layer()); newLineA->setColor(origA->color()); newLineA->setLineWidth(origA->lineWidth()); }
+                if (origA) { newLineA->setLayer(origA->layer()); newLineA->setColor(origA->color()); newLineA->setLineWidth(origA->lineWidth()); newLineA->setLineType(origA->lineType()); }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineA));
 
                 auto newLineB = std::make_shared<draft::DraftLine>(trimB_start, trimB_end);
-                if (origB) { newLineB->setLayer(origB->layer()); newLineB->setColor(origB->color()); newLineB->setLineWidth(origB->lineWidth()); }
+                if (origB) { newLineB->setLayer(origB->layer()); newLineB->setColor(origB->color()); newLineB->setLineWidth(origB->lineWidth()); newLineB->setLineType(origB->lineType()); }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineB));
 
                 // Add fillet arc.
                 auto filletArc = std::make_shared<draft::DraftArc>(arcCenter, arcRadius, arcStart, arcEnd);
-                if (origA) { filletArc->setLayer(origA->layer()); filletArc->setColor(origA->color()); filletArc->setLineWidth(origA->lineWidth()); }
+                if (origA) { filletArc->setLayer(origA->layer()); filletArc->setColor(origA->color()); filletArc->setLineWidth(origA->lineWidth()); filletArc->setLineType(origA->lineType()); }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, filletArc));
 
                 m_viewport->document()->undoStack().push(std::move(composite));
