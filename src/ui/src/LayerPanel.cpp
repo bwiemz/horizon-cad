@@ -4,6 +4,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/drafting/LineType.h"
 
 #include <QColorDialog>
 #include <QHBoxLayout>
@@ -30,7 +31,7 @@ void LayerPanel::createWidgets() {
     auto* layout = new QVBoxLayout(container);
 
     m_tree = new QTreeWidget(this);
-    m_tree->setHeaderLabels({tr("Name"), tr("V"), tr("L"), tr("Color"), tr("Width")});
+    m_tree->setHeaderLabels({tr("Name"), tr("V"), tr("L"), tr("Color"), tr("Width"), tr("LT")});
     m_tree->setRootIsDecorated(false);
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tree->header()->setStretchLastSection(false);
@@ -39,6 +40,7 @@ void LayerPanel::createWidgets() {
     m_tree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    m_tree->header()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
 
     connect(m_tree, &QTreeWidget::itemDoubleClicked,
             this, &LayerPanel::onItemDoubleClicked);
@@ -104,6 +106,9 @@ void LayerPanel::refresh() {
 
         // Line width.
         item->setText(4, QString::number(lp->lineWidth, 'f', 1));
+
+        // Line type.
+        item->setText(5, QString::fromUtf8(draft::lineTypeName(lp->lineType)));
     }
 
     m_refreshing = false;
@@ -162,16 +167,32 @@ void LayerPanel::onDeleteLayer() {
 }
 
 void LayerPanel::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
-    if (!item || column != 0) return;
+    if (!item) return;
 
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
     std::string name = item->data(0, Qt::UserRole).toString().toStdString();
-    auto cmd = std::make_unique<doc::SetCurrentLayerCommand>(
-        viewport->document()->layerManager(), name);
-    viewport->document()->undoStack().push(std::move(cmd));
-    refresh();
+
+    if (column == 0) {
+        auto cmd = std::make_unique<doc::SetCurrentLayerCommand>(
+            viewport->document()->layerManager(), name);
+        viewport->document()->undoStack().push(std::move(cmd));
+        refresh();
+    } else if (column == 5) {
+        // Cycle through line types 1-7 (skip 0/ByLayer — layers always have a concrete type).
+        const auto* lp = viewport->document()->layerManager().getLayer(name);
+        if (!lp) return;
+        int next = lp->lineType + 1;
+        if (next > 7) next = 1;
+        draft::LayerProperties newProps = *lp;
+        newProps.lineType = next;
+        auto cmd = std::make_unique<doc::ModifyLayerCommand>(
+            viewport->document()->layerManager(), name, newProps);
+        viewport->document()->undoStack().push(std::move(cmd));
+        refresh();
+        viewport->update();
+    }
 }
 
 void LayerPanel::onItemChanged(QTreeWidgetItem* item, int column) {

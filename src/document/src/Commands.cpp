@@ -391,6 +391,41 @@ std::string ChangeEntityLineWidthCommand::description() const {
     return "Change Line Width";
 }
 
+// --- ChangeEntityLineTypeCommand ---
+
+ChangeEntityLineTypeCommand::ChangeEntityLineTypeCommand(draft::DraftDocument& doc,
+                                                         const std::vector<uint64_t>& entityIds,
+                                                         int newLineType)
+    : m_doc(doc), m_entityIds(entityIds), m_newLineType(newLineType) {}
+
+void ChangeEntityLineTypeCommand::execute() {
+    m_oldLineTypes.clear();
+    for (uint64_t id : m_entityIds) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_oldLineTypes.emplace_back(id, e->lineType());
+                e->setLineType(m_newLineType);
+                break;
+            }
+        }
+    }
+}
+
+void ChangeEntityLineTypeCommand::undo() {
+    for (const auto& [id, oldLt] : m_oldLineTypes) {
+        for (const auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setLineType(oldLt);
+                break;
+            }
+        }
+    }
+}
+
+std::string ChangeEntityLineTypeCommand::description() const {
+    return "Change Line Type";
+}
+
 // --- ChangeTextOverrideCommand ---
 
 ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc,

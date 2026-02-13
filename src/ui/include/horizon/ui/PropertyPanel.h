@@ -44,6 +44,7 @@ private slots:
     void onEllipseSemiMajorChanged(double value);
     void onEllipseSemiMinorChanged(double value);
     void onEllipseRotationChanged(double value);
+    void onLineTypeChanged(int index);
 
 private:
     void createWidgets();
@@ -58,6 +59,7 @@ private:
     QPushButton* m_colorButton = nullptr;
     QPushButton* m_byLayerButton = nullptr;
     QDoubleSpinBox* m_lineWidthSpin = nullptr;
+    QComboBox* m_lineTypeCombo = nullptr;
 
     // Dimension-specific
     QWidget* m_dimPropsWidget = nullptr;

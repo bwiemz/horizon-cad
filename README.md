@@ -42,14 +42,15 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Explode block references back to individual entities
 
 ### Layers & Properties
-- Layer management with visibility, lock, color, and line width
-- ByLayer property inheritance — entities can inherit color and line width from their layer
+- Layer management with visibility, lock, color, line width, and line type
+- **Line types**: Continuous, Dashed, Dotted, DashDot, Center, Hidden, Phantom — rendered via GPU shader
+- ByLayer property inheritance — entities can inherit color, line width, and line type from their layer
 - Property panel for inspecting and editing selected entities
 - Layer panel with add, remove, rename, and per-layer controls
 
 ### Document System
 - Full undo/redo with composite command support
-- Native JSON file format (`.hcad` v9) with backward-compatible versioning
+- Native JSON file format (`.hcad` v11) with backward-compatible versioning
 - DXF import/export (LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT)
 - New, Open, Save, Save As workflow
 
@@ -146,7 +147,8 @@ Horizon is under active development. Completed and planned work:
 | 16 | Done | Measurement tools |
 | 17 | Done | UI modernization (dark theme, ribbon toolbar, icons, shortcuts) |
 | 18 | Done | Box/window selection (drag-rectangle with window and crossing modes) |
-| 19+ | Planned | Parametric geometry, 3D modeling |
+| 19 | Done | Line types (dashed, dotted, center, hidden, phantom) with GPU shader rendering |
+| 20+ | Planned | Parametric geometry, 3D modeling |
 
 ## Contributing
 

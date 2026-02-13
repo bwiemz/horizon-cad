@@ -98,22 +98,68 @@ static const char* kLineVertSrc = R"glsl(
 #version 330 core
 
 layout(location = 0) in vec3 aPos;
+layout(location = 1) in float aDistance;
 
 uniform mat4 uMVP;
 
+out float vDistance;
+
 void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
+    vDistance = aDistance;
 }
 )glsl";
 
 static const char* kLineFragSrc = R"glsl(
 #version 330 core
 
+in float vDistance;
+
 out vec4 FragColor;
 
 uniform vec3 uLineColor;
+uniform int uLineType;        // 0=ByLayer(unused), 1=Continuous, 2=Dashed, etc.
+uniform float uPatternScale;  // Scale factor for pattern lengths.
 
 void main() {
+    // Continuous (1) or ByLayer fallback (0) — no discarding.
+    if (uLineType <= 1) {
+        FragColor = vec4(uLineColor, 1.0);
+        return;
+    }
+
+    float d = vDistance * uPatternScale;
+
+    bool inGap = false;
+
+    if (uLineType == 2) {
+        // Dashed: dash 0.5, gap 0.3
+        float p = mod(d, 0.8);
+        inGap = p > 0.5;
+    } else if (uLineType == 3) {
+        // Dotted: dot 0.05, gap 0.25
+        float p = mod(d, 0.3);
+        inGap = p > 0.05;
+    } else if (uLineType == 4) {
+        // DashDot: dash 0.5, gap 0.15, dot 0.05, gap 0.15
+        float p = mod(d, 0.85);
+        inGap = (p > 0.5 && p <= 0.65) || p > 0.7;
+    } else if (uLineType == 5) {
+        // Center: long 1.0, gap 0.15, short 0.2, gap 0.15
+        float p = mod(d, 1.5);
+        inGap = (p > 1.0 && p <= 1.15) || p > 1.35;
+    } else if (uLineType == 6) {
+        // Hidden: dash 0.25, gap 0.15
+        float p = mod(d, 0.4);
+        inGap = p > 0.25;
+    } else if (uLineType == 7) {
+        // Phantom: long 1.0, gap 0.15, short 0.2, gap 0.15, short 0.2, gap 0.15
+        float p = mod(d, 1.85);
+        inGap = (p > 1.0 && p <= 1.15) || (p > 1.35 && p <= 1.5) || p > 1.7;
+    }
+
+    if (inGap) discard;
+
     FragColor = vec4(uLineColor, 1.0);
 }
 )glsl";
@@ -225,7 +271,8 @@ void GLRenderer::setBackgroundColor(float r, float g, float b) {
 
 void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                             const std::vector<float>& lineVertices,
-                            const math::Vec3& color, float lineWidth) {
+                            const math::Vec3& color, float lineWidth,
+                            int lineType, float patternScale) {
     if (!m_initialized || lineVertices.empty()) return;
 
     math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
@@ -233,8 +280,11 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_lineShader.bind();
     m_lineShader.setUniform("uMVP", vp);
     m_lineShader.setUniform("uLineColor", color);
+    m_lineShader.setUniform("uLineType", lineType);
+    m_lineShader.setUniform("uPatternScale", patternScale);
 
-    // Create a temporary VAO/VBO for the lines
+    // Create a temporary VAO/VBO for the lines.
+    // Vertex format: 4 floats per vertex (x, y, z, distance).
     GLuint vao, vbo;
     gl->glGenVertexArrays(1, &vao);
     gl->glBindVertexArray(vao);
@@ -246,10 +296,13 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                      lineVertices.data(), GL_STREAM_DRAW);
 
     gl->glEnableVertexAttribArray(0);
-    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
+    gl->glEnableVertexAttribArray(1);
+    gl->glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                              reinterpret_cast<void*>(3 * sizeof(float)));
 
     gl->glLineWidth(lineWidth);
-    gl->glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineVertices.size() / 3));
+    gl->glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineVertices.size() / 4));
 
     gl->glBindVertexArray(0);
     gl->glDeleteBuffers(1, &vbo);
@@ -260,8 +313,9 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
 
 void GLRenderer::drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                               const std::vector<float>& circleVertices,
-                              const math::Vec3& color, float lineWidth) {
-    drawLines(gl, camera, circleVertices, color, lineWidth);
+                              const math::Vec3& color, float lineWidth,
+                              int lineType, float patternScale) {
+    drawLines(gl, camera, circleVertices, color, lineWidth, lineType, patternScale);
 }
 
 void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,

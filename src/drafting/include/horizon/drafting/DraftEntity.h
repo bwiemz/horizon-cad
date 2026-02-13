@@ -33,6 +33,10 @@ public:
     double lineWidth() const { return m_lineWidth; }
     void setLineWidth(double width) { m_lineWidth = width; }
 
+    /// Line type (0 = ByLayer, 1 = Continuous, 2 = Dashed, etc.).  See LineType.h.
+    int lineType() const { return m_lineType; }
+    void setLineType(int lt) { m_lineType = lt; }
+
     virtual math::BoundingBox boundingBox() const = 0;
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
@@ -47,6 +51,7 @@ private:
     std::string m_layer;
     uint32_t m_color;
     double m_lineWidth;
+    int m_lineType;
 
     static uint64_t s_nextId;
 };

@@ -17,6 +17,7 @@
 #include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/Layer.h"
+#include "horizon/drafting/LineType.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/BoundingBox.h"
 
@@ -122,6 +123,10 @@ void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
     uint32_t c = entity.color();
     if (c != 0x00000000) {
         writeGroup(out, 62, argbToAci(c));
+    }
+    if (entity.lineType() > 0) {
+        writeGroup(out, 6, std::string(draft::lineTypeDxfName(
+            static_cast<draft::LineType>(entity.lineType()))));
     }
     if (entity.lineWidth() > 0.0) {
         writeGroup(out, 370, static_cast<int>(entity.lineWidth() * 100.0));
@@ -493,6 +498,8 @@ void applyCommonProps(std::shared_ptr<draft::DraftEntity>& entity,
     for (const auto& g : groups) {
         if (g.code == 8)   entity->setLayer(g.value);
         if (g.code == 62)  entity->setColor(aciToArgb(toInt(g.value)));
+        if (g.code == 6)   entity->setLineType(static_cast<int>(
+                               draft::lineTypeFromDxfName(g.value)));
         if (g.code == 370) {
             int lw = toInt(g.value);
             entity->setLineWidth(lw <= 0 ? 0.0 : lw / 100.0);
@@ -730,12 +737,15 @@ void parseLayerTable(std::istream& in, doc::Document& doc) {
                         int flags = toInt(findGroup(groups, 70, "0"));
                         int lw = toInt(findGroup(groups, 370, "-1"));
 
+                        std::string ltName = findGroup(groups, 6, "CONTINUOUS");
                         draft::LayerProperties props;
                         props.name = name;
                         props.color = aciToArgb(std::abs(aci));
                         props.visible = (aci >= 0) && !(flags & 1);
                         props.locked = (flags & 4) != 0;
                         props.lineWidth = (lw <= 0) ? 1.0 : lw / 100.0;
+                        props.lineType = static_cast<int>(
+                            draft::lineTypeFromDxfName(ltName));
 
                         if (name == "0") {
                             auto* existing = doc.layerManager().getLayer("0");
@@ -933,7 +943,9 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
     writeGroup(out, 0, std::string("TABLE"));
     writeGroup(out, 2, std::string("LTYPE"));
     writeGroup(out, 5, nextHandle());
-    writeGroup(out, 70, 1);
+    writeGroup(out, 70, 7);
+
+    // CONTINUOUS
     writeGroup(out, 0, std::string("LTYPE"));
     writeGroup(out, 5, nextHandle());
     writeGroup(out, 2, std::string("CONTINUOUS"));
@@ -942,6 +954,87 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
     writeGroup(out, 72, 65);
     writeGroup(out, 73, 0);
     writeGroup(out, 40, 0.0);
+
+    // DASHED — dash=0.5, gap=0.3, period=0.8
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("DASHED"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Dashed __ __ __"));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 2);
+    writeGroup(out, 40, 0.8);
+    writeGroup(out, 49, 0.5);
+    writeGroup(out, 49, -0.3);
+
+    // DOT — dot=0.05, gap=0.25, period=0.3
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("DOT"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Dot . . . ."));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 2);
+    writeGroup(out, 40, 0.3);
+    writeGroup(out, 49, 0.05);
+    writeGroup(out, 49, -0.25);
+
+    // DASHDOT — 0.5, 0.15, 0.05, 0.15, period=0.85
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("DASHDOT"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Dash dot __ . __"));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 4);
+    writeGroup(out, 40, 0.85);
+    writeGroup(out, 49, 0.5);
+    writeGroup(out, 49, -0.15);
+    writeGroup(out, 49, 0.05);
+    writeGroup(out, 49, -0.15);
+
+    // CENTER — 1.0, 0.15, 0.2, 0.15, period=1.5
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("CENTER"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Center ____ _ ____ _"));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 4);
+    writeGroup(out, 40, 1.5);
+    writeGroup(out, 49, 1.0);
+    writeGroup(out, 49, -0.15);
+    writeGroup(out, 49, 0.2);
+    writeGroup(out, 49, -0.15);
+
+    // HIDDEN — 0.25, 0.15, period=0.4
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("HIDDEN"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Hidden __ __ __"));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 2);
+    writeGroup(out, 40, 0.4);
+    writeGroup(out, 49, 0.25);
+    writeGroup(out, 49, -0.15);
+
+    // PHANTOM — 1.0, 0.15, 0.2, 0.15, 0.2, 0.15, period=1.85
+    writeGroup(out, 0, std::string("LTYPE"));
+    writeGroup(out, 5, nextHandle());
+    writeGroup(out, 2, std::string("PHANTOM"));
+    writeGroup(out, 70, 0);
+    writeGroup(out, 3, std::string("Phantom ______ _ _ ______"));
+    writeGroup(out, 72, 65);
+    writeGroup(out, 73, 6);
+    writeGroup(out, 40, 1.85);
+    writeGroup(out, 49, 1.0);
+    writeGroup(out, 49, -0.15);
+    writeGroup(out, 49, 0.2);
+    writeGroup(out, 49, -0.15);
+    writeGroup(out, 49, 0.2);
+    writeGroup(out, 49, -0.15);
+
     writeGroup(out, 0, std::string("ENDTAB"));
 
     // LAYER table.
@@ -963,7 +1056,8 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
         int aci = argbToAci(lp->color);
         if (!lp->visible) aci = -aci;
         writeGroup(out, 62, aci);
-        writeGroup(out, 6, std::string("CONTINUOUS"));
+        writeGroup(out, 6, std::string(draft::lineTypeDxfName(
+            static_cast<draft::LineType>(lp->lineType))));
     }
     writeGroup(out, 0, std::string("ENDTAB"));
     writeGroup(out, 0, std::string("ENDSEC"));

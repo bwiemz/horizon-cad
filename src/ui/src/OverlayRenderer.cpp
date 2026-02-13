@@ -32,11 +32,18 @@ void OverlayRenderer::render(QOpenGLExtraFunctions* gl,
 // Snap markers — distinct shapes per snap type
 // ---------------------------------------------------------------------------
 
+// Helper: push a line segment with distance attribute (solid overlays use dist=0).
+static void pushSeg(std::vector<float>& v, float x0, float y0, float x1, float y1) {
+    float len = std::sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+    v.push_back(x0); v.push_back(y0); v.push_back(0.0f); v.push_back(0.0f);
+    v.push_back(x1); v.push_back(y1); v.push_back(0.0f); v.push_back(len);
+}
+
 void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
                                         const render::Camera& camera,
                                         render::GLRenderer* renderer,
                                         double pixelScale) {
-    double size = 8.0 * pixelScale;  // 8 pixels in world units
+    double size = 8.0 * pixelScale;
     float cx = static_cast<float>(m_snapResult.point.x);
     float cy = static_cast<float>(m_snapResult.point.y);
     float s = static_cast<float>(size);
@@ -47,21 +54,17 @@ void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
     switch (m_snapResult.type) {
         case draft::SnapType::Endpoint: {
             // Square
-            verts = {
-                cx - s, cy - s, 0.0f,  cx + s, cy - s, 0.0f,
-                cx + s, cy - s, 0.0f,  cx + s, cy + s, 0.0f,
-                cx + s, cy + s, 0.0f,  cx - s, cy + s, 0.0f,
-                cx - s, cy + s, 0.0f,  cx - s, cy - s, 0.0f,
-            };
+            pushSeg(verts, cx - s, cy - s, cx + s, cy - s);
+            pushSeg(verts, cx + s, cy - s, cx + s, cy + s);
+            pushSeg(verts, cx + s, cy + s, cx - s, cy + s);
+            pushSeg(verts, cx - s, cy + s, cx - s, cy - s);
             break;
         }
         case draft::SnapType::Midpoint: {
-            // Triangle (pointing up)
-            verts = {
-                cx,     cy + s, 0.0f,   cx - s, cy - s, 0.0f,
-                cx - s, cy - s, 0.0f,   cx + s, cy - s, 0.0f,
-                cx + s, cy - s, 0.0f,   cx,     cy + s, 0.0f,
-            };
+            // Triangle
+            pushSeg(verts, cx, cy + s, cx - s, cy - s);
+            pushSeg(verts, cx - s, cy - s, cx + s, cy - s);
+            pushSeg(verts, cx + s, cy - s, cx, cy + s);
             break;
         }
         case draft::SnapType::Center: {
@@ -70,21 +73,18 @@ void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
             for (int i = 0; i < segs; ++i) {
                 double a1 = 2.0 * M_PI * i / segs;
                 double a2 = 2.0 * M_PI * (i + 1) / segs;
-                verts.push_back(cx + s * static_cast<float>(std::cos(a1)));
-                verts.push_back(cy + s * static_cast<float>(std::sin(a1)));
-                verts.push_back(0.0f);
-                verts.push_back(cx + s * static_cast<float>(std::cos(a2)));
-                verts.push_back(cy + s * static_cast<float>(std::sin(a2)));
-                verts.push_back(0.0f);
+                pushSeg(verts,
+                        cx + s * static_cast<float>(std::cos(a1)),
+                        cy + s * static_cast<float>(std::sin(a1)),
+                        cx + s * static_cast<float>(std::cos(a2)),
+                        cy + s * static_cast<float>(std::sin(a2)));
             }
             break;
         }
         case draft::SnapType::Grid: {
             // X cross
-            verts = {
-                cx - s, cy - s, 0.0f,  cx + s, cy + s, 0.0f,
-                cx - s, cy + s, 0.0f,  cx + s, cy - s, 0.0f,
-            };
+            pushSeg(verts, cx - s, cy - s, cx + s, cy + s);
+            pushSeg(verts, cx - s, cy + s, cx + s, cy - s);
             break;
         }
         case draft::SnapType::None:
@@ -106,20 +106,15 @@ void OverlayRenderer::renderCrosshair(QOpenGLExtraFunctions* gl,
                                        render::GLRenderer* renderer,
                                        int vpW, int vpH,
                                        double pixelScale) {
-    // Build two full-viewport lines through the cursor world position.
-    // Extend far enough to cover the visible area.
     double extent = std::max(vpW, vpH) * pixelScale * 2.0;
 
     float wx = static_cast<float>(m_crosshairWorld.x);
     float wy = static_cast<float>(m_crosshairWorld.y);
     float e = static_cast<float>(extent);
 
-    // Horizontal line (left to right at cursor Y).
-    // Vertical line (bottom to top at cursor X).
-    std::vector<float> verts = {
-        wx - e, wy, 0.0f,   wx + e, wy, 0.0f,
-        wx, wy - e, 0.0f,   wx, wy + e, 0.0f,
-    };
+    std::vector<float> verts;
+    pushSeg(verts, wx - e, wy, wx + e, wy);
+    pushSeg(verts, wx, wy - e, wx, wy + e);
 
     math::Vec3 gray{0.45, 0.45, 0.45};
     renderer->drawLines(gl, camera, verts, gray, 1.0f);
@@ -134,20 +129,11 @@ void OverlayRenderer::renderAxisIndicator(QOpenGLExtraFunctions* gl,
                                            render::GLRenderer* renderer,
                                            int vpW, int vpH,
                                            double pixelScale) {
-    // Position: bottom-left corner, 35 pixels from edges.
-    // Axis length: 30 pixels.
     double margin = 35.0 * pixelScale;
     double axisLen = 30.0 * pixelScale;
 
-    // Get world coordinates of the bottom-left area.
-    // The camera is perspective with Z-up convention.
-    // We need the world position at the bottom-left corner of the viewport.
-    // Use screenToRay to unproject the bottom-left corner.
-
-    // Screen coords: (marginPx, vpH - marginPx) in Qt coords (0=top).
     auto [rayO, rayD] = camera.screenToRay(35.0, static_cast<double>(vpH) - 35.0, vpW, vpH);
 
-    // Intersect with Z=0 plane.
     math::Vec2 origin;
     if (std::abs(rayD.z) > 1e-12) {
         double t = -rayO.z / rayD.z;
@@ -160,36 +146,30 @@ void OverlayRenderer::renderAxisIndicator(QOpenGLExtraFunctions* gl,
     float ox = static_cast<float>(origin.x);
     float oy = static_cast<float>(origin.y);
     float len = static_cast<float>(axisLen);
+    float arrow = static_cast<float>(6.0 * pixelScale);
 
     // X axis (red)
-    std::vector<float> xVerts = {
-        ox, oy, 0.0f,   ox + len, oy, 0.0f,
-    };
+    std::vector<float> xVerts;
+    pushSeg(xVerts, ox, oy, ox + len, oy);
     math::Vec3 red{0.9, 0.2, 0.2};
     renderer->drawLines(gl, camera, xVerts, red, 2.0f);
 
     // Y axis (green)
-    std::vector<float> yVerts = {
-        ox, oy, 0.0f,   ox, oy + len, 0.0f,
-    };
+    std::vector<float> yVerts;
+    pushSeg(yVerts, ox, oy, ox, oy + len);
     math::Vec3 green{0.2, 0.8, 0.2};
     renderer->drawLines(gl, camera, yVerts, green, 2.0f);
 
-    // Small arrowheads.
-    float arrow = static_cast<float>(6.0 * pixelScale);
-
     // X arrowhead
-    std::vector<float> xArrow = {
-        ox + len, oy, 0.0f,   ox + len - arrow, oy + arrow * 0.5f, 0.0f,
-        ox + len, oy, 0.0f,   ox + len - arrow, oy - arrow * 0.5f, 0.0f,
-    };
+    std::vector<float> xArrow;
+    pushSeg(xArrow, ox + len, oy, ox + len - arrow, oy + arrow * 0.5f);
+    pushSeg(xArrow, ox + len, oy, ox + len - arrow, oy - arrow * 0.5f);
     renderer->drawLines(gl, camera, xArrow, red, 2.0f);
 
     // Y arrowhead
-    std::vector<float> yArrow = {
-        ox, oy + len, 0.0f,   ox - arrow * 0.5f, oy + len - arrow, 0.0f,
-        ox, oy + len, 0.0f,   ox + arrow * 0.5f, oy + len - arrow, 0.0f,
-    };
+    std::vector<float> yArrow;
+    pushSeg(yArrow, ox, oy + len, ox - arrow * 0.5f, oy + len - arrow);
+    pushSeg(yArrow, ox, oy + len, ox + arrow * 0.5f, oy + len - arrow);
     renderer->drawLines(gl, camera, yArrow, green, 2.0f);
 }
 

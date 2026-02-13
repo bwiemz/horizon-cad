@@ -218,6 +218,23 @@ private:
     std::vector<std::pair<uint64_t, double>> m_oldWidths;
 };
 
+/// Command to change the line type of one or more entities.
+class ChangeEntityLineTypeCommand : public Command {
+public:
+    ChangeEntityLineTypeCommand(draft::DraftDocument& doc,
+                                const std::vector<uint64_t>& entityIds,
+                                int newLineType);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    int m_newLineType;
+    std::vector<std::pair<uint64_t, int>> m_oldLineTypes;
+};
+
 /// Command to change the text override of a dimension entity.
 class ChangeTextOverrideCommand : public Command {
 public:

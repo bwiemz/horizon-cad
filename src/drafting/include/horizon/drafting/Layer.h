@@ -11,6 +11,7 @@ struct LayerProperties {
     std::string name;
     uint32_t color = 0xFFFFFFFF;  // ARGB white
     double lineWidth = 1.0;
+    int lineType = 1;  ///< Default = Continuous (see LineType.h).
     bool visible = true;
     bool locked = false;
 };

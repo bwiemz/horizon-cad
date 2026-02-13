@@ -78,7 +78,7 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 10;
+    root["version"] = 11;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -104,6 +104,7 @@ bool NativeFormat::save(const std::string& filePath,
         layerObj["lineWidth"] = lp->lineWidth;
         layerObj["visible"] = lp->visible;
         layerObj["locked"] = lp->locked;
+        layerObj["lineType"] = lp->lineType;
         layersArray.push_back(layerObj);
     }
     root["layers"] = layersArray;
@@ -123,6 +124,7 @@ bool NativeFormat::save(const std::string& filePath,
             se["layer"] = subEnt->layer();
             se["color"] = subEnt->color();
             se["lineWidth"] = subEnt->lineWidth();
+            se["lineType"] = subEnt->lineType();
             if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
                 se["type"] = "line";
                 se["start"] = {{"x", ln->start().x}, {"y", ln->start().y}};
@@ -190,6 +192,7 @@ bool NativeFormat::save(const std::string& filePath,
         obj["layer"] = entity->layer();
         obj["color"] = entity->color();
         obj["lineWidth"] = entity->lineWidth();
+        obj["lineType"] = entity->lineType();
 
         if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
             obj["type"] = "line";
@@ -413,6 +416,7 @@ bool NativeFormat::load(const std::string& filePath,
             props.lineWidth = layerObj.value("lineWidth", 1.0);
             props.visible = layerObj.value("visible", true);
             props.locked = layerObj.value("locked", false);
+            props.lineType = layerObj.value("lineType", 1);
             if (props.name == "0") {
                 // Update default layer properties instead of adding duplicate.
                 auto* defaultLayer = doc.layerManager().getLayer("0");
@@ -496,6 +500,7 @@ bool NativeFormat::load(const std::string& filePath,
                         subEnt->setLayer(se.value("layer", "0"));
                         subEnt->setColor(se.value("color", 0u));
                         subEnt->setLineWidth(se.value("lineWidth", 0.0));
+                        subEnt->setLineType(se.value("lineType", 0));
                         def->entities.push_back(subEnt);
                     }
                 }
@@ -655,6 +660,7 @@ bool NativeFormat::load(const std::string& filePath,
             entity->setLayer(layer);
             entity->setColor(color);
             entity->setLineWidth(lineWidth);
+            entity->setLineType(obj.value("lineType", 0));
             doc.draftDocument().addEntity(entity);
         }
         } catch (const nlohmann::json::exception&) {

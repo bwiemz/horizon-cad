@@ -46,8 +46,10 @@ static hz::math::Vec3 argbToVec3(uint32_t argb) {
 struct BatchKey {
     uint32_t colorARGB;
     float lineWidth;
+    int lineType;
     bool operator==(const BatchKey& o) const {
-        return colorARGB == o.colorARGB && lineWidth == o.lineWidth;
+        return colorARGB == o.colorARGB && lineWidth == o.lineWidth &&
+               lineType == o.lineType;
     }
 };
 
@@ -356,113 +358,107 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
             resolvedWidth = static_cast<float>(entity->lineWidth());
         }
 
-        BatchKey key{resolvedColor, resolvedWidth};
+        // Resolve lineType.
+        int resolvedLineType;
+        if (entity->lineType() == 0) {
+            resolvedLineType = lp ? lp->lineType : 1;
+        } else {
+            resolvedLineType = entity->lineType();
+        }
+
+        BatchKey key{resolvedColor, resolvedWidth, resolvedLineType};
+
+        // Helper: emit a vertex (x, y, z=0, distance) into a batch.
+        auto emitVert = [](std::vector<float>& v, double x, double y, float dist) {
+            v.push_back(static_cast<float>(x));
+            v.push_back(static_cast<float>(y));
+            v.push_back(0.0f);
+            v.push_back(dist);
+        };
+
+        // Helper: emit a line segment with per-vertex distance for a point sequence.
+        auto emitPointSeq = [&emitVert](std::vector<float>& v,
+                                         const std::vector<math::Vec2>& pts,
+                                         bool closed) {
+            double cumDist = 0.0;
+            for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                double segLen = pts[i].distanceTo(pts[i + 1]);
+                emitVert(v, pts[i].x, pts[i].y, static_cast<float>(cumDist));
+                cumDist += segLen;
+                emitVert(v, pts[i + 1].x, pts[i + 1].y, static_cast<float>(cumDist));
+            }
+            if (closed && pts.size() >= 2) {
+                double segLen = pts.back().distanceTo(pts[0]);
+                emitVert(v, pts.back().x, pts.back().y, static_cast<float>(cumDist));
+                cumDist += segLen;
+                emitVert(v, pts[0].x, pts[0].y, static_cast<float>(cumDist));
+            }
+        };
 
         if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
             auto& verts = findOrCreateBatch(key);
-            verts.push_back(static_cast<float>(line->start().x));
-            verts.push_back(static_cast<float>(line->start().y));
-            verts.push_back(0.0f);
-            verts.push_back(static_cast<float>(line->end().x));
-            verts.push_back(static_cast<float>(line->end().y));
-            verts.push_back(0.0f);
+            double len = line->start().distanceTo(line->end());
+            emitVert(verts, line->start().x, line->start().y, 0.0f);
+            emitVert(verts, line->end().x, line->end().y, static_cast<float>(len));
         } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
             auto verts = circleVertices(circle->center(), circle->radius());
             m_renderer->drawCircle(gl, m_camera, verts,
-                                   argbToVec3(resolvedColor), resolvedWidth);
+                                   argbToVec3(resolvedColor), resolvedWidth,
+                                   resolvedLineType);
         } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
             auto verts = arcVertices(arc->center(), arc->radius(),
                                      arc->startAngle(), arc->endAngle());
             m_renderer->drawLines(gl, m_camera, verts,
-                                  argbToVec3(resolvedColor), resolvedWidth);
+                                  argbToVec3(resolvedColor), resolvedWidth,
+                                  resolvedLineType);
         } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
             auto c = rect->corners();
             auto& verts = findOrCreateBatch(key);
+            double cumDist = 0.0;
             for (int i = 0; i < 4; ++i) {
                 int j = (i + 1) % 4;
-                verts.push_back(static_cast<float>(c[i].x));
-                verts.push_back(static_cast<float>(c[i].y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(c[j].x));
-                verts.push_back(static_cast<float>(c[j].y));
-                verts.push_back(0.0f);
+                double segLen = c[i].distanceTo(c[j]);
+                emitVert(verts, c[i].x, c[i].y, static_cast<float>(cumDist));
+                cumDist += segLen;
+                emitVert(verts, c[j].x, c[j].y, static_cast<float>(cumDist));
             }
         } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
             auto& verts = findOrCreateBatch(key);
-            const auto& pts = polyline->points();
-            for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                verts.push_back(static_cast<float>(pts[i].x));
-                verts.push_back(static_cast<float>(pts[i].y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(pts[i + 1].x));
-                verts.push_back(static_cast<float>(pts[i + 1].y));
-                verts.push_back(0.0f);
-            }
-            if (polyline->closed() && pts.size() >= 2) {
-                verts.push_back(static_cast<float>(pts.back().x));
-                verts.push_back(static_cast<float>(pts.back().y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(pts[0].x));
-                verts.push_back(static_cast<float>(pts[0].y));
-                verts.push_back(0.0f);
-            }
+            emitPointSeq(verts, polyline->points(), polyline->closed());
         } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(entity.get())) {
             auto& verts = findOrCreateBatch(key);
-            auto evalPts = spline->evaluate();
-            for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
-                verts.push_back(static_cast<float>(evalPts[i].x));
-                verts.push_back(static_cast<float>(evalPts[i].y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(evalPts[i + 1].x));
-                verts.push_back(static_cast<float>(evalPts[i + 1].y));
-                verts.push_back(0.0f);
-            }
+            emitPointSeq(verts, spline->evaluate(), false);
         } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(entity.get())) {
             auto& verts = findOrCreateBatch(key);
-            // Draw boundary outline.
+            // Draw boundary outline with cumulative distance.
             const auto& bnd = hatch->boundary();
+            double cumDist = 0.0;
             for (size_t i = 0; i < bnd.size(); ++i) {
                 size_t j = (i + 1) % bnd.size();
-                verts.push_back(static_cast<float>(bnd[i].x));
-                verts.push_back(static_cast<float>(bnd[i].y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(bnd[j].x));
-                verts.push_back(static_cast<float>(bnd[j].y));
-                verts.push_back(0.0f);
+                double segLen = bnd[i].distanceTo(bnd[j]);
+                emitVert(verts, bnd[i].x, bnd[i].y, static_cast<float>(cumDist));
+                cumDist += segLen;
+                emitVert(verts, bnd[j].x, bnd[j].y, static_cast<float>(cumDist));
             }
-            // Draw hatch fill lines.
+            // Draw hatch fill lines — each starts at distance 0.
             auto hatchLines = hatch->generateHatchLines();
             for (const auto& [a, b] : hatchLines) {
-                verts.push_back(static_cast<float>(a.x));
-                verts.push_back(static_cast<float>(a.y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(b.x));
-                verts.push_back(static_cast<float>(b.y));
-                verts.push_back(0.0f);
+                double segLen = a.distanceTo(b);
+                emitVert(verts, a.x, a.y, 0.0f);
+                emitVert(verts, b.x, b.y, static_cast<float>(segLen));
             }
         } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(entity.get())) {
             auto& verts = findOrCreateBatch(key);
-            auto evalPts = ellipse->evaluate();
-            for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
-                verts.push_back(static_cast<float>(evalPts[i].x));
-                verts.push_back(static_cast<float>(evalPts[i].y));
-                verts.push_back(0.0f);
-                verts.push_back(static_cast<float>(evalPts[i + 1].x));
-                verts.push_back(static_cast<float>(evalPts[i + 1].y));
-                verts.push_back(0.0f);
-            }
+            emitPointSeq(verts, ellipse->evaluate(), false);
         } else if (auto* dim = dynamic_cast<const draft::DraftDimension*>(entity.get())) {
             const auto& style = m_document->draftDocument().dimensionStyle();
             auto& verts = findOrCreateBatch(key);
 
             auto addSegments = [&](const std::vector<std::pair<math::Vec2, math::Vec2>>& segs) {
                 for (const auto& [a, b] : segs) {
-                    verts.push_back(static_cast<float>(a.x));
-                    verts.push_back(static_cast<float>(a.y));
-                    verts.push_back(0.0f);
-                    verts.push_back(static_cast<float>(b.x));
-                    verts.push_back(static_cast<float>(b.y));
-                    verts.push_back(0.0f);
+                    double segLen = a.distanceTo(b);
+                    emitVert(verts, a.x, a.y, 0.0f);
+                    emitVert(verts, b.x, b.y, static_cast<float>(segLen));
                 }
             };
 
@@ -476,76 +472,94 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
         } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
             // Render each sub-entity of the block definition, transformed to world space.
             for (const auto& subEnt : bref->definition()->entities) {
-                // ByBlock color resolution: sub-entity color 0 → use block ref's resolved color.
+                // ByBlock resolution: sub-entity value 0 → use block ref's resolved value.
                 uint32_t subColor = subEnt->color();
                 if (subColor == 0x00000000) subColor = resolvedColor;
                 float subWidth = static_cast<float>(subEnt->lineWidth());
                 if (subWidth == 0.0f) subWidth = resolvedWidth;
-                BatchKey subKey{subColor, subWidth};
+                int subLineType = subEnt->lineType();
+                if (subLineType == 0) subLineType = resolvedLineType;
+                BatchKey subKey{subColor, subWidth, subLineType};
 
                 if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
                     auto p1 = bref->transformPoint(ln->start());
                     auto p2 = bref->transformPoint(ln->end());
                     auto& v = findOrCreateBatch(subKey);
-                    v.push_back(static_cast<float>(p1.x)); v.push_back(static_cast<float>(p1.y)); v.push_back(0.0f);
-                    v.push_back(static_cast<float>(p2.x)); v.push_back(static_cast<float>(p2.y)); v.push_back(0.0f);
+                    double len = p1.distanceTo(p2);
+                    emitVert(v, p1.x, p1.y, 0.0f);
+                    emitVert(v, p2.x, p2.y, static_cast<float>(len));
                 } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
                     auto wc = bref->transformPoint(ci->center());
                     double wr = ci->radius() * std::abs(bref->uniformScale());
                     auto cv = circleVertices(wc, wr);
-                    m_renderer->drawCircle(gl, m_camera, cv, argbToVec3(subColor), subWidth);
+                    m_renderer->drawCircle(gl, m_camera, cv,
+                                           argbToVec3(subColor), subWidth, subLineType);
                 } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
                     auto wc = bref->transformPoint(ar->center());
                     double wr = ar->radius() * std::abs(bref->uniformScale());
                     double sa = ar->startAngle() + bref->rotation();
                     double ea = ar->endAngle() + bref->rotation();
                     if (bref->uniformScale() < 0.0) {
-                        // Mirrored: reverse arc direction.
                         double tmp = sa; sa = -ea; ea = -tmp;
                     }
                     auto av = arcVertices(wc, wr, sa, ea);
-                    m_renderer->drawLines(gl, m_camera, av, argbToVec3(subColor), subWidth);
+                    m_renderer->drawLines(gl, m_camera, av,
+                                          argbToVec3(subColor), subWidth, subLineType);
                 } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
                     auto c = re->corners();
                     auto& v = findOrCreateBatch(subKey);
+                    double cumDist = 0.0;
                     for (int i = 0; i < 4; ++i) {
                         auto wp1 = bref->transformPoint(c[i]);
                         auto wp2 = bref->transformPoint(c[(i + 1) % 4]);
-                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
-                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                        double segLen = wp1.distanceTo(wp2);
+                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
+                        cumDist += segLen;
+                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
                     }
                 } else if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(subEnt.get())) {
                     auto& v = findOrCreateBatch(subKey);
                     const auto& pts = pl->points();
+                    double cumDist = 0.0;
                     for (size_t i = 0; i + 1 < pts.size(); ++i) {
                         auto wp1 = bref->transformPoint(pts[i]);
                         auto wp2 = bref->transformPoint(pts[i + 1]);
-                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
-                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                        double segLen = wp1.distanceTo(wp2);
+                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
+                        cumDist += segLen;
+                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
                     }
                     if (pl->closed() && pts.size() >= 2) {
                         auto wp1 = bref->transformPoint(pts.back());
                         auto wp2 = bref->transformPoint(pts[0]);
-                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
-                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                        double segLen = wp1.distanceTo(wp2);
+                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
+                        cumDist += segLen;
+                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
                     }
                 } else if (auto* sp = dynamic_cast<const draft::DraftSpline*>(subEnt.get())) {
                     auto& v = findOrCreateBatch(subKey);
                     auto evalPts = sp->evaluate();
+                    double cumDist = 0.0;
                     for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
                         auto wp1 = bref->transformPoint(evalPts[i]);
                         auto wp2 = bref->transformPoint(evalPts[i + 1]);
-                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
-                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                        double segLen = wp1.distanceTo(wp2);
+                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
+                        cumDist += segLen;
+                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
                     }
                 } else if (auto* el = dynamic_cast<const draft::DraftEllipse*>(subEnt.get())) {
                     auto& v = findOrCreateBatch(subKey);
                     auto evalPts = el->evaluate();
+                    double cumDist = 0.0;
                     for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
                         auto wp1 = bref->transformPoint(evalPts[i]);
                         auto wp2 = bref->transformPoint(evalPts[i + 1]);
-                        v.push_back(static_cast<float>(wp1.x)); v.push_back(static_cast<float>(wp1.y)); v.push_back(0.0f);
-                        v.push_back(static_cast<float>(wp2.x)); v.push_back(static_cast<float>(wp2.y)); v.push_back(0.0f);
+                        double segLen = wp1.distanceTo(wp2);
+                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
+                        cumDist += segLen;
+                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
                     }
                 }
             }
@@ -561,7 +575,8 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
     for (const auto& [key, verts] : batches) {
         if (!verts.empty()) {
             m_renderer->drawLines(gl, m_camera, verts,
-                                  argbToVec3(key.colorARGB), key.lineWidth);
+                                  argbToVec3(key.colorARGB), key.lineWidth,
+                                  key.lineType);
         }
     }
 }
@@ -575,14 +590,17 @@ void ViewportWidget::renderToolPreview(QOpenGLExtraFunctions* gl) {
     auto previewLines = m_activeTool->getPreviewLines();
     if (!previewLines.empty()) {
         std::vector<float> verts;
-        verts.reserve(previewLines.size() * 6);
+        verts.reserve(previewLines.size() * 8);
         for (const auto& [start, end] : previewLines) {
+            double len = start.distanceTo(end);
             verts.push_back(static_cast<float>(start.x));
             verts.push_back(static_cast<float>(start.y));
+            verts.push_back(0.0f);
             verts.push_back(0.0f);
             verts.push_back(static_cast<float>(end.x));
             verts.push_back(static_cast<float>(end.y));
             verts.push_back(0.0f);
+            verts.push_back(static_cast<float>(len));
         }
         m_renderer->drawLines(gl, m_camera, verts, previewCol);
     }
@@ -643,18 +661,19 @@ void ViewportWidget::renderGrips(QOpenGLExtraFunctions* gl) {
                 float gx = static_cast<float>(g.x);
                 float gy = static_cast<float>(g.y);
                 float hs = static_cast<float>(s * 0.5);
-                // Draw a small square (4 line segments).
-                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f);
-                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+                float side = hs * 2.0f;
+                // Draw a small square (4 line segments) with distance attribute.
+                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(0.0f);
+                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side);
 
-                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f);
-                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side);
+                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 2.0f);
 
-                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f);
-                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f);
+                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 2.0f);
+                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 3.0f);
 
-                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f);
-                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f);
+                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 3.0f);
+                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side * 4.0f);
             }
             break;
         }
@@ -668,9 +687,10 @@ void ViewportWidget::renderGrips(QOpenGLExtraFunctions* gl) {
 std::vector<float> ViewportWidget::circleVertices(const math::Vec2& center, double radius,
                                                    int segments) const {
     std::vector<float> verts;
-    verts.reserve(static_cast<size_t>(segments) * 6);
+    verts.reserve(static_cast<size_t>(segments) * 8);
 
     const double step = 2.0 * 3.14159265358979323846 / static_cast<double>(segments);
+    const double arcStep = radius * step;  // Arc-length per segment.
     for (int i = 0; i < segments; ++i) {
         double a0 = step * static_cast<double>(i);
         double a1 = step * static_cast<double>((i + 1) % segments);
@@ -679,13 +699,11 @@ std::vector<float> ViewportWidget::circleVertices(const math::Vec2& center, doub
         float y0 = static_cast<float>(center.y + radius * std::sin(a0));
         float x1 = static_cast<float>(center.x + radius * std::cos(a1));
         float y1 = static_cast<float>(center.y + radius * std::sin(a1));
+        float d0 = static_cast<float>(arcStep * static_cast<double>(i));
+        float d1 = static_cast<float>(arcStep * static_cast<double>(i + 1));
 
-        verts.push_back(x0);
-        verts.push_back(y0);
-        verts.push_back(0.0f);
-        verts.push_back(x1);
-        verts.push_back(y1);
-        verts.push_back(0.0f);
+        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f); verts.push_back(d0);
+        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f); verts.push_back(d1);
     }
     return verts;
 }
@@ -698,9 +716,10 @@ std::vector<float> ViewportWidget::arcVertices(const math::Vec2& center, double 
 
     int arcSegments = std::max(4, static_cast<int>(segments * sweep / math::kTwoPi));
     std::vector<float> verts;
-    verts.reserve(static_cast<size_t>(arcSegments) * 6);
+    verts.reserve(static_cast<size_t>(arcSegments) * 8);
 
     double step = sweep / static_cast<double>(arcSegments);
+    double arcStep = radius * step;  // Arc-length per segment.
     for (int i = 0; i < arcSegments; ++i) {
         double a0 = startAngle + step * static_cast<double>(i);
         double a1 = startAngle + step * static_cast<double>(i + 1);
@@ -709,9 +728,11 @@ std::vector<float> ViewportWidget::arcVertices(const math::Vec2& center, double 
         float y0 = static_cast<float>(center.y + radius * std::sin(a0));
         float x1 = static_cast<float>(center.x + radius * std::cos(a1));
         float y1 = static_cast<float>(center.y + radius * std::sin(a1));
+        float d0 = static_cast<float>(arcStep * static_cast<double>(i));
+        float d1 = static_cast<float>(arcStep * static_cast<double>(i + 1));
 
-        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f);
-        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f);
+        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f); verts.push_back(d0);
+        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f); verts.push_back(d1);
     }
     return verts;
 }

@@ -1,4 +1,5 @@
 add_library(hz_drafting STATIC
+    src/LineType.cpp
     src/DraftEntity.cpp
     src/DraftDocument.cpp
     src/Layer.cpp

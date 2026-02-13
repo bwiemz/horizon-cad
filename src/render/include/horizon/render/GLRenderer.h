@@ -44,15 +44,18 @@ public:
     /// Background color.
     void setBackgroundColor(float r, float g, float b);
 
-    /// Draw a set of line segments given flat vertex data (x,y,z per vertex, pairs).
+    /// Draw a set of line segments given flat vertex data (x,y,z,dist per vertex, pairs).
+    /// Vertex format: 4 floats per vertex (x, y, z, distance-along-entity).
     void drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                    const std::vector<float>& lineVertices,
-                   const math::Vec3& color, float lineWidth = 1.5f);
+                   const math::Vec3& color, float lineWidth = 1.5f,
+                   int lineType = 1, float patternScale = 1.0f);
 
     /// Draw a circle approximation given flat vertex data (line segments forming the circle).
     void drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                     const std::vector<float>& circleVertices,
-                    const math::Vec3& color, float lineWidth = 1.5f);
+                    const math::Vec3& color, float lineWidth = 1.5f,
+                    int lineType = 1, float patternScale = 1.0f);
 
     /// Draw a filled, semi-transparent quad between two world-space corners.
     void drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,

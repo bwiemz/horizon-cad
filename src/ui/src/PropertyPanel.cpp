@@ -19,6 +19,7 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/LineType.h"
 #include "horizon/math/Constants.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ConstraintCommands.h"
@@ -81,6 +82,20 @@ void PropertyPanel::createWidgets() {
     connect(m_lineWidthSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &PropertyPanel::onLineWidthChanged);
     form->addRow(tr("Width:"), m_lineWidthSpin);
+
+    m_lineTypeCombo = new QComboBox(this);
+    m_lineTypeCombo->addItem(tr("ByLayer"));       // index 0
+    m_lineTypeCombo->addItem(tr("Continuous"));     // index 1
+    m_lineTypeCombo->addItem(tr("Dashed"));         // index 2
+    m_lineTypeCombo->addItem(tr("Dotted"));         // index 3
+    m_lineTypeCombo->addItem(tr("DashDot"));        // index 4
+    m_lineTypeCombo->addItem(tr("Center"));         // index 5
+    m_lineTypeCombo->addItem(tr("Hidden"));         // index 6
+    m_lineTypeCombo->addItem(tr("Phantom"));        // index 7
+    m_lineTypeCombo->setEnabled(false);
+    connect(m_lineTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onLineTypeChanged);
+    form->addRow(tr("Line Type:"), m_lineTypeCombo);
 
     // Dimension-specific properties (hidden by default).
     m_dimPropsWidget = new QWidget(this);
@@ -287,6 +302,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_colorButton->setEnabled(false);
         m_byLayerButton->setEnabled(false);
         m_lineWidthSpin->setEnabled(false);
+        m_lineTypeCombo->setEnabled(false);
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
         m_blockPropsWidget->hide();
@@ -318,6 +334,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_colorButton->setEnabled(false);
         m_byLayerButton->setEnabled(false);
         m_lineWidthSpin->setEnabled(false);
+        m_lineTypeCombo->setEnabled(false);
         m_colorButton->setStyleSheet("");
         m_dimPropsWidget->hide();
         m_blockPropsWidget->hide();
@@ -380,6 +397,15 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     // Line width.
     m_lineWidthSpin->setValue(first->lineWidth());
     m_lineWidthSpin->setEnabled(true);
+
+    // Line type.
+    int lt = first->lineType();
+    if (lt >= 0 && lt <= 7) {
+        m_lineTypeCombo->setCurrentIndex(lt);
+    } else {
+        m_lineTypeCombo->setCurrentIndex(0);
+    }
+    m_lineTypeCombo->setEnabled(true);
 
     // Dimension text override (single dimension selection only).
     if (dimEntity) {
@@ -541,6 +567,19 @@ void PropertyPanel::onLineWidthChanged(double value) {
 
     auto cmd = std::make_unique<doc::ChangeEntityLineWidthCommand>(
         viewport->document()->draftDocument(), m_currentIds, value);
+    viewport->document()->undoStack().push(std::move(cmd));
+    viewport->update();
+}
+
+void PropertyPanel::onLineTypeChanged(int index) {
+    if (m_updatingUI || m_currentIds.empty()) return;
+    if (index < 0 || index > 7) return;
+
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+
+    auto cmd = std::make_unique<doc::ChangeEntityLineTypeCommand>(
+        viewport->document()->draftDocument(), m_currentIds, index);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
