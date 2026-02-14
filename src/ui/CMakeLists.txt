@@ -20,6 +20,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/BreakTool.h
     include/horizon/ui/ExtendTool.h
     include/horizon/ui/StretchTool.h
+    include/horizon/ui/PolylineEditTool.h
     include/horizon/ui/MirrorTool.h
     include/horizon/ui/RotateTool.h
     include/horizon/ui/ScaleTool.h
@@ -64,6 +65,7 @@ add_library(hz_ui STATIC
     src/BreakTool.cpp
     src/ExtendTool.cpp
     src/StretchTool.cpp
+    src/PolylineEditTool.cpp
     src/MirrorTool.cpp
     src/RotateTool.cpp
     src/ScaleTool.cpp
