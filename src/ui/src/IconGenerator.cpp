@@ -101,6 +101,8 @@ QIcon IconGenerator::icon(const QString& name) {
         {"copy",          drawCopy},
         {"paste",         drawPaste},
         {"duplicate",     drawDuplicate},
+        {"group",         drawGroup},
+        {"ungroup",       drawUngroup},
         // Tools
         {"select",        drawSelect},
         {"line",          drawLine},
@@ -124,6 +126,7 @@ QIcon IconGenerator::icon(const QString& name) {
         {"break",          drawBreak},
         {"extend",         drawExtend},
         {"stretch",        drawStretch},
+        {"polyline-edit",  drawPolylineEdit},
         {"rect-array",    drawRectArray},
         {"polar-array",   drawPolarArray},
         // Dimension
@@ -343,6 +346,48 @@ QIcon IconGenerator::drawDuplicate(int s) {
     p.setPen(accentPen(2.0));
     p.drawLine(QPointF(17, 17), QPointF(17, 22));
     p.drawLine(QPointF(14.5, 19.5), QPointF(19.5, 19.5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawGroup(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Two overlapping rounded rectangles
+    p.setPen(primaryPen(1.5));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(2, 6, 10, 10), 2, 2);
+    p.drawRoundedRect(QRectF(12, 4, 10, 10), 2, 2);
+    // Green connector line between them
+    p.setPen(QPen(kGreen, 2.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(12, 11), QPointF(12, 11));
+    // Green bracket / brace encompassing both
+    p.setPen(QPen(kGreen, 1.5, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(4, 18), QPointF(20, 18));
+    p.drawLine(QPointF(4, 18), QPointF(4, 16));
+    p.drawLine(QPointF(20, 18), QPointF(20, 14));
+    // Green dot at center of bracket
+    drawDot(p, 12, 18, 2.0, kGreen);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawUngroup(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Two separated rectangles
+    p.setPen(primaryPen(1.5));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(2, 6, 8, 8), 2, 2);
+    p.drawRoundedRect(QRectF(14, 6, 8, 8), 2, 2);
+    // Red slash through the connection
+    p.setPen(QPen(kRed, 2.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(8, 18), QPointF(16, 16));
+    // Broken bracket
+    p.setPen(QPen(kRed, 1.5, Qt::DashLine, Qt::RoundCap));
+    p.drawLine(QPointF(4, 18), QPointF(20, 18));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
@@ -740,6 +785,30 @@ QIcon IconGenerator::drawStretch(int s) {
     p.setPen(QPen(kAccent, 1.2, Qt::DashLine, Qt::RoundCap));
     p.drawLine(QPointF(4, 8), QPointF(20, 4));       // new top edge hint
     p.drawLine(QPointF(14, 20), QPointF(20, 4));      // new right edge hint
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawPolylineEdit(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p);
+    // Polyline path
+    p.setPen(primaryPen(1.8));
+    p.drawLine(QPointF(3, 18), QPointF(8, 6));
+    p.drawLine(QPointF(8, 6), QPointF(16, 14));
+    p.drawLine(QPointF(16, 14), QPointF(21, 6));
+    // Vertex dots
+    p.setPen(Qt::NoPen);
+    p.setBrush(kAccent);
+    p.drawEllipse(QPointF(3, 18), 2.5, 2.5);
+    p.drawEllipse(QPointF(8, 6), 2.5, 2.5);
+    p.drawEllipse(QPointF(16, 14), 2.5, 2.5);
+    p.drawEllipse(QPointF(21, 6), 2.5, 2.5);
+    // Small "+" near middle segment to suggest add vertex
+    p.setPen(QPen(kAccent, 1.5, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(12, 8), QPointF(12, 12));
+    p.drawLine(QPointF(10, 10), QPointF(14, 10));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

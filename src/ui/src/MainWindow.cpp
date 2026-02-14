@@ -16,6 +16,7 @@
 #include "horizon/ui/BreakTool.h"
 #include "horizon/ui/ExtendTool.h"
 #include "horizon/ui/StretchTool.h"
+#include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/MirrorTool.h"
 #include "horizon/ui/RotateTool.h"
 #include "horizon/ui/ScaleTool.h"
@@ -158,6 +159,14 @@ void MainWindow::createMenus() {
     QAction* pasteAction = editMenu->addAction(tr("&Paste"), this, &MainWindow::onPaste);
     pasteAction->setShortcut(QKeySequence::Paste);
 
+    editMenu->addSeparator();
+
+    QAction* groupAction = editMenu->addAction(tr("&Group"), this, &MainWindow::onGroupEntities);
+    groupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+
+    QAction* ungroupAction = editMenu->addAction(tr("U&ngroup"), this, &MainWindow::onUngroupEntities);
+    ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+
     // ---- View ----
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
 
@@ -197,6 +206,7 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Break"), this, &MainWindow::onBreakTool);
     toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
+    toolsMenu->addAction(tr("Polyline Ed&it"), this, &MainWindow::onPolylineEditTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
     toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
@@ -287,6 +297,11 @@ void MainWindow::createRibbonBar() {
     addAction(homeBar, "duplicate", tr("Duplicate"), this, &MainWindow::onDuplicate,
               QKeySequence(Qt::CTRL | Qt::Key_D));
     homeBar->addSeparator();
+    addAction(homeBar, "group", tr("Group"), this, &MainWindow::onGroupEntities,
+              QKeySequence(Qt::CTRL | Qt::Key_G));
+    addAction(homeBar, "ungroup", tr("Ungroup"), this, &MainWindow::onUngroupEntities,
+              QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+    homeBar->addSeparator();
     auto* selectAct = addToolAction(homeBar, "select", tr("Select"),
                                      &MainWindow::onSelectTool, QKeySequence(Qt::Key_Space));
     selectAct->setChecked(true);
@@ -339,6 +354,7 @@ void MainWindow::createRibbonBar() {
                   QKeySequence(Qt::SHIFT | Qt::Key_E));
     addToolAction(modifyBar, "stretch", tr("Stretch"), &MainWindow::onStretchTool,
                   QKeySequence(Qt::Key_W));
+    addToolAction(modifyBar, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
     modifyBar->addSeparator();
     addAction(modifyBar, "rect-array", tr("Rect Array"), this,
               &MainWindow::onRectangularArray);
@@ -482,6 +498,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<BreakTool>());
     m_toolManager->registerTool(std::make_unique<ExtendTool>());
     m_toolManager->registerTool(std::make_unique<StretchTool>());
+    m_toolManager->registerTool(std::make_unique<PolylineEditTool>());
     m_toolManager->registerTool(std::make_unique<MirrorTool>());
     m_toolManager->registerTool(std::make_unique<RotateTool>());
     m_toolManager->registerTool(std::make_unique<ScaleTool>());
@@ -837,6 +854,12 @@ void MainWindow::onStretchTool() {
     updateStatusBar();
 }
 
+void MainWindow::onPolylineEditTool() {
+    m_toolManager->setActiveTool("PolylineEdit");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
 void MainWindow::onRotateTool() {
     m_toolManager->setActiveTool("Rotate");
     m_viewport->setActiveTool(m_toolManager->activeTool());
@@ -875,6 +898,7 @@ void MainWindow::onRectangularArray() {
 
     auto composite = std::make_unique<doc::CompositeCommand>("Rectangular Array");
     std::vector<uint64_t> newIds;
+    std::vector<std::shared_ptr<draft::DraftEntity>> allClones;
 
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
@@ -886,6 +910,7 @@ void MainWindow::onRectangularArray() {
                         auto clone = entity->clone();
                         clone->translate(offset);
                         newIds.push_back(clone->id());
+                        allClones.push_back(clone);
                         composite->addCommand(std::make_unique<doc::AddEntityCommand>(
                             m_document->draftDocument(), clone));
                         break;
@@ -895,6 +920,7 @@ void MainWindow::onRectangularArray() {
         }
     }
 
+    doc::remapCloneGroupIds(m_document->draftDocument(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -932,6 +958,7 @@ void MainWindow::onPolarArray() {
 
     auto composite = std::make_unique<doc::CompositeCommand>("Polar Array");
     std::vector<uint64_t> newIds;
+    std::vector<std::shared_ptr<draft::DraftEntity>> allClones;
 
     for (int i = 1; i < count; ++i) {
         double angle = step * i;
@@ -941,6 +968,7 @@ void MainWindow::onPolarArray() {
                     auto clone = entity->clone();
                     clone->rotate(center, angle);
                     newIds.push_back(clone->id());
+                    allClones.push_back(clone);
                     composite->addCommand(std::make_unique<doc::AddEntityCommand>(
                         m_document->draftDocument(), clone));
                     break;
@@ -949,6 +977,7 @@ void MainWindow::onPolarArray() {
         }
     }
 
+    doc::remapCloneGroupIds(m_document->draftDocument(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -1203,6 +1232,54 @@ void MainWindow::onExplode() {
     }
     m_viewport->update();
     onSelectionChanged();
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Group / Ungroup
+// ---------------------------------------------------------------------------
+
+void MainWindow::onGroupEntities() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.size() < 2) return;  // Need at least 2 entities to group.
+
+    // Filter to visible/unlocked layers.
+    const auto& layerMgr = m_document->layerManager();
+    std::vector<uint64_t> filteredIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        const auto* lp = layerMgr.getLayer(entity->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        filteredIds.push_back(entity->id());
+    }
+    if (filteredIds.size() < 2) return;
+
+    auto cmd = std::make_unique<doc::GroupEntitiesCommand>(
+        m_document->draftDocument(), filteredIds);
+    m_document->undoStack().push(std::move(cmd));
+    m_viewport->update();
+}
+
+void MainWindow::onUngroupEntities() {
+    auto& sel = m_viewport->selectionManager();
+    auto ids = sel.selectedIds();
+    if (ids.empty()) return;
+
+    // Collect groupIds from selected entities.
+    std::set<uint64_t> groupIds;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        if (!sel.isSelected(entity->id())) continue;
+        if (entity->groupId() != 0) {
+            groupIds.insert(entity->groupId());
+        }
+    }
+    if (groupIds.empty()) return;
+
+    std::vector<uint64_t> groupIdVec(groupIds.begin(), groupIds.end());
+    auto cmd = std::make_unique<doc::UngroupEntitiesCommand>(
+        m_document->draftDocument(), groupIdVec);
+    m_document->undoStack().push(std::move(cmd));
+    m_viewport->update();
 }
 
 // ---------------------------------------------------------------------------

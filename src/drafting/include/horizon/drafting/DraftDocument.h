@@ -19,6 +19,14 @@ public:
     std::vector<std::shared_ptr<DraftEntity>>& entities() { return m_entities; }
     void clear();
 
+    /// Returns a unique group ID and increments the internal counter.
+    uint64_t nextGroupId() { return m_nextGroupId++; }
+
+    /// Ensure the next group ID is greater than the given value (used on file load).
+    void advanceGroupIdCounter(uint64_t minId) {
+        if (m_nextGroupId <= minId) m_nextGroupId = minId + 1;
+    }
+
     const DimensionStyle& dimensionStyle() const { return m_dimensionStyle; }
     void setDimensionStyle(const DimensionStyle& style) { m_dimensionStyle = style; }
 
@@ -29,6 +37,7 @@ private:
     std::vector<std::shared_ptr<DraftEntity>> m_entities;
     DimensionStyle m_dimensionStyle;
     BlockTable m_blockTable;
+    uint64_t m_nextGroupId = 1;
 };
 
 }  // namespace hz::draft

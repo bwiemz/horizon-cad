@@ -62,6 +62,7 @@ private slots:
     void onBreakTool();
     void onExtendTool();
     void onStretchTool();
+    void onPolylineEditTool();
     void onRectangularArray();
     void onPolarArray();
 
@@ -88,6 +89,9 @@ private slots:
     void onConstraintFixed();
     void onConstraintDistance();
     void onConstraintAngle();
+
+    void onGroupEntities();
+    void onUngroupEntities();
 
     void onCreateBlock();
     void onInsertBlock();

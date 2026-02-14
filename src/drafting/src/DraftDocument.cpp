@@ -21,6 +21,7 @@ void DraftDocument::removeEntity(uint64_t id) {
 void DraftDocument::clear() {
     m_entities.clear();
     m_blockTable.clear();
+    m_nextGroupId = 1;
 }
 
 }  // namespace hz::draft

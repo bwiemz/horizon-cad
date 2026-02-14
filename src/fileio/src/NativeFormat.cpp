@@ -78,7 +78,7 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 11;
+    root["version"] = 12;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -193,6 +193,9 @@ bool NativeFormat::save(const std::string& filePath,
         obj["color"] = entity->color();
         obj["lineWidth"] = entity->lineWidth();
         obj["lineType"] = entity->lineType();
+        if (entity->groupId() != 0) {
+            obj["groupId"] = entity->groupId();
+        }
 
         if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
             obj["type"] = "line";
@@ -661,6 +664,11 @@ bool NativeFormat::load(const std::string& filePath,
             entity->setColor(color);
             entity->setLineWidth(lineWidth);
             entity->setLineType(obj.value("lineType", 0));
+            uint64_t gid = obj.value("groupId", uint64_t(0));
+            entity->setGroupId(gid);
+            if (gid != 0) {
+                doc.draftDocument().advanceGroupIdCounter(gid);
+            }
             doc.draftDocument().addEntity(entity);
         }
         } catch (const nlohmann::json::exception&) {

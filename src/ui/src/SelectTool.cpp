@@ -16,6 +16,32 @@
 
 namespace hz::ui {
 
+// Expand the current selection to include all group mates of selected entities.
+// Respects layer visibility/lock — hidden/locked entities are NOT added.
+static void expandSelectionToGroups(
+    render::SelectionManager& sel,
+    const draft::DraftDocument& doc,
+    const draft::LayerManager& layerMgr) {
+    std::set<uint64_t> groupIds;
+    for (uint64_t id : sel.selectedIds()) {
+        for (const auto& e : doc.entities()) {
+            if (e->id() == id && e->groupId() != 0) {
+                groupIds.insert(e->groupId());
+                break;
+            }
+        }
+    }
+    if (groupIds.empty()) return;
+
+    for (const auto& e : doc.entities()) {
+        if (e->groupId() == 0) continue;
+        if (groupIds.count(e->groupId()) == 0) continue;
+        const auto* lp = layerMgr.getLayer(e->layer());
+        if (!lp || !lp->visible || lp->locked) continue;
+        sel.select(e->id());
+    }
+}
+
 bool SelectTool::isWindowSelection() const {
     return m_dragCurrent.x >= m_dragStart.x;
 }
@@ -200,6 +226,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
             }
         }
 
+        expandSelectionToGroups(sel, doc, layerMgr);
         m_viewport->update();
         return true;
     }
@@ -227,11 +254,30 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
     bool shiftHeld = (event->modifiers() & Qt::ShiftModifier);
 
     if (hitId != 0) {
+        // Find the groupId of the hit entity.
+        uint64_t hitGroupId = 0;
+        for (const auto& entity : doc.entities()) {
+            if (entity->id() == hitId) {
+                hitGroupId = entity->groupId();
+                break;
+            }
+        }
+
         if (shiftHeld) {
-            sel.toggle(hitId);
+            if (hitGroupId != 0 && sel.isSelected(hitId)) {
+                // Deselect entire group.
+                for (const auto& entity : doc.entities()) {
+                    if (entity->groupId() == hitGroupId)
+                        sel.deselect(entity->id());
+                }
+            } else {
+                sel.select(hitId);
+                expandSelectionToGroups(sel, doc, layerMgr);
+            }
         } else {
             sel.clearSelection();
             sel.select(hitId);
+            expandSelectionToGroups(sel, doc, layerMgr);
         }
     } else {
         if (!shiftHeld) {

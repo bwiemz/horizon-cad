@@ -13,9 +13,11 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 
 ### Editing Tools
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
+- **Entity grouping** (Ctrl+G / Ctrl+Shift+G) — lightweight selection groups without block overhead
 - Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale
 - Copy/Paste with clipboard support (Ctrl+C/X/V)
 - Rectangular and Polar array operations
+- Polyline editing (add/remove vertices, toggle closed, join polylines)
 - Grip editing for direct point manipulation
 
 ### Dimensions & Annotations
@@ -50,7 +52,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 
 ### Document System
 - Full undo/redo with composite command support
-- Native JSON file format (`.hcad` v11) with backward-compatible versioning
+- Native JSON file format (`.hcad` v12) with backward-compatible versioning
 - DXF import/export (LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT)
 - New, Open, Save, Save As workflow
 
@@ -151,7 +153,9 @@ Horizon is under active development. Completed and planned work:
 | 20 | Done | Break and Extend tools |
 | 21 | Done | Stretch tool (crossing window vertex selection with partial entity deformation) |
 | 22 | Done | Chamfer tool, offset ellipse support, fillet/offset lineType fixes |
-| 23+ | Planned | Parametric geometry, 3D modeling |
+| 23 | Done | Polyline edit tool (add/remove vertices, toggle closed, join) |
+| 24 | Done | Entity grouping (Ctrl+G / Ctrl+Shift+G) with group-aware selection |
+| 25+ | Planned | Parametric geometry, 3D modeling |
 
 ## Contributing
 

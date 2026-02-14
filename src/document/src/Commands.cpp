@@ -5,6 +5,7 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include <unordered_map>
 
 namespace hz::doc {
 
@@ -123,17 +124,21 @@ DuplicateEntityCommand::DuplicateEntityCommand(draft::DraftDocument& doc,
     : m_doc(doc), m_sourceIds(sourceIds), m_offset(offset) {}
 
 void DuplicateEntityCommand::execute() {
-    m_clones.clear();
-    for (uint64_t id : m_sourceIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                auto clone = e->clone();
-                clone->translate(m_offset);
-                m_clones.push_back(clone);
-                m_doc.addEntity(clone);
-                break;
+    if (m_clones.empty()) {
+        for (uint64_t id : m_sourceIds) {
+            for (const auto& e : m_doc.entities()) {
+                if (e->id() == id) {
+                    auto clone = e->clone();
+                    clone->translate(m_offset);
+                    m_clones.push_back(clone);
+                    break;
+                }
             }
         }
+        remapCloneGroupIds(m_doc, m_clones);
+    }
+    for (const auto& clone : m_clones) {
+        m_doc.addEntity(clone);
     }
 }
 
@@ -141,7 +146,6 @@ void DuplicateEntityCommand::undo() {
     for (const auto& clone : m_clones) {
         m_doc.removeEntity(clone->id());
     }
-    m_clones.clear();
 }
 
 std::string DuplicateEntityCommand::description() const {
@@ -166,17 +170,21 @@ MirrorEntityCommand::MirrorEntityCommand(draft::DraftDocument& doc,
     : m_doc(doc), m_sourceIds(entityIds), m_axisP1(axisP1), m_axisP2(axisP2) {}
 
 void MirrorEntityCommand::execute() {
-    m_mirroredEntities.clear();
-    for (uint64_t id : m_sourceIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                auto mirrored = e->clone();
-                mirrored->mirror(m_axisP1, m_axisP2);
-                m_mirroredEntities.push_back(mirrored);
-                m_doc.addEntity(mirrored);
-                break;
+    if (m_mirroredEntities.empty()) {
+        for (uint64_t id : m_sourceIds) {
+            for (const auto& e : m_doc.entities()) {
+                if (e->id() == id) {
+                    auto mirrored = e->clone();
+                    mirrored->mirror(m_axisP1, m_axisP2);
+                    m_mirroredEntities.push_back(mirrored);
+                    break;
+                }
             }
         }
+        remapCloneGroupIds(m_doc, m_mirroredEntities);
+    }
+    for (const auto& e : m_mirroredEntities) {
+        m_doc.addEntity(e);
     }
 }
 
@@ -184,7 +192,6 @@ void MirrorEntityCommand::undo() {
     for (const auto& e : m_mirroredEntities) {
         m_doc.removeEntity(e->id());
     }
-    m_mirroredEntities.clear();
 }
 
 std::string MirrorEntityCommand::description() const {
@@ -209,17 +216,21 @@ RotateEntityCommand::RotateEntityCommand(draft::DraftDocument& doc,
     : m_doc(doc), m_sourceIds(entityIds), m_center(center), m_angle(angle) {}
 
 void RotateEntityCommand::execute() {
-    m_rotatedEntities.clear();
-    for (uint64_t id : m_sourceIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                auto rotated = e->clone();
-                rotated->rotate(m_center, m_angle);
-                m_rotatedEntities.push_back(rotated);
-                m_doc.addEntity(rotated);
-                break;
+    if (m_rotatedEntities.empty()) {
+        for (uint64_t id : m_sourceIds) {
+            for (const auto& e : m_doc.entities()) {
+                if (e->id() == id) {
+                    auto rotated = e->clone();
+                    rotated->rotate(m_center, m_angle);
+                    m_rotatedEntities.push_back(rotated);
+                    break;
+                }
             }
         }
+        remapCloneGroupIds(m_doc, m_rotatedEntities);
+    }
+    for (const auto& e : m_rotatedEntities) {
+        m_doc.addEntity(e);
     }
 }
 
@@ -227,7 +238,6 @@ void RotateEntityCommand::undo() {
     for (const auto& e : m_rotatedEntities) {
         m_doc.removeEntity(e->id());
     }
-    m_rotatedEntities.clear();
 }
 
 std::string RotateEntityCommand::description() const {
@@ -252,17 +262,21 @@ ScaleEntityCommand::ScaleEntityCommand(draft::DraftDocument& doc,
     : m_doc(doc), m_sourceIds(entityIds), m_basePoint(basePoint), m_factor(factor) {}
 
 void ScaleEntityCommand::execute() {
-    m_scaledEntities.clear();
-    for (uint64_t id : m_sourceIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                auto scaled = e->clone();
-                scaled->scale(m_basePoint, m_factor);
-                m_scaledEntities.push_back(scaled);
-                m_doc.addEntity(scaled);
-                break;
+    if (m_scaledEntities.empty()) {
+        for (uint64_t id : m_sourceIds) {
+            for (const auto& e : m_doc.entities()) {
+                if (e->id() == id) {
+                    auto scaled = e->clone();
+                    scaled->scale(m_basePoint, m_factor);
+                    m_scaledEntities.push_back(scaled);
+                    break;
+                }
             }
         }
+        remapCloneGroupIds(m_doc, m_scaledEntities);
+    }
+    for (const auto& e : m_scaledEntities) {
+        m_doc.addEntity(e);
     }
 }
 
@@ -270,7 +284,6 @@ void ScaleEntityCommand::undo() {
     for (const auto& e : m_scaledEntities) {
         m_doc.removeEntity(e->id());
     }
-    m_scaledEntities.clear();
 }
 
 std::string ScaleEntityCommand::description() const {
@@ -1206,8 +1219,108 @@ void GripMoveCommand::applyState(const draft::DraftEntity& state) {
             replacement->setLayer(state.layer());
             replacement->setColor(state.color());
             replacement->setLineWidth(state.lineWidth());
+            replacement->setLineType(state.lineType());
+            replacement->setGroupId(state.groupId());
             e = replacement;
             return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GroupEntitiesCommand
+// ---------------------------------------------------------------------------
+
+GroupEntitiesCommand::GroupEntitiesCommand(draft::DraftDocument& doc,
+                                           const std::vector<uint64_t>& entityIds)
+    : m_doc(doc), m_entityIds(entityIds) {}
+
+void GroupEntitiesCommand::execute() {
+    if (m_newGroupId == 0) {
+        m_newGroupId = m_doc.nextGroupId();
+    }
+    m_oldGroupIds.clear();
+    for (uint64_t id : m_entityIds) {
+        for (auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                m_oldGroupIds.emplace_back(id, e->groupId());
+                e->setGroupId(m_newGroupId);
+                break;
+            }
+        }
+    }
+}
+
+void GroupEntitiesCommand::undo() {
+    for (const auto& [id, oldGid] : m_oldGroupIds) {
+        for (auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setGroupId(oldGid);
+                break;
+            }
+        }
+    }
+}
+
+std::string GroupEntitiesCommand::description() const {
+    return "Group";
+}
+
+// ---------------------------------------------------------------------------
+// UngroupEntitiesCommand
+// ---------------------------------------------------------------------------
+
+UngroupEntitiesCommand::UngroupEntitiesCommand(draft::DraftDocument& doc,
+                                                 const std::vector<uint64_t>& groupIds)
+    : m_doc(doc), m_groupIds(groupIds) {}
+
+void UngroupEntitiesCommand::execute() {
+    m_savedGroupIds.clear();
+    for (auto& e : m_doc.entities()) {
+        uint64_t gid = e->groupId();
+        if (gid == 0) continue;
+        for (uint64_t target : m_groupIds) {
+            if (gid == target) {
+                m_savedGroupIds.emplace_back(e->id(), gid);
+                e->setGroupId(0);
+                break;
+            }
+        }
+    }
+}
+
+void UngroupEntitiesCommand::undo() {
+    for (const auto& [id, gid] : m_savedGroupIds) {
+        for (auto& e : m_doc.entities()) {
+            if (e->id() == id) {
+                e->setGroupId(gid);
+                break;
+            }
+        }
+    }
+}
+
+std::string UngroupEntitiesCommand::description() const {
+    return "Ungroup";
+}
+
+// ---------------------------------------------------------------------------
+// remapCloneGroupIds
+// ---------------------------------------------------------------------------
+
+void remapCloneGroupIds(draft::DraftDocument& doc,
+                        std::vector<std::shared_ptr<draft::DraftEntity>>& clones) {
+    std::unordered_map<uint64_t, uint64_t> remap;
+    for (auto& clone : clones) {
+        uint64_t gid = clone->groupId();
+        if (gid == 0) continue;
+        auto it = remap.find(gid);
+        if (it == remap.end()) {
+            uint64_t newGid = doc.nextGroupId();
+            remap[gid] = newGid;
+            clone->setGroupId(newGid);
+        } else {
+            clone->setGroupId(it->second);
         }
     }
 }

@@ -12,11 +12,12 @@ public:
     /// Returns a QIcon for the given name. Supported names:
     ///
     /// File:       "new", "open", "save", "undo", "redo"
-    /// Edit:       "copy", "paste", "duplicate"
+    /// Edit:       "copy", "paste", "duplicate", "group", "ungroup"
     /// Tools:      "select", "line", "circle", "arc", "rectangle", "polyline",
     ///             "ellipse", "spline", "text", "hatch"
     /// Modify:     "move", "offset", "mirror", "rotate", "scale", "trim",
-    ///             "fillet", "chamfer", "break", "extend", "stretch", "rect-array", "polar-array"
+    ///             "fillet", "chamfer", "break", "extend", "stretch", "polyline-edit",
+    ///             "rect-array", "polar-array"
     /// Dimension:  "dim-linear", "dim-radial", "dim-angular", "leader"
     /// Constraint: "cstr-coincident", "cstr-horizontal", "cstr-vertical",
     ///             "cstr-perpendicular", "cstr-parallel", "cstr-tangent",
@@ -44,6 +45,8 @@ private:
     static QIcon drawCopy(int s);
     static QIcon drawPaste(int s);
     static QIcon drawDuplicate(int s);
+    static QIcon drawGroup(int s);
+    static QIcon drawUngroup(int s);
 
     // Tools
     static QIcon drawSelect(int s);
@@ -69,6 +72,7 @@ private:
     static QIcon drawBreak(int s);
     static QIcon drawExtend(int s);
     static QIcon drawStretch(int s);
+    static QIcon drawPolylineEdit(int s);
     static QIcon drawRectArray(int s);
     static QIcon drawPolarArray(int s);
 

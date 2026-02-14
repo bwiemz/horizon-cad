@@ -626,4 +626,43 @@ private:
     bool m_firstExec = true;
 };
 
+// ---------------------------------------------------------------------------
+// Group commands
+// ---------------------------------------------------------------------------
+
+/// Command to group a set of entities under a shared groupId.
+class GroupEntitiesCommand : public Command {
+public:
+    GroupEntitiesCommand(draft::DraftDocument& doc,
+                         const std::vector<uint64_t>& entityIds);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    uint64_t m_newGroupId = 0;
+    std::vector<std::pair<uint64_t, uint64_t>> m_oldGroupIds;
+};
+
+/// Command to ungroup entities by dissolving one or more groups.
+class UngroupEntitiesCommand : public Command {
+public:
+    UngroupEntitiesCommand(draft::DraftDocument& doc,
+                           const std::vector<uint64_t>& groupIds);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_groupIds;
+    std::vector<std::pair<uint64_t, uint64_t>> m_savedGroupIds;
+};
+
+/// Remap groupIds on cloned entities so each original group maps to a fresh group.
+void remapCloneGroupIds(draft::DraftDocument& doc,
+                        std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
+
 }  // namespace hz::doc

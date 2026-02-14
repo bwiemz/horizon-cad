@@ -149,6 +149,8 @@ std::shared_ptr<DraftEntity> DraftSpline::clone() const {
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());
+    copy->setLineType(lineType());
+    copy->setGroupId(groupId());
     return copy;
 }
 

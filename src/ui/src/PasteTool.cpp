@@ -42,6 +42,7 @@ bool PasteTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
         composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, clone));
     }
 
+    doc::remapCloneGroupIds(doc, newEntities);
     m_viewport->document()->undoStack().push(std::move(composite));
 
     // Select the pasted entities.

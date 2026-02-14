@@ -37,6 +37,10 @@ public:
     int lineType() const { return m_lineType; }
     void setLineType(int lt) { m_lineType = lt; }
 
+    /// Group ID (0 = ungrouped). Entities with the same non-zero groupId form a group.
+    uint64_t groupId() const { return m_groupId; }
+    void setGroupId(uint64_t gid) { m_groupId = gid; }
+
     virtual math::BoundingBox boundingBox() const = 0;
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
@@ -52,6 +56,7 @@ private:
     uint32_t m_color;
     double m_lineWidth;
     int m_lineType;
+    uint64_t m_groupId;
 
     static uint64_t s_nextId;
 };
