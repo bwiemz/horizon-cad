@@ -78,7 +78,7 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 12;
+    root["version"] = 13;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -368,9 +368,21 @@ bool NativeFormat::save(const std::string& filePath,
             }
         }
 
+        // Variable reference (v13+)
+        if (c->hasVariableReference()) {
+            cObj["variableName"] = c->variableReference();
+        }
+
         constraintsArray.push_back(cObj);
     }
     root["constraints"] = constraintsArray;
+
+    // --- Design variables (v13+) ---
+    json designVars = json::object();
+    for (const auto& [name, value] : doc.parameterRegistry().all()) {
+        designVars[name] = value;
+    }
+    root["designVariables"] = designVars;
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
@@ -395,6 +407,7 @@ bool NativeFormat::load(const std::string& filePath,
     doc.draftDocument().clear();
     doc.layerManager().clear();
     doc.constraintSystem().clear();
+    doc.parameterRegistry().clear();
 
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
@@ -725,6 +738,10 @@ bool NativeFormat::load(const std::string& filePath,
                     constraint->setId(savedId);
                     cstr::Constraint::advanceIdCounter(savedId);
                 }
+                // Variable reference (v13+)
+                if (cObj.contains("variableName")) {
+                    constraint->setVariableReference(cObj["variableName"].get<std::string>());
+                }
                 doc.constraintSystem().addConstraint(constraint);
             }
         }
@@ -746,6 +763,15 @@ bool NativeFormat::load(const std::string& filePath,
         }
         for (uint64_t cid : invalidConstraints) {
             doc.constraintSystem().removeConstraint(cid);
+        }
+    }
+
+    // --- Load design variables (v13+) ---
+    if (root.contains("designVariables")) {
+        for (const auto& [name, value] : root["designVariables"].items()) {
+            if (value.is_number()) {
+                doc.parameterRegistry().set(name, value.get<double>());
+            }
         }
     }
 
