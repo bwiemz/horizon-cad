@@ -115,6 +115,67 @@ TEST(ConstraintSolveHelperTest, SolveReturnsSnapshotsForUndoCommand) {
     }
 }
 
+TEST(ConstraintSolveHelperTest, TriangleConstraintReshapesOnDistanceEdit) {
+    // Spec-required test: 3 lines + coincident + horizontal + distance.
+    doc::Document document;
+    auto& draftDoc = document.draftDocument();
+    auto& csys = document.constraintSystem();
+
+    // Triangle: (0,0)-(10,0)-(5,8)-(0,0)
+    auto line1 = std::make_shared<draft::DraftLine>(math::Vec2(0, 0), math::Vec2(10, 0));   // base
+    auto line2 = std::make_shared<draft::DraftLine>(math::Vec2(10, 0), math::Vec2(5, 8));   // right side
+    auto line3 = std::make_shared<draft::DraftLine>(math::Vec2(5, 8), math::Vec2(0, 0));    // left side
+    draftDoc.addEntity(line1);
+    draftDoc.addEntity(line2);
+    draftDoc.addEntity(line3);
+
+    // Fix origin point.
+    cstr::GeometryRef fixRef{line1->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixRef, math::Vec2(0, 0)));
+
+    // Coincident: line1.end == line2.start
+    cstr::GeometryRef l1end{line1->id(), cstr::FeatureType::Point, 1};
+    cstr::GeometryRef l2start{line2->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(l1end, l2start));
+
+    // Coincident: line2.end == line3.start
+    cstr::GeometryRef l2end{line2->id(), cstr::FeatureType::Point, 1};
+    cstr::GeometryRef l3start{line3->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(l2end, l3start));
+
+    // Coincident: line3.end == line1.start
+    cstr::GeometryRef l3end{line3->id(), cstr::FeatureType::Point, 1};
+    cstr::GeometryRef l1start{line1->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(l3end, l1start));
+
+    // Horizontal: line1 is horizontal.
+    cstr::GeometryRef l1line{line1->id(), cstr::FeatureType::Line, 0};
+    csys.addConstraint(std::make_shared<cstr::HorizontalConstraint>(l1start, l1end));
+
+    // Distance: line1 base = 10.
+    auto distConstraint = std::make_shared<cstr::DistanceConstraint>(l1start, l1end, 10.0);
+    csys.addConstraint(distConstraint);
+
+    // Solve — triangle should be valid.
+    auto result1 = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys);
+    EXPECT_TRUE(result1.success);
+
+    // Verify base is horizontal at length 10.
+    EXPECT_NEAR(line1->start().y, 0.0, 1e-6);
+    EXPECT_NEAR(line1->end().y, 0.0, 1e-6);
+    EXPECT_NEAR(line1->end().x - line1->start().x, 10.0, 1e-6);
+
+    // Now change distance to 20 and re-solve.
+    distConstraint->setDimensionalValue(20.0);
+    auto result2 = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys);
+    EXPECT_TRUE(result2.success);
+
+    // Base should now be length 20 and still horizontal.
+    EXPECT_NEAR(line1->end().x - line1->start().x, 20.0, 1e-6);
+    EXPECT_NEAR(line1->start().y, 0.0, 1e-6);
+    EXPECT_NEAR(line1->end().y, 0.0, 1e-6);
+}
+
 TEST(ConstraintSolveHelperTest, SolveWithNoConstraintsIsNoOp) {
     doc::Document document;
     auto& draftDoc = document.draftDocument();
@@ -399,7 +460,9 @@ Read `src/document/src/Commands.cpp` and `src/document/include/horizon/document/
 - `MoveEntityCommand`
 - `GripMoveCommand`
 
-NOTE: `ApplyConstraintSolveCommand` should NOT trigger a re-solve (it IS the solve result). Rotation/scale/mirror commands are handled by add/remove patterns already.
+NOTE: `ApplyConstraintSolveCommand` should NOT trigger a re-solve (it IS the solve result).
+
+Also check `RotateEntityCommand`, `ScaleEntityCommand`, and `MirrorEntityCommand` — if they modify entity geometry in-place (rather than through add/remove), they ALSO need post-solve. The spec requires "any entity modification command" to trigger re-solve.
 
 - [ ] **Step 2: Add constraint system reference to MoveEntityCommand**
 
@@ -1048,7 +1111,148 @@ Phase 27 expression engine. Supports set/get/has/remove/clear."
 
 ---
 
-## Task 8: Serialize ParameterRegistry + Constraints in .hcad
+## Task 8: Variable-Referenced Constraints
+
+The spec requires "constraints can reference variables instead of literals." A DistanceConstraint should be able to use `width` instead of `50.0`, resolving at solve-time from the ParameterRegistry.
+
+**Files:**
+- Modify: `src/constraint/include/horizon/constraint/Constraint.h`
+- Modify: `src/constraint/src/Constraint.cpp` (or equivalent)
+- Modify: `tests/constraint/test_ConstraintSolveHelper.cpp`
+
+- [ ] **Step 1: Write failing test for variable-referenced distance**
+
+Append to `tests/constraint/test_ConstraintSolveHelper.cpp`:
+```cpp
+#include "horizon/document/ParameterRegistry.h"
+
+TEST(ConstraintSolveHelperTest, DistanceConstraintReferencesVariable) {
+    doc::Document document;
+    auto& draftDoc = document.draftDocument();
+    auto& csys = document.constraintSystem();
+    auto& params = document.parameterRegistry();
+
+    params.set("gap", 15.0);
+
+    auto line1 = std::make_shared<draft::DraftLine>(math::Vec2(0, 0), math::Vec2(10, 0));
+    auto line2 = std::make_shared<draft::DraftLine>(math::Vec2(10.5, 0.3), math::Vec2(20, 0));
+    draftDoc.addEntity(line1);
+    draftDoc.addEntity(line2);
+
+    cstr::GeometryRef fixRef{line1->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixRef, math::Vec2(0, 0)));
+
+    cstr::GeometryRef ref1{line1->id(), cstr::FeatureType::Point, 1};
+    cstr::GeometryRef ref2{line2->id(), cstr::FeatureType::Point, 0};
+
+    // Distance constraint references variable "gap" instead of a literal.
+    auto distConstraint = std::make_shared<cstr::DistanceConstraint>(ref1, ref2, 0.0);
+    distConstraint->setVariableReference("gap");
+    csys.addConstraint(distConstraint);
+
+    // Resolve variables before solving.
+    csys.resolveVariables(params);
+
+    auto result = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys);
+    EXPECT_TRUE(result.success);
+
+    // Distance should be 15.0 (from variable "gap").
+    double actualDist = line1->end().distanceTo(line2->start());
+    EXPECT_NEAR(actualDist, 15.0, 1e-4);
+
+    // Change variable and re-solve.
+    params.set("gap", 5.0);
+    csys.resolveVariables(params);
+    auto result2 = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys);
+    EXPECT_TRUE(result2.success);
+
+    double newDist = line1->end().distanceTo(line2->start());
+    EXPECT_NEAR(newDist, 5.0, 1e-4);
+}
+```
+
+- [ ] **Step 2: Add variable reference support to Constraint base class**
+
+Add to `Constraint.h`:
+```cpp
+class Constraint {
+    // ... existing members ...
+    
+    /// Optional variable name reference for dimensional value.
+    /// When set, dimensionalValue() is ignored until resolveVariable() is called.
+    void setVariableReference(const std::string& varName) { m_variableName = varName; }
+    const std::string& variableReference() const { return m_variableName; }
+    bool hasVariableReference() const { return !m_variableName.empty(); }
+
+private:
+    std::string m_variableName;
+};
+```
+
+- [ ] **Step 3: Add resolveVariables to ConstraintSystem**
+
+Add to `ConstraintSystem.h` and implement:
+```cpp
+/// Resolve all variable-referenced constraints from the registry.
+/// For each constraint with a variableReference, look up the variable
+/// in the registry and call setDimensionalValue with the result.
+void resolveVariables(const doc::ParameterRegistry& registry);
+```
+
+Implementation:
+```cpp
+void ConstraintSystem::resolveVariables(const doc::ParameterRegistry& registry) {
+    for (auto& c : m_constraints) {
+        if (c->hasVariableReference() && c->hasDimensionalValue()) {
+            double value = registry.get(c->variableReference());
+            c->setDimensionalValue(value);
+        }
+    }
+}
+```
+
+Note: This creates a dependency from `hz::cstr` on `hz::doc::ParameterRegistry`. To avoid circular dependencies, either forward-declare ParameterRegistry or pass a `std::function<double(const std::string&)>` resolver instead:
+
+```cpp
+void resolveVariables(const std::function<double(const std::string&)>& resolver);
+```
+
+Use the function approach — it's cleaner and avoids the circular dependency.
+
+- [ ] **Step 4: Wire resolveVariables into ConstraintSolveHelper**
+
+In `ConstraintSolveHelper::solveAndApply()`, before building the parameter table, resolve variables if a resolver is provided. Add an optional resolver parameter:
+
+```cpp
+static SolveAndApplyResult solveAndApply(
+    draft::DraftDocument& draftDoc,
+    const cstr::ConstraintSystem& csys,
+    std::function<double(const std::string&)> variableResolver = nullptr);
+```
+
+- [ ] **Step 5: Build and run all tests**
+
+Expected: All tests pass including the variable-referenced distance test.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/constraint/include/horizon/constraint/Constraint.h \
+        src/constraint/include/horizon/constraint/ConstraintSystem.h \
+        src/constraint/src/ConstraintSystem.cpp \
+        src/document/include/horizon/document/ConstraintSolveHelper.h \
+        src/document/src/ConstraintSolveHelper.cpp \
+        tests/constraint/test_ConstraintSolveHelper.cpp
+git commit -m "feat(constraint): support variable-referenced dimensional constraints
+
+DistanceConstraint and AngleConstraint can reference a named variable
+via setVariableReference(). ConstraintSystem::resolveVariables() resolves
+values from a lookup function before solving."
+```
+
+---
+
+## Task 9: Serialize ParameterRegistry in .hcad
 
 Design variables and constraints must persist across save/load.
 
@@ -1102,7 +1306,7 @@ older files without designVariables key load with empty registry."
 
 ---
 
-## Task 9: Final Phase Commit and Regression Testing
+## Task 10: Final Phase Commit and Regression Testing
 
 - [ ] **Step 1: Run the complete test suite**
 
