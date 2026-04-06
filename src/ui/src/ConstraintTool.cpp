@@ -2,16 +2,14 @@
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
-#include "horizon/constraint/ParameterTable.h"
-#include "horizon/constraint/SketchSolver.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ConstraintCommands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/MathUtils.h"
 
@@ -322,119 +320,27 @@ void ConstraintTool::commitConstraint() {
 
     if (!constraint) return;
 
-    // Snapshot entity states before solve
-    auto refIds = constraint->referencedEntityIds();
-    std::vector<doc::ApplyConstraintSolveCommand::EntitySnapshot> snapshots;
-    for (uint64_t id : refIds) {
-        for (const auto& entity : entities) {
-            if (entity->id() == id) {
-                snapshots.push_back({id, entity->clone(), nullptr});
-                break;
-            }
-        }
-    }
-
     // Build composite: add constraint + solve
     auto composite = std::make_unique<doc::CompositeCommand>(
         "Add " + constraint->typeName() + " Constraint");
-    composite->addCommand(
-        std::make_unique<doc::AddConstraintCommand>(csys, constraint));
 
-    // Run solver
-    auto paramTable = cstr::ParameterTable::buildFromEntities(entities, csys);
-    cstr::SketchSolver solver;
-    auto result = solver.solve(paramTable, csys);
+    // Add the constraint command to the composite.
+    composite->addCommand(std::make_unique<doc::AddConstraintCommand>(csys, constraint));
 
-    if (result.status == cstr::SolveStatus::Success ||
-        result.status == cstr::SolveStatus::Converged ||
-        result.status == cstr::SolveStatus::UnderConstrained) {
-        // Apply solved positions
-        // We need non-const access to entities for apply
-        auto& mutableEntities = draftDoc.entities();
-        paramTable.applyToEntities(mutableEntities);
+    // Temporarily add constraint so solver can see it.
+    csys.addConstraint(constraint);
 
-        // Capture after-states
-        for (auto& snap : snapshots) {
-            for (const auto& entity : entities) {
-                if (entity->id() == snap.entityId) {
-                    snap.afterState = entity->clone();
-                    break;
-                }
-            }
-        }
-
-        // Undo the application (the command will re-apply on execute)
-        // Actually, since CompositeCommand calls execute() on push,
-        // and we already applied, we need to undo and let the command redo.
-        // But the apply already happened... let's just record the states.
-        // We'll undo by restoring before-states on undo.
-        // The ApplyConstraintSolveCommand's execute is a no-op since
-        // the solver already applied the changes.
+    // Use helper to solve and create apply command.
+    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, csys);
+    if (solveCmd) {
+        // Undo the solve (push will re-execute via the command).
+        solveCmd->undo();
+        composite->addCommand(std::move(solveCmd));
     }
 
-    // Only add solve command if positions actually changed
-    bool positionsChanged = false;
-    for (auto& snap : snapshots) {
-        if (snap.afterState) {
-            positionsChanged = true;
-            break;
-        }
-    }
-    if (positionsChanged) {
-        // For undo/redo: first undo reverts to before-states,
-        // first redo applies after-states
-        composite->addCommand(
-            std::make_unique<doc::ApplyConstraintSolveCommand>(draftDoc, std::move(snapshots)));
-    }
-
-    // Push (execute is already done, but push records for undo)
-    // Note: UndoStack::push calls execute() which will re-execute.
-    // We need to handle this carefully. The AddConstraintCommand will try to add again,
-    // but the constraint is already added. Let me restructure...
-
-    // Actually, let's undo what we did manually, then let push() execute properly.
-    // Remove the constraint we added manually (solver needed it in the system)
+    // Remove the temporary constraint (push re-adds via AddConstraintCommand).
     csys.removeConstraint(constraint->id());
 
-    // Restore entity positions to before-state
-    for (const auto& snap : snapshots) {
-        if (!snap.beforeState) continue;
-        for (auto& entity : draftDoc.entities()) {
-            if (entity->id() == snap.entityId) {
-                // Copy geometry from beforeState back
-                if (auto* sl = dynamic_cast<const draft::DraftLine*>(snap.beforeState.get())) {
-                    if (auto* dl = dynamic_cast<draft::DraftLine*>(entity.get())) {
-                        dl->setStart(sl->start());
-                        dl->setEnd(sl->end());
-                    }
-                } else if (auto* sc = dynamic_cast<const draft::DraftCircle*>(snap.beforeState.get())) {
-                    if (auto* dc = dynamic_cast<draft::DraftCircle*>(entity.get())) {
-                        dc->setCenter(sc->center());
-                        dc->setRadius(sc->radius());
-                    }
-                } else if (auto* sa = dynamic_cast<const draft::DraftArc*>(snap.beforeState.get())) {
-                    if (auto* da = dynamic_cast<draft::DraftArc*>(entity.get())) {
-                        da->setCenter(sa->center());
-                        da->setRadius(sa->radius());
-                        da->setStartAngle(sa->startAngle());
-                        da->setEndAngle(sa->endAngle());
-                    }
-                } else if (auto* sr = dynamic_cast<const draft::DraftRectangle*>(snap.beforeState.get())) {
-                    if (auto* dr = dynamic_cast<draft::DraftRectangle*>(entity.get())) {
-                        dr->setCorner1(sr->corner1());
-                        dr->setCorner2(sr->corner2());
-                    }
-                } else if (auto* sp = dynamic_cast<const draft::DraftPolyline*>(snap.beforeState.get())) {
-                    if (auto* dp = dynamic_cast<draft::DraftPolyline*>(entity.get())) {
-                        dp->setPoints(sp->points());
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    // Now push the composite — it will execute AddConstraint + ApplyConstraintSolve
     doc.undoStack().push(std::move(composite));
     doc.setDirty(true);
 }
