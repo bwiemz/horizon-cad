@@ -206,23 +206,26 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
             sel.clearSelection();
         }
 
-        for (const auto& entity : doc.entities()) {
-            const auto* lp = layerMgr.getLayer(entity->layer());
-            if (!lp || !lp->visible || lp->locked) continue;
+        auto candidateIds = doc.spatialIndex().query(selectRect);
 
-            math::BoundingBox ebb = entity->boundingBox();
-            if (!ebb.isValid()) continue;
+        for (uint64_t candId : candidateIds) {
+            for (const auto& entity : doc.entities()) {
+                if (entity->id() != candId) continue;
+                const auto* lp = layerMgr.getLayer(entity->layer());
+                if (!lp || !lp->visible || lp->locked) break;
 
-            if (windowMode) {
-                // Window: entity must be fully inside the selection rectangle.
-                if (selectRect.contains(ebb)) {
+                if (windowMode) {
+                    math::BoundingBox ebb = entity->boundingBox();
+                    if (!ebb.isValid()) break;
+                    // Window: entity must be fully inside the selection rectangle.
+                    if (selectRect.contains(ebb)) {
+                        sel.select(entity->id());
+                    }
+                } else {
+                    // Already confirmed intersects via R*-tree query.
                     sel.select(entity->id());
                 }
-            } else {
-                // Crossing: entity only needs to intersect the selection rectangle.
-                if (selectRect.intersects(ebb)) {
-                    sel.select(entity->id());
-                }
+                break;
             }
         }
 
@@ -242,12 +245,23 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
     const double tolerance = std::max(10.0 * pixelScale, 0.15);
 
     uint64_t hitId = 0;
-    for (const auto& entity : doc.entities()) {
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        if (entity->hitTest(worldPos, tolerance)) {
-            hitId = entity->id();
-            break;
+    {
+        math::BoundingBox searchBox(
+            math::Vec3(worldPos.x - tolerance, worldPos.y - tolerance, -1e9),
+            math::Vec3(worldPos.x + tolerance, worldPos.y + tolerance, 1e9));
+        auto candidateIds = doc.spatialIndex().query(searchBox);
+
+        for (uint64_t candId : candidateIds) {
+            for (const auto& entity : doc.entities()) {
+                if (entity->id() != candId) continue;
+                const auto* lp = layerMgr.getLayer(entity->layer());
+                if (!lp || !lp->visible || lp->locked) break;
+                if (entity->hitTest(worldPos, tolerance)) {
+                    hitId = entity->id();
+                }
+                break;
+            }
+            if (hitId != 0) break;
         }
     }
 
