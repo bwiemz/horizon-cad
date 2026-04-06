@@ -417,8 +417,9 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
                     auto afterClone = entity->clone();
                     restoreEntityState(*se.beforeClone, *entity);
 
+                    auto& cstrSys = m_viewport->document()->constraintSystem();
                     composite->addCommand(std::make_unique<doc::GripMoveCommand>(
-                        doc, se.entityId, se.beforeClone, afterClone));
+                        doc, se.entityId, se.beforeClone, afterClone, cstrSys));
                     break;
                 }
             }

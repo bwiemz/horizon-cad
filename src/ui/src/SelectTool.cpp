@@ -170,8 +170,9 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         }
 
         if (afterClone && m_gripBeforeClone) {
+            auto& cstrSys = m_viewport->document()->constraintSystem();
             auto cmd = std::make_unique<doc::GripMoveCommand>(
-                doc, m_gripEntityId, m_gripBeforeClone, afterClone);
+                doc, m_gripEntityId, m_gripBeforeClone, afterClone, cstrSys);
             m_viewport->document()->undoStack().push(std::move(cmd));
         }
 

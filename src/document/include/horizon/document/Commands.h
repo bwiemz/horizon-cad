@@ -1,5 +1,7 @@
 #pragma once
 
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftDocument.h"
@@ -49,7 +51,8 @@ class MoveEntityCommand : public Command {
 public:
     MoveEntityCommand(draft::DraftDocument& doc,
                       const std::vector<uint64_t>& entityIds,
-                      const math::Vec2& delta);
+                      const math::Vec2& delta,
+                      const cstr::ConstraintSystem& constraintSystem);
 
     void execute() override;
     void undo() override;
@@ -59,6 +62,8 @@ private:
     draft::DraftDocument& m_doc;
     std::vector<uint64_t> m_entityIds;
     math::Vec2 m_delta;
+    const cstr::ConstraintSystem& m_constraintSystem;
+    std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;
 };
 
 /// Composite command that bundles multiple sub-commands into one undo step.
@@ -609,9 +614,11 @@ public:
     /// \param entityId   ID of the entity being grip-edited
     /// \param beforeState  Clone of the entity BEFORE the grip move
     /// \param afterState   Clone of the entity AFTER the grip move
+    /// \param constraintSystem  The constraint system for auto-solving
     GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                     std::shared_ptr<draft::DraftEntity> beforeState,
-                    std::shared_ptr<draft::DraftEntity> afterState);
+                    std::shared_ptr<draft::DraftEntity> afterState,
+                    const cstr::ConstraintSystem& constraintSystem);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -623,6 +630,8 @@ private:
     uint64_t m_entityId;
     std::shared_ptr<draft::DraftEntity> m_beforeState;
     std::shared_ptr<draft::DraftEntity> m_afterState;
+    const cstr::ConstraintSystem& m_constraintSystem;
+    std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;
     bool m_firstExec = true;
 };
 

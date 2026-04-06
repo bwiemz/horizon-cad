@@ -1,4 +1,5 @@
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftText.h"
@@ -61,8 +62,10 @@ std::string RemoveEntityCommand::description() const {
 
 MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
                                      const std::vector<uint64_t>& entityIds,
-                                     const math::Vec2& delta)
-    : m_doc(doc), m_entityIds(entityIds), m_delta(delta) {}
+                                     const math::Vec2& delta,
+                                     const cstr::ConstraintSystem& constraintSystem)
+    : m_doc(doc), m_entityIds(entityIds), m_delta(delta),
+      m_constraintSystem(constraintSystem) {}
 
 void MoveEntityCommand::execute() {
     for (uint64_t id : m_entityIds) {
@@ -74,9 +77,22 @@ void MoveEntityCommand::execute() {
         }
     }
     m_doc.rebuildSpatialIndex();
+
+    // Auto-solve constraints after geometry change.
+    if (!m_solveCmd) {
+        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem);
+    }
+    if (m_solveCmd) {
+        m_solveCmd->execute();
+    }
 }
 
 void MoveEntityCommand::undo() {
+    // Undo constraint solve first.
+    if (m_solveCmd) {
+        m_solveCmd->undo();
+    }
+
     math::Vec2 neg{-m_delta.x, -m_delta.y};
     for (uint64_t id : m_entityIds) {
         for (const auto& e : m_doc.entities()) {
@@ -1194,22 +1210,39 @@ std::string ChangeEllipseRotationCommand::description() const {
 
 GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                                   std::shared_ptr<draft::DraftEntity> beforeState,
-                                  std::shared_ptr<draft::DraftEntity> afterState)
+                                  std::shared_ptr<draft::DraftEntity> afterState,
+                                  const cstr::ConstraintSystem& constraintSystem)
     : m_doc(doc), m_entityId(entityId),
       m_beforeState(std::move(beforeState)),
-      m_afterState(std::move(afterState)) {}
+      m_afterState(std::move(afterState)),
+      m_constraintSystem(constraintSystem) {}
 
 void GripMoveCommand::execute() {
     if (m_firstExec) {
         // State is already applied by the caller (live grip drag).
         m_firstExec = false;
         m_doc.rebuildSpatialIndex();
+
+        // Auto-solve constraints after geometry change.
+        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem);
+        if (m_solveCmd) {
+            m_solveCmd->execute();
+        }
         return;
     }
     applyState(*m_afterState);
+
+    // Re-execute stored solve command on redo.
+    if (m_solveCmd) {
+        m_solveCmd->execute();
+    }
 }
 
 void GripMoveCommand::undo() {
+    // Undo constraint solve first.
+    if (m_solveCmd) {
+        m_solveCmd->undo();
+    }
     applyState(*m_beforeState);
 }
 

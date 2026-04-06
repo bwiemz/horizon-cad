@@ -80,8 +80,9 @@ void PolylineEditTool::pushSnapshot(const std::string& desc) {
     for (const auto& entity : doc.entities()) {
         if (entity->id() == m_editEntityId) {
             auto afterClone = entity->clone();
+            auto& cstrSys = m_viewport->document()->constraintSystem();
             auto cmd = std::make_unique<doc::GripMoveCommand>(
-                doc, m_editEntityId, m_beforeClone, afterClone);
+                doc, m_editEntityId, m_beforeClone, afterClone, cstrSys);
             m_viewport->document()->undoStack().push(std::move(cmd));
             m_beforeClone = nullptr;
             return;
@@ -310,9 +311,10 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
             myPoly->setClosed(false);
             auto afterClone = myPoly->clone();
 
+            auto& cstrSys = m_viewport->document()->constraintSystem();
             auto composite = std::make_unique<doc::CompositeCommand>("Join polylines");
             composite->addCommand(std::make_unique<doc::GripMoveCommand>(
-                doc, m_editEntityId, m_beforeClone, afterClone));
+                doc, m_editEntityId, m_beforeClone, afterClone, cstrSys));
             composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(
                 doc, entity->id()));
             m_viewport->document()->undoStack().push(std::move(composite));
