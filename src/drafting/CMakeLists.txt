@@ -21,6 +21,7 @@ add_library(hz_drafting STATIC
     src/DraftSpline.cpp
     src/DraftHatch.cpp
     src/DraftEllipse.cpp
+    src/SpatialIndex.cpp
 )
 
 target_include_directories(hz_drafting

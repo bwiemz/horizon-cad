@@ -3,6 +3,7 @@
 #include "BlockTable.h"
 #include "DraftEntity.h"
 #include "DimensionStyle.h"
+#include "SpatialIndex.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -33,11 +34,16 @@ public:
     BlockTable& blockTable() { return m_blockTable; }
     const BlockTable& blockTable() const { return m_blockTable; }
 
+    const SpatialIndex& spatialIndex() const { return m_spatialIndex; }
+    SpatialIndex& spatialIndex() { return m_spatialIndex; }
+    void rebuildSpatialIndex();
+
 private:
     std::vector<std::shared_ptr<DraftEntity>> m_entities;
     DimensionStyle m_dimensionStyle;
     BlockTable m_blockTable;
     uint64_t m_nextGroupId = 1;
+    SpatialIndex m_spatialIndex;
 };
 
 }  // namespace hz::draft
