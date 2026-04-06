@@ -2,7 +2,9 @@
 
 #include "horizon/constraint/Constraint.h"
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace hz::cstr {
@@ -24,6 +26,10 @@ public:
 
     /// Remove all constraints that reference the given entity. Returns removed constraints.
     std::vector<std::shared_ptr<Constraint>> removeConstraintsForEntity(uint64_t entityId);
+
+    /// Resolve all variable-referenced constraints.
+    /// The resolver function maps variable names to double values.
+    void resolveVariables(const std::function<double(const std::string&)>& resolver);
 
     int totalEquations() const;
     bool empty() const { return m_constraints.empty(); }

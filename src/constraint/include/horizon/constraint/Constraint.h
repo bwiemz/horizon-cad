@@ -66,8 +66,16 @@ public:
     /// Clone the constraint (preserving the same ID).
     virtual std::shared_ptr<Constraint> clone() const = 0;
 
+    /// Optional variable name. When set, the dimensional value is resolved
+    /// from a ParameterRegistry at solve time.
+    void setVariableReference(const std::string& varName) { m_variableName = varName; }
+    const std::string& variableReference() const { return m_variableName; }
+    bool hasVariableReference() const { return !m_variableName.empty(); }
+    void clearVariableReference() { m_variableName.clear(); }
+
 private:
     uint64_t m_id;
+    std::string m_variableName;
     static uint64_t s_nextId;
 };
 

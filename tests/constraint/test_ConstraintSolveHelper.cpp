@@ -6,6 +6,8 @@
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/ParameterRegistry.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/math/Vec2.h"
@@ -174,4 +176,72 @@ TEST(ConstraintSolveHelper, SolveWithNoConstraintsIsNoOp) {
     // Convenience method should return nullptr.
     auto cmd = doc::ConstraintSolveHelper::solveAndCreateCommand(doc, sys);
     EXPECT_EQ(cmd, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Test 5: Distance constraint references a variable from ParameterRegistry
+// ---------------------------------------------------------------------------
+TEST(ConstraintSolveHelper, DistanceConstraintReferencesVariable) {
+    doc::Document document;
+    auto& draftDoc = document.draftDocument();
+    auto& csys = document.constraintSystem();
+    auto& params = document.parameterRegistry();
+
+    params.set("gap", 15.0);
+
+    auto line1 = std::make_shared<draft::DraftLine>(math::Vec2(0, 0), math::Vec2(10, 0));
+    auto line2 = std::make_shared<draft::DraftLine>(math::Vec2(10.5, 0.3), math::Vec2(20, 0));
+    draftDoc.addEntity(line1);
+    draftDoc.addEntity(line2);
+
+    cstr::GeometryRef fixRef{line1->id(), cstr::FeatureType::Point, 0};
+    csys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixRef, math::Vec2(0, 0)));
+
+    cstr::GeometryRef ref1{line1->id(), cstr::FeatureType::Point, 1};
+    cstr::GeometryRef ref2{line2->id(), cstr::FeatureType::Point, 0};
+
+    auto distConstraint = std::make_shared<cstr::DistanceConstraint>(ref1, ref2, 0.0);
+    distConstraint->setVariableReference("gap");
+    csys.addConstraint(distConstraint);
+
+    // Create resolver from ParameterRegistry.
+    auto resolver = [&params](const std::string& name) { return params.get(name); };
+
+    auto result = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys, resolver);
+    EXPECT_TRUE(result.success);
+
+    double actualDist = line1->end().distanceTo(line2->start());
+    EXPECT_NEAR(actualDist, 15.0, 1e-4);
+
+    // Change variable and re-solve.
+    params.set("gap", 5.0);
+    auto result2 = doc::ConstraintSolveHelper::solveAndApply(draftDoc, csys, resolver);
+    EXPECT_TRUE(result2.success);
+
+    double newDist = line1->end().distanceTo(line2->start());
+    EXPECT_NEAR(newDist, 5.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: clone() preserves variable reference
+// ---------------------------------------------------------------------------
+TEST(ConstraintSolveHelper, ClonePreservesVariableReference) {
+    cstr::GeometryRef refA{1, cstr::FeatureType::Point, 0};
+    cstr::GeometryRef refB{2, cstr::FeatureType::Point, 0};
+
+    auto dist = std::make_shared<cstr::DistanceConstraint>(refA, refB, 42.0);
+    dist->setVariableReference("myVar");
+
+    auto cloned = dist->clone();
+    EXPECT_TRUE(cloned->hasVariableReference());
+    EXPECT_EQ(cloned->variableReference(), "myVar");
+    EXPECT_NEAR(cloned->dimensionalValue(), 42.0, 1e-9);
+
+    auto angle = std::make_shared<cstr::AngleConstraint>(refA, refB, 1.57);
+    angle->setVariableReference("theta");
+
+    auto clonedAngle = angle->clone();
+    EXPECT_TRUE(clonedAngle->hasVariableReference());
+    EXPECT_EQ(clonedAngle->variableReference(), "theta");
+    EXPECT_NEAR(clonedAngle->dimensionalValue(), 1.57, 1e-9);
 }

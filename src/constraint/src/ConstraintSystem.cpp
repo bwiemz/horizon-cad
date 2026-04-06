@@ -72,6 +72,17 @@ std::vector<std::shared_ptr<Constraint>> ConstraintSystem::removeConstraintsForE
     return removed;
 }
 
+void ConstraintSystem::resolveVariables(
+    const std::function<double(const std::string&)>& resolver) {
+    if (!resolver) return;
+    for (auto& c : m_constraints) {
+        if (c->hasVariableReference() && c->hasDimensionalValue()) {
+            double value = resolver(c->variableReference());
+            c->setDimensionalValue(value);
+        }
+    }
+}
+
 int ConstraintSystem::totalEquations() const {
     int total = 0;
     for (const auto& c : m_constraints) {

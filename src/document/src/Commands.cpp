@@ -63,7 +63,7 @@ std::string RemoveEntityCommand::description() const {
 MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
                                      const std::vector<uint64_t>& entityIds,
                                      const math::Vec2& delta,
-                                     const cstr::ConstraintSystem& constraintSystem)
+                                     cstr::ConstraintSystem& constraintSystem)
     : m_doc(doc), m_entityIds(entityIds), m_delta(delta),
       m_constraintSystem(constraintSystem) {}
 
@@ -1211,7 +1211,7 @@ std::string ChangeEllipseRotationCommand::description() const {
 GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                                   std::shared_ptr<draft::DraftEntity> beforeState,
                                   std::shared_ptr<draft::DraftEntity> afterState,
-                                  const cstr::ConstraintSystem& constraintSystem)
+                                  cstr::ConstraintSystem& constraintSystem)
     : m_doc(doc), m_entityId(entityId),
       m_beforeState(std::move(beforeState)),
       m_afterState(std::move(afterState)),

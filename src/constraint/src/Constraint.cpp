@@ -435,7 +435,9 @@ void DistanceConstraint::jacobian(const ParameterTable& params,
 }
 
 std::shared_ptr<Constraint> DistanceConstraint::clone() const {
-    return std::make_shared<DistanceConstraint>(m_refA, m_refB, m_distance);
+    auto c = std::make_shared<DistanceConstraint>(m_refA, m_refB, m_distance);
+    c->setVariableReference(variableReference());
+    return c;
 }
 
 // ---------------------------------------------------------------------------
@@ -506,7 +508,9 @@ void AngleConstraint::jacobian(const ParameterTable& params,
 }
 
 std::shared_ptr<Constraint> AngleConstraint::clone() const {
-    return std::make_shared<AngleConstraint>(m_lineA, m_lineB, m_angle);
+    auto c = std::make_shared<AngleConstraint>(m_lineA, m_lineB, m_angle);
+    c->setVariableReference(variableReference());
+    return c;
 }
 
 }  // namespace hz::cstr

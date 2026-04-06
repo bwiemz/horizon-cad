@@ -47,7 +47,8 @@ static bool isSolveSuccess(cstr::SolveStatus status) {
 }
 
 ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
-    draft::DraftDocument& draftDoc, const cstr::ConstraintSystem& csys) {
+    draft::DraftDocument& draftDoc, cstr::ConstraintSystem& csys,
+    std::function<double(const std::string&)> variableResolver) {
     SolveAndApplyResult result;
 
     // If no constraints, nothing to do — return success with empty snapshots.
@@ -62,6 +63,11 @@ ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
         result.success = true;
         result.solveResult.status = cstr::SolveStatus::NoConstraints;
         return result;
+    }
+
+    // Resolve any variable-referenced dimensional values before solving.
+    if (variableResolver) {
+        csys.resolveVariables(variableResolver);
     }
 
     // Build parameter table from entities referenced by constraints.
@@ -123,8 +129,9 @@ ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
 }
 
 std::unique_ptr<ApplyConstraintSolveCommand> ConstraintSolveHelper::solveAndCreateCommand(
-    draft::DraftDocument& draftDoc, const cstr::ConstraintSystem& csys) {
-    auto result = solveAndApply(draftDoc, csys);
+    draft::DraftDocument& draftDoc, cstr::ConstraintSystem& csys,
+    std::function<double(const std::string&)> variableResolver) {
+    auto result = solveAndApply(draftDoc, csys, std::move(variableResolver));
 
     if (!result.success || result.snapshots.empty()) {
         return nullptr;
