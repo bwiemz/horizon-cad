@@ -124,10 +124,12 @@ ApplyConstraintSolveCommand::ApplyConstraintSolveCommand(
 
 void ApplyConstraintSolveCommand::execute() {
     applyStates(true);  // Apply afterState
+    m_doc.rebuildSpatialIndex();
 }
 
 void ApplyConstraintSolveCommand::undo() {
     applyStates(false);  // Apply beforeState
+    m_doc.rebuildSpatialIndex();
 }
 
 void ApplyConstraintSolveCommand::applyStates(bool useAfter) {

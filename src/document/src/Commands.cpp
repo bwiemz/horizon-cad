@@ -73,6 +73,7 @@ void MoveEntityCommand::execute() {
             }
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 void MoveEntityCommand::undo() {
@@ -85,6 +86,7 @@ void MoveEntityCommand::undo() {
             }
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 std::string MoveEntityCommand::description() const {
@@ -746,6 +748,7 @@ void ChangeBlockRefRotationCommand::execute() {
             break;
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 void ChangeBlockRefRotationCommand::undo() {
@@ -757,6 +760,7 @@ void ChangeBlockRefRotationCommand::undo() {
             break;
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 std::string ChangeBlockRefRotationCommand::description() const {
@@ -780,6 +784,7 @@ void ChangeBlockRefScaleCommand::execute() {
             break;
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 void ChangeBlockRefScaleCommand::undo() {
@@ -791,6 +796,7 @@ void ChangeBlockRefScaleCommand::undo() {
             break;
         }
     }
+    m_doc.rebuildSpatialIndex();
 }
 
 std::string ChangeBlockRefScaleCommand::description() const {
@@ -1197,6 +1203,7 @@ void GripMoveCommand::execute() {
     if (m_firstExec) {
         // State is already applied by the caller (live grip drag).
         m_firstExec = false;
+        m_doc.rebuildSpatialIndex();
         return;
     }
     applyState(*m_afterState);
@@ -1222,6 +1229,7 @@ void GripMoveCommand::applyState(const draft::DraftEntity& state) {
             replacement->setLineType(state.lineType());
             replacement->setGroupId(state.groupId());
             e = replacement;
+            m_doc.rebuildSpatialIndex();
             return;
         }
     }
