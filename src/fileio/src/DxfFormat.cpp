@@ -1132,6 +1132,9 @@ bool DxfFormat::load(const std::string& filePath, doc::Document& doc) {
         }
     }
 
+    // Rebuild spatial index after loading all entities.
+    doc.draftDocument().rebuildSpatialIndex();
+
     return foundSection;
 }
 

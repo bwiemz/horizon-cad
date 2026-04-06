@@ -749,6 +749,9 @@ bool NativeFormat::load(const std::string& filePath,
         }
     }
 
+    // Rebuild spatial index after loading all entities.
+    doc.draftDocument().rebuildSpatialIndex();
+
     return true;
 }
 
