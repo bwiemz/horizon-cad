@@ -37,14 +37,19 @@ public:
             m_nodes[leafIdx].entries.push_back(entry);
             m_nodes[leafIdx].bbox.expand(bbox);
 
-            // Handle overflow by splitting up the tree
+            // Handle overflow by splitting up the tree.
+            // Step 1: if the leaf overflows, split it to produce a newSibling.
             int current = leafIdx;
             int newSibling = -1;
-            while (static_cast<int>(m_nodes[current].entries.size()) > MaxChildren) {
+            if (static_cast<int>(m_nodes[current].entries.size()) > MaxChildren) {
                 newSibling = splitNode(current);
+            }
+
+            // Step 2: walk upward while we have a split to propagate.
+            while (newSibling >= 0) {
                 int parent = m_nodes[current].parent;
                 if (parent < 0) {
-                    // current is root -- create new root
+                    // current is root -- create new root containing current and newSibling
                     int newRoot = allocateNode();
                     m_nodes[newRoot].isLeaf = false;
                     m_nodes[newRoot].bbox = m_nodes[current].bbox;
@@ -54,39 +59,17 @@ public:
                     m_nodes[current].parent = newRoot;
                     m_nodes[newSibling].parent = newRoot;
                     m_root = newRoot;
-                    break;
+                    newSibling = -1;  // done
                 } else {
                     // Insert newSibling into parent
                     m_nodes[parent].children.push_back(newSibling);
                     m_nodes[newSibling].parent = parent;
-                    // Recompute parent bbox
                     recomputeBBox(parent);
                     current = parent;
                     newSibling = -1;
-                    // Check if parent itself overflows (for internal nodes)
+                    // If parent overflows, split it and continue upward
                     if (static_cast<int>(m_nodes[current].children.size()) > MaxChildren) {
                         newSibling = splitInternalNode(current);
-                        int grandparent = m_nodes[current].parent;
-                        if (grandparent < 0) {
-                            int newRoot = allocateNode();
-                            m_nodes[newRoot].isLeaf = false;
-                            m_nodes[newRoot].bbox = m_nodes[current].bbox;
-                            m_nodes[newRoot].bbox.expand(m_nodes[newSibling].bbox);
-                            m_nodes[newRoot].children.push_back(current);
-                            m_nodes[newRoot].children.push_back(newSibling);
-                            m_nodes[current].parent = newRoot;
-                            m_nodes[newSibling].parent = newRoot;
-                            m_root = newRoot;
-                            break;
-                        } else {
-                            m_nodes[grandparent].children.push_back(newSibling);
-                            m_nodes[newSibling].parent = grandparent;
-                            recomputeBBox(grandparent);
-                            current = grandparent;
-                            // Continue loop to check grandparent overflow
-                        }
-                    } else {
-                        break;
                     }
                 }
             }

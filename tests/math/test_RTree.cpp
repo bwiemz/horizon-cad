@@ -106,3 +106,27 @@ TEST(RTreeTest, ManyInsertsForceSplits) {
     EXPECT_EQ(results[2], 2u);
     EXPECT_EQ(results[3], 3u);
 }
+
+// ---------------------------------------------------------------------------
+// 8. Deep tree with multi-level internal-node splits (small MaxChildren)
+// ---------------------------------------------------------------------------
+TEST(RTreeTest, DeepTreeMultiLevelSplits) {
+    // Use small MaxChildren to force deep tree with multi-level splits.
+    RTree<uint64_t, 4, 2> tree;
+    for (uint64_t i = 0; i < 500; ++i) {
+        double x = static_cast<double>(i) * 2.0;
+        tree.insert(i, BoundingBox(Vec3(x, 0, 0), Vec3(x + 1, 1, 0)));
+    }
+    EXPECT_EQ(tree.size(), 500u);
+
+    // Query everything — must return all 500.
+    BoundingBox everything(Vec3(-1, -1, -1e9), Vec3(1001, 2, 1e9));
+    auto all = tree.query(everything);
+    EXPECT_EQ(all.size(), 500u);
+
+    // Query a small range — should return exactly 1.
+    BoundingBox small(Vec3(100, -1, -1e9), Vec3(101.5, 2, 1e9));
+    auto few = tree.query(small);
+    EXPECT_EQ(few.size(), 1u);
+    if (!few.empty()) EXPECT_EQ(few[0], 50u);
+}
