@@ -1,0 +1,13 @@
+add_executable(hz_document_tests
+    test_ParameterRegistry.cpp
+)
+
+target_link_libraries(hz_document_tests
+    PRIVATE
+        Horizon::Document
+        GTest::gtest
+        GTest::gtest_main
+)
+
+include(GoogleTest)
+gtest_discover_tests(hz_document_tests)

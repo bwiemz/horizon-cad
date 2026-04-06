@@ -5,6 +5,7 @@ add_library(hz_document STATIC
     src/Commands.cpp
     src/ConstraintCommands.cpp
     src/ConstraintSolveHelper.cpp
+    src/ParameterRegistry.cpp
 )
 
 target_include_directories(hz_document

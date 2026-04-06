@@ -1,6 +1,7 @@
 #pragma once
 
 #include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ParameterRegistry.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
@@ -39,6 +40,9 @@ public:
     cstr::ConstraintSystem& constraintSystem() { return m_constraintSystem; }
     const cstr::ConstraintSystem& constraintSystem() const { return m_constraintSystem; }
 
+    ParameterRegistry& parameterRegistry() { return m_parameterRegistry; }
+    const ParameterRegistry& parameterRegistry() const { return m_parameterRegistry; }
+
     // --- Dirty tracking ---
 
     bool isDirty() const { return m_dirty; }
@@ -53,6 +57,7 @@ private:
     draft::DraftDocument m_draftDoc;
     draft::LayerManager m_layerManager;
     cstr::ConstraintSystem m_constraintSystem;
+    ParameterRegistry m_parameterRegistry;
     std::unique_ptr<UndoStack> m_undoStack;
     bool m_dirty = false;
     std::string m_filePath;

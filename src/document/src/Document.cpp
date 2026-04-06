@@ -34,6 +34,7 @@ void Document::clear() {
     m_draftDoc.clear();
     m_layerManager.clear();
     m_constraintSystem.clear();
+    m_parameterRegistry.clear();
     m_undoStack->clear();
     m_dirty = false;
     m_filePath.clear();
