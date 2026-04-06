@@ -4,6 +4,7 @@ add_library(hz_document STATIC
     src/UndoStack.cpp
     src/Commands.cpp
     src/ConstraintCommands.cpp
+    src/ConstraintSolveHelper.cpp
 )
 
 target_include_directories(hz_document
