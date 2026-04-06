@@ -130,3 +130,59 @@ TEST(RTreeTest, DeepTreeMultiLevelSplits) {
     EXPECT_EQ(few.size(), 1u);
     if (!few.empty()) EXPECT_EQ(few[0], 50u);
 }
+
+// ---------------------------------------------------------------------------
+// 9. Remove an existing entry decrements size and excludes it from queries
+// ---------------------------------------------------------------------------
+TEST(RTreeTest, RemoveExistingEntry) {
+    RTree<uint64_t> tree;
+    tree.insert(1, BoundingBox(Vec3(0, 0, 0), Vec3(2, 2, 0)));
+    tree.insert(2, BoundingBox(Vec3(5, 5, 0), Vec3(7, 7, 0)));
+    tree.remove(1);
+    EXPECT_EQ(tree.size(), 1u);
+    BoundingBox queryAll(Vec3(-100, -100, -1e9), Vec3(100, 100, 1e9));
+    auto results = tree.query(queryAll);
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0], 2u);
+}
+
+// ---------------------------------------------------------------------------
+// 10. Removing a non-existent value is a no-op
+// ---------------------------------------------------------------------------
+TEST(RTreeTest, RemoveNonExistentIsNoOp) {
+    RTree<uint64_t> tree;
+    tree.insert(1, BoundingBox(Vec3(0, 0, 0), Vec3(2, 2, 0)));
+    tree.remove(999);
+    EXPECT_EQ(tree.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 11. Stress: insert 1000 items in a grid, query a small window
+// ---------------------------------------------------------------------------
+TEST(RTreeTest, InsertManyAndQueryCorrectly) {
+    RTree<uint64_t> tree;
+    for (uint64_t i = 0; i < 1000; ++i) {
+        double x = static_cast<double>(i % 100) * 3.0;
+        double y = static_cast<double>(i / 100) * 3.0;
+        tree.insert(i, BoundingBox(Vec3(x, y, 0), Vec3(x + 1, y + 1, 0)));
+    }
+    EXPECT_EQ(tree.size(), 1000u);
+    BoundingBox smallQuery(Vec3(14.5, 14.5, -1e9), Vec3(16.5, 16.5, 1e9));
+    auto results = tree.query(smallQuery);
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0], 505u);
+}
+
+// ---------------------------------------------------------------------------
+// 12. Query spanning the entire space returns every inserted entry
+// ---------------------------------------------------------------------------
+TEST(RTreeTest, QueryAllReturnsEverything) {
+    RTree<uint64_t> tree;
+    for (uint64_t i = 0; i < 100; ++i) {
+        double x = static_cast<double>(i);
+        tree.insert(i, BoundingBox(Vec3(x, 0, 0), Vec3(x + 0.5, 0.5, 0)));
+    }
+    BoundingBox everything(Vec3(-1, -1, -1e9), Vec3(200, 200, 1e9));
+    auto results = tree.query(everything);
+    EXPECT_EQ(results.size(), 100u);
+}

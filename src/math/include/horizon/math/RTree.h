@@ -103,7 +103,22 @@ public:
         m_nodes[m_root].parent = -1;
     }
 
-    // remove() will be added in Task 2.
+    /// Remove a value from the tree.
+    /// Uses collect-all / clear / re-insert strategy — O(n log n) but correct.
+    /// If the value is not present this is a no-op.
+    void remove(const ValueT& value) {
+        // Collect every (value, bbox) pair except the one being removed.
+        std::vector<std::pair<ValueT, BoundingBox>> entries;
+        entries.reserve(m_size);
+        bool found = collectEntries(m_root, value, entries);
+        if (!found) return;  // nothing to do
+
+        // Rebuild from scratch.
+        clear();
+        for (auto& [v, bb] : entries) {
+            insert(v, bb);
+        }
+    }
 
 private:
     struct Entry {
@@ -426,6 +441,28 @@ private:
             recomputeBBox(current);
             current = m_nodes[current].parent;
         }
+    }
+
+    /// Recursively collect all (value, bbox) entries, excluding one specific value.
+    /// Returns true if the excluded value was found at least once.
+    bool collectEntries(int nodeIdx, const ValueT& exclude,
+                        std::vector<std::pair<ValueT, BoundingBox>>& out) const {
+        const auto& node = m_nodes[nodeIdx];
+        bool found = false;
+        if (node.isLeaf) {
+            for (const auto& entry : node.entries) {
+                if (entry.value == exclude) {
+                    found = true;
+                } else {
+                    out.emplace_back(entry.value, entry.bbox);
+                }
+            }
+        } else {
+            for (int childIdx : node.children) {
+                if (collectEntries(childIdx, exclude, out)) found = true;
+            }
+        }
+        return found;
     }
 
     /// Recursively query a node for entries intersecting the search box.
