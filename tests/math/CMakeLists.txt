@@ -6,6 +6,7 @@ add_executable(hz_math_tests
     test_Transform.cpp
     test_BoundingBox.cpp
     test_RTree.cpp
+    test_Expression.cpp
 )
 
 target_link_libraries(hz_math_tests

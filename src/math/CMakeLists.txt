@@ -7,6 +7,7 @@ add_library(hz_math STATIC
     src/Quaternion.cpp
     src/Transform.cpp
     src/BoundingBox.cpp
+    src/Expression.cpp
 )
 
 target_include_directories(hz_math
