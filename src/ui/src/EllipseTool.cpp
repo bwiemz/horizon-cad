@@ -26,8 +26,9 @@ bool EllipseTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
 
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -65,8 +66,9 @@ bool EllipseTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
 bool EllipseTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }

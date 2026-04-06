@@ -16,8 +16,9 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     // Snap.
     math::Vec2 pos = worldPos;
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         pos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -50,8 +51,9 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
 bool TextTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         m_viewport->setLastSnapResult(result);
     }
     return true;

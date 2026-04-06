@@ -44,7 +44,7 @@ bool MirrorTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         if (sel.empty()) return false;  // Nothing selected to mirror.
 
         // Apply snapping.
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_axisP1 = result.point;
         m_viewport->setLastSnapResult(result);
 
@@ -53,7 +53,7 @@ bool MirrorTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     }
 
     if (m_state == State::SelectSecondPoint) {
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         math::Vec2 axisP2 = result.point;
         m_viewport->setLastSnapResult(result);
 
@@ -92,7 +92,7 @@ bool MirrorTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
     m_currentPos = worldPos;
     if (m_state == State::SelectSecondPoint && m_viewport && m_viewport->document()) {
         auto& doc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_currentPos = result.point;
         m_viewport->setLastSnapResult(result);
     }

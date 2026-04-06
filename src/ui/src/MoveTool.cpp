@@ -48,7 +48,7 @@ bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     // Apply snapping.
     math::Vec2 snappedPos = worldPos;
-    auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+    auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
     snappedPos = result.point;
     m_viewport->setLastSnapResult(result);
 
@@ -64,8 +64,9 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
     if (!m_viewport || !m_viewport->document()) return false;
 
     math::Vec2 snappedPos = worldPos;
+    auto& draftDoc = m_viewport->document()->draftDocument();
     auto result = m_viewport->snapEngine().snap(
-        worldPos, m_viewport->document()->draftDocument().entities());
+        worldPos, draftDoc.spatialIndex(), draftDoc.entities());
     snappedPos = result.point;
     m_viewport->setLastSnapResult(result);
 

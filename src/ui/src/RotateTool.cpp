@@ -46,7 +46,7 @@ bool RotateTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         auto& sel = m_viewport->selectionManager();
         if (sel.empty()) return false;
 
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_center = result.point;
         m_viewport->setLastSnapResult(result);
 
@@ -56,7 +56,7 @@ bool RotateTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     }
 
     if (m_state == State::SelectAngle) {
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_viewport->setLastSnapResult(result);
 
         double angle = std::atan2(result.point.y - m_center.y,
@@ -95,7 +95,7 @@ bool RotateTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
     m_currentPos = worldPos;
     if (m_state == State::SelectAngle && m_viewport) {
         auto& doc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_currentPos = result.point;
         m_viewport->setLastSnapResult(result);
     }

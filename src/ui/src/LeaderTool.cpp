@@ -29,8 +29,9 @@ bool LeaderTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     // Snap.
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -46,8 +47,9 @@ bool LeaderTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
 
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
+        auto& draftDoc = m_viewport->document()->draftDocument();
         auto result = m_viewport->snapEngine().snap(
-            worldPos, m_viewport->document()->draftDocument().entities());
+            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }

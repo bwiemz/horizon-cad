@@ -339,7 +339,7 @@ bool PolylineEditTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& 
             if (!poly) break;
 
             // Snap.
-            auto result = m_viewport->snapEngine().snap(worldPos, doc.entities());
+            auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
             math::Vec2 snappedPos = result.point;
 
             auto pts = poly->points();
