@@ -5,6 +5,7 @@ add_executable(hz_math_tests
     test_Quaternion.cpp
     test_Transform.cpp
     test_BoundingBox.cpp
+    test_RTree.cpp
 )
 
 target_link_libraries(hz_math_tests
