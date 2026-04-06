@@ -4,14 +4,17 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ConstraintCommands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/math/BoundingBox.h"
 
+#include <QInputDialog>
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <set>
 
 namespace hz::ui {
@@ -49,6 +52,11 @@ bool SelectTool::isWindowSelection() const {
 bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
+
+    // Handle double-click: try to edit a dimensional constraint on the clicked entity.
+    if (event->type() == QEvent::MouseButtonDblClick) {
+        if (handleConstraintDoubleClick(worldPos)) return true;
+    }
 
     auto& doc = m_viewport->document()->draftDocument();
     auto& sel = m_viewport->selectionManager();
@@ -353,6 +361,92 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
         return true;
     }
     return false;
+}
+
+bool SelectTool::handleConstraintDoubleClick(const math::Vec2& worldPos) {
+    if (!m_viewport || !m_viewport->document()) return false;
+
+    auto& draftDoc = m_viewport->document()->draftDocument();
+    auto& cstrSys = m_viewport->document()->constraintSystem();
+
+    double pixelScale = m_viewport->pixelToWorldScale();
+    double tolerance = std::max(15.0 * pixelScale, 0.3);
+
+    for (const auto& constraint : cstrSys.constraints()) {
+        if (!constraint->hasDimensionalValue()) continue;
+
+        const auto entityIds = constraint->referencedEntityIds();
+        bool hit = false;
+        for (uint64_t eid : entityIds) {
+            for (const auto& e : draftDoc.entities()) {
+                if (e->id() != eid) continue;
+                if (e->hitTest(worldPos, tolerance)) {
+                    hit = true;
+                }
+                break;
+            }
+            if (hit) break;
+        }
+
+        if (hit) {
+            bool isAngle = (constraint->type() == cstr::ConstraintType::Angle);
+            return editConstraintDimension(constraint->id(), constraint->dimensionalValue(),
+                                          isAngle);
+        }
+    }
+    return false;
+}
+
+bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentValue,
+                                          bool isAngle) {
+    if (!m_viewport || !m_viewport->document()) return false;
+
+    auto& cstrSys = m_viewport->document()->constraintSystem();
+    auto& draftDoc = m_viewport->document()->draftDocument();
+
+    const double pi = std::numbers::pi;
+
+    // Convert to display units (degrees for angles).
+    double displayValue = isAngle ? (currentValue * 180.0 / pi) : currentValue;
+    QString label = isAngle ? QStringLiteral("Angle (degrees):") : QStringLiteral("Distance:");
+
+    bool ok = false;
+    double newDisplay = QInputDialog::getDouble(
+        m_viewport, QStringLiteral("Edit Constraint"), label,
+        displayValue,
+        isAngle ? 0.001 : 0.001,  // min
+        isAngle ? 359.999 : 1e9,  // max
+        4,                         // decimals
+        &ok);
+
+    if (!ok) return false;
+
+    double newValue = isAngle ? (newDisplay * pi / 180.0) : newDisplay;
+    if (std::abs(newValue - currentValue) < 1e-12) return false;
+
+    // Build composite: modify value + apply solve result.
+    auto composite = std::make_unique<doc::CompositeCommand>("Edit Constraint Value");
+    composite->addCommand(
+        std::make_unique<doc::ModifyConstraintValueCommand>(cstrSys, constraintId, newValue));
+
+    // Temporarily set the new value so the solver can use it.
+    cstr::Constraint* c = cstrSys.getConstraint(constraintId);
+    if (!c) return false;
+    c->setDimensionalValue(newValue);
+
+    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, cstrSys);
+
+    // Restore old value — ModifyConstraintValueCommand::execute() will re-apply it.
+    c->setDimensionalValue(currentValue);
+
+    if (solveCmd) {
+        // Undo the entity changes that solveAndCreateCommand applied.
+        solveCmd->undo();
+        composite->addCommand(std::move(solveCmd));
+    }
+
+    m_viewport->document()->undoStack().push(std::move(composite));
+    return true;
 }
 
 void SelectTool::cancel() {

@@ -41,6 +41,14 @@ public:
     math::Vec2 boxCorner2() const { return m_dragCurrent; }
 
 private:
+    /// Try to find a dimensional constraint near worldPos and open an edit dialog.
+    /// Returns true if a constraint was found and the dialog was shown.
+    bool handleConstraintDoubleClick(const math::Vec2& worldPos);
+
+    /// Open QInputDialog to edit a dimensional constraint's value and re-solve.
+    /// Returns true if the user confirmed a change.
+    bool editConstraintDimension(uint64_t constraintId, double currentValue, bool isAngle);
+
     // Grip dragging state.
     bool m_draggingGrip = false;
     uint64_t m_gripEntityId = 0;
