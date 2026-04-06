@@ -6,6 +6,8 @@
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/constraint/ParameterTable.h"
+#include "horizon/constraint/SketchSolver.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
@@ -34,6 +36,7 @@
 #include <QImage>
 
 #include <cmath>
+#include <set>
 
 namespace {
 
@@ -168,6 +171,9 @@ void ViewportWidget::resizeGL(int w, int h) {
 
 void ViewportWidget::paintGL() {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
+
+    // Recompute DOF analysis every frame (small matrix — fast enough for real-time).
+    recomputeDOF();
 
     // Clear with background color.
     gl->glClearColor(0.18f, 0.18f, 0.20f, 1.0f);
@@ -311,6 +317,31 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event) {
 }
 
 // ---------------------------------------------------------------------------
+// DOF visualization
+// ---------------------------------------------------------------------------
+
+void ViewportWidget::recomputeDOF() {
+    if (!m_document) {
+        m_dofAnalysis = {};
+        m_dofDirty = false;
+        return;
+    }
+
+    const auto& csys = m_document->constraintSystem();
+    if (csys.empty()) {
+        m_dofAnalysis = {};
+        m_dofDirty = false;
+        return;
+    }
+
+    auto params = cstr::ParameterTable::buildFromEntities(
+        m_document->draftDocument().entities(), csys);
+    cstr::SketchSolver solver;
+    m_dofAnalysis = solver.analyzeDOF(params, csys);
+    m_dofDirty = false;
+}
+
+// ---------------------------------------------------------------------------
 // Rendering helpers
 // ---------------------------------------------------------------------------
 
@@ -348,6 +379,24 @@ void ViewportWidget::renderEntities(QOpenGLExtraFunctions* gl) {
             resolvedColor = lp ? lp->color : 0xFFFFFFFF;
         } else {
             resolvedColor = entity->color();
+        }
+
+        // Override color for DOF visualization (skip for selected entities).
+        if (!selected) {
+            auto dofIt = m_dofAnalysis.entityStatus.find(entity->id());
+            if (dofIt != m_dofAnalysis.entityStatus.end()) {
+                switch (dofIt->second) {
+                    case cstr::EntityDOFStatus::Free:
+                        resolvedColor = 0xFF00CC00;  // Green for under-constrained.
+                        break;
+                    case cstr::EntityDOFStatus::FullyConstrained:
+                        // Keep normal color.
+                        break;
+                    case cstr::EntityDOFStatus::OverConstrained:
+                        resolvedColor = 0xFFFF0000;  // Red for over-constrained.
+                        break;
+                }
+            }
         }
 
         // Resolve lineWidth.
@@ -821,28 +870,40 @@ void ViewportWidget::renderTextToImage(QImage& image) {
         }
     }
 
-    // --- Constraint indicators ---
+    // --- Constraint annotation indicators ---
     if (m_document) {
         const auto& csys = m_document->constraintSystem();
         if (!csys.empty()) {
             const auto& entities = m_document->draftDocument().entities();
-            double pxPerWorld = 1.0 / pixelToWorldScale();
-            int fontSize = std::max(8, std::min(24, static_cast<int>(pxPerWorld * 0.3)));
+            // Yellow annotation color: QColor(255, 200, 0) = 0xFFFFC800
+            constexpr uint32_t kAnnotationColor = 0xFFFFC800;
+
+            // Collect selected entity IDs to skip their constraint annotations.
+            auto selectedIds = m_selectionManager.selectedIds();
+            std::set<uint64_t> selectedSet(selectedIds.begin(), selectedIds.end());
 
             for (const auto& c : csys.constraints()) {
+                // Skip annotations for constraints whose entities are selected.
+                auto refIds = c->referencedEntityIds();
+                bool anySelected = false;
+                for (uint64_t eid : refIds) {
+                    if (selectedSet.count(eid)) { anySelected = true; break; }
+                }
+                if (anySelected) continue;
+
                 math::Vec2 pos{0.0, 0.0};
                 std::string symbol;
-                uint32_t color = 0xFF00CC00;  // Green (satisfied)
+                uint32_t color = kAnnotationColor;
 
                 switch (c->type()) {
                     case cstr::ConstraintType::Coincident:  symbol = "\xE2\x97\x8F"; break;
                     case cstr::ConstraintType::Horizontal:  symbol = "H"; break;
                     case cstr::ConstraintType::Vertical:    symbol = "V"; break;
                     case cstr::ConstraintType::Perpendicular: symbol = "\xE2\x9F\x82"; break;
-                    case cstr::ConstraintType::Parallel:    symbol = "\xE2\x88\xA5"; break;
+                    case cstr::ConstraintType::Parallel:    symbol = "//"; break;
                     case cstr::ConstraintType::Tangent:     symbol = "T"; break;
                     case cstr::ConstraintType::Equal:       symbol = "="; break;
-                    case cstr::ConstraintType::Fixed:       symbol = "\xE2\x96\xA1"; break;
+                    case cstr::ConstraintType::Fixed:       symbol = "F"; break;
                     case cstr::ConstraintType::Distance: {
                         auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
                         if (dc) {
@@ -850,7 +911,6 @@ void ViewportWidget::renderTextToImage(QImage& image) {
                             snprintf(buf, sizeof(buf), "%.2f", dc->dimensionalValue());
                             symbol = buf;
                         }
-                        color = 0xFF0066CC;
                         break;
                     }
                     case cstr::ConstraintType::Angle: {
@@ -861,21 +921,19 @@ void ViewportWidget::renderTextToImage(QImage& image) {
                                      ac->dimensionalValue() * 180.0 / 3.14159265358979323846);
                             symbol = buf;
                         }
-                        color = 0xFF0066CC;
                         break;
                     }
                 }
 
                 // Compute indicator position: midpoint of referenced features.
                 try {
-                    auto ids = c->referencedEntityIds();
-                    if (!ids.empty()) {
-                        const auto* e1 = cstr::findEntity(ids[0], entities);
+                    if (!refIds.empty()) {
+                        const auto* e1 = cstr::findEntity(refIds[0], entities);
                         if (e1) {
                             auto snaps = e1->snapPoints();
                             if (!snaps.empty()) pos = snaps[0];
-                            if (ids.size() > 1) {
-                                const auto* e2 = cstr::findEntity(ids.back(), entities);
+                            if (refIds.size() > 1) {
+                                const auto* e2 = cstr::findEntity(refIds.back(), entities);
                                 if (e2) {
                                     auto snaps2 = e2->snapPoints();
                                     if (!snaps2.empty()) {
@@ -891,7 +949,8 @@ void ViewportWidget::renderTextToImage(QImage& image) {
                 // Offset slightly above the position.
                 pos.y += pixelToWorldScale() * 12.0;
 
-                drawItem({pos, symbol, color, fontSize, true});
+                // Arial 9pt annotations.
+                drawItem({pos, symbol, color, 9, true});
             }
         }
     }

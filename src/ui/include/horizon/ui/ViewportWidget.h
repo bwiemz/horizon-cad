@@ -10,6 +10,7 @@
 #include "horizon/render/Camera.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/drafting/SnapEngine.h"
+#include "horizon/constraint/SketchSolver.h"
 #include "horizon/ui/OverlayRenderer.h"
 
 #include <memory>
@@ -155,6 +156,11 @@ private:
     unsigned int m_textOverlayVAO = 0;
     unsigned int m_textOverlayVBO = 0;
     unsigned int m_textOverlayShader = 0;
+
+    // DOF visualization
+    cstr::DOFAnalysis m_dofAnalysis;
+    bool m_dofDirty = true;
+    void recomputeDOF();
 
     // Navigation state
     bool m_orbiting = false;

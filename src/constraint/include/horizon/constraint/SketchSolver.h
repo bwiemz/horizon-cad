@@ -1,7 +1,9 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 
 namespace hz::cstr {
 
@@ -26,12 +28,25 @@ struct SolveResult {
     std::string message;
 };
 
+/// Per-entity constraint status for DOF visualization.
+enum class EntityDOFStatus { Free, FullyConstrained, OverConstrained };
+
+/// Result of DOF analysis across all constrained entities.
+struct DOFAnalysis {
+    std::unordered_map<uint64_t, EntityDOFStatus> entityStatus;
+    int totalDOF = 0;
+};
+
 /// Newton-Raphson constraint solver with Levenberg-Marquardt damping.
 class SketchSolver {
 public:
     SketchSolver();
 
     SolveResult solve(ParameterTable& params, const ConstraintSystem& constraints);
+
+    /// Analyze degrees of freedom per entity without modifying parameters.
+    DOFAnalysis analyzeDOF(const ParameterTable& params,
+                           const ConstraintSystem& constraints) const;
 
     void setMaxIterations(int n) { m_maxIterations = n; }
     void setTolerance(double tol) { m_tolerance = tol; }

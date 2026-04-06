@@ -1,7 +1,9 @@
 #include "horizon/constraint/SketchSolver.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/ParameterTable.h"
+#include <Eigen/SVD>
 #include <cmath>
+#include <set>
 
 namespace hz::cstr {
 
@@ -112,6 +114,54 @@ SolveResult SketchSolver::solve(ParameterTable& params,
         result.message = "Failed to converge after " + std::to_string(m_maxIterations) +
                          " iterations (residual = " + std::to_string(result.residualNorm) + ")";
     }
+    return result;
+}
+
+DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
+                                     const ConstraintSystem& constraints) const {
+    DOFAnalysis result;
+
+    int m = constraints.totalEquations();
+    int n = params.parameterCount();
+
+    if (m == 0 || constraints.empty() || n == 0) {
+        // No constraints — all constrained entities are free (none exist).
+        return result;
+    }
+
+    // Build Jacobian and compute rank via SVD.
+    Eigen::MatrixXd J = buildJacobian(params, constraints);
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(J);
+
+    // Count singular values above threshold for rank determination.
+    double threshold = 1e-8 * std::max(m, n) * svd.singularValues()(0);
+    int rank = 0;
+    for (int i = 0; i < svd.singularValues().size(); ++i) {
+        if (svd.singularValues()(i) > threshold) ++rank;
+    }
+
+    result.totalDOF = n - rank;
+    bool overConstrained = (m > rank);
+
+    // Collect all entity IDs referenced by any constraint.
+    std::set<uint64_t> constrainedIds;
+    for (const auto& c : constraints.constraints()) {
+        for (uint64_t eid : c->referencedEntityIds()) {
+            constrainedIds.insert(eid);
+        }
+    }
+
+    // Assign status per entity based on global analysis.
+    for (uint64_t eid : constrainedIds) {
+        if (overConstrained) {
+            result.entityStatus[eid] = EntityDOFStatus::OverConstrained;
+        } else if (result.totalDOF == 0) {
+            result.entityStatus[eid] = EntityDOFStatus::FullyConstrained;
+        } else {
+            result.entityStatus[eid] = EntityDOFStatus::Free;
+        }
+    }
+
     return result;
 }
 
