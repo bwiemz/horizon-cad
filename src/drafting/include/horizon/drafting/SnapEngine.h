@@ -2,6 +2,7 @@
 
 #include "horizon/math/Vec2.h"
 #include "DraftEntity.h"
+#include "SpatialIndex.h"
 #include <memory>
 #include <vector>
 
@@ -31,6 +32,10 @@ public:
     double snapTolerance() const { return m_snapTolerance; }
 
     SnapResult snap(const math::Vec2& cursorWorld,
+                    const std::vector<std::shared_ptr<DraftEntity>>& entities) const;
+
+    SnapResult snap(const math::Vec2& cursorWorld,
+                    const SpatialIndex& index,
                     const std::vector<std::shared_ptr<DraftEntity>>& entities) const;
 
 private:

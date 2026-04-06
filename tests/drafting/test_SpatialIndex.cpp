@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "horizon/drafting/SpatialIndex.h"
+#include "horizon/drafting/SnapEngine.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
@@ -132,4 +133,40 @@ TEST(DraftDocumentSpatialTest, ClearEmptiesSpatialIndex) {
     BoundingBox searchBox(Vec3(-100, -100, 0), Vec3(200, 200, 0));
     auto results = doc.spatialIndex().query(searchBox);
     EXPECT_TRUE(results.empty());
+}
+
+// --- SnapEngine spatial-index overload tests ---
+
+TEST(SnapEngineTest, SpatialSnapFindsNearbyEntity) {
+    DraftDocument doc;
+    auto farLine = std::make_shared<DraftLine>(Vec2(100, 100), Vec2(105, 105));
+    doc.addEntity(farLine);
+    auto nearLine = std::make_shared<DraftLine>(Vec2(1, 1), Vec2(3, 3));
+    doc.addEntity(nearLine);
+
+    SnapEngine engine;
+    engine.setSnapTolerance(2.0);
+    engine.setGridSpacing(10.0);
+
+    Vec2 cursor(0.9, 0.9);
+    SnapResult result = engine.snap(cursor, doc.spatialIndex(), doc.entities());
+    EXPECT_EQ(result.type, SnapType::Endpoint);
+    EXPECT_NEAR(result.point.x, 1.0, 1e-7);
+    EXPECT_NEAR(result.point.y, 1.0, 1e-7);
+}
+
+TEST(SnapEngineTest, SpatialSnapReturnsGridWhenNoEntityNearby) {
+    DraftDocument doc;
+    auto farLine = std::make_shared<DraftLine>(Vec2(100, 100), Vec2(105, 105));
+    doc.addEntity(farLine);
+
+    SnapEngine engine;
+    engine.setSnapTolerance(0.5);
+    engine.setGridSpacing(1.0);
+
+    Vec2 cursor(5.1, 5.2);
+    SnapResult result = engine.snap(cursor, doc.spatialIndex(), doc.entities());
+    EXPECT_EQ(result.type, SnapType::Grid);
+    EXPECT_NEAR(result.point.x, 5.0, 1e-7);
+    EXPECT_NEAR(result.point.y, 5.0, 1e-7);
 }
