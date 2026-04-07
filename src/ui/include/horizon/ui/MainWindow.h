@@ -93,6 +93,12 @@ private slots:
     void onGroupEntities();
     void onUngroupEntities();
 
+    void onPrimitiveBox();
+    void onPrimitiveCylinder();
+    void onPrimitiveSphere();
+    void onPrimitiveCone();
+    void onPrimitiveTorus();
+
     void onCreateBlock();
     void onInsertBlock();
     void onExplode();

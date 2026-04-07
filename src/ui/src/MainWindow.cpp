@@ -49,6 +49,9 @@
 #include "horizon/document/Commands.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/render/SceneGraph.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -412,6 +415,15 @@ void MainWindow::createRibbonBar() {
     addAction(blockBar, "block-explode", tr("Explode"), this,
               &MainWindow::onExplode);
     m_ribbonBar->addTab(tr("Block"), blockBar);
+
+    // ---- 3D tab ----
+    auto* solidBar = new QToolBar(this);
+    addAction(solidBar, "box", tr("Box"), this, &MainWindow::onPrimitiveBox);
+    addAction(solidBar, "cylinder", tr("Cylinder"), this, &MainWindow::onPrimitiveCylinder);
+    addAction(solidBar, "sphere", tr("Sphere"), this, &MainWindow::onPrimitiveSphere);
+    addAction(solidBar, "cone", tr("Cone"), this, &MainWindow::onPrimitiveCone);
+    addAction(solidBar, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
+    m_ribbonBar->addTab(tr("3D"), solidBar);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
     auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);
@@ -1306,6 +1318,80 @@ void MainWindow::onSelectionChanged() {
     std::vector<uint64_t> idVec(ids.begin(), ids.end());
     m_propertyPanel->updateForSelection(idVec);
     updateStatusBar();
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- 3D Primitives
+// ---------------------------------------------------------------------------
+
+void MainWindow::onPrimitiveBox() {
+    auto solid = model::PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+
+    auto node = std::make_shared<render::SceneNode>("Box");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Box primitive added."));
+}
+
+void MainWindow::onPrimitiveCylinder() {
+    auto solid = model::PrimitiveFactory::makeCylinder(5.0, 10.0);
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+
+    auto node = std::make_shared<render::SceneNode>("Cylinder");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.55}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Cylinder primitive added."));
+}
+
+void MainWindow::onPrimitiveSphere() {
+    auto solid = model::PrimitiveFactory::makeSphere(5.0);
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+
+    auto node = std::make_shared<render::SceneNode>("Sphere");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.55, 0.8, 0.55}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Sphere primitive added."));
+}
+
+void MainWindow::onPrimitiveCone() {
+    auto solid = model::PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+
+    auto node = std::make_shared<render::SceneNode>("Cone");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.85, 0.75, 0.4}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Cone primitive added."));
+}
+
+void MainWindow::onPrimitiveTorus() {
+    auto solid = model::PrimitiveFactory::makeTorus(6.0, 2.0);
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+
+    auto node = std::make_shared<render::SceneNode>("Torus");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.7, 0.55, 0.8}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Torus primitive added."));
 }
 
 }  // namespace hz::ui

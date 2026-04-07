@@ -298,6 +298,51 @@ void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
     m_phongShader.release();
 }
 
+void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
+                              const Camera& camera) {
+    if (!m_initialized) return;
+
+    auto visibleNodes = scene.collectVisibleMeshNodes();
+    if (visibleNodes.empty()) return;
+
+    gl->glEnable(GL_DEPTH_TEST);
+    gl->glDepthFunc(GL_LESS);
+
+    math::Mat4 view = camera.viewMatrix();
+    math::Mat4 proj = camera.projectionMatrix();
+    math::Mat4 vp = proj * view;
+
+    m_phongShader.bind();
+
+    math::Vec3 lightDir = math::Vec3(0.3, 0.5, 0.8).normalized();
+    m_phongShader.setUniform("uViewPos", camera.eye());
+    m_phongShader.setUniform("uLightDir", lightDir);
+
+    for (const SceneNode* node : visibleNodes) {
+        if (m_meshCache.find(node->id()) == m_meshCache.end()) {
+            uploadMesh(gl, node);
+        }
+
+        auto it = m_meshCache.find(node->id());
+        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+
+        math::Mat4 model = node->worldTransform();
+        math::Mat4 mvp = vp * model;
+        math::Mat4 normalMat = model.inverse().transposed();
+
+        m_phongShader.setUniform("uMVP", mvp);
+        m_phongShader.setUniform("uModel", model);
+        m_phongShader.setUniform("uNormalMatrix", normalMat);
+        m_phongShader.setUniform("uObjectColor", node->material().color);
+
+        it->second->bind();
+        it->second->draw(gl);
+        it->second->release();
+    }
+
+    m_phongShader.release();
+}
+
 void GLRenderer::renderGrid(QOpenGLExtraFunctions* gl, const Camera& camera) {
     m_grid.render(gl, camera);
 }

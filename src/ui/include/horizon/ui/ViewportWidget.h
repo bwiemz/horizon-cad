@@ -9,6 +9,7 @@
 #include "horizon/math/Vec3.h"
 #include "horizon/render/Camera.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/render/SceneGraph.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/drafting/SnapEngine.h"
 #include "horizon/ui/OverlayRenderer.h"
@@ -67,6 +68,11 @@ public:
 
     render::SelectionManager& selectionManager() { return m_selectionManager; }
     const render::SelectionManager& selectionManager() const { return m_selectionManager; }
+
+    // ---- Scene Graph (3D) ----
+
+    render::SceneGraph& sceneGraph() { return m_sceneGraph; }
+    const render::SceneGraph& sceneGraph() const { return m_sceneGraph; }
 
     // ---- Snapping ----
 
@@ -143,6 +149,9 @@ private:
     // Snapping
     draft::SnapEngine m_snapEngine;
     draft::SnapResult m_lastSnapResult;
+
+    // 3D scene graph
+    render::SceneGraph m_sceneGraph;
 
     // Active tool
     Tool* m_activeTool = nullptr;

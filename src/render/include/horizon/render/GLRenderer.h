@@ -41,6 +41,11 @@ public:
     /// Render only the ground grid.
     void renderGrid(QOpenGLExtraFunctions* gl, const Camera& camera);
 
+    /// Render 3D mesh nodes from the scene graph (Phong-shaded).
+    /// Unlike renderScene, this does NOT clear the framebuffer or draw the grid.
+    void renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
+                     const Camera& camera);
+
     /// Background color.
     void setBackgroundColor(float r, float g, float b);
 

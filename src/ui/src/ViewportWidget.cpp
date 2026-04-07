@@ -193,6 +193,11 @@ void ViewportWidget::paintGL() {
                                        pixelToWorldScale());
     }
 
+    // Render 3D scene graph nodes (solid primitives).
+    if (!m_sceneGraph.nodes().empty()) {
+        m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
+    }
+
     // Render tool preview (rubber-band).
     m_viewportRenderer.renderToolPreview(gl, *m_renderer, m_camera, m_activeTool);
 

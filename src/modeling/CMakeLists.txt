@@ -1,6 +1,7 @@
 add_library(hz_modeling STATIC
     src/PrimitiveFactory.cpp
     src/Extrude.cpp
+    src/SolidTessellator.cpp
 )
 
 target_include_directories(hz_modeling
@@ -14,6 +15,7 @@ target_link_libraries(hz_modeling
         Horizon::Math
         Horizon::Geometry
         Horizon::Topology
+        Horizon::Render
 )
 
 add_library(Horizon::Modeling ALIAS hz_modeling)

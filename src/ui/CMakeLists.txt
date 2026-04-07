@@ -114,6 +114,7 @@ target_link_libraries(hz_ui
         Horizon::Document
         Horizon::FileIO
         Horizon::Constraint
+        Horizon::Modeling
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
