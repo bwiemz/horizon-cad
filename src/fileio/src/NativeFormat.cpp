@@ -2,6 +2,8 @@
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/document/Sketch.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
@@ -73,6 +75,119 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
         case cstr::ConstraintType::Angle:          return "angle";
     }
     return "unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Entity serialization helper (shared by top-level and per-sketch writes)
+// ---------------------------------------------------------------------------
+
+static json serializeEntity(const draft::DraftEntity& entity) {
+    json obj;
+    obj["id"] = entity.id();
+    obj["layer"] = entity.layer();
+    obj["color"] = entity.color();
+    obj["lineWidth"] = entity.lineWidth();
+    obj["lineType"] = entity.lineType();
+    if (entity.groupId() != 0) {
+        obj["groupId"] = entity.groupId();
+    }
+
+    if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
+        obj["type"] = "line";
+        obj["start"] = {{"x", line->start().x}, {"y", line->start().y}};
+        obj["end"]   = {{"x", line->end().x},   {"y", line->end().y}};
+    } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(&entity)) {
+        obj["type"] = "circle";
+        obj["center"] = {{"x", circle->center().x}, {"y", circle->center().y}};
+        obj["radius"] = circle->radius();
+    } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(&entity)) {
+        obj["type"] = "arc";
+        obj["center"] = {{"x", arc->center().x}, {"y", arc->center().y}};
+        obj["radius"] = arc->radius();
+        obj["startAngle"] = arc->startAngle();
+        obj["endAngle"] = arc->endAngle();
+    } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(&entity)) {
+        obj["type"] = "rectangle";
+        obj["corner1"] = {{"x", rect->corner1().x}, {"y", rect->corner1().y}};
+        obj["corner2"] = {{"x", rect->corner2().x}, {"y", rect->corner2().y}};
+    } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(&entity)) {
+        obj["type"] = "polyline";
+        obj["closed"] = polyline->closed();
+        json pointsArray = json::array();
+        for (const auto& pt : polyline->points()) {
+            pointsArray.push_back({{"x", pt.x}, {"y", pt.y}});
+        }
+        obj["points"] = pointsArray;
+    } else if (auto* ld = dynamic_cast<const draft::DraftLinearDimension*>(&entity)) {
+        obj["type"] = "linearDimension";
+        obj["defPoint1"] = {{"x", ld->defPoint1().x}, {"y", ld->defPoint1().y}};
+        obj["defPoint2"] = {{"x", ld->defPoint2().x}, {"y", ld->defPoint2().y}};
+        obj["dimLinePoint"] = {{"x", ld->dimLinePoint().x}, {"y", ld->dimLinePoint().y}};
+        obj["orientation"] = static_cast<int>(ld->orientation());
+        if (ld->hasTextOverride()) obj["textOverride"] = ld->textOverride();
+    } else if (auto* rd = dynamic_cast<const draft::DraftRadialDimension*>(&entity)) {
+        obj["type"] = "radialDimension";
+        obj["center"] = {{"x", rd->center().x}, {"y", rd->center().y}};
+        obj["radius"] = rd->radius();
+        obj["textPoint"] = {{"x", rd->textPoint().x}, {"y", rd->textPoint().y}};
+        obj["isDiameter"] = rd->isDiameter();
+        if (rd->hasTextOverride()) obj["textOverride"] = rd->textOverride();
+    } else if (auto* ad = dynamic_cast<const draft::DraftAngularDimension*>(&entity)) {
+        obj["type"] = "angularDimension";
+        obj["vertex"] = {{"x", ad->vertex().x}, {"y", ad->vertex().y}};
+        obj["line1Point"] = {{"x", ad->line1Point().x}, {"y", ad->line1Point().y}};
+        obj["line2Point"] = {{"x", ad->line2Point().x}, {"y", ad->line2Point().y}};
+        obj["arcRadius"] = ad->arcRadius();
+        if (ad->hasTextOverride()) obj["textOverride"] = ad->textOverride();
+    } else if (auto* leader = dynamic_cast<const draft::DraftLeader*>(&entity)) {
+        obj["type"] = "leader";
+        obj["text"] = leader->text();
+        json ptsArray = json::array();
+        for (const auto& pt : leader->points()) {
+            ptsArray.push_back({{"x", pt.x}, {"y", pt.y}});
+        }
+        obj["points"] = ptsArray;
+        if (leader->hasTextOverride()) obj["textOverride"] = leader->textOverride();
+    } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(&entity)) {
+        obj["type"] = "blockRef";
+        obj["blockName"] = bref->blockName();
+        obj["insertPos"] = {{"x", bref->insertPos().x}, {"y", bref->insertPos().y}};
+        obj["rotation"] = bref->rotation();
+        obj["scale"] = bref->uniformScale();
+    } else if (auto* txt = dynamic_cast<const draft::DraftText*>(&entity)) {
+        obj["type"] = "text";
+        obj["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
+        obj["text"] = txt->text();
+        obj["textHeight"] = txt->textHeight();
+        obj["rotation"] = txt->rotation();
+        obj["alignment"] = static_cast<int>(txt->alignment());
+    } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(&entity)) {
+        obj["type"] = "spline";
+        obj["closed"] = spline->closed();
+        json cpArray = json::array();
+        for (const auto& cp : spline->controlPoints()) {
+            cpArray.push_back({{"x", cp.x}, {"y", cp.y}});
+        }
+        obj["controlPoints"] = cpArray;
+    } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(&entity)) {
+        obj["type"] = "hatch";
+        obj["pattern"] = static_cast<int>(hatch->pattern());
+        obj["angle"] = hatch->angle();
+        obj["spacing"] = hatch->spacing();
+        json bndArray = json::array();
+        for (const auto& pt : hatch->boundary()) {
+            bndArray.push_back({{"x", pt.x}, {"y", pt.y}});
+        }
+        obj["boundary"] = bndArray;
+    } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(&entity)) {
+        obj["type"] = "ellipse";
+        obj["center"] = {{"x", ellipse->center().x}, {"y", ellipse->center().y}};
+        obj["semiMajor"] = ellipse->semiMajor();
+        obj["semiMinor"] = ellipse->semiMinor();
+        obj["rotation"] = ellipse->rotation();
+    }
+
+    return obj;
 }
 
 bool NativeFormat::save(const std::string& filePath,
@@ -184,115 +299,10 @@ bool NativeFormat::save(const std::string& filePath,
     }
     root["blocks"] = blocksArray;
 
-    // --- Entities ---
+    // --- Entities (top-level for backward compatibility) ---
     json entitiesArray = json::array();
     for (const auto& entity : doc.draftDocument().entities()) {
-        json obj;
-        obj["id"] = entity->id();
-        obj["layer"] = entity->layer();
-        obj["color"] = entity->color();
-        obj["lineWidth"] = entity->lineWidth();
-        obj["lineType"] = entity->lineType();
-        if (entity->groupId() != 0) {
-            obj["groupId"] = entity->groupId();
-        }
-
-        if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
-            obj["type"] = "line";
-            obj["start"] = {{"x", line->start().x}, {"y", line->start().y}};
-            obj["end"]   = {{"x", line->end().x},   {"y", line->end().y}};
-        } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
-            obj["type"] = "circle";
-            obj["center"] = {{"x", circle->center().x}, {"y", circle->center().y}};
-            obj["radius"] = circle->radius();
-        } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
-            obj["type"] = "arc";
-            obj["center"] = {{"x", arc->center().x}, {"y", arc->center().y}};
-            obj["radius"] = arc->radius();
-            obj["startAngle"] = arc->startAngle();
-            obj["endAngle"] = arc->endAngle();
-        } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
-            obj["type"] = "rectangle";
-            obj["corner1"] = {{"x", rect->corner1().x}, {"y", rect->corner1().y}};
-            obj["corner2"] = {{"x", rect->corner2().x}, {"y", rect->corner2().y}};
-        } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
-            obj["type"] = "polyline";
-            obj["closed"] = polyline->closed();
-            json pointsArray = json::array();
-            for (const auto& pt : polyline->points()) {
-                pointsArray.push_back({{"x", pt.x}, {"y", pt.y}});
-            }
-            obj["points"] = pointsArray;
-        } else if (auto* ld = dynamic_cast<const draft::DraftLinearDimension*>(entity.get())) {
-            obj["type"] = "linearDimension";
-            obj["defPoint1"] = {{"x", ld->defPoint1().x}, {"y", ld->defPoint1().y}};
-            obj["defPoint2"] = {{"x", ld->defPoint2().x}, {"y", ld->defPoint2().y}};
-            obj["dimLinePoint"] = {{"x", ld->dimLinePoint().x}, {"y", ld->dimLinePoint().y}};
-            obj["orientation"] = static_cast<int>(ld->orientation());
-            if (ld->hasTextOverride()) obj["textOverride"] = ld->textOverride();
-        } else if (auto* rd = dynamic_cast<const draft::DraftRadialDimension*>(entity.get())) {
-            obj["type"] = "radialDimension";
-            obj["center"] = {{"x", rd->center().x}, {"y", rd->center().y}};
-            obj["radius"] = rd->radius();
-            obj["textPoint"] = {{"x", rd->textPoint().x}, {"y", rd->textPoint().y}};
-            obj["isDiameter"] = rd->isDiameter();
-            if (rd->hasTextOverride()) obj["textOverride"] = rd->textOverride();
-        } else if (auto* ad = dynamic_cast<const draft::DraftAngularDimension*>(entity.get())) {
-            obj["type"] = "angularDimension";
-            obj["vertex"] = {{"x", ad->vertex().x}, {"y", ad->vertex().y}};
-            obj["line1Point"] = {{"x", ad->line1Point().x}, {"y", ad->line1Point().y}};
-            obj["line2Point"] = {{"x", ad->line2Point().x}, {"y", ad->line2Point().y}};
-            obj["arcRadius"] = ad->arcRadius();
-            if (ad->hasTextOverride()) obj["textOverride"] = ad->textOverride();
-        } else if (auto* leader = dynamic_cast<const draft::DraftLeader*>(entity.get())) {
-            obj["type"] = "leader";
-            obj["text"] = leader->text();
-            json ptsArray = json::array();
-            for (const auto& pt : leader->points()) {
-                ptsArray.push_back({{"x", pt.x}, {"y", pt.y}});
-            }
-            obj["points"] = ptsArray;
-            if (leader->hasTextOverride()) obj["textOverride"] = leader->textOverride();
-        } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
-            obj["type"] = "blockRef";
-            obj["blockName"] = bref->blockName();
-            obj["insertPos"] = {{"x", bref->insertPos().x}, {"y", bref->insertPos().y}};
-            obj["rotation"] = bref->rotation();
-            obj["scale"] = bref->uniformScale();
-        } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
-            obj["type"] = "text";
-            obj["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
-            obj["text"] = txt->text();
-            obj["textHeight"] = txt->textHeight();
-            obj["rotation"] = txt->rotation();
-            obj["alignment"] = static_cast<int>(txt->alignment());
-        } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(entity.get())) {
-            obj["type"] = "spline";
-            obj["closed"] = spline->closed();
-            json cpArray = json::array();
-            for (const auto& cp : spline->controlPoints()) {
-                cpArray.push_back({{"x", cp.x}, {"y", cp.y}});
-            }
-            obj["controlPoints"] = cpArray;
-        } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(entity.get())) {
-            obj["type"] = "hatch";
-            obj["pattern"] = static_cast<int>(hatch->pattern());
-            obj["angle"] = hatch->angle();
-            obj["spacing"] = hatch->spacing();
-            json bndArray = json::array();
-            for (const auto& pt : hatch->boundary()) {
-                bndArray.push_back({{"x", pt.x}, {"y", pt.y}});
-            }
-            obj["boundary"] = bndArray;
-        } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(entity.get())) {
-            obj["type"] = "ellipse";
-            obj["center"] = {{"x", ellipse->center().x}, {"y", ellipse->center().y}};
-            obj["semiMajor"] = ellipse->semiMajor();
-            obj["semiMinor"] = ellipse->semiMinor();
-            obj["rotation"] = ellipse->rotation();
-        }
-
-        entitiesArray.push_back(obj);
+        entitiesArray.push_back(serializeEntity(*entity));
     }
     root["entities"] = entitiesArray;
 
@@ -390,10 +400,194 @@ bool NativeFormat::save(const std::string& filePath,
     }
     root["designVariables"] = designVars;
 
+    // --- Sketches ---
+    json sketchesArray = json::array();
+    for (const auto& sketch : doc.sketches()) {
+        json skObj;
+        skObj["id"] = sketch->id();
+        skObj["name"] = sketch->name();
+
+        const auto& plane = sketch->plane();
+        skObj["plane"] = {
+            {"origin", {plane.origin().x, plane.origin().y, plane.origin().z}},
+            {"normal", {plane.normal().x, plane.normal().y, plane.normal().z}},
+            {"xAxis",  {plane.xAxis().x,  plane.xAxis().y,  plane.xAxis().z}}
+        };
+
+        json skEntities = json::array();
+        for (const auto& entity : sketch->entities()) {
+            skEntities.push_back(serializeEntity(*entity));
+        }
+        skObj["entities"] = skEntities;
+
+        sketchesArray.push_back(skObj);
+    }
+    root["sketches"] = sketchesArray;
+
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
     file << root.dump(2);
     return file.good();
+}
+
+// ---------------------------------------------------------------------------
+// Entity deserialization helper
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<draft::DraftEntity> deserializeEntity(
+    const json& obj, const draft::BlockTable* blockTable) {
+    std::string type = obj.value("type", "");
+    std::string layer = obj.value("layer", "0");
+    uint32_t color = obj.value("color", 0xFFFFFFFFu);
+    double lineWidth = obj.value("lineWidth", 0.0);
+
+    std::shared_ptr<draft::DraftEntity> entity;
+
+    if (type == "line") {
+        double sx = obj["start"]["x"].get<double>();
+        double sy = obj["start"]["y"].get<double>();
+        double ex = obj["end"]["x"].get<double>();
+        double ey = obj["end"]["y"].get<double>();
+        entity = std::make_shared<draft::DraftLine>(
+            math::Vec2(sx, sy), math::Vec2(ex, ey));
+    } else if (type == "circle") {
+        double cx = obj["center"]["x"].get<double>();
+        double cy = obj["center"]["y"].get<double>();
+        double r = obj["radius"].get<double>();
+        entity = std::make_shared<draft::DraftCircle>(math::Vec2(cx, cy), r);
+    } else if (type == "arc") {
+        double cx = obj["center"]["x"].get<double>();
+        double cy = obj["center"]["y"].get<double>();
+        double r = obj["radius"].get<double>();
+        double sa = obj["startAngle"].get<double>();
+        double ea = obj["endAngle"].get<double>();
+        entity = std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
+    } else if (type == "rectangle") {
+        double c1x = obj["corner1"]["x"].get<double>();
+        double c1y = obj["corner1"]["y"].get<double>();
+        double c2x = obj["corner2"]["x"].get<double>();
+        double c2y = obj["corner2"]["y"].get<double>();
+        entity = std::make_shared<draft::DraftRectangle>(
+            math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
+    } else if (type == "polyline") {
+        bool closed = obj.value("closed", false);
+        std::vector<math::Vec2> points;
+        for (const auto& pt : obj["points"]) {
+            points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        }
+        entity = std::make_shared<draft::DraftPolyline>(points, closed);
+    } else if (type == "linearDimension") {
+        auto p1 = math::Vec2(obj["defPoint1"]["x"].get<double>(),
+                              obj["defPoint1"]["y"].get<double>());
+        auto p2 = math::Vec2(obj["defPoint2"]["x"].get<double>(),
+                              obj["defPoint2"]["y"].get<double>());
+        auto dp = math::Vec2(obj["dimLinePoint"]["x"].get<double>(),
+                              obj["dimLinePoint"]["y"].get<double>());
+        auto orient = static_cast<draft::DraftLinearDimension::Orientation>(
+            obj.value("orientation", 0));
+        auto dim = std::make_shared<draft::DraftLinearDimension>(p1, p2, dp, orient);
+        if (obj.contains("textOverride"))
+            dim->setTextOverride(obj["textOverride"].get<std::string>());
+        entity = dim;
+    } else if (type == "radialDimension") {
+        auto center = math::Vec2(obj["center"]["x"].get<double>(),
+                                  obj["center"]["y"].get<double>());
+        double radius = obj["radius"].get<double>();
+        auto textPt = math::Vec2(obj["textPoint"]["x"].get<double>(),
+                                  obj["textPoint"]["y"].get<double>());
+        bool isDiam = obj.value("isDiameter", false);
+        auto dim = std::make_shared<draft::DraftRadialDimension>(
+            center, radius, textPt, isDiam);
+        if (obj.contains("textOverride"))
+            dim->setTextOverride(obj["textOverride"].get<std::string>());
+        entity = dim;
+    } else if (type == "angularDimension") {
+        auto vertex = math::Vec2(obj["vertex"]["x"].get<double>(),
+                                  obj["vertex"]["y"].get<double>());
+        auto l1 = math::Vec2(obj["line1Point"]["x"].get<double>(),
+                              obj["line1Point"]["y"].get<double>());
+        auto l2 = math::Vec2(obj["line2Point"]["x"].get<double>(),
+                              obj["line2Point"]["y"].get<double>());
+        double arcR = obj["arcRadius"].get<double>();
+        auto dim = std::make_shared<draft::DraftAngularDimension>(
+            vertex, l1, l2, arcR);
+        if (obj.contains("textOverride"))
+            dim->setTextOverride(obj["textOverride"].get<std::string>());
+        entity = dim;
+    } else if (type == "leader") {
+        std::vector<math::Vec2> points;
+        for (const auto& pt : obj["points"]) {
+            points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        }
+        std::string text = obj.value("text", "");
+        auto ldr = std::make_shared<draft::DraftLeader>(points, text);
+        if (obj.contains("textOverride"))
+            ldr->setTextOverride(obj["textOverride"].get<std::string>());
+        entity = ldr;
+    } else if (type == "blockRef") {
+        if (blockTable) {
+            std::string blockName = obj.value("blockName", "");
+            auto def = blockTable->findBlock(blockName);
+            if (def) {
+                auto pos = math::Vec2(obj["insertPos"]["x"].get<double>(),
+                                       obj["insertPos"]["y"].get<double>());
+                double rot = obj.value("rotation", 0.0);
+                double scl = obj.value("scale", 1.0);
+                entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
+            }
+        }
+    } else if (type == "text") {
+        auto pos = math::Vec2(obj["position"]["x"].get<double>(),
+                               obj["position"]["y"].get<double>());
+        std::string text = obj.value("text", "");
+        double textHeight = obj.value("textHeight", 2.5);
+        auto txt = std::make_shared<draft::DraftText>(pos, text, textHeight);
+        if (obj.contains("rotation"))
+            txt->setRotation(obj["rotation"].get<double>());
+        if (obj.contains("alignment"))
+            txt->setAlignment(static_cast<draft::TextAlignment>(obj["alignment"].get<int>()));
+        entity = txt;
+    } else if (type == "spline") {
+        bool closed = obj.value("closed", false);
+        std::vector<math::Vec2> controlPoints;
+        for (const auto& cp : obj["controlPoints"]) {
+            controlPoints.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+        }
+        entity = std::make_shared<draft::DraftSpline>(controlPoints, closed);
+    } else if (type == "hatch") {
+        std::vector<math::Vec2> boundary;
+        for (const auto& pt : obj["boundary"]) {
+            boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        }
+        auto hatchPattern = static_cast<draft::HatchPattern>(obj.value("pattern", 1));
+        double hatchAngle = obj.value("angle", 0.0);
+        double hatchSpacing = obj.value("spacing", 1.0);
+        entity = std::make_shared<draft::DraftHatch>(boundary, hatchPattern,
+                                                      hatchAngle, hatchSpacing);
+    } else if (type == "ellipse") {
+        auto center = math::Vec2(obj["center"]["x"].get<double>(),
+                                  obj["center"]["y"].get<double>());
+        double semiMajor = obj.value("semiMajor", 1.0);
+        double semiMinor = obj.value("semiMinor", 1.0);
+        double rot = obj.value("rotation", 0.0);
+        entity = std::make_shared<draft::DraftEllipse>(center, semiMajor, semiMinor, rot);
+    }
+
+    if (entity) {
+        if (obj.contains("id")) {
+            uint64_t savedId = obj["id"].get<uint64_t>();
+            entity->setId(savedId);
+            draft::DraftEntity::advanceIdCounter(savedId);
+        }
+        entity->setLayer(layer);
+        entity->setColor(color);
+        entity->setLineWidth(lineWidth);
+        entity->setLineType(obj.value("lineType", 0));
+        uint64_t gid = obj.value("groupId", uint64_t(0));
+        entity->setGroupId(gid);
+    }
+
+    return entity;
 }
 
 bool NativeFormat::load(const std::string& filePath,
@@ -535,161 +729,17 @@ bool NativeFormat::load(const std::string& filePath,
     }
 
     // --- Load entities ---
+    const auto* blockTablePtr = &doc.draftDocument().blockTable();
     for (const auto& obj : root["entities"]) {
         try {
-        std::string type = obj.value("type", "");
-        std::string layer = obj.value("layer", "0");
-        uint32_t color = obj.value("color", 0xFFFFFFFFu);
-        double lineWidth = obj.value("lineWidth", 0.0);
-
-        std::shared_ptr<draft::DraftEntity> entity;
-
-        if (type == "line") {
-            double sx = obj["start"]["x"].get<double>();
-            double sy = obj["start"]["y"].get<double>();
-            double ex = obj["end"]["x"].get<double>();
-            double ey = obj["end"]["y"].get<double>();
-            entity = std::make_shared<draft::DraftLine>(
-                math::Vec2(sx, sy), math::Vec2(ex, ey));
-        } else if (type == "circle") {
-            double cx = obj["center"]["x"].get<double>();
-            double cy = obj["center"]["y"].get<double>();
-            double r = obj["radius"].get<double>();
-            entity = std::make_shared<draft::DraftCircle>(math::Vec2(cx, cy), r);
-        } else if (type == "arc") {
-            double cx = obj["center"]["x"].get<double>();
-            double cy = obj["center"]["y"].get<double>();
-            double r = obj["radius"].get<double>();
-            double sa = obj["startAngle"].get<double>();
-            double ea = obj["endAngle"].get<double>();
-            entity = std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
-        } else if (type == "rectangle") {
-            double c1x = obj["corner1"]["x"].get<double>();
-            double c1y = obj["corner1"]["y"].get<double>();
-            double c2x = obj["corner2"]["x"].get<double>();
-            double c2y = obj["corner2"]["y"].get<double>();
-            entity = std::make_shared<draft::DraftRectangle>(
-                math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
-        } else if (type == "polyline") {
-            bool closed = obj.value("closed", false);
-            std::vector<math::Vec2> points;
-            for (const auto& pt : obj["points"]) {
-                points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+            auto entity = deserializeEntity(obj, blockTablePtr);
+            if (entity) {
+                uint64_t gid = entity->groupId();
+                if (gid != 0) {
+                    doc.draftDocument().advanceGroupIdCounter(gid);
+                }
+                doc.draftDocument().addEntity(entity);
             }
-            entity = std::make_shared<draft::DraftPolyline>(points, closed);
-        } else if (type == "linearDimension") {
-            auto p1 = math::Vec2(obj["defPoint1"]["x"].get<double>(),
-                                  obj["defPoint1"]["y"].get<double>());
-            auto p2 = math::Vec2(obj["defPoint2"]["x"].get<double>(),
-                                  obj["defPoint2"]["y"].get<double>());
-            auto dp = math::Vec2(obj["dimLinePoint"]["x"].get<double>(),
-                                  obj["dimLinePoint"]["y"].get<double>());
-            auto orient = static_cast<draft::DraftLinearDimension::Orientation>(
-                obj.value("orientation", 0));
-            auto dim = std::make_shared<draft::DraftLinearDimension>(p1, p2, dp, orient);
-            if (obj.contains("textOverride"))
-                dim->setTextOverride(obj["textOverride"].get<std::string>());
-            entity = dim;
-        } else if (type == "radialDimension") {
-            auto center = math::Vec2(obj["center"]["x"].get<double>(),
-                                      obj["center"]["y"].get<double>());
-            double radius = obj["radius"].get<double>();
-            auto textPt = math::Vec2(obj["textPoint"]["x"].get<double>(),
-                                      obj["textPoint"]["y"].get<double>());
-            bool isDiam = obj.value("isDiameter", false);
-            auto dim = std::make_shared<draft::DraftRadialDimension>(
-                center, radius, textPt, isDiam);
-            if (obj.contains("textOverride"))
-                dim->setTextOverride(obj["textOverride"].get<std::string>());
-            entity = dim;
-        } else if (type == "angularDimension") {
-            auto vertex = math::Vec2(obj["vertex"]["x"].get<double>(),
-                                      obj["vertex"]["y"].get<double>());
-            auto l1 = math::Vec2(obj["line1Point"]["x"].get<double>(),
-                                  obj["line1Point"]["y"].get<double>());
-            auto l2 = math::Vec2(obj["line2Point"]["x"].get<double>(),
-                                  obj["line2Point"]["y"].get<double>());
-            double arcR = obj["arcRadius"].get<double>();
-            auto dim = std::make_shared<draft::DraftAngularDimension>(
-                vertex, l1, l2, arcR);
-            if (obj.contains("textOverride"))
-                dim->setTextOverride(obj["textOverride"].get<std::string>());
-            entity = dim;
-        } else if (type == "leader") {
-            std::vector<math::Vec2> points;
-            for (const auto& pt : obj["points"]) {
-                points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
-            }
-            std::string text = obj.value("text", "");
-            auto ldr = std::make_shared<draft::DraftLeader>(points, text);
-            if (obj.contains("textOverride"))
-                ldr->setTextOverride(obj["textOverride"].get<std::string>());
-            entity = ldr;
-        } else if (type == "blockRef") {
-            std::string blockName = obj.value("blockName", "");
-            auto def = doc.draftDocument().blockTable().findBlock(blockName);
-            if (def) {
-                auto pos = math::Vec2(obj["insertPos"]["x"].get<double>(),
-                                       obj["insertPos"]["y"].get<double>());
-                double rot = obj.value("rotation", 0.0);
-                double scl = obj.value("scale", 1.0);
-                entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
-            }
-        } else if (type == "text") {
-            auto pos = math::Vec2(obj["position"]["x"].get<double>(),
-                                   obj["position"]["y"].get<double>());
-            std::string text = obj.value("text", "");
-            double textHeight = obj.value("textHeight", 2.5);
-            auto txt = std::make_shared<draft::DraftText>(pos, text, textHeight);
-            if (obj.contains("rotation"))
-                txt->setRotation(obj["rotation"].get<double>());
-            if (obj.contains("alignment"))
-                txt->setAlignment(static_cast<draft::TextAlignment>(obj["alignment"].get<int>()));
-            entity = txt;
-        } else if (type == "spline") {
-            bool closed = obj.value("closed", false);
-            std::vector<math::Vec2> controlPoints;
-            for (const auto& cp : obj["controlPoints"]) {
-                controlPoints.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
-            }
-            entity = std::make_shared<draft::DraftSpline>(controlPoints, closed);
-        } else if (type == "hatch") {
-            std::vector<math::Vec2> boundary;
-            for (const auto& pt : obj["boundary"]) {
-                boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
-            }
-            auto hatchPattern = static_cast<draft::HatchPattern>(obj.value("pattern", 1));
-            double hatchAngle = obj.value("angle", 0.0);
-            double hatchSpacing = obj.value("spacing", 1.0);
-            entity = std::make_shared<draft::DraftHatch>(boundary, hatchPattern,
-                                                          hatchAngle, hatchSpacing);
-        } else if (type == "ellipse") {
-            auto center = math::Vec2(obj["center"]["x"].get<double>(),
-                                      obj["center"]["y"].get<double>());
-            double semiMajor = obj.value("semiMajor", 1.0);
-            double semiMinor = obj.value("semiMinor", 1.0);
-            double rot = obj.value("rotation", 0.0);
-            entity = std::make_shared<draft::DraftEllipse>(center, semiMajor, semiMinor, rot);
-        }
-
-        if (entity) {
-            // Restore the original entity ID from the file.
-            if (obj.contains("id")) {
-                uint64_t savedId = obj["id"].get<uint64_t>();
-                entity->setId(savedId);
-                draft::DraftEntity::advanceIdCounter(savedId);
-            }
-            entity->setLayer(layer);
-            entity->setColor(color);
-            entity->setLineWidth(lineWidth);
-            entity->setLineType(obj.value("lineType", 0));
-            uint64_t gid = obj.value("groupId", uint64_t(0));
-            entity->setGroupId(gid);
-            if (gid != 0) {
-                doc.draftDocument().advanceGroupIdCounter(gid);
-            }
-            doc.draftDocument().addEntity(entity);
-        }
         } catch (const nlohmann::json::exception&) {
             continue;  // Skip malformed entities.
         }
@@ -792,6 +842,79 @@ bool NativeFormat::load(const std::string& filePath,
 
     // Rebuild spatial index after loading all entities.
     doc.draftDocument().rebuildSpatialIndex();
+
+    // --- Load sketches ---
+    if (root.contains("sketches")) {
+        // Clear the default sketch collection — we'll rebuild from file data.
+        doc.sketches().clear();
+
+        for (const auto& skObj : root["sketches"]) {
+            try {
+                // Reconstruct SketchPlane
+                draft::SketchPlane plane;  // default XY
+                if (skObj.contains("plane")) {
+                    const auto& pObj = skObj["plane"];
+                    math::Vec3 origin(pObj["origin"][0].get<double>(),
+                                      pObj["origin"][1].get<double>(),
+                                      pObj["origin"][2].get<double>());
+                    math::Vec3 normal(pObj["normal"][0].get<double>(),
+                                      pObj["normal"][1].get<double>(),
+                                      pObj["normal"][2].get<double>());
+                    math::Vec3 xAxis(pObj["xAxis"][0].get<double>(),
+                                     pObj["xAxis"][1].get<double>(),
+                                     pObj["xAxis"][2].get<double>());
+                    plane = draft::SketchPlane(origin, normal, xAxis);
+                }
+
+                auto sketch = std::make_shared<doc::Sketch>(plane);
+                if (skObj.contains("id")) {
+                    sketch->setId(skObj["id"].get<uint64_t>());
+                }
+                if (skObj.contains("name")) {
+                    sketch->setName(skObj["name"].get<std::string>());
+                }
+
+                // Load per-sketch entities
+                if (skObj.contains("entities")) {
+                    for (const auto& eObj : skObj["entities"]) {
+                        try {
+                            auto entity = deserializeEntity(eObj, blockTablePtr);
+                            if (entity) {
+                                sketch->addEntity(entity);
+                            }
+                        } catch (const nlohmann::json::exception&) {
+                            continue;
+                        }
+                    }
+                }
+
+                doc.sketches().push_back(sketch);
+            } catch (const nlohmann::json::exception&) {
+                continue;  // Skip malformed sketches.
+            }
+        }
+
+        // Ensure a default sketch pointer is valid: pick the first sketch if named
+        // "Default Sketch", otherwise create one.
+        bool hasDefault = false;
+        for (const auto& sk : doc.sketches()) {
+            if (sk->name() == "Default Sketch") {
+                hasDefault = true;
+                break;
+            }
+        }
+        if (!hasDefault) {
+            auto defSk = std::make_shared<doc::Sketch>();
+            defSk->setName("Default Sketch");
+            doc.sketches().insert(doc.sketches().begin(), defSk);
+        }
+    } else {
+        // Pre-sketch file (v14 and earlier): load top-level entities into the
+        // default sketch as well so that defaultSketch() contains them.
+        for (const auto& entity : doc.draftDocument().entities()) {
+            doc.defaultSketch().addEntity(entity);
+        }
+    }
 
     return true;
 }

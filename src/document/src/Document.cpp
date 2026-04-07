@@ -1,10 +1,16 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 
+#include <algorithm>
+
 namespace hz::doc {
 
 Document::Document()
-    : m_undoStack(std::make_unique<UndoStack>()) {}
+    : m_undoStack(std::make_unique<UndoStack>()) {
+    m_defaultSketch = std::make_shared<Sketch>();
+    m_defaultSketch->setName("Default Sketch");
+    m_sketches.push_back(m_defaultSketch);
+}
 
 Document::~Document() = default;
 
@@ -38,6 +44,26 @@ void Document::clear() {
     m_undoStack->clear();
     m_dirty = false;
     m_filePath.clear();
+
+    m_sketches.clear();
+    m_defaultSketch = std::make_shared<Sketch>();
+    m_defaultSketch->setName("Default Sketch");
+    m_sketches.push_back(m_defaultSketch);
+}
+
+void Document::addSketch(std::shared_ptr<Sketch> sketch) {
+    if (sketch) m_sketches.push_back(std::move(sketch));
+}
+
+std::shared_ptr<Sketch> Document::removeSketch(uint64_t sketchId) {
+    auto it = std::find_if(m_sketches.begin(), m_sketches.end(),
+                           [sketchId](const auto& s) { return s->id() == sketchId; });
+    if (it != m_sketches.end()) {
+        auto sketch = *it;
+        m_sketches.erase(it);
+        return sketch;
+    }
+    return nullptr;
 }
 
 UndoStack& Document::undoStack() { return *m_undoStack; }
