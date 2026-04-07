@@ -15,6 +15,7 @@
 #include "horizon/ui/OverlayRenderer.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,13 @@ class Document;
 namespace hz::ui {
 
 class Tool;
+
+/// Saved camera state for restoring after sketch editing.
+struct CameraState {
+    math::Vec3 eye;
+    math::Vec3 target;
+    math::Vec3 up;
+};
 
 /// The main 2D/3D viewport widget backed by OpenGL.
 ///
@@ -161,6 +169,9 @@ private:
 
     // Active sketch (non-owning)
     doc::Sketch* m_activeSketch = nullptr;
+
+    // Saved camera state for restore on sketch exit
+    std::optional<CameraState> m_savedCameraState;
 
     // GL overlay renderer (crosshair, snap markers, axis indicator)
     OverlayRenderer m_overlayRenderer;

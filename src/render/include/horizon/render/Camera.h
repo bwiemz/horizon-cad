@@ -41,6 +41,7 @@ public:
 
     const math::Vec3& eye() const { return m_eye; }
     const math::Vec3& target() const { return m_target; }
+    const math::Vec3& up() const { return m_up; }
     ProjectionType projectionType() const { return m_projType; }
 
 private:

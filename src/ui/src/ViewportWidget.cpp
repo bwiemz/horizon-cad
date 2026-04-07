@@ -117,6 +117,11 @@ void ViewportWidget::setActiveTool(Tool* tool) {
 }
 
 void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
+    if (sketch && !m_activeSketch) {
+        // Entering sketch mode -- save current camera state.
+        m_savedCameraState = CameraState{m_camera.eye(), m_camera.target(), m_camera.up()};
+    }
+
     m_activeSketch = sketch;
 
     if (sketch) {
@@ -126,6 +131,11 @@ void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
         double distance = 100.0;
         math::Vec3 eye = center + plane.normal() * distance;
         m_camera.lookAt(eye, center, plane.yAxis());
+    } else if (m_savedCameraState) {
+        // Exiting sketch mode -- restore saved camera.
+        m_camera.lookAt(m_savedCameraState->eye, m_savedCameraState->target,
+                        m_savedCameraState->up);
+        m_savedCameraState.reset();
     }
 
     update();
