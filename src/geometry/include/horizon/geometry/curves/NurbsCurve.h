@@ -43,6 +43,14 @@ public:
     /// Tessellate the curve to a polyline within the given chord tolerance.
     std::vector<math::Vec3> tessellate(double tolerance = 0.01) const;
 
+    // -- Knot Insertion & Degree Elevation (Task 3) -------------------------
+
+    /// Return a new curve with a knot inserted at parameter @p t (Boehm's algorithm).
+    NurbsCurve insertKnot(double t) const;
+
+    /// Return a new curve with polynomial degree raised by one.
+    NurbsCurve elevateDegree() const;
+
     // -- Stubs for future tasks (declarations only) --------------------------
 
     /// Find the parameter of the closest point on the curve.  (Task 4)
@@ -53,12 +61,6 @@ public:
 
     /// Return the parameter at a given arc-length from tMin.  (Task 4)
     // double parameterAtLength(double length) const;
-
-    /// Insert a knot at parameter t (Oslo algorithm).  (Task 3)
-    // void insertKnot(double t);
-
-    /// Raise the polynomial degree by one.  (Task 3)
-    // void elevateDegree();
 
     /// Factory: create a NURBS circle.  (Task 5)
     // static NurbsCurve makeCircle(const math::Vec3& center, double radius);

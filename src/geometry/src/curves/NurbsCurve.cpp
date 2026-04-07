@@ -212,4 +212,193 @@ std::vector<math::Vec3> NurbsCurve::tessellate(double tolerance) const {
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// insertKnot — Boehm's algorithm
+// ---------------------------------------------------------------------------
+
+NurbsCurve NurbsCurve::insertKnot(double t) const {
+    t = std::clamp(t, tMin(), tMax());
+
+    const int p = m_degree;
+    const int n = static_cast<int>(m_controlPoints.size());  // number of control points
+    const int k = findKnotSpan(t);                           // knots[k] <= t < knots[k+1]
+
+    // Build new knot vector (one extra knot).
+    std::vector<double> newKnots;
+    newKnots.reserve(m_knots.size() + 1);
+    for (int i = 0; i <= k; ++i) newKnots.push_back(m_knots[i]);
+    newKnots.push_back(t);
+    for (int i = k + 1; i < static_cast<int>(m_knots.size()); ++i) newKnots.push_back(m_knots[i]);
+
+    // Convert to homogeneous coordinates: (wx, wy, wz, w).
+    std::vector<std::array<double, 4>> Pw(n);
+    for (int i = 0; i < n; ++i) {
+        const double w = m_weights[i];
+        Pw[i] = {m_controlPoints[i].x * w, m_controlPoints[i].y * w, m_controlPoints[i].z * w, w};
+    }
+
+    // Compute new control points in homogeneous coords.
+    std::vector<std::array<double, 4>> Qw(n + 1);
+
+    // Points that are unchanged at the beginning.
+    for (int i = 0; i <= k - p; ++i) {
+        Qw[i] = Pw[i];
+    }
+
+    // Points in the affected region.
+    for (int i = k - p + 1; i <= k; ++i) {
+        const double denom = m_knots[i + p] - m_knots[i];
+        double alpha = 0.0;
+        if (std::abs(denom) > 1e-15) {
+            alpha = (t - m_knots[i]) / denom;
+        }
+        for (int c = 0; c < 4; ++c) {
+            Qw[i][c] = (1.0 - alpha) * Pw[i - 1][c] + alpha * Pw[i][c];
+        }
+    }
+
+    // Points that are shifted at the end.
+    for (int i = k + 1; i <= n; ++i) {
+        Qw[i] = Pw[i - 1];
+    }
+
+    // Dehomogenise new control points.
+    std::vector<math::Vec3> newPts(n + 1);
+    std::vector<double> newWts(n + 1);
+    for (int i = 0; i <= n; ++i) {
+        const double w = Qw[i][3];
+        newWts[i] = w;
+        const double wInv = 1.0 / w;
+        newPts[i] = {Qw[i][0] * wInv, Qw[i][1] * wInv, Qw[i][2] * wInv};
+    }
+
+    return NurbsCurve(std::move(newPts), std::move(newWts), std::move(newKnots), p);
+}
+
+// ---------------------------------------------------------------------------
+// elevateDegree — Bezier degree elevation
+// ---------------------------------------------------------------------------
+
+NurbsCurve NurbsCurve::elevateDegree() const {
+    const int p = m_degree;
+    const int n = static_cast<int>(m_controlPoints.size());
+
+    // Step 1: Decompose into Bezier segments by inserting knots to full
+    // multiplicity at each interior knot.
+    NurbsCurve working = *this;
+
+    // Collect unique interior knots and their current multiplicities.
+    std::vector<std::pair<double, int>> interiorKnots;
+    {
+        const auto& kts = working.knots();
+        int i = p + 1;
+        while (i < static_cast<int>(kts.size()) - p - 1) {
+            double knotVal = kts[i];
+            int mult = 0;
+            int j = i;
+            while (j < static_cast<int>(kts.size()) - p - 1 && kts[j] == knotVal) {
+                ++mult;
+                ++j;
+            }
+            if (mult < p) {
+                interiorKnots.push_back({knotVal, p - mult});
+            }
+            i = j;
+        }
+    }
+
+    // Insert each interior knot until it has multiplicity p.
+    for (const auto& [knotVal, insCount] : interiorKnots) {
+        for (int ins = 0; ins < insCount; ++ins) {
+            working = working.insertKnot(knotVal);
+        }
+    }
+
+    // Now `working` is a piecewise Bezier (each span has p+1 control points).
+    const auto& wPts = working.controlPoints();
+    const auto& wWts = working.weights();
+    const auto& wKts = working.knots();
+    const int wN = working.controlPointCount();
+    const int numSegments = (wN - 1) / p;  // each Bezier segment has p+1 points, sharing endpoints
+
+    // Step 2: Elevate each Bezier segment from degree p to degree p+1.
+    // Convert to homogeneous coords.
+    std::vector<std::array<double, 4>> Pw(wN);
+    for (int i = 0; i < wN; ++i) {
+        const double w = wWts[i];
+        Pw[i] = {wPts[i].x * w, wPts[i].y * w, wPts[i].z * w, w};
+    }
+
+    // Each elevated segment has (p+2) control points.
+    // Total new control points = numSegments * (p+1) + 1 (sharing endpoints).
+    const int newP = p + 1;
+    std::vector<std::array<double, 4>> newPw;
+    newPw.reserve(numSegments * (p + 1) + 1);
+
+    for (int seg = 0; seg < numSegments; ++seg) {
+        const int base = seg * p;
+
+        // Bezier elevation: Q[0] = P[0], Q[p+1] = P[p]
+        // Q[i] = (i/(p+1)) * P[i-1] + (1 - i/(p+1)) * P[i]  for i = 1..p
+        std::vector<std::array<double, 4>> Q(newP + 1);
+        Q[0] = Pw[base];
+        Q[newP] = Pw[base + p];
+
+        for (int i = 1; i <= p; ++i) {
+            const double alpha = static_cast<double>(i) / static_cast<double>(newP);
+            for (int c = 0; c < 4; ++c) {
+                Q[i][c] = alpha * Pw[base + i - 1][c] + (1.0 - alpha) * Pw[base + i][c];
+            }
+        }
+
+        // Append: skip Q[0] for all segments after the first (shared with previous segment's last point).
+        const int start = (seg == 0) ? 0 : 1;
+        for (int i = start; i <= newP; ++i) {
+            newPw.push_back(Q[i]);
+        }
+    }
+
+    // Step 3: Build the new knot vector.
+    // For piecewise Bezier of degree (p+1), each unique knot value gets multiplicity (p+1+1)
+    // at the ends and (p+1) at interior knots.
+    // Simpler: collect unique knot values from the decomposed curve and increase multiplicity.
+    std::vector<double> newKnots;
+    {
+        // Collect unique knots with their multiplicities in the decomposed curve.
+        std::vector<std::pair<double, int>> knotMults;
+        int i = 0;
+        while (i < static_cast<int>(wKts.size())) {
+            double val = wKts[i];
+            int mult = 0;
+            int j = i;
+            while (j < static_cast<int>(wKts.size()) && wKts[j] == val) {
+                ++mult;
+                ++j;
+            }
+            knotMults.push_back({val, mult});
+            i = j;
+        }
+
+        // Each knot's multiplicity increases by 1 for degree elevation.
+        for (const auto& [val, mult] : knotMults) {
+            for (int m = 0; m < mult + 1; ++m) {
+                newKnots.push_back(val);
+            }
+        }
+    }
+
+    // Dehomogenise.
+    const int newN = static_cast<int>(newPw.size());
+    std::vector<math::Vec3> newPts(newN);
+    std::vector<double> newWts(newN);
+    for (int i = 0; i < newN; ++i) {
+        const double w = newPw[i][3];
+        newWts[i] = w;
+        const double wInv = 1.0 / w;
+        newPts[i] = {newPw[i][0] * wInv, newPw[i][1] * wInv, newPw[i][2] * wInv};
+    }
+
+    return NurbsCurve(std::move(newPts), std::move(newWts), std::move(newKnots), newP);
+}
+
 }  // namespace hz::geo

@@ -281,3 +281,56 @@ TEST(NurbsCurveTest, TessellateCurvedHasMorePoints) {
 
     EXPECT_GT(curvePoly.size(), linePoly.size());
 }
+
+// ===========================================================================
+// 15. Knot insertion preserves curve shape
+// ===========================================================================
+TEST(NurbsCurveTest, KnotInsertionPreservesShape) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {1, 3, 0}, {4, 3, 0}, {5, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0, 1.0, 1.0};
+    auto knots = bezierKnots(4, 3);
+
+    NurbsCurve original(pts, wts, knots, 3);
+    NurbsCurve refined = original.insertKnot(0.5);
+
+    // The refined curve should have one more control point.
+    EXPECT_EQ(refined.controlPointCount(), original.controlPointCount() + 1);
+
+    // Same degree.
+    EXPECT_EQ(refined.degree(), original.degree());
+
+    // Evaluate both at 11 sample points — shapes must match.
+    for (int i = 0; i <= 10; ++i) {
+        const double t = static_cast<double>(i) / 10.0;
+        Vec3 pOrig = original.evaluate(t);
+        Vec3 pRef = refined.evaluate(t);
+        EXPECT_NEAR(pOrig.x, pRef.x, 1e-8);
+        EXPECT_NEAR(pOrig.y, pRef.y, 1e-8);
+        EXPECT_NEAR(pOrig.z, pRef.z, 1e-8);
+    }
+}
+
+// ===========================================================================
+// 16. Degree elevation preserves curve shape
+// ===========================================================================
+TEST(NurbsCurveTest, DegreeElevationPreservesShape) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {5, 10, 0}, {10, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0, 1.0};
+    auto knots = bezierKnots(3, 2);
+
+    NurbsCurve original(pts, wts, knots, 2);
+    NurbsCurve elevated = original.elevateDegree();
+
+    // Elevated curve should be one degree higher.
+    EXPECT_EQ(elevated.degree(), original.degree() + 1);
+
+    // Evaluate both at 11 sample points — shapes must match.
+    for (int i = 0; i <= 10; ++i) {
+        const double t = static_cast<double>(i) / 10.0;
+        Vec3 pOrig = original.evaluate(t);
+        Vec3 pElev = elevated.evaluate(t);
+        EXPECT_NEAR(pOrig.x, pElev.x, 1e-8);
+        EXPECT_NEAR(pOrig.y, pElev.y, 1e-8);
+        EXPECT_NEAR(pOrig.z, pElev.z, 1e-8);
+    }
+}
