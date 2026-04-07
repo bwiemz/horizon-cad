@@ -1,5 +1,6 @@
 add_executable(hz_topology_tests
     test_TopologyID.cpp
+    test_EulerOps.cpp
 )
 
 target_link_libraries(hz_topology_tests
