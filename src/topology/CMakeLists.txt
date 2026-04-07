@@ -1,6 +1,7 @@
 add_library(hz_topology STATIC
-    src/Body.cpp
-    src/EulerOperators.cpp
+    src/TopologyID.cpp
+    src/Solid.cpp
+    src/EulerOps.cpp
 )
 
 target_include_directories(hz_topology
