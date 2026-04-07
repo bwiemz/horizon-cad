@@ -2,9 +2,20 @@
 
 #include "horizon/math/Vec3.h"
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace hz::geo {
+
+class NurbsCurve;
+
+/// Result of surface tessellation: triangle mesh with positions and normals.
+struct TessellationResult {
+    std::vector<float> positions;    ///< 3 floats per vertex (x, y, z).
+    std::vector<float> normals;      ///< 3 floats per vertex (nx, ny, nz).
+    std::vector<uint32_t> indices;   ///< Triangle list (3 indices per triangle).
+};
 
 /// Non-uniform rational B-spline (NURBS) tensor-product surface.
 ///
@@ -65,28 +76,45 @@ public:
     /// Unit surface normal at (u, v): normalize(dS/du x dS/dv).
     math::Vec3 normal(double u, double v) const;
 
-    // -- Stubs for future tasks -----------------------------------------------
+    // -- Closest-Point & Iso-Curves (Task 3) ----------------------------------
 
     /// Find the parameter pair (u, v) of the closest point on the surface to @p point.
-    // std::pair<double, double> closestPoint(const math::Vec3& point, double tol = 1e-8) const;
+    /// Uses 2D Newton iteration on the gradient of distance-squared after an 8x8 grid search.
+    std::pair<double, double> closestPoint(const math::Vec3& point, double tol = 1e-8) const;
 
-    /// Extract an iso-curve at constant U.
-    // NurbsCurve isoCurveU(double u) const;
+    /// Extract an iso-parametric curve at constant U (returns a curve along V).
+    /// The result is a degree-1 polyline through sampled surface points.
+    NurbsCurve isoCurveU(double u, int numSamples = 32) const;
 
-    /// Extract an iso-curve at constant V.
-    // NurbsCurve isoCurveV(double v) const;
+    /// Extract an iso-parametric curve at constant V (returns a curve along U).
+    /// The result is a degree-1 polyline through sampled surface points.
+    NurbsCurve isoCurveV(double v, int numSamples = 32) const;
+
+    // -- Tessellation (Task 4) ------------------------------------------------
 
     /// Tessellate the surface to a triangle mesh within the given tolerance.
-    // std::vector<math::Vec3> tessellate(double tolerance = 0.01) const;
+    TessellationResult tessellate(double tolerance = 0.01) const;
 
-    // -- Factory stubs -------------------------------------------------------
+    // -- Factory Surfaces (Task 5) --------------------------------------------
 
-    // static NurbsSurface makePlane(...);
-    // static NurbsSurface makeCylinder(...);
-    // static NurbsSurface makeSphere(...);
-    // static NurbsSurface makeTorus(...);
-    // static NurbsSurface makeRevolution(...);
-    // static NurbsSurface makeExtrusion(...);
+    /// Create a planar bilinear surface.
+    static NurbsSurface makePlane(const math::Vec3& origin, const math::Vec3& uDir,
+                                  const math::Vec3& vDir, double uSize, double vSize);
+
+    /// Create a cylindrical surface around @p axis with given radius and height.
+    static NurbsSurface makeCylinder(const math::Vec3& center, const math::Vec3& axis,
+                                     double radius, double height);
+
+    /// Create a spherical surface centered at @p center with given radius.
+    static NurbsSurface makeSphere(const math::Vec3& center, double radius);
+
+    /// Create a toroidal surface centered at @p center around @p axis.
+    static NurbsSurface makeTorus(const math::Vec3& center, const math::Vec3& axis,
+                                  double majorRadius, double minorRadius);
+
+    /// Create a conical surface with apex at @p apex along @p axis.
+    static NurbsSurface makeCone(const math::Vec3& apex, const math::Vec3& axis,
+                                 double halfAngle, double height);
 
 private:
     std::vector<std::vector<math::Vec3>> m_controlPoints;  // [row_u][col_v]
