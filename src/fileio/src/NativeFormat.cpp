@@ -78,7 +78,7 @@ static std::string constraintTypeToString(cstr::ConstraintType ct) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 13;
+    root["version"] = 14;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -377,10 +377,16 @@ bool NativeFormat::save(const std::string& filePath,
     }
     root["constraints"] = constraintsArray;
 
-    // --- Design variables (v13+) ---
+    // --- Design variables (v14: nested objects with optional expressions) ---
     json designVars = json::object();
-    for (const auto& [name, value] : doc.parameterRegistry().all()) {
-        designVars[name] = value;
+    const auto& paramReg = doc.parameterRegistry();
+    for (const auto& [name, value] : paramReg.all()) {
+        json varObj;
+        varObj["value"] = value;
+        if (paramReg.isExpression(name)) {
+            varObj["expression"] = paramReg.getExpression(name);
+        }
+        designVars[name] = varObj;
     }
     root["designVariables"] = designVars;
 
@@ -766,11 +772,20 @@ bool NativeFormat::load(const std::string& filePath,
         }
     }
 
-    // --- Load design variables (v13+) ---
+    // --- Load design variables (v13+, v14 nested format) ---
     if (root.contains("designVariables")) {
+        auto& pReg = doc.parameterRegistry();
         for (const auto& [name, value] : root["designVariables"].items()) {
             if (value.is_number()) {
-                doc.parameterRegistry().set(name, value.get<double>());
+                // v13 flat format: "width": 50.0
+                pReg.set(name, value.get<double>());
+            } else if (value.is_object()) {
+                // v14 nested format: "width": {"value": 50.0, "expression": "..."}
+                if (value.contains("expression") && value["expression"].is_string()) {
+                    pReg.setExpression(name, value["expression"].get<std::string>());
+                } else if (value.contains("value") && value["value"].is_number()) {
+                    pReg.set(name, value["value"].get<double>());
+                }
             }
         }
     }
