@@ -140,4 +140,76 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
     return {h[0] * wInv, h[1] * wInv, h[2] * wInv};
 }
 
+// ---------------------------------------------------------------------------
+// derivative — numerical differentiation
+// ---------------------------------------------------------------------------
+
+math::Vec3 NurbsCurve::derivative(double t, int order) const {
+    if (order <= 0) {
+        return evaluate(t);
+    }
+    if (order == 1) {
+        const double h = 1e-7;
+        const double t0 = std::max(t - h, tMin());
+        const double t1 = std::min(t + h, tMax());
+        const double actualH = t1 - t0;
+        if (actualH < 1e-15) {
+            return {0.0, 0.0, 0.0};
+        }
+        return (evaluate(t1) - evaluate(t0)) * (1.0 / actualH);
+    }
+    // Higher-order: finite difference of order-1 derivatives.
+    if (order == 2) {
+        const double h = 1e-5;
+        const math::Vec3 fMinus = evaluate(std::max(t - h, tMin()));
+        const math::Vec3 fCenter = evaluate(t);
+        const math::Vec3 fPlus = evaluate(std::min(t + h, tMax()));
+        return (fPlus - fCenter * 2.0 + fMinus) * (1.0 / (h * h));
+    }
+    // For order >= 3, recursively apply finite differences on lower order.
+    const double h = 1e-4;
+    const double tLo = std::max(t - h, tMin());
+    const double tHi = std::min(t + h, tMax());
+    const double actualH = tHi - tLo;
+    if (actualH < 1e-15) {
+        return {0.0, 0.0, 0.0};
+    }
+    return (derivative(tHi, order - 1) - derivative(tLo, order - 1)) * (1.0 / actualH);
+}
+
+// ---------------------------------------------------------------------------
+// tessellate — adaptive midpoint subdivision
+// ---------------------------------------------------------------------------
+
+namespace {
+
+void tessellateRecursive(const NurbsCurve& crv, double t0, const math::Vec3& p0, double t1,
+                         const math::Vec3& p1, double tolerance, int depth, int maxDepth,
+                         std::vector<math::Vec3>& result) {
+    const double tMid = (t0 + t1) * 0.5;
+    const math::Vec3 pMid = crv.evaluate(tMid);
+    const math::Vec3 chordMid = (p0 + p1) * 0.5;
+
+    const bool needsSubdivision =
+        depth < 3 || (pMid.distanceTo(chordMid) > tolerance && depth < maxDepth);
+
+    if (needsSubdivision) {
+        tessellateRecursive(crv, t0, p0, tMid, pMid, tolerance, depth + 1, maxDepth, result);
+        tessellateRecursive(crv, tMid, pMid, t1, p1, tolerance, depth + 1, maxDepth, result);
+    } else {
+        result.push_back(p1);
+    }
+}
+
+}  // namespace
+
+std::vector<math::Vec3> NurbsCurve::tessellate(double tolerance) const {
+    std::vector<math::Vec3> result;
+    const math::Vec3 pStart = evaluate(tMin());
+    const math::Vec3 pEnd = evaluate(tMax());
+    result.push_back(pStart);
+    tessellateRecursive(*this, tMin(), pStart, tMax(), pEnd, tolerance, 0, 16, result);
+    return result;
+}
+
 }  // namespace hz::geo

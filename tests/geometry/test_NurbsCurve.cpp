@@ -3,6 +3,8 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Tolerance.h"
 
+#include <cmath>
+
 using namespace hz::geo;
 using namespace hz::math;
 
@@ -177,4 +179,105 @@ TEST(NurbsCurveTest, ParameterDomain) {
 
     EXPECT_DOUBLE_EQ(crv2.tMin(), 2.0);
     EXPECT_DOUBLE_EQ(crv2.tMax(), 5.0);
+}
+
+// ===========================================================================
+// 10. Derivative of a linear curve should be constant
+// ===========================================================================
+TEST(NurbsCurveTest, DerivativeLinear) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0};
+    auto knots = bezierKnots(2, 1);
+
+    NurbsCurve crv(pts, wts, knots, 1);
+
+    // Derivative of a line from (0,0,0) to (10,0,0) over [0,1] should be (10,0,0).
+    for (double t : {0.1, 0.3, 0.5, 0.7, 0.9}) {
+        auto d = crv.derivative(t);
+        EXPECT_NEAR(d.x, 10.0, 0.1);
+        EXPECT_NEAR(d.y, 0.0, 0.1);
+        EXPECT_NEAR(d.z, 0.0, 0.1);
+    }
+}
+
+// ===========================================================================
+// 11. Derivative matches an independent finite-difference check (cubic)
+// ===========================================================================
+TEST(NurbsCurveTest, DerivativeMatchesFiniteDifference) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {1, 3, 0}, {4, 3, 0}, {5, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0, 1.0, 1.0};
+    auto knots = bezierKnots(4, 3);
+
+    NurbsCurve crv(pts, wts, knots, 3);
+
+    const double t = 0.3;
+    const double h = 1e-5;
+    Vec3 fdDeriv = (crv.evaluate(t + h) - crv.evaluate(t - h)) * (1.0 / (2.0 * h));
+    Vec3 analyticDeriv = crv.derivative(t);
+
+    EXPECT_NEAR(analyticDeriv.x, fdDeriv.x, 1e-2);
+    EXPECT_NEAR(analyticDeriv.y, fdDeriv.y, 1e-2);
+    EXPECT_NEAR(analyticDeriv.z, fdDeriv.z, 1e-2);
+}
+
+// ===========================================================================
+// 12. Second derivative matches finite difference of first derivatives
+// ===========================================================================
+TEST(NurbsCurveTest, SecondDerivativeMatchesFiniteDifference) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {1, 3, 0}, {4, 3, 0}, {5, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0, 1.0, 1.0};
+    auto knots = bezierKnots(4, 3);
+
+    NurbsCurve crv(pts, wts, knots, 3);
+
+    const double t = 0.5;
+    const double h = 1e-4;
+    Vec3 d1Plus = crv.derivative(t + h, 1);
+    Vec3 d1Minus = crv.derivative(t - h, 1);
+    Vec3 fdSecond = (d1Plus - d1Minus) * (1.0 / (2.0 * h));
+    Vec3 analyticSecond = crv.derivative(t, 2);
+
+    EXPECT_NEAR(analyticSecond.x, fdSecond.x, 0.5);
+    EXPECT_NEAR(analyticSecond.y, fdSecond.y, 0.5);
+    EXPECT_NEAR(analyticSecond.z, fdSecond.z, 0.5);
+}
+
+// ===========================================================================
+// 13. Tessellate a straight line -> minimal points
+// ===========================================================================
+TEST(NurbsCurveTest, TessellateLinearGivesFewPoints) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> wts = {1.0, 1.0};
+    auto knots = bezierKnots(2, 1);
+
+    NurbsCurve crv(pts, wts, knots, 1);
+    auto poly = crv.tessellate(0.01);
+
+    // Should have at least start and end.
+    ASSERT_GE(poly.size(), 2u);
+    EXPECT_NEAR(poly.front().x, 0.0, 1e-9);
+    EXPECT_NEAR(poly.back().x, 10.0, 1e-9);
+
+    // A line shouldn't need many points (the minimum recursion depth forces some
+    // subdivisions, but still limited).
+    EXPECT_LE(poly.size(), 20u);
+}
+
+// ===========================================================================
+// 14. Tessellate a curved shape produces more points than a line
+// ===========================================================================
+TEST(NurbsCurveTest, TessellateCurvedHasMorePoints) {
+    // Line
+    std::vector<Vec3> linePts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> lineWts = {1.0, 1.0};
+    NurbsCurve line(linePts, lineWts, bezierKnots(2, 1), 1);
+    auto linePoly = line.tessellate(0.001);
+
+    // Curved (quadratic with high curvature)
+    std::vector<Vec3> curvePts = {{0, 0, 0}, {5, 20, 0}, {10, 0, 0}};
+    std::vector<double> curveWts = {1.0, 1.0, 1.0};
+    NurbsCurve curve(curvePts, curveWts, bezierKnots(3, 2), 2);
+    auto curvePoly = curve.tessellate(0.001);
+
+    EXPECT_GT(curvePoly.size(), linePoly.size());
 }

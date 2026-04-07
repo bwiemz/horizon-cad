@@ -35,13 +35,15 @@ public:
     /// Evaluate the curve at parameter @p t using De Boor's algorithm.
     math::Vec3 evaluate(double t) const;
 
+    // -- Derivatives & Tessellation (Task 2) ---------------------------------
+
+    /// Compute the n-th derivative at parameter @p t via numerical differentiation.
+    math::Vec3 derivative(double t, int order = 1) const;
+
+    /// Tessellate the curve to a polyline within the given chord tolerance.
+    std::vector<math::Vec3> tessellate(double tolerance = 0.01) const;
+
     // -- Stubs for future tasks (declarations only) --------------------------
-
-    /// Compute the n-th derivative at parameter t.  (Task 2)
-    // math::Vec3 derivative(double t, int order = 1) const;
-
-    /// Tessellate the curve to a polyline within the given chord tolerance.  (Task 2)
-    // std::vector<math::Vec3> tessellate(double tolerance) const;
 
     /// Find the parameter of the closest point on the curve.  (Task 4)
     // double closestPoint(const math::Vec3& point) const;
