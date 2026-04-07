@@ -48,8 +48,12 @@ add_library(hz_ui STATIC
     include/horizon/ui/IconGenerator.h
     include/horizon/ui/RibbonBar.h
     include/horizon/ui/OverlayRenderer.h
+    include/horizon/ui/ViewportInputHandler.h
+    include/horizon/ui/ViewportRenderer.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
+    src/ViewportInputHandler.cpp
+    src/ViewportRenderer.cpp
     src/ToolManager.cpp
     src/LineTool.cpp
     src/CircleTool.cpp

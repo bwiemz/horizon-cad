@@ -11,8 +11,9 @@
 #include "horizon/document/Sketch.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/drafting/SnapEngine.h"
-#include "horizon/constraint/SketchSolver.h"
 #include "horizon/ui/OverlayRenderer.h"
+#include "horizon/ui/ViewportInputHandler.h"
+#include "horizon/ui/ViewportRenderer.h"
 
 #include <memory>
 #include <optional>
@@ -90,6 +91,11 @@ public:
     /// Returns the currently active sketch, or nullptr.
     doc::Sketch* activeSketch() const { return m_activeSketch; }
 
+    // ---- Overlay ----
+
+    /// Access the overlay renderer (crosshair, snap markers, axis indicator).
+    OverlayRenderer& overlayRenderer() { return m_overlayRenderer; }
+
     // ---- Coordinate helpers ----
 
     /// Project a screen-space position to the world XY plane (Z = 0).
@@ -122,32 +128,6 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
-    // Rendering
-    void renderEntities(QOpenGLExtraFunctions* gl);
-    void renderToolPreview(QOpenGLExtraFunctions* gl);
-    void renderGrips(QOpenGLExtraFunctions* gl);
-    void renderTextToImage(QImage& image);
-    void initTextOverlayGL(QOpenGLExtraFunctions* gl);
-    void blitTextOverlay(QOpenGLExtraFunctions* gl);
-
-    /// Text data collected during renderEntities() for overlay.
-    struct DimTextInfo {
-        math::Vec2 worldPos;
-        std::string text;
-        uint32_t color;
-        double textHeight = 0.0;   // 0 = use dimension style default
-        double rotation = 0.0;
-        int alignment = 1;         // 0=Left, 1=Center, 2=Right
-    };
-    std::vector<DimTextInfo> m_dimTexts;
-
-    /// Generate vertices for a circle approximation.
-    std::vector<float> circleVertices(const math::Vec2& center, double radius, int segments = 64) const;
-
-    /// Generate vertices for an arc (partial circle).
-    std::vector<float> arcVertices(const math::Vec2& center, double radius,
-                                   double startAngle, double endAngle, int segments = 64) const;
-
     // Camera
     render::Camera m_camera;
 
@@ -176,21 +156,11 @@ private:
     // GL overlay renderer (crosshair, snap markers, axis indicator)
     OverlayRenderer m_overlayRenderer;
 
-    // Text overlay GL resources (renders to QImage, uploads as texture)
-    unsigned int m_textOverlayTex = 0;
-    unsigned int m_textOverlayVAO = 0;
-    unsigned int m_textOverlayVBO = 0;
-    unsigned int m_textOverlayShader = 0;
+    // Extracted input handler (pan, orbit, zoom, tool dispatch)
+    ViewportInputHandler m_inputHandler;
 
-    // DOF visualization
-    cstr::DOFAnalysis m_dofAnalysis;
-    bool m_dofDirty = true;
-    void recomputeDOF();
-
-    // Navigation state
-    bool m_orbiting = false;
-    bool m_panning = false;
-    QPoint m_lastMousePos;
+    // Extracted renderer (entity batching, text overlay, grips, DOF, tool preview)
+    ViewportRenderer m_viewportRenderer;
 };
 
 }  // namespace hz::ui
