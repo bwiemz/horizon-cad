@@ -1,6 +1,7 @@
 add_executable(hz_drafting_tests
     test_SpatialIndex.cpp
     test_SpatialIndexPerf.cpp
+    test_SketchPlane.cpp
 )
 
 target_link_libraries(hz_drafting_tests
