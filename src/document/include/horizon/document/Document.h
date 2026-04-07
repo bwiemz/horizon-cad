@@ -1,6 +1,7 @@
 #pragma once
 
 #include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ExpressionEngine.h"
 #include "horizon/document/ParameterRegistry.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
@@ -42,6 +43,9 @@ public:
 
     ParameterRegistry& parameterRegistry() { return m_parameterRegistry; }
     const ParameterRegistry& parameterRegistry() const { return m_parameterRegistry; }
+
+    ExpressionEngine& expressionEngine() { return m_parameterRegistry.engine(); }
+    const ExpressionEngine& expressionEngine() const { return m_parameterRegistry.engine(); }
 
     // --- Dirty tracking ---
 

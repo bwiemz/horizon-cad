@@ -2,19 +2,30 @@
 
 namespace hz::doc {
 
-void ParameterRegistry::set(const std::string& name, double value) { m_variables[name] = value; }
-
-double ParameterRegistry::get(const std::string& name) const {
-    auto it = m_variables.find(name);
-    return (it != m_variables.end()) ? it->second : 0.0;
+void ParameterRegistry::set(const std::string& name, double value) {
+    m_engine.setLiteral(name, value);
 }
 
-bool ParameterRegistry::has(const std::string& name) const { return m_variables.count(name) > 0; }
+void ParameterRegistry::setExpression(const std::string& name, const std::string& expr) {
+    m_engine.setExpression(name, expr);
+}
 
-void ParameterRegistry::remove(const std::string& name) { m_variables.erase(name); }
+double ParameterRegistry::get(const std::string& name) const { return m_engine.getValue(name); }
 
-const std::map<std::string, double>& ParameterRegistry::all() const { return m_variables; }
+std::string ParameterRegistry::getExpression(const std::string& name) const {
+    return m_engine.getExpression(name);
+}
 
-void ParameterRegistry::clear() { m_variables.clear(); }
+bool ParameterRegistry::has(const std::string& name) const { return m_engine.has(name); }
+
+bool ParameterRegistry::isExpression(const std::string& name) const {
+    return m_engine.isExpression(name);
+}
+
+void ParameterRegistry::remove(const std::string& name) { m_engine.remove(name); }
+
+std::map<std::string, double> ParameterRegistry::all() const { return m_engine.allValues(); }
+
+void ParameterRegistry::clear() { m_engine.clear(); }
 
 }  // namespace hz::doc
