@@ -7,6 +7,7 @@ add_library(hz_document STATIC
     src/ConstraintSolveHelper.cpp
     src/ParameterRegistry.cpp
     src/ExpressionEngine.cpp
+    src/Sketch.cpp
 )
 
 target_include_directories(hz_document
