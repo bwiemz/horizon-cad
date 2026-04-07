@@ -63,22 +63,22 @@ public:
     /// Return the parameter at a given arc-length from @p tStart (default: tMin).
     double parameterAtLength(double length, double tStart = -1.0) const;
 
-    // -- Conic Factory Functions (Task 5) -- stubs ---------------------------
+    // -- Conic Factory Functions (Task 5) -----------------------------------
 
     /// Factory: create a full NURBS circle (degree-2 rational, 9 control points).
-    // static NurbsCurve makeCircle(const math::Vec3& center, double radius,
-    //                              const math::Vec3& normal = math::Vec3::UnitZ);
+    static NurbsCurve makeCircle(const math::Vec3& center, double radius,
+                                 const math::Vec3& normal = math::Vec3::UnitZ);
 
     /// Factory: create a NURBS circular arc.
-    // static NurbsCurve makeArc(const math::Vec3& center, double radius,
-    //                           double startAngle, double endAngle,
-    //                           const math::Vec3& normal = math::Vec3::UnitZ);
+    static NurbsCurve makeArc(const math::Vec3& center, double radius,
+                              double startAngle, double endAngle,
+                              const math::Vec3& normal = math::Vec3::UnitZ);
 
     /// Factory: create a NURBS ellipse.
-    // static NurbsCurve makeEllipse(const math::Vec3& center,
-    //                               double semiMajor, double semiMinor,
-    //                               double rotation = 0.0,
-    //                               const math::Vec3& normal = math::Vec3::UnitZ);
+    static NurbsCurve makeEllipse(const math::Vec3& center,
+                                  double semiMajor, double semiMinor,
+                                  double rotation = 0.0,
+                                  const math::Vec3& normal = math::Vec3::UnitZ);
 
 private:
     std::vector<math::Vec3> m_controlPoints;

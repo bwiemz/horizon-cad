@@ -379,3 +379,56 @@ TEST(NurbsCurveTest, ParameterAtLengthLinear) {
     EXPECT_NEAR(t, 0.5, 1e-4);
 }
 
+// ===========================================================================
+// Task 5: Exact Conic Factory Functions
+// ===========================================================================
+
+TEST(NurbsCurveTest, CircleExactRepresentation) {
+    NurbsCurve circle = NurbsCurve::makeCircle(Vec3(0, 0, 0), 5.0);
+    // All points at distance 5 from center.
+    for (int i = 0; i <= 100; ++i) {
+        double t = circle.tMin() + (circle.tMax() - circle.tMin()) * i / 100.0;
+        Vec3 p = circle.evaluate(t);
+        double dist = std::sqrt(p.x * p.x + p.y * p.y);
+        EXPECT_NEAR(dist, 5.0, 1e-6) << "at t=" << t;
+    }
+}
+
+TEST(NurbsCurveTest, ArcExactRepresentation) {
+    // Quarter circle
+    NurbsCurve arc = NurbsCurve::makeArc(Vec3(0, 0, 0), 10.0, 0.0, hz::math::kHalfPi);
+    Vec3 start = arc.evaluate(arc.tMin());
+    EXPECT_NEAR(start.x, 10.0, 1e-6);
+    EXPECT_NEAR(start.y, 0.0, 1e-6);
+    Vec3 end = arc.evaluate(arc.tMax());
+    EXPECT_NEAR(end.x, 0.0, 1e-6);
+    EXPECT_NEAR(end.y, 10.0, 1e-6);
+    // All points at radius 10.
+    for (int i = 0; i <= 50; ++i) {
+        double t = arc.tMin() + (arc.tMax() - arc.tMin()) * i / 50.0;
+        Vec3 p = arc.evaluate(t);
+        double dist = std::sqrt(p.x * p.x + p.y * p.y);
+        EXPECT_NEAR(dist, 10.0, 1e-6);
+    }
+}
+
+TEST(NurbsCurveTest, EllipseExactRepresentation) {
+    NurbsCurve ellipse = NurbsCurve::makeEllipse(Vec3(0, 0, 0), 10.0, 5.0);
+    for (int i = 0; i <= 100; ++i) {
+        double t = ellipse.tMin() + (ellipse.tMax() - ellipse.tMin()) * i / 100.0;
+        Vec3 p = ellipse.evaluate(t);
+        double val = (p.x * p.x) / 100.0 + (p.y * p.y) / 25.0;
+        EXPECT_NEAR(val, 1.0, 1e-5) << "at t=" << t;
+    }
+}
+
+TEST(NurbsCurveTest, SemicircleArc) {
+    // 180-degree arc should have start at (r,0) and end at (-r,0)
+    NurbsCurve arc = NurbsCurve::makeArc(Vec3(0, 0, 0), 5.0, 0.0, hz::math::kPi);
+    Vec3 start = arc.evaluate(arc.tMin());
+    EXPECT_NEAR(start.x, 5.0, 1e-6);
+    Vec3 end = arc.evaluate(arc.tMax());
+    EXPECT_NEAR(end.x, -5.0, 1e-6);
+    EXPECT_NEAR(end.y, 0.0, 1e-5);
+}
+

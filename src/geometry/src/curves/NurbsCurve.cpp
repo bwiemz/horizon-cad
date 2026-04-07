@@ -516,4 +516,191 @@ double NurbsCurve::parameterAtLength(double length, double tStart) const {
     return t;
 }
 
+// ---------------------------------------------------------------------------
+// Conic factories — helpers
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Rotate a point from the XY plane to an arbitrary plane defined by its normal.
+math::Vec3 rotateToPlane(const math::Vec3& pt, const math::Vec3& normal) {
+    const math::Vec3 unitZ{0.0, 0.0, 1.0};
+
+    // If the normal is already (0,0,1), no rotation needed.
+    const math::Vec3 n = normal.normalized();
+    const double d = n.dot(unitZ);
+
+    if (d > 1.0 - 1e-12) {
+        return pt;  // Already aligned with +Z.
+    }
+    if (d < -1.0 + 1e-12) {
+        // 180-degree rotation around X axis: flip Y and Z.
+        return {pt.x, -pt.y, -pt.z};
+    }
+
+    // Rodrigues' rotation formula.
+    // Axis = UnitZ x normal (normalized), angle = acos(d).
+    const math::Vec3 axis = unitZ.cross(n).normalized();
+    const double cosA = d;
+    const double sinA = std::sqrt(1.0 - d * d);
+
+    // R(p) = p*cos + (axis x p)*sin + axis*(axis.p)*(1-cos)
+    return pt * cosA + axis.cross(pt) * sinA + axis * axis.dot(pt) * (1.0 - cosA);
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// makeCircle — degree-2 rational NURBS with 9 control points
+// ---------------------------------------------------------------------------
+
+NurbsCurve NurbsCurve::makeCircle(const math::Vec3& center, double radius,
+                                  const math::Vec3& normal) {
+    const double w = std::cos(math::kPi / 4.0);  // sqrt(2)/2
+
+    // Unit circle control points in XY plane.
+    const math::Vec3 unitPts[9] = {
+        {1, 0, 0},   {1, 1, 0},   {0, 1, 0},   {-1, 1, 0}, {-1, 0, 0},
+        {-1, -1, 0}, {0, -1, 0},  {1, -1, 0},  {1, 0, 0},
+    };
+
+    const double wts[9] = {1, w, 1, w, 1, w, 1, w, 1};
+
+    std::vector<math::Vec3> ctrlPts(9);
+    std::vector<double> weights(9);
+
+    for (int i = 0; i < 9; ++i) {
+        math::Vec3 p = unitPts[i] * radius;
+        p = rotateToPlane(p, normal);
+        ctrlPts[i] = p + center;
+        weights[i] = wts[i];
+    }
+
+    std::vector<double> knots = {0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1};
+
+    return NurbsCurve(std::move(ctrlPts), std::move(weights), std::move(knots), 2);
+}
+
+// ---------------------------------------------------------------------------
+// makeArc — piecewise degree-2 rational NURBS
+// ---------------------------------------------------------------------------
+
+NurbsCurve NurbsCurve::makeArc(const math::Vec3& center, double radius, double startAngle,
+                               double endAngle, const math::Vec3& normal) {
+    // Normalize sweep angle to (0, 2*pi].
+    double sweep = endAngle - startAngle;
+    while (sweep <= 0.0) sweep += math::kTwoPi;
+    while (sweep > math::kTwoPi + 1e-12) sweep -= math::kTwoPi;
+
+    // Determine number of arc segments (each <= 90 degrees).
+    int numSegments;
+    if (sweep <= math::kHalfPi + 1e-12) {
+        numSegments = 1;
+    } else if (sweep <= math::kPi + 1e-12) {
+        numSegments = 2;
+    } else if (sweep <= 3.0 * math::kHalfPi + 1e-12) {
+        numSegments = 3;
+    } else {
+        numSegments = 4;
+    }
+
+    const double segSweep = sweep / numSegments;
+    const double wMid = std::cos(segSweep / 2.0);
+
+    // Build control points: 2*numSegments + 1 points.
+    const int numPts = 2 * numSegments + 1;
+    std::vector<math::Vec3> ctrlPts;
+    std::vector<double> weights;
+    ctrlPts.reserve(numPts);
+    weights.reserve(numPts);
+
+    double angle = startAngle;
+    for (int seg = 0; seg < numSegments; ++seg) {
+        const double a = angle;
+        const double b = angle + segSweep;
+        const double midAngle = (a + b) / 2.0;
+
+        math::Vec3 p0{std::cos(a) * radius, std::sin(a) * radius, 0.0};
+        math::Vec3 p1{std::cos(midAngle) * radius / wMid, std::sin(midAngle) * radius / wMid, 0.0};
+
+        if (seg == 0) {
+            ctrlPts.push_back(p0);
+            weights.push_back(1.0);
+        }
+        ctrlPts.push_back(p1);
+        weights.push_back(wMid);
+
+        math::Vec3 p2{std::cos(b) * radius, std::sin(b) * radius, 0.0};
+        ctrlPts.push_back(p2);
+        weights.push_back(1.0);
+
+        angle = b;
+    }
+
+    // Build knot vector for piecewise degree-2.
+    // Knot vector: [0,0,0, k1,k1, k2,k2, ..., 1,1,1]
+    std::vector<double> knots;
+    knots.reserve(numPts + 3);
+    knots.push_back(0.0);
+    knots.push_back(0.0);
+    knots.push_back(0.0);
+    for (int seg = 1; seg < numSegments; ++seg) {
+        double knotVal = static_cast<double>(seg) / numSegments;
+        knots.push_back(knotVal);
+        knots.push_back(knotVal);
+    }
+    knots.push_back(1.0);
+    knots.push_back(1.0);
+    knots.push_back(1.0);
+
+    // Transform control points: rotate to plane then translate.
+    for (auto& pt : ctrlPts) {
+        pt = rotateToPlane(pt, normal) + center;
+    }
+
+    return NurbsCurve(std::move(ctrlPts), std::move(weights), std::move(knots), 2);
+}
+
+// ---------------------------------------------------------------------------
+// makeEllipse — same as circle but with anisotropic scaling
+// ---------------------------------------------------------------------------
+
+NurbsCurve NurbsCurve::makeEllipse(const math::Vec3& center, double semiMajor, double semiMinor,
+                                   double rotation, const math::Vec3& normal) {
+    const double w = std::cos(math::kPi / 4.0);  // sqrt(2)/2
+
+    // Unit circle control points in XY plane, scaled by (semiMajor, semiMinor).
+    const math::Vec3 unitPts[9] = {
+        {1, 0, 0},   {1, 1, 0},   {0, 1, 0},   {-1, 1, 0}, {-1, 0, 0},
+        {-1, -1, 0}, {0, -1, 0},  {1, -1, 0},  {1, 0, 0},
+    };
+
+    const double wts[9] = {1, w, 1, w, 1, w, 1, w, 1};
+
+    const double cosR = std::cos(rotation);
+    const double sinR = std::sin(rotation);
+
+    std::vector<math::Vec3> ctrlPts(9);
+    std::vector<double> weights(9);
+
+    for (int i = 0; i < 9; ++i) {
+        // Scale by semi-axes.
+        double sx = unitPts[i].x * semiMajor;
+        double sy = unitPts[i].y * semiMinor;
+
+        // Apply rotation in the XY plane.
+        double rx = sx * cosR - sy * sinR;
+        double ry = sx * sinR + sy * cosR;
+
+        math::Vec3 p{rx, ry, 0.0};
+        p = rotateToPlane(p, normal);
+        ctrlPts[i] = p + center;
+        weights[i] = wts[i];
+    }
+
+    std::vector<double> knots = {0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1};
+
+    return NurbsCurve(std::move(ctrlPts), std::move(weights), std::move(knots), 2);
+}
+
 }  // namespace hz::geo
