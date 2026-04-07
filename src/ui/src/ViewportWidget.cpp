@@ -116,6 +116,21 @@ void ViewportWidget::setActiveTool(Tool* tool) {
     }
 }
 
+void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
+    m_activeSketch = sketch;
+
+    if (sketch) {
+        // Align camera to the sketch plane.
+        const auto& plane = sketch->plane();
+        math::Vec3 center = plane.origin();
+        double distance = 100.0;
+        math::Vec3 eye = center + plane.normal() * distance;
+        m_camera.lookAt(eye, center, plane.yAxis());
+    }
+
+    update();
+}
+
 // ---------------------------------------------------------------------------
 // Coordinate helpers
 // ---------------------------------------------------------------------------
@@ -127,7 +142,17 @@ math::Vec2 ViewportWidget::worldPositionAtCursor(int screenX, int screenY) const
         static_cast<double>(screenY),
         width(), height());
 
-    // Intersect with the XY plane (Z = 0).
+    // If a sketch is active, project onto its plane (returns local 2D coordinates).
+    if (m_activeSketch) {
+        math::Vec2 local;
+        if (m_activeSketch->plane().rayIntersect(rayOrigin, rayDir, local)) {
+            return local;
+        }
+        // Fallback if ray is parallel to the sketch plane.
+        return m_activeSketch->plane().worldToLocal(rayOrigin);
+    }
+
+    // Default: intersect with the XY plane (Z = 0).
     if (std::abs(rayDir.z) < 1e-12) {
         return {rayOrigin.x, rayOrigin.y};
     }

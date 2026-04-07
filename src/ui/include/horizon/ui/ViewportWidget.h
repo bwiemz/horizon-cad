@@ -8,6 +8,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/render/Camera.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/drafting/SnapEngine.h"
 #include "horizon/constraint/SketchSolver.h"
@@ -70,6 +71,16 @@ public:
 
     /// Returns the active tool, or nullptr.
     Tool* activeTool() const { return m_activeTool; }
+
+    // ---- Active Sketch ----
+
+    /// Set the active sketch for mouse-to-plane projection.
+    /// Passing a non-null sketch saves camera state and aligns the camera
+    /// to the sketch plane.  Passing nullptr restores the saved camera.
+    void setActiveSketch(doc::Sketch* sketch);
+
+    /// Returns the currently active sketch, or nullptr.
+    doc::Sketch* activeSketch() const { return m_activeSketch; }
 
     // ---- Coordinate helpers ----
 
@@ -147,6 +158,9 @@ private:
 
     // Active tool
     Tool* m_activeTool = nullptr;
+
+    // Active sketch (non-owning)
+    doc::Sketch* m_activeSketch = nullptr;
 
     // GL overlay renderer (crosshair, snap markers, axis indicator)
     OverlayRenderer m_overlayRenderer;
