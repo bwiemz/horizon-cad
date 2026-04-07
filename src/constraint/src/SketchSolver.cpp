@@ -53,13 +53,16 @@ SolveResult SketchSolver::solve(ParameterTable& params,
         return result;
     }
 
+    // Use a local copy of damping so each solve() starts from the configured value.
+    double damping = m_damping;
+
     for (int iter = 0; iter < m_maxIterations; ++iter) {
         Eigen::VectorXd F = buildResiduals(params, constraints);
-        double norm = F.norm();
-        result.residualNorm = norm;
+        double currentNorm = F.norm();
+        result.residualNorm = currentNorm;
         result.iterations = iter + 1;
 
-        if (norm < m_tolerance) {
+        if (currentNorm < m_tolerance) {
             // Check degrees of freedom
             Eigen::MatrixXd J = buildJacobian(params, constraints);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
@@ -84,14 +87,34 @@ SolveResult SketchSolver::solve(ParameterTable& params,
         Eigen::MatrixXd JtJ = J.transpose() * J;
         Eigen::VectorXd JtF = J.transpose() * F;
 
-        if (m_damping > 0.0) {
-            JtJ.diagonal().array() += m_damping;
+        if (damping > 0.0) {
+            JtJ.diagonal().array() += damping;
         }
 
         Eigen::VectorXd dx = JtJ.colPivHouseholderQr().solve(-JtF);
 
-        // Update parameters
-        params.values() += dx;
+        // Save current state and try the step
+        Eigen::VectorXd savedParams = params.values();
+        params.values() = savedParams + dx;
+
+        // Evaluate new residuals to check step quality
+        Eigen::VectorXd F_new = buildResiduals(params, constraints);
+        double newNorm = F_new.norm();
+
+        if (newNorm < currentNorm) {
+            // Good step — accept and decrease damping
+            damping = std::max(damping / 10.0, 1e-12);
+        } else {
+            // Bad step — reject, increase damping, retry without advancing iteration
+            params.values() = savedParams;
+            damping *= 10.0;
+            if (damping > 1e10) {
+                // Damping too high — solver is stuck
+                break;
+            }
+            --iter;  // Don't count rejected steps
+            continue;
+        }
     }
 
     // Did not converge — check if over-constrained
