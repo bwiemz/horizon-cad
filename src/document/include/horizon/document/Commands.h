@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Vec2.h"
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -52,7 +53,8 @@ public:
     MoveEntityCommand(draft::DraftDocument& doc,
                       const std::vector<uint64_t>& entityIds,
                       const math::Vec2& delta,
-                      cstr::ConstraintSystem& constraintSystem);
+                      cstr::ConstraintSystem& constraintSystem,
+                      std::function<double(const std::string&)> variableResolver = nullptr);
 
     void execute() override;
     void undo() override;
@@ -63,6 +65,7 @@ private:
     std::vector<uint64_t> m_entityIds;
     math::Vec2 m_delta;
     cstr::ConstraintSystem& m_constraintSystem;
+    std::function<double(const std::string&)> m_variableResolver;
     std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;
 };
 
@@ -615,10 +618,12 @@ public:
     /// \param beforeState  Clone of the entity BEFORE the grip move
     /// \param afterState   Clone of the entity AFTER the grip move
     /// \param constraintSystem  The constraint system for auto-solving
+    /// \param variableResolver  Optional resolver for expression-driven variables
     GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                     std::shared_ptr<draft::DraftEntity> beforeState,
                     std::shared_ptr<draft::DraftEntity> afterState,
-                    cstr::ConstraintSystem& constraintSystem);
+                    cstr::ConstraintSystem& constraintSystem,
+                    std::function<double(const std::string&)> variableResolver = nullptr);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -631,6 +636,7 @@ private:
     std::shared_ptr<draft::DraftEntity> m_beforeState;
     std::shared_ptr<draft::DraftEntity> m_afterState;
     cstr::ConstraintSystem& m_constraintSystem;
+    std::function<double(const std::string&)> m_variableResolver;
     std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;
     bool m_firstExec = true;
 };

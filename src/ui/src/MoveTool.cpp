@@ -114,8 +114,10 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
             idVec.push_back(entity->id());
         }
         auto& cstrSys = m_viewport->document()->constraintSystem();
+        auto& pReg = m_viewport->document()->parameterRegistry();
+        auto varResolver = [&pReg](const std::string& n) { return pReg.get(n); };
         auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta,
-                                                            cstrSys);
+                                                            cstrSys, varResolver);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
 

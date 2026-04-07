@@ -63,9 +63,11 @@ std::string RemoveEntityCommand::description() const {
 MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
                                      const std::vector<uint64_t>& entityIds,
                                      const math::Vec2& delta,
-                                     cstr::ConstraintSystem& constraintSystem)
+                                     cstr::ConstraintSystem& constraintSystem,
+                                     std::function<double(const std::string&)> variableResolver)
     : m_doc(doc), m_entityIds(entityIds), m_delta(delta),
-      m_constraintSystem(constraintSystem) {}
+      m_constraintSystem(constraintSystem),
+      m_variableResolver(std::move(variableResolver)) {}
 
 void MoveEntityCommand::execute() {
     for (uint64_t id : m_entityIds) {
@@ -80,7 +82,8 @@ void MoveEntityCommand::execute() {
 
     // Auto-solve constraints after geometry change.
     if (!m_solveCmd) {
-        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem);
+        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
+                                                                   m_variableResolver);
     }
     if (m_solveCmd) {
         m_solveCmd->execute();
@@ -1211,11 +1214,13 @@ std::string ChangeEllipseRotationCommand::description() const {
 GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                                   std::shared_ptr<draft::DraftEntity> beforeState,
                                   std::shared_ptr<draft::DraftEntity> afterState,
-                                  cstr::ConstraintSystem& constraintSystem)
+                                  cstr::ConstraintSystem& constraintSystem,
+                                  std::function<double(const std::string&)> variableResolver)
     : m_doc(doc), m_entityId(entityId),
       m_beforeState(std::move(beforeState)),
       m_afterState(std::move(afterState)),
-      m_constraintSystem(constraintSystem) {}
+      m_constraintSystem(constraintSystem),
+      m_variableResolver(std::move(variableResolver)) {}
 
 void GripMoveCommand::execute() {
     if (m_firstExec) {
@@ -1224,7 +1229,8 @@ void GripMoveCommand::execute() {
         m_doc.rebuildSpatialIndex();
 
         // Auto-solve constraints after geometry change.
-        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem);
+        m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
+                                                                   m_variableResolver);
         if (m_solveCmd) {
             m_solveCmd->execute();
         }

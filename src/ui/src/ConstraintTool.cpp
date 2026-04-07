@@ -331,7 +331,9 @@ void ConstraintTool::commitConstraint() {
     csys.addConstraint(constraint);
 
     // Use helper to solve and create apply command.
-    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, csys);
+    auto& paramReg = doc.parameterRegistry();
+    auto resolver = [&paramReg](const std::string& name) { return paramReg.get(name); };
+    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, csys, resolver);
     if (solveCmd) {
         // Undo the solve (push will re-execute via the command).
         solveCmd->undo();
