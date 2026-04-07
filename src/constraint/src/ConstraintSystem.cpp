@@ -52,23 +52,22 @@ std::vector<const Constraint*> ConstraintSystem::constraintsForEntity(
 std::vector<std::shared_ptr<Constraint>> ConstraintSystem::removeConstraintsForEntity(
     uint64_t entityId) {
     std::vector<std::shared_ptr<Constraint>> removed;
-    auto it = m_constraints.begin();
-    while (it != m_constraints.end()) {
-        auto ids = (*it)->referencedEntityIds();
-        bool references = false;
-        for (uint64_t id : ids) {
-            if (id == entityId) {
-                references = true;
-                break;
+
+    // Use stable_partition to avoid O(n^2) repeated mid-vector erases.
+    auto partition = std::stable_partition(
+        m_constraints.begin(), m_constraints.end(),
+        [entityId, &removed](const auto& c) {
+            auto ids = c->referencedEntityIds();
+            for (uint64_t id : ids) {
+                if (id == entityId) {
+                    removed.push_back(c);
+                    return false;  // Move to "remove" partition
+                }
             }
-        }
-        if (references) {
-            removed.push_back(std::move(*it));
-            it = m_constraints.erase(it);
-        } else {
-            ++it;
-        }
-    }
+            return true;  // Keep
+        });
+
+    m_constraints.erase(partition, m_constraints.end());
     return removed;
 }
 
