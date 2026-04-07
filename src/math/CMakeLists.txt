@@ -18,4 +18,7 @@ target_include_directories(hz_math
 
 target_compile_features(hz_math PUBLIC cxx_std_20)
 
+find_package(nlohmann_json CONFIG REQUIRED)
+target_link_libraries(hz_math PUBLIC nlohmann_json::nlohmann_json)
+
 add_library(Horizon::Math ALIAS hz_math)

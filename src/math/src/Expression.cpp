@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cmath>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,10 @@ std::string LiteralExpr::toString() const {
     return ss.str();
 }
 
+nlohmann::json LiteralExpr::toJson() const {
+    return {{"type", "literal"}, {"value", m_value}};
+}
+
 // --- VariableExpr ----------------------------------------------------------
 
 double VariableExpr::evaluate(const std::map<std::string, double>& variables) const {
@@ -46,6 +51,10 @@ std::set<std::string> VariableExpr::variables() const {
 
 std::string VariableExpr::toString() const {
     return m_name;
+}
+
+nlohmann::json VariableExpr::toJson() const {
+    return {{"type", "variable"}, {"name", m_name}};
 }
 
 // --- BinaryOpExpr ----------------------------------------------------------
@@ -82,6 +91,18 @@ std::string BinaryOpExpr::toString() const {
     return "(" + m_left->toString() + " " + opChar + " " + m_right->toString() + ")";
 }
 
+nlohmann::json BinaryOpExpr::toJson() const {
+    std::string opStr;
+    switch (m_op) {
+        case Op::Add: opStr = "+"; break;
+        case Op::Sub: opStr = "-"; break;
+        case Op::Mul: opStr = "*"; break;
+        case Op::Div: opStr = "/"; break;
+        case Op::Pow: opStr = "^"; break;
+    }
+    return {{"type", "binary"}, {"op", opStr}, {"left", m_left->toJson()}, {"right", m_right->toJson()}};
+}
+
 // --- UnaryOpExpr -----------------------------------------------------------
 
 double UnaryOpExpr::evaluate(const std::map<std::string, double>& variables) const {
@@ -98,6 +119,14 @@ std::set<std::string> UnaryOpExpr::variables() const {
 
 std::string UnaryOpExpr::toString() const {
     return "(-" + m_child->toString() + ")";
+}
+
+nlohmann::json UnaryOpExpr::toJson() const {
+    std::string opStr;
+    switch (m_op) {
+        case Op::Negate: opStr = "-"; break;
+    }
+    return {{"type", "unary"}, {"op", opStr}, {"child", m_child->toJson()}};
 }
 
 // --- FunctionCallExpr ------------------------------------------------------
@@ -139,6 +168,80 @@ std::string FunctionCallExpr::toString() const {
     }
     result += ")";
     return result;
+}
+
+nlohmann::json FunctionCallExpr::toJson() const {
+    nlohmann::json argsArray = nlohmann::json::array();
+    for (const auto& arg : m_args) {
+        argsArray.push_back(arg->toJson());
+    }
+    return {{"type", "function"}, {"name", m_name}, {"args", argsArray}};
+}
+
+// --- Expression::fromJson (static) -----------------------------------------
+
+std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
+    if (!j.is_object() || !j.contains("type")) {
+        return nullptr;
+    }
+
+    const std::string type = j.at("type").get<std::string>();
+
+    if (type == "literal") {
+        if (!j.contains("value")) return nullptr;
+        return std::make_unique<LiteralExpr>(j.at("value").get<double>());
+    }
+
+    if (type == "variable") {
+        if (!j.contains("name")) return nullptr;
+        return std::make_unique<VariableExpr>(j.at("name").get<std::string>());
+    }
+
+    if (type == "binary") {
+        if (!j.contains("op") || !j.contains("left") || !j.contains("right")) return nullptr;
+        const std::string opStr = j.at("op").get<std::string>();
+        BinaryOpExpr::Op op;
+        if (opStr == "+") op = BinaryOpExpr::Op::Add;
+        else if (opStr == "-") op = BinaryOpExpr::Op::Sub;
+        else if (opStr == "*") op = BinaryOpExpr::Op::Mul;
+        else if (opStr == "/") op = BinaryOpExpr::Op::Div;
+        else if (opStr == "^") op = BinaryOpExpr::Op::Pow;
+        else return nullptr;
+
+        auto left = fromJson(j.at("left"));
+        auto right = fromJson(j.at("right"));
+        if (!left || !right) return nullptr;
+        return std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
+    }
+
+    if (type == "unary") {
+        if (!j.contains("op") || !j.contains("child")) return nullptr;
+        const std::string opStr = j.at("op").get<std::string>();
+        UnaryOpExpr::Op op;
+        if (opStr == "-") op = UnaryOpExpr::Op::Negate;
+        else return nullptr;
+
+        auto child = fromJson(j.at("child"));
+        if (!child) return nullptr;
+        return std::make_unique<UnaryOpExpr>(op, std::move(child));
+    }
+
+    if (type == "function") {
+        if (!j.contains("name") || !j.contains("args")) return nullptr;
+        const std::string name = j.at("name").get<std::string>();
+        const auto& argsJson = j.at("args");
+        if (!argsJson.is_array()) return nullptr;
+
+        std::vector<std::unique_ptr<Expression>> args;
+        for (const auto& argJson : argsJson) {
+            auto arg = fromJson(argJson);
+            if (!arg) return nullptr;
+            args.push_back(std::move(arg));
+        }
+        return std::make_unique<FunctionCallExpr>(name, std::move(args));
+    }
+
+    return nullptr;  // unknown type
 }
 
 // ===========================================================================

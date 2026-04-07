@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json_fwd.hpp>
+
 namespace hz::math {
 
 // ---------------------------------------------------------------------------
@@ -25,6 +27,12 @@ public:
     /// Produce a re-parseable string representation.
     virtual std::string toString() const = 0;
 
+    /// Serialize AST node to JSON.
+    virtual nlohmann::json toJson() const = 0;
+
+    /// Deserialize AST node from JSON; returns nullptr on any error.
+    static std::unique_ptr<Expression> fromJson(const nlohmann::json& j);
+
     /// Parse an expression string; returns nullptr on any error.
     static std::unique_ptr<Expression> parse(const std::string& input);
 };
@@ -39,6 +47,7 @@ public:
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;
     std::string toString() const override;
+    nlohmann::json toJson() const override;
 
     double value() const { return m_value; }
 
@@ -56,6 +65,7 @@ public:
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;
     std::string toString() const override;
+    nlohmann::json toJson() const override;
 
     const std::string& name() const { return m_name; }
 
@@ -76,6 +86,7 @@ public:
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;
     std::string toString() const override;
+    nlohmann::json toJson() const override;
 
     Op op() const { return m_op; }
     const Expression& left() const { return *m_left; }
@@ -100,6 +111,7 @@ public:
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;
     std::string toString() const override;
+    nlohmann::json toJson() const override;
 
     Op op() const { return m_op; }
     const Expression& child() const { return *m_child; }
@@ -120,6 +132,7 @@ public:
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;
     std::string toString() const override;
+    nlohmann::json toJson() const override;
 
     const std::string& name() const { return m_name; }
     const std::vector<std::unique_ptr<Expression>>& args() const { return m_args; }

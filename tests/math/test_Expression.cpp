@@ -5,6 +5,8 @@
 #include <set>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 #include "horizon/math/Expression.h"
 
 using namespace hz::math;
@@ -188,4 +190,55 @@ TEST(ExpressionTest, ToStringRoundTrip) {
     // Both should evaluate to the same value
     EXPECT_DOUBLE_EQ(expr1->evaluate({}), expr2->evaluate({}));
     EXPECT_DOUBLE_EQ(expr2->evaluate({}), 20.0);
+}
+
+// ===========================================================================
+// JSON Serialization
+// ===========================================================================
+
+TEST(ExpressionTest, SerializeToJson) {
+    auto expr = Expression::parse("width * 2 + 5");
+    ASSERT_NE(expr, nullptr);
+    nlohmann::json j = expr->toJson();
+    EXPECT_TRUE(j.contains("type"));
+}
+
+TEST(ExpressionTest, DeserializeFromJson) {
+    auto expr1 = Expression::parse("sqrt(width ^ 2 + height ^ 2)");
+    ASSERT_NE(expr1, nullptr);
+    nlohmann::json j = expr1->toJson();
+    auto expr2 = Expression::fromJson(j);
+    ASSERT_NE(expr2, nullptr);
+    std::map<std::string, double> vars = {{"width", 3.0}, {"height", 4.0}};
+    EXPECT_NEAR(expr1->evaluate(vars), expr2->evaluate(vars), 1e-10);
+}
+
+TEST(ExpressionTest, JsonRoundTripAllNodeTypes) {
+    // Literal
+    auto lit = Expression::parse("42.5");
+    EXPECT_NEAR(Expression::fromJson(lit->toJson())->evaluate({}), 42.5, 1e-10);
+    // Variable
+    auto var = Expression::parse("width");
+    EXPECT_DOUBLE_EQ(Expression::fromJson(var->toJson())->evaluate({{"width", 7.0}}), 7.0);
+    // BinaryOp
+    auto binop = Expression::parse("2 + 3");
+    EXPECT_DOUBLE_EQ(Expression::fromJson(binop->toJson())->evaluate({}), 5.0);
+    // UnaryOp
+    auto unary = Expression::parse("-(5)");
+    EXPECT_DOUBLE_EQ(Expression::fromJson(unary->toJson())->evaluate({}), -5.0);
+    // FunctionCall
+    auto func = Expression::parse("sin(pi / 2)");
+    EXPECT_NEAR(Expression::fromJson(func->toJson())->evaluate({}), 1.0, 1e-10);
+}
+
+TEST(ExpressionTest, JsonFromJsonInvalid) {
+    // Missing type
+    nlohmann::json j1 = {{"value", 42.0}};
+    EXPECT_EQ(Expression::fromJson(j1), nullptr);
+    // Unknown type
+    nlohmann::json j2 = {{"type", "unknown"}};
+    EXPECT_EQ(Expression::fromJson(j2), nullptr);
+    // Not an object
+    nlohmann::json j3 = 42;
+    EXPECT_EQ(Expression::fromJson(j3), nullptr);
 }
