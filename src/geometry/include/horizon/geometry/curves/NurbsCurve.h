@@ -51,27 +51,34 @@ public:
     /// Return a new curve with polynomial degree raised by one.
     NurbsCurve elevateDegree() const;
 
-    // -- Stubs for future tasks (declarations only) --------------------------
+    // -- Closest-Point & Arc-Length (Task 4) ----------------------------------
 
-    /// Find the parameter of the closest point on the curve.  (Task 4)
-    // double closestPoint(const math::Vec3& point) const;
+    /// Find the parameter of the closest point on the curve to @p point.
+    /// Uses Newton iteration on f(t) = (C(t) - P) . C'(t) = 0.
+    double closestPoint(const math::Vec3& point, double tol = 1e-8) const;
 
-    /// Compute arc length between two parameter values.  (Task 4)
-    // double arcLength(double tStart, double tEnd) const;
+    /// Compute arc length between two parameter values using Simpson's rule.
+    double arcLength(double tStart, double tEnd, int segments = 64) const;
 
-    /// Return the parameter at a given arc-length from tMin.  (Task 4)
-    // double parameterAtLength(double length) const;
+    /// Return the parameter at a given arc-length from @p tStart (default: tMin).
+    double parameterAtLength(double length, double tStart = -1.0) const;
 
-    /// Factory: create a NURBS circle.  (Task 5)
-    // static NurbsCurve makeCircle(const math::Vec3& center, double radius);
+    // -- Conic Factory Functions (Task 5) -- stubs ---------------------------
 
-    /// Factory: create a NURBS circular arc.  (Task 5)
+    /// Factory: create a full NURBS circle (degree-2 rational, 9 control points).
+    // static NurbsCurve makeCircle(const math::Vec3& center, double radius,
+    //                              const math::Vec3& normal = math::Vec3::UnitZ);
+
+    /// Factory: create a NURBS circular arc.
     // static NurbsCurve makeArc(const math::Vec3& center, double radius,
-    //                           double startAngle, double endAngle);
+    //                           double startAngle, double endAngle,
+    //                           const math::Vec3& normal = math::Vec3::UnitZ);
 
-    /// Factory: create a NURBS ellipse.  (Task 5)
+    /// Factory: create a NURBS ellipse.
     // static NurbsCurve makeEllipse(const math::Vec3& center,
-    //                               double majorRadius, double minorRadius);
+    //                               double semiMajor, double semiMinor,
+    //                               double rotation = 0.0,
+    //                               const math::Vec3& normal = math::Vec3::UnitZ);
 
 private:
     std::vector<math::Vec3> m_controlPoints;

@@ -1,10 +1,12 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 
+#include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <stdexcept>
 
 namespace hz::geo {
@@ -399,6 +401,119 @@ NurbsCurve NurbsCurve::elevateDegree() const {
     }
 
     return NurbsCurve(std::move(newPts), std::move(newWts), std::move(newKnots), newP);
+}
+
+// ---------------------------------------------------------------------------
+// closestPoint — Newton iteration on f(t) = (C(t) - P) · C'(t)
+// ---------------------------------------------------------------------------
+
+double NurbsCurve::closestPoint(const math::Vec3& point, double tol) const {
+    const double tLo = tMin();
+    const double tHi = tMax();
+
+    // Initial guess: sample at 20 uniform points, pick closest.
+    double bestT = tLo;
+    double bestDistSq = (evaluate(tLo) - point).lengthSquared();
+
+    constexpr int kNumSamples = 20;
+    for (int i = 1; i <= kNumSamples; ++i) {
+        const double t = tLo + (tHi - tLo) * static_cast<double>(i) / kNumSamples;
+        const double distSq = (evaluate(t) - point).lengthSquared();
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestT = t;
+        }
+    }
+
+    // Newton iteration.
+    double t = bestT;
+    for (int iter = 0; iter < 50; ++iter) {
+        const math::Vec3 c = evaluate(t);
+        const math::Vec3 dC = derivative(t, 1);
+        const math::Vec3 d2C = derivative(t, 2);
+        const math::Vec3 diff = c - point;
+
+        const double f = diff.dot(dC);
+        const double df = dC.dot(dC) + diff.dot(d2C);
+
+        if (std::abs(df) < 1e-15) {
+            break;
+        }
+
+        const double delta = f / df;
+        t = t - delta;
+        t = std::clamp(t, tLo, tHi);
+
+        if (std::abs(delta) < tol) {
+            break;
+        }
+    }
+
+    return t;
+}
+
+// ---------------------------------------------------------------------------
+// arcLength — Simpson's rule
+// ---------------------------------------------------------------------------
+
+double NurbsCurve::arcLength(double tStart, double tEnd, int segments) const {
+    // Ensure even number of segments for Simpson's rule.
+    if (segments % 2 != 0) {
+        ++segments;
+    }
+
+    const double h = (tEnd - tStart) / segments;
+    double sum = derivative(tStart, 1).length() + derivative(tEnd, 1).length();
+
+    for (int i = 1; i < segments; ++i) {
+        const double t = tStart + i * h;
+        const double speed = derivative(t, 1).length();
+        if (i % 2 == 1) {
+            sum += 4.0 * speed;
+        } else {
+            sum += 2.0 * speed;
+        }
+    }
+
+    return sum * h / 3.0;
+}
+
+// ---------------------------------------------------------------------------
+// parameterAtLength — Newton iteration
+// ---------------------------------------------------------------------------
+
+double NurbsCurve::parameterAtLength(double length, double tStart) const {
+    if (tStart < 0.0) {
+        tStart = tMin();
+    }
+
+    const double totalLen = arcLength(tStart, tMax());
+    if (totalLen < 1e-15) {
+        return tStart;
+    }
+
+    // Initial guess: linear interpolation.
+    double t = tStart + (tMax() - tStart) * length / totalLen;
+    t = std::clamp(t, tStart, tMax());
+
+    for (int iter = 0; iter < 50; ++iter) {
+        const double currentLen = arcLength(tStart, t);
+        const double error = currentLen - length;
+
+        if (std::abs(error) < 1e-8) {
+            break;
+        }
+
+        const double speed = derivative(t, 1).length();
+        if (speed < 1e-15) {
+            break;
+        }
+
+        t = t - error / speed;
+        t = std::clamp(t, tStart, tMax());
+    }
+
+    return t;
 }
 
 }  // namespace hz::geo

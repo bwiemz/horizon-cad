@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
 #include <cmath>
@@ -334,3 +335,47 @@ TEST(NurbsCurveTest, DegreeElevationPreservesShape) {
         EXPECT_NEAR(pOrig.z, pElev.z, 1e-8);
     }
 }
+
+// ===========================================================================
+// Task 4: Closest-Point Projection & Arc-Length Parameterization
+// ===========================================================================
+
+TEST(NurbsCurveTest, ClosestPointOnLine) {
+    // Line from (0,0,0) to (10,0,0). Point at (5,10,0). Closest t=0.5.
+    std::vector<Vec3> ctrlPts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> weights = {1.0, 1.0};
+    std::vector<double> knots = {0, 0, 1, 1};
+    NurbsCurve curve(ctrlPts, weights, knots, 1);
+    double t = curve.closestPoint(Vec3(5, 10, 0));
+    EXPECT_NEAR(t, 0.5, 1e-4);
+}
+
+TEST(NurbsCurveTest, ClosestPointOnCubic) {
+    std::vector<Vec3> ctrlPts = {{0, 0, 0}, {3, 10, 0}, {7, 10, 0}, {10, 0, 0}};
+    std::vector<double> weights = {1.0, 1.0, 1.0, 1.0};
+    std::vector<double> knots = {0, 0, 0, 0, 1, 1, 1, 1};
+    NurbsCurve curve(ctrlPts, weights, knots, 3);
+    double t0 = curve.closestPoint(Vec3(0, 0, 0));
+    EXPECT_NEAR(t0, 0.0, 0.01);
+    double t1 = curve.closestPoint(Vec3(10, 0, 0));
+    EXPECT_NEAR(t1, 1.0, 0.01);
+}
+
+TEST(NurbsCurveTest, ArcLengthLinear) {
+    std::vector<Vec3> ctrlPts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> weights = {1.0, 1.0};
+    std::vector<double> knots = {0, 0, 1, 1};
+    NurbsCurve curve(ctrlPts, weights, knots, 1);
+    double len = curve.arcLength(0.0, 1.0);
+    EXPECT_NEAR(len, 10.0, 1e-4);
+}
+
+TEST(NurbsCurveTest, ParameterAtLengthLinear) {
+    std::vector<Vec3> ctrlPts = {{0, 0, 0}, {10, 0, 0}};
+    std::vector<double> weights = {1.0, 1.0};
+    std::vector<double> knots = {0, 0, 1, 1};
+    NurbsCurve curve(ctrlPts, weights, knots, 1);
+    double t = curve.parameterAtLength(5.0);
+    EXPECT_NEAR(t, 0.5, 1e-4);
+}
+
