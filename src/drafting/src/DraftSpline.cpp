@@ -5,13 +5,39 @@
 namespace hz::draft {
 
 DraftSpline::DraftSpline(const std::vector<math::Vec2>& controlPoints, bool closed)
-    : m_controlPoints(controlPoints), m_closed(closed) {}
+    : m_controlPoints(controlPoints),
+      m_weights(controlPoints.size(), 1.0),
+      m_closed(closed) {}
+
+void DraftSpline::syncWeights() {
+    if (m_weights.size() != m_controlPoints.size()) {
+        m_weights.resize(m_controlPoints.size(), 1.0);
+    }
+}
+
+void DraftSpline::setControlPoints(const std::vector<math::Vec2>& points) {
+    m_controlPoints = points;
+    syncWeights();
+}
+
+void DraftSpline::setWeights(const std::vector<double>& weights) {
+    m_weights = weights;
+    // Ensure same size as control points; pad or truncate as needed.
+    m_weights.resize(m_controlPoints.size(), 1.0);
+}
+
+bool DraftSpline::hasNonUniformWeights() const {
+    for (double w : m_weights) {
+        if (std::abs(w - 1.0) > 1e-12) return true;
+    }
+    return false;
+}
 
 // ---------------------------------------------------------------------------
 // Uniform cubic B-spline evaluation
 // ---------------------------------------------------------------------------
 
-/// Evaluate one point on a uniform cubic B-spline span.
+/// Evaluate one point on a uniform cubic B-spline span (non-rational).
 /// Given 4 control points P0..P3 and parameter t in [0,1]:
 ///   B(t) = (1/6)[ (1-t)^3 P0 + (3t^3 - 6t^2 + 4) P1
 ///                + (-3t^3 + 3t^2 + 3t + 1) P2 + t^3 P3 ]
@@ -29,6 +55,29 @@ static math::Vec2 bsplinePt(const math::Vec2& p0, const math::Vec2& p1,
             inv6 * (b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y)};
 }
 
+/// Evaluate one point on a rational cubic B-spline span (NURBS weights).
+/// Uses homogeneous coordinates: each control point is lifted to (w*x, w*y, w),
+/// the standard basis blend is applied, then projected back to 2D.
+static math::Vec2 bsplinePtRational(const math::Vec2& p0, double w0,
+                                     const math::Vec2& p1, double w1,
+                                     const math::Vec2& p2, double w2,
+                                     const math::Vec2& p3, double w3, double t) {
+    double t2 = t * t;
+    double t3 = t2 * t;
+    double omt = 1.0 - t;
+    double b0 = omt * omt * omt;
+    double b1 = 3.0 * t3 - 6.0 * t2 + 4.0;
+    double b2 = -3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0;
+    double b3 = t3;
+    double inv6 = 1.0 / 6.0;
+    // Homogeneous sum
+    double hx = inv6 * (b0 * w0 * p0.x + b1 * w1 * p1.x + b2 * w2 * p2.x + b3 * w3 * p3.x);
+    double hy = inv6 * (b0 * w0 * p0.y + b1 * w1 * p1.y + b2 * w2 * p2.y + b3 * w3 * p3.y);
+    double hw = inv6 * (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3);
+    if (std::abs(hw) < 1e-15) return {hx, hy};  // degenerate: return as-is
+    return {hx / hw, hy / hw};
+}
+
 std::vector<math::Vec2> DraftSpline::evaluate(int segmentsPerSpan) const {
     const size_t n = m_controlPoints.size();
     if (n == 0) return {};
@@ -42,6 +91,12 @@ std::vector<math::Vec2> DraftSpline::evaluate(int segmentsPerSpan) const {
         return m_controlPoints;
     }
 
+    // Ensure weight vector is the right size (treat missing weights as 1.0).
+    auto w = [this, n](size_t i) -> double {
+        return (i < m_weights.size()) ? m_weights[i] : 1.0;
+    };
+
+    const bool rational = hasNonUniformWeights();
     std::vector<math::Vec2> pts;
     const int sps = std::max(segmentsPerSpan, 2);
 
@@ -49,14 +104,23 @@ std::vector<math::Vec2> DraftSpline::evaluate(int segmentsPerSpan) const {
         // Closed: n spans, indices wrap with modular arithmetic.
         pts.reserve(n * sps + 1);
         for (size_t span = 0; span < n; ++span) {
-            const auto& cp0 = m_controlPoints[span % n];
-            const auto& cp1 = m_controlPoints[(span + 1) % n];
-            const auto& cp2 = m_controlPoints[(span + 2) % n];
-            const auto& cp3 = m_controlPoints[(span + 3) % n];
+            size_t i0 = span % n;
+            size_t i1 = (span + 1) % n;
+            size_t i2 = (span + 2) % n;
+            size_t i3 = (span + 3) % n;
+            const auto& cp0 = m_controlPoints[i0];
+            const auto& cp1 = m_controlPoints[i1];
+            const auto& cp2 = m_controlPoints[i2];
+            const auto& cp3 = m_controlPoints[i3];
             int count = (span + 1 < n) ? sps : sps + 1;  // last span includes endpoint
             for (int j = 0; j < count; ++j) {
                 double t = static_cast<double>(j) / sps;
-                pts.push_back(bsplinePt(cp0, cp1, cp2, cp3, t));
+                if (rational) {
+                    pts.push_back(bsplinePtRational(cp0, w(i0), cp1, w(i1),
+                                                    cp2, w(i2), cp3, w(i3), t));
+                } else {
+                    pts.push_back(bsplinePt(cp0, cp1, cp2, cp3, t));
+                }
             }
         }
     } else {
@@ -71,7 +135,12 @@ std::vector<math::Vec2> DraftSpline::evaluate(int segmentsPerSpan) const {
             int count = (span + 1 < spans) ? sps : sps + 1;  // last span includes endpoint
             for (int j = 0; j < count; ++j) {
                 double t = static_cast<double>(j) / sps;
-                pts.push_back(bsplinePt(cp0, cp1, cp2, cp3, t));
+                if (rational) {
+                    pts.push_back(bsplinePtRational(cp0, w(span), cp1, w(span + 1),
+                                                    cp2, w(span + 2), cp3, w(span + 3), t));
+                } else {
+                    pts.push_back(bsplinePt(cp0, cp1, cp2, cp3, t));
+                }
             }
         }
     }
@@ -146,6 +215,7 @@ void DraftSpline::translate(const math::Vec2& delta) {
 
 std::shared_ptr<DraftEntity> DraftSpline::clone() const {
     auto copy = std::make_shared<DraftSpline>(m_controlPoints, m_closed);
+    copy->setWeights(m_weights);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());

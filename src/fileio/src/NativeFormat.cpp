@@ -169,6 +169,12 @@ static json serializeEntity(const draft::DraftEntity& entity) {
             cpArray.push_back({{"x", cp.x}, {"y", cp.y}});
         }
         obj["controlPoints"] = cpArray;
+        // Only write weights when at least one differs from 1.0 (backward compat).
+        if (spline->hasNonUniformWeights()) {
+            json wArray = json::array();
+            for (double w : spline->weights()) wArray.push_back(w);
+            obj["weights"] = wArray;
+        }
     } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(&entity)) {
         obj["type"] = "hatch";
         obj["pattern"] = static_cast<int>(hatch->pattern());
@@ -270,6 +276,11 @@ bool NativeFormat::save(const std::string& filePath,
                 json cps = json::array();
                 for (const auto& cp : sp->controlPoints()) cps.push_back({{"x", cp.x}, {"y", cp.y}});
                 se["controlPoints"] = cps;
+                if (sp->hasNonUniformWeights()) {
+                    json wArr = json::array();
+                    for (double w : sp->weights()) wArr.push_back(w);
+                    se["weights"] = wArr;
+                }
             } else if (auto* txt = dynamic_cast<const draft::DraftText*>(subEnt.get())) {
                 se["type"] = "text";
                 se["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
@@ -553,7 +564,14 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
         for (const auto& cp : obj["controlPoints"]) {
             controlPoints.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
         }
-        entity = std::make_shared<draft::DraftSpline>(controlPoints, closed);
+        auto splineEnt = std::make_shared<draft::DraftSpline>(controlPoints, closed);
+        if (obj.contains("weights")) {
+            std::vector<double> wts;
+            wts.reserve(obj["weights"].size());
+            for (const auto& w : obj["weights"]) wts.push_back(w.get<double>());
+            splineEnt->setWeights(wts);
+        }
+        entity = splineEnt;
     } else if (type == "hatch") {
         std::vector<math::Vec2> boundary;
         for (const auto& pt : obj["boundary"]) {
@@ -686,7 +704,14 @@ bool NativeFormat::load(const std::string& filePath,
                         std::vector<math::Vec2> cps;
                         for (const auto& cp : se["controlPoints"])
                             cps.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
-                        subEnt = std::make_shared<draft::DraftSpline>(cps, se.value("closed", false));
+                        auto blkSp = std::make_shared<draft::DraftSpline>(cps, se.value("closed", false));
+                        if (se.contains("weights")) {
+                            std::vector<double> wts;
+                            wts.reserve(se["weights"].size());
+                            for (const auto& w : se["weights"]) wts.push_back(w.get<double>());
+                            blkSp->setWeights(wts);
+                        }
+                        subEnt = blkSp;
                     } else if (stype == "text") {
                         auto pos = math::Vec2(se["position"]["x"].get<double>(),
                                                se["position"]["y"].get<double>());
