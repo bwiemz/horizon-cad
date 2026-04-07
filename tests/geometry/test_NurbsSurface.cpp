@@ -218,5 +218,90 @@ TEST(NurbsSurfaceTest, WeightedEvaluation) {
 }
 
 // ===========================================================================
-// Task 2 tests are added in the next commit.
+// Task 2: Derivatives & Normal
 // ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 7. Normal of a flat XY surface -> normal ≈ (0, 0, ±1)
+// ---------------------------------------------------------------------------
+TEST(NurbsSurfaceTest, NormalOfFlatSurface) {
+    // Flat surface in XY plane: x from 0..10, y from 0..10, z=0.
+    std::vector<std::vector<Vec3>> pts = {
+        {{0, 0, 0}, {10, 0, 0}},
+        {{0, 10, 0}, {10, 10, 0}},
+    };
+    std::vector<std::vector<double>> wts = {
+        {1.0, 1.0},
+        {1.0, 1.0},
+    };
+    auto kU = clampedKnots(2, 1);
+    auto kV = clampedKnots(2, 1);
+
+    NurbsSurface srf(pts, wts, kU, kV, 1, 1);
+
+    auto n = srf.normal(0.5, 0.5);
+    EXPECT_NEAR(std::abs(n.z), 1.0, 1e-4);
+    EXPECT_NEAR(n.x, 0.0, 1e-4);
+    EXPECT_NEAR(n.y, 0.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Derivatives of a flat surface: dS/du ≈ (0,10,0), dS/dv ≈ (10,0,0)
+// ---------------------------------------------------------------------------
+TEST(NurbsSurfaceTest, DerivativesOfFlatSurface) {
+    // Flat bilinear: (u,v) -> (10*v, 10*u, 0) over [0,1]x[0,1].
+    std::vector<std::vector<Vec3>> pts = {
+        {{0, 0, 0}, {10, 0, 0}},
+        {{0, 10, 0}, {10, 10, 0}},
+    };
+    std::vector<std::vector<double>> wts = {
+        {1.0, 1.0},
+        {1.0, 1.0},
+    };
+    auto kU = clampedKnots(2, 1);
+    auto kV = clampedKnots(2, 1);
+
+    NurbsSurface srf(pts, wts, kU, kV, 1, 1);
+
+    // dS/du at (0.5, 0.5): moving in U goes from y=0 to y=10, so dS/du ≈ (0,10,0).
+    auto du = srf.derivativeU(0.5, 0.5);
+    EXPECT_NEAR(du.x, 0.0, 0.1);
+    EXPECT_NEAR(du.y, 10.0, 0.1);
+    EXPECT_NEAR(du.z, 0.0, 0.1);
+
+    // dS/dv at (0.5, 0.5): moving in V goes from x=0 to x=10, so dS/dv ≈ (10,0,0).
+    auto dv = srf.derivativeV(0.5, 0.5);
+    EXPECT_NEAR(dv.x, 10.0, 0.1);
+    EXPECT_NEAR(dv.y, 0.0, 0.1);
+    EXPECT_NEAR(dv.z, 0.0, 0.1);
+}
+
+// ---------------------------------------------------------------------------
+// 9. Normal of a curved (dome) surface: at center, |normal.z| is significant
+// ---------------------------------------------------------------------------
+TEST(NurbsSurfaceTest, NormalOfCurvedSurface) {
+    std::vector<std::vector<Vec3>> pts = {
+        {{0, 0, 0}, {5, 0, 0}, {10, 0, 0}},
+        {{0, 5, 0}, {5, 5, 10}, {10, 5, 0}},
+        {{0, 10, 0}, {5, 10, 0}, {10, 10, 0}},
+    };
+    std::vector<std::vector<double>> wts = {
+        {1.0, 1.0, 1.0},
+        {1.0, 1.0, 1.0},
+        {1.0, 1.0, 1.0},
+    };
+    auto kU = clampedKnots(3, 2);
+    auto kV = clampedKnots(3, 2);
+
+    NurbsSurface srf(pts, wts, kU, kV, 2, 2);
+
+    // The dome rises in +Z, so the normal at center should have a non-zero Z component.
+    // The sign depends on the cross product order (dS/du x dS/dv), which for this
+    // parameterization points in -Z.  Check that |n.z| is significant.
+    auto n = srf.normal(0.5, 0.5);
+    EXPECT_GT(std::abs(n.z), 0.5);
+
+    // The normal should be roughly unit length.
+    double len = n.length();
+    EXPECT_NEAR(len, 1.0, 1e-6);
+}

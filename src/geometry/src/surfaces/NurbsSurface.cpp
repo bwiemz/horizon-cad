@@ -136,19 +136,44 @@ math::Vec3 NurbsSurface::evaluate(double u, double v) const {
 }
 
 // ---------------------------------------------------------------------------
-// Derivatives & Normal — stubs (implemented in Task 2)
+// Derivatives — numerical differentiation
 // ---------------------------------------------------------------------------
 
-math::Vec3 NurbsSurface::derivativeU(double /*u*/, double /*v*/) const {
-    return {0.0, 0.0, 0.0};
+math::Vec3 NurbsSurface::derivativeU(double u, double v) const {
+    const double h = 1e-7;
+    const double u0 = std::max(u - h, uMin());
+    const double u1 = std::min(u + h, uMax());
+    const double actualH = u1 - u0;
+    if (actualH < 1e-15) {
+        return {0.0, 0.0, 0.0};
+    }
+    return (evaluate(u1, v) - evaluate(u0, v)) * (1.0 / actualH);
 }
 
-math::Vec3 NurbsSurface::derivativeV(double /*u*/, double /*v*/) const {
-    return {0.0, 0.0, 0.0};
+math::Vec3 NurbsSurface::derivativeV(double u, double v) const {
+    const double h = 1e-7;
+    const double v0 = std::max(v - h, vMin());
+    const double v1 = std::min(v + h, vMax());
+    const double actualH = v1 - v0;
+    if (actualH < 1e-15) {
+        return {0.0, 0.0, 0.0};
+    }
+    return (evaluate(u, v1) - evaluate(u, v0)) * (1.0 / actualH);
 }
 
-math::Vec3 NurbsSurface::normal(double /*u*/, double /*v*/) const {
-    return math::Vec3::UnitZ;
+// ---------------------------------------------------------------------------
+// normal — cross product of partial derivatives
+// ---------------------------------------------------------------------------
+
+math::Vec3 NurbsSurface::normal(double u, double v) const {
+    const math::Vec3 du = derivativeU(u, v);
+    const math::Vec3 dv = derivativeV(u, v);
+    const math::Vec3 n = du.cross(dv);
+    const double len = n.length();
+    if (len < 1e-12) {
+        return math::Vec3::UnitZ;
+    }
+    return n * (1.0 / len);
 }
 
 }  // namespace hz::geo
