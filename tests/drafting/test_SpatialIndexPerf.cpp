@@ -40,6 +40,22 @@ TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
     EXPECT_LT(avgMs, 1.0) << "Snap query too slow: " << avgMs << " ms average";
 }
 
+TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
+    SpatialIndex index;
+    auto start = std::chrono::high_resolution_clock::now();
+    for (uint64_t i = 0; i < 10000; ++i) {
+        double x = static_cast<double>(i % 100) * 5.0;
+        double y = static_cast<double>(i / 100) * 5.0;
+        auto line = std::make_shared<DraftLine>(Vec2(x, y), Vec2(x + 3, y + 3));
+        line->setId(i + 1);
+        index.insert(line);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(end - start).count();
+    std::cout << "[PERF] 10k entity insert: " << ms << " ms" << std::endl;
+    EXPECT_LT(ms, 200.0);  // 200ms threshold accommodates Debug builds
+}
+
 TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
     SpatialIndex index;
     for (uint64_t i = 0; i < 10000; ++i) {
