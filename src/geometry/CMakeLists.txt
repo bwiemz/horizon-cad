@@ -4,6 +4,7 @@ add_library(hz_geometry STATIC
     src/curves/Circle2D.cpp
     src/curves/Arc2D.cpp
     src/curves/Line3D.cpp
+    src/curves/NurbsCurve.cpp
 )
 
 target_include_directories(hz_geometry

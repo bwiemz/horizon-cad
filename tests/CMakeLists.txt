@@ -1,4 +1,5 @@
 add_subdirectory(math)
+add_subdirectory(geometry)
 add_subdirectory(constraint)
 add_subdirectory(drafting)
 add_subdirectory(document)
