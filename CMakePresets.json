@@ -11,6 +11,11 @@
       "architecture": {
         "value": "x64",
         "strategy": "set"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
@@ -26,6 +31,36 @@
       "cacheVariables": {
         "HZ_BUILD_TESTS": "OFF"
       }
+    },
+    {
+      "name": "linux-default",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "inherits": "linux-default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HZ_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "linux-default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HZ_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -38,6 +73,14 @@
       "name": "release",
       "configurePreset": "release",
       "configuration": "Release"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
     }
   ],
   "testPresets": [
@@ -45,6 +88,13 @@
       "name": "debug",
       "configurePreset": "debug",
       "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
       "output": {
         "outputOnFailure": true
       }
