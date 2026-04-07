@@ -4,6 +4,7 @@
 #include "horizon/math/Mat4.h"
 
 #include <QOpenGLExtraFunctions>
+#include <algorithm>
 
 namespace hz::render {
 
@@ -167,7 +168,36 @@ void main() {
 // ---- GLRenderer Implementation ----
 
 GLRenderer::GLRenderer() = default;
-GLRenderer::~GLRenderer() = default;
+
+GLRenderer::~GLRenderer() {
+    // Note: dynamic VAO/VBO are cleaned up in destroyDynamicBuffers() which
+    // requires a valid GL context.  If the context is still current when the
+    // renderer is destroyed, the driver reclaims them automatically.
+}
+
+void GLRenderer::destroyDynamicBuffers(QOpenGLExtraFunctions* gl) {
+    if (m_dynamicVBO) {
+        gl->glDeleteBuffers(1, &m_dynamicVBO);
+        m_dynamicVBO = 0;
+    }
+    if (m_dynamicVAO) {
+        gl->glDeleteVertexArrays(1, &m_dynamicVAO);
+        m_dynamicVAO = 0;
+    }
+    m_dynamicVBOCapacity = 0;
+}
+
+void GLRenderer::uploadDynamic(QOpenGLExtraFunctions* gl, const void* data,
+                               size_t sizeBytes) {
+    gl->glBindBuffer(GL_ARRAY_BUFFER, m_dynamicVBO);
+    if (sizeBytes > m_dynamicVBOCapacity) {
+        // Grow to next power-of-two-like size or 2x, whichever is larger.
+        m_dynamicVBOCapacity = std::max(sizeBytes, m_dynamicVBOCapacity * 2);
+        gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity),
+                         nullptr, GL_DYNAMIC_DRAW);
+    }
+    gl->glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(sizeBytes), data);
+}
 
 void GLRenderer::initialize(QOpenGLExtraFunctions* gl) {
     if (m_initialized) return;
@@ -195,6 +225,15 @@ void GLRenderer::initialize(QOpenGLExtraFunctions* gl) {
     gl->glEnable(GL_DEPTH_TEST);
     gl->glEnable(GL_MULTISAMPLE);
     gl->glEnable(GL_LINE_SMOOTH);
+
+    // Pre-allocate a persistent dynamic VAO/VBO for per-frame draw calls.
+    gl->glGenVertexArrays(1, &m_dynamicVAO);
+    gl->glGenBuffers(1, &m_dynamicVBO);
+    m_dynamicVBOCapacity = sizeof(float) * 40000;  // ~160 KB initial
+    gl->glBindBuffer(GL_ARRAY_BUFFER, m_dynamicVBO);
+    gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity),
+                     nullptr, GL_DYNAMIC_DRAW);
+    gl->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_initialized = true;
 }
@@ -283,17 +322,10 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_lineShader.setUniform("uLineType", lineType);
     m_lineShader.setUniform("uPatternScale", patternScale);
 
-    // Create a temporary VAO/VBO for the lines.
+    // Use persistent dynamic VAO/VBO.
     // Vertex format: 4 floats per vertex (x, y, z, distance).
-    GLuint vao, vbo;
-    gl->glGenVertexArrays(1, &vao);
-    gl->glBindVertexArray(vao);
-
-    gl->glGenBuffers(1, &vbo);
-    gl->glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    gl->glBufferData(GL_ARRAY_BUFFER,
-                     static_cast<GLsizeiptr>(lineVertices.size() * sizeof(float)),
-                     lineVertices.data(), GL_STREAM_DRAW);
+    gl->glBindVertexArray(m_dynamicVAO);
+    uploadDynamic(gl, lineVertices.data(), lineVertices.size() * sizeof(float));
 
     gl->glEnableVertexAttribArray(0);
     gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
@@ -305,8 +337,6 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     gl->glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lineVertices.size() / 4));
 
     gl->glBindVertexArray(0);
-    gl->glDeleteBuffers(1, &vbo);
-    gl->glDeleteVertexArrays(1, &vao);
 
     m_lineShader.release();
 }
@@ -340,13 +370,8 @@ void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_fillShader.setUniform("uMVP", vp);
     m_fillShader.setUniform("uFillColor", color);
 
-    GLuint vao, vbo;
-    gl->glGenVertexArrays(1, &vao);
-    gl->glBindVertexArray(vao);
-
-    gl->glGenBuffers(1, &vbo);
-    gl->glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    gl->glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
+    gl->glBindVertexArray(m_dynamicVAO);
+    uploadDynamic(gl, verts, sizeof(verts));
 
     gl->glEnableVertexAttribArray(0);
     gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
@@ -360,8 +385,6 @@ void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
     gl->glDepthMask(GL_TRUE);
     gl->glDisable(GL_BLEND);
     gl->glBindVertexArray(0);
-    gl->glDeleteBuffers(1, &vbo);
-    gl->glDeleteVertexArrays(1, &vao);
 
     m_fillShader.release();
 }

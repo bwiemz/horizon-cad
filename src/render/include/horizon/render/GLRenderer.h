@@ -75,10 +75,18 @@ private:
     // Cached GPU mesh buffers keyed by node ID.
     std::unordered_map<uint32_t, std::unique_ptr<MeshBuffer>> m_meshCache;
 
+    void destroyDynamicBuffers(QOpenGLExtraFunctions* gl);
+    void uploadDynamic(QOpenGLExtraFunctions* gl, const void* data, size_t sizeBytes);
+
     float m_bgColor[3] = {0.18f, 0.20f, 0.22f};
     int m_viewportWidth = 1;
     int m_viewportHeight = 1;
     bool m_initialized = false;
+
+    // Persistent dynamic VAO/VBO for per-frame draw calls (lines, circles, quads).
+    GLuint m_dynamicVAO = 0;
+    GLuint m_dynamicVBO = 0;
+    size_t m_dynamicVBOCapacity = 0;
 };
 
 }  // namespace hz::render
