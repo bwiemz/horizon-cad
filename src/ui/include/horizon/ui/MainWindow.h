@@ -4,6 +4,7 @@
 
 #include "horizon/math/Vec2.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/ui/Clipboard.h"
 
 #include <memory>
@@ -17,6 +18,7 @@ class ToolManager;
 class PropertyPanel;
 class LayerPanel;
 class RibbonBar;
+class FeatureTreePanel;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -116,12 +118,17 @@ private slots:
     void onMouseMoved(const hz::math::Vec2& worldPos);
     void onSelectionChanged();
 
+    void onFeatureDoubleClicked(int featureIndex);
+    void onFeatureReordered(int fromIndex, int toIndex);
+    void onRollbackChanged(int newIndex);
+
 private:
     void createMenus();
     void createRibbonBar();
     void createStatusBar();
     void registerTools();
     void updateStatusBar();
+    void rebuildFeatureTree();
 
     ViewportWidget* m_viewport = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
@@ -130,6 +137,8 @@ private:
     PropertyPanel* m_propertyPanel = nullptr;
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
+    FeatureTreePanel* m_featureTreePanel = nullptr;
+    doc::FeatureTree m_featureTree;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

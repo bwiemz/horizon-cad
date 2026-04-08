@@ -50,6 +50,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/OverlayRenderer.h
     include/horizon/ui/ViewportInputHandler.h
     include/horizon/ui/ViewportRenderer.h
+    include/horizon/ui/FeatureTreePanel.h
     src/MainWindow.cpp
     src/ViewportWidget.cpp
     src/ViewportInputHandler.cpp
@@ -97,6 +98,7 @@ add_library(hz_ui STATIC
     src/IconGenerator.cpp
     src/RibbonBar.cpp
     src/OverlayRenderer.cpp
+    src/FeatureTreePanel.cpp
 )
 
 target_include_directories(hz_ui

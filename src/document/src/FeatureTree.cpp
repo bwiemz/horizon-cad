@@ -23,6 +23,18 @@ ExtrudeFeature::ExtrudeFeature(std::shared_ptr<Sketch> sketch,
 
 std::string ExtrudeFeature::name() const { return "Extrude"; }
 
+std::map<std::string, double> ExtrudeFeature::parameters() const {
+    return {{"distance", m_distance}};
+}
+
+bool ExtrudeFeature::setParameter(const std::string& name, double value) {
+    if (name == "distance" && value > 0.0) {
+        m_distance = value;
+        return true;
+    }
+    return false;
+}
+
 std::string ExtrudeFeature::featureID() const { return m_featureID; }
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
@@ -49,6 +61,18 @@ RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch,
       m_featureID("revolve_" + std::to_string(s_nextID++)) {}
 
 std::string RevolveFeature::name() const { return "Revolve"; }
+
+std::map<std::string, double> RevolveFeature::parameters() const {
+    return {{"angle", m_angle}};
+}
+
+bool RevolveFeature::setParameter(const std::string& name, double value) {
+    if (name == "angle" && value > 0.0) {
+        m_angle = value;
+        return true;
+    }
+    return false;
+}
 
 std::string RevolveFeature::featureID() const { return m_featureID; }
 
@@ -78,6 +102,11 @@ const Feature* FeatureTree::feature(size_t index) const {
     return m_features[index].get();
 }
 
+Feature* FeatureTree::feature(size_t index) {
+    assert(index < m_features.size());
+    return m_features[index].get();
+}
+
 void FeatureTree::clear() { m_features.clear(); }
 
 std::unique_ptr<topo::Solid> FeatureTree::build() const {
@@ -93,6 +122,48 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
         }
     }
     return solid;
+}
+
+BuildResult FeatureTree::buildWithDiagnostics() const {
+    BuildResult result;
+    if (m_features.empty()) {
+        return result;
+    }
+
+    const int limit = (m_rollbackIndex >= 0)
+                          ? std::min(m_rollbackIndex + 1,
+                                     static_cast<int>(m_features.size()))
+                          : static_cast<int>(m_features.size());
+
+    std::unique_ptr<topo::Solid> solid;
+    for (int i = 0; i < limit; ++i) {
+        auto next = m_features[static_cast<size_t>(i)]->execute(
+            std::move(solid));
+        if (!next) {
+            result.failedFeatureIndex = i;
+            result.failureMessage =
+                "Feature '" + m_features[static_cast<size_t>(i)]->name() +
+                "' failed to execute";
+            return result;
+        }
+        solid = std::move(next);
+        result.lastSuccessfulFeature = i;
+    }
+
+    result.solid = std::move(solid);
+    return result;
+}
+
+void FeatureTree::moveFeature(int fromIndex, int toIndex) {
+    if (fromIndex < 0 || fromIndex >= static_cast<int>(m_features.size()))
+        return;
+    if (toIndex < 0 || toIndex >= static_cast<int>(m_features.size())) return;
+    if (fromIndex == toIndex) return;
+
+    auto feat = std::move(
+        m_features[static_cast<size_t>(fromIndex)]);
+    m_features.erase(m_features.begin() + fromIndex);
+    m_features.insert(m_features.begin() + toIndex, std::move(feat));
 }
 
 }  // namespace hz::doc

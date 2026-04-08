@@ -3,6 +3,7 @@
 #include "horizon/math/Vec3.h"
 #include "horizon/topology/Solid.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +31,16 @@ public:
     /// @return The resulting solid, or nullptr on failure.
     virtual std::unique_ptr<topo::Solid> execute(
         std::unique_ptr<topo::Solid> inputSolid) const = 0;
+
+    /// Return editable parameters as name/value pairs.
+    virtual std::map<std::string, double> parameters() const { return {}; }
+
+    /// Set a parameter by name.  Returns true if accepted.
+    virtual bool setParameter(const std::string& name, double value) {
+        (void)name;
+        (void)value;
+        return false;
+    }
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.
@@ -42,6 +53,8 @@ public:
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(
         std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
 
 private:
     std::shared_ptr<Sketch> m_sketch;
@@ -63,6 +76,8 @@ public:
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(
         std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
 
 private:
     std::shared_ptr<Sketch> m_sketch;
@@ -72,6 +87,14 @@ private:
     std::string m_featureID;
 
     static int s_nextID;
+};
+
+/// Result of building the feature tree with diagnostics.
+struct BuildResult {
+    std::unique_ptr<topo::Solid> solid;
+    int lastSuccessfulFeature = -1;
+    std::string failureMessage;
+    int failedFeatureIndex = -1;
 };
 
 /// Ordered list of parametric features that can be replayed to rebuild a solid.
@@ -95,6 +118,9 @@ public:
     /// Access a feature by index (read-only).
     const Feature* feature(size_t index) const;
 
+    /// Access a feature by index (mutable).
+    Feature* feature(size_t index);
+
     /// Remove all features.
     void clear();
 
@@ -102,8 +128,21 @@ public:
     /// Returns nullptr if the tree is empty or any feature fails.
     std::unique_ptr<topo::Solid> build() const;
 
+    /// Rebuild with diagnostics: records which feature failed and why.
+    /// Respects the rollback index (features beyond it are skipped).
+    BuildResult buildWithDiagnostics() const;
+
+    /// Rollback index: features after this index are suppressed.
+    /// -1 means no rollback (all features active).
+    int rollbackIndex() const { return m_rollbackIndex; }
+    void setRollbackIndex(int index) { m_rollbackIndex = index; }
+
+    /// Move a feature from one position to another.
+    void moveFeature(int fromIndex, int toIndex);
+
 private:
     std::vector<std::unique_ptr<Feature>> m_features;
+    int m_rollbackIndex = -1;
 };
 
 }  // namespace hz::doc

@@ -41,6 +41,7 @@
 #include "horizon/ui/InsertBlockTool.h"
 #include "horizon/ui/InsertBlockDialog.h"
 #include "horizon/ui/RibbonBar.h"
+#include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/IconGenerator.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/math/BoundingBox.h"
@@ -99,6 +100,17 @@ MainWindow::MainWindow(QWidget* parent)
 
     tabifyDockWidget(m_propertyPanel, m_layerPanel);
     m_propertyPanel->raise();
+
+    // Feature tree panel (left dock)
+    m_featureTreePanel = new FeatureTreePanel(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_featureTreePanel);
+
+    connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked,
+            this, &MainWindow::onFeatureDoubleClicked);
+    connect(m_featureTreePanel, &FeatureTreePanel::featureReordered,
+            this, &MainWindow::onFeatureReordered);
+    connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged,
+            this, &MainWindow::onRollbackChanged);
 
     // Build UI chrome.
     createMenus();
@@ -1636,6 +1648,76 @@ void MainWindow::onChamfer() {
     m_viewport->camera().setIsometricView();
     m_viewport->update();
     m_statusPrompt->setText(tr("Chamfer completed."));
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Feature Tree Panel
+// ---------------------------------------------------------------------------
+
+void MainWindow::onFeatureDoubleClicked(int featureIndex) {
+    auto* feat = m_featureTree.feature(static_cast<size_t>(featureIndex));
+    if (!feat) return;
+
+    auto params = feat->parameters();
+    bool changed = false;
+
+    for (auto& [paramName, paramValue] : params) {
+        bool ok = false;
+        double newValue = QInputDialog::getDouble(
+            this, tr("Edit %1").arg(QString::fromStdString(feat->name())),
+            QString::fromStdString(paramName) + ":", paramValue, 0.001, 1e6, 3,
+            &ok);
+        if (ok && newValue != paramValue) {
+            feat->setParameter(paramName, newValue);
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        rebuildFeatureTree();
+    }
+}
+
+void MainWindow::onFeatureReordered(int fromIndex, int toIndex) {
+    m_featureTree.moveFeature(fromIndex, toIndex);
+    rebuildFeatureTree();
+}
+
+void MainWindow::onRollbackChanged(int newIndex) {
+    m_featureTree.setRollbackIndex(newIndex);
+    rebuildFeatureTree();
+}
+
+void MainWindow::rebuildFeatureTree() {
+    auto result = m_featureTree.buildWithDiagnostics();
+
+    m_featureTreePanel->clearFailures();
+    m_featureTreePanel->refresh(m_featureTree);
+
+    if (result.failedFeatureIndex >= 0) {
+        m_featureTreePanel->markFailed(result.failedFeatureIndex,
+                                        result.failureMessage);
+        statusBar()->showMessage(
+            tr("Feature rebuild failed at feature %1: %2")
+                .arg(result.failedFeatureIndex)
+                .arg(QString::fromStdString(result.failureMessage)));
+    }
+
+    // Update viewport: clear existing 3D nodes and add the rebuilt solid
+    m_viewport->sceneGraph().clear();
+
+    if (result.solid) {
+        auto meshData =
+            model::SolidTessellator::tessellate(*result.solid, 0.1);
+        auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
+        node->setMesh(
+            std::make_unique<render::MeshData>(std::move(meshData)));
+        node->setMaterial(
+            render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
+        m_viewport->sceneGraph().addNode(node);
+    }
+
+    m_viewport->update();
 }
 
 }  // namespace hz::ui
