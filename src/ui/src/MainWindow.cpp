@@ -53,6 +53,8 @@
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/BooleanOp.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/render/SceneGraph.h"
 
 #include <numbers>
@@ -429,6 +431,10 @@ void MainWindow::createRibbonBar() {
     addAction(solidBar, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
     addAction(solidBar, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
     addAction(solidBar, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
+    solidBar->addSeparator();
+    addAction(solidBar, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
+    addAction(solidBar, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
+    addAction(solidBar, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
     m_ribbonBar->addTab(tr("3D"), solidBar);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
@@ -1482,6 +1488,89 @@ void MainWindow::onRevolveSketch() {
     m_viewport->camera().setIsometricView();
     m_viewport->update();
     m_statusPrompt->setText(tr("Revolved successfully."));
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Boolean Operations
+// ---------------------------------------------------------------------------
+
+void MainWindow::onBooleanUnion() {
+    // Demo: union of two overlapping boxes.
+    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = model::PrimitiveFactory::makeBox(10, 10, 10);
+    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
+        v.point.x += 5.0;
+    }
+
+    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Union);
+    if (!result) {
+        statusBar()->showMessage(tr("Boolean union failed"));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Boolean Union");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.4, 0.75, 0.55}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Boolean union completed."));
+}
+
+void MainWindow::onBooleanSubtract() {
+    // Demo: box with a rectangular channel cut through it.
+    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = model::PrimitiveFactory::makeBox(4, 4, 20);
+    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
+        v.point.x += 3.0;
+        v.point.y += 3.0;
+        v.point.z -= 5.0;
+    }
+
+    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Subtract);
+    if (!result) {
+        statusBar()->showMessage(tr("Boolean subtract failed"));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Boolean Subtract");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.85, 0.45, 0.45}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Boolean subtract completed."));
+}
+
+void MainWindow::onBooleanIntersect() {
+    // Demo: intersection of two overlapping boxes.
+    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = model::PrimitiveFactory::makeBox(10, 10, 10);
+    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
+        v.point.x += 5.0;
+        v.point.y += 5.0;
+        v.point.z += 5.0;
+    }
+
+    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Intersect);
+    if (!result) {
+        statusBar()->showMessage(tr("Boolean intersect failed"));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Boolean Intersect");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.55, 0.55, 0.85}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Boolean intersect completed."));
 }
 
 }  // namespace hz::ui

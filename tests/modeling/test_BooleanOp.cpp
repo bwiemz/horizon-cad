@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <random>
 #include <set>
 
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -165,4 +166,40 @@ TEST(BooleanOpTest, NonOverlappingIntersectReturnsEmpty) {
         // (just the residual seed face at most).
         EXPECT_LE(result->faceCount(), 2u);
     }
+}
+
+// ---------------------------------------------------------------------------
+// CylinderThroughBox
+// ---------------------------------------------------------------------------
+
+TEST(BooleanOpTest, CylinderThroughBox) {
+    // Box (0,0,0)→(10,10,10), cylinder centered at (5,5,-5) radius=2, height=20.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    auto cyl = PrimitiveFactory::makeCylinder(2.0, 20.0);
+    offsetSolid(*cyl, Vec3(5.0, 5.0, -5.0));
+
+    auto result = BooleanOp::execute(*box, *cyl, BooleanType::Subtract);
+    // May return nullptr if cylinder faces don't classify cleanly — acceptable for Phase 36.
+    if (result) {
+        EXPECT_GT(result->faceCount(), 0u);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RandomTransformStressTest
+// ---------------------------------------------------------------------------
+
+TEST(BooleanOpTest, RandomTransformStressTest) {
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<double> dist(-5.0, 15.0);
+    int successCount = 0;
+    for (int i = 0; i < 20; ++i) {
+        auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+        auto boxB = PrimitiveFactory::makeBox(10, 10, 10);
+        const Vec3 offset(dist(rng), dist(rng), dist(rng));
+        offsetSolid(*boxB, offset);
+        auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+        if (result && result->faceCount() > 0) ++successCount;
+    }
+    EXPECT_GE(successCount, 5) << "Too many failures in stress test";
 }

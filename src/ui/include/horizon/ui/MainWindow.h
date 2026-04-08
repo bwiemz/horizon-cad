@@ -102,6 +102,10 @@ private slots:
     void onExtrudeSketch();
     void onRevolveSketch();
 
+    void onBooleanUnion();
+    void onBooleanSubtract();
+    void onBooleanIntersect();
+
     void onCreateBlock();
     void onInsertBlock();
     void onExplode();
