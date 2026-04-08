@@ -4,6 +4,8 @@ add_library(hz_modeling STATIC
     src/Extrude.cpp
     src/Revolve.cpp
     src/SolidTessellator.cpp
+    src/ExactPredicates.cpp
+    src/SurfaceSurfaceIntersection.cpp
 )
 
 target_include_directories(hz_modeling
