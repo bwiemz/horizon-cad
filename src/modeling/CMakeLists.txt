@@ -2,6 +2,7 @@ add_library(hz_modeling STATIC
     src/PrimitiveFactory.cpp
     src/ProfileValidator.cpp
     src/Extrude.cpp
+    src/Revolve.cpp
     src/SolidTessellator.cpp
 )
 
