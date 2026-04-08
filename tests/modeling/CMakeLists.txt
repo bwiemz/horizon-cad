@@ -7,6 +7,8 @@ add_executable(hz_modeling_tests
     test_ExactPredicates.cpp
     test_SurfaceSurfaceIntersection.cpp
     test_BooleanOp.cpp
+    test_FilletOp.cpp
+    test_ChamferOp.cpp
 )
 
 target_link_libraries(hz_modeling_tests

@@ -106,6 +106,9 @@ private slots:
     void onBooleanSubtract();
     void onBooleanIntersect();
 
+    void onFillet();
+    void onChamfer();
+
     void onCreateBlock();
     void onInsertBlock();
     void onExplode();

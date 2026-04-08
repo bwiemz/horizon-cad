@@ -343,7 +343,8 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
     auto solid = std::make_unique<Solid>();
 
     int numVerts = static_cast<int>(uniquePositions.size());
-    if (numVerts < 4 || static_cast<int>(newFaces.size()) < 4) {
+    int numFaces = static_cast<int>(newFaces.size());
+    if (numVerts < 4 || numFaces < 4) {
         result.errorMessage = "Degenerate solid after chamfer";
         return result;
     }
@@ -365,39 +366,46 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
         existingEdges.insert({i + 1, i});
     }
 
-    auto hasEdge = [&](int a, int b) -> bool {
-        return existingEdges.count({a, b}) > 0;
-    };
+    // Close chain: connect last vertex to first.
+    {
+        int last = numVerts - 1;
+        HalfEdge* heA = findHE(fOuter, verts[last]);
+        HalfEdge* heB = findHE(fOuter, verts[0]);
+        if (heA && heB) {
+            euler::makeEdgeFace(*solid, heA, heB);
+            existingEdges.insert({last, 0});
+            existingEdges.insert({0, last});
+        }
+    }
 
-    for (size_t fi = 0; fi + 1 < newFaces.size(); ++fi) {
-        const auto& indices = faceVertexIndices[fi];
-        int n = static_cast<int>(indices.size());
+    // Systematically close faces using MEF with iterative convergence.
+    bool progress = true;
+    int maxIter = numFaces * numVerts;
+    while (progress && maxIter-- > 0) {
+        progress = false;
+        for (size_t fi = 0; fi + 1 < newFaces.size(); ++fi) {
+            const auto& indices = faceVertexIndices[fi];
+            int n = static_cast<int>(indices.size());
 
-        for (int ei = 0; ei < n; ++ei) {
-            int a = indices[ei];
-            int b = indices[(ei + 1) % n];
-            if (!hasEdge(a, b)) {
+            for (int ei = 0; ei < n; ++ei) {
+                int a = indices[ei];
+                int b = indices[(ei + 1) % n];
+                if (existingEdges.count({a, b})) continue;
+
                 Face* targetFace = nullptr;
                 for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
                     auto fv = faceVertices(&f);
-                    bool hasA = false;
-                    bool hasB = false;
+                    bool hasA = false, hasB = false;
                     for (auto* fvv : fv) {
-                        if (fvv == verts[a]) {
-                            hasA = true;
-                        }
-                        if (fvv == verts[b]) {
-                            hasB = true;
-                        }
+                        if (fvv == verts[a]) hasA = true;
+                        if (fvv == verts[b]) hasB = true;
                     }
                     if (hasA && hasB) {
                         targetFace = &f;
                         break;
                     }
                 }
-                if (!targetFace) {
-                    continue;
-                }
+                if (!targetFace) continue;
 
                 HalfEdge* heA = findHE(targetFace, verts[a]);
                 HalfEdge* heB = findHE(targetFace, verts[b]);
@@ -405,49 +413,62 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
                     euler::makeEdgeFace(*solid, heA, heB);
                     existingEdges.insert({a, b});
                     existingEdges.insert({b, a});
+                    progress = true;
                 }
             }
         }
     }
 
-    // Assign TopologyIDs to faces (match by vertex positions).
+    // Assign TopologyIDs to faces using vertex-set containment matching.
+    std::set<size_t> assignedNewFaces;
     for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
         auto fv = faceVertices(&f);
+        std::vector<Vec3> fvPositions;
+        fvPositions.reserve(fv.size());
+        for (auto* v : fv) {
+            fvPositions.push_back(v->point);
+        }
+        auto containsPoint = [&](const Vec3& p) -> bool {
+            for (const auto& q : fvPositions) {
+                if (p.distanceTo(q) < 1e-6) return true;
+            }
+            return false;
+        };
+
+        double bestDist = 1e30;
+        size_t bestFi = newFaces.size();
         for (size_t fi = 0; fi < newFaces.size(); ++fi) {
+            if (assignedNewFaces.count(fi)) continue;
             const auto& nfVerts = newFaces[fi].vertices;
-            if (fv.size() != nfVerts.size()) {
-                continue;
+            bool allFound = true;
+            for (const auto& p : nfVerts) {
+                if (!containsPoint(p)) { allFound = false; break; }
             }
-            bool matched = false;
-            for (size_t start = 0; start < nfVerts.size(); ++start) {
-                bool ok = true;
-                for (size_t j = 0; j < nfVerts.size(); ++j) {
-                    size_t idx = (start + j) % nfVerts.size();
-                    if (fv[j]->point.distanceTo(nfVerts[idx]) > 1e-6) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
-                    matched = true;
-                    break;
-                }
-                ok = true;
-                for (size_t j = 0; j < nfVerts.size(); ++j) {
-                    size_t idx = (start + nfVerts.size() - j) % nfVerts.size();
-                    if (fv[j]->point.distanceTo(nfVerts[idx]) > 1e-6) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
-                    matched = true;
-                    break;
-                }
+            if (allFound) {
+                Vec3 centroid(0, 0, 0);
+                for (auto* v : fv) centroid = centroid + v->point;
+                if (!fv.empty()) centroid = centroid * (1.0 / static_cast<double>(fv.size()));
+                Vec3 nfCentroid(0, 0, 0);
+                for (const auto& p : nfVerts) nfCentroid = nfCentroid + p;
+                if (!nfVerts.empty())
+                    nfCentroid = nfCentroid * (1.0 / static_cast<double>(nfVerts.size()));
+                double d = centroid.distanceTo(nfCentroid);
+                if (d < bestDist) { bestDist = d; bestFi = fi; }
             }
-            if (matched) {
-                f.topoId = newFaces[fi].topoId;
-                break;
+        }
+        if (bestFi < newFaces.size()) {
+            f.topoId = newFaces[bestFi].topoId;
+            assignedNewFaces.insert(bestFi);
+        }
+    }
+
+    // Any face still without a topoId gets a generic derived ID.
+    {
+        int unassigned = 0;
+        for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
+            if (!f.topoId.isValid()) {
+                f.topoId = TopologyID::make(featureID, "face" + std::to_string(unassigned));
+                ++unassigned;
             }
         }
     }

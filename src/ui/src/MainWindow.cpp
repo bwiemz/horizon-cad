@@ -54,6 +54,8 @@
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/ChamferOp.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/render/SceneGraph.h"
 
@@ -435,6 +437,9 @@ void MainWindow::createRibbonBar() {
     addAction(solidBar, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
     addAction(solidBar, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
     addAction(solidBar, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
+    solidBar->addSeparator();
+    addAction(solidBar, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
+    addAction(solidBar, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
     m_ribbonBar->addTab(tr("3D"), solidBar);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
@@ -1571,6 +1576,66 @@ void MainWindow::onBooleanIntersect() {
     m_viewport->camera().setIsometricView();
     m_viewport->update();
     m_statusPrompt->setText(tr("Boolean intersect completed."));
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Fillet / Chamfer (3D solid operations)
+// ---------------------------------------------------------------------------
+
+void MainWindow::onFillet() {
+    // Demo: fillet one edge of a box.
+    auto box = model::PrimitiveFactory::makeBox(10, 10, 10);
+    auto& edges = box->edges();
+    if (edges.empty()) {
+        statusBar()->showMessage(tr("No edges to fillet"));
+        return;
+    }
+    std::vector<topo::TopologyID> edgeIds = {edges.front().topoId};
+
+    auto result = model::FilletOp::execute(*box, edgeIds, 1.0, "fillet_demo");
+    if (!result.solid || !result.errorMessage.empty()) {
+        statusBar()->showMessage(
+            tr("Fillet failed: %1").arg(QString::fromStdString(result.errorMessage)));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*result.solid, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Fillet Demo");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.35}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Fillet completed."));
+}
+
+void MainWindow::onChamfer() {
+    // Demo: chamfer one edge of a box.
+    auto box = model::PrimitiveFactory::makeBox(10, 10, 10);
+    auto& edges = box->edges();
+    if (edges.empty()) {
+        statusBar()->showMessage(tr("No edges to chamfer"));
+        return;
+    }
+    std::vector<topo::TopologyID> edgeIds = {edges.front().topoId};
+
+    auto result = model::ChamferOp::executeEqual(*box, edgeIds, 1.0, "chamfer_demo");
+    if (!result.solid || !result.errorMessage.empty()) {
+        statusBar()->showMessage(
+            tr("Chamfer failed: %1").arg(QString::fromStdString(result.errorMessage)));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*result.solid, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Chamfer Demo");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.35, 0.65, 0.85}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Chamfer completed."));
 }
 
 }  // namespace hz::ui

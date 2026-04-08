@@ -396,10 +396,9 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
     }
 
     // -- Build the new solid using Euler operators --
-    // We use a general approach: build a convex-ish solid from the face vertex lists.
-    // First, collect all unique vertex positions.
+    // Collect unique vertex positions.
     std::vector<Vec3> uniquePositions;
-    std::map<size_t, std::vector<int>> faceVertexIndices;  // face index -> vertex indices
+    std::map<size_t, std::vector<int>> faceVertexIndices;
 
     auto findOrAddVertex = [&](const Vec3& pos) -> int {
         for (size_t i = 0; i < uniquePositions.size(); ++i) {
@@ -419,92 +418,88 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
         faceVertexIndices[fi] = std::move(indices);
     }
 
-    // Build topology using Euler operators.
-    auto solid = std::make_unique<Solid>();
-
     int numVerts = static_cast<int>(uniquePositions.size());
     int numFaces = static_cast<int>(newFaces.size());
-
-    // We need at least 4 vertices and 4 faces for a valid solid.
     if (numVerts < 4 || numFaces < 4) {
         result.errorMessage = "Degenerate solid after fillet (too few vertices or faces)";
         return result;
     }
 
-    // Allocate vertex pointers for the new solid.
+    // Build an adjacency structure: for each vertex, which faces use it.
+    std::map<int, std::vector<size_t>> vertToFaces;
+    for (size_t fi = 0; fi < newFaces.size(); ++fi) {
+        for (int vi : faceVertexIndices[fi]) {
+            vertToFaces[vi].push_back(fi);
+        }
+    }
+
+    // Build the solid topology using Euler operators.
+    auto solid = std::make_unique<Solid>();
     std::vector<Vertex*> verts(numVerts, nullptr);
 
-    // Step 1: MVFS with the first vertex.
+    // MVFS: first vertex + outer face.
     auto [v0, fOuter, shell] = euler::makeVertexFaceSolid(*solid, uniquePositions[0]);
     verts[0] = v0;
 
-    // Step 2: MEV to create all remaining vertices as a chain from v0.
+    // MEV: create all vertices as a chain from v0 on fOuter.
     for (int i = 1; i < numVerts; ++i) {
         HalfEdge* heAt = findHE(fOuter, verts[i - 1]);
         auto [edge, newV] = euler::makeEdgeVertex(*solid, heAt, fOuter, uniquePositions[i]);
         verts[i] = newV;
     }
 
-    // Step 3: MEF to close faces.
-    // We need to close faces by connecting vertices that should be linked.
-    // Build edges for each face boundary.
-    //
-    // First, track which edges already exist in the topology.
-    // After the MEV chain: v0-v1-v2-...-v(n-1) are connected in a chain,
-    // all on fOuter.  We need to add the cross-edges for each face.
-
-    // Track existing edges as vertex pairs.
+    // Track which vertex pairs have edges.
     std::set<std::pair<int, int>> existingEdges;
     for (int i = 0; i + 1 < numVerts; ++i) {
         existingEdges.insert({i, i + 1});
         existingEdges.insert({i + 1, i});
     }
 
-    auto hasEdge = [&](int a, int b) -> bool {
-        return existingEdges.count({a, b}) > 0;
-    };
+    // Close chain: connect last vertex to first.
+    {
+        int last = numVerts - 1;
+        HalfEdge* heA = findHE(fOuter, verts[last]);
+        HalfEdge* heB = findHE(fOuter, verts[0]);
+        if (heA && heB) {
+            euler::makeEdgeFace(*solid, heA, heB);
+            existingEdges.insert({last, 0});
+            existingEdges.insert({0, last});
+        }
+    }
 
-    // Process faces to build the topology.
-    // We close faces one at a time using MEF on vertex pairs that don't yet have edges.
-    // The order matters: we process all but the last face (the last face closes automatically).
-    for (size_t fi = 0; fi + 1 < newFaces.size(); ++fi) {
-        const auto& indices = faceVertexIndices[fi];
-        int n = static_cast<int>(indices.size());
+    // Now systematically close faces using MEF.
+    // Strategy: process all faces except the last (which closes automatically).
+    // For each face, find a diagonal (non-adjacent pair of vertices) that doesn't
+    // have an edge yet and where both vertices are on the same topological face.
+    // Repeat until all faces are closed.
+    bool progress = true;
+    int maxIter = numFaces * numVerts;  // Safety limit.
+    while (progress && maxIter-- > 0) {
+        progress = false;
+        for (size_t fi = 0; fi + 1 < newFaces.size(); ++fi) {
+            const auto& indices = faceVertexIndices[fi];
+            int n = static_cast<int>(indices.size());
 
-        // For this face, we need to ensure all edges exist.
-        // The face boundary is indices[0]-indices[1]-...-indices[n-1]-indices[0].
-        // Find an edge that doesn't exist yet and create it with MEF.
-        for (int ei = 0; ei < n; ++ei) {
-            int a = indices[ei];
-            int b = indices[(ei + 1) % n];
-            if (!hasEdge(a, b)) {
-                // Create this edge with MEF.
-                // Find the half-edges at verts[a] and verts[b] on the same face.
-                // We need to find a face that contains both vertices.
-                // Since all unassigned edges are on fOuter (the remaining face),
-                // we search there.
+            for (int ei = 0; ei < n; ++ei) {
+                int a = indices[ei];
+                int b = indices[(ei + 1) % n];
+                if (existingEdges.count({a, b})) continue;
+
+                // Find a topological face containing both vertices.
                 Face* targetFace = nullptr;
-                // Find a face containing both vertices.
                 for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
                     auto fv = faceVertices(&f);
-                    bool hasA = false;
-                    bool hasB = false;
+                    bool hasA = false, hasB = false;
                     for (auto* fvv : fv) {
-                        if (fvv == verts[a]) {
-                            hasA = true;
-                        }
-                        if (fvv == verts[b]) {
-                            hasB = true;
-                        }
+                        if (fvv == verts[a]) hasA = true;
+                        if (fvv == verts[b]) hasB = true;
                     }
                     if (hasA && hasB) {
                         targetFace = &f;
                         break;
                     }
                 }
-                if (!targetFace) {
-                    continue;  // Skip if can't find face.
-                }
+                if (!targetFace) continue;
 
                 HalfEdge* heA = findHE(targetFace, verts[a]);
                 HalfEdge* heB = findHE(targetFace, verts[b]);
@@ -512,53 +507,74 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
                     euler::makeEdgeFace(*solid, heA, heB);
                     existingEdges.insert({a, b});
                     existingEdges.insert({b, a});
+                    progress = true;
                 }
             }
         }
     }
 
     // -- Assign TopologyIDs --
-    // Faces: match by comparing vertex positions to the face data.
+    // First pass: match rebuilt faces to newFaces by checking if every vertex of
+    // the newFace data set is present in the rebuilt face's vertex set.
+    std::set<size_t> assignedNewFaces;
     for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
         auto fv = faceVertices(&f);
-        // Try to match against newFaces.
+        // Build a set of vertex positions for fast lookup.
+        std::vector<Vec3> fvPositions;
+        fvPositions.reserve(fv.size());
+        for (auto* v : fv) {
+            fvPositions.push_back(v->point);
+        }
+
+        auto containsPoint = [&](const Vec3& p) -> bool {
+            for (const auto& q : fvPositions) {
+                if (p.distanceTo(q) < 1e-6) return true;
+            }
+            return false;
+        };
+
+        // Find a newFace whose vertices are all present in this rebuilt face.
+        double bestDist = 1e30;
+        size_t bestFi = newFaces.size();
         for (size_t fi = 0; fi < newFaces.size(); ++fi) {
+            if (assignedNewFaces.count(fi)) continue;
             const auto& nfVerts = newFaces[fi].vertices;
-            if (fv.size() != nfVerts.size()) {
-                continue;
-            }
-            // Check if the face vertices match (in any rotation).
-            bool matched = false;
-            for (size_t start = 0; start < nfVerts.size(); ++start) {
-                bool ok = true;
-                for (size_t j = 0; j < nfVerts.size(); ++j) {
-                    size_t idx = (start + j) % nfVerts.size();
-                    if (fv[j]->point.distanceTo(nfVerts[idx]) > 1e-6) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
-                    matched = true;
-                    break;
-                }
-                // Try reversed order too.
-                ok = true;
-                for (size_t j = 0; j < nfVerts.size(); ++j) {
-                    size_t idx = (start + nfVerts.size() - j) % nfVerts.size();
-                    if (fv[j]->point.distanceTo(nfVerts[idx]) > 1e-6) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
-                    matched = true;
+            bool allFound = true;
+            for (const auto& p : nfVerts) {
+                if (!containsPoint(p)) {
+                    allFound = false;
                     break;
                 }
             }
-            if (matched) {
-                f.topoId = newFaces[fi].topoId;
-                break;
+            if (allFound) {
+                // Compute centroid distance for tie-breaking.
+                Vec3 centroid(0, 0, 0);
+                for (auto* v : fv) centroid = centroid + v->point;
+                if (!fv.empty()) centroid = centroid * (1.0 / static_cast<double>(fv.size()));
+                Vec3 nfCentroid(0, 0, 0);
+                for (const auto& p : nfVerts) nfCentroid = nfCentroid + p;
+                if (!nfVerts.empty())
+                    nfCentroid = nfCentroid * (1.0 / static_cast<double>(nfVerts.size()));
+                double d = centroid.distanceTo(nfCentroid);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestFi = fi;
+                }
+            }
+        }
+        if (bestFi < newFaces.size()) {
+            f.topoId = newFaces[bestFi].topoId;
+            assignedNewFaces.insert(bestFi);
+        }
+    }
+
+    // Second pass: any face still without a topoId gets a generic derived ID.
+    {
+        int unassigned = 0;
+        for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
+            if (!f.topoId.isValid()) {
+                f.topoId = TopologyID::make(featureID, "face" + std::to_string(unassigned));
+                ++unassigned;
             }
         }
     }
