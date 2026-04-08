@@ -7,6 +7,8 @@ add_library(hz_modeling STATIC
     src/ExactPredicates.cpp
     src/SurfaceSurfaceIntersection.cpp
     src/BooleanOp.cpp
+    src/FilletOp.cpp
+    src/ChamferOp.cpp
 )
 
 target_include_directories(hz_modeling
