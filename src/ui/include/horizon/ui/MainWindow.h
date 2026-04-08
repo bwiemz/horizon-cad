@@ -99,6 +99,9 @@ private slots:
     void onPrimitiveCone();
     void onPrimitiveTorus();
 
+    void onExtrudeSketch();
+    void onRevolveSketch();
+
     void onCreateBlock();
     void onInsertBlock();
     void onExplode();

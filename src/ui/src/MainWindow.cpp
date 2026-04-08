@@ -51,7 +51,11 @@
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/Revolve.h"
 #include "horizon/render/SceneGraph.h"
+
+#include <numbers>
 
 #include <QAction>
 #include <QActionGroup>
@@ -423,6 +427,8 @@ void MainWindow::createRibbonBar() {
     addAction(solidBar, "sphere", tr("Sphere"), this, &MainWindow::onPrimitiveSphere);
     addAction(solidBar, "cone", tr("Cone"), this, &MainWindow::onPrimitiveCone);
     addAction(solidBar, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
+    addAction(solidBar, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
+    addAction(solidBar, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
     m_ribbonBar->addTab(tr("3D"), solidBar);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
@@ -1392,6 +1398,90 @@ void MainWindow::onPrimitiveTorus() {
     m_viewport->camera().setIsometricView();
     m_viewport->update();
     m_statusPrompt->setText(tr("Torus primitive added."));
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Extrude and Revolve
+// ---------------------------------------------------------------------------
+
+void MainWindow::onExtrudeSketch() {
+    if (!m_viewport || !m_viewport->document()) return;
+
+    auto* sketch = m_viewport->activeSketch();
+    const auto& entities = sketch ? sketch->entities()
+                                   : m_viewport->document()->draftDocument().entities();
+
+    if (entities.empty()) {
+        statusBar()->showMessage(tr("Draw a closed profile first"));
+        return;
+    }
+
+    bool ok;
+    double distance =
+        QInputDialog::getDouble(this, tr("Extrude"), tr("Distance:"), 10.0, 0.01, 1e6, 2, &ok);
+    if (!ok) return;
+
+    math::Vec3 direction = sketch ? sketch->plane().normal() : math::Vec3::UnitZ;
+    draft::SketchPlane plane = sketch ? sketch->plane() : draft::SketchPlane();
+
+    auto solid = model::Extrude::execute(entities, plane, direction, distance, "extrude_1");
+    if (!solid) {
+        statusBar()->showMessage(tr("Extrude failed: profile is not a closed loop"));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Extrude");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    if (sketch) m_viewport->setActiveSketch(nullptr);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Extruded successfully."));
+}
+
+void MainWindow::onRevolveSketch() {
+    if (!m_viewport || !m_viewport->document()) return;
+
+    auto* sketch = m_viewport->activeSketch();
+    const auto& entities = sketch ? sketch->entities()
+                                   : m_viewport->document()->draftDocument().entities();
+
+    if (entities.empty()) {
+        statusBar()->showMessage(tr("Draw a closed profile first"));
+        return;
+    }
+
+    bool ok;
+    double angleDeg =
+        QInputDialog::getDouble(this, tr("Revolve"), tr("Angle (degrees):"), 360.0, 1.0, 360.0, 1, &ok);
+    if (!ok) return;
+
+    const double angle = angleDeg * std::numbers::pi / 180.0;
+
+    draft::SketchPlane plane = sketch ? sketch->plane() : draft::SketchPlane();
+    // Default revolve axis: Y axis through origin (world space)
+    math::Vec3 axisPoint = math::Vec3::Zero;
+    math::Vec3 axisDir = math::Vec3::UnitY;
+
+    auto solid = model::Revolve::execute(entities, plane, axisPoint, axisDir, angle, "revolve_1");
+    if (!solid) {
+        statusBar()->showMessage(tr("Revolve failed: profile is not a closed loop"));
+        return;
+    }
+
+    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
+    auto node = std::make_shared<render::SceneNode>("Revolve");
+    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.55}, 0.15f, 0.5f, 32.0f});
+
+    m_viewport->sceneGraph().addNode(node);
+    if (sketch) m_viewport->setActiveSketch(nullptr);
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Revolved successfully."));
 }
 
 }  // namespace hz::ui
