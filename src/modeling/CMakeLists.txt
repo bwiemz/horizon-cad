@@ -6,6 +6,7 @@ add_library(hz_modeling STATIC
     src/SolidTessellator.cpp
     src/ExactPredicates.cpp
     src/SurfaceSurfaceIntersection.cpp
+    src/BooleanOp.cpp
 )
 
 target_include_directories(hz_modeling

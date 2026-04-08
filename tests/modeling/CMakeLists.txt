@@ -6,6 +6,7 @@ add_executable(hz_modeling_tests
     test_SolidTessellator.cpp
     test_ExactPredicates.cpp
     test_SurfaceSurfaceIntersection.cpp
+    test_BooleanOp.cpp
 )
 
 target_link_libraries(hz_modeling_tests
