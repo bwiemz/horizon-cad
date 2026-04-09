@@ -2,6 +2,7 @@
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/drafting/DraftLine.h"
@@ -199,7 +200,7 @@ static json serializeEntity(const draft::DraftEntity& entity) {
 bool NativeFormat::save(const std::string& filePath,
                         const doc::Document& doc) {
     json root;
-    root["version"] = 14;
+    root["version"] = 15;
     root["type"] = "hcad";
 
     // --- Dimension style ---
@@ -434,6 +435,32 @@ bool NativeFormat::save(const std::string& filePath,
         sketchesArray.push_back(skObj);
     }
     root["sketches"] = sketchesArray;
+
+    // --- Feature tree (v15+) ---
+    json featureTreeArray = json::array();
+    const auto& ftree = doc.featureTree();
+    for (size_t fi = 0; fi < ftree.featureCount(); ++fi) {
+        const auto* feat = ftree.feature(fi);
+        json fObj;
+        fObj["featureID"] = feat->featureID();
+
+        if (feat->name() == "Extrude") {
+            fObj["type"] = "extrude";
+            auto params = feat->parameters();
+            fObj["distance"] = params["distance"];
+            // Sketch reference: find the matching sketch index
+            // For now, store the sketch index based on the feature ordering.
+            fObj["sketchIndex"] = static_cast<int>(fi);
+        } else if (feat->name() == "Revolve") {
+            fObj["type"] = "revolve";
+            auto params = feat->parameters();
+            fObj["angle"] = params["angle"];
+            fObj["sketchIndex"] = static_cast<int>(fi);
+        }
+
+        featureTreeArray.push_back(fObj);
+    }
+    root["featureTree"] = featureTreeArray;
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
@@ -938,6 +965,40 @@ bool NativeFormat::load(const std::string& filePath,
         // default sketch as well so that defaultSketch() contains them.
         for (const auto& entity : doc.draftDocument().entities()) {
             doc.defaultSketch().addEntity(entity);
+        }
+    }
+
+    // --- Load feature tree (v15+) ---
+    if (root.contains("featureTree")) {
+        doc.featureTree().clear();
+        for (const auto& fObj : root["featureTree"]) {
+            try {
+                std::string ftype = fObj.value("type", "");
+                int sketchIndex = fObj.value("sketchIndex", -1);
+
+                // Resolve the sketch for this feature
+                std::shared_ptr<doc::Sketch> sketch;
+                if (sketchIndex >= 0 &&
+                    sketchIndex < static_cast<int>(doc.sketches().size())) {
+                    sketch = doc.sketches()[static_cast<size_t>(sketchIndex)];
+                }
+                if (!sketch) continue;
+
+                if (ftype == "extrude") {
+                    double distance = fObj.value("distance", 1.0);
+                    auto feat = std::make_unique<doc::ExtrudeFeature>(
+                        sketch, hz::math::Vec3(0, 0, 1), distance);
+                    doc.featureTree().addFeature(std::move(feat));
+                } else if (ftype == "revolve") {
+                    double angle = fObj.value("angle", 6.283185307179586);
+                    auto feat = std::make_unique<doc::RevolveFeature>(
+                        sketch, hz::math::Vec3::Zero, hz::math::Vec3::UnitY,
+                        angle);
+                    doc.featureTree().addFeature(std::move(feat));
+                }
+            } catch (const nlohmann::json::exception&) {
+                continue;  // Skip malformed features.
+            }
         }
     }
 

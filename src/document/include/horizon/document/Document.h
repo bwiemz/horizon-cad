@@ -2,6 +2,7 @@
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ExpressionEngine.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/document/ParameterRegistry.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftDocument.h"
@@ -60,6 +61,11 @@ public:
     Sketch& defaultSketch() { return *m_defaultSketch; }
     const Sketch& defaultSketch() const { return *m_defaultSketch; }
 
+    // --- Feature tree (parametric history) ---
+
+    FeatureTree& featureTree() { return m_featureTree; }
+    const FeatureTree& featureTree() const { return m_featureTree; }
+
     // --- Dirty tracking ---
 
     bool isDirty() const { return m_dirty; }
@@ -80,6 +86,7 @@ private:
     std::string m_filePath;
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_defaultSketch;
+    FeatureTree m_featureTree;
 };
 
 }  // namespace hz::doc

@@ -83,6 +83,66 @@ jobs:
       - name: Test
         run: ctest --test-dir build/${{ matrix.preset }} -C Debug --output-on-failure
 
+  asan:
+    name: AddressSanitizer
+    runs-on: ubuntu-22.04
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+        env:
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            ninja-build \
+            pkg-config
+
+      - name: Configure with ASan
+        run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build/linux-debug --config Debug
+
+      - name: Test
+        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure
+
   format-check:
     name: Format Check
     runs-on: ubuntu-22.04
