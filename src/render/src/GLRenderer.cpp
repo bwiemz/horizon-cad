@@ -3,6 +3,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 
+#include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <algorithm>
 
@@ -42,28 +43,59 @@ out vec4 FragColor;
 uniform vec3 uViewPos;
 uniform vec3 uLightDir;
 uniform vec3 uObjectColor;
+uniform float uRoughness;   // 0..1
+uniform float uMetallic;    // 0..1
+uniform float uAlpha;       // opacity 0..1
+uniform vec4 uClipPlane;    // section plane (xyz=normal, w=offset), (0,0,0,0) = disabled
 
 void main() {
+    // Section-plane clipping.
+    if (length(uClipPlane.xyz) > 0.001) {
+        if (dot(vWorldPos, uClipPlane.xyz) + uClipPlane.w < 0.0)
+            discard;
+    }
+
     vec3 normal = normalize(vWorldNormal);
     vec3 lightDir = normalize(uLightDir);
-
-    // Ambient
-    float ambientStrength = 0.15;
-    vec3 ambient = ambientStrength * uObjectColor;
-
-    // Diffuse
-    float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = diff * uObjectColor;
-
-    // Specular (Phong)
-    float specularStrength = 0.5;
     vec3 viewDir = normalize(uViewPos - vWorldPos);
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-    vec3 specular = specularStrength * spec * vec3(1.0);
+    vec3 halfVec = normalize(lightDir + viewDir);
 
-    vec3 result = ambient + diffuse + specular;
-    FragColor = vec4(result, 1.0);
+    // PBR-lite: simplified Cook-Torrance with metallic-roughness.
+    float NdotL = max(dot(normal, lightDir), 0.0);
+    float NdotH = max(dot(normal, halfVec), 0.0);
+    float NdotV = max(dot(normal, viewDir), 0.001);
+
+    // Base reflectance: dielectrics ~0.04, metals use albedo.
+    vec3 F0 = mix(vec3(0.04), uObjectColor, uMetallic);
+
+    // Schlick Fresnel.
+    float cosTheta = max(dot(halfVec, viewDir), 0.0);
+    vec3 F = F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+
+    // GGX normal distribution.
+    float a = uRoughness * uRoughness;
+    float a2 = a * a;
+    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float D = a2 / (3.14159265 * denom * denom + 0.0001);
+
+    // Schlick-GGX geometry (Smith method).
+    float k = (uRoughness + 1.0) * (uRoughness + 1.0) / 8.0;
+    float G1_V = NdotV / (NdotV * (1.0 - k) + k);
+    float G1_L = NdotL / (NdotL * (1.0 - k) + k);
+    float G = G1_V * G1_L;
+
+    // Specular BRDF.
+    vec3 specular = (D * F * G) / (4.0 * NdotV * NdotL + 0.001);
+
+    // Diffuse (energy conservation: metals have no diffuse).
+    vec3 kD = (1.0 - F) * (1.0 - uMetallic);
+    vec3 diffuse = kD * uObjectColor / 3.14159265;
+
+    // Ambient approximation.
+    vec3 ambient = 0.15 * uObjectColor;
+
+    vec3 result = ambient + (diffuse + specular) * NdotL;
+    FragColor = vec4(result, uAlpha);
 }
 )glsl";
 
@@ -165,6 +197,58 @@ void main() {
 }
 )glsl";
 
+// ---- Embedded Picking Shader Sources (flat-color per node for GPU color-picking) ----
+
+static const char* kPickVertSrc = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec3 aPos;
+
+uniform mat4 uMVP;
+
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+}
+)glsl";
+
+static const char* kPickFragSrc = R"glsl(
+#version 330 core
+
+out vec4 FragColor;
+
+uniform vec3 uPickColor;
+
+void main() {
+    FragColor = vec4(uPickColor, 1.0);
+}
+)glsl";
+
+// ---- Embedded Edge Shader Sources (wireframe overlay on 3D solids) ----
+
+static const char* kEdgeVertSrc = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec3 aPos;
+
+uniform mat4 uMVP;
+
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+}
+)glsl";
+
+static const char* kEdgeFragSrc = R"glsl(
+#version 330 core
+
+out vec4 FragColor;
+
+uniform vec3 uEdgeColor;
+
+void main() {
+    FragColor = vec4(uEdgeColor, 1.0);
+}
+)glsl";
+
 // ---- GLRenderer Implementation ----
 
 GLRenderer::GLRenderer() = default;
@@ -218,6 +302,16 @@ void GLRenderer::initialize(QOpenGLExtraFunctions* gl) {
         return;
     }
 
+    if (!m_pickShader.create(kPickVertSrc, kPickFragSrc)) {
+        qWarning("GLRenderer: failed to create pick shader");
+        return;
+    }
+
+    if (!m_edgeShader.create(kEdgeVertSrc, kEdgeFragSrc)) {
+        qWarning("GLRenderer: failed to create edge shader");
+        return;
+    }
+
     // Initialize grid
     m_grid.initialize(gl);
 
@@ -265,37 +359,70 @@ void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
     math::Mat4 proj = camera.projectionMatrix();
     math::Mat4 vp = proj * view;
 
+    // Separate opaque and transparent nodes for correct rendering order.
+    std::vector<const SceneNode*> opaqueNodes;
+    std::vector<const SceneNode*> translucentNodes;
+    for (const SceneNode* node : visibleNodes) {
+        if (node->material().alpha < 1.0f) {
+            translucentNodes.push_back(node);
+        } else {
+            opaqueNodes.push_back(node);
+        }
+    }
+
     m_phongShader.bind();
 
     // Light direction: from upper-right-front (in world space)
     math::Vec3 lightDir = math::Vec3(0.3, 0.5, 0.8).normalized();
     m_phongShader.setUniform("uViewPos", camera.eye());
     m_phongShader.setUniform("uLightDir", lightDir);
+    m_phongShader.setUniform("uClipPlane", m_clipPlane);
 
-    for (const SceneNode* node : visibleNodes) {
-        // Ensure we have a GPU mesh buffer for this node
-        if (m_meshCache.find(node->id()) == m_meshCache.end()) {
-            uploadMesh(gl, node);
+    auto renderNodeList = [&](const std::vector<const SceneNode*>& nodes) {
+        for (const SceneNode* node : nodes) {
+            if (m_meshCache.find(node->id()) == m_meshCache.end()) {
+                uploadMesh(gl, node);
+            }
+
+            auto it = m_meshCache.find(node->id());
+            if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+
+            math::Mat4 model = node->worldTransform();
+            math::Mat4 mvp = vp * model;
+            math::Mat4 normalMat = model.inverse().transposed();
+
+            const Material& mat = node->material();
+            m_phongShader.setUniform("uMVP", mvp);
+            m_phongShader.setUniform("uModel", model);
+            m_phongShader.setUniform("uNormalMatrix", normalMat);
+            m_phongShader.setUniform("uObjectColor", mat.color);
+            m_phongShader.setUniform("uRoughness", mat.roughness);
+            m_phongShader.setUniform("uMetallic", mat.metallic);
+            m_phongShader.setUniform("uAlpha", mat.alpha);
+
+            it->second->bind();
+            it->second->draw(gl);
+            it->second->release();
         }
+    };
 
-        auto it = m_meshCache.find(node->id());
-        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+    // Render opaque first.
+    renderNodeList(opaqueNodes);
 
-        math::Mat4 model = node->worldTransform();
-        math::Mat4 mvp = vp * model;
-        math::Mat4 normalMat = model.inverse().transposed();
-
-        m_phongShader.setUniform("uMVP", mvp);
-        m_phongShader.setUniform("uModel", model);
-        m_phongShader.setUniform("uNormalMatrix", normalMat);
-        m_phongShader.setUniform("uObjectColor", node->material().color);
-
-        it->second->bind();
-        it->second->draw(gl);
-        it->second->release();
+    // Render translucent with blending.
+    if (!translucentNodes.empty()) {
+        gl->glEnable(GL_BLEND);
+        gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        gl->glDepthMask(GL_FALSE);
+        renderNodeList(translucentNodes);
+        gl->glDepthMask(GL_TRUE);
+        gl->glDisable(GL_BLEND);
     }
 
     m_phongShader.release();
+
+    // Edge wireframe overlay: render triangle edges in dark gray.
+    renderEdgeOverlay(gl, visibleNodes, vp);
 }
 
 void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
@@ -312,35 +439,67 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
     math::Mat4 proj = camera.projectionMatrix();
     math::Mat4 vp = proj * view;
 
+    // Separate opaque and transparent nodes.
+    std::vector<const SceneNode*> opaqueNodes;
+    std::vector<const SceneNode*> translucentNodes;
+    for (const SceneNode* node : visibleNodes) {
+        if (node->material().alpha < 1.0f) {
+            translucentNodes.push_back(node);
+        } else {
+            opaqueNodes.push_back(node);
+        }
+    }
+
     m_phongShader.bind();
 
     math::Vec3 lightDir = math::Vec3(0.3, 0.5, 0.8).normalized();
     m_phongShader.setUniform("uViewPos", camera.eye());
     m_phongShader.setUniform("uLightDir", lightDir);
+    m_phongShader.setUniform("uClipPlane", m_clipPlane);
 
-    for (const SceneNode* node : visibleNodes) {
-        if (m_meshCache.find(node->id()) == m_meshCache.end()) {
-            uploadMesh(gl, node);
+    auto renderNodeList = [&](const std::vector<const SceneNode*>& nodes) {
+        for (const SceneNode* node : nodes) {
+            if (m_meshCache.find(node->id()) == m_meshCache.end()) {
+                uploadMesh(gl, node);
+            }
+
+            auto it = m_meshCache.find(node->id());
+            if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+
+            math::Mat4 model = node->worldTransform();
+            math::Mat4 mvp = vp * model;
+            math::Mat4 normalMat = model.inverse().transposed();
+
+            const Material& mat = node->material();
+            m_phongShader.setUniform("uMVP", mvp);
+            m_phongShader.setUniform("uModel", model);
+            m_phongShader.setUniform("uNormalMatrix", normalMat);
+            m_phongShader.setUniform("uObjectColor", mat.color);
+            m_phongShader.setUniform("uRoughness", mat.roughness);
+            m_phongShader.setUniform("uMetallic", mat.metallic);
+            m_phongShader.setUniform("uAlpha", mat.alpha);
+
+            it->second->bind();
+            it->second->draw(gl);
+            it->second->release();
         }
+    };
 
-        auto it = m_meshCache.find(node->id());
-        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+    renderNodeList(opaqueNodes);
 
-        math::Mat4 model = node->worldTransform();
-        math::Mat4 mvp = vp * model;
-        math::Mat4 normalMat = model.inverse().transposed();
-
-        m_phongShader.setUniform("uMVP", mvp);
-        m_phongShader.setUniform("uModel", model);
-        m_phongShader.setUniform("uNormalMatrix", normalMat);
-        m_phongShader.setUniform("uObjectColor", node->material().color);
-
-        it->second->bind();
-        it->second->draw(gl);
-        it->second->release();
+    if (!translucentNodes.empty()) {
+        gl->glEnable(GL_BLEND);
+        gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        gl->glDepthMask(GL_FALSE);
+        renderNodeList(translucentNodes);
+        gl->glDepthMask(GL_TRUE);
+        gl->glDisable(GL_BLEND);
     }
 
     m_phongShader.release();
+
+    // Edge wireframe overlay.
+    renderEdgeOverlay(gl, visibleNodes, vp);
 }
 
 void GLRenderer::renderGrid(QOpenGLExtraFunctions* gl, const Camera& camera) {
@@ -441,6 +600,171 @@ void GLRenderer::uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node) {
     auto buffer = std::make_unique<MeshBuffer>();
     buffer->create(gl, meshData.positions, meshData.normals, meshData.indices);
     m_meshCache.emplace(node->id(), std::move(buffer));
+}
+
+// ---- Edge wireframe overlay ----
+
+void GLRenderer::renderEdgeOverlay(QOpenGLExtraFunctions* gl,
+                                    const std::vector<SceneNode*>& nodes,
+                                    const math::Mat4& vp) {
+    if (nodes.empty() || !m_edgeShader.isValid()) return;
+
+    // Resolve glPolygonMode at runtime — not exposed by QOpenGLExtraFunctions.
+    using PolygonModeFn = void(QOPENGLF_APIENTRYP)(GLenum, GLenum);
+    static auto fnPolygonMode = reinterpret_cast<PolygonModeFn>(
+        QOpenGLContext::currentContext()->getProcAddress("glPolygonMode"));
+    if (!fnPolygonMode) return;
+
+    m_edgeShader.bind();
+    m_edgeShader.setUniform("uEdgeColor", math::Vec3(0.15, 0.15, 0.15));
+
+    // Offset edges slightly toward the camera so they render on top of faces.
+    gl->glEnable(GL_POLYGON_OFFSET_LINE);
+    gl->glPolygonOffset(-1.0f, -1.0f);
+    fnPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    gl->glLineWidth(1.0f);
+
+    for (const SceneNode* node : nodes) {
+        auto it = m_meshCache.find(node->id());
+        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+
+        math::Mat4 model = node->worldTransform();
+        math::Mat4 mvp = vp * model;
+        m_edgeShader.setUniform("uMVP", mvp);
+
+        it->second->bind();
+        it->second->draw(gl);
+        it->second->release();
+    }
+
+    fnPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl->glDisable(GL_POLYGON_OFFSET_LINE);
+
+    m_edgeShader.release();
+}
+
+// ---- Section plane ----
+
+void GLRenderer::setClipPlane(const math::Vec4& plane) {
+    m_clipPlane = plane;
+}
+
+void GLRenderer::clearClipPlane() {
+    m_clipPlane = math::Vec4(0.0, 0.0, 0.0, 0.0);
+}
+
+// ---- GPU color-picking ----
+
+void GLRenderer::initPickingFBO(QOpenGLExtraFunctions* gl, int width, int height) {
+    destroyPickingFBO(gl);
+
+    m_pickWidth = width;
+    m_pickHeight = height;
+
+    gl->glGenFramebuffers(1, &m_pickFBO);
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, m_pickFBO);
+
+    // Color attachment (RGBA8 for ID encoding).
+    gl->glGenTextures(1, &m_pickColorTex);
+    gl->glBindTexture(GL_TEXTURE_2D, m_pickColorTex);
+    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, nullptr);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                                m_pickColorTex, 0);
+
+    // Depth renderbuffer.
+    gl->glGenRenderbuffers(1, &m_pickDepthRBO);
+    gl->glBindRenderbuffer(GL_RENDERBUFFER, m_pickDepthRBO);
+    gl->glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+    gl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                   GL_RENDERBUFFER, m_pickDepthRBO);
+
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void GLRenderer::destroyPickingFBO(QOpenGLExtraFunctions* gl) {
+    if (m_pickFBO) {
+        gl->glDeleteFramebuffers(1, &m_pickFBO);
+        m_pickFBO = 0;
+    }
+    if (m_pickColorTex) {
+        gl->glDeleteTextures(1, &m_pickColorTex);
+        m_pickColorTex = 0;
+    }
+    if (m_pickDepthRBO) {
+        gl->glDeleteRenderbuffers(1, &m_pickDepthRBO);
+        m_pickDepthRBO = 0;
+    }
+}
+
+void GLRenderer::renderPickingPass(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
+                                    const Camera& camera) {
+    if (!m_pickShader.isValid()) return;
+
+    auto visibleNodes = scene.collectVisibleMeshNodes();
+    if (visibleNodes.empty()) return;
+
+    // Ensure FBO exists at the right size.
+    if (!m_pickFBO || m_pickWidth != m_viewportWidth || m_pickHeight != m_viewportHeight) {
+        initPickingFBO(gl, m_viewportWidth, m_viewportHeight);
+    }
+
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, m_pickFBO);
+    gl->glViewport(0, 0, m_pickWidth, m_pickHeight);
+    gl->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gl->glEnable(GL_DEPTH_TEST);
+
+    math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
+
+    m_pickShader.bind();
+
+    for (const SceneNode* node : visibleNodes) {
+        auto it = m_meshCache.find(node->id());
+        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+
+        math::Mat4 model = node->worldTransform();
+        math::Mat4 mvp = vp * model;
+        m_pickShader.setUniform("uMVP", mvp);
+
+        // Encode node ID as RGB color (up to 16M IDs).
+        uint32_t id = node->id();
+        float r = static_cast<float>((id >> 0) & 0xFF) / 255.0f;
+        float g = static_cast<float>((id >> 8) & 0xFF) / 255.0f;
+        float b = static_cast<float>((id >> 16) & 0xFF) / 255.0f;
+        m_pickShader.setUniform("uPickColor", math::Vec3(r, g, b));
+
+        it->second->bind();
+        it->second->draw(gl);
+        it->second->release();
+    }
+
+    m_pickShader.release();
+
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl->glViewport(0, 0, m_viewportWidth, m_viewportHeight);
+}
+
+uint32_t GLRenderer::pickAtPixel(QOpenGLExtraFunctions* gl, int x, int y) {
+    if (!m_pickFBO) return 0;
+
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, m_pickFBO);
+
+    // OpenGL uses bottom-left origin; flip y.
+    int glY = m_pickHeight - 1 - y;
+    unsigned char pixel[4] = {0, 0, 0, 0};
+    gl->glReadPixels(x, glY, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    if (pixel[3] == 0) return 0;  // Background — no hit.
+
+    uint32_t id = static_cast<uint32_t>(pixel[0])
+                | (static_cast<uint32_t>(pixel[1]) << 8)
+                | (static_cast<uint32_t>(pixel[2]) << 16);
+    return id;
 }
 
 }  // namespace hz::render

@@ -33,6 +33,9 @@ ViewportWidget::~ViewportWidget() {
     makeCurrent();
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
     m_viewportRenderer.destroyGL(gl);
+    if (m_renderer) {
+        m_renderer->destroyPickingFBO(gl);
+    }
     m_renderer.reset();
     doneCurrent();
 }
@@ -193,9 +196,12 @@ void ViewportWidget::paintGL() {
                                        pixelToWorldScale());
     }
 
-    // Render 3D scene graph nodes (solid primitives).
+    // Render 3D scene graph nodes (solid primitives with PBR-lite, edge overlay).
     if (!m_sceneGraph.nodes().empty()) {
         m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
+
+        // Update GPU color-picking FBO for 3D selection.
+        m_renderer->renderPickingPass(gl, m_sceneGraph, m_camera);
     }
 
     // Render tool preview (rubber-band).

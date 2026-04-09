@@ -10,12 +10,17 @@
 
 namespace hz::render {
 
-/// Per-node material description (simple Phong parameters).
+/// Per-node material description (PBR-lite: metallic-roughness + legacy Phong fallbacks).
 struct Material {
-    math::Vec3 color{0.7, 0.7, 0.7};
+    math::Vec3 color{0.7, 0.7, 0.7};  ///< Base color (albedo).
     float ambient = 0.15f;
     float specular = 0.5f;
     float shininess = 32.0f;
+
+    // PBR-lite parameters
+    float roughness = 0.8f;    ///< Surface roughness [0..1]. 0 = mirror, 1 = matte.
+    float metallic = 0.0f;     ///< Metalness [0..1]. 0 = dielectric, 1 = metal.
+    float alpha = 1.0f;        ///< Opacity [0..1]. < 1 enables transparency.
 };
 
 /// Mesh data stored on a scene node (CPU-side, indices + positions + normals).

@@ -67,14 +67,44 @@ public:
                         const math::Vec2& corner1, const math::Vec2& corner2,
                         const math::Vec4& color);
 
+    // ---- Section Plane ----
+
+    /// Set a clip plane for section-plane rendering (xyz=normal, w=offset).
+    /// Fragments on the negative side of the plane are discarded.
+    void setClipPlane(const math::Vec4& plane);
+
+    /// Disable the section clip plane.
+    void clearClipPlane();
+
+    // ---- GPU Color-Picking ----
+
+    /// Render the scene to an offscreen FBO with per-node ID colors.
+    void renderPickingPass(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
+                           const Camera& camera);
+
+    /// Read the picking FBO at the given screen pixel and return the node ID (0 = miss).
+    uint32_t pickAtPixel(QOpenGLExtraFunctions* gl, int x, int y);
+
+    /// Release the picking FBO resources.
+    void destroyPickingFBO(QOpenGLExtraFunctions* gl);
+
     bool isInitialized() const { return m_initialized; }
 
 private:
     void uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node);
 
+    /// Render edges of visible mesh nodes as wireframe overlay.
+    void renderEdgeOverlay(QOpenGLExtraFunctions* gl,
+                           const std::vector<SceneNode*>& nodes,
+                           const math::Mat4& vp);
+
+    void initPickingFBO(QOpenGLExtraFunctions* gl, int width, int height);
+
     ShaderProgram m_phongShader;
     ShaderProgram m_lineShader;
     ShaderProgram m_fillShader;
+    ShaderProgram m_pickShader;
+    ShaderProgram m_edgeShader;
     Grid m_grid;
 
     // Cached GPU mesh buffers keyed by node ID.
@@ -88,10 +118,20 @@ private:
     int m_viewportHeight = 1;
     bool m_initialized = false;
 
+    // Section plane (0,0,0,0 = disabled).
+    math::Vec4 m_clipPlane{0.0, 0.0, 0.0, 0.0};
+
     // Persistent dynamic VAO/VBO for per-frame draw calls (lines, circles, quads).
     GLuint m_dynamicVAO = 0;
     GLuint m_dynamicVBO = 0;
     size_t m_dynamicVBOCapacity = 0;
+
+    // GPU color-picking FBO.
+    GLuint m_pickFBO = 0;
+    GLuint m_pickColorTex = 0;
+    GLuint m_pickDepthRBO = 0;
+    int m_pickWidth = 0;
+    int m_pickHeight = 0;
 };
 
 }  // namespace hz::render
