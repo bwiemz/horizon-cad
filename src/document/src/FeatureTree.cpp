@@ -1,10 +1,10 @@
 #include "horizon/document/FeatureTree.h"
 
+#include <cassert>
+
 #include "horizon/document/Sketch.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Revolve.h"
-
-#include <cassert>
 
 namespace hz::doc {
 
@@ -14,14 +14,16 @@ namespace hz::doc {
 
 int ExtrudeFeature::s_nextID = 1;
 
-ExtrudeFeature::ExtrudeFeature(std::shared_ptr<Sketch> sketch,
-                               const math::Vec3& direction, double distance)
+ExtrudeFeature::ExtrudeFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& direction,
+                               double distance)
     : m_sketch(std::move(sketch)),
       m_direction(direction),
       m_distance(distance),
       m_featureID("extrude_" + std::to_string(s_nextID++)) {}
 
-std::string ExtrudeFeature::name() const { return "Extrude"; }
+std::string ExtrudeFeature::name() const {
+    return "Extrude";
+}
 
 std::map<std::string, double> ExtrudeFeature::parameters() const {
     return {{"distance", m_distance}};
@@ -35,14 +37,16 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::string ExtrudeFeature::featureID() const { return m_featureID; }
+std::string ExtrudeFeature::featureID() const {
+    return m_featureID;
+}
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     // For now, extrude always creates a new solid from the sketch.
     // Boolean combination with inputSolid comes in a future phase.
-    return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(),
-                                    m_direction, m_distance, m_featureID);
+    return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
+                                   m_featureID);
 }
 
 // ---------------------------------------------------------------------------
@@ -51,8 +55,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
 
 int RevolveFeature::s_nextID = 1;
 
-RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch,
-                               const math::Vec3& axisPoint,
+RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& axisPoint,
                                const math::Vec3& axisDir, double angle)
     : m_sketch(std::move(sketch)),
       m_axisPoint(axisPoint),
@@ -60,7 +63,9 @@ RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch,
       m_angle(angle),
       m_featureID("revolve_" + std::to_string(s_nextID++)) {}
 
-std::string RevolveFeature::name() const { return "Revolve"; }
+std::string RevolveFeature::name() const {
+    return "Revolve";
+}
 
 std::map<std::string, double> RevolveFeature::parameters() const {
     return {{"angle", m_angle}};
@@ -74,12 +79,14 @@ bool RevolveFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::string RevolveFeature::featureID() const { return m_featureID; }
+std::string RevolveFeature::featureID() const {
+    return m_featureID;
+}
 
 std::unique_ptr<topo::Solid> RevolveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
-    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(),
-                                    m_axisPoint, m_axisDir, m_angle, m_featureID);
+    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
+                                   m_angle, m_featureID);
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +102,9 @@ void FeatureTree::removeFeature(size_t index) {
     m_features.erase(m_features.begin() + static_cast<ptrdiff_t>(index));
 }
 
-size_t FeatureTree::featureCount() const { return m_features.size(); }
+size_t FeatureTree::featureCount() const {
+    return m_features.size();
+}
 
 const Feature* FeatureTree::feature(size_t index) const {
     assert(index < m_features.size());
@@ -107,7 +116,9 @@ Feature* FeatureTree::feature(size_t index) {
     return m_features[index].get();
 }
 
-void FeatureTree::clear() { m_features.clear(); }
+void FeatureTree::clear() {
+    m_features.clear();
+}
 
 std::unique_ptr<topo::Solid> FeatureTree::build() const {
     if (m_features.empty()) {
@@ -131,19 +142,16 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
     }
 
     const int limit = (m_rollbackIndex >= 0)
-                          ? std::min(m_rollbackIndex + 1,
-                                     static_cast<int>(m_features.size()))
+                          ? std::min(m_rollbackIndex + 1, static_cast<int>(m_features.size()))
                           : static_cast<int>(m_features.size());
 
     std::unique_ptr<topo::Solid> solid;
     for (int i = 0; i < limit; ++i) {
-        auto next = m_features[static_cast<size_t>(i)]->execute(
-            std::move(solid));
+        auto next = m_features[static_cast<size_t>(i)]->execute(std::move(solid));
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage =
-                "Feature '" + m_features[static_cast<size_t>(i)]->name() +
-                "' failed to execute";
+                "Feature '" + m_features[static_cast<size_t>(i)]->name() + "' failed to execute";
             return result;
         }
         solid = std::move(next);
@@ -155,13 +163,11 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
 }
 
 void FeatureTree::moveFeature(int fromIndex, int toIndex) {
-    if (fromIndex < 0 || fromIndex >= static_cast<int>(m_features.size()))
-        return;
+    if (fromIndex < 0 || fromIndex >= static_cast<int>(m_features.size())) return;
     if (toIndex < 0 || toIndex >= static_cast<int>(m_features.size())) return;
     if (fromIndex == toIndex) return;
 
-    auto feat = std::move(
-        m_features[static_cast<size_t>(fromIndex)]);
+    auto feat = std::move(m_features[static_cast<size_t>(fromIndex)]);
     m_features.erase(m_features.begin() + fromIndex);
     m_features.insert(m_features.begin() + toIndex, std::move(feat));
 }

@@ -1,15 +1,16 @@
 #include "horizon/drafting/DraftHatch.h"
+
 #include <algorithm>
 #include <cmath>
 
 namespace hz::draft {
 
-DraftHatch::DraftHatch(const std::vector<math::Vec2>& boundary,
-                       HatchPattern pattern, double angle, double spacing)
-    : m_boundary(boundary)
-    , m_pattern(pattern)
-    , m_angle(angle)
-    , m_spacing(std::max(spacing, 0.01)) {}
+DraftHatch::DraftHatch(const std::vector<math::Vec2>& boundary, HatchPattern pattern, double angle,
+                       double spacing)
+    : m_boundary(boundary),
+      m_pattern(pattern),
+      m_angle(angle),
+      m_spacing(std::max(spacing, 0.01)) {}
 
 // ---------------------------------------------------------------------------
 // DraftEntity virtuals
@@ -26,8 +27,7 @@ math::BoundingBox DraftHatch::boundingBox() const {
         maxX = std::max(maxX, m_boundary[i].x);
         maxY = std::max(maxY, m_boundary[i].y);
     }
-    return math::BoundingBox(math::Vec3(minX, minY, 0.0),
-                             math::Vec3(maxX, maxY, 0.0));
+    return math::BoundingBox(math::Vec3(minX, minY, 0.0), math::Vec3(maxX, maxY, 0.0));
 }
 
 bool DraftHatch::hitTest(const math::Vec2& point, double tolerance) const {
@@ -37,8 +37,7 @@ bool DraftHatch::hitTest(const math::Vec2& point, double tolerance) const {
     if (pointInPolygon(point)) return true;
 
     // Hit if near any boundary edge.
-    auto segmentDist = [](const math::Vec2& p, const math::Vec2& a,
-                          const math::Vec2& b) -> double {
+    auto segmentDist = [](const math::Vec2& p, const math::Vec2& a, const math::Vec2& b) -> double {
         math::Vec2 ab = b - a;
         math::Vec2 ap = p - a;
         double lenSq = ab.lengthSquared();
@@ -50,8 +49,7 @@ bool DraftHatch::hitTest(const math::Vec2& point, double tolerance) const {
 
     for (size_t i = 0; i < m_boundary.size(); ++i) {
         size_t j = (i + 1) % m_boundary.size();
-        if (segmentDist(point, m_boundary[i], m_boundary[j]) <= tolerance)
-            return true;
+        if (segmentDist(point, m_boundary[i], m_boundary[j]) <= tolerance) return true;
     }
     return false;
 }
@@ -85,9 +83,8 @@ std::shared_ptr<DraftEntity> DraftHatch::clone() const {
     return copy;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
@@ -144,8 +141,8 @@ bool DraftHatch::pointInPolygon(const math::Vec2& point) const {
     return inside;
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(
-    double scanAngle, double scanSpacing) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(double scanAngle,
+                                                                     double scanSpacing) const {
     if (m_boundary.size() < 3 || scanSpacing < 0.001) return {};
 
     // Direction along the hatch lines and perpendicular (scan direction).
@@ -197,7 +194,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(
 
             // Check if scan line crosses this edge.
             if ((pa - offset) * (pb - offset) > 0.0) continue;  // both on same side
-            if (std::abs(pb - pa) < 1e-14) continue;  // edge parallel to scan line
+            if (std::abs(pb - pa) < 1e-14) continue;            // edge parallel to scan line
 
             // Parameter along edge where intersection occurs.
             double t = (offset - pa) / (pb - pa);

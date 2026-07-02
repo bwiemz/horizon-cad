@@ -1,12 +1,14 @@
 #include "horizon/document/Commands.h"
+
+#include <unordered_map>
+
 #include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDimension.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftEllipse.h"
-#include <unordered_map>
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
 
 namespace hz::doc {
 
@@ -65,7 +67,9 @@ MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
                                      const math::Vec2& delta,
                                      cstr::ConstraintSystem& constraintSystem,
                                      std::function<double(const std::string&)> variableResolver)
-    : m_doc(doc), m_entityIds(entityIds), m_delta(delta),
+    : m_doc(doc),
+      m_entityIds(entityIds),
+      m_delta(delta),
       m_constraintSystem(constraintSystem),
       m_variableResolver(std::move(variableResolver)) {}
 
@@ -83,7 +87,7 @@ void MoveEntityCommand::execute() {
     // Auto-solve constraints after geometry change.
     if (!m_solveCmd) {
         m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
-                                                                   m_variableResolver);
+                                                                  m_variableResolver);
     }
     if (m_solveCmd) {
         m_solveCmd->execute();
@@ -114,8 +118,7 @@ std::string MoveEntityCommand::description() const {
 
 // --- CompositeCommand ---
 
-CompositeCommand::CompositeCommand(const std::string& desc)
-    : m_description(desc) {}
+CompositeCommand::CompositeCommand(const std::string& desc) : m_description(desc) {}
 
 void CompositeCommand::addCommand(std::unique_ptr<Command> cmd) {
     m_commands.push_back(std::move(cmd));
@@ -186,8 +189,7 @@ std::vector<uint64_t> DuplicateEntityCommand::clonedIds() const {
 
 MirrorEntityCommand::MirrorEntityCommand(draft::DraftDocument& doc,
                                          const std::vector<uint64_t>& entityIds,
-                                         const math::Vec2& axisP1,
-                                         const math::Vec2& axisP2)
+                                         const math::Vec2& axisP1, const math::Vec2& axisP2)
     : m_doc(doc), m_sourceIds(entityIds), m_axisP1(axisP1), m_axisP2(axisP2) {}
 
 void MirrorEntityCommand::execute() {
@@ -232,8 +234,7 @@ std::vector<uint64_t> MirrorEntityCommand::mirroredIds() const {
 
 RotateEntityCommand::RotateEntityCommand(draft::DraftDocument& doc,
                                          const std::vector<uint64_t>& entityIds,
-                                         const math::Vec2& center,
-                                         double angle)
+                                         const math::Vec2& center, double angle)
     : m_doc(doc), m_sourceIds(entityIds), m_center(center), m_angle(angle) {}
 
 void RotateEntityCommand::execute() {
@@ -278,8 +279,7 @@ std::vector<uint64_t> RotateEntityCommand::rotatedIds() const {
 
 ScaleEntityCommand::ScaleEntityCommand(draft::DraftDocument& doc,
                                        const std::vector<uint64_t>& entityIds,
-                                       const math::Vec2& basePoint,
-                                       double factor)
+                                       const math::Vec2& basePoint, double factor)
     : m_doc(doc), m_sourceIds(entityIds), m_basePoint(basePoint), m_factor(factor) {}
 
 void ScaleEntityCommand::execute() {
@@ -462,8 +462,7 @@ std::string ChangeEntityLineTypeCommand::description() const {
 
 // --- ChangeTextOverrideCommand ---
 
-ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc,
-                                                     uint64_t entityId,
+ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                      const std::string& newText)
     : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
 
@@ -496,8 +495,7 @@ std::string ChangeTextOverrideCommand::description() const {
 
 // --- AddLayerCommand ---
 
-AddLayerCommand::AddLayerCommand(draft::LayerManager& mgr,
-                                 const draft::LayerProperties& props)
+AddLayerCommand::AddLayerCommand(draft::LayerManager& mgr, const draft::LayerProperties& props)
     : m_mgr(mgr), m_props(props) {}
 
 void AddLayerCommand::execute() {
@@ -514,8 +512,7 @@ std::string AddLayerCommand::description() const {
 
 // --- RemoveLayerCommand ---
 
-RemoveLayerCommand::RemoveLayerCommand(draft::LayerManager& mgr,
-                                       draft::DraftDocument& doc,
+RemoveLayerCommand::RemoveLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
                                        const std::string& layerName)
     : m_mgr(mgr), m_doc(doc), m_name(layerName) {}
 
@@ -570,8 +567,7 @@ std::string RemoveLayerCommand::description() const {
 
 // --- ModifyLayerCommand ---
 
-ModifyLayerCommand::ModifyLayerCommand(draft::LayerManager& mgr,
-                                       const std::string& layerName,
+ModifyLayerCommand::ModifyLayerCommand(draft::LayerManager& mgr, const std::string& layerName,
                                        const draft::LayerProperties& newProps)
     : m_mgr(mgr), m_name(layerName), m_newProps(newProps) {}
 
@@ -615,8 +611,7 @@ std::string SetCurrentLayerCommand::description() const {
 
 // --- CreateBlockCommand ---
 
-CreateBlockCommand::CreateBlockCommand(draft::DraftDocument& doc,
-                                       const std::string& blockName,
+CreateBlockCommand::CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
                                        const std::vector<uint64_t>& entityIds)
     : m_doc(doc), m_blockName(blockName), m_entityIds(entityIds) {}
 
@@ -753,8 +748,7 @@ std::vector<uint64_t> ExplodeBlockCommand::explodedIds() const {
 // --- ChangeBlockRefRotationCommand ---
 
 ChangeBlockRefRotationCommand::ChangeBlockRefRotationCommand(draft::DraftDocument& doc,
-                                                             uint64_t entityId,
-                                                             double newRotation)
+                                                             uint64_t entityId, double newRotation)
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
 void ChangeBlockRefRotationCommand::execute() {
@@ -788,8 +782,7 @@ std::string ChangeBlockRefRotationCommand::description() const {
 
 // --- ChangeBlockRefScaleCommand ---
 
-ChangeBlockRefScaleCommand::ChangeBlockRefScaleCommand(draft::DraftDocument& doc,
-                                                       uint64_t entityId,
+ChangeBlockRefScaleCommand::ChangeBlockRefScaleCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                        double newScale)
     : m_doc(doc), m_entityId(entityId), m_newScale(newScale) {}
 
@@ -824,8 +817,7 @@ std::string ChangeBlockRefScaleCommand::description() const {
 
 // --- ChangeTextContentCommand ---
 
-ChangeTextContentCommand::ChangeTextContentCommand(draft::DraftDocument& doc,
-                                                   uint64_t entityId,
+ChangeTextContentCommand::ChangeTextContentCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                    const std::string& newText)
     : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
 
@@ -858,8 +850,7 @@ std::string ChangeTextContentCommand::description() const {
 
 // --- ChangeTextHeightCommand ---
 
-ChangeTextHeightCommand::ChangeTextHeightCommand(draft::DraftDocument& doc,
-                                                 uint64_t entityId,
+ChangeTextHeightCommand::ChangeTextHeightCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                  double newHeight)
     : m_doc(doc), m_entityId(entityId), m_newHeight(newHeight) {}
 
@@ -892,8 +883,7 @@ std::string ChangeTextHeightCommand::description() const {
 
 // --- ChangeTextRotationCommand ---
 
-ChangeTextRotationCommand::ChangeTextRotationCommand(draft::DraftDocument& doc,
-                                                     uint64_t entityId,
+ChangeTextRotationCommand::ChangeTextRotationCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                      double newRotation)
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
@@ -926,8 +916,7 @@ std::string ChangeTextRotationCommand::description() const {
 
 // --- ChangeTextAlignmentCommand ---
 
-ChangeTextAlignmentCommand::ChangeTextAlignmentCommand(draft::DraftDocument& doc,
-                                                       uint64_t entityId,
+ChangeTextAlignmentCommand::ChangeTextAlignmentCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                        int newAlignment)
     : m_doc(doc), m_entityId(entityId), m_newAlignment(newAlignment) {}
 
@@ -962,8 +951,7 @@ std::string ChangeTextAlignmentCommand::description() const {
 // ChangeSplineClosedCommand
 // ---------------------------------------------------------------------------
 
-ChangeSplineClosedCommand::ChangeSplineClosedCommand(draft::DraftDocument& doc,
-                                                     uint64_t entityId,
+ChangeSplineClosedCommand::ChangeSplineClosedCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                      bool newClosed)
     : m_doc(doc), m_entityId(entityId), m_newClosed(newClosed) {}
 
@@ -998,8 +986,7 @@ std::string ChangeSplineClosedCommand::description() const {
 // ChangeHatchPatternCommand
 // ---------------------------------------------------------------------------
 
-ChangeHatchPatternCommand::ChangeHatchPatternCommand(draft::DraftDocument& doc,
-                                                     uint64_t entityId,
+ChangeHatchPatternCommand::ChangeHatchPatternCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                      int newPattern)
     : m_doc(doc), m_entityId(entityId), m_newPattern(newPattern) {}
 
@@ -1034,8 +1021,7 @@ std::string ChangeHatchPatternCommand::description() const {
 // ChangeHatchAngleCommand
 // ---------------------------------------------------------------------------
 
-ChangeHatchAngleCommand::ChangeHatchAngleCommand(draft::DraftDocument& doc,
-                                                 uint64_t entityId,
+ChangeHatchAngleCommand::ChangeHatchAngleCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                  double newAngle)
     : m_doc(doc), m_entityId(entityId), m_newAngle(newAngle) {}
 
@@ -1070,8 +1056,7 @@ std::string ChangeHatchAngleCommand::description() const {
 // ChangeHatchSpacingCommand
 // ---------------------------------------------------------------------------
 
-ChangeHatchSpacingCommand::ChangeHatchSpacingCommand(draft::DraftDocument& doc,
-                                                     uint64_t entityId,
+ChangeHatchSpacingCommand::ChangeHatchSpacingCommand(draft::DraftDocument& doc, uint64_t entityId,
                                                      double newSpacing)
     : m_doc(doc), m_entityId(entityId), m_newSpacing(newSpacing) {}
 
@@ -1106,8 +1091,8 @@ std::string ChangeHatchSpacingCommand::description() const {
 // ChangeEllipseSemiMajorCommand
 // ---------------------------------------------------------------------------
 
-ChangeEllipseSemiMajorCommand::ChangeEllipseSemiMajorCommand(
-    draft::DraftDocument& doc, uint64_t entityId, double newValue)
+ChangeEllipseSemiMajorCommand::ChangeEllipseSemiMajorCommand(draft::DraftDocument& doc,
+                                                             uint64_t entityId, double newValue)
     : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
 
 void ChangeEllipseSemiMajorCommand::execute() {
@@ -1141,8 +1126,8 @@ std::string ChangeEllipseSemiMajorCommand::description() const {
 // ChangeEllipseSemiMinorCommand
 // ---------------------------------------------------------------------------
 
-ChangeEllipseSemiMinorCommand::ChangeEllipseSemiMinorCommand(
-    draft::DraftDocument& doc, uint64_t entityId, double newValue)
+ChangeEllipseSemiMinorCommand::ChangeEllipseSemiMinorCommand(draft::DraftDocument& doc,
+                                                             uint64_t entityId, double newValue)
     : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
 
 void ChangeEllipseSemiMinorCommand::execute() {
@@ -1176,8 +1161,8 @@ std::string ChangeEllipseSemiMinorCommand::description() const {
 // ChangeEllipseRotationCommand
 // ---------------------------------------------------------------------------
 
-ChangeEllipseRotationCommand::ChangeEllipseRotationCommand(
-    draft::DraftDocument& doc, uint64_t entityId, double newRotation)
+ChangeEllipseRotationCommand::ChangeEllipseRotationCommand(draft::DraftDocument& doc,
+                                                           uint64_t entityId, double newRotation)
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
 void ChangeEllipseRotationCommand::execute() {
@@ -1212,11 +1197,12 @@ std::string ChangeEllipseRotationCommand::description() const {
 // ---------------------------------------------------------------------------
 
 GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
-                                  std::shared_ptr<draft::DraftEntity> beforeState,
-                                  std::shared_ptr<draft::DraftEntity> afterState,
-                                  cstr::ConstraintSystem& constraintSystem,
-                                  std::function<double(const std::string&)> variableResolver)
-    : m_doc(doc), m_entityId(entityId),
+                                 std::shared_ptr<draft::DraftEntity> beforeState,
+                                 std::shared_ptr<draft::DraftEntity> afterState,
+                                 cstr::ConstraintSystem& constraintSystem,
+                                 std::function<double(const std::string&)> variableResolver)
+    : m_doc(doc),
+      m_entityId(entityId),
       m_beforeState(std::move(beforeState)),
       m_afterState(std::move(afterState)),
       m_constraintSystem(constraintSystem),
@@ -1230,7 +1216,7 @@ void GripMoveCommand::execute() {
 
         // Auto-solve constraints after geometry change.
         m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
-                                                                   m_variableResolver);
+                                                                  m_variableResolver);
         if (m_solveCmd) {
             m_solveCmd->execute();
         }
@@ -1318,7 +1304,7 @@ std::string GroupEntitiesCommand::description() const {
 // ---------------------------------------------------------------------------
 
 UngroupEntitiesCommand::UngroupEntitiesCommand(draft::DraftDocument& doc,
-                                                 const std::vector<uint64_t>& groupIds)
+                                               const std::vector<uint64_t>& groupIds)
     : m_doc(doc), m_groupIds(groupIds) {}
 
 void UngroupEntitiesCommand::execute() {

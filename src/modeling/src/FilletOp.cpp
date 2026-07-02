@@ -1,15 +1,15 @@
 #include "horizon/modeling/FilletOp.h"
 
-#include "horizon/geometry/curves/NurbsCurve.h"
-#include "horizon/geometry/surfaces/NurbsSurface.h"
-#include "horizon/topology/EulerOps.h"
-#include "horizon/topology/Queries.h"
-
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <map>
 #include <set>
+
+#include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/topology/EulerOps.h"
+#include "horizon/topology/Queries.h"
 
 namespace hz::model {
 
@@ -53,9 +53,8 @@ static Vec3 faceNormal(const Face* face) {
 
 /// Make a degree-1 linear NURBS curve between two points.
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-        std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 /// Assign a line curve to an edge based on half-edge endpoint positions.
@@ -97,8 +96,8 @@ static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* prevOrigin = nullptr
 /// Data describing one edge to be filleted.
 struct FilletEdgeInfo {
     const Edge* originalEdge = nullptr;
-    Vertex* v1 = nullptr;  ///< First endpoint.
-    Vertex* v2 = nullptr;  ///< Second endpoint.
+    Vertex* v1 = nullptr;   ///< First endpoint.
+    Vertex* v2 = nullptr;   ///< Second endpoint.
     Face* faceA = nullptr;  ///< Left face.
     Face* faceB = nullptr;  ///< Right face.
     Vec3 edgeDir;           ///< Unit direction v1→v2.
@@ -218,9 +217,8 @@ struct VertexMapping {
 // FilletOp::execute
 // ---------------------------------------------------------------------------
 
-FilletResult FilletOp::execute(const Solid& inputSolid,
-                               const std::vector<TopologyID>& edgeIds, double radius,
-                               const std::string& featureID) {
+FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
+                               double radius, const std::string& featureID) {
     FilletResult result;
 
     // -- Validate inputs --
@@ -285,7 +283,8 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
         double minB = minEdgeLen(vertsB);
         double limit = std::min(minA, minB) * 0.5;
         if (radius > limit + 1e-9) {
-            result.errorMessage = "Fillet radius too large for edge: " + fe.originalEdge->topoId.tag();
+            result.errorMessage =
+                "Fillet radius too large for edge: " + fe.originalEdge->topoId.tag();
             return result;
         }
     }
@@ -383,8 +382,7 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
         const auto& fe = filletEdges[i];
         NewFaceData fd;
         fd.isOriginal = false;
-        fd.topoId =
-            TopologyID::make(featureID, "fillet").child(fe.originalEdge->topoId.tag(), 0);
+        fd.topoId = TopologyID::make(featureID, "fillet").child(fe.originalEdge->topoId.tag(), 0);
 
         // The fillet face is a quad: v1_offsetA → v2_offsetA → v2_offsetB → v1_offsetB.
         fd.vertices.push_back(fe.v1_offsetA);
@@ -630,8 +628,7 @@ FilletResult FilletOp::execute(const Solid& inputSolid,
                         height = 1e-6;
                     }
                     f.surface = std::make_shared<geo::NurbsSurface>(
-                        geo::NurbsSurface::makeCylinder(fe.cylCenter1, fe.cylAxis, radius,
-                                                        height));
+                        geo::NurbsSurface::makeCylinder(fe.cylCenter1, fe.cylAxis, radius, height));
                     break;
                 }
             }

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "horizon/math/Vec3.h"
-
 #include <vector>
+
+#include "horizon/math/Vec3.h"
 
 namespace hz::geo {
 
@@ -70,13 +70,11 @@ public:
                                  const math::Vec3& normal = math::Vec3::UnitZ);
 
     /// Factory: create a NURBS circular arc.
-    static NurbsCurve makeArc(const math::Vec3& center, double radius,
-                              double startAngle, double endAngle,
-                              const math::Vec3& normal = math::Vec3::UnitZ);
+    static NurbsCurve makeArc(const math::Vec3& center, double radius, double startAngle,
+                              double endAngle, const math::Vec3& normal = math::Vec3::UnitZ);
 
     /// Factory: create a NURBS ellipse.
-    static NurbsCurve makeEllipse(const math::Vec3& center,
-                                  double semiMajor, double semiMinor,
+    static NurbsCurve makeEllipse(const math::Vec3& center, double semiMajor, double semiMinor,
                                   double rotation = 0.0,
                                   const math::Vec3& normal = math::Vec3::UnitZ);
 

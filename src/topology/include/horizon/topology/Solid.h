@@ -1,10 +1,10 @@
 #pragma once
 
-#include "horizon/topology/HalfEdge.h"
-
+#include <cstdint>
 #include <deque>
 #include <string>
-#include <cstdint>
+
+#include "horizon/topology/HalfEdge.h"
 
 namespace hz::topo {
 

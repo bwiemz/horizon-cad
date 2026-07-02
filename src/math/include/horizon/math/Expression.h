@@ -3,11 +3,10 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <nlohmann/json_fwd.hpp>
 #include <set>
 #include <string>
 #include <vector>
-
-#include <nlohmann/json_fwd.hpp>
 
 namespace hz::math {
 
@@ -105,8 +104,7 @@ class UnaryOpExpr : public Expression {
 public:
     enum class Op { Negate };
 
-    UnaryOpExpr(Op op, std::unique_ptr<Expression> child)
-        : m_op(op), m_child(std::move(child)) {}
+    UnaryOpExpr(Op op, std::unique_ptr<Expression> child) : m_op(op), m_child(std::move(child)) {}
 
     double evaluate(const std::map<std::string, double>& variables) const override;
     std::set<std::string> variables() const override;

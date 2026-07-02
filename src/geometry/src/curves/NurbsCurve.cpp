@@ -1,13 +1,13 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 
-#include "horizon/math/Constants.h"
-#include "horizon/math/Tolerance.h"
-
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
+
+#include "horizon/math/Constants.h"
+#include "horizon/math/Tolerance.h"
 
 namespace hz::geo {
 
@@ -353,7 +353,8 @@ NurbsCurve NurbsCurve::elevateDegree() const {
             }
         }
 
-        // Append: skip Q[0] for all segments after the first (shared with previous segment's last point).
+        // Append: skip Q[0] for all segments after the first (shared with previous segment's last
+        // point).
         const int start = (seg == 0) ? 0 : 1;
         for (int i = start; i <= newP; ++i) {
             newPw.push_back(Q[i]);
@@ -560,8 +561,8 @@ NurbsCurve NurbsCurve::makeCircle(const math::Vec3& center, double radius,
 
     // Unit circle control points in XY plane.
     const math::Vec3 unitPts[9] = {
-        {1, 0, 0},   {1, 1, 0},   {0, 1, 0},   {-1, 1, 0}, {-1, 0, 0},
-        {-1, -1, 0}, {0, -1, 0},  {1, -1, 0},  {1, 0, 0},
+        {1, 0, 0},   {1, 1, 0},  {0, 1, 0},  {-1, 1, 0}, {-1, 0, 0},
+        {-1, -1, 0}, {0, -1, 0}, {1, -1, 0}, {1, 0, 0},
     };
 
     const double wts[9] = {1, w, 1, w, 1, w, 1, w, 1};
@@ -671,8 +672,8 @@ NurbsCurve NurbsCurve::makeEllipse(const math::Vec3& center, double semiMajor, d
 
     // Unit circle control points in XY plane, scaled by (semiMajor, semiMinor).
     const math::Vec3 unitPts[9] = {
-        {1, 0, 0},   {1, 1, 0},   {0, 1, 0},   {-1, 1, 0}, {-1, 0, 0},
-        {-1, -1, 0}, {0, -1, 0},  {1, -1, 0},  {1, 0, 0},
+        {1, 0, 0},   {1, 1, 0},  {0, 1, 0},  {-1, 1, 0}, {-1, 0, 0},
+        {-1, -1, 0}, {0, -1, 0}, {1, -1, 0}, {1, 0, 0},
     };
 
     const double wts[9] = {1, w, 1, w, 1, w, 1, w, 1};

@@ -1,11 +1,12 @@
 #include "horizon/ui/SplineTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftSpline.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -39,8 +40,8 @@ bool SplineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -57,8 +58,8 @@ bool SplineTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -94,8 +95,8 @@ void SplineTool::finishSpline() {
     if (m_controlPoints.size() >= 4 && m_viewport && m_viewport->document()) {
         auto spline = std::make_shared<draft::DraftSpline>(m_controlPoints);
         spline->setLayer(m_viewport->document()->layerManager().currentLayer());
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), spline);
+        auto cmd = std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(),
+                                                           spline);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
     m_controlPoints.clear();
@@ -110,8 +111,8 @@ void SplineTool::finishSpline() {
 // ---------------------------------------------------------------------------
 
 /// Inline B-spline evaluation for preview (mirrors DraftSpline::evaluate logic).
-static math::Vec2 bsplinePt(const math::Vec2& p0, const math::Vec2& p1,
-                              const math::Vec2& p2, const math::Vec2& p3, double t) {
+static math::Vec2 bsplinePt(const math::Vec2& p0, const math::Vec2& p1, const math::Vec2& p2,
+                            const math::Vec2& p3, double t) {
     double t2 = t * t;
     double t3 = t2 * t;
     double omt = 1.0 - t;
@@ -160,6 +161,8 @@ std::string SplineTool::promptText() const {
     return "Click to add control points, Enter to finish";
 }
 
-bool SplineTool::wantsCrosshair() const { return true; }
+bool SplineTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

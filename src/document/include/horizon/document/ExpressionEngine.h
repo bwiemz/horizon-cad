@@ -1,12 +1,12 @@
 #pragma once
 
-#include "horizon/math/Expression.h"
-
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+#include "horizon/math/Expression.h"
 
 namespace hz::doc {
 
@@ -43,9 +43,8 @@ private:
     [[nodiscard]] std::map<std::string, std::set<std::string>> buildDependencyGraph() const;
     [[nodiscard]] std::vector<std::string> topologicalSort(
         const std::map<std::string, std::set<std::string>>& graph) const;
-    [[nodiscard]] bool detectCycle(
-        const std::map<std::string, std::set<std::string>>& graph,
-        std::vector<std::string>& cyclePath) const;
+    [[nodiscard]] bool detectCycle(const std::map<std::string, std::set<std::string>>& graph,
+                                   std::vector<std::string>& cyclePath) const;
 };
 
 }  // namespace hz::doc

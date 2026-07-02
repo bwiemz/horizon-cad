@@ -1,4 +1,5 @@
 #include "horizon/drafting/DraftCircle.h"
+
 #include <cmath>
 
 namespace hz::draft {
@@ -22,11 +23,10 @@ bool DraftCircle::hitTest(const math::Vec2& point, double tolerance) const {
 std::vector<math::Vec2> DraftCircle::snapPoints() const {
     // Center + 4 quadrant points (right, top, left, bottom)
     return {
-        m_center,
-        math::Vec2(m_center.x + m_radius, m_center.y),           // right (0 deg)
-        math::Vec2(m_center.x,             m_center.y + m_radius), // top (90 deg)
-        math::Vec2(m_center.x - m_radius, m_center.y),           // left (180 deg)
-        math::Vec2(m_center.x,             m_center.y - m_radius)  // bottom (270 deg)
+        m_center, math::Vec2(m_center.x + m_radius, m_center.y),  // right (0 deg)
+        math::Vec2(m_center.x, m_center.y + m_radius),            // top (90 deg)
+        math::Vec2(m_center.x - m_radius, m_center.y),            // left (180 deg)
+        math::Vec2(m_center.x, m_center.y - m_radius)             // bottom (270 deg)
     };
 }
 
@@ -34,9 +34,8 @@ void DraftCircle::translate(const math::Vec2& delta) {
     m_center += delta;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;

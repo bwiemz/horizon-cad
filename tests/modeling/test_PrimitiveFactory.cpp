@@ -1,14 +1,14 @@
-#include "horizon/modeling/PrimitiveFactory.h"
-
-#include "horizon/topology/Queries.h"
-#include "horizon/topology/Solid.h"
-#include "horizon/topology/TopologyID.h"
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
-#include <gtest/gtest.h>
 #include <set>
 #include <string>
+
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/Queries.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 using namespace hz::model;
 using namespace hz::topo;
@@ -39,8 +39,7 @@ TEST(PrimitiveFactoryTest, BoxVertexPositions) {
 
     // Expected corner positions.
     const Vec3 expected[8] = {
-        {0, 0, 0}, {2, 0, 0}, {2, 3, 0}, {0, 3, 0},
-        {0, 0, 4}, {2, 0, 4}, {2, 3, 4}, {0, 3, 4},
+        {0, 0, 0}, {2, 0, 0}, {2, 3, 0}, {0, 3, 0}, {0, 0, 4}, {2, 0, 4}, {2, 3, 4}, {0, 3, 4},
     };
 
     const auto& verts = solid->vertices();
@@ -65,8 +64,8 @@ TEST(PrimitiveFactoryTest, BoxEachFaceHas4Vertices) {
 
     for (const auto& face : solid->faces()) {
         auto verts = faceVertices(&face);
-        EXPECT_EQ(verts.size(), 4u) << "Face id=" << face.id << " has " << verts.size()
-                                    << " vertices, expected 4";
+        EXPECT_EQ(verts.size(), 4u)
+            << "Face id=" << face.id << " has " << verts.size() << " vertices, expected 4";
     }
 }
 

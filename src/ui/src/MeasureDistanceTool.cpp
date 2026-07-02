@@ -1,14 +1,15 @@
 #include "horizon/ui/MeasureDistanceTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QStatusBar>
 #include <cmath>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
+
+#include "horizon/document/Document.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -29,8 +30,8 @@ bool MeasureDistanceTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -46,16 +47,14 @@ bool MeasureDistanceTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
         double dist = std::sqrt(dx * dx + dy * dy);
 
         std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4)
-            << "Distance: " << dist
-            << "  (dx=" << dx << ", dy=" << dy << ")";
+        oss << std::fixed << std::setprecision(4) << "Distance: " << dist << "  (dx=" << dx
+            << ", dy=" << dy << ")";
 
         // Display in status bar.
         if (m_viewport) {
             auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());
             if (mainWin && mainWin->statusBar()) {
-                mainWin->statusBar()->showMessage(
-                    QString::fromStdString(oss.str()), 10000);
+                mainWin->statusBar()->showMessage(QString::fromStdString(oss.str()), 10000);
             }
         }
 
@@ -73,8 +72,8 @@ bool MeasureDistanceTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -108,12 +107,16 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MeasureDistanceTool::getPreviewLi
 
 std::string MeasureDistanceTool::promptText() const {
     switch (m_state) {
-        case State::First: return "Specify first point";
-        case State::Second: return "Specify second point";
+        case State::First:
+            return "Specify first point";
+        case State::Second:
+            return "Specify second point";
     }
     return "";
 }
 
-bool MeasureDistanceTool::wantsCrosshair() const { return true; }
+bool MeasureDistanceTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "horizon/document/ExpressionEngine.h"
-
 #include <algorithm>
+
+#include "horizon/document/ExpressionEngine.h"
 
 using namespace hz::doc;
 

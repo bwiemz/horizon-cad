@@ -8,8 +8,7 @@
 
 namespace hz::ui {
 
-RectArrayDialog::RectArrayDialog(QWidget* parent)
-    : QDialog(parent) {
+RectArrayDialog::RectArrayDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle(tr("Rectangular Array"));
 
     auto* layout = new QVBoxLayout(this);
@@ -39,16 +38,23 @@ RectArrayDialog::RectArrayDialog(QWidget* parent)
 
     layout->addLayout(form);
 
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
 }
 
-int RectArrayDialog::columns() const { return m_columns->value(); }
-int RectArrayDialog::rows() const { return m_rows->value(); }
-double RectArrayDialog::spacingX() const { return m_spacingX->value(); }
-double RectArrayDialog::spacingY() const { return m_spacingY->value(); }
+int RectArrayDialog::columns() const {
+    return m_columns->value();
+}
+int RectArrayDialog::rows() const {
+    return m_rows->value();
+}
+double RectArrayDialog::spacingX() const {
+    return m_spacingX->value();
+}
+double RectArrayDialog::spacingY() const {
+    return m_spacingY->value();
+}
 
 }  // namespace hz::ui

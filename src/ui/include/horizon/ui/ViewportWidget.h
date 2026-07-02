@@ -4,22 +4,21 @@
 #include <QPoint>
 #include <QPointF>
 #include <QWidget>
-
-#include "horizon/math/Vec2.h"
-#include "horizon/math/Vec3.h"
-#include "horizon/render/Camera.h"
-#include "horizon/document/Sketch.h"
-#include "horizon/render/SceneGraph.h"
-#include "horizon/render/SelectionManager.h"
-#include "horizon/drafting/SnapEngine.h"
-#include "horizon/ui/OverlayRenderer.h"
-#include "horizon/ui/ViewportInputHandler.h"
-#include "horizon/ui/ViewportRenderer.h"
-
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "horizon/document/Sketch.h"
+#include "horizon/drafting/SnapEngine.h"
+#include "horizon/math/Vec2.h"
+#include "horizon/math/Vec3.h"
+#include "horizon/render/Camera.h"
+#include "horizon/render/SceneGraph.h"
+#include "horizon/render/SelectionManager.h"
+#include "horizon/ui/OverlayRenderer.h"
+#include "horizon/ui/ViewportInputHandler.h"
+#include "horizon/ui/ViewportRenderer.h"
 
 class QOpenGLExtraFunctions;
 class QImage;

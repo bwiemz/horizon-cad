@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
-
-#include <cmath>
 
 using namespace hz::geo;
 using namespace hz::math;
@@ -16,8 +16,7 @@ using namespace hz::math;
 static std::vector<double> clampedKnots(int n, int degree) {
     std::vector<double> knots(n + degree + 1);
     for (int i = 0; i <= degree; ++i) knots[i] = 0.0;
-    for (int i = degree + 1; i < n; ++i)
-        knots[i] = static_cast<double>(i - degree) / (n - degree);
+    for (int i = degree + 1; i < n; ++i) knots[i] = static_cast<double>(i - degree) / (n - degree);
     for (int i = n; i < n + degree + 1; ++i) knots[i] = 1.0;
     return knots;
 }
@@ -510,8 +509,8 @@ TEST(NurbsSurfaceTest, TessellateCurvedHasMoreTriangles) {
 
     NurbsSurface srf(pts, wts, kU, kV, 2, 2);
 
-    auto coarse = srf.tessellate(1.0);   // resolution ~10
-    auto fine = srf.tessellate(0.1);     // resolution ~100
+    auto coarse = srf.tessellate(1.0);  // resolution ~10
+    auto fine = srf.tessellate(0.1);    // resolution ~100
 
     // Finer tolerance → more triangles.
     EXPECT_GT(fine.indices.size(), coarse.indices.size());
@@ -625,9 +624,8 @@ TEST(NurbsSurfaceTest, SphericalSurface) {
 
             Vec3 pt = srf.evaluate(u, v);
             double dist = pt.distanceTo(center);
-            EXPECT_NEAR(dist, radius, 0.2)
-                << "u=" << u << " v=" << v << " pt=(" << pt.x << "," << pt.y << "," << pt.z
-                << ") dist=" << dist;
+            EXPECT_NEAR(dist, radius, 0.2) << "u=" << u << " v=" << v << " pt=(" << pt.x << ","
+                                           << pt.y << "," << pt.z << ") dist=" << dist;
         }
     }
 }

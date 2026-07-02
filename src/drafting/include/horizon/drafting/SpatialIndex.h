@@ -1,11 +1,12 @@
 #pragma once
 
-#include "horizon/math/RTree.h"
-#include "horizon/math/BoundingBox.h"
-#include "DraftEntity.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "DraftEntity.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/math/RTree.h"
 
 namespace hz::draft {
 

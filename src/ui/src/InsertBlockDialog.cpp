@@ -8,8 +8,7 @@
 
 namespace hz::ui {
 
-InsertBlockDialog::InsertBlockDialog(const std::vector<std::string>& blockNames,
-                                     QWidget* parent)
+InsertBlockDialog::InsertBlockDialog(const std::vector<std::string>& blockNames, QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("Insert Block"));
 
@@ -37,8 +36,7 @@ InsertBlockDialog::InsertBlockDialog(const std::vector<std::string>& blockNames,
 
     layout->addLayout(form);
 
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);

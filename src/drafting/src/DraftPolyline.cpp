@@ -1,7 +1,9 @@
 #include "horizon/drafting/DraftPolyline.h"
-#include "horizon/math/MathUtils.h"
+
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
@@ -23,8 +25,7 @@ math::BoundingBox DraftPolyline::boundingBox() const {
         maxX = std::max(maxX, m_points[i].x);
         maxY = std::max(maxY, m_points[i].y);
     }
-    return math::BoundingBox(math::Vec3(minX, minY, 0.0),
-                             math::Vec3(maxX, maxY, 0.0));
+    return math::BoundingBox(math::Vec3(minX, minY, 0.0), math::Vec3(maxX, maxY, 0.0));
 }
 
 bool DraftPolyline::hitTest(const math::Vec2& point, double tolerance) const {
@@ -41,12 +42,10 @@ bool DraftPolyline::hitTest(const math::Vec2& point, double tolerance) const {
     };
 
     for (size_t i = 0; i + 1 < m_points.size(); ++i) {
-        if (segmentDist(point, m_points[i], m_points[i + 1]) <= tolerance)
-            return true;
+        if (segmentDist(point, m_points[i], m_points[i + 1]) <= tolerance) return true;
     }
     if (m_closed && m_points.size() >= 2) {
-        if (segmentDist(point, m_points.back(), m_points[0]) <= tolerance)
-            return true;
+        if (segmentDist(point, m_points.back(), m_points[0]) <= tolerance) return true;
     }
     return false;
 }
@@ -75,9 +74,8 @@ void DraftPolyline::translate(const math::Vec2& delta) {
     }
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;

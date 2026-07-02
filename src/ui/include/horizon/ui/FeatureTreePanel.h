@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QDockWidget>
-
 #include <string>
 
 class QTreeWidget;

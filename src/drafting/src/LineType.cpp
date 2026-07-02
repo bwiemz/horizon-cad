@@ -5,13 +5,11 @@
 
 namespace hz::draft {
 
-static const char* kNames[] = {
-    "ByLayer", "Continuous", "Dashed", "Dotted",
-    "DashDot", "Center", "Hidden", "Phantom"};
+static const char* kNames[] = {"ByLayer", "Continuous", "Dashed", "Dotted",
+                               "DashDot", "Center",     "Hidden", "Phantom"};
 
-static const char* kDxfNames[] = {
-    "BYLAYER", "CONTINUOUS", "DASHED", "DOT",
-    "DASHDOT", "CENTER", "HIDDEN", "PHANTOM"};
+static const char* kDxfNames[] = {"BYLAYER", "CONTINUOUS", "DASHED", "DOT",
+                                  "DASHDOT", "CENTER",     "HIDDEN", "PHANTOM"};
 
 const char* lineTypeName(LineType lt) {
     int idx = static_cast<int>(lt);

@@ -108,4 +108,4 @@ private:
     static QIcon drawFitAll(int s);
 };
 
-} // namespace hz::ui
+}  // namespace hz::ui

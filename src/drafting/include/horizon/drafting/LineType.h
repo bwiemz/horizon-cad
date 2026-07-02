@@ -6,14 +6,14 @@ namespace hz::draft {
 
 /// Standard line types for 2D CAD drawing entities.
 enum class LineType : int {
-    ByLayer     = 0,  ///< Inherit line type from layer (default for entities).
-    Continuous  = 1,  ///< Solid line (default for layers).
-    Dashed      = 2,  ///< Long dashes.
-    Dotted      = 3,  ///< Dots.
-    DashDot     = 4,  ///< Alternating dash and dot.
-    Center      = 5,  ///< Long dash, short dash (for center lines).
-    Hidden      = 6,  ///< Short dashes (for hidden edges).
-    Phantom     = 7   ///< Long dash, two short dashes.
+    ByLayer = 0,     ///< Inherit line type from layer (default for entities).
+    Continuous = 1,  ///< Solid line (default for layers).
+    Dashed = 2,      ///< Long dashes.
+    Dotted = 3,      ///< Dots.
+    DashDot = 4,     ///< Alternating dash and dot.
+    Center = 5,      ///< Long dash, short dash (for center lines).
+    Hidden = 6,      ///< Short dashes (for hidden edges).
+    Phantom = 7      ///< Long dash, two short dashes.
 };
 
 /// Total number of non-ByLayer line types (Continuous through Phantom).

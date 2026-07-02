@@ -1,5 +1,8 @@
 #include "horizon/modeling/Extrude.h"
 
+#include <cassert>
+#include <cmath>
+
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
@@ -7,9 +10,6 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/topology/EulerOps.h"
-
-#include <cassert>
-#include <cmath>
 
 namespace hz::model {
 
@@ -40,9 +40,8 @@ static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* prevOrigin = nullptr
 }
 
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-        std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 static void assignEdgeCurve(Edge* edge) {
@@ -216,8 +215,8 @@ static PrismBuild buildPrismTopology(Solid& solid, const std::vector<Vec3>& bott
     // Step 2: MEV to create bottom polygon vertices v1..v(N-1).
     for (size_t i = 1; i < N; ++i) {
         HalfEdge* hePrev = findHE(fOuter, pb.bottomVerts[i - 1]);
-        auto [edge, vi] = euler::makeEdgeVertex(solid, (i == 1) ? nullptr : hePrev,
-                                                 fOuter, bottomPts[i]);
+        auto [edge, vi] =
+            euler::makeEdgeVertex(solid, (i == 1) ? nullptr : hePrev, fOuter, bottomPts[i]);
         pb.bottomVerts[i] = vi;
     }
 
@@ -261,9 +260,7 @@ static PrismBuild buildPrismTopology(Solid& solid, const std::vector<Vec3>& bott
 
 std::unique_ptr<topo::Solid> Extrude::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
-    const draft::SketchPlane& plane,
-    const Vec3& direction,
-    double distance,
+    const draft::SketchPlane& plane, const Vec3& direction, double distance,
     const std::string& featureID) {
     // -----------------------------------------------------------------------
     // 1. Validate profile
@@ -290,14 +287,8 @@ std::unique_ptr<topo::Solid> Extrude::execute(
             const Vec3 yA = plane.yAxis();
 
             const Vec3 pts[8] = {
-                center3D + xA * r,
-                center3D + yA * r,
-                center3D - xA * r,
-                center3D - yA * r,
-                topCenter + xA * r,
-                topCenter + yA * r,
-                topCenter - xA * r,
-                topCenter - yA * r,
+                center3D + xA * r,  center3D + yA * r,  center3D - xA * r,  center3D - yA * r,
+                topCenter + xA * r, topCenter + yA * r, topCenter - xA * r, topCenter - yA * r,
             };
 
             auto solid = std::make_unique<topo::Solid>();
@@ -393,17 +384,15 @@ std::unique_ptr<topo::Solid> Extrude::execute(
         {
             const Vec3 u = (bottomPts[1] - bottomPts[0]);
             const Vec3 v = (bottomPts[3] - bottomPts[0]);
-            bb.bottom->surface = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makePlane(bottomPts[0], u.normalized(), v.normalized(),
-                                             u.length(), v.length()));
+            bb.bottom->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+                bottomPts[0], u.normalized(), v.normalized(), u.length(), v.length()));
         }
         // Top cap
         {
             const Vec3 u = (topPts[1] - topPts[0]);
             const Vec3 v = (topPts[3] - topPts[0]);
-            bb.top->surface = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makePlane(topPts[0], u.normalized(), v.normalized(),
-                                             u.length(), v.length()));
+            bb.top->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+                topPts[0], u.normalized(), v.normalized(), u.length(), v.length()));
         }
         // Lateral faces: front(0-1), right(1-2), back(2-3), left(3-0)
         Face* laterals[4] = {bb.front, bb.right, bb.back, bb.left};
@@ -411,9 +400,8 @@ std::unique_ptr<topo::Solid> Extrude::execute(
             int j = (i + 1) % 4;
             const Vec3 uDir = (bottomPts[j] - bottomPts[i]);
             const Vec3 vDir = direction.normalized();
-            laterals[i]->surface = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makePlane(bottomPts[i], uDir.normalized(), vDir,
-                                             uDir.length(), distance));
+            laterals[i]->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+                bottomPts[i], uDir.normalized(), vDir, uDir.length(), distance));
         }
 
         return solid;
@@ -429,8 +417,7 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     pb.bottomFace->topoId = TopologyID::make(featureID, "cap_bottom");
     pb.topFace->topoId = TopologyID::make(featureID, "cap_top");
     for (size_t i = 0; i < N; ++i) {
-        pb.lateralFaces[i]->topoId =
-            TopologyID::make(featureID, "lateral_" + std::to_string(i));
+        pb.lateralFaces[i]->topoId = TopologyID::make(featureID, "lateral_" + std::to_string(i));
     }
 
     {
@@ -493,9 +480,9 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     for (size_t i = 0; i < N; ++i) {
         size_t j = (i + 1) % N;
         const Vec3 uDir = (bottomPts[j] - bottomPts[i]);
-        pb.lateralFaces[i]->surface = std::make_shared<geo::NurbsSurface>(
-            geo::NurbsSurface::makePlane(bottomPts[i], uDir.normalized(), vDir,
-                                         uDir.length(), distance));
+        pb.lateralFaces[i]->surface =
+            std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+                bottomPts[i], uDir.normalized(), vDir, uDir.length(), distance));
     }
 
     return solid;

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "horizon/math/Vec3.h"
-
 #include <cstdint>
 #include <utility>
 #include <vector>
+
+#include "horizon/math/Vec3.h"
 
 namespace hz::geo {
 
@@ -12,9 +12,9 @@ class NurbsCurve;
 
 /// Result of surface tessellation: triangle mesh with positions and normals.
 struct TessellationResult {
-    std::vector<float> positions;    ///< 3 floats per vertex (x, y, z).
-    std::vector<float> normals;      ///< 3 floats per vertex (nx, ny, nz).
-    std::vector<uint32_t> indices;   ///< Triangle list (3 indices per triangle).
+    std::vector<float> positions;   ///< 3 floats per vertex (x, y, z).
+    std::vector<float> normals;     ///< 3 floats per vertex (nx, ny, nz).
+    std::vector<uint32_t> indices;  ///< Triangle list (3 indices per triangle).
 };
 
 /// Non-uniform rational B-spline (NURBS) tensor-product surface.
@@ -113,12 +113,12 @@ public:
                                   double majorRadius, double minorRadius);
 
     /// Create a conical surface with apex at @p apex along @p axis.
-    static NurbsSurface makeCone(const math::Vec3& apex, const math::Vec3& axis,
-                                 double halfAngle, double height);
+    static NurbsSurface makeCone(const math::Vec3& apex, const math::Vec3& axis, double halfAngle,
+                                 double height);
 
 private:
     std::vector<std::vector<math::Vec3>> m_controlPoints;  // [row_u][col_v]
-    std::vector<std::vector<double>> m_weights;             // same layout
+    std::vector<std::vector<double>> m_weights;            // same layout
     std::vector<double> m_knotsU;
     std::vector<double> m_knotsV;
     int m_degreeU;

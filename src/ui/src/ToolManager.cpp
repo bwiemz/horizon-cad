@@ -1,4 +1,5 @@
 #include "horizon/ui/ToolManager.h"
+
 #include "horizon/ui/Tool.h"
 
 namespace hz::ui {

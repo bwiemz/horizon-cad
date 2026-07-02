@@ -14,16 +14,14 @@ ShaderProgram& ShaderProgram::operator=(ShaderProgram&&) noexcept = default;
 bool ShaderProgram::create(const std::string& vertSrc, const std::string& fragSrc) {
     m_program = std::make_unique<QOpenGLShaderProgram>();
 
-    if (!m_program->addShaderFromSourceCode(QOpenGLShader::Vertex,
-                                             vertSrc.c_str())) {
+    if (!m_program->addShaderFromSourceCode(QOpenGLShader::Vertex, vertSrc.c_str())) {
         qWarning("ShaderProgram: vertex shader compilation failed:\n%s",
                  qPrintable(m_program->log()));
         m_program.reset();
         return false;
     }
 
-    if (!m_program->addShaderFromSourceCode(QOpenGLShader::Fragment,
-                                             fragSrc.c_str())) {
+    if (!m_program->addShaderFromSourceCode(QOpenGLShader::Fragment, fragSrc.c_str())) {
         qWarning("ShaderProgram: fragment shader compilation failed:\n%s",
                  qPrintable(m_program->log()));
         m_program.reset();
@@ -31,8 +29,7 @@ bool ShaderProgram::create(const std::string& vertSrc, const std::string& fragSr
     }
 
     if (!m_program->link()) {
-        qWarning("ShaderProgram: linking failed:\n%s",
-                 qPrintable(m_program->log()));
+        qWarning("ShaderProgram: linking failed:\n%s", qPrintable(m_program->log()));
         m_program.reset();
         return false;
     }
@@ -40,8 +37,7 @@ bool ShaderProgram::create(const std::string& vertSrc, const std::string& fragSr
     return true;
 }
 
-bool ShaderProgram::createFromFiles(const std::string& vertPath,
-                                     const std::string& fragPath) {
+bool ShaderProgram::createFromFiles(const std::string& vertPath, const std::string& fragPath) {
     auto readFile = [](const std::string& path) -> std::string {
         QFile file(QString::fromStdString(path));
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -82,17 +78,15 @@ void ShaderProgram::setUniform(const char* name, const math::Mat4& mat) {
 
 void ShaderProgram::setUniform(const char* name, const math::Vec3& vec) {
     if (!m_program) return;
-    m_program->setUniformValue(name, QVector3D(static_cast<float>(vec.x),
-                                                static_cast<float>(vec.y),
-                                                static_cast<float>(vec.z)));
+    m_program->setUniformValue(name, QVector3D(static_cast<float>(vec.x), static_cast<float>(vec.y),
+                                               static_cast<float>(vec.z)));
 }
 
 void ShaderProgram::setUniform(const char* name, const math::Vec4& vec) {
     if (!m_program) return;
-    m_program->setUniformValue(name, QVector4D(static_cast<float>(vec.x),
-                                                static_cast<float>(vec.y),
-                                                static_cast<float>(vec.z),
-                                                static_cast<float>(vec.w)));
+    m_program->setUniformValue(name,
+                               QVector4D(static_cast<float>(vec.x), static_cast<float>(vec.y),
+                                         static_cast<float>(vec.z), static_cast<float>(vec.w)));
 }
 
 void ShaderProgram::setUniform(const char* name, float value) {

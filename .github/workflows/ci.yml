@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            preset: debug
+            preset: ci-windows
             triplet: x64-windows
           - os: ubuntu-22.04
             preset: linux-debug
@@ -42,9 +42,13 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
         env:
           VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -103,7 +107,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
         env:
           VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
@@ -177,7 +181,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
         env:
           VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 

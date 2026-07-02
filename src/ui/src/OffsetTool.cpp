@@ -1,21 +1,22 @@
 #include "horizon/ui/OffsetTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/drafting/Intersection.h"
-#include "horizon/math/MathUtils.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/Intersection.h"
+#include "horizon/math/MathUtils.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -25,7 +26,10 @@ void OffsetTool::deactivate() {
 }
 
 double OffsetTool::computeDistanceAndSide(int& side) const {
-    if (!m_sourceEntity) { side = 1; return 0.0; }
+    if (!m_sourceEntity) {
+        side = 1;
+        return 0.0;
+    }
 
     if (auto* line = dynamic_cast<const draft::DraftLine*>(m_sourceEntity.get())) {
         math::Vec2 dir = (line->end() - line->start()).normalized();
@@ -36,7 +40,9 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
         // Distance from cursor to the line.
         math::Vec2 ab = line->end() - line->start();
         double lenSq = ab.lengthSquared();
-        if (lenSq < 1e-14) { return m_currentPos.distanceTo(line->start()); }
+        if (lenSq < 1e-14) {
+            return m_currentPos.distanceTo(line->start());
+        }
         double t = math::clamp(toMouse.dot(ab) / lenSq, 0.0, 1.0);
         math::Vec2 closest = line->start() + ab * t;
         return m_currentPos.distanceTo(closest);
@@ -72,8 +78,8 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
         double maxX = std::max(rect->corner1().x, rect->corner2().x);
         double minY = std::min(rect->corner1().y, rect->corner2().y);
         double maxY = std::max(rect->corner1().y, rect->corner2().y);
-        bool inside = (m_currentPos.x >= minX && m_currentPos.x <= maxX &&
-                       m_currentPos.y >= minY && m_currentPos.y <= maxY);
+        bool inside = (m_currentPos.x >= minX && m_currentPos.x <= maxX && m_currentPos.y >= minY &&
+                       m_currentPos.y <= maxY);
         side = inside ? -1 : 1;
         return minDist;
     }
@@ -90,7 +96,10 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
             double lenSq = ab.lengthSquared();
             double t = (lenSq < 1e-14) ? 0.0 : math::clamp(ap.dot(ab) / lenSq, 0.0, 1.0);
             double d = m_currentPos.distanceTo(s + ab * t);
-            if (d < minDist) { minDist = d; bestIdx = i; }
+            if (d < minDist) {
+                minDist = d;
+                bestIdx = i;
+            }
         }
         // Side relative to nearest segment.
         if (!segs.empty()) {
@@ -132,8 +141,7 @@ std::shared_ptr<draft::DraftEntity> OffsetTool::computeOffset() const {
     if (auto* line = dynamic_cast<const draft::DraftLine*>(m_sourceEntity.get())) {
         math::Vec2 dir = (line->end() - line->start()).normalized();
         math::Vec2 normal = dir.perpendicular() * static_cast<double>(side) * dist;
-        return std::make_shared<draft::DraftLine>(
-            line->start() + normal, line->end() + normal);
+        return std::make_shared<draft::DraftLine>(line->start() + normal, line->end() + normal);
     }
 
     if (auto* circle = dynamic_cast<const draft::DraftCircle*>(m_sourceEntity.get())) {
@@ -145,8 +153,8 @@ std::shared_ptr<draft::DraftEntity> OffsetTool::computeOffset() const {
     if (auto* arc = dynamic_cast<const draft::DraftArc*>(m_sourceEntity.get())) {
         double newR = arc->radius() + side * dist;
         if (newR < 0.01) newR = 0.01;
-        return std::make_shared<draft::DraftArc>(
-            arc->center(), newR, arc->startAngle(), arc->endAngle());
+        return std::make_shared<draft::DraftArc>(arc->center(), newR, arc->startAngle(),
+                                                 arc->endAngle());
     }
 
     if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(m_sourceEntity.get())) {
@@ -218,8 +226,8 @@ std::shared_ptr<draft::DraftEntity> OffsetTool::computeOffset() const {
         double newMinor = ellipse->semiMinor() + side * dist;
         if (newMajor < 0.01) newMajor = 0.01;
         if (newMinor < 0.01) newMinor = 0.01;
-        return std::make_shared<draft::DraftEllipse>(
-            ellipse->center(), newMajor, newMinor, ellipse->rotation());
+        return std::make_shared<draft::DraftEllipse>(ellipse->center(), newMajor, newMinor,
+                                                     ellipse->rotation());
     }
 
     return nullptr;
@@ -318,12 +326,16 @@ std::vector<Tool::ArcPreview> OffsetTool::getPreviewArcs() const {
 
 std::string OffsetTool::promptText() const {
     switch (m_state) {
-        case State::SelectEntity: return "Select entity to offset";
-        case State::SpecifyDistance: return "Specify offset distance and side";
+        case State::SelectEntity:
+            return "Select entity to offset";
+        case State::SpecifyDistance:
+            return "Specify offset distance and side";
     }
     return "";
 }
 
-bool OffsetTool::wantsCrosshair() const { return false; }
+bool OffsetTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

@@ -18,12 +18,12 @@ public:
     std::string displayText(const DimensionStyle& style) const override;
     math::Vec2 textPosition() const override;
 
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        extensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        dimensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        arrowheadLines(const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> extensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> dimensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> arrowheadLines(
+        const DimensionStyle& style) const override;
 
     // DraftEntity overrides
     math::BoundingBox boundingBox() const override;

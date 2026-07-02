@@ -1,10 +1,10 @@
 #pragma once
 
-#include "horizon/drafting/DraftEntity.h"
-
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/drafting/DraftEntity.h"
 
 namespace hz::model {
 
@@ -30,8 +30,7 @@ public:
     /// @param tolerance Maximum gap between consecutive endpoints.
     /// @return Validation result with ordered edges if closed.
     static ProfileValidationResult validate(
-        const std::vector<std::shared_ptr<draft::DraftEntity>>& entities,
-        double tolerance = 1e-6);
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& entities, double tolerance = 1e-6);
 };
 
 }  // namespace hz::model

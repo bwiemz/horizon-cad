@@ -1,8 +1,9 @@
 #include "horizon/ui/OverlayRenderer.h"
-#include "horizon/render/GLRenderer.h"
-#include "horizon/render/Camera.h"
 
 #include <cmath>
+
+#include "horizon/render/Camera.h"
+#include "horizon/render/GLRenderer.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -10,11 +11,9 @@
 
 namespace hz::ui {
 
-void OverlayRenderer::render(QOpenGLExtraFunctions* gl,
-                              const render::Camera& camera,
-                              render::GLRenderer* renderer,
-                              int viewportWidth, int viewportHeight,
-                              double pixelScale) {
+void OverlayRenderer::render(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                             render::GLRenderer* renderer, int viewportWidth, int viewportHeight,
+                             double pixelScale) {
     if (m_crosshairEnabled) {
         renderCrosshair(gl, camera, renderer, viewportWidth, viewportHeight, pixelScale);
     }
@@ -35,14 +34,18 @@ void OverlayRenderer::render(QOpenGLExtraFunctions* gl,
 // Helper: push a line segment with distance attribute (solid overlays use dist=0).
 static void pushSeg(std::vector<float>& v, float x0, float y0, float x1, float y1) {
     float len = std::sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
-    v.push_back(x0); v.push_back(y0); v.push_back(0.0f); v.push_back(0.0f);
-    v.push_back(x1); v.push_back(y1); v.push_back(0.0f); v.push_back(len);
+    v.push_back(x0);
+    v.push_back(y0);
+    v.push_back(0.0f);
+    v.push_back(0.0f);
+    v.push_back(x1);
+    v.push_back(y1);
+    v.push_back(0.0f);
+    v.push_back(len);
 }
 
-void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
-                                        const render::Camera& camera,
-                                        render::GLRenderer* renderer,
-                                        double pixelScale) {
+void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                                       render::GLRenderer* renderer, double pixelScale) {
     double size = 8.0 * pixelScale;
     float cx = static_cast<float>(m_snapResult.point.x);
     float cy = static_cast<float>(m_snapResult.point.y);
@@ -73,8 +76,7 @@ void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
             for (int i = 0; i < segs; ++i) {
                 double a1 = 2.0 * M_PI * i / segs;
                 double a2 = 2.0 * M_PI * (i + 1) / segs;
-                pushSeg(verts,
-                        cx + s * static_cast<float>(std::cos(a1)),
+                pushSeg(verts, cx + s * static_cast<float>(std::cos(a1)),
                         cy + s * static_cast<float>(std::sin(a1)),
                         cx + s * static_cast<float>(std::cos(a2)),
                         cy + s * static_cast<float>(std::sin(a2)));
@@ -101,11 +103,9 @@ void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl,
 // Crosshair — full-viewport thin gray lines through cursor
 // ---------------------------------------------------------------------------
 
-void OverlayRenderer::renderCrosshair(QOpenGLExtraFunctions* gl,
-                                       const render::Camera& camera,
-                                       render::GLRenderer* renderer,
-                                       int vpW, int vpH,
-                                       double pixelScale) {
+void OverlayRenderer::renderCrosshair(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                                      render::GLRenderer* renderer, int vpW, int vpH,
+                                      double pixelScale) {
     double extent = std::max(vpW, vpH) * pixelScale * 2.0;
 
     float wx = static_cast<float>(m_crosshairWorld.x);
@@ -124,11 +124,9 @@ void OverlayRenderer::renderCrosshair(QOpenGLExtraFunctions* gl,
 // Axis indicator — small X/Y axes in the bottom-left corner
 // ---------------------------------------------------------------------------
 
-void OverlayRenderer::renderAxisIndicator(QOpenGLExtraFunctions* gl,
-                                           const render::Camera& camera,
-                                           render::GLRenderer* renderer,
-                                           int vpW, int vpH,
-                                           double pixelScale) {
+void OverlayRenderer::renderAxisIndicator(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                                          render::GLRenderer* renderer, int vpW, int vpH,
+                                          double pixelScale) {
     double margin = 35.0 * pixelScale;
     double axisLen = 30.0 * pixelScale;
 

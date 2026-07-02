@@ -1,14 +1,15 @@
 #include "horizon/ui/RadialDimensionTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+
 #include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftCircle.h"
+#include "horizon/document/Document.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftRadialDimension.h"
 #include "horizon/drafting/Layer.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -63,12 +64,12 @@ bool RadialDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
     if (m_state == State::WaitingForTextPos) {
         if (!m_viewport || !m_viewport->document()) return false;
 
-        auto dim = std::make_shared<draft::DraftRadialDimension>(
-            m_center, m_radius, m_currentPos, m_isDiameter);
+        auto dim = std::make_shared<draft::DraftRadialDimension>(m_center, m_radius, m_currentPos,
+                                                                 m_isDiameter);
         dim->setLayer(m_viewport->document()->layerManager().currentLayer());
 
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), dim);
+        auto cmd =
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), dim);
         m_viewport->document()->undoStack().push(std::move(cmd));
 
         m_state = State::WaitingForCircle;
@@ -86,7 +87,8 @@ bool RadialDimensionTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec
     return false;
 }
 
-bool RadialDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*worldPos*/) {
+bool RadialDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/,
+                                            const math::Vec2& /*worldPos*/) {
     return false;
 }
 
@@ -130,12 +132,16 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RadialDimensionTool::getPreviewLi
 
 std::string RadialDimensionTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForCircle: return "Select circle or arc to dimension";
-        case State::WaitingForTextPos: return "Specify dimension text position";
+        case State::WaitingForCircle:
+            return "Select circle or arc to dimension";
+        case State::WaitingForTextPos:
+            return "Specify dimension text position";
     }
     return "";
 }
 
-bool RadialDimensionTool::wantsCrosshair() const { return true; }
+bool RadialDimensionTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

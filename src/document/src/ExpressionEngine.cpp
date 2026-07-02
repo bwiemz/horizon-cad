@@ -18,8 +18,7 @@ void ExpressionEngine::setLiteral(const std::string& name, double value) {
     reevaluate();
 }
 
-void ExpressionEngine::setExpression(const std::string& name,
-                                     const std::string& exprStr) {
+void ExpressionEngine::setExpression(const std::string& name, const std::string& exprStr) {
     auto parsed = math::Expression::parse(exprStr);
     if (!parsed) {
         return;  // parse failure -- do nothing
@@ -141,8 +140,7 @@ void ExpressionEngine::reevaluate() {
     }
 }
 
-std::map<std::string, std::set<std::string>>
-ExpressionEngine::buildDependencyGraph() const {
+std::map<std::string, std::set<std::string>> ExpressionEngine::buildDependencyGraph() const {
     std::map<std::string, std::set<std::string>> graph;
 
     // Ensure every variable has an entry (even if no dependencies)
@@ -217,9 +215,8 @@ std::vector<std::string> ExpressionEngine::topologicalSort(
     return result;
 }
 
-bool ExpressionEngine::detectCycle(
-    const std::map<std::string, std::set<std::string>>& graph,
-    std::vector<std::string>& cyclePath) const {
+bool ExpressionEngine::detectCycle(const std::map<std::string, std::set<std::string>>& graph,
+                                   std::vector<std::string>& cyclePath) const {
     // DFS-based cycle detection
     enum class State { Unvisited, InProgress, Done };
     std::map<std::string, State> state;

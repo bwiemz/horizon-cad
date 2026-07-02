@@ -55,8 +55,7 @@ Mat4 SketchPlane::worldToLocalMatrix() const {
     return localToWorldMatrix().inverse();
 }
 
-bool SketchPlane::rayIntersect(const Vec3& rayOrigin, const Vec3& rayDir,
-                                Vec2& localResult) const {
+bool SketchPlane::rayIntersect(const Vec3& rayOrigin, const Vec3& rayDir, Vec2& localResult) const {
     double denom = rayDir.dot(m_normal);
     if (std::abs(denom) < 1e-12) return false;  // Ray parallel to plane
     double t = (m_origin - rayOrigin).dot(m_normal) / denom;

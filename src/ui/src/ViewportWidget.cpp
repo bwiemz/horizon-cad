@@ -1,17 +1,17 @@
 #include "horizon/ui/ViewportWidget.h"
-#include "horizon/ui/Tool.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QOpenGLExtraFunctions>
+#include <QWheelEvent>
+#include <cmath>
+
+#include "horizon/document/Document.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Vec4.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
-#include "horizon/document/Document.h"
-#include "horizon/math/Vec4.h"
-#include "horizon/math/Mat4.h"
-
-#include <QMouseEvent>
-#include <QWheelEvent>
-#include <QKeyEvent>
-#include <QOpenGLExtraFunctions>
-
-#include <cmath>
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 
@@ -19,8 +19,7 @@ namespace hz::ui {
 // Construction / destruction
 // ---------------------------------------------------------------------------
 
-ViewportWidget::ViewportWidget(QWidget* parent)
-    : QOpenGLWidget(parent) {
+ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
 
@@ -99,9 +98,7 @@ void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
 math::Vec2 ViewportWidget::worldPositionAtCursor(int screenX, int screenY) const {
     // screenToRay expects Qt-style coordinates (0 = top), so pass screenY directly.
     auto [rayOrigin, rayDir] = m_camera.screenToRay(
-        static_cast<double>(screenX),
-        static_cast<double>(screenY),
-        width(), height());
+        static_cast<double>(screenX), static_cast<double>(screenY), width(), height());
 
     // If a sketch is active, project onto its plane (returns local 2D coordinates).
     if (m_activeSketch) {
@@ -132,8 +129,8 @@ double ViewportWidget::pixelToWorldScale() const {
 }
 
 QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
-    math::Vec4 clip = m_camera.viewProjectionMatrix()
-                      * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);
+    math::Vec4 clip =
+        m_camera.viewProjectionMatrix() * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);
     if (std::abs(clip.w) < 1e-15) return {0.0, 0.0};
 
     math::Vec3 ndc = clip.perspectiveDivide();
@@ -185,14 +182,13 @@ void ViewportWidget::paintGL() {
 
     // Render document entities (collects dimension text info).
     if (m_document) {
-        m_viewportRenderer.renderEntities(gl, *m_renderer, m_camera,
-                                          *m_document, m_selectionManager);
+        m_viewportRenderer.renderEntities(gl, *m_renderer, m_camera, *m_document,
+                                          m_selectionManager);
     }
 
     // Render grip squares on selected entities.
     if (m_document) {
-        m_viewportRenderer.renderGrips(gl, *m_renderer, m_camera,
-                                       *m_document, m_selectionManager,
+        m_viewportRenderer.renderGrips(gl, *m_renderer, m_camera, *m_document, m_selectionManager,
                                        pixelToWorldScale());
     }
 
@@ -209,15 +205,15 @@ void ViewportWidget::paintGL() {
 
     // GL overlays: crosshair, snap markers, axis indicator.
     m_overlayRenderer.setSnapResult(m_lastSnapResult);
-    m_overlayRenderer.render(gl, m_camera, m_renderer.get(),
-                             width(), height(), pixelToWorldScale());
+    m_overlayRenderer.render(gl, m_camera, m_renderer.get(), width(), height(),
+                             pixelToWorldScale());
 
     // Render text overlay: paint to an offscreen QImage (QPainter on QImage
     // is pure CPU -- no Windows bitmap mask operations), then upload as a GL
     // texture and draw a fullscreen quad.  This avoids the Qt 6.10
     // qpixmap_win.cpp assertion triggered by QPainter on QOpenGLWidget.
-    m_viewportRenderer.blitTextOverlay(gl, m_camera, m_document, m_selectionManager,
-                                       width(), height(), pixelToWorldScale());
+    m_viewportRenderer.blitTextOverlay(gl, m_camera, m_document, m_selectionManager, width(),
+                                       height(), pixelToWorldScale());
 }
 
 // ---------------------------------------------------------------------------

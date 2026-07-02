@@ -2,7 +2,6 @@
 
 #include <QOpenGLBuffer>
 #include <QOpenGLVertexArrayObject>
-
 #include <cstdint>
 #include <vector>
 
@@ -23,14 +22,11 @@ public:
 
     /// Create GPU buffers from interleaved position+normal data and index data.
     /// positions: vec3 per vertex, normals: vec3 per vertex, indices: triangle list.
-    void create(QOpenGLExtraFunctions* gl,
-                const std::vector<float>& positions,
-                const std::vector<float>& normals,
-                const std::vector<uint32_t>& indices);
+    void create(QOpenGLExtraFunctions* gl, const std::vector<float>& positions,
+                const std::vector<float>& normals, const std::vector<uint32_t>& indices);
 
     /// Create GPU buffers from position-only data (no normals, no indices).
-    void createPositionOnly(QOpenGLExtraFunctions* gl,
-                            const std::vector<float>& positions);
+    void createPositionOnly(QOpenGLExtraFunctions* gl, const std::vector<float>& positions);
 
     void bind();
     void draw(QOpenGLExtraFunctions* gl);

@@ -1,11 +1,11 @@
 #include "horizon/modeling/ProfileValidator.h"
 
+#include <cmath>
+
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/math/Vec2.h"
-
-#include <cmath>
 
 namespace hz::model {
 
@@ -67,7 +67,8 @@ ProfileValidationResult ProfileValidator::validate(
     // Find first usable entity.
     EndpointPair firstEP = getEndpoints(entities[0]);
     if (!firstEP.valid) {
-        result.errorMessage = "First entity has no start/end points (circle in multi-entity profile?)";
+        result.errorMessage =
+            "First entity has no start/end points (circle in multi-entity profile?)";
         return result;
     }
 
@@ -103,8 +104,8 @@ ProfileValidationResult ProfileValidator::validate(
             }
         }
         if (!found) {
-            result.errorMessage = "Cannot chain entity " + std::to_string(iter) +
-                                  "; gap in profile";
+            result.errorMessage =
+                "Cannot chain entity " + std::to_string(iter) + "; gap in profile";
             return result;
         }
     }

@@ -1,5 +1,8 @@
 #include "horizon/modeling/Revolve.h"
 
+#include <cassert>
+#include <cmath>
+
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
@@ -7,9 +10,6 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/topology/EulerOps.h"
-
-#include <cassert>
-#include <cmath>
 
 namespace hz::model {
 
@@ -40,9 +40,8 @@ static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* prevOrigin = nullptr
 }
 
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-        std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 static void assignEdgeCurve(Edge* edge) {
@@ -55,8 +54,8 @@ static void assignEdgeCurve(Edge* edge) {
 // Rotate a point around an axis by a given angle (Rodrigues' rotation formula).
 // ---------------------------------------------------------------------------
 
-static Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint,
-                              const Vec3& axisDir, double angle) {
+static Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint, const Vec3& axisDir,
+                             double angle) {
     const Vec3 p = point - axisPoint;
     const Vec3 k = axisDir;  // must be normalized
     const double cosA = std::cos(angle);
@@ -192,10 +191,7 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
 
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
-    const draft::SketchPlane& plane,
-    const Vec3& axisPoint,
-    const Vec3& axisDirection,
-    double angle,
+    const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
     const std::string& featureID) {
     // -----------------------------------------------------------------------
     // 1. Validate profile
@@ -274,14 +270,12 @@ std::unique_ptr<topo::Solid> Revolve::execute(
         centroid = centroid * 0.25;
         // Project centroid onto axis to find closest point.
         const Vec3 centroidToAxis = centroid - axisPoint;
-        const Vec3 axisProjection =
-            axisPoint + axisDir * centroidToAxis.dot(axisDir);
+        const Vec3 axisProjection = axisPoint + axisDir * centroidToAxis.dot(axisDir);
         const double majorRadius = (centroid - axisProjection).length();
 
         // Minor radius: half the profile diagonal (approximation for
         // rectangular cross-section).
-        const double minorRadius =
-            (profilePts3D[0] - profilePts3D[2]).length() * 0.5;
+        const double minorRadius = (profilePts3D[0] - profilePts3D[2]).length() * 0.5;
 
         // Toroidal surface for all faces.
         auto torusSurf = std::make_shared<geo::NurbsSurface>(

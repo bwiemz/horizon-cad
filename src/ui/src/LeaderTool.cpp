@@ -1,12 +1,13 @@
 #include "horizon/ui/LeaderTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftLeader.h"
 
-#include <QMouseEvent>
-#include <QKeyEvent>
 #include <QInputDialog>
+#include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -30,8 +31,8 @@ bool LeaderTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -48,8 +49,8 @@ bool LeaderTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -89,22 +90,20 @@ void LeaderTool::finishLeader() {
 
     // Prompt for text via dialog.
     bool ok = false;
-    QString text = QInputDialog::getText(
-        m_viewport, QObject::tr("Leader Text"),
-        QObject::tr("Enter annotation text:"),
-        QLineEdit::Normal, QString(), &ok);
+    QString text = QInputDialog::getText(m_viewport, QObject::tr("Leader Text"),
+                                         QObject::tr("Enter annotation text:"), QLineEdit::Normal,
+                                         QString(), &ok);
 
     if (!ok || text.isEmpty()) {
         cancel();
         return;
     }
 
-    auto leader = std::make_shared<draft::DraftLeader>(
-        m_points, text.toStdString());
+    auto leader = std::make_shared<draft::DraftLeader>(m_points, text.toStdString());
     leader->setLayer(m_viewport->document()->layerManager().currentLayer());
 
-    auto cmd = std::make_unique<doc::AddEntityCommand>(
-        m_viewport->document()->draftDocument(), leader);
+    auto cmd =
+        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), leader);
     m_viewport->document()->undoStack().push(std::move(cmd));
 
     m_points.clear();
@@ -129,6 +128,8 @@ std::string LeaderTool::promptText() const {
     return "Specify next point, Enter to finish";
 }
 
-bool LeaderTool::wantsCrosshair() const { return true; }
+bool LeaderTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

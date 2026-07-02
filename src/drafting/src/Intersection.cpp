@@ -1,19 +1,20 @@
 #include "horizon/drafting/Intersection.h"
-#include "horizon/drafting/DraftEntity.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftEntity.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
@@ -39,10 +40,8 @@ static bool angleInArcRange(double angle, double startAngle, double endAngle) {
 // Line-Line
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> intersectLineLine(
-    const math::Vec2& p1, const math::Vec2& p2,
-    const math::Vec2& p3, const math::Vec2& p4) {
-
+std::vector<math::Vec2> intersectLineLine(const math::Vec2& p1, const math::Vec2& p2,
+                                          const math::Vec2& p3, const math::Vec2& p4) {
     math::Vec2 d1 = p2 - p1;
     math::Vec2 d2 = p4 - p3;
 
@@ -63,10 +62,8 @@ std::vector<math::Vec2> intersectLineLine(
 // Line-Circle
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> intersectLineCircle(
-    const math::Vec2& p1, const math::Vec2& p2,
-    const math::Vec2& center, double radius) {
-
+std::vector<math::Vec2> intersectLineCircle(const math::Vec2& p1, const math::Vec2& p2,
+                                            const math::Vec2& center, double radius) {
     math::Vec2 d = p2 - p1;
     math::Vec2 f = p1 - center;
 
@@ -102,15 +99,13 @@ std::vector<math::Vec2> intersectLineCircle(
 // Circle-Circle
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> intersectCircleCircle(
-    const math::Vec2& c1, double r1,
-    const math::Vec2& c2, double r2) {
-
+std::vector<math::Vec2> intersectCircleCircle(const math::Vec2& c1, double r1, const math::Vec2& c2,
+                                              double r2) {
     math::Vec2 delta = c2 - c1;
     double d = delta.length();
 
-    if (d < kTol) return {};  // Concentric.
-    if (d > r1 + r2 + kTol) return {};  // Too far apart.
+    if (d < kTol) return {};                      // Concentric.
+    if (d > r1 + r2 + kTol) return {};            // Too far apart.
     if (d < std::abs(r1 - r2) - kTol) return {};  // One inside the other.
 
     double a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
@@ -132,11 +127,9 @@ std::vector<math::Vec2> intersectCircleCircle(
 // Line-Arc
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> intersectLineArc(
-    const math::Vec2& p1, const math::Vec2& p2,
-    const math::Vec2& center, double radius,
-    double startAngle, double endAngle) {
-
+std::vector<math::Vec2> intersectLineArc(const math::Vec2& p1, const math::Vec2& p2,
+                                         const math::Vec2& center, double radius, double startAngle,
+                                         double endAngle) {
     auto pts = intersectLineCircle(p1, p2, center, radius);
     std::vector<math::Vec2> result;
     for (const auto& pt : pts) {
@@ -208,10 +201,9 @@ std::vector<std::pair<math::Vec2, math::Vec2>> extractSegments(const DraftEntity
 // ---------------------------------------------------------------------------
 
 /// Intersect segments from entity A with a circle.
-static void intersectSegmentsVsCircle(
-    const std::vector<std::pair<math::Vec2, math::Vec2>>& segs,
-    const math::Vec2& center, double radius,
-    std::vector<math::Vec2>& out) {
+static void intersectSegmentsVsCircle(const std::vector<std::pair<math::Vec2, math::Vec2>>& segs,
+                                      const math::Vec2& center, double radius,
+                                      std::vector<math::Vec2>& out) {
     for (const auto& [s, e] : segs) {
         auto pts = intersectLineCircle(s, e, center, radius);
         out.insert(out.end(), pts.begin(), pts.end());
@@ -219,11 +211,9 @@ static void intersectSegmentsVsCircle(
 }
 
 /// Intersect segments from entity A with an arc.
-static void intersectSegmentsVsArc(
-    const std::vector<std::pair<math::Vec2, math::Vec2>>& segs,
-    const math::Vec2& center, double radius,
-    double startAngle, double endAngle,
-    std::vector<math::Vec2>& out) {
+static void intersectSegmentsVsArc(const std::vector<std::pair<math::Vec2, math::Vec2>>& segs,
+                                   const math::Vec2& center, double radius, double startAngle,
+                                   double endAngle, std::vector<math::Vec2>& out) {
     for (const auto& [s, e] : segs) {
         auto pts = intersectLineArc(s, e, center, radius, startAngle, endAngle);
         out.insert(out.end(), pts.begin(), pts.end());
@@ -231,10 +221,9 @@ static void intersectSegmentsVsArc(
 }
 
 /// Intersect all segments from A against all segments from B.
-static void intersectSegmentsVsSegments(
-    const std::vector<std::pair<math::Vec2, math::Vec2>>& segsA,
-    const std::vector<std::pair<math::Vec2, math::Vec2>>& segsB,
-    std::vector<math::Vec2>& out) {
+static void intersectSegmentsVsSegments(const std::vector<std::pair<math::Vec2, math::Vec2>>& segsA,
+                                        const std::vector<std::pair<math::Vec2, math::Vec2>>& segsB,
+                                        std::vector<math::Vec2>& out) {
     for (const auto& [a1, a2] : segsA) {
         for (const auto& [b1, b2] : segsB) {
             auto pts = intersectLineLine(a1, a2, b1, b2);
@@ -244,10 +233,10 @@ static void intersectSegmentsVsSegments(
 }
 
 /// Intersect circle/arc A vs circle/arc B, filtering by both angle ranges.
-static void intersectCircularVsCircular(
-    const math::Vec2& cA, double rA, double saA, double eaA, bool fullCircleA,
-    const math::Vec2& cB, double rB, double saB, double eaB, bool fullCircleB,
-    std::vector<math::Vec2>& out) {
+static void intersectCircularVsCircular(const math::Vec2& cA, double rA, double saA, double eaA,
+                                        bool fullCircleA, const math::Vec2& cB, double rB,
+                                        double saB, double eaB, bool fullCircleB,
+                                        std::vector<math::Vec2>& out) {
     auto pts = intersectCircleCircle(cA, rA, cB, rB);
     for (const auto& pt : pts) {
         if (!fullCircleA) {
@@ -267,9 +256,9 @@ IntersectionResult intersect(const DraftEntity& a, const DraftEntity& b) {
 
     // Classify each entity.
     auto* circA = dynamic_cast<const DraftCircle*>(&a);
-    auto* arcA  = dynamic_cast<const DraftArc*>(&a);
+    auto* arcA = dynamic_cast<const DraftArc*>(&a);
     auto* circB = dynamic_cast<const DraftCircle*>(&b);
-    auto* arcB  = dynamic_cast<const DraftArc*>(&b);
+    auto* arcB = dynamic_cast<const DraftArc*>(&b);
 
     bool aIsCircular = (circA || arcA);
     bool bIsCircular = (circB || arcB);
@@ -287,8 +276,8 @@ IntersectionResult intersect(const DraftEntity& a, const DraftEntity& b) {
         if (circB) {
             intersectSegmentsVsCircle(segsA, circB->center(), circB->radius(), result.points);
         } else if (arcB) {
-            intersectSegmentsVsArc(segsA, arcB->center(), arcB->radius(),
-                                   arcB->startAngle(), arcB->endAngle(), result.points);
+            intersectSegmentsVsArc(segsA, arcB->center(), arcB->radius(), arcB->startAngle(),
+                                   arcB->endAngle(), result.points);
         }
     }
 
@@ -297,28 +286,33 @@ IntersectionResult intersect(const DraftEntity& a, const DraftEntity& b) {
         if (circA) {
             intersectSegmentsVsCircle(segsB, circA->center(), circA->radius(), result.points);
         } else if (arcA) {
-            intersectSegmentsVsArc(segsB, arcA->center(), arcA->radius(),
-                                   arcA->startAngle(), arcA->endAngle(), result.points);
+            intersectSegmentsVsArc(segsB, arcA->center(), arcA->radius(), arcA->startAngle(),
+                                   arcA->endAngle(), result.points);
         }
     }
 
     // Case 4: Both circular.
     if (aIsCircular && bIsCircular) {
         math::Vec2 cA = circA ? circA->center() : arcA->center();
-        double rA     = circA ? circA->radius()  : arcA->radius();
+        double rA = circA ? circA->radius() : arcA->radius();
         double saA = 0, eaA = 0;
         bool fullA = (circA != nullptr);
-        if (arcA) { saA = arcA->startAngle(); eaA = arcA->endAngle(); }
+        if (arcA) {
+            saA = arcA->startAngle();
+            eaA = arcA->endAngle();
+        }
 
         math::Vec2 cB = circB ? circB->center() : arcB->center();
-        double rB     = circB ? circB->radius()  : arcB->radius();
+        double rB = circB ? circB->radius() : arcB->radius();
         double saB = 0, eaB = 0;
         bool fullB = (circB != nullptr);
-        if (arcB) { saB = arcB->startAngle(); eaB = arcB->endAngle(); }
+        if (arcB) {
+            saB = arcB->startAngle();
+            eaB = arcB->endAngle();
+        }
 
-        intersectCircularVsCircular(cA, rA, saA, eaA, fullA,
-                                     cB, rB, saB, eaB, fullB,
-                                     result.points);
+        intersectCircularVsCircular(cA, rA, saA, eaA, fullA, cB, rB, saB, eaB, fullB,
+                                    result.points);
     }
 
     // Case 5: Mixed segment + circular entities (e.g. rectangle vs circle).
@@ -331,17 +325,15 @@ IntersectionResult intersect(const DraftEntity& a, const DraftEntity& b) {
 // Ray intersection primitives (for Extend tool)
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> intersectRaySegment(
-    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
-    const math::Vec2& segStart, const math::Vec2& segEnd) {
-
+std::vector<math::Vec2> intersectRaySegment(const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+                                            const math::Vec2& segStart, const math::Vec2& segEnd) {
     math::Vec2 d2 = segEnd - segStart;
     double denom = rayDir.cross(d2);
     if (std::abs(denom) < kTol) return {};  // Parallel.
 
     math::Vec2 d3 = segStart - rayOrigin;
-    double t = d3.cross(d2) / denom;   // Parameter on the ray.
-    double s = d3.cross(rayDir) / denom; // Parameter on the segment.
+    double t = d3.cross(d2) / denom;      // Parameter on the ray.
+    double s = d3.cross(rayDir) / denom;  // Parameter on the segment.
 
     if (t >= 0.0 && s >= -kTol && s <= 1.0 + kTol) {
         return {rayOrigin + rayDir * t};
@@ -349,10 +341,8 @@ std::vector<math::Vec2> intersectRaySegment(
     return {};
 }
 
-std::vector<math::Vec2> intersectRayCircle(
-    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
-    const math::Vec2& center, double radius) {
-
+std::vector<math::Vec2> intersectRayCircle(const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+                                           const math::Vec2& center, double radius) {
     math::Vec2 f = rayOrigin - center;
     double a = rayDir.dot(rayDir);
     double b = 2.0 * f.dot(rayDir);
@@ -377,11 +367,9 @@ std::vector<math::Vec2> intersectRayCircle(
     return result;
 }
 
-std::vector<math::Vec2> intersectRayArc(
-    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
-    const math::Vec2& center, double radius,
-    double startAngle, double endAngle) {
-
+std::vector<math::Vec2> intersectRayArc(const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+                                        const math::Vec2& center, double radius, double startAngle,
+                                        double endAngle) {
     auto pts = intersectRayCircle(rayOrigin, rayDir, center, radius);
     std::vector<math::Vec2> result;
     for (const auto& pt : pts) {
@@ -393,10 +381,8 @@ std::vector<math::Vec2> intersectRayArc(
     return result;
 }
 
-std::vector<math::Vec2> intersectRayEntity(
-    const math::Vec2& rayOrigin, const math::Vec2& rayDir,
-    const DraftEntity& entity) {
-
+std::vector<math::Vec2> intersectRayEntity(const math::Vec2& rayOrigin, const math::Vec2& rayDir,
+                                           const DraftEntity& entity) {
     std::vector<math::Vec2> result;
 
     // Check circular entities.

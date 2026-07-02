@@ -4,7 +4,8 @@ namespace hz::math {
 
 const Transform Transform::Identity = Transform();
 
-Transform::Transform() : m_translation(Vec3::Zero), m_rotation(Quaternion::Identity), m_scale({1.0, 1.0, 1.0}) {}
+Transform::Transform()
+    : m_translation(Vec3::Zero), m_rotation(Quaternion::Identity), m_scale({1.0, 1.0, 1.0}) {}
 
 Transform::Transform(const Vec3& translation, const Quaternion& rotation, const Vec3& scale)
     : m_translation(translation), m_rotation(rotation), m_scale(scale) {}
@@ -19,9 +20,8 @@ Mat4 Transform::toMatrix() const {
 Transform Transform::inverse() const {
     Quaternion invRot = m_rotation.inverse();
     Vec3 invScale = {1.0 / m_scale.x, 1.0 / m_scale.y, 1.0 / m_scale.z};
-    Vec3 invTrans = invRot.rotate(Vec3{-m_translation.x * invScale.x,
-                                        -m_translation.y * invScale.y,
-                                        -m_translation.z * invScale.z});
+    Vec3 invTrans = invRot.rotate(Vec3{-m_translation.x * invScale.x, -m_translation.y * invScale.y,
+                                       -m_translation.z * invScale.z});
     return {invTrans, invRot, invScale};
 }
 
@@ -29,9 +29,9 @@ Transform Transform::operator*(const Transform& rhs) const {
     Vec3 newScale = {m_scale.x * rhs.m_scale.x, m_scale.y * rhs.m_scale.y,
                      m_scale.z * rhs.m_scale.z};
     Quaternion newRot = m_rotation * rhs.m_rotation;
-    Vec3 newTrans = m_translation + m_rotation.rotate(
-        Vec3{m_scale.x * rhs.m_translation.x, m_scale.y * rhs.m_translation.y,
-             m_scale.z * rhs.m_translation.z});
+    Vec3 newTrans = m_translation + m_rotation.rotate(Vec3{m_scale.x * rhs.m_translation.x,
+                                                           m_scale.y * rhs.m_translation.y,
+                                                           m_scale.z * rhs.m_translation.z});
     return {newTrans, newRot, newScale};
 }
 

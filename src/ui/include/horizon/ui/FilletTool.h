@@ -1,8 +1,9 @@
 #pragma once
 
-#include "horizon/ui/Tool.h"
-#include "horizon/math/Vec2.h"
 #include <cstdint>
+
+#include "horizon/math/Vec2.h"
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 
@@ -46,12 +47,10 @@ private:
     mutable double m_previewArcStart = 0.0;
     mutable double m_previewArcEnd = 0.0;
 
-    bool computeFillet(uint64_t lineAId, const math::Vec2& clickA,
-                       uint64_t lineBId, const math::Vec2& clickB,
-                       math::Vec2& arcCenter, double& arcRadius,
-                       double& arcStartAngle, double& arcEndAngle,
-                       math::Vec2& trimA_start, math::Vec2& trimA_end,
-                       math::Vec2& trimB_start, math::Vec2& trimB_end) const;
+    bool computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint64_t lineBId,
+                       const math::Vec2& clickB, math::Vec2& arcCenter, double& arcRadius,
+                       double& arcStartAngle, double& arcEndAngle, math::Vec2& trimA_start,
+                       math::Vec2& trimA_end, math::Vec2& trimB_start, math::Vec2& trimB_end) const;
 };
 
 }  // namespace hz::ui

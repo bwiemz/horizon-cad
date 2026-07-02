@@ -1,13 +1,13 @@
 #include "horizon/modeling/PrimitiveFactory.h"
 
+#include <cassert>
+#include <cmath>
+#include <memory>
+
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
-
-#include <cassert>
-#include <cmath>
-#include <memory>
 
 namespace hz::model {
 
@@ -48,9 +48,8 @@ static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* prevOrigin = nullptr
 // ---------------------------------------------------------------------------
 
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-        std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,14 +152,14 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     HalfEdge* heV3_fOuter = findHE(fOuter, v3);  // heIn23
     HalfEdge* heV0_fOuter = findHE(fOuter, v0);  // heOut01
     auto [e30, fBottom] = euler::makeEdgeFace(solid, heV3_fOuter, heV0_fOuter);
-    // After MEF: fOuter is the bottom (has heNew1=v3→v0, heOut01=v0→v1, heOut12=v1→v2, heOut23=v2→v3).
-    // fBottom (newFace) is actually the "outer" face now.
-    // WAIT: looking at the MEF code again:
+    // After MEF: fOuter is the bottom (has heNew1=v3→v0, heOut01=v0→v1, heOut12=v1→v2,
+    // heOut23=v2→v3). fBottom (newFace) is actually the "outer" face now. WAIT: looking at the MEF
+    // code again:
     //   heNew1->face = oldFace (fOuter) → the "bottom quad" loop
     //   heNew2->face = newFace (fBottom) → the "outer" face
     // So fOuter now IS the bottom quad face (4 HEs), and fBottom is the remaining face.
     // Let me name them properly:
-    b.bottom = fOuter;      // renamed: was outer, is now the bottom quad
+    b.bottom = fOuter;           // renamed: was outer, is now the bottom quad
     Face* fRemaining = fBottom;  // the remaining face (outer envelope)
 
     // Step 6: MEV from v0 → v4 (vertical edge going up).
@@ -196,7 +195,8 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     //
     // After step 6 (MEV from v0 → v4 on fRemaining, using heV0_fRem = heNew2 which has origin v0):
     //   MEV splices heOut04, heIn04 before heNew2.
-    //   heIn01(v1→v0) → heOut04(v0→v4) → heIn04(v4→v0) → heNew2(v0→v3) → heIn23(v3→v2) → heIn12(v2→v1) → cycle
+    //   heIn01(v1→v0) → heOut04(v0→v4) → heIn04(v4→v0) → heNew2(v0→v3) → heIn23(v3→v2) →
+    //   heIn12(v2→v1) → cycle
     //
     // After step 7 (MEV from v1 → v5 on fRemaining, using heV1_fRem = heIn12 which has origin v1):
     //   Wait, heIn12 has origin v2, not v1. Let me reconsider.
@@ -209,7 +209,8 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     //   So heV1_fRem = heIn01 (origin v1).
     //
     //   MEV splices from heIn01: before heIn01.
-    //   Result: ... heIn12(v2→v1) → heOut15(v1→v5) → heIn15(v5→v1) → heIn01(v1→v0) → heOut04(v0→v4) → heIn04(v4→v0) → heNew2(v0→v3) → heIn23(v3→v2) → heIn12 → cycle
+    //   Result: ... heIn12(v2→v1) → heOut15(v1→v5) → heIn15(v5→v1) → heIn01(v1→v0) → heOut04(v0→v4)
+    //   → heIn04(v4→v0) → heNew2(v0→v3) → heIn23(v3→v2) → heIn12 → cycle
     //
     // Now MEF(v4, v5): he1 = HE at v4 on fRemaining, he2 = HE at v5 on fRemaining.
     //   HE at v4 = heIn04 (origin v4)
@@ -219,23 +220,26 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     //   heNew1: v4→v5, stays in old face (fRemaining)
     //   heNew2: v5→v4, goes to new face
     //
-    //   Old face: heNew1(v4→v5) → heIn15(v5→v1) → heIn01(v1→v0) → heOut04(v0→v4) → cycle (front quad!)
+    //   Old face: heNew1(v4→v5) → heIn15(v5→v1) → heIn01(v1→v0) → heOut04(v0→v4) → cycle (front
+    //   quad!)
     //     Wait, check: heNew1->next = he2 = heIn15. heNew1->prev = he1->prev = heOut04->...
     //     Let me check: he1 = heIn04, he1->prev = heOut04? No.
     //     In the loop: ...heOut04(v0→v4) → heIn04(v4→v0)...
     //     So heIn04->prev = heOut04.
     //     heNew1->prev = he1->prev = heOut04. But that gives: heOut04 → heNew1(v4→v5).
-    //     But heOut04 has origin v0, goes to v4. So heOut04→heNew1: arrive at v4, depart v4→v5. Hmm but
-    //     heOut04->origin = v0, heNew1->origin = v4. The prev chain is about the half-edge BEFORE in the loop.
+    //     But heOut04 has origin v0, goes to v4. So heOut04→heNew1: arrive at v4, depart v4→v5. Hmm
+    //     but heOut04->origin = v0, heNew1->origin = v4. The prev chain is about the half-edge
+    //     BEFORE in the loop.
     //
     //     Actually: he1Prev = he1->prev = heIn04->prev.
     //     In the current loop: ... → heOut04(v0→v4) → heIn04(v4→v0) → heNew2_mef5(v0→v3) → ...
     //     So heIn04->prev = heOut04.
     //
-    //     Old face loop: heNew1(v4→v5) → he2(heIn15, v5→v1) → heIn01(v1→v0) → heOut04(v0→v4) → heNew1
-    //     That's 4 HEs: v4→v5→v1→v0→v4 = front face! (vertices v0,v1,v5,v4)
+    //     Old face loop: heNew1(v4→v5) → he2(heIn15, v5→v1) → heIn01(v1→v0) → heOut04(v0→v4) →
+    //     heNew1 That's 4 HEs: v4→v5→v1→v0→v4 = front face! (vertices v0,v1,v5,v4)
     //
-    //   New face loop: heNew2(v5→v4) → he1(heIn04, v4→v0) → heNew2_old(v0→v3) → heIn23(v3→v2) → heIn12(v2→v1) → heOut15(v1→v5) → heNew2(v5→v4)
+    //   New face loop: heNew2(v5→v4) → he1(heIn04, v4→v0) → heNew2_old(v0→v3) → heIn23(v3→v2) →
+    //   heIn12(v2→v1) → heOut15(v1→v5) → heNew2(v5→v4)
     //     That's 6 HEs: remaining face.
     //
     // Wait actually:
@@ -252,9 +256,9 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     //   The 4-HE loop containing heNew1 is the front loop.
     //   But the MEF also reassigns all HEs in the new face loop.
     //   So fRemaining = front face, fFront = remaining (6 HEs).
-    // Actually: the old face keeps the loop with heNew1, and heNew1's loop is the smaller one (4 HEs).
-    // The new face gets the loop with heNew2 (6 HEs remaining).
-    // So: fRemaining IS now the front face (4 HEs), fFront is the new remaining face (6 HEs).
+    // Actually: the old face keeps the loop with heNew1, and heNew1's loop is the smaller one (4
+    // HEs). The new face gets the loop with heNew2 (6 HEs remaining). So: fRemaining IS now the
+    // front face (4 HEs), fFront is the new remaining face (6 HEs).
     b.front = fRemaining;
     fRemaining = fFront;
 
@@ -268,23 +272,26 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     // After step 9: fRemaining's loop includes the v2→v6 spur.
     //
     // Before step 9, fRemaining (6 HEs):
-    //   heNew2_front(v5→v4) → heIn04(v4→v0) → heNew2_bottom(v0→v3) → heIn23(v3→v2) → heIn12(v2→v1) → heOut15(v1→v5) → cycle
+    //   heNew2_front(v5→v4) → heIn04(v4→v0) → heNew2_bottom(v0→v3) → heIn23(v3→v2) → heIn12(v2→v1)
+    //   → heOut15(v1→v5) → cycle
     //
     // After step 9 (MEV v2→v6 at heV2_fRem):
     //   heV2_fRem = findHE(fRemaining, v2) = heIn12? No, heIn12 has origin v2... wait.
     //   Let me re-check: heIn12 was created in step 3 as the "in" halfedge of edge e12.
     //   e12 was MEV from v1→v2. So heOut goes v1→v2, heIn goes v2→v1.
     //   heIn12 has origin v2. But is heIn12 on fRemaining?
-    //   After the MEF in step 5, HEs were split. The "remaining" face got: heNew2(v0→v3) → heIn23 → heIn12 → heIn01 → cycle.
-    //   Then after MEF in step 8, the new remaining face (fFront→fRemaining) got the 6-HE loop.
-    //   heIn12 should be in that loop (origin v2, goes v2→v1). And heIn23 has origin v3.
+    //   After the MEF in step 5, HEs were split. The "remaining" face got: heNew2(v0→v3) → heIn23 →
+    //   heIn12 → heIn01 → cycle. Then after MEF in step 8, the new remaining face
+    //   (fFront→fRemaining) got the 6-HE loop. heIn12 should be in that loop (origin v2, goes
+    //   v2→v1). And heIn23 has origin v3.
     //
     //   So heV2_fRem could be either heIn12 or the twin of heOut23.
     //   Actually only heIn12 has origin v2 in this face. heIn23 has origin v3.
     //
     //   MEV from v2 (using heIn12) creates: heOut26(v2→v6), heIn26(v6→v2) spliced before heIn12.
     //   Loop becomes:
-    //   ... → heIn23(v3→v2) → heOut26(v2→v6) → heIn26(v6→v2) → heIn12(v2→v1) → heOut15(v1→v5) → heNew2_front(v5→v4) → heIn04(v4→v0) → heNew2_bottom(v0→v3) → heIn23 → cycle
+    //   ... → heIn23(v3→v2) → heOut26(v2→v6) → heIn26(v6→v2) → heIn12(v2→v1) → heOut15(v1→v5) →
+    //   heNew2_front(v5→v4) → heIn04(v4→v0) → heNew2_bottom(v0→v3) → heIn23 → cycle
 
     HalfEdge* heV5_fRem2 = findHE(fRemaining, v5);
     HalfEdge* heV6_fRem = findHE(fRemaining, v6);
@@ -321,7 +328,8 @@ static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
     // MEF(v7, v4): heNew1(v7→v4) stays in old face, heNew2(v4→v7) goes to new face.
     // Old face: heNew1(v7→v4) → heIn04(v4→v0) → heNew2_bottom(v0→v3) → heOut37(v3→v7) → cycle
     //   = 4 HEs = left face (v7-v4-v0-v3... or v3-v0-v4-v7).
-    // New face: heNew2(v4→v7) → heNew2_back(v7→v6) → heNew2_right(v6→v5) → heNew2_front(v5→v4) → cycle
+    // New face: heNew2(v4→v7) → heNew2_back(v7→v6) → heNew2_right(v6→v5) → heNew2_front(v5→v4) →
+    // cycle
     //   = 4 HEs = top face (v4-v7-v6-v5... or v4-v5-v6-v7).
     b.left = fRemaining;
     b.top = fLeft;
@@ -411,8 +419,8 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, doubl
     // Place 4 points around the circle at z=0 and z=h.
     // Angles: 0, 90, 180, 270 degrees.
     const Vec3 pts[8] = {
-        {r, 0, 0},   {0, r, 0},   {-r, 0, 0},  {0, -r, 0},   // bottom circle
-        {r, 0, h},   {0, r, h},   {-r, 0, h},   {0, -r, h},   // top circle
+        {r, 0, 0}, {0, r, 0}, {-r, 0, 0}, {0, -r, 0},  // bottom circle
+        {r, 0, h}, {0, r, h}, {-r, 0, h}, {0, -r, h},  // top circle
     };
 
     BoxBuild bb = buildBoxTopology(*solid, pts);
@@ -499,8 +507,8 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius) {
     }
 
     // -- Surfaces: spherical NURBS ---
-    auto sphereSurf = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makeSphere(Vec3(0, 0, 0), r));
+    auto sphereSurf =
+        std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeSphere(Vec3(0, 0, 0), r));
     bb.bottom->surface = sphereSurf;
     bb.top->surface = sphereSurf;
     bb.front->surface = sphereSurf;
@@ -516,7 +524,7 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius) {
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
-                                                         double height) {
+                                                        double height) {
     auto solid = std::make_unique<topo::Solid>();
 
     const double rb = bottomRadius;
@@ -525,8 +533,8 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
 
     // 4 points on the bottom circle, 4 on the top circle.
     const Vec3 pts[8] = {
-        {rb, 0, 0},  {0, rb, 0},  {-rb, 0, 0}, {0, -rb, 0},  // bottom
-        {rt, 0, h},  {0, rt, h},  {-rt, 0, h},  {0, -rt, h},  // top
+        {rb, 0, 0}, {0, rb, 0}, {-rb, 0, 0}, {0, -rb, 0},  // bottom
+        {rt, 0, h}, {0, rt, h}, {-rt, 0, h}, {0, -rt, h},  // top
     };
 
     BoxBuild bb = buildBoxTopology(*solid, pts);
@@ -554,12 +562,10 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
 
     // -- Surfaces ---
     // Caps: planar.
-    bb.bottom->surface = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makePlane(Vec3(-rb, -rb, 0), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rb,
-                                     2 * rb));
-    bb.top->surface = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makePlane(Vec3(-rt, -rt, h), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rt,
-                                     2 * rt));
+    bb.bottom->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+        Vec3(-rb, -rb, 0), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rb, 2 * rb));
+    bb.top->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+        Vec3(-rt, -rt, h), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rt, 2 * rt));
 
     // Lateral faces: conical surface.
     // Compute half-angle from the geometry: tan(halfAngle) = bottomRadius / height.
@@ -604,8 +610,8 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, dou
     const double inner = R - r;
 
     const Vec3 pts[8] = {
-        {outer, 0, 0},  {0, outer, 0},  {-outer, 0, 0}, {0, -outer, 0},  // outer ring (z=0)
-        {inner, 0, 0},  {0, inner, 0},  {-inner, 0, 0},  {0, -inner, 0},  // inner ring (z=0)
+        {outer, 0, 0}, {0, outer, 0}, {-outer, 0, 0}, {0, -outer, 0},  // outer ring (z=0)
+        {inner, 0, 0}, {0, inner, 0}, {-inner, 0, 0}, {0, -inner, 0},  // inner ring (z=0)
     };
 
     BoxBuild bb = buildBoxTopology(*solid, pts);

@@ -1,11 +1,12 @@
 #include "horizon/ui/PolylineTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftPolyline.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -40,8 +41,8 @@ bool PolylineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPo
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -58,8 +59,8 @@ bool PolylineTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worl
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -95,8 +96,8 @@ void PolylineTool::finishPolyline() {
     if (m_points.size() >= 2 && m_viewport && m_viewport->document()) {
         auto polyline = std::make_shared<draft::DraftPolyline>(m_points);
         polyline->setLayer(m_viewport->document()->layerManager().currentLayer());
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), polyline);
+        auto cmd = std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(),
+                                                           polyline);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
     m_points.clear();
@@ -123,6 +124,8 @@ std::string PolylineTool::promptText() const {
     return "Specify next point, Enter to finish";
 }
 
-bool PolylineTool::wantsCrosshair() const { return true; }
+bool PolylineTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

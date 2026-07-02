@@ -10,10 +10,7 @@ uint32_t SceneNode::s_nextId = 1;
 // --- SceneNode ---
 
 SceneNode::SceneNode(std::string name)
-    : m_name(std::move(name))
-    , m_localTransform(math::Mat4::identity())
-    , m_id(s_nextId++) {
-}
+    : m_name(std::move(name)), m_localTransform(math::Mat4::identity()), m_id(s_nextId++) {}
 
 SceneNode::~SceneNode() = default;
 
@@ -69,8 +66,7 @@ std::vector<SceneNode*> SceneGraph::collectVisibleMeshNodes() const {
     return result;
 }
 
-void SceneGraph::collectVisibleHelper(SceneNode* node,
-                                       std::vector<SceneNode*>& out) const {
+void SceneGraph::collectVisibleHelper(SceneNode* node, std::vector<SceneNode*>& out) const {
     if (!node || !node->isVisible()) return;
 
     if (node->hasMesh()) {

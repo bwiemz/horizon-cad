@@ -1,11 +1,12 @@
 #pragma once
 
-#include "horizon/constraint/Constraint.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/constraint/Constraint.h"
 
 namespace hz::cstr {
 

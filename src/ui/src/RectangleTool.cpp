@@ -1,12 +1,13 @@
 #include "horizon/ui/RectangleTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftRectangle.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <algorithm>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -29,8 +30,8 @@ bool RectangleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldP
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -62,8 +63,8 @@ bool RectangleTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& wor
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -104,12 +105,16 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RectangleTool::getPreviewLines() 
 
 std::string RectangleTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForFirstCorner: return "Specify first corner";
-        case State::WaitingForSecondCorner: return "Specify opposite corner";
+        case State::WaitingForFirstCorner:
+            return "Specify first corner";
+        case State::WaitingForSecondCorner:
+            return "Specify opposite corner";
     }
     return "";
 }
 
-bool RectangleTool::wantsCrosshair() const { return true; }
+bool RectangleTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

@@ -1,10 +1,11 @@
 #pragma once
 
-#include "horizon/ui/Tool.h"
-#include "horizon/drafting/BlockDefinition.h"
-#include "horizon/math/Vec2.h"
 #include <memory>
 #include <string>
+
+#include "horizon/drafting/BlockDefinition.h"
+#include "horizon/math/Vec2.h"
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 
@@ -13,8 +14,8 @@ namespace hz::ui {
 /// Stays active for repeated placements until Escape.
 class InsertBlockTool : public Tool {
 public:
-    InsertBlockTool(std::shared_ptr<draft::BlockDefinition> definition,
-                    double rotation, double scale);
+    InsertBlockTool(std::shared_ptr<draft::BlockDefinition> definition, double rotation,
+                    double scale);
 
     std::string name() const override { return "Insert Block"; }
 

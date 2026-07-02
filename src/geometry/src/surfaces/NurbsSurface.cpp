@@ -1,11 +1,11 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 
-#include "horizon/geometry/curves/NurbsCurve.h"
-#include "horizon/math/Constants.h"
-
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+
+#include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/math/Constants.h"
 
 namespace hz::geo {
 
@@ -14,9 +14,8 @@ namespace hz::geo {
 // ---------------------------------------------------------------------------
 
 NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
-                           std::vector<std::vector<double>> weights,
-                           std::vector<double> knotsU, std::vector<double> knotsV,
-                           int degreeU, int degreeV)
+                           std::vector<std::vector<double>> weights, std::vector<double> knotsU,
+                           std::vector<double> knotsV, int degreeU, int degreeV)
     : m_controlPoints(std::move(controlPoints)),
       m_weights(std::move(weights)),
       m_knotsU(std::move(knotsU)),
@@ -53,12 +52,10 @@ NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
     const int expectedKnotsV = numV + m_degreeV + 1;
 
     if (static_cast<int>(m_knotsU.size()) != expectedKnotsU) {
-        throw std::invalid_argument(
-            "NurbsSurface knotsU length must be numU + degreeU + 1");
+        throw std::invalid_argument("NurbsSurface knotsU length must be numU + degreeU + 1");
     }
     if (static_cast<int>(m_knotsV.size()) != expectedKnotsV) {
-        throw std::invalid_argument(
-            "NurbsSurface knotsV length must be numV + degreeV + 1");
+        throw std::invalid_argument("NurbsSurface knotsV length must be numV + degreeV + 1");
     }
 }
 
@@ -181,8 +178,7 @@ math::Vec3 NurbsSurface::normal(double u, double v) const {
 // closestPoint — 8x8 grid search + 2D Newton iteration
 // ---------------------------------------------------------------------------
 
-std::pair<double, double> NurbsSurface::closestPoint(const math::Vec3& point,
-                                                      double tol) const {
+std::pair<double, double> NurbsSurface::closestPoint(const math::Vec3& point, double tol) const {
     const double u0 = uMin();
     const double u1 = uMax();
     const double v0 = vMin();
@@ -397,8 +393,7 @@ math::Vec3 rotateToPlane(const math::Vec3& pt, const math::Vec3& planeNormal) {
 std::vector<double> clampedKnots(int n, int degree) {
     std::vector<double> knots(n + degree + 1);
     for (int i = 0; i <= degree; ++i) knots[i] = 0.0;
-    for (int i = degree + 1; i < n; ++i)
-        knots[i] = static_cast<double>(i - degree) / (n - degree);
+    for (int i = degree + 1; i < n; ++i) knots[i] = static_cast<double>(i - degree) / (n - degree);
     for (int i = n; i < n + degree + 1; ++i) knots[i] = 1.0;
     return knots;
 }
@@ -425,8 +420,8 @@ NurbsSurface NurbsSurface::makePlane(const math::Vec3& origin, const math::Vec3&
         {1.0, 1.0},
     };
 
-    return NurbsSurface(std::move(ctrlPts), std::move(wts),
-                        clampedKnots(2, 1), clampedKnots(2, 1), 1, 1);
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), clampedKnots(2, 1), clampedKnots(2, 1),
+                        1, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +429,7 @@ NurbsSurface NurbsSurface::makePlane(const math::Vec3& origin, const math::Vec3&
 // ---------------------------------------------------------------------------
 
 NurbsSurface NurbsSurface::makeCylinder(const math::Vec3& center, const math::Vec3& axis,
-                                         double radius, double height) {
+                                        double radius, double height) {
     // Create a full circle in the plane perpendicular to the axis at the center.
     NurbsCurve circle = NurbsCurve::makeCircle(center, radius, axis.normalized());
 
@@ -457,8 +452,8 @@ NurbsSurface NurbsSurface::makeCylinder(const math::Vec3& center, const math::Ve
         wts[i][1] = circleWts[i];
     }
 
-    return NurbsSurface(std::move(ctrlPts), std::move(wts), circle.knots(),
-                        clampedKnots(2, 1), circle.degree(), 1);
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), circle.knots(), clampedKnots(2, 1),
+                        circle.degree(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -478,11 +473,11 @@ NurbsSurface NurbsSurface::makeSphere(const math::Vec3& center, double radius) {
     // Arc 1: (0,0,r) -> (r,0,r) -> (r,0,0)     [top to equator]
     // Arc 2: (r,0,0) -> (r,0,-r) -> (0,0,-r)    [equator to bottom]
     const math::Vec3 profilePts[5] = {
-        {0.0, 0.0, r},      // north pole
-        {r,   0.0, r},      // weighted point
-        {r,   0.0, 0.0},    // equator
-        {r,   0.0, -r},     // weighted point
-        {0.0, 0.0, -r},     // south pole
+        {0.0, 0.0, r},   // north pole
+        {r, 0.0, r},     // weighted point
+        {r, 0.0, 0.0},   // equator
+        {r, 0.0, -r},    // weighted point
+        {0.0, 0.0, -r},  // south pole
     };
     const double profileWts[5] = {1.0, w, 1.0, w, 1.0};
 
@@ -518,8 +513,8 @@ NurbsSurface NurbsSurface::makeSphere(const math::Vec3& center, double radius) {
     // Semicircle for V: degree 2, 5 pts (two 90-degree arcs).
     std::vector<double> knotsV = {0, 0, 0, 0.5, 0.5, 1, 1, 1};
 
-    return NurbsSurface(std::move(ctrlPts), std::move(wts), std::move(knotsU), std::move(knotsV),
-                        2, 2);
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), std::move(knotsU), std::move(knotsV), 2,
+                        2);
 }
 
 // ---------------------------------------------------------------------------
@@ -527,14 +522,14 @@ NurbsSurface NurbsSurface::makeSphere(const math::Vec3& center, double radius) {
 // ---------------------------------------------------------------------------
 
 NurbsSurface NurbsSurface::makeTorus(const math::Vec3& center, const math::Vec3& axis,
-                                      double majorRadius, double minorRadius) {
+                                     double majorRadius, double minorRadius) {
     const double w = std::cos(math::kPi / 4.0);  // sqrt(2)/2
 
     // Cross-section circle in XZ plane, centered at (majorRadius, 0, 0).
     // This is a full circle with 9 control points (degree 2).
     const math::Vec3 minorPts[9] = {
-        {1, 0, 0},  {1, 0, 1},  {0, 0, 1},  {-1, 0, 1},
-        {-1, 0, 0}, {-1, 0, -1}, {0, 0, -1}, {1, 0, -1}, {1, 0, 0},
+        {1, 0, 0},   {1, 0, 1},  {0, 0, 1},  {-1, 0, 1}, {-1, 0, 0},
+        {-1, 0, -1}, {0, 0, -1}, {1, 0, -1}, {1, 0, 0},
     };
     const double minorWts[9] = {1, w, 1, w, 1, w, 1, w, 1};
 
@@ -571,8 +566,8 @@ NurbsSurface NurbsSurface::makeTorus(const math::Vec3& center, const math::Vec3&
     std::vector<double> knotsU = {0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1};
     std::vector<double> knotsV = {0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1};
 
-    return NurbsSurface(std::move(ctrlPts), std::move(wts), std::move(knotsU), std::move(knotsV),
-                        2, 2);
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), std::move(knotsU), std::move(knotsV), 2,
+                        2);
 }
 
 // ---------------------------------------------------------------------------
@@ -580,7 +575,7 @@ NurbsSurface NurbsSurface::makeTorus(const math::Vec3& center, const math::Vec3&
 // ---------------------------------------------------------------------------
 
 NurbsSurface NurbsSurface::makeCone(const math::Vec3& apex, const math::Vec3& axis,
-                                     double halfAngle, double height) {
+                                    double halfAngle, double height) {
     const math::Vec3 axisDir = axis.normalized();
     const double baseRadius = height * std::tan(halfAngle);
 
@@ -598,14 +593,14 @@ NurbsSurface NurbsSurface::makeCone(const math::Vec3& apex, const math::Vec3& ax
     std::vector<std::vector<double>> wts(numU, std::vector<double>(2));
 
     for (int i = 0; i < numU; ++i) {
-        ctrlPts[i][0] = apex;      // all apex points collapse
+        ctrlPts[i][0] = apex;  // all apex points collapse
         ctrlPts[i][1] = basePts[i];
-        wts[i][0] = baseWts[i];    // same weight pattern as base
+        wts[i][0] = baseWts[i];  // same weight pattern as base
         wts[i][1] = baseWts[i];
     }
 
-    return NurbsSurface(std::move(ctrlPts), std::move(wts), baseCircle.knots(),
-                        clampedKnots(2, 1), baseCircle.degree(), 1);
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), baseCircle.knots(), clampedKnots(2, 1),
+                        baseCircle.degree(), 1);
 }
 
 }  // namespace hz::geo

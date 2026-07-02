@@ -1,13 +1,13 @@
 #include "horizon/drafting/SnapEngine.h"
-#include "horizon/math/BoundingBox.h"
+
 #include <cmath>
 #include <limits>
 
+#include "horizon/math/BoundingBox.h"
+
 namespace hz::draft {
 
-SnapEngine::SnapEngine()
-    : m_gridSpacing(1.0)
-    , m_snapTolerance(0.5) {}
+SnapEngine::SnapEngine() : m_gridSpacing(1.0), m_snapTolerance(0.5) {}
 
 void SnapEngine::setGridSpacing(double spacing) {
     if (spacing > 0.0) {
@@ -60,8 +60,7 @@ SnapResult SnapEngine::snap(const math::Vec2& cursorWorld,
     return best;
 }
 
-SnapResult SnapEngine::snap(const math::Vec2& cursorWorld,
-                            const SpatialIndex& index,
+SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& index,
                             const std::vector<std::shared_ptr<DraftEntity>>& entities) const {
     SnapResult best;
     best.point = cursorWorld;

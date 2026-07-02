@@ -1,8 +1,10 @@
 #include "horizon/geometry/curves/Curve2D.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
+
 #include <cmath>
 #include <limits>
+
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
 
 namespace hz::geo {
 

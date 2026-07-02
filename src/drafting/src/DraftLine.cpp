@@ -1,20 +1,17 @@
 #include "horizon/drafting/DraftLine.h"
-#include "horizon/math/MathUtils.h"
+
 #include <algorithm>
 #include <cmath>
 
+#include "horizon/math/MathUtils.h"
+
 namespace hz::draft {
 
-DraftLine::DraftLine(const math::Vec2& start, const math::Vec2& end)
-    : m_start(start), m_end(end) {}
+DraftLine::DraftLine(const math::Vec2& start, const math::Vec2& end) : m_start(start), m_end(end) {}
 
 math::BoundingBox DraftLine::boundingBox() const {
-    math::Vec3 lo(std::min(m_start.x, m_end.x),
-                  std::min(m_start.y, m_end.y),
-                  0.0);
-    math::Vec3 hi(std::max(m_start.x, m_end.x),
-                  std::max(m_start.y, m_end.y),
-                  0.0);
+    math::Vec3 lo(std::min(m_start.x, m_end.x), std::min(m_start.y, m_end.y), 0.0);
+    math::Vec3 hi(std::max(m_start.x, m_end.x), std::max(m_start.y, m_end.y), 0.0);
     return math::BoundingBox(lo, hi);
 }
 
@@ -36,7 +33,7 @@ bool DraftLine::hitTest(const math::Vec2& point, double tolerance) const {
 }
 
 std::vector<math::Vec2> DraftLine::snapPoints() const {
-    return { m_start, m_end };
+    return {m_start, m_end};
 }
 
 void DraftLine::translate(const math::Vec2& delta) {
@@ -44,9 +41,8 @@ void DraftLine::translate(const math::Vec2& delta) {
     m_end += delta;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;

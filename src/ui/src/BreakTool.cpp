@@ -1,19 +1,20 @@
 #include "horizon/ui/BreakTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -29,10 +30,8 @@ static void copyProps(const draft::DraftEntity* src, draft::DraftEntity* dst) {
 // Break line at a single point
 // ---------------------------------------------------------------------------
 
-static void breakLine(const draft::DraftLine* line,
-                      const math::Vec2& breakPt,
-                      doc::CompositeCommand& composite,
-                      draft::DraftDocument& doc) {
+static void breakLine(const draft::DraftLine* line, const math::Vec2& breakPt,
+                      doc::CompositeCommand& composite, draft::DraftDocument& doc) {
     math::Vec2 dir = line->end() - line->start();
     double lenSq = dir.lengthSquared();
     if (lenSq < 1e-14) return;
@@ -59,12 +58,10 @@ static void breakLine(const draft::DraftLine* line,
 // Break arc at a single point
 // ---------------------------------------------------------------------------
 
-static void breakArc(const draft::DraftArc* arc,
-                     const math::Vec2& breakPt,
-                     doc::CompositeCommand& composite,
-                     draft::DraftDocument& doc) {
-    double breakAngle = math::normalizeAngle(
-        std::atan2(breakPt.y - arc->center().y, breakPt.x - arc->center().x));
+static void breakArc(const draft::DraftArc* arc, const math::Vec2& breakPt,
+                     doc::CompositeCommand& composite, draft::DraftDocument& doc) {
+    double breakAngle =
+        math::normalizeAngle(std::atan2(breakPt.y - arc->center().y, breakPt.x - arc->center().x));
 
     double arcStart = arc->startAngle();
     double arcEnd = arc->endAngle();
@@ -79,13 +76,12 @@ static void breakArc(const draft::DraftArc* arc,
 
     composite.addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, arc->id()));
 
-    auto arc1 = std::make_shared<draft::DraftArc>(
-        arc->center(), arc->radius(), arcStart, breakAngle);
+    auto arc1 =
+        std::make_shared<draft::DraftArc>(arc->center(), arc->radius(), arcStart, breakAngle);
     copyProps(arc, arc1.get());
     composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, arc1));
 
-    auto arc2 = std::make_shared<draft::DraftArc>(
-        arc->center(), arc->radius(), breakAngle, arcEnd);
+    auto arc2 = std::make_shared<draft::DraftArc>(arc->center(), arc->radius(), breakAngle, arcEnd);
     copyProps(arc, arc2.get());
     composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, arc2));
 }
@@ -94,23 +90,22 @@ static void breakArc(const draft::DraftArc* arc,
 // Break circle at intersection points → two arcs
 // ---------------------------------------------------------------------------
 
-static void breakCircle(const draft::DraftCircle* circle,
-                        const math::Vec2& clickPos,
-                        const std::vector<math::Vec2>& isectPts,
-                        doc::CompositeCommand& composite,
+static void breakCircle(const draft::DraftCircle* circle, const math::Vec2& clickPos,
+                        const std::vector<math::Vec2>& isectPts, doc::CompositeCommand& composite,
                         draft::DraftDocument& doc) {
     if (isectPts.size() < 2) return;  // Need at least 2 points to split a circle.
 
     // Convert intersection points to angles, sort.
     std::vector<double> angles;
     for (const auto& pt : isectPts) {
-        double a = math::normalizeAngle(
-            std::atan2(pt.y - circle->center().y, pt.x - circle->center().x));
+        double a =
+            math::normalizeAngle(std::atan2(pt.y - circle->center().y, pt.x - circle->center().x));
         angles.push_back(a);
     }
     std::sort(angles.begin(), angles.end());
     angles.erase(std::unique(angles.begin(), angles.end(),
-        [](double a, double b) { return std::abs(a - b) < 1e-8; }), angles.end());
+                             [](double a, double b) { return std::abs(a - b) < 1e-8; }),
+                 angles.end());
 
     if (angles.size() < 2) return;
 
@@ -149,8 +144,7 @@ static void breakCircle(const draft::DraftCircle* circle,
 // Find nearest point on entity to click (for break without intersections)
 // ---------------------------------------------------------------------------
 
-static math::Vec2 nearestPointOnLine(const draft::DraftLine* line,
-                                     const math::Vec2& pt) {
+static math::Vec2 nearestPointOnLine(const draft::DraftLine* line, const math::Vec2& pt) {
     math::Vec2 dir = line->end() - line->start();
     double lenSq = dir.lengthSquared();
     if (lenSq < 1e-14) return line->start();
@@ -158,8 +152,7 @@ static math::Vec2 nearestPointOnLine(const draft::DraftLine* line,
     return line->start() + dir * t;
 }
 
-static math::Vec2 nearestPointOnArc(const draft::DraftArc* arc,
-                                    const math::Vec2& pt) {
+static math::Vec2 nearestPointOnArc(const draft::DraftArc* arc, const math::Vec2& pt) {
     double angle = std::atan2(pt.y - arc->center().y, pt.x - arc->center().x);
     // Clamp angle to arc range.
     double normAngle = math::normalizeAngle(angle);
@@ -278,6 +271,8 @@ std::string BreakTool::promptText() const {
     return "Select entity to break";
 }
 
-bool BreakTool::wantsCrosshair() const { return false; }
+bool BreakTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

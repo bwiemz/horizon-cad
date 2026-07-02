@@ -27,8 +27,12 @@ void UndoStack::redo() {
     m_undoStack.push_back(std::move(cmd));
 }
 
-bool UndoStack::canUndo() const { return !m_undoStack.empty(); }
-bool UndoStack::canRedo() const { return !m_redoStack.empty(); }
+bool UndoStack::canUndo() const {
+    return !m_undoStack.empty();
+}
+bool UndoStack::canRedo() const {
+    return !m_redoStack.empty();
+}
 
 void UndoStack::clear() {
     m_undoStack.clear();

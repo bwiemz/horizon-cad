@@ -1,12 +1,12 @@
-#include "horizon/document/FeatureTree.h"
+#include <gtest/gtest.h>
 
+#include <cmath>
+#include <memory>
+
+#include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/topology/Solid.h"
-
-#include <gtest/gtest.h>
-#include <cmath>
-#include <memory>
 
 using namespace hz::doc;
 using namespace hz::draft;
@@ -103,8 +103,7 @@ TEST(FeatureTreeTest, AddAndReplayRevolve) {
     FeatureTree tree;
     auto sketch = makeOffsetRectSketch();
 
-    tree.addFeature(std::make_unique<RevolveFeature>(
-        sketch, Vec3::Zero, Vec3::UnitY, kTwoPi));
+    tree.addFeature(std::make_unique<RevolveFeature>(sketch, Vec3::Zero, Vec3::UnitY, kTwoPi));
 
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);

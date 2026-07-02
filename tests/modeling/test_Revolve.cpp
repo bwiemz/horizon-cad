@@ -1,14 +1,14 @@
-#include "horizon/modeling/Revolve.h"
-
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/SketchPlane.h"
-#include "horizon/topology/Solid.h"
-#include "horizon/topology/TopologyID.h"
-
 #include <gtest/gtest.h>
+
 #include <cmath>
 #include <memory>
 #include <vector>
+
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/Revolve.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 using namespace hz::model;
 using namespace hz::topo;
@@ -19,8 +19,8 @@ using hz::math::Vec3;
 static constexpr double kTwoPi = 2.0 * 3.14159265358979323846;
 
 // Helper: build a rectangle profile offset from the Y axis.
-static std::vector<std::shared_ptr<DraftEntity>> makeOffsetRectProfile(
-    double xMin, double xMax, double yMin, double yMax) {
+static std::vector<std::shared_ptr<DraftEntity>> makeOffsetRectProfile(double xMin, double xMax,
+                                                                       double yMin, double yMax) {
     std::vector<std::shared_ptr<DraftEntity>> profile;
     profile.push_back(std::make_shared<DraftLine>(Vec2(xMin, yMin), Vec2(xMax, yMin)));
     profile.push_back(std::make_shared<DraftLine>(Vec2(xMax, yMin), Vec2(xMax, yMax)));
@@ -38,8 +38,7 @@ TEST(RevolveTest, RevolveRectangleFullCircle) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;  // XY at origin
 
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "revolve_1");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "revolve_1");
 
     ASSERT_NE(solid, nullptr);
     EXPECT_EQ(solid->vertexCount(), 8u);
@@ -59,18 +58,15 @@ TEST(RevolveTest, RevolveHasTopologyIDs) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
 
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev1");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev1");
     ASSERT_NE(solid, nullptr);
 
     for (const auto& face : solid->faces()) {
-        EXPECT_TRUE(face.topoId.isValid())
-            << "Face " << face.id << " has no TopologyID";
+        EXPECT_TRUE(face.topoId.isValid()) << "Face " << face.id << " has no TopologyID";
     }
 
     for (const auto& edge : solid->edges()) {
-        EXPECT_TRUE(edge.topoId.isValid())
-            << "Edge " << edge.id << " has no TopologyID";
+        EXPECT_TRUE(edge.topoId.isValid()) << "Edge " << edge.id << " has no TopologyID";
     }
 }
 
@@ -82,19 +78,16 @@ TEST(RevolveTest, RevolveHasNURBSGeometry) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
 
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_geom");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_geom");
     ASSERT_NE(solid, nullptr);
 
     for (const auto& face : solid->faces()) {
         EXPECT_NE(face.surface, nullptr)
-            << "Face " << face.id << " (" << face.topoId.tag()
-            << ") has no NURBS surface";
+            << "Face " << face.id << " (" << face.topoId.tag() << ") has no NURBS surface";
     }
 
     for (const auto& edge : solid->edges()) {
-        EXPECT_NE(edge.curve, nullptr)
-            << "Edge " << edge.id << " has no NURBS curve";
+        EXPECT_NE(edge.curve, nullptr) << "Edge " << edge.id << " has no NURBS curve";
     }
 }
 
@@ -108,8 +101,7 @@ TEST(RevolveTest, InvalidProfileReturnsNull) {
     profile.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0)));
 
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "revolve_bad");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "revolve_bad");
     EXPECT_EQ(solid, nullptr);
 }
 
@@ -121,8 +113,7 @@ TEST(RevolveTest, EmptyProfileReturnsNull) {
     std::vector<std::shared_ptr<DraftEntity>> profile;
     SketchPlane plane;
 
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "revolve_empty");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "revolve_empty");
     EXPECT_EQ(solid, nullptr);
 }
 
@@ -135,8 +126,7 @@ TEST(RevolveTest, RevolveAroundZAxis) {
     auto profile = makeOffsetRectProfile(3.0, 7.0, -2.0, 2.0);
     SketchPlane plane;
 
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitZ,
-                                   kTwoPi, "revolve_z");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitZ, kTwoPi, "revolve_z");
     ASSERT_NE(solid, nullptr);
     EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();

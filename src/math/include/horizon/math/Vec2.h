@@ -58,6 +58,8 @@ struct Vec2 {
     static const Vec2 UnitY;
 };
 
-inline Vec2 operator*(double s, const Vec2& v) { return v * s; }
+inline Vec2 operator*(double s, const Vec2& v) {
+    return v * s;
+}
 
 }  // namespace hz::math

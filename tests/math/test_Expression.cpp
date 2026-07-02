@@ -2,10 +2,9 @@
 
 #include <cmath>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <set>
 #include <string>
-
-#include <nlohmann/json.hpp>
 
 #include "horizon/math/Expression.h"
 

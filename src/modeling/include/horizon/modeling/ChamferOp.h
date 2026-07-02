@@ -1,18 +1,19 @@
 #pragma once
 
-#include "horizon/topology/Solid.h"
-#include "horizon/topology/TopologyID.h"
-
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 namespace hz::model {
 
 /// Result of a chamfer operation.
 struct ChamferResult {
-    std::unique_ptr<topo::Solid> solid;  ///< The new solid with chamfered edges, or nullptr on error.
-    std::string errorMessage;            ///< Non-empty if the operation failed.
+    std::unique_ptr<topo::Solid>
+        solid;                 ///< The new solid with chamfered edges, or nullptr on error.
+    std::string errorMessage;  ///< Non-empty if the operation failed.
 };
 
 /// Creates a new solid with planar chamfer faces replacing selected edges.
@@ -28,8 +29,8 @@ public:
     /// @param distance    Chamfer distance (must be positive).
     /// @param featureID   Name used as the source in derived TopologyIDs.
     static ChamferResult executeEqual(const topo::Solid& inputSolid,
-                                      const std::vector<topo::TopologyID>& edgeIds,
-                                      double distance, const std::string& featureID);
+                                      const std::vector<topo::TopologyID>& edgeIds, double distance,
+                                      const std::string& featureID);
 
     /// Chamfer the specified edges with different distances on the two adjacent faces.
     /// @param inputSolid  The source solid (not modified).

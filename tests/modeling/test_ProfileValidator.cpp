@@ -1,12 +1,12 @@
-#include "horizon/modeling/ProfileValidator.h"
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <vector>
 
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
-
-#include <gtest/gtest.h>
-#include <memory>
-#include <vector>
+#include "horizon/modeling/ProfileValidator.h"
 
 using namespace hz::model;
 using namespace hz::draft;

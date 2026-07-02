@@ -1,12 +1,13 @@
 #pragma once
 
-#include "horizon/drafting/SketchPlane.h"
-#include "horizon/drafting/DraftEntity.h"
-#include "horizon/drafting/SpatialIndex.h"
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/drafting/DraftEntity.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/drafting/SpatialIndex.h"
 
 // Forward-declare ConstraintSystem to allow Sketch.h to be included in contexts
 // that don't necessarily link Horizon::Constraint. The full header is in Sketch.cpp.
@@ -20,7 +21,7 @@ namespace hz::doc {
 /// a ConstraintSystem, and a SpatialIndex for fast spatial queries.
 class Sketch {
 public:
-    Sketch();                           // Default XY plane
+    Sketch();  // Default XY plane
     explicit Sketch(const draft::SketchPlane& plane);
     ~Sketch();
 

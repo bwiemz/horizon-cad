@@ -1,9 +1,10 @@
 #define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "horizon/constraint/Constraint.h"
-#include "horizon/constraint/ParameterTable.h"
+
+#include <cmath>
 #include <set>
+
+#include "horizon/constraint/ParameterTable.h"
 
 namespace hz::cstr {
 
@@ -28,24 +29,23 @@ static std::vector<uint64_t> uniqueIds(uint64_t a, uint64_t b) {
 // CoincidentConstraint: pA == pB  (2 eqs)
 // ---------------------------------------------------------------------------
 
-CoincidentConstraint::CoincidentConstraint(const GeometryRef& pointA,
-                                           const GeometryRef& pointB)
+CoincidentConstraint::CoincidentConstraint(const GeometryRef& pointA, const GeometryRef& pointB)
     : m_pointA(pointA), m_pointB(pointB) {}
 
 std::vector<uint64_t> CoincidentConstraint::referencedEntityIds() const {
     return uniqueIds(m_pointA.entityId, m_pointB.entityId);
 }
 
-void CoincidentConstraint::evaluate(const ParameterTable& params,
-                                     Eigen::VectorXd& residuals, int offset) const {
+void CoincidentConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                    int offset) const {
     auto pA = params.pointPosition(m_pointA);
     auto pB = params.pointPosition(m_pointB);
     residuals(offset + 0) = pA.x - pB.x;
     residuals(offset + 1) = pA.y - pB.y;
 }
 
-void CoincidentConstraint::jacobian(const ParameterTable& params,
-                                     Eigen::MatrixXd& jac, int offset) const {
+void CoincidentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                    int offset) const {
     int iA = params.parameterIndex(m_pointA);
     int iB = params.parameterIndex(m_pointB);
     // dF0/d(pA.x) = 1,  dF0/d(pB.x) = -1
@@ -64,23 +64,22 @@ std::shared_ptr<Constraint> CoincidentConstraint::clone() const {
 // HorizontalConstraint: pA.y == pB.y  (1 eq)
 // ---------------------------------------------------------------------------
 
-HorizontalConstraint::HorizontalConstraint(const GeometryRef& refA,
-                                           const GeometryRef& refB)
+HorizontalConstraint::HorizontalConstraint(const GeometryRef& refA, const GeometryRef& refB)
     : m_refA(refA), m_refB(refB) {}
 
 std::vector<uint64_t> HorizontalConstraint::referencedEntityIds() const {
     return uniqueIds(m_refA.entityId, m_refB.entityId);
 }
 
-void HorizontalConstraint::evaluate(const ParameterTable& params,
-                                     Eigen::VectorXd& residuals, int offset) const {
+void HorizontalConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                    int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
     residuals(offset) = pA.y - pB.y;
 }
 
-void HorizontalConstraint::jacobian(const ParameterTable& params,
-                                     Eigen::MatrixXd& jac, int offset) const {
+void HorizontalConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                    int offset) const {
     int iA = params.parameterIndex(m_refA);
     int iB = params.parameterIndex(m_refB);
     jac(offset, iA + 1) += 1.0;   // d/d(pA.y)
@@ -102,15 +101,15 @@ std::vector<uint64_t> VerticalConstraint::referencedEntityIds() const {
     return uniqueIds(m_refA.entityId, m_refB.entityId);
 }
 
-void VerticalConstraint::evaluate(const ParameterTable& params,
-                                   Eigen::VectorXd& residuals, int offset) const {
+void VerticalConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                  int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
     residuals(offset) = pA.x - pB.x;
 }
 
-void VerticalConstraint::jacobian(const ParameterTable& params,
-                                   Eigen::MatrixXd& jac, int offset) const {
+void VerticalConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                  int offset) const {
     int iA = params.parameterIndex(m_refA);
     int iB = params.parameterIndex(m_refB);
     jac(offset, iA + 0) += 1.0;   // d/d(pA.x)
@@ -126,16 +125,15 @@ std::shared_ptr<Constraint> VerticalConstraint::clone() const {
 // d1 = lineA.end - lineA.start,  d2 = lineB.end - lineB.start
 // ---------------------------------------------------------------------------
 
-PerpendicularConstraint::PerpendicularConstraint(const GeometryRef& lineA,
-                                                 const GeometryRef& lineB)
+PerpendicularConstraint::PerpendicularConstraint(const GeometryRef& lineA, const GeometryRef& lineB)
     : m_lineA(lineA), m_lineB(lineB) {}
 
 std::vector<uint64_t> PerpendicularConstraint::referencedEntityIds() const {
     return uniqueIds(m_lineA.entityId, m_lineB.entityId);
 }
 
-void PerpendicularConstraint::evaluate(const ParameterTable& params,
-                                        Eigen::VectorXd& residuals, int offset) const {
+void PerpendicularConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                       int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
@@ -143,8 +141,8 @@ void PerpendicularConstraint::evaluate(const ParameterTable& params,
     residuals(offset) = dx1 * dx2 + dy1 * dy2;
 }
 
-void PerpendicularConstraint::jacobian(const ParameterTable& params,
-                                        Eigen::MatrixXd& jac, int offset) const {
+void PerpendicularConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                       int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
@@ -177,16 +175,15 @@ std::shared_ptr<Constraint> PerpendicularConstraint::clone() const {
 // cross = dx1*dy2 - dy1*dx2
 // ---------------------------------------------------------------------------
 
-ParallelConstraint::ParallelConstraint(const GeometryRef& lineA,
-                                       const GeometryRef& lineB)
+ParallelConstraint::ParallelConstraint(const GeometryRef& lineA, const GeometryRef& lineB)
     : m_lineA(lineA), m_lineB(lineB) {}
 
 std::vector<uint64_t> ParallelConstraint::referencedEntityIds() const {
     return uniqueIds(m_lineA.entityId, m_lineB.entityId);
 }
 
-void ParallelConstraint::evaluate(const ParameterTable& params,
-                                   Eigen::VectorXd& residuals, int offset) const {
+void ParallelConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                  int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
@@ -194,8 +191,8 @@ void ParallelConstraint::evaluate(const ParameterTable& params,
     residuals(offset) = dx1 * dy2 - dy1 * dx2;
 }
 
-void ParallelConstraint::jacobian(const ParameterTable& params,
-                                   Eigen::MatrixXd& jac, int offset) const {
+void ParallelConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                  int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
@@ -229,16 +226,15 @@ std::shared_ptr<Constraint> ParallelConstraint::clone() const {
 // F = ((cx-sx)*(ey-sy) - (cy-sy)*(ex-sx))^2 - r^2 * ((ex-sx)^2 + (ey-sy)^2)
 // ---------------------------------------------------------------------------
 
-TangentConstraint::TangentConstraint(const GeometryRef& lineRef,
-                                     const GeometryRef& circleRef)
+TangentConstraint::TangentConstraint(const GeometryRef& lineRef, const GeometryRef& circleRef)
     : m_lineRef(lineRef), m_circleRef(circleRef) {}
 
 std::vector<uint64_t> TangentConstraint::referencedEntityIds() const {
     return uniqueIds(m_lineRef.entityId, m_circleRef.entityId);
 }
 
-void TangentConstraint::evaluate(const ParameterTable& params,
-                                  Eigen::VectorXd& residuals, int offset) const {
+void TangentConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                 int offset) const {
     auto [s, e] = params.lineEndpoints(m_lineRef);
     auto [center, radius] = params.circleData(m_circleRef);
     double dx = e.x - s.x, dy = e.y - s.y;
@@ -248,8 +244,8 @@ void TangentConstraint::evaluate(const ParameterTable& params,
     residuals(offset) = cross * cross - radius * radius * lenSq;
 }
 
-void TangentConstraint::jacobian(const ParameterTable& params,
-                                  Eigen::MatrixXd& jac, int offset) const {
+void TangentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                 int offset) const {
     auto [s, e] = params.lineEndpoints(m_lineRef);
     auto [center, radius] = params.circleData(m_circleRef);
     double dx = e.x - s.x, dy = e.y - s.y;
@@ -257,7 +253,7 @@ void TangentConstraint::jacobian(const ParameterTable& params,
     double cross = dcx * dy - dcy * dx;
     double lenSq = dx * dx + dy * dy;
 
-    int iL = params.parameterIndex(m_lineRef);   // [sx, sy, ex, ey]
+    int iL = params.parameterIndex(m_lineRef);    // [sx, sy, ex, ey]
     int iC = params.parameterIndex(m_circleRef);  // [cx, cy, r]
 
     // F = cross^2 - r^2 * lenSq
@@ -324,8 +320,8 @@ std::vector<uint64_t> EqualConstraint::referencedEntityIds() const {
     return uniqueIds(m_refA.entityId, m_refB.entityId);
 }
 
-void EqualConstraint::evaluate(const ParameterTable& params,
-                                Eigen::VectorXd& residuals, int offset) const {
+void EqualConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                               int offset) const {
     if (m_refA.featureType == FeatureType::Line) {
         auto [sA, eA] = params.lineEndpoints(m_refA);
         auto [sB, eB] = params.lineEndpoints(m_refB);
@@ -339,8 +335,8 @@ void EqualConstraint::evaluate(const ParameterTable& params,
     }
 }
 
-void EqualConstraint::jacobian(const ParameterTable& params,
-                                Eigen::MatrixXd& jac, int offset) const {
+void EqualConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                               int offset) const {
     if (m_refA.featureType == FeatureType::Line) {
         auto [sA, eA] = params.lineEndpoints(m_refA);
         auto [sB, eB] = params.lineEndpoints(m_refB);
@@ -381,15 +377,15 @@ std::vector<uint64_t> FixedConstraint::referencedEntityIds() const {
     return {m_pointRef.entityId};
 }
 
-void FixedConstraint::evaluate(const ParameterTable& params,
-                                Eigen::VectorXd& residuals, int offset) const {
+void FixedConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                               int offset) const {
     auto p = params.pointPosition(m_pointRef);
     residuals(offset + 0) = p.x - m_position.x;
     residuals(offset + 1) = p.y - m_position.y;
 }
 
-void FixedConstraint::jacobian(const ParameterTable& params,
-                                Eigen::MatrixXd& jac, int offset) const {
+void FixedConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                               int offset) const {
     int idx = params.parameterIndex(m_pointRef);
     jac(offset + 0, idx + 0) += 1.0;
     jac(offset + 1, idx + 1) += 1.0;
@@ -412,16 +408,16 @@ std::vector<uint64_t> DistanceConstraint::referencedEntityIds() const {
     return uniqueIds(m_refA.entityId, m_refB.entityId);
 }
 
-void DistanceConstraint::evaluate(const ParameterTable& params,
-                                   Eigen::VectorXd& residuals, int offset) const {
+void DistanceConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                                  int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
     double dx = pA.x - pB.x, dy = pA.y - pB.y;
     residuals(offset) = dx * dx + dy * dy - m_distance * m_distance;
 }
 
-void DistanceConstraint::jacobian(const ParameterTable& params,
-                                   Eigen::MatrixXd& jac, int offset) const {
+void DistanceConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                                  int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
     double dx = pA.x - pB.x, dy = pA.y - pB.y;
@@ -452,8 +448,8 @@ std::vector<uint64_t> AngleConstraint::referencedEntityIds() const {
     return uniqueIds(m_lineA.entityId, m_lineB.entityId);
 }
 
-void AngleConstraint::evaluate(const ParameterTable& params,
-                                Eigen::VectorXd& residuals, int offset) const {
+void AngleConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
+                               int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
@@ -468,8 +464,8 @@ void AngleConstraint::evaluate(const ParameterTable& params,
     residuals(offset) = diff;
 }
 
-void AngleConstraint::jacobian(const ParameterTable& params,
-                                Eigen::MatrixXd& jac, int offset) const {
+void AngleConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
+                               int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;

@@ -125,9 +125,7 @@ void Grid::initialize(QOpenGLExtraFunctions* gl) {
     // Create a full-screen triangle (covers the entire viewport with just 3 vertices)
     // Using the oversized-triangle trick: 3 vertices that cover [-1,1] NDC space.
     std::vector<float> quadPositions = {
-        -1.0f, -1.0f, 0.0f,
-         3.0f, -1.0f, 0.0f,
-        -1.0f,  3.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f, 3.0f, -1.0f, 0.0f, -1.0f, 3.0f, 0.0f,
     };
 
     m_quad.createPositionOnly(gl, quadPositions);

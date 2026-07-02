@@ -1,25 +1,4 @@
 #include "horizon/fileio/DxfFormat.h"
-#include "horizon/document/Document.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftDimension.h"
-#include "horizon/drafting/DraftLinearDimension.h"
-#include "horizon/drafting/DraftRadialDimension.h"
-#include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/drafting/DraftLeader.h"
-#include "horizon/drafting/DimensionStyle.h"
-#include "horizon/drafting/Layer.h"
-#include "horizon/drafting/LineType.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/BoundingBox.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +7,28 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DimensionStyle.h"
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/Layer.h"
+#include "horizon/drafting/LineType.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/math/Constants.h"
 
 namespace hz::io {
 
@@ -43,16 +44,16 @@ struct AciEntry {
 
 // Standard AutoCAD Color Index (first 10 colors + key entries)
 static const AciEntry kAciTable[] = {
-    {0, 0, 0},         // 0 = BYBLOCK (unused in our mapping)
-    {255, 0, 0},       // 1 = Red
-    {255, 255, 0},     // 2 = Yellow
-    {0, 255, 0},       // 3 = Green
-    {0, 255, 255},     // 4 = Cyan
-    {0, 0, 255},       // 5 = Blue
-    {255, 0, 255},     // 6 = Magenta
-    {255, 255, 255},   // 7 = White/Black (depends on background)
-    {128, 128, 128},   // 8 = Dark gray
-    {192, 192, 192},   // 9 = Light gray
+    {0, 0, 0},        // 0 = BYBLOCK (unused in our mapping)
+    {255, 0, 0},      // 1 = Red
+    {255, 255, 0},    // 2 = Yellow
+    {0, 255, 0},      // 3 = Green
+    {0, 255, 255},    // 4 = Cyan
+    {0, 0, 255},      // 5 = Blue
+    {255, 0, 255},    // 6 = Magenta
+    {255, 255, 255},  // 7 = White/Black (depends on background)
+    {128, 128, 128},  // 8 = Dark gray
+    {192, 192, 192},  // 9 = Light gray
 };
 static const int kAciTableSize = 10;
 
@@ -81,7 +82,7 @@ int argbToAci(uint32_t argb) {
 
 uint32_t aciToArgb(int aci) {
     if (aci == 256 || aci == 0) return 0x00000000;  // BYLAYER / BYBLOCK
-    if (aci < 0) aci = -aci;  // Negative = layer off, use absolute
+    if (aci < 0) aci = -aci;                        // Negative = layer off, use absolute
     if (aci < kAciTableSize) {
         auto& e = kAciTable[aci];
         return 0xFF000000u | (uint32_t(e.r) << 16) | (uint32_t(e.g) << 8) | uint32_t(e.b);
@@ -125,8 +126,9 @@ void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
         writeGroup(out, 62, argbToAci(c));
     }
     if (entity.lineType() > 0) {
-        writeGroup(out, 6, std::string(draft::lineTypeDxfName(
-            static_cast<draft::LineType>(entity.lineType()))));
+        writeGroup(
+            out, 6,
+            std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(entity.lineType()))));
     }
     if (entity.lineWidth() > 0.0) {
         writeGroup(out, 370, static_cast<int>(entity.lineWidth() * 100.0));
@@ -175,8 +177,8 @@ void writeArc(std::ostream& out, const draft::DraftArc& arc) {
     writeGroup(out, 51, arc.endAngle() * math::kRadToDeg);
 }
 
-void writeLwPolyline(std::ostream& out, const std::vector<math::Vec2>& pts,
-                     bool closed, const draft::DraftEntity& entity) {
+void writeLwPolyline(std::ostream& out, const std::vector<math::Vec2>& pts, bool closed,
+                     const draft::DraftEntity& entity) {
     writeGroup(out, 0, std::string("LWPOLYLINE"));
     writeCommonProps(out, entity);
     writeGroup(out, 100, std::string("AcDbEntity"));
@@ -213,8 +215,10 @@ void writeText(std::ostream& out, const draft::DraftText& text) {
         writeGroup(out, 50, text.rotation() * math::kRadToDeg);
     }
     int hJust = 0;
-    if (text.alignment() == draft::TextAlignment::Center) hJust = 1;
-    else if (text.alignment() == draft::TextAlignment::Right) hJust = 2;
+    if (text.alignment() == draft::TextAlignment::Center)
+        hJust = 1;
+    else if (text.alignment() == draft::TextAlignment::Right)
+        hJust = 2;
     if (hJust != 0) {
         writeGroup(out, 72, hJust);
         // Alignment point (same as insertion for simple text).
@@ -306,11 +310,11 @@ void writeHatch(std::ostream& out, const draft::DraftHatch& hatch) {
     writeGroup(out, 97, 0);  // No source boundary objects.
 
     // Hatch style and pattern definition.
-    writeGroup(out, 75, 0);   // Normal hatch style.
-    writeGroup(out, 76, 1);   // Predefined pattern type.
+    writeGroup(out, 75, 0);  // Normal hatch style.
+    writeGroup(out, 76, 1);  // Predefined pattern type.
     writeGroup(out, 52, hatch.angle() * math::kRadToDeg);
     writeGroup(out, 41, hatch.spacing());
-    writeGroup(out, 78, 0);   // Number of pattern definition lines (0 for predefined).
+    writeGroup(out, 78, 0);  // Number of pattern definition lines (0 for predefined).
 }
 
 void writeInsert(std::ostream& out, const draft::DraftBlockRef& ref) {
@@ -346,8 +350,7 @@ void writeEllipse(std::ostream& out, const draft::DraftEllipse& ellipse) {
     writeGroup(out, 21, ellipse.semiMajor() * sinR);
     writeGroup(out, 31, 0.0);
     // Ratio of minor to major axis.
-    double ratio = (ellipse.semiMajor() > 1e-12)
-        ? ellipse.semiMinor() / ellipse.semiMajor() : 1.0;
+    double ratio = (ellipse.semiMajor() > 1e-12) ? ellipse.semiMinor() / ellipse.semiMajor() : 1.0;
     writeGroup(out, 40, ratio);
     // Start and end parameters (full ellipse = 0 to 2*PI).
     writeGroup(out, 41, 0.0);
@@ -463,7 +466,10 @@ bool readPair(std::istream& in, DxfPair& pair) {
     auto trim = [](std::string& s) {
         size_t start = s.find_first_not_of(" \t\r\n");
         size_t end = s.find_last_not_of(" \t\r\n");
-        if (start == std::string::npos) { s.clear(); return; }
+        if (start == std::string::npos) {
+            s.clear();
+            return;
+        }
         s = s.substr(start, end - start + 1);
     };
     trim(codeLine);
@@ -479,13 +485,19 @@ bool readPair(std::istream& in, DxfPair& pair) {
 }
 
 double toDouble(const std::string& s) {
-    try { return std::stod(s); }
-    catch (...) { return 0.0; }
+    try {
+        return std::stod(s);
+    } catch (...) {
+        return 0.0;
+    }
 }
 
 int toInt(const std::string& s) {
-    try { return std::stoi(s); }
-    catch (...) { return 0; }
+    try {
+        return std::stoi(s);
+    } catch (...) {
+        return 0;
+    }
 }
 
 // ===========================================================================
@@ -496,10 +508,9 @@ int toInt(const std::string& s) {
 void applyCommonProps(std::shared_ptr<draft::DraftEntity>& entity,
                       const std::vector<DxfPair>& groups) {
     for (const auto& g : groups) {
-        if (g.code == 8)   entity->setLayer(g.value);
-        if (g.code == 62)  entity->setColor(aciToArgb(toInt(g.value)));
-        if (g.code == 6)   entity->setLineType(static_cast<int>(
-                               draft::lineTypeFromDxfName(g.value)));
+        if (g.code == 8) entity->setLayer(g.value);
+        if (g.code == 62) entity->setColor(aciToArgb(toInt(g.value)));
+        if (g.code == 6) entity->setLineType(static_cast<int>(draft::lineTypeFromDxfName(g.value)));
         if (g.code == 370) {
             int lw = toInt(g.value);
             entity->setLineWidth(lw <= 0 ? 0.0 : lw / 100.0);
@@ -536,7 +547,7 @@ std::shared_ptr<draft::DraftEntity> parseLine(const std::vector<DxfPair>& groups
 std::shared_ptr<draft::DraftEntity> parseCircle(const std::vector<DxfPair>& groups) {
     double cx = toDouble(findGroup(groups, 10));
     double cy = toDouble(findGroup(groups, 20));
-    double r  = toDouble(findGroup(groups, 40));
+    double r = toDouble(findGroup(groups, 40));
     if (r <= 0.0) return nullptr;
     return std::make_shared<draft::DraftCircle>(math::Vec2(cx, cy), r);
 }
@@ -544,7 +555,7 @@ std::shared_ptr<draft::DraftEntity> parseCircle(const std::vector<DxfPair>& grou
 std::shared_ptr<draft::DraftEntity> parseArc(const std::vector<DxfPair>& groups) {
     double cx = toDouble(findGroup(groups, 10));
     double cy = toDouble(findGroup(groups, 20));
-    double r  = toDouble(findGroup(groups, 40));
+    double r = toDouble(findGroup(groups, 40));
     double sa = toDouble(findGroup(groups, 50)) * math::kDegToRad;
     double ea = toDouble(findGroup(groups, 51)) * math::kDegToRad;
     if (r <= 0.0) return nullptr;
@@ -582,8 +593,10 @@ std::shared_ptr<draft::DraftEntity> parseText(const std::vector<DxfPair>& groups
     entity->setRotation(rotation);
 
     draft::TextAlignment align = draft::TextAlignment::Left;
-    if (hJust == 1) align = draft::TextAlignment::Center;
-    else if (hJust == 2) align = draft::TextAlignment::Right;
+    if (hJust == 1)
+        align = draft::TextAlignment::Center;
+    else if (hJust == 2)
+        align = draft::TextAlignment::Right;
     entity->setAlignment(align);
 
     return entity;
@@ -603,12 +616,19 @@ std::shared_ptr<draft::DraftEntity> parseMText(const std::vector<DxfPair>& group
     for (size_t i = 0; i < content.size(); ++i) {
         if (content[i] == '\\' && i + 1 < content.size()) {
             char next = content[i + 1];
-            if (next == 'P' || next == 'p') { plain += ' '; i++; continue; }
+            if (next == 'P' || next == 'p') {
+                plain += ' ';
+                i++;
+                continue;
+            }
             // Skip formatting like \fArial|b0|i0|... until ';'
-            if (next == 'f' || next == 'F' || next == 'H' || next == 'W' ||
-                next == 'C' || next == 'T' || next == 'Q' || next == 'A') {
+            if (next == 'f' || next == 'F' || next == 'H' || next == 'W' || next == 'C' ||
+                next == 'T' || next == 'Q' || next == 'A') {
                 size_t end = content.find(';', i + 1);
-                if (end != std::string::npos) { i = end; continue; }
+                if (end != std::string::npos) {
+                    i = end;
+                    continue;
+                }
             }
             i++;  // Skip backslash + next char.
             continue;
@@ -666,8 +686,10 @@ std::shared_ptr<draft::DraftEntity> parseHatch(const std::vector<DxfPair>& group
     }
 
     draft::HatchPattern pattern = draft::HatchPattern::Lines;
-    if (solidFill) pattern = draft::HatchPattern::Solid;
-    else if (patternName == "ANSI37") pattern = draft::HatchPattern::CrossHatch;
+    if (solidFill)
+        pattern = draft::HatchPattern::Solid;
+    else if (patternName == "ANSI37")
+        pattern = draft::HatchPattern::CrossHatch;
 
     if (spacing <= 0.0) spacing = 1.0;
     return std::make_shared<draft::DraftHatch>(boundary, pattern, angle, spacing);
@@ -686,12 +708,12 @@ std::shared_ptr<draft::DraftEntity> parseEllipse(const std::vector<DxfPair>& gro
     double semiMinor = semiMajor * ratio;
     double rotation = std::atan2(my, mx);
 
-    return std::make_shared<draft::DraftEllipse>(
-        math::Vec2(cx, cy), semiMajor, semiMinor, rotation);
+    return std::make_shared<draft::DraftEllipse>(math::Vec2(cx, cy), semiMajor, semiMinor,
+                                                 rotation);
 }
 
-std::shared_ptr<draft::DraftEntity> parseInsert(
-    const std::vector<DxfPair>& groups, const doc::Document& doc) {
+std::shared_ptr<draft::DraftEntity> parseInsert(const std::vector<DxfPair>& groups,
+                                                const doc::Document& doc) {
     std::string blockName = findGroup(groups, 2);
     double x = toDouble(findGroup(groups, 10));
     double y = toDouble(findGroup(groups, 20));
@@ -705,8 +727,7 @@ std::shared_ptr<draft::DraftEntity> parseInsert(
     double uniformScale = (std::abs(xScale) + std::abs(yScale)) / 2.0;
     if (std::abs(uniformScale) < 1e-9) uniformScale = 1.0;
 
-    return std::make_shared<draft::DraftBlockRef>(def, math::Vec2(x, y),
-                                                   rotation, uniformScale);
+    return std::make_shared<draft::DraftBlockRef>(def, math::Vec2(x, y), rotation, uniformScale);
 }
 
 // ===========================================================================
@@ -744,8 +765,7 @@ void parseLayerTable(std::istream& in, doc::Document& doc) {
                         props.visible = (aci >= 0) && !(flags & 1);
                         props.locked = (flags & 4) != 0;
                         props.lineWidth = (lw <= 0) ? 1.0 : lw / 100.0;
-                        props.lineType = static_cast<int>(
-                            draft::lineTypeFromDxfName(ltName));
+                        props.lineType = static_cast<int>(draft::lineTypeFromDxfName(ltName));
 
                         if (name == "0") {
                             auto* existing = doc.layerManager().getLayer("0");
@@ -826,14 +846,22 @@ void parseBlocksSection(std::istream& in, doc::Document& doc) {
 
                     if (!isSpecial) {
                         std::shared_ptr<draft::DraftEntity> entity;
-                        if (entityType == "LINE") entity = parseLine(groups);
-                        else if (entityType == "CIRCLE") entity = parseCircle(groups);
-                        else if (entityType == "ARC") entity = parseArc(groups);
-                        else if (entityType == "LWPOLYLINE") entity = parseLwPolyline(groups);
-                        else if (entityType == "TEXT") entity = parseText(groups);
-                        else if (entityType == "MTEXT") entity = parseMText(groups);
-                        else if (entityType == "SPLINE") entity = parseSpline(groups);
-                        else if (entityType == "ELLIPSE") entity = parseEllipse(groups);
+                        if (entityType == "LINE")
+                            entity = parseLine(groups);
+                        else if (entityType == "CIRCLE")
+                            entity = parseCircle(groups);
+                        else if (entityType == "ARC")
+                            entity = parseArc(groups);
+                        else if (entityType == "LWPOLYLINE")
+                            entity = parseLwPolyline(groups);
+                        else if (entityType == "TEXT")
+                            entity = parseText(groups);
+                        else if (entityType == "MTEXT")
+                            entity = parseMText(groups);
+                        else if (entityType == "SPLINE")
+                            entity = parseSpline(groups);
+                        else if (entityType == "ELLIPSE")
+                            entity = parseEllipse(groups);
 
                         if (entity) {
                             applyCommonProps(entity, groups);
@@ -874,16 +902,26 @@ void parseEntitiesSection(std::istream& in, doc::Document& doc) {
 
         // Parse entity.
         std::shared_ptr<draft::DraftEntity> entity;
-        if (entityType == "LINE") entity = parseLine(groups);
-        else if (entityType == "CIRCLE") entity = parseCircle(groups);
-        else if (entityType == "ARC") entity = parseArc(groups);
-        else if (entityType == "LWPOLYLINE") entity = parseLwPolyline(groups);
-        else if (entityType == "TEXT") entity = parseText(groups);
-        else if (entityType == "MTEXT") entity = parseMText(groups);
-        else if (entityType == "SPLINE") entity = parseSpline(groups);
-        else if (entityType == "HATCH") entity = parseHatch(groups);
-        else if (entityType == "ELLIPSE") entity = parseEllipse(groups);
-        else if (entityType == "INSERT") entity = parseInsert(groups, doc);
+        if (entityType == "LINE")
+            entity = parseLine(groups);
+        else if (entityType == "CIRCLE")
+            entity = parseCircle(groups);
+        else if (entityType == "ARC")
+            entity = parseArc(groups);
+        else if (entityType == "LWPOLYLINE")
+            entity = parseLwPolyline(groups);
+        else if (entityType == "TEXT")
+            entity = parseText(groups);
+        else if (entityType == "MTEXT")
+            entity = parseMText(groups);
+        else if (entityType == "SPLINE")
+            entity = parseSpline(groups);
+        else if (entityType == "HATCH")
+            entity = parseHatch(groups);
+        else if (entityType == "ELLIPSE")
+            entity = parseEllipse(groups);
+        else if (entityType == "INSERT")
+            entity = parseInsert(groups, doc);
         // Unknown entity types are silently skipped.
 
         if (entity) {
@@ -1056,8 +1094,8 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
         int aci = argbToAci(lp->color);
         if (!lp->visible) aci = -aci;
         writeGroup(out, 62, aci);
-        writeGroup(out, 6, std::string(draft::lineTypeDxfName(
-            static_cast<draft::LineType>(lp->lineType))));
+        writeGroup(out, 6,
+                   std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(lp->lineType))));
     }
     writeGroup(out, 0, std::string("ENDTAB"));
     writeGroup(out, 0, std::string("ENDSEC"));

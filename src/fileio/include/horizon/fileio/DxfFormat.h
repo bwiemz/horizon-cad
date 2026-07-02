@@ -1,7 +1,8 @@
 #pragma once
 
-#include "horizon/document/Document.h"
 #include <string>
+
+#include "horizon/document/Document.h"
 
 namespace hz::io {
 
@@ -10,12 +11,10 @@ namespace hz::io {
 class DxfFormat {
 public:
     /// Write document to a DXF file.
-    static bool save(const std::string& filePath,
-                     const doc::Document& doc);
+    static bool save(const std::string& filePath, const doc::Document& doc);
 
     /// Read a DXF file and populate the document.
-    static bool load(const std::string& filePath,
-                     doc::Document& doc);
+    static bool load(const std::string& filePath, doc::Document& doc);
 };
 
 }  // namespace hz::io

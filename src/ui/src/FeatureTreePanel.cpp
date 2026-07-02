@@ -1,16 +1,15 @@
 #include "horizon/ui/FeatureTreePanel.h"
 
-#include "horizon/document/FeatureTree.h"
-
 #include <QHeaderView>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
 
+#include "horizon/document/FeatureTree.h"
+
 namespace hz::ui {
 
-FeatureTreePanel::FeatureTreePanel(QWidget* parent)
-    : QDockWidget(tr("Feature Tree"), parent) {
+FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tree"), parent) {
     setObjectName("FeatureTreePanel");
 
     auto* container = new QWidget(this);
@@ -27,8 +26,8 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent)
     layout->addWidget(m_treeWidget);
     setWidget(container);
 
-    connect(m_treeWidget, &QTreeWidget::itemDoubleClicked,
-            this, &FeatureTreePanel::onItemDoubleClicked);
+    connect(m_treeWidget, &QTreeWidget::itemDoubleClicked, this,
+            &FeatureTreePanel::onItemDoubleClicked);
 
     // Detect drag-drop reorder via the model's rowsMoved signal.
     connect(m_treeWidget->model(), &QAbstractItemModel::rowsMoved, this,
@@ -49,8 +48,7 @@ void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
         item->setData(0, Qt::UserRole, i);
         item->setText(0, QString::fromStdString(feat->name()));
 
-        const bool suppressed =
-            (m_rollbackIndex >= 0 && i > m_rollbackIndex);
+        const bool suppressed = (m_rollbackIndex >= 0 && i > m_rollbackIndex);
         if (suppressed) {
             item->setText(1, tr("Suppressed"));
             item->setForeground(0, QColor(160, 160, 160));
@@ -61,10 +59,8 @@ void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
     }
 }
 
-void FeatureTreePanel::markFailed(int featureIndex,
-                                   const std::string& errorMessage) {
-    if (featureIndex < 0 || featureIndex >= m_treeWidget->topLevelItemCount())
-        return;
+void FeatureTreePanel::markFailed(int featureIndex, const std::string& errorMessage) {
+    if (featureIndex < 0 || featureIndex >= m_treeWidget->topLevelItemCount()) return;
 
     auto* item = m_treeWidget->topLevelItem(featureIndex);
     item->setBackground(0, QColor(255, 180, 180));

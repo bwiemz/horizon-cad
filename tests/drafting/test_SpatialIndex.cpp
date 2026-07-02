@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
-#include "horizon/drafting/SpatialIndex.h"
-#include "horizon/drafting/SnapEngine.h"
-#include "horizon/drafting/DraftLine.h"
+
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SnapEngine.h"
+#include "horizon/drafting/SpatialIndex.h"
 #include "horizon/math/BoundingBox.h"
 
 using namespace hz::draft;

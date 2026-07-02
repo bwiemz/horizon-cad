@@ -1,12 +1,13 @@
 #include "horizon/ui/TextTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftText.h"
 
 #include <QInputDialog>
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -17,17 +18,17 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     math::Vec2 pos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         pos = result.point;
         m_viewport->setLastSnapResult(result);
     }
 
     // Ask for text content.
     bool ok = false;
-    QString text = QInputDialog::getText(
-        m_viewport, QObject::tr("Text"), QObject::tr("Enter text:"),
-        QLineEdit::Normal, QString(), &ok);
+    QString text =
+        QInputDialog::getText(m_viewport, QObject::tr("Text"), QObject::tr("Enter text:"),
+                              QLineEdit::Normal, QString(), &ok);
     if (!ok || text.trimmed().isEmpty()) return true;
 
     // Get default text height from dimension style.
@@ -38,11 +39,10 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     // Create and add the text entity.
     if (m_viewport && m_viewport->document()) {
-        auto txt = std::make_shared<draft::DraftText>(
-            pos, text.toStdString(), textHeight);
+        auto txt = std::make_shared<draft::DraftText>(pos, text.toStdString(), textHeight);
         txt->setLayer(m_viewport->document()->layerManager().currentLayer());
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), txt);
+        auto cmd =
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), txt);
         m_viewport->document()->undoStack().push(std::move(cmd));
         m_viewport->update();
     }
@@ -52,8 +52,8 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 bool TextTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         m_viewport->setLastSnapResult(result);
     }
     return true;
@@ -81,6 +81,8 @@ std::string TextTool::promptText() const {
     return "Click to place text";
 }
 
-bool TextTool::wantsCrosshair() const { return true; }
+bool TextTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

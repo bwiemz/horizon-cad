@@ -1,16 +1,17 @@
 #include "horizon/ui/FilletTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -31,14 +32,11 @@ void FilletTool::deactivate() {
 // Fillet computation (line-line only)
 // ---------------------------------------------------------------------------
 
-bool FilletTool::computeFillet(
-    uint64_t lineAId, const math::Vec2& clickA,
-    uint64_t lineBId, const math::Vec2& clickB,
-    math::Vec2& arcCenter, double& arcRadius,
-    double& arcStartAngle, double& arcEndAngle,
-    math::Vec2& trimA_start, math::Vec2& trimA_end,
-    math::Vec2& trimB_start, math::Vec2& trimB_end) const {
-
+bool FilletTool::computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint64_t lineBId,
+                               const math::Vec2& clickB, math::Vec2& arcCenter, double& arcRadius,
+                               double& arcStartAngle, double& arcEndAngle, math::Vec2& trimA_start,
+                               math::Vec2& trimA_end, math::Vec2& trimB_start,
+                               math::Vec2& trimB_end) const {
     if (!m_viewport || !m_viewport->document()) return false;
     auto& doc = m_viewport->document()->draftDocument();
 
@@ -88,8 +86,7 @@ bool FilletTool::computeFillet(
     arcRadius = m_filletRadius;
 
     // Tangent points: project arc center onto each line.
-    auto projectOnLine = [](const math::Vec2& center,
-                            const math::Vec2& lineStart,
+    auto projectOnLine = [](const math::Vec2& center, const math::Vec2& lineStart,
                             const math::Vec2& lineDir) -> math::Vec2 {
         math::Vec2 v = center - lineStart;
         double t = v.dot(lineDir) / lineDir.dot(lineDir);
@@ -178,37 +175,55 @@ bool FilletTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
             math::Vec2 arcCenter, trimA_start, trimA_end, trimB_start, trimB_end;
             double arcRadius, arcStart, arcEnd;
 
-            if (computeFillet(m_firstEntityId, m_firstClickPos,
-                              entity->id(), worldPos,
-                              arcCenter, arcRadius, arcStart, arcEnd,
-                              trimA_start, trimA_end, trimB_start, trimB_end)) {
-
+            if (computeFillet(m_firstEntityId, m_firstClickPos, entity->id(), worldPos, arcCenter,
+                              arcRadius, arcStart, arcEnd, trimA_start, trimA_end, trimB_start,
+                              trimB_end)) {
                 auto composite = std::make_unique<doc::CompositeCommand>("Fillet");
 
                 // Remove original lines.
-                composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, m_firstEntityId));
-                composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, entity->id()));
+                composite->addCommand(
+                    std::make_unique<doc::RemoveEntityCommand>(doc, m_firstEntityId));
+                composite->addCommand(
+                    std::make_unique<doc::RemoveEntityCommand>(doc, entity->id()));
 
                 // Add trimmed lines.
                 // Find originals for layer/color.
                 const draft::DraftLine* origA = nullptr;
                 const draft::DraftLine* origB = nullptr;
                 for (const auto& e : doc.entities()) {
-                    if (e->id() == m_firstEntityId) origA = dynamic_cast<const draft::DraftLine*>(e.get());
-                    if (e->id() == entity->id()) origB = dynamic_cast<const draft::DraftLine*>(e.get());
+                    if (e->id() == m_firstEntityId)
+                        origA = dynamic_cast<const draft::DraftLine*>(e.get());
+                    if (e->id() == entity->id())
+                        origB = dynamic_cast<const draft::DraftLine*>(e.get());
                 }
 
                 auto newLineA = std::make_shared<draft::DraftLine>(trimA_start, trimA_end);
-                if (origA) { newLineA->setLayer(origA->layer()); newLineA->setColor(origA->color()); newLineA->setLineWidth(origA->lineWidth()); newLineA->setLineType(origA->lineType()); }
+                if (origA) {
+                    newLineA->setLayer(origA->layer());
+                    newLineA->setColor(origA->color());
+                    newLineA->setLineWidth(origA->lineWidth());
+                    newLineA->setLineType(origA->lineType());
+                }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineA));
 
                 auto newLineB = std::make_shared<draft::DraftLine>(trimB_start, trimB_end);
-                if (origB) { newLineB->setLayer(origB->layer()); newLineB->setColor(origB->color()); newLineB->setLineWidth(origB->lineWidth()); newLineB->setLineType(origB->lineType()); }
+                if (origB) {
+                    newLineB->setLayer(origB->layer());
+                    newLineB->setColor(origB->color());
+                    newLineB->setLineWidth(origB->lineWidth());
+                    newLineB->setLineType(origB->lineType());
+                }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineB));
 
                 // Add fillet arc.
-                auto filletArc = std::make_shared<draft::DraftArc>(arcCenter, arcRadius, arcStart, arcEnd);
-                if (origA) { filletArc->setLayer(origA->layer()); filletArc->setColor(origA->color()); filletArc->setLineWidth(origA->lineWidth()); filletArc->setLineType(origA->lineType()); }
+                auto filletArc =
+                    std::make_shared<draft::DraftArc>(arcCenter, arcRadius, arcStart, arcEnd);
+                if (origA) {
+                    filletArc->setLayer(origA->layer());
+                    filletArc->setColor(origA->color());
+                    filletArc->setLineWidth(origA->lineWidth());
+                    filletArc->setLineType(origA->lineType());
+                }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, filletArc));
 
                 m_viewport->document()->undoStack().push(std::move(composite));
@@ -259,7 +274,8 @@ bool FilletTool::keyPressEvent(QKeyEvent* event) {
             try {
                 double r = std::stod(m_radiusInput);
                 if (r > 0.0) m_filletRadius = r;
-            } catch (...) {}
+            } catch (...) {
+            }
             m_radiusInput.clear();
         }
         return true;
@@ -292,10 +308,9 @@ std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
         math::Vec2 arcCenter, trimA_start, trimA_end, trimB_start, trimB_end;
         double arcRadius, arcStart, arcEnd;
 
-        if (computeFillet(m_firstEntityId, m_firstClickPos,
-                          entity->id(), m_currentPos,
-                          arcCenter, arcRadius, arcStart, arcEnd,
-                          trimA_start, trimA_end, trimB_start, trimB_end)) {
+        if (computeFillet(m_firstEntityId, m_firstClickPos, entity->id(), m_currentPos, arcCenter,
+                          arcRadius, arcStart, arcEnd, trimA_start, trimA_end, trimB_start,
+                          trimB_end)) {
             return {{arcCenter, arcRadius, arcStart, arcEnd}};
         }
     }
@@ -304,12 +319,16 @@ std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
 
 std::string FilletTool::promptText() const {
     switch (m_state) {
-        case State::SelectFirstLine: return "Select first line for fillet";
-        case State::SelectSecondLine: return "Select second line for fillet";
+        case State::SelectFirstLine:
+            return "Select first line for fillet";
+        case State::SelectSecondLine:
+            return "Select second line for fillet";
     }
     return "";
 }
 
-bool FilletTool::wantsCrosshair() const { return false; }
+bool FilletTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

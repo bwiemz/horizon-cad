@@ -1,4 +1,8 @@
 #include "horizon/constraint/ParameterTable.h"
+
+#include <set>
+#include <stdexcept>
+
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -6,8 +10,6 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
-#include <set>
-#include <stdexcept>
 
 namespace hz::cstr {
 
@@ -67,8 +69,7 @@ int ParameterTable::registerEntity(const draft::DraftEntity& entity) {
     return startIdx;
 }
 
-const ParameterTable::EntityParams* ParameterTable::findEntityParams(
-    uint64_t entityId) const {
+const ParameterTable::EntityParams* ParameterTable::findEntityParams(uint64_t entityId) const {
     for (const auto& ep : m_entityParams) {
         if (ep.entityId == entityId) return &ep;
     }
@@ -82,8 +83,8 @@ bool ParameterTable::hasEntity(uint64_t entityId) const {
 int ParameterTable::parameterIndex(const GeometryRef& ref) const {
     const auto* ep = findEntityParams(ref.entityId);
     if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " +
-                                 std::to_string(ref.entityId) + " not registered");
+        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
+                                 " not registered");
     }
 
     int base = ep->startIndex;
@@ -108,11 +109,11 @@ int ParameterTable::parameterIndex(const GeometryRef& ref) const {
             // Point(0)=BL=corner1, Point(2)=TR=corner2 are direct.
             // Point(1)=BR and Point(3)=TL are derived.
             if (ref.featureIndex == 0) return base;      // corner1
-            if (ref.featureIndex == 2) return base + 2;   // corner2
+            if (ref.featureIndex == 2) return base + 2;  // corner2
             // For derived corners, we'd need special handling.
             // For now, map to the closest independent corner.
-            if (ref.featureIndex == 1) return base;       // BR uses c1y but c2x — complex
-            if (ref.featureIndex == 3) return base;       // TL similar
+            if (ref.featureIndex == 1) return base;  // BR uses c1y but c2x — complex
+            if (ref.featureIndex == 3) return base;  // TL similar
             return base;
         } else if (ep->entityType == "polyline") {
             return base + ref.featureIndex * 2;
@@ -143,8 +144,8 @@ int ParameterTable::parameterIndex(const GeometryRef& ref) const {
 math::Vec2 ParameterTable::pointPosition(const GeometryRef& ref) const {
     const auto* ep = findEntityParams(ref.entityId);
     if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " +
-                                 std::to_string(ref.entityId) + " not registered");
+        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
+                                 " not registered");
     }
     int base = ep->startIndex;
 
@@ -165,10 +166,14 @@ math::Vec2 ParameterTable::pointPosition(const GeometryRef& ref) const {
         double minX = std::min(c1x, c2x), minY = std::min(c1y, c2y);
         double maxX = std::max(c1x, c2x), maxY = std::max(c1y, c2y);
         switch (ref.featureIndex) {
-            case 0: return {minX, minY};  // BL
-            case 1: return {maxX, minY};  // BR
-            case 2: return {maxX, maxY};  // TR
-            case 3: return {minX, maxY};  // TL
+            case 0:
+                return {minX, minY};  // BL
+            case 1:
+                return {maxX, minY};  // BR
+            case 2:
+                return {maxX, maxY};  // TR
+            case 3:
+                return {minX, maxY};  // TL
         }
     } else if (ep->entityType == "polyline") {
         int idx = base + ref.featureIndex * 2;
@@ -178,18 +183,16 @@ math::Vec2 ParameterTable::pointPosition(const GeometryRef& ref) const {
     return {m_values(base), m_values(base + 1)};
 }
 
-std::pair<math::Vec2, math::Vec2> ParameterTable::lineEndpoints(
-    const GeometryRef& ref) const {
+std::pair<math::Vec2, math::Vec2> ParameterTable::lineEndpoints(const GeometryRef& ref) const {
     const auto* ep = findEntityParams(ref.entityId);
     if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " +
-                                 std::to_string(ref.entityId) + " not registered");
+        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
+                                 " not registered");
     }
     int base = ep->startIndex;
 
     if (ep->entityType == "line") {
-        return {{m_values(base), m_values(base + 1)},
-                {m_values(base + 2), m_values(base + 3)}};
+        return {{m_values(base), m_values(base + 1)}, {m_values(base + 2), m_values(base + 3)}};
     } else if (ep->entityType == "rectangle") {
         // Reconstruct corners from params
         double c1x = m_values(base), c1y = m_values(base + 1);
@@ -212,8 +215,8 @@ std::pair<math::Vec2, math::Vec2> ParameterTable::lineEndpoints(
 std::pair<math::Vec2, double> ParameterTable::circleData(const GeometryRef& ref) const {
     const auto* ep = findEntityParams(ref.entityId);
     if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " +
-                                 std::to_string(ref.entityId) + " not registered");
+        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
+                                 " not registered");
     }
     int base = ep->startIndex;
 

@@ -1,24 +1,23 @@
 #include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/math/MathUtils.h"
+
 #include <cmath>
+
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
 DraftBlockRef::DraftBlockRef(std::shared_ptr<BlockDefinition> definition,
-                             const math::Vec2& insertPos,
-                             double rotation,
-                             double uniformScale)
-    : m_definition(std::move(definition))
-    , m_insertPos(insertPos)
-    , m_rotation(rotation)
-    , m_uniformScale(uniformScale) {}
+                             const math::Vec2& insertPos, double rotation, double uniformScale)
+    : m_definition(std::move(definition)),
+      m_insertPos(insertPos),
+      m_rotation(rotation),
+      m_uniformScale(uniformScale) {}
 
 math::Vec2 DraftBlockRef::transformPoint(const math::Vec2& defPt) const {
     // worldPt = insertPos + rotate((defPt - basePoint) * scale, rotation)
     math::Vec2 local = (defPt - m_definition->basePoint) * m_uniformScale;
     double c = std::cos(m_rotation), s = std::sin(m_rotation);
-    return {m_insertPos.x + local.x * c - local.y * s,
-            m_insertPos.y + local.x * s + local.y * c};
+    return {m_insertPos.x + local.x * c - local.y * s, m_insertPos.y + local.x * s + local.y * c};
 }
 
 math::Vec2 DraftBlockRef::inverseTransformPoint(const math::Vec2& worldPt) const {
@@ -38,8 +37,7 @@ math::BoundingBox DraftBlockRef::boundingBox() const {
         // Transform all 4 corners of the sub-entity bbox.
         math::Vec3 lo = subBB.min();
         math::Vec3 hi = subBB.max();
-        math::Vec2 corners[4] = {
-            {lo.x, lo.y}, {hi.x, lo.y}, {hi.x, hi.y}, {lo.x, hi.y}};
+        math::Vec2 corners[4] = {{lo.x, lo.y}, {hi.x, lo.y}, {hi.x, hi.y}, {lo.x, hi.y}};
         for (const auto& corner : corners) {
             math::Vec2 w = transformPoint(corner);
             bbox.expand(math::Vec3(w.x, w.y, 0.0));
@@ -51,9 +49,8 @@ math::BoundingBox DraftBlockRef::boundingBox() const {
 bool DraftBlockRef::hitTest(const math::Vec2& point, double tolerance) const {
     // Inverse-transform point into definition space.
     math::Vec2 defPt = inverseTransformPoint(point);
-    double defTolerance = (std::abs(m_uniformScale) > 1e-12)
-                              ? (tolerance / std::abs(m_uniformScale))
-                              : tolerance;
+    double defTolerance =
+        (std::abs(m_uniformScale) > 1e-12) ? (tolerance / std::abs(m_uniformScale)) : tolerance;
     for (const auto& ent : m_definition->entities) {
         if (ent->hitTest(defPt, defTolerance)) return true;
     }
@@ -78,8 +75,8 @@ void DraftBlockRef::translate(const math::Vec2& delta) {
 }
 
 std::shared_ptr<DraftEntity> DraftBlockRef::clone() const {
-    auto copy = std::make_shared<DraftBlockRef>(m_definition, m_insertPos, m_rotation,
-                                                m_uniformScale);
+    auto copy =
+        std::make_shared<DraftBlockRef>(m_definition, m_insertPos, m_rotation, m_uniformScale);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());

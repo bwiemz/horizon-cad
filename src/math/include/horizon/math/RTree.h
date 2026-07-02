@@ -130,8 +130,8 @@ private:
         bool isLeaf = true;
         int parent = -1;
         BoundingBox bbox;
-        std::vector<Entry> entries;      // only used if isLeaf
-        std::vector<int> children;       // only used if !isLeaf
+        std::vector<Entry> entries;  // only used if isLeaf
+        std::vector<int> children;   // only used if !isLeaf
     };
 
     std::vector<Node> m_nodes;
@@ -206,8 +206,8 @@ private:
             for (size_t j = i + 1; j < entries.size(); ++j) {
                 BoundingBox merged = entries[i].bbox;
                 merged.expand(entries[j].bbox);
-                double waste = bboxArea(merged) - bboxArea(entries[i].bbox) -
-                               bboxArea(entries[j].bbox);
+                double waste =
+                    bboxArea(merged) - bboxArea(entries[i].bbox) - bboxArea(entries[j].bbox);
                 if (waste > worstWaste) {
                     worstWaste = waste;
                     seed1 = static_cast<int>(i);
@@ -282,9 +282,8 @@ private:
 
             double enlLeft = areaEnlargement(m_nodes[nodeIdx].bbox, entries[bestEntry].bbox);
             double enlRight = areaEnlargement(m_nodes[newIdx].bbox, entries[bestEntry].bbox);
-            if (enlLeft < enlRight ||
-                (enlLeft == enlRight &&
-                 bboxArea(m_nodes[nodeIdx].bbox) <= bboxArea(m_nodes[newIdx].bbox))) {
+            if (enlLeft < enlRight || (enlLeft == enlRight && bboxArea(m_nodes[nodeIdx].bbox) <=
+                                                                  bboxArea(m_nodes[newIdx].bbox))) {
                 m_nodes[nodeIdx].entries.push_back(entries[bestEntry]);
                 m_nodes[nodeIdx].bbox.expand(entries[bestEntry].bbox);
             } else {
@@ -393,9 +392,8 @@ private:
                 areaEnlargement(m_nodes[nodeIdx].bbox, m_nodes[children[bestEntry]].bbox);
             double enlRight =
                 areaEnlargement(m_nodes[newIdx].bbox, m_nodes[children[bestEntry]].bbox);
-            if (enlLeft < enlRight ||
-                (enlLeft == enlRight &&
-                 bboxArea(m_nodes[nodeIdx].bbox) <= bboxArea(m_nodes[newIdx].bbox))) {
+            if (enlLeft < enlRight || (enlLeft == enlRight && bboxArea(m_nodes[nodeIdx].bbox) <=
+                                                                  bboxArea(m_nodes[newIdx].bbox))) {
                 m_nodes[nodeIdx].children.push_back(children[bestEntry]);
                 m_nodes[children[bestEntry]].parent = nodeIdx;
                 m_nodes[nodeIdx].bbox.expand(m_nodes[children[bestEntry]].bbox);
@@ -466,8 +464,7 @@ private:
     }
 
     /// Recursively query a node for entries intersecting the search box.
-    void queryNode(int nodeIdx, const BoundingBox& searchBox,
-                   std::vector<ValueT>& results) const {
+    void queryNode(int nodeIdx, const BoundingBox& searchBox, std::vector<ValueT>& results) const {
         const auto& node = m_nodes[nodeIdx];
         if (!node.bbox.isValid() || !node.bbox.intersects(searchBox)) return;
 

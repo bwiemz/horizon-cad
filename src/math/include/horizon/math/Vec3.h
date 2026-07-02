@@ -64,6 +64,8 @@ struct Vec3 {
     static const Vec3 UnitZ;
 };
 
-inline Vec3 operator*(double s, const Vec3& v) { return v * s; }
+inline Vec3 operator*(double s, const Vec3& v) {
+    return v * s;
+}
 
 }  // namespace hz::math

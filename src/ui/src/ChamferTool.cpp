@@ -1,13 +1,14 @@
 #include "horizon/ui/ChamferTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -27,13 +28,11 @@ void ChamferTool::deactivate() {
 // Chamfer computation (line-line only)
 // ---------------------------------------------------------------------------
 
-bool ChamferTool::computeChamfer(
-    uint64_t lineAId, const math::Vec2& /*clickA*/,
-    uint64_t lineBId, const math::Vec2& /*clickB*/,
-    math::Vec2& chamferPtA, math::Vec2& chamferPtB,
-    math::Vec2& trimA_start, math::Vec2& trimA_end,
-    math::Vec2& trimB_start, math::Vec2& trimB_end) const {
-
+bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/, uint64_t lineBId,
+                                 const math::Vec2& /*clickB*/, math::Vec2& chamferPtA,
+                                 math::Vec2& chamferPtB, math::Vec2& trimA_start,
+                                 math::Vec2& trimA_end, math::Vec2& trimB_start,
+                                 math::Vec2& trimB_end) const {
     if (!m_viewport || !m_viewport->document()) return false;
     auto& doc = m_viewport->document()->draftDocument();
 
@@ -140,23 +139,24 @@ bool ChamferTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
             math::Vec2 chamferPtA, chamferPtB;
             math::Vec2 trimA_start, trimA_end, trimB_start, trimB_end;
 
-            if (computeChamfer(m_firstEntityId, m_firstClickPos,
-                               entity->id(), worldPos,
-                               chamferPtA, chamferPtB,
-                               trimA_start, trimA_end, trimB_start, trimB_end)) {
-
+            if (computeChamfer(m_firstEntityId, m_firstClickPos, entity->id(), worldPos, chamferPtA,
+                               chamferPtB, trimA_start, trimA_end, trimB_start, trimB_end)) {
                 auto composite = std::make_unique<doc::CompositeCommand>("Chamfer");
 
                 // Remove original lines.
-                composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, m_firstEntityId));
-                composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, entity->id()));
+                composite->addCommand(
+                    std::make_unique<doc::RemoveEntityCommand>(doc, m_firstEntityId));
+                composite->addCommand(
+                    std::make_unique<doc::RemoveEntityCommand>(doc, entity->id()));
 
                 // Find originals for property copying.
                 const draft::DraftLine* origA = nullptr;
                 const draft::DraftLine* origB = nullptr;
                 for (const auto& e : doc.entities()) {
-                    if (e->id() == m_firstEntityId) origA = dynamic_cast<const draft::DraftLine*>(e.get());
-                    if (e->id() == entity->id()) origB = dynamic_cast<const draft::DraftLine*>(e.get());
+                    if (e->id() == m_firstEntityId)
+                        origA = dynamic_cast<const draft::DraftLine*>(e.get());
+                    if (e->id() == entity->id())
+                        origB = dynamic_cast<const draft::DraftLine*>(e.get());
                 }
 
                 // Add trimmed lines.
@@ -234,7 +234,8 @@ bool ChamferTool::keyPressEvent(QKeyEvent* event) {
             try {
                 double d = std::stod(m_distInput);
                 if (d > 0.0) m_chamferDist = d;
-            } catch (...) {}
+            } catch (...) {
+            }
             m_distInput.clear();
         }
         return true;
@@ -266,10 +267,8 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ChamferTool::getPreviewLines() co
         math::Vec2 chamferPtA, chamferPtB;
         math::Vec2 trimA_start, trimA_end, trimB_start, trimB_end;
 
-        if (computeChamfer(m_firstEntityId, m_firstClickPos,
-                           entity->id(), m_currentPos,
-                           chamferPtA, chamferPtB,
-                           trimA_start, trimA_end, trimB_start, trimB_end)) {
+        if (computeChamfer(m_firstEntityId, m_firstClickPos, entity->id(), m_currentPos, chamferPtA,
+                           chamferPtB, trimA_start, trimA_end, trimB_start, trimB_end)) {
             return {{chamferPtA, chamferPtB}};
         }
     }
@@ -279,8 +278,12 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ChamferTool::getPreviewLines() co
 std::string ChamferTool::promptText() const {
     std::string base;
     switch (m_state) {
-        case State::SelectFirstLine: base = "Select first line for chamfer"; break;
-        case State::SelectSecondLine: base = "Select second line for chamfer"; break;
+        case State::SelectFirstLine:
+            base = "Select first line for chamfer";
+            break;
+        case State::SelectSecondLine:
+            base = "Select second line for chamfer";
+            break;
     }
     if (!m_distInput.empty()) {
         base += "  Distance: " + m_distInput;
@@ -290,6 +293,8 @@ std::string ChamferTool::promptText() const {
     return base;
 }
 
-bool ChamferTool::wantsCrosshair() const { return false; }
+bool ChamferTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

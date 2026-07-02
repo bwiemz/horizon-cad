@@ -1,9 +1,9 @@
 #include "horizon/modeling/ExactPredicates.h"
 
+#include <cmath>
+
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/topology/Solid.h"
-
-#include <cmath>
 
 namespace hz::model {
 

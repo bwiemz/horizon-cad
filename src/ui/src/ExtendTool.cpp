@@ -1,20 +1,21 @@
 #include "horizon/ui/ExtendTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -30,11 +31,9 @@ static void copyProps(const draft::DraftEntity* src, draft::DraftEntity* dst) {
 // Extend a line endpoint to the nearest boundary intersection
 // ---------------------------------------------------------------------------
 
-static bool extendLine(const draft::DraftLine* line,
-                       const math::Vec2& clickPos,
+static bool extendLine(const draft::DraftLine* line, const math::Vec2& clickPos,
                        const std::vector<std::shared_ptr<draft::DraftEntity>>& entities,
-                       const draft::LayerManager& layerMgr,
-                       doc::CompositeCommand& composite,
+                       const draft::LayerManager& layerMgr, doc::CompositeCommand& composite,
                        draft::DraftDocument& doc) {
     // Determine which endpoint to extend (closest to click).
     double distToStart = (clickPos - line->start()).length();
@@ -91,11 +90,9 @@ static bool extendLine(const draft::DraftLine* line,
 // Extend an arc endpoint to the nearest boundary intersection
 // ---------------------------------------------------------------------------
 
-static bool extendArc(const draft::DraftArc* arc,
-                      const math::Vec2& clickPos,
+static bool extendArc(const draft::DraftArc* arc, const math::Vec2& clickPos,
                       const std::vector<std::shared_ptr<draft::DraftEntity>>& entities,
-                      const draft::LayerManager& layerMgr,
-                      doc::CompositeCommand& composite,
+                      const draft::LayerManager& layerMgr, doc::CompositeCommand& composite,
                       draft::DraftDocument& doc) {
     // Determine which endpoint to extend.
     double distToStart = (clickPos - arc->startPoint()).length();
@@ -117,7 +114,8 @@ static bool extendArc(const draft::DraftArc* arc,
         if (!lp || !lp->visible) continue;
 
         // Intersect other entity with the full circle of this arc.
-        // Use ray from center in all directions — simpler: use extractSegments + intersectLineCircle.
+        // Use ray from center in all directions — simpler: use extractSegments +
+        // intersectLineCircle.
         auto segs = draft::extractSegments(*other);
         for (const auto& [s, e] : segs) {
             auto pts = draft::intersectLineCircle(s, e, arc->center(), arc->radius());
@@ -150,8 +148,8 @@ static bool extendArc(const draft::DraftArc* arc,
 
         // Also check circle/arc entities.
         if (auto* circ = dynamic_cast<const draft::DraftCircle*>(other.get())) {
-            auto pts = draft::intersectCircleCircle(
-                arc->center(), arc->radius(), circ->center(), circ->radius());
+            auto pts = draft::intersectCircleCircle(arc->center(), arc->radius(), circ->center(),
+                                                    circ->radius());
             for (const auto& pt : pts) {
                 double angle = math::normalizeAngle(
                     std::atan2(pt.y - arc->center().y, pt.x - arc->center().x));
@@ -173,8 +171,8 @@ static bool extendArc(const draft::DraftArc* arc,
                 }
             }
         } else if (auto* otherArc = dynamic_cast<const draft::DraftArc*>(other.get())) {
-            auto pts = draft::intersectCircleCircle(
-                arc->center(), arc->radius(), otherArc->center(), otherArc->radius());
+            auto pts = draft::intersectCircleCircle(arc->center(), arc->radius(),
+                                                    otherArc->center(), otherArc->radius());
             for (const auto& pt : pts) {
                 // Check the point is on the other arc.
                 double otherAngle = math::normalizeAngle(
@@ -217,8 +215,7 @@ static bool extendArc(const draft::DraftArc* arc,
         newEnd = bestAngle;
     }
 
-    auto newArc = std::make_shared<draft::DraftArc>(
-        arc->center(), arc->radius(), newStart, newEnd);
+    auto newArc = std::make_shared<draft::DraftArc>(arc->center(), arc->radius(), newStart, newEnd);
     copyProps(arc, newArc.get());
     composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, newArc));
 
@@ -290,6 +287,8 @@ std::string ExtendTool::promptText() const {
     return "Select entity near endpoint to extend";
 }
 
-bool ExtendTool::wantsCrosshair() const { return false; }
+bool ExtendTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

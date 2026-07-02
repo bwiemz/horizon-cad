@@ -1,10 +1,4 @@
 #include "horizon/ui/LayerPanel.h"
-#include "horizon/ui/MainWindow.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/drafting/LineType.h"
 
 #include <QColorDialog>
 #include <QHBoxLayout>
@@ -17,11 +11,17 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/LineType.h"
+#include "horizon/ui/MainWindow.h"
+#include "horizon/ui/ViewportWidget.h"
+
 namespace hz::ui {
 
 LayerPanel::LayerPanel(MainWindow* mainWindow, QWidget* parent)
-    : QDockWidget(tr("Layers"), parent)
-    , m_mainWindow(mainWindow) {
+    : QDockWidget(tr("Layers"), parent), m_mainWindow(mainWindow) {
     setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     createWidgets();
 }
@@ -42,10 +42,8 @@ void LayerPanel::createWidgets() {
     m_tree->header()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
 
-    connect(m_tree, &QTreeWidget::itemDoubleClicked,
-            this, &LayerPanel::onItemDoubleClicked);
-    connect(m_tree, &QTreeWidget::itemChanged,
-            this, &LayerPanel::onItemChanged);
+    connect(m_tree, &QTreeWidget::itemDoubleClicked, this, &LayerPanel::onItemDoubleClicked);
+    connect(m_tree, &QTreeWidget::itemChanged, this, &LayerPanel::onItemChanged);
     layout->addWidget(m_tree);
 
     auto* btnLayout = new QHBoxLayout();
@@ -119,15 +117,13 @@ void LayerPanel::onAddLayer() {
     if (!viewport || !viewport->document()) return;
 
     bool ok = false;
-    QString name = QInputDialog::getText(this, tr("New Layer"),
-                                         tr("Layer name:"), QLineEdit::Normal,
-                                         QString(), &ok);
+    QString name = QInputDialog::getText(this, tr("New Layer"), tr("Layer name:"),
+                                         QLineEdit::Normal, QString(), &ok);
     if (!ok || name.isEmpty()) return;
 
     // Check if layer already exists.
     if (viewport->document()->layerManager().getLayer(name.toStdString())) {
-        QMessageBox::warning(this, tr("Error"),
-                             tr("Layer '%1' already exists.").arg(name));
+        QMessageBox::warning(this, tr("Error"), tr("Layer '%1' already exists.").arg(name));
         return;
     }
 
@@ -138,8 +134,7 @@ void LayerPanel::onAddLayer() {
     props.visible = true;
     props.locked = false;
 
-    auto cmd = std::make_unique<doc::AddLayerCommand>(
-        viewport->document()->layerManager(), props);
+    auto cmd = std::make_unique<doc::AddLayerCommand>(viewport->document()->layerManager(), props);
     viewport->document()->undoStack().push(std::move(cmd));
     refresh();
 }
@@ -153,14 +148,12 @@ void LayerPanel::onDeleteLayer() {
 
     std::string name = item->data(0, Qt::UserRole).toString().toStdString();
     if (name == "0") {
-        QMessageBox::warning(this, tr("Error"),
-                             tr("Cannot delete the default layer."));
+        QMessageBox::warning(this, tr("Error"), tr("Cannot delete the default layer."));
         return;
     }
 
     auto cmd = std::make_unique<doc::RemoveLayerCommand>(
-        viewport->document()->layerManager(),
-        viewport->document()->draftDocument(), name);
+        viewport->document()->layerManager(), viewport->document()->draftDocument(), name);
     viewport->document()->undoStack().push(std::move(cmd));
     refresh();
     viewport->update();
@@ -187,8 +180,8 @@ void LayerPanel::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
         if (next > 7) next = 1;
         draft::LayerProperties newProps = *lp;
         newProps.lineType = next;
-        auto cmd = std::make_unique<doc::ModifyLayerCommand>(
-            viewport->document()->layerManager(), name, newProps);
+        auto cmd = std::make_unique<doc::ModifyLayerCommand>(viewport->document()->layerManager(),
+                                                             name, newProps);
         viewport->document()->undoStack().push(std::move(cmd));
         refresh();
         viewport->update();
@@ -213,8 +206,8 @@ void LayerPanel::onItemChanged(QTreeWidgetItem* item, int column) {
         newProps.locked = (item->checkState(2) == Qt::Checked);
     }
 
-    auto cmd = std::make_unique<doc::ModifyLayerCommand>(
-        viewport->document()->layerManager(), name, newProps);
+    auto cmd = std::make_unique<doc::ModifyLayerCommand>(viewport->document()->layerManager(), name,
+                                                         newProps);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -239,13 +232,12 @@ void LayerPanel::onColorClicked() {
     if (!color.isValid()) return;
 
     draft::LayerProperties newProps = *lp;
-    newProps.color = 0xFF000000u
-        | (static_cast<uint32_t>(color.red()) << 16)
-        | (static_cast<uint32_t>(color.green()) << 8)
-        | static_cast<uint32_t>(color.blue());
+    newProps.color = 0xFF000000u | (static_cast<uint32_t>(color.red()) << 16) |
+                     (static_cast<uint32_t>(color.green()) << 8) |
+                     static_cast<uint32_t>(color.blue());
 
-    auto cmd = std::make_unique<doc::ModifyLayerCommand>(
-        viewport->document()->layerManager(), name, newProps);
+    auto cmd = std::make_unique<doc::ModifyLayerCommand>(viewport->document()->layerManager(), name,
+                                                         newProps);
     viewport->document()->undoStack().push(std::move(cmd));
     refresh();
     viewport->update();

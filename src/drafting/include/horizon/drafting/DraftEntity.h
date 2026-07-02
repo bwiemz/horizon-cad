@@ -1,11 +1,12 @@
 #pragma once
 
-#include "horizon/math/Vec2.h"
-#include "horizon/math/BoundingBox.h"
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/math/BoundingBox.h"
+#include "horizon/math/Vec2.h"
 
 namespace hz::draft {
 

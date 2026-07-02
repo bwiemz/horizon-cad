@@ -1,8 +1,9 @@
 #pragma once
 
-#include "horizon/math/Vec2.h"
 #include <cstdint>
 #include <vector>
+
+#include "horizon/math/Vec2.h"
 
 namespace hz::draft {
 class DraftEntity;
@@ -19,8 +20,7 @@ public:
 
     /// Move grip at the given index to a new position.
     /// Returns true if the move was applied.
-    static bool moveGrip(draft::DraftEntity& entity, int gripIndex,
-                         const math::Vec2& newPos);
+    static bool moveGrip(draft::DraftEntity& entity, int gripIndex, const math::Vec2& newPos);
 };
 
 }  // namespace hz::ui

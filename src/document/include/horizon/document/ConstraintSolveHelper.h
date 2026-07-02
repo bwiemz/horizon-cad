@@ -1,13 +1,14 @@
 #pragma once
 
-#include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/constraint/SketchSolver.h"
-#include "horizon/document/ConstraintCommands.h"
-#include "horizon/drafting/DraftDocument.h"
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/constraint/SketchSolver.h"
+#include "horizon/document/ConstraintCommands.h"
+#include "horizon/drafting/DraftDocument.h"
 
 namespace hz::doc {
 

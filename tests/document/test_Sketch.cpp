@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
 
-#include "horizon/document/Sketch.h"
 #include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/drafting/DraftLine.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
-#include "horizon/math/BoundingBox.h"
 
 using namespace hz::doc;
 using namespace hz::draft;
@@ -72,7 +72,7 @@ TEST(SketchTest, ClearRemovesEverything) {
 TEST(SketchTest, CustomPlane) {
     Vec3 origin(10.0, 20.0, 30.0);
     Vec3 normal = Vec3::UnitY;
-    Vec3 xAxis  = Vec3::UnitX;
+    Vec3 xAxis = Vec3::UnitX;
     SketchPlane plane(origin, normal, xAxis);
 
     Sketch sketch(plane);
@@ -86,7 +86,7 @@ TEST(SketchTest, EntitiesStoreLocalCoords) {
     // Sketch on the XZ plane (normal = Y).
     // A line with local coords (5,3)-(2,7) is stored as-is in local space.
     Vec3 normal = Vec3::UnitY;
-    Vec3 xAxis  = Vec3::UnitX;
+    Vec3 xAxis = Vec3::UnitX;
     SketchPlane plane(Vec3::Zero, normal, xAxis);
     Sketch sketch(plane);
 

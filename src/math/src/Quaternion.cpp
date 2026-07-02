@@ -23,8 +23,8 @@ Quaternion Quaternion::fromEuler(double pitch, double yaw, double roll) {
     double cr = std::cos(roll / 2.0);
     double sr = std::sin(roll / 2.0);
 
-    return {cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy};
+    return {cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy};
 }
 
 Quaternion Quaternion::slerp(const Quaternion& a, const Quaternion& b, double t) {
@@ -67,7 +67,9 @@ Vec3 Quaternion::rotate(const Vec3& v) const {
     return v + 2.0 * (w * uv + uuv);
 }
 
-double Quaternion::length() const { return std::sqrt(w * w + x * x + y * y + z * z); }
+double Quaternion::length() const {
+    return std::sqrt(w * w + x * x + y * y + z * z);
+}
 
 Quaternion Quaternion::normalized() const {
     double len = length();
@@ -75,7 +77,9 @@ Quaternion Quaternion::normalized() const {
     return {w / len, x / len, y / len, z / len};
 }
 
-Quaternion Quaternion::conjugate() const { return {w, -x, -y, -z}; }
+Quaternion Quaternion::conjugate() const {
+    return {w, -x, -y, -z};
+}
 
 Quaternion Quaternion::inverse() const {
     double lenSq = w * w + x * x + y * y + z * z;

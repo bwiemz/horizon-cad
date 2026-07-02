@@ -1,23 +1,23 @@
 #pragma once
 
-#include "DraftEntity.h"
 #include <utility>
 #include <vector>
+
+#include "DraftEntity.h"
 
 namespace hz::draft {
 
 enum class HatchPattern {
-    Solid,       // 0 - dense fill lines
-    Lines,       // 1 - parallel lines
-    CrossHatch   // 2 - two perpendicular sets of lines
+    Solid,      // 0 - dense fill lines
+    Lines,      // 1 - parallel lines
+    CrossHatch  // 2 - two perpendicular sets of lines
 };
 
 /// A hatched region defined by a closed boundary polygon.
 class DraftHatch : public DraftEntity {
 public:
     explicit DraftHatch(const std::vector<math::Vec2>& boundary,
-                        HatchPattern pattern = HatchPattern::Lines,
-                        double angle = 0.0,
+                        HatchPattern pattern = HatchPattern::Lines, double angle = 0.0,
                         double spacing = 1.0);
 
     math::BoundingBox boundingBox() const override;
@@ -50,7 +50,7 @@ private:
 
     /// Generate parallel scan lines at a given angle, clipped to the boundary.
     std::vector<std::pair<math::Vec2, math::Vec2>> scanLines(double scanAngle,
-                                                              double scanSpacing) const;
+                                                             double scanSpacing) const;
 
     std::vector<math::Vec2> m_boundary;
     HatchPattern m_pattern;

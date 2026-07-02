@@ -1,19 +1,20 @@
 #include "horizon/ui/TrimTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -21,10 +22,8 @@ namespace hz::ui {
 // Trim line at intersection points
 // ---------------------------------------------------------------------------
 
-static void trimLine(const draft::DraftLine* line,
-                     const math::Vec2& clickPos,
-                     const std::vector<math::Vec2>& isectPts,
-                     doc::CompositeCommand& composite,
+static void trimLine(const draft::DraftLine* line, const math::Vec2& clickPos,
+                     const std::vector<math::Vec2>& isectPts, doc::CompositeCommand& composite,
                      draft::DraftDocument& doc) {
     math::Vec2 dir = line->end() - line->start();
     double lenSq = dir.lengthSquared();
@@ -43,7 +42,8 @@ static void trimLine(const draft::DraftLine* line,
     std::sort(params.begin(), params.end());
     // Remove duplicates.
     params.erase(std::unique(params.begin(), params.end(),
-        [](double a, double b) { return std::abs(a - b) < 1e-8; }), params.end());
+                             [](double a, double b) { return std::abs(a - b) < 1e-8; }),
+                 params.end());
 
     if (params.size() < 3) return;  // No intersection found on the line.
 
@@ -78,24 +78,23 @@ static void trimLine(const draft::DraftLine* line,
 // Trim circle at intersection points → arcs
 // ---------------------------------------------------------------------------
 
-static void trimCircle(const draft::DraftCircle* circle,
-                       const math::Vec2& clickPos,
-                       const std::vector<math::Vec2>& isectPts,
-                       doc::CompositeCommand& composite,
+static void trimCircle(const draft::DraftCircle* circle, const math::Vec2& clickPos,
+                       const std::vector<math::Vec2>& isectPts, doc::CompositeCommand& composite,
                        draft::DraftDocument& doc) {
     if (isectPts.size() < 2) return;  // Need at least 2 points to split a circle.
 
     // Convert intersection points to angles, sort.
     std::vector<double> angles;
     for (const auto& pt : isectPts) {
-        double a = math::normalizeAngle(
-            std::atan2(pt.y - circle->center().y, pt.x - circle->center().x));
+        double a =
+            math::normalizeAngle(std::atan2(pt.y - circle->center().y, pt.x - circle->center().x));
         angles.push_back(a);
     }
     std::sort(angles.begin(), angles.end());
     // Remove duplicates.
     angles.erase(std::unique(angles.begin(), angles.end(),
-        [](double a, double b) { return std::abs(a - b) < 1e-8; }), angles.end());
+                             [](double a, double b) { return std::abs(a - b) < 1e-8; }),
+                 angles.end());
 
     if (angles.size() < 2) return;
 
@@ -137,10 +136,8 @@ static void trimCircle(const draft::DraftCircle* circle,
 // Trim arc at intersection points
 // ---------------------------------------------------------------------------
 
-static void trimArc(const draft::DraftArc* arc,
-                    const math::Vec2& clickPos,
-                    const std::vector<math::Vec2>& isectPts,
-                    doc::CompositeCommand& composite,
+static void trimArc(const draft::DraftArc* arc, const math::Vec2& clickPos,
+                    const std::vector<math::Vec2>& isectPts, doc::CompositeCommand& composite,
                     draft::DraftDocument& doc) {
     // Convert intersection points to angles within the arc's range.
     double arcStart = arc->startAngle();
@@ -151,8 +148,8 @@ static void trimArc(const draft::DraftArc* arc,
     params.push_back(0.0);
     params.push_back(1.0);
     for (const auto& pt : isectPts) {
-        double angle = math::normalizeAngle(
-            std::atan2(pt.y - arc->center().y, pt.x - arc->center().x));
+        double angle =
+            math::normalizeAngle(std::atan2(pt.y - arc->center().y, pt.x - arc->center().x));
         double offset = math::normalizeAngle(angle - arcStart);
         double t = offset / arcSweep;
         if (t > 1e-6 && t < 1.0 - 1e-6) {
@@ -161,7 +158,8 @@ static void trimArc(const draft::DraftArc* arc,
     }
     std::sort(params.begin(), params.end());
     params.erase(std::unique(params.begin(), params.end(),
-        [](double a, double b) { return std::abs(a - b) < 1e-8; }), params.end());
+                             [](double a, double b) { return std::abs(a - b) < 1e-8; }),
+                 params.end());
 
     if (params.size() < 3) return;
 
@@ -270,6 +268,8 @@ std::string TrimTool::promptText() const {
     return "Select entity to trim";
 }
 
-bool TrimTool::wantsCrosshair() const { return false; }
+bool TrimTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

@@ -1,15 +1,15 @@
 #include "horizon/modeling/BooleanOp.h"
 
+#include <algorithm>
+#include <cassert>
+#include <unordered_map>
+#include <vector>
+
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/ExactPredicates.h"
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
-
-#include <algorithm>
-#include <cassert>
-#include <unordered_map>
-#include <vector>
 
 namespace hz::model {
 
@@ -52,9 +52,8 @@ struct FaceRecord {
 
 /// Helper: make a degree-1 (linear) NURBS curve between two points.
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b},
-                                              std::vector<double>{1.0, 1.0},
-                                              std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 /// Helper: find a HE originating at 'origin' on 'face'.
@@ -129,8 +128,7 @@ static std::unique_ptr<Solid> buildResultSolid(const std::vector<FaceRecord>& se
     const auto& firstFaceVerts = faceVertexPositions[0];
     if (firstFaceVerts.empty()) return nullptr;
 
-    auto [seedVertex, seedFace, seedShell] =
-        euler::makeVertexFaceSolid(*result, firstFaceVerts[0]);
+    auto [seedVertex, seedFace, seedShell] = euler::makeVertexFaceSolid(*result, firstFaceVerts[0]);
     vertexPool.push_back({firstFaceVerts[0], seedVertex});
 
     // For each face, we need to create a closed polygon in the solid.
@@ -218,8 +216,7 @@ static std::unique_ptr<Solid> buildResultSolid(const std::vector<FaceRecord>& se
                 Face* ourFace = nullptr;
                 if (static_cast<int>(newVerts.size()) == static_cast<int>(verts.size())) {
                     ourFace = newFace;
-                } else if (static_cast<int>(seedVerts.size()) ==
-                           static_cast<int>(verts.size())) {
+                } else if (static_cast<int>(seedVerts.size()) == static_cast<int>(verts.size())) {
                     ourFace = seedFace;
                     // seedFace was carved, the "remaining" becomes the new seedFace.
                     seedFace = newFace;
@@ -263,7 +260,7 @@ static std::unique_ptr<Solid> buildResultSolid(const std::vector<FaceRecord>& se
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<Solid> BooleanOp::execute(const Solid& solidA, const Solid& solidB,
-                                           BooleanType type) {
+                                          BooleanType type) {
     // Step 1: Classify each face of A against B, and each face of B against A.
     std::vector<FaceRecord> allFaces;
 

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "DraftEntity.h"
 #include <array>
+
+#include "DraftEntity.h"
 
 namespace hz::draft {
 

@@ -1,15 +1,15 @@
 #include "horizon/modeling/ChamferOp.h"
 
-#include "horizon/geometry/curves/NurbsCurve.h"
-#include "horizon/geometry/surfaces/NurbsSurface.h"
-#include "horizon/topology/EulerOps.h"
-#include "horizon/topology/Queries.h"
-
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <map>
 #include <set>
+
+#include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/topology/EulerOps.h"
+#include "horizon/topology/Queries.h"
 
 namespace hz::model {
 
@@ -49,9 +49,8 @@ static Vec3 faceNormal(const Face* face) {
 }
 
 static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-        std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
+                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
 }
 
 static void assignEdgeCurve(Edge* edge) {
@@ -174,9 +173,8 @@ static bool computeChamferGeometry(const Edge* edge, double distA, double distB,
 // Core chamfer implementation shared by both variants
 // ---------------------------------------------------------------------------
 
-static ChamferResult chamferImpl(const Solid& inputSolid,
-                                 const std::vector<TopologyID>& edgeIds, double distA,
-                                 double distB, const std::string& featureID) {
+static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
+                                 double distA, double distB, const std::string& featureID) {
     ChamferResult result;
 
     if (distA <= 0.0 || distB <= 0.0) {
@@ -305,8 +303,7 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
         const auto& ce = chamferEdges[i];
         NewFaceData fd;
         fd.isOriginal = false;
-        fd.topoId =
-            TopologyID::make(featureID, "chamfer").child(ce.originalEdge->topoId.tag(), 0);
+        fd.topoId = TopologyID::make(featureID, "chamfer").child(ce.originalEdge->topoId.tag(), 0);
 
         // The chamfer face is a quad: v1_offsetA → v2_offsetA → v2_offsetB → v1_offsetB.
         fd.vertices.push_back(ce.v1_offsetA);
@@ -442,7 +439,10 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
             const auto& nfVerts = newFaces[fi].vertices;
             bool allFound = true;
             for (const auto& p : nfVerts) {
-                if (!containsPoint(p)) { allFound = false; break; }
+                if (!containsPoint(p)) {
+                    allFound = false;
+                    break;
+                }
             }
             if (allFound) {
                 Vec3 centroid(0, 0, 0);
@@ -453,7 +453,10 @@ static ChamferResult chamferImpl(const Solid& inputSolid,
                 if (!nfVerts.empty())
                     nfCentroid = nfCentroid * (1.0 / static_cast<double>(nfVerts.size()));
                 double d = centroid.distanceTo(nfCentroid);
-                if (d < bestDist) { bestDist = d; bestFi = fi; }
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestFi = fi;
+                }
             }
         }
         if (bestFi < newFaces.size()) {

@@ -1,13 +1,12 @@
 #pragma once
 
-#include "horizon/math/Vec2.h"
-#include "horizon/constraint/SketchSolver.h"
-
 #include <QPointF>
-
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
+
+#include "horizon/constraint/SketchSolver.h"
+#include "horizon/math/Vec2.h"
 
 class QOpenGLExtraFunctions;
 class QImage;
@@ -40,33 +39,23 @@ public:
     void destroyGL(QOpenGLExtraFunctions* gl);
 
     /// Render document entities (collects dimension text info for overlay).
-    void renderEntities(QOpenGLExtraFunctions* gl,
-                        render::GLRenderer& renderer,
-                        const render::Camera& camera,
-                        doc::Document& doc,
+    void renderEntities(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                        const render::Camera& camera, doc::Document& doc,
                         const render::SelectionManager& selection);
 
     /// Render tool preview (rubber-band lines, circles, arcs, selection rectangle).
-    void renderToolPreview(QOpenGLExtraFunctions* gl,
-                           render::GLRenderer& renderer,
-                           const render::Camera& camera,
-                           Tool* activeTool);
+    void renderToolPreview(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                           const render::Camera& camera, Tool* activeTool);
 
     /// Render grip squares on selected entities.
-    void renderGrips(QOpenGLExtraFunctions* gl,
-                     render::GLRenderer& renderer,
-                     const render::Camera& camera,
-                     doc::Document& doc,
-                     const render::SelectionManager& selection,
-                     double pixelToWorldScale);
+    void renderGrips(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                     const render::Camera& camera, doc::Document& doc,
+                     const render::SelectionManager& selection, double pixelToWorldScale);
 
     /// Render text to a QImage then blit via GL texture as fullscreen quad.
-    void blitTextOverlay(QOpenGLExtraFunctions* gl,
-                         const render::Camera& camera,
-                         doc::Document* doc,
-                         const render::SelectionManager& selection,
-                         int viewportWidth, int viewportHeight,
-                         double pixelToWorldScale);
+    void blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                         doc::Document* doc, const render::SelectionManager& selection,
+                         int viewportWidth, int viewportHeight, double pixelToWorldScale);
 
     /// Recompute DOF analysis from the document's constraint system.
     void recomputeDOF(doc::Document* doc);
@@ -80,9 +69,9 @@ private:
         math::Vec2 worldPos;
         std::string text;
         uint32_t color;
-        double textHeight = 0.0;   // 0 = use dimension style default
+        double textHeight = 0.0;  // 0 = use dimension style default
         double rotation = 0.0;
-        int alignment = 1;         // 0=Left, 1=Center, 2=Right
+        int alignment = 1;  // 0=Left, 1=Center, 2=Right
     };
     std::vector<DimTextInfo> m_dimTexts;
 
@@ -91,21 +80,16 @@ private:
                                       int segments = 64) const;
 
     /// Generate vertices for an arc (partial circle).
-    std::vector<float> arcVertices(const math::Vec2& center, double radius,
-                                   double startAngle, double endAngle,
-                                   int segments = 64) const;
+    std::vector<float> arcVertices(const math::Vec2& center, double radius, double startAngle,
+                                   double endAngle, int segments = 64) const;
 
     /// Render text to a QImage using QPainter.
-    void renderTextToImage(QImage& image,
-                           const render::Camera& camera,
-                           doc::Document* doc,
-                           const render::SelectionManager& selection,
-                           int viewportWidth, int viewportHeight,
-                           double pixelToWorldScale);
+    void renderTextToImage(QImage& image, const render::Camera& camera, doc::Document* doc,
+                           const render::SelectionManager& selection, int viewportWidth,
+                           int viewportHeight, double pixelToWorldScale);
 
     /// Project a world-space 2D point to screen coordinates.
-    static QPointF worldToScreen(const render::Camera& camera,
-                                 const math::Vec2& wp,
+    static QPointF worldToScreen(const render::Camera& camera, const math::Vec2& wp,
                                  int viewportWidth, int viewportHeight);
 
     // DOF visualization

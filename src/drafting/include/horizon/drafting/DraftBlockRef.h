@@ -1,20 +1,19 @@
 #pragma once
 
-#include "DraftEntity.h"
-#include "BlockDefinition.h"
-#include "horizon/math/Vec2.h"
 #include <memory>
 #include <string>
+
+#include "BlockDefinition.h"
+#include "DraftEntity.h"
+#include "horizon/math/Vec2.h"
 
 namespace hz::draft {
 
 /// A reference (instance) of a BlockDefinition with position, rotation, and uniform scale.
 class DraftBlockRef : public DraftEntity {
 public:
-    DraftBlockRef(std::shared_ptr<BlockDefinition> definition,
-                  const math::Vec2& insertPos,
-                  double rotation = 0.0,
-                  double uniformScale = 1.0);
+    DraftBlockRef(std::shared_ptr<BlockDefinition> definition, const math::Vec2& insertPos,
+                  double rotation = 0.0, double uniformScale = 1.0);
 
     // -- DraftEntity pure virtuals --
     math::BoundingBox boundingBox() const override;

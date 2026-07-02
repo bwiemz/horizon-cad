@@ -1,5 +1,9 @@
 #include "horizon/ui/ConstraintTool.h"
-#include "horizon/ui/ViewportWidget.h"
+
+#include <QInputDialog>
+#include <QMouseEvent>
+#include <cmath>
+
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/document/Commands.h"
@@ -12,10 +16,7 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QInputDialog>
-#include <QMouseEvent>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -222,8 +223,7 @@ bool ConstraintTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& wo
     return true;  // Always request redraw for preview
 }
 
-bool ConstraintTool::mouseReleaseEvent(QMouseEvent* /*event*/,
-                                        const math::Vec2& /*worldPos*/) {
+bool ConstraintTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*worldPos*/) {
     return false;
 }
 
@@ -262,8 +262,7 @@ void ConstraintTool::commitConstraint() {
             constraint = std::make_shared<cstr::VerticalConstraint>(m_firstRef, m_hoveredRef);
             break;
         case Mode::Perpendicular:
-            constraint =
-                std::make_shared<cstr::PerpendicularConstraint>(m_firstRef, m_hoveredRef);
+            constraint = std::make_shared<cstr::PerpendicularConstraint>(m_firstRef, m_hoveredRef);
             break;
         case Mode::Parallel:
             constraint = std::make_shared<cstr::ParallelConstraint>(m_firstRef, m_hoveredRef);
@@ -292,7 +291,7 @@ void ConstraintTool::commitConstraint() {
             double dist = p1.distanceTo(p2);
             bool ok = false;
             double val = QInputDialog::getDouble(m_viewport, "Distance Constraint",
-                                                  "Distance:", dist, 0.0, 1e9, 4, &ok);
+                                                 "Distance:", dist, 0.0, 1e9, 4, &ok);
             if (!ok) return;
             constraint = std::make_shared<cstr::DistanceConstraint>(m_firstRef, m_hoveredRef, val);
             break;
@@ -308,12 +307,13 @@ void ConstraintTool::commitConstraint() {
             double angle = std::atan2(d1.cross(d2), d1.dot(d2));
             double angleDeg = math::radToDeg(angle);
             bool ok = false;
-            double val = QInputDialog::getDouble(m_viewport, "Angle Constraint",
-                                                  "Angle (degrees):", angleDeg, -360.0, 360.0, 2,
-                                                  &ok);
+            double val =
+                QInputDialog::getDouble(m_viewport, "Angle Constraint",
+                                        "Angle (degrees):", angleDeg, -360.0, 360.0, 2, &ok);
             if (!ok) return;
             double angleRad = math::degToRad(val);
-            constraint = std::make_shared<cstr::AngleConstraint>(m_firstRef, m_hoveredRef, angleRad);
+            constraint =
+                std::make_shared<cstr::AngleConstraint>(m_firstRef, m_hoveredRef, angleRad);
             break;
         }
     }
@@ -321,8 +321,8 @@ void ConstraintTool::commitConstraint() {
     if (!constraint) return;
 
     // Build composite: add constraint + solve
-    auto composite = std::make_unique<doc::CompositeCommand>(
-        "Add " + constraint->typeName() + " Constraint");
+    auto composite =
+        std::make_unique<doc::CompositeCommand>("Add " + constraint->typeName() + " Constraint");
 
     // Add the constraint command to the composite.
     composite->addCommand(std::make_unique<doc::AddConstraintCommand>(csys, constraint));
@@ -353,26 +353,28 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines()
 
     // Show highlighted line feature
     if (m_hoveredRef.isValid() && m_hoveredRef.featureType == cstr::FeatureType::Line) {
-        const auto* entity = cstr::findEntity(
-            m_hoveredRef.entityId, m_viewport->document()->draftDocument().entities());
+        const auto* entity = cstr::findEntity(m_hoveredRef.entityId,
+                                              m_viewport->document()->draftDocument().entities());
         if (entity) {
             try {
                 auto [s, e] = cstr::extractLine(m_hoveredRef, *entity);
                 lines.push_back({s, e});
-            } catch (...) {}
+            } catch (...) {
+            }
         }
     }
 
     // Show first selected feature if it's a line
     if (m_state == State::WaitingForSecond && m_firstRef.isValid() &&
         m_firstRef.featureType == cstr::FeatureType::Line) {
-        const auto* entity = cstr::findEntity(
-            m_firstRef.entityId, m_viewport->document()->draftDocument().entities());
+        const auto* entity = cstr::findEntity(m_firstRef.entityId,
+                                              m_viewport->document()->draftDocument().entities());
         if (entity) {
             try {
                 auto [s, e] = cstr::extractLine(m_firstRef, *entity);
                 lines.push_back({s, e});
-            } catch (...) {}
+            } catch (...) {
+            }
         }
     }
 
@@ -387,26 +389,28 @@ std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() c
 
     // Show highlighted point feature
     if (m_hoveredRef.isValid() && m_hoveredRef.featureType == cstr::FeatureType::Point) {
-        const auto* entity = cstr::findEntity(
-            m_hoveredRef.entityId, m_viewport->document()->draftDocument().entities());
+        const auto* entity = cstr::findEntity(m_hoveredRef.entityId,
+                                              m_viewport->document()->draftDocument().entities());
         if (entity) {
             try {
                 math::Vec2 p = cstr::extractPoint(m_hoveredRef, *entity);
                 circles.push_back({p, ptRadius});
-            } catch (...) {}
+            } catch (...) {
+            }
         }
     }
 
     // Show first selected point
     if (m_state == State::WaitingForSecond && m_firstRef.isValid() &&
         m_firstRef.featureType == cstr::FeatureType::Point) {
-        const auto* entity = cstr::findEntity(
-            m_firstRef.entityId, m_viewport->document()->draftDocument().entities());
+        const auto* entity = cstr::findEntity(m_firstRef.entityId,
+                                              m_viewport->document()->draftDocument().entities());
         if (entity) {
             try {
                 math::Vec2 p = cstr::extractPoint(m_firstRef, *entity);
                 circles.push_back({p, ptRadius});
-            } catch (...) {}
+            } catch (...) {
+            }
         }
     }
 
@@ -414,10 +418,9 @@ std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() c
 }
 
 std::string ConstraintTool::promptText() const {
-    static const char* modeNames[] = {
-        "Coincident", "Horizontal", "Vertical", "Perpendicular",
-        "Parallel", "Tangent", "Equal", "Fixed", "Distance", "Angle"
-    };
+    static const char* modeNames[] = {"Coincident", "Horizontal", "Vertical", "Perpendicular",
+                                      "Parallel",   "Tangent",    "Equal",    "Fixed",
+                                      "Distance",   "Angle"};
     int idx = static_cast<int>(m_mode);
     const char* modeName = (idx >= 0 && idx < 10) ? modeNames[idx] : "constraint";
 
@@ -426,6 +429,8 @@ std::string ConstraintTool::promptText() const {
     return std::string("Select second entity for ") + modeName;
 }
 
-bool ConstraintTool::wantsCrosshair() const { return false; }
+bool ConstraintTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

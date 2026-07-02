@@ -1,9 +1,10 @@
+#include <gtest/gtest.h>
+
+#include <algorithm>
+
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
-
-#include <algorithm>
-#include <gtest/gtest.h>
 
 using namespace hz::topo;
 using hz::math::Vec3;
@@ -392,8 +393,8 @@ struct TriangleFixture {
     Edge* e01 = nullptr;
     Edge* e12 = nullptr;
     Edge* e20 = nullptr;
-    Face* f1 = nullptr;   // original face (one triangle)
-    Face* f2 = nullptr;   // new face from MEF (the other triangle)
+    Face* f1 = nullptr;  // original face (one triangle)
+    Face* f2 = nullptr;  // new face from MEF (the other triangle)
     Shell* shell = nullptr;
 
     TriangleFixture() {
@@ -567,7 +568,7 @@ struct TetrahedronFixture {
 
         // Step 4: MEF — close triangle (v2 → v0), creating f2
         HalfEdge* heAtV2 = e12->halfEdge->twin;  // origin = v2
-        HalfEdge* heAtV0 = e01->halfEdge;         // origin = v0
+        HalfEdge* heAtV0 = e01->halfEdge;        // origin = v0
         auto [e20_, f2_] = euler::makeEdgeFace(solid, heAtV2, heAtV0);
         e20 = e20_;
         f2 = f2_;
@@ -587,7 +588,8 @@ struct TetrahedronFixture {
         v3 = v3_;
 
         // After step 5: 4V, 4E, 2F
-        // f2 loop now: heOut03(v0→v3) → heIn03(v3→v0) → heNew2(v0→v2) → heIn12(v2→v1) → heIn01(v1→v0)
+        // f2 loop now: heOut03(v0→v3) → heIn03(v3→v0) → heNew2(v0→v2) → heIn12(v2→v1) →
+        // heIn01(v1→v0)
         //
         // Step 6: MEF — connect v3 to v1 in face f2
         // Need he1 with origin v3, he2 with origin v1, both in f2.
@@ -604,14 +606,15 @@ struct TetrahedronFixture {
 
         // After step 6: 4V, 5E, 3F
         // f2 keeps: heNew1_s6(v3→v1) → heIn01(v1→v0) → heOut03(v0→v3) (triangle v3-v1-v0)
-        // f3 gets: heNew2_s6(v1→v3) → heIn03(v3→v0) → heNew2_s4(v0→v2) → heIn12(v2→v1) (quad v1-v3-v0-v2)
+        // f3 gets: heNew2_s6(v1→v3) → heIn03(v3→v0) → heNew2_s4(v0→v2) → heIn12(v2→v1) (quad
+        // v1-v3-v0-v2)
         //
         // Step 7: MEF — connect v3 to v2 in face f3, splitting the quad
         // Need he1 with origin v3, he2 with origin v2, both in f3.
         // heIn03 is now in f3 (moved there by step 6's MEF). origin = v3.
         // heIn12 is in f3 (moved there by step 4's MEF, stayed through step 6). origin = v2.
-        HalfEdge* heV3inF3 = e03->halfEdge->twin;   // heIn03, origin = v3, now in f3
-        HalfEdge* heV2inF3 = e12->halfEdge->twin;    // heIn12, origin = v2, now in f3
+        HalfEdge* heV3inF3 = e03->halfEdge->twin;  // heIn03, origin = v3, now in f3
+        HalfEdge* heV2inF3 = e12->halfEdge->twin;  // heIn12, origin = v2, now in f3
 
         auto [e32_, f4_] = euler::makeEdgeFace(solid, heV3inF3, heV2inF3);
         e32 = e32_;
@@ -641,8 +644,8 @@ TEST(TopologyIntegrationTest, TetrahedronEachFaceHas3Vertices) {
     // Every face of a tetrahedron is a triangle.
     for (const auto& face : tet.solid.faces()) {
         auto verts = faceVertices(&face);
-        EXPECT_EQ(verts.size(), 3u) << "Face " << face.id << " has " << verts.size()
-                                    << " vertices, expected 3";
+        EXPECT_EQ(verts.size(), 3u)
+            << "Face " << face.id << " has " << verts.size() << " vertices, expected 3";
     }
 }
 
