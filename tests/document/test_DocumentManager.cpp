@@ -301,3 +301,87 @@ TEST(DocumentManagerTest, ResolveComponentFailsWithoutLoaders) {
     EXPECT_EQ(comp.cachedMesh, nullptr);
     EXPECT_EQ(comp.resolvedPart, nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// NoteSavedUnregistersPreviousPath
+// ---------------------------------------------------------------------------
+
+TEST(DocumentManagerTest, NoteSavedUnregistersPreviousPath) {
+    DocumentManager mgr;
+    mgr.setPartLoader(fakeBoxPartLoader);
+
+    std::string pathA = makeTempFile("hz_test_saveas_a.hzpart");
+    std::string pathB = makeTempFile("hz_test_saveas_b.hzpart");
+
+    auto doc = mgr.openPart(pathA);
+    ASSERT_NE(doc, nullptr);
+
+    // Save As: the UI mutates the file path, then notifies the manager.
+    doc->setFilePath(pathB);
+    mgr.noteSaved(doc);
+
+    // The old path no longer resolves to the renamed document...
+    EXPECT_EQ(mgr.findByPath(pathA), nullptr);
+    // ...and reopening it loads a FRESH document instead of aliasing.
+    auto reopened = mgr.openPart(pathA);
+    ASSERT_NE(reopened, nullptr);
+    EXPECT_NE(reopened, doc);
+    // The new path resolves to the renamed document.
+    EXPECT_EQ(mgr.findByPath(pathB), doc);
+
+    std::remove(pathA.c_str());
+    std::remove(pathB.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// CloseDocumentKeepsUnrelatedRegistrations
+// ---------------------------------------------------------------------------
+
+TEST(DocumentManagerTest, CloseDocumentKeepsUnrelatedRegistrations) {
+    DocumentManager mgr;
+    mgr.setPartLoader(fakeBoxPartLoader);
+
+    std::string pathA = makeTempFile("hz_test_close_a.hzpart");
+    std::string pathB = makeTempFile("hz_test_close_b.hzpart");
+
+    auto docA = mgr.openPart(pathA);
+    auto docB = mgr.openPart(pathB);
+    ASSERT_NE(docA, nullptr);
+    ASSERT_NE(docB, nullptr);
+
+    // docA was renamed onto B's path (Save As over an open file), then the
+    // registry must not lose docB's registration when docA closes.
+    docA->setFilePath(pathB);
+    ASSERT_TRUE(mgr.closeDocument(docA));
+
+    EXPECT_EQ(mgr.findByPath(pathB), docB);
+
+    std::remove(pathA.c_str());
+    std::remove(pathB.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// ResolvedThenLightweightReleasesFeatureTree
+// ---------------------------------------------------------------------------
+
+TEST(DocumentManagerTest, ResolvedThenLightweightReleasesFeatureTree) {
+    DocumentManager mgr;
+    mgr.setPartLoader(fakeBoxPartLoader);
+
+    std::string path = makeTempFile("hz_test_demote.hzpart");
+
+    ComponentInstance comp;
+    comp.partPath = path;
+
+    ASSERT_TRUE(mgr.resolveComponent(comp, ComponentState::Resolved));
+    ASSERT_NE(comp.resolvedPart, nullptr);
+
+    // Demoting to Lightweight must release the full part document
+    // (Lightweight = cached tessellation + transform only).
+    ASSERT_TRUE(mgr.resolveComponent(comp, ComponentState::Lightweight));
+    EXPECT_EQ(comp.resolvedPart, nullptr);
+    EXPECT_NE(comp.cachedMesh, nullptr);
+    EXPECT_EQ(comp.state, ComponentState::Lightweight);
+
+    std::remove(path.c_str());
+}

@@ -53,7 +53,10 @@ TEST(AssemblyFormatTest, AssemblyRoundTrip) {
 
     const auto& la = loaded.components()[0];
     EXPECT_EQ(la.name, "base");
-    EXPECT_EQ(la.partPath, "base.hzpart");
+    // Relative references resolve to absolute (against the assembly file)
+    // on load.
+    EXPECT_EQ(fs::path(la.partPath).lexically_normal(),
+              (fs::temp_directory_path() / "base.hzpart").lexically_normal());
     EXPECT_FALSE(la.suppressed);
     for (int row = 0; row < 4; ++row) {
         for (int col = 0; col < 4; ++col) {
@@ -100,10 +103,27 @@ TEST(AssemblyFormatTest, AbsolutePartPathsAreStoredRelative) {
     EXPECT_NE(content.find("parts/bolt.hzpart"), std::string::npos);
     EXPECT_EQ(content.find(dir.generic_string() + "/parts"), std::string::npos);
 
+    // In memory the path is held absolute (resolved against the assembly
+    // file) so a later Save As under a different directory re-relativizes
+    // correctly.
     AssemblyDocument loaded;
     ASSERT_TRUE(NativeFormat::loadAssembly(path, loaded));
     ASSERT_EQ(loaded.components().size(), 1u);
-    EXPECT_EQ(loaded.components()[0].partPath, "parts/bolt.hzpart");
+    EXPECT_TRUE(fs::path(loaded.components()[0].partPath).is_absolute());
+    EXPECT_EQ(fs::path(loaded.components()[0].partPath).lexically_normal(),
+              (dir / "parts" / "bolt.hzpart").lexically_normal());
+
+    // Save As into a sibling directory: the relative reference must be
+    // recomputed against the new location, not copied through verbatim.
+    fs::create_directories(dir / "sub");
+    std::string movedPath = (dir / "sub" / "moved.hzasm").string();
+    ASSERT_TRUE(NativeFormat::saveAssembly(movedPath, loaded));
+
+    AssemblyDocument reloaded;
+    ASSERT_TRUE(NativeFormat::loadAssembly(movedPath, reloaded));
+    ASSERT_EQ(reloaded.components().size(), 1u);
+    EXPECT_EQ(fs::path(reloaded.components()[0].partPath).lexically_normal(),
+              (dir / "parts" / "bolt.hzpart").lexically_normal());
 
     fs::remove_all(dir);
 }
@@ -122,6 +142,24 @@ TEST(AssemblyFormatTest, LoadRejectsNonAssemblyFiles) {
     AssemblyDocument loaded;
     EXPECT_FALSE(NativeFormat::loadAssembly(path, loaded));
     EXPECT_FALSE(NativeFormat::loadAssembly("/nonexistent/file.hzasm", loaded));
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// LoadRejectsMalformedTypeField
+// ---------------------------------------------------------------------------
+
+TEST(AssemblyFormatTest, LoadRejectsMalformedTypeField) {
+    // A non-string "type" must return false, not throw.
+    std::string path = tempPath("hz_test_bad_type.hzasm");
+    {
+        std::ofstream out(path);
+        out << R"({"version": 16, "type": 42, "components": []})";
+    }
+
+    AssemblyDocument loaded;
+    EXPECT_FALSE(NativeFormat::loadAssembly(path, loaded));
 
     std::remove(path.c_str());
 }

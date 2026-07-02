@@ -1,15 +1,17 @@
 #pragma once
 
 #include <QMainWindow>
+#include <memory>
+#include <vector>
 
-#include "horizon/math/Vec2.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
 
-#include <memory>
-
 class QLabel;
+class QTabBar;
 
 namespace hz::ui {
 
@@ -30,9 +32,14 @@ public:
 
 private slots:
     void onNewFile();
+    void onNewPart();
+    void onNewAssembly();
     void onOpenFile();
     void onSaveFile();
     void onSaveFileAs();
+    void onInsertComponent();
+    void onTabChanged(int index);
+    void onTabCloseRequested(int index);
 
     void onUndo();
     void onRedo();
@@ -123,6 +130,14 @@ private slots:
     void onRollbackChanged(int newIndex);
 
 private:
+    /// One open document tab. Part/drawing tabs hold `document`; assembly
+    /// tabs additionally hold `assembly` (with `document` acting as a blank
+    /// backing document so the shared viewport always has one).
+    struct DocTab {
+        std::shared_ptr<doc::Document> document;
+        std::shared_ptr<doc::AssemblyDocument> assembly;
+    };
+
     void createMenus();
     void createRibbonBar();
     void createStatusBar();
@@ -130,15 +145,29 @@ private:
     void updateStatusBar();
     void rebuildFeatureTree();
 
+    DocTab* activeTab();
+    bool saveActiveDocument();
+    std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
+    int addDocumentTab(std::shared_ptr<doc::Document> document,
+                       std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
+    void activateTabDocument();
+    void rebuildScene();
+    void refreshAllPanels();
+    void updateWindowTitle();
+    QString tabTitleForPath(const std::string& path, const QString& fallback) const;
+
     ViewportWidget* m_viewport = nullptr;
+    QTabBar* m_tabBar = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
-    std::unique_ptr<doc::Document> m_document;
+    doc::DocumentManager m_docManager;
+    std::vector<DocTab> m_tabs;
+    std::shared_ptr<doc::Document> m_document;
+    std::shared_ptr<doc::AssemblyDocument> m_assembly;
     Clipboard m_clipboard;
     PropertyPanel* m_propertyPanel = nullptr;
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
-    doc::FeatureTree m_featureTree;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

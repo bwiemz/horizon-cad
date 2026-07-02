@@ -230,3 +230,71 @@ TEST(PartFormatTest, LegacyV15FileStillLoads) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// MalformedTypeFieldDoesNotThrow
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, MalformedTypeFieldDoesNotThrow) {
+    std::string path = tempPath("hz_test_bad_type.hcad");
+    {
+        std::ofstream out(path);
+        out << R"({"version": 16, "type": null, "entities": []})";
+    }
+
+    Document loaded;
+    // Must not throw; the malformed tag falls back to Drawing.
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    EXPECT_EQ(loaded.type(), DocumentType::Drawing);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// LoadPartMeshRejectsInvalidIndices
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
+    // Out-of-range index (only 3 vertices, index 999) and negative index
+    // must both be rejected instead of producing a mesh that crashes the
+    // renderer.
+    std::string outOfRange = tempPath("hz_test_bad_indices.hzpart");
+    {
+        std::ofstream out(outOfRange);
+        out << R"({"version": 16, "type": "hzpart", "entities": [],
+                   "tessellationCache": {
+                       "positions": [0,0,0, 1,0,0, 0,1,0],
+                       "normals": [0,0,1, 0,0,1, 0,0,1],
+                       "indices": [0, 1, 999]}})";
+    }
+    EXPECT_EQ(NativeFormat::loadPartMesh(outOfRange), nullptr);
+
+    std::string negative = tempPath("hz_test_neg_indices.hzpart");
+    {
+        std::ofstream out(negative);
+        out << R"({"version": 16, "type": "hzpart", "entities": [],
+                   "tessellationCache": {
+                       "positions": [0,0,0, 1,0,0, 0,1,0],
+                       "normals": [0,0,1, 0,0,1, 0,0,1],
+                       "indices": [0, 1, -1]}})";
+    }
+    EXPECT_EQ(NativeFormat::loadPartMesh(negative), nullptr);
+
+    // A well-formed cache still loads.
+    std::string good = tempPath("hz_test_good_indices.hzpart");
+    {
+        std::ofstream out(good);
+        out << R"({"version": 16, "type": "hzpart", "entities": [],
+                   "tessellationCache": {
+                       "positions": [0,0,0, 1,0,0, 0,1,0],
+                       "normals": [0,0,1, 0,0,1, 0,0,1],
+                       "indices": [0, 1, 2]}})";
+    }
+    auto mesh = NativeFormat::loadPartMesh(good);
+    ASSERT_NE(mesh, nullptr);
+    EXPECT_EQ(mesh->indices.size(), 3u);
+
+    std::remove(outOfRange.c_str());
+    std::remove(negative.c_str());
+    std::remove(good.c_str());
+}

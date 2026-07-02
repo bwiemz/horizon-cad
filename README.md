@@ -109,20 +109,20 @@ Horizon is organized into modular libraries with clean dependency boundaries. Ea
 
 ```
 src/
-  math/          Linear algebra (Vec2, Vec3, Mat4, BoundingBox, Quaternion, Transform)
-  drafting/      Entity model, layers, snap engine, dimension styles
-  document/      Document ownership, undo/redo command stack
-  render/        OpenGL renderer, camera, grid, shaders, selection manager
-  constraint/    Geometric constraint solver
-  fileio/        Native format (.hcad) and DXF import/export
-  ui/            Qt widgets, ribbon toolbar, tools, property & layer panels
+  math/          Linear algebra (Vec2, Vec3, Mat4, BoundingBox, Quaternion, Transform),
+                 R*-tree spatial index, expression engine
+  drafting/      Entity model, layers, snap engine, dimension styles, sketch planes
+  document/      Document ownership, undo/redo, sketches, feature tree,
+                 multi-document manager, assembly documents
+  render/        OpenGL renderer, camera, grid, shaders, selection, scene graph
+  constraint/    Geometric constraint solver (Newton-Raphson + LM damping)
+  fileio/        Native formats (.hcad, .hzpart, .hzasm), DXF import/export
+  geometry/      NURBS curves and surfaces with adaptive tessellation
+  topology/      Half-edge B-Rep with TopologyID genealogy and Euler operators
+  modeling/      Extrude, revolve, Booleans, fillet/chamfer, primitives
+  ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs
   app/           Application entry point, dark theme, resources
-  geometry/      Parametric curves/surfaces (planned)
-  topology/      B-Rep topology (planned)
-  modeling/      3D solid modeling (planned)
-tests/
-  math/          85 unit tests covering vectors, matrices, transforms, bounding boxes
-  constraint/    24 unit tests for the geometric constraint solver
+tests/           One suite per module + cross-module integration tests
 ```
 
 ## Roadmap
@@ -155,7 +155,17 @@ Horizon is under active development. Completed and planned work:
 | 22 | Done | Chamfer tool, offset ellipse support, fillet/offset lineType fixes |
 | 23 | Done | Polyline edit tool (add/remove vertices, toggle closed, join) |
 | 24 | Done | Entity grouping (Ctrl+G / Ctrl+Shift+G) with group-aware selection |
-| 25+ | Planned | Parametric geometry, 3D modeling |
+| 25-30 | Done | Era 0 — Foundation: R*-tree spatial indexing, parametric sketch solving, expression engine, sketch planes, Linux CI, stabilization |
+| 31-40 | Done | Era 1 — Geometry kernel: NURBS curves/surfaces, half-edge B-Rep, primitives, extrude/revolve, Booleans, fillet/chamfer, feature tree UI, viewport polish, kernel hardening |
+| 41 | Done | Era 2 — Multi-document architecture: .hzpart/.hzasm formats, DocumentManager, lightweight/resolved assembly loading, document tabs |
+| 42-52 | Planned | Era 2 — Assembly mates, loft/sweep, shell/draft, patterns, Python API, STEP AP242 |
+| 53-64 | Planned | Era 3 — Drawings from 3D, GD&T, BOM, FEA, PDM, sheet metal |
+| 65-80 | Planned | Era 4 — Vulkan backend, PBR/ray tracing, cloud sync, CAM, 1.0 release |
+
+The full multi-year design is in
+[docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
+with per-phase implementation plans under
+[docs/superpowers/plans/](docs/superpowers/plans/).
 
 ## Contributing
 

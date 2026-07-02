@@ -489,7 +489,14 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
-    file << root.dump(2);
+    // Pretty-print drawings for diff-friendliness, but write compactly when a
+    // tessellation cache is embedded — indented output puts one mesh number
+    // per line and inflates part files by orders of magnitude.
+    if (root.contains("tessellationCache")) {
+        file << root.dump();
+    } else {
+        file << root.dump(2);
+    }
     return file.good();
 }
 
@@ -675,8 +682,12 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
     doc.parameterRegistry().clear();
 
     // --- Document type (v16+; earlier files are all drawings) ---
-    doc.setType(root.value("type", "hcad") == "hzpart" ? doc::DocumentType::Part
-                                                       : doc::DocumentType::Drawing);
+    // Defensive read: a malformed (non-string) "type" must not throw.
+    std::string typeTag = "hcad";
+    if (root.contains("type") && root["type"].is_string()) {
+        typeTag = root["type"].get<std::string>();
+    }
+    doc.setType(typeTag == "hzpart" ? doc::DocumentType::Part : doc::DocumentType::Drawing);
 
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
@@ -1118,7 +1129,10 @@ bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocume
         return false;
     }
 
-    if (root.value("type", "") != "hzasm") return false;
+    if (!root.contains("type") || !root["type"].is_string() ||
+        root["type"].get<std::string>() != "hzasm") {
+        return false;
+    }
 
     asmDoc.clear();
 
@@ -1130,6 +1144,17 @@ bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocume
                 comp.name = cObj.value("name", "");
                 comp.partPath = cObj.value("partPath", "");
                 comp.suppressed = cObj.value("suppressed", false);
+
+                // Component paths are stored relative to the assembly file;
+                // hold them absolute in memory so the reference stays valid
+                // if the assembly is later saved elsewhere (Save As).
+                std::filesystem::path p(comp.partPath);
+                if (p.is_relative() && !comp.partPath.empty()) {
+                    std::filesystem::path asmDir = std::filesystem::path(filePath).parent_path();
+                    if (!asmDir.empty()) {
+                        comp.partPath = (asmDir / p).lexically_normal().string();
+                    }
+                }
 
                 if (cObj.contains("transform") && cObj["transform"].size() == 16) {
                     const auto& t = cObj["transform"];
@@ -1174,8 +1199,22 @@ std::shared_ptr<render::MeshData> NativeFormat::loadPartMesh(const std::string& 
         auto mesh = std::make_shared<render::MeshData>();
         mesh->positions = cache.value("positions", std::vector<float>{});
         mesh->normals = cache.value("normals", std::vector<float>{});
-        mesh->indices = cache.value("indices", std::vector<uint32_t>{});
-        if (mesh->positions.empty() || mesh->indices.empty()) return nullptr;
+
+        // Read indices as signed 64-bit first so negative or oversized
+        // values are caught instead of silently wrapping.
+        std::vector<int64_t> rawIndices = cache.value("indices", std::vector<int64_t>{});
+        if (mesh->positions.empty() || rawIndices.empty()) return nullptr;
+        if (mesh->positions.size() % 3 != 0 || rawIndices.size() % 3 != 0) return nullptr;
+        if (!mesh->normals.empty() && mesh->normals.size() != mesh->positions.size()) {
+            return nullptr;
+        }
+
+        const int64_t vertexCount = static_cast<int64_t>(mesh->positions.size() / 3);
+        mesh->indices.reserve(rawIndices.size());
+        for (int64_t index : rawIndices) {
+            if (index < 0 || index >= vertexCount) return nullptr;
+            mesh->indices.push_back(static_cast<uint32_t>(index));
+        }
         return mesh;
     } catch (const nlohmann::json::exception&) {
         return nullptr;

@@ -73,14 +73,36 @@ std::shared_ptr<AssemblyDocument> DocumentManager::openAssembly(const std::strin
     return doc;
 }
 
+namespace {
+
+// Erase every registry entry that resolves to `target` (identity check —
+// the same document may be registered under a stale path after Save As,
+// and a path key may have been overwritten by another document). Also
+// removes expired entries in passing. Returns the erased keys.
+template <typename T>
+std::vector<std::string> eraseEntriesFor(std::map<std::string, std::weak_ptr<T>>& registry,
+                                         const std::shared_ptr<T>& target) {
+    std::vector<std::string> erased;
+    for (auto it = registry.begin(); it != registry.end();) {
+        auto locked = it->second.lock();
+        if (!locked || locked == target) {
+            erased.push_back(it->first);
+            it = registry.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return erased;
+}
+
+}  // namespace
+
 bool DocumentManager::closeDocument(const std::shared_ptr<Document>& doc) {
     auto it = std::find(m_documents.begin(), m_documents.end(), doc);
     if (it == m_documents.end()) return false;
     m_documents.erase(it);
 
-    if (!doc->filePath().empty()) {
-        const std::string key = canonicalPath(doc->filePath());
-        m_documentsByPath.erase(key);
+    for (const auto& key : eraseEntriesFor(m_documentsByPath, doc)) {
         unwatchFile(key);
     }
     return true;
@@ -91,9 +113,7 @@ bool DocumentManager::closeAssembly(const std::shared_ptr<AssemblyDocument>& doc
     if (it == m_assemblies.end()) return false;
     m_assemblies.erase(it);
 
-    if (!doc->filePath().empty()) {
-        const std::string key = canonicalPath(doc->filePath());
-        m_assembliesByPath.erase(key);
+    for (const auto& key : eraseEntriesFor(m_assembliesByPath, doc)) {
         unwatchFile(key);
     }
     return true;
@@ -107,6 +127,11 @@ std::shared_ptr<Document> DocumentManager::findByPath(const std::string& path) c
 
 void DocumentManager::noteSaved(const std::shared_ptr<Document>& doc) {
     if (!doc || doc->filePath().empty()) return;
+    // Drop registrations under any previous path (Save As), then register
+    // the current one.
+    for (const auto& key : eraseEntriesFor(m_documentsByPath, doc)) {
+        unwatchFile(key);
+    }
     const std::string key = canonicalPath(doc->filePath());
     m_documentsByPath[key] = doc;
     watchFile(key);
@@ -114,6 +139,9 @@ void DocumentManager::noteSaved(const std::shared_ptr<Document>& doc) {
 
 void DocumentManager::noteSaved(const std::shared_ptr<AssemblyDocument>& doc) {
     if (!doc || doc->filePath().empty()) return;
+    for (const auto& key : eraseEntriesFor(m_assembliesByPath, doc)) {
+        unwatchFile(key);
+    }
     const std::string key = canonicalPath(doc->filePath());
     m_assembliesByPath[key] = doc;
     watchFile(key);
@@ -142,7 +170,11 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         return true;
     }
 
-    // Lightweight resolution: never load the feature tree.
+    // Lightweight resolution: never load (or keep) the feature tree.
+    // Demoting a Resolved instance releases its reference to the full part
+    // document — Lightweight means "cached tessellation + transform only".
+    instance.resolvedPart.reset();
+
     if (instance.cachedMesh) {
         instance.state = ComponentState::Lightweight;
         return true;
