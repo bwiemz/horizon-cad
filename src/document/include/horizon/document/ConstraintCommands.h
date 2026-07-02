@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include <memory>
 #include <vector>
+#include <cstdint>
 
 namespace hz::doc {
 

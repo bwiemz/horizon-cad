@@ -4,6 +4,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/drafting/DraftEntity.h"
 #include <memory>
+#include <cstdint>
 
 namespace hz::ui {
 

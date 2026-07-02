@@ -4,6 +4,7 @@
 
 #include <deque>
 #include <string>
+#include <cstdint>
 
 namespace hz::topo {
 

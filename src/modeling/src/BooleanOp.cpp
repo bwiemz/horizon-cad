@@ -6,6 +6,7 @@
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
 
+#include <algorithm>
 #include <cassert>
 #include <unordered_map>
 #include <vector>

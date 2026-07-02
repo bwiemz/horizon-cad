@@ -2,6 +2,7 @@
 
 #include "horizon/ui/Tool.h"
 #include "horizon/math/Vec2.h"
+#include <cstdint>
 
 namespace hz::ui {
 
