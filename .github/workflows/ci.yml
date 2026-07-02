@@ -84,6 +84,10 @@ jobs:
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
             libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
             ninja-build \
             pkg-config
 
@@ -144,6 +148,10 @@ jobs:
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
             libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
             ninja-build \
             pkg-config
 
@@ -219,6 +227,10 @@ jobs:
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
             libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
             ninja-build \
             pkg-config
 
