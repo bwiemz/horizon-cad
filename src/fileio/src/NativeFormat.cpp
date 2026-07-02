@@ -1112,6 +1112,41 @@ bool NativeFormat::saveAssembly(const std::string& filePath, const doc::Assembly
     }
     root["components"] = componentsArray;
 
+    // --- Mates (Phase 42) ---
+    auto mateTypeToString = [](doc::MateType t) -> const char* {
+        switch (t) {
+            case doc::MateType::Coincident:
+                return "coincident";
+            case doc::MateType::Concentric:
+                return "concentric";
+            case doc::MateType::Distance:
+                return "distance";
+            case doc::MateType::Angle:
+                return "angle";
+            case doc::MateType::Parallel:
+                return "parallel";
+            case doc::MateType::Perpendicular:
+                return "perpendicular";
+            case doc::MateType::Tangent:
+                return "tangent";
+            case doc::MateType::Fixed:
+                return "fixed";
+        }
+        return "coincident";
+    };
+
+    json matesArray = json::array();
+    for (const auto& mate : asmDoc.mates()) {
+        json mObj;
+        mObj["id"] = mate.id;
+        mObj["type"] = mateTypeToString(mate.type);
+        mObj["a"] = {{"componentId", mate.a.componentId}, {"faceTag", mate.a.faceId.tag()}};
+        mObj["b"] = {{"componentId", mate.b.componentId}, {"faceTag", mate.b.faceId.tag()}};
+        mObj["value"] = mate.value;
+        matesArray.push_back(mObj);
+    }
+    root["mates"] = matesArray;
+
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
     file << root.dump(2);
@@ -1169,6 +1204,40 @@ bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocume
                 asmDoc.addComponent(std::move(comp));
             } catch (const nlohmann::json::exception&) {
                 continue;  // Skip malformed components.
+            }
+        }
+    }
+
+    // --- Mates (Phase 42) ---
+    auto mateTypeFromString = [](const std::string& t) {
+        if (t == "concentric") return doc::MateType::Concentric;
+        if (t == "distance") return doc::MateType::Distance;
+        if (t == "angle") return doc::MateType::Angle;
+        if (t == "parallel") return doc::MateType::Parallel;
+        if (t == "perpendicular") return doc::MateType::Perpendicular;
+        if (t == "tangent") return doc::MateType::Tangent;
+        if (t == "fixed") return doc::MateType::Fixed;
+        return doc::MateType::Coincident;
+    };
+
+    if (root.contains("mates")) {
+        for (const auto& mObj : root["mates"]) {
+            try {
+                doc::Mate mate;
+                mate.id = mObj.value("id", uint64_t{0});
+                mate.type = mateTypeFromString(mObj.value("type", "coincident"));
+                mate.value = mObj.value("value", 0.0);
+                if (mObj.contains("a")) {
+                    mate.a.componentId = mObj["a"].value("componentId", uint64_t{0});
+                    mate.a.faceId = topo::TopologyID::fromTag(mObj["a"].value("faceTag", ""));
+                }
+                if (mObj.contains("b")) {
+                    mate.b.componentId = mObj["b"].value("componentId", uint64_t{0});
+                    mate.b.faceId = topo::TopologyID::fromTag(mObj["b"].value("faceTag", ""));
+                }
+                asmDoc.addMate(std::move(mate));
+            } catch (const nlohmann::json::exception&) {
+                continue;  // Skip malformed mates.
             }
         }
     }

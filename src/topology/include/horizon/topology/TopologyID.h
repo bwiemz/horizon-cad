@@ -21,6 +21,10 @@ public:
     /// Example: make("box", "top") → tag "box/top"
     static TopologyID make(const std::string& source, const std::string& role);
 
+    /// Reconstruct an ID from a previously serialized tag() string.
+    /// An empty tag yields an invalid ID.
+    static TopologyID fromTag(const std::string& tag);
+
     /// Derive a child ID from this one via an operation.
     /// Example: parent.child("split", 0) → tag "parent_tag/split:0"
     [[nodiscard]] TopologyID child(const std::string& operation, int index) const;

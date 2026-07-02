@@ -36,9 +36,43 @@ const ComponentInstance* AssemblyDocument::component(uint64_t id) const {
     return it == m_components.end() ? nullptr : &*it;
 }
 
+uint64_t AssemblyDocument::addMate(Mate mate) {
+    if (mate.id == 0) {
+        mate.id = m_nextMateId;
+    }
+    m_nextMateId = std::max(m_nextMateId, mate.id + 1);
+    uint64_t id = mate.id;
+    m_mates.push_back(std::move(mate));
+    m_dirty = true;
+    return id;
+}
+
+bool AssemblyDocument::removeMate(uint64_t id) {
+    auto it =
+        std::find_if(m_mates.begin(), m_mates.end(), [id](const Mate& m) { return m.id == id; });
+    if (it == m_mates.end()) return false;
+    m_mates.erase(it);
+    m_dirty = true;
+    return true;
+}
+
+Mate* AssemblyDocument::mate(uint64_t id) {
+    auto it =
+        std::find_if(m_mates.begin(), m_mates.end(), [id](const Mate& m) { return m.id == id; });
+    return it == m_mates.end() ? nullptr : &*it;
+}
+
+const Mate* AssemblyDocument::mate(uint64_t id) const {
+    auto it =
+        std::find_if(m_mates.begin(), m_mates.end(), [id](const Mate& m) { return m.id == id; });
+    return it == m_mates.end() ? nullptr : &*it;
+}
+
 void AssemblyDocument::clear() {
     m_components.clear();
+    m_mates.clear();
     m_nextComponentId = 1;
+    m_nextMateId = 1;
     m_dirty = false;
     m_filePath.clear();
 }

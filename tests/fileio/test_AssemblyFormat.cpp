@@ -163,3 +163,60 @@ TEST(AssemblyFormatTest, LoadRejectsMalformedTypeField) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// MatesRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(AssemblyFormatTest, MatesRoundTrip) {
+    AssemblyDocument original;
+
+    ComponentInstance a;
+    a.partPath = "a.hzpart";
+    uint64_t compA = original.addComponent(a);
+    ComponentInstance b;
+    b.partPath = "b.hzpart";
+    uint64_t compB = original.addComponent(b);
+
+    Mate coincident;
+    coincident.type = MateType::Coincident;
+    coincident.a = {compA, hz::topo::TopologyID::make("extrude_1", "cap_top")};
+    coincident.b = {compB, hz::topo::TopologyID::make("extrude_2", "cap_bottom")};
+    original.addMate(coincident);
+
+    Mate distance;
+    distance.type = MateType::Distance;
+    distance.a = {compA, hz::topo::TopologyID::make("extrude_1", "lateral:0")};
+    distance.b = {compB, hz::topo::TopologyID::make("extrude_2", "lateral:2")};
+    distance.value = 12.5;
+    original.addMate(distance);
+
+    Mate fixed;
+    fixed.type = MateType::Fixed;
+    fixed.a = {compA, hz::topo::TopologyID()};
+    original.addMate(fixed);
+
+    std::string path = tempPath("hz_test_mates_roundtrip.hzasm");
+    ASSERT_TRUE(NativeFormat::saveAssembly(path, original));
+
+    AssemblyDocument loaded;
+    ASSERT_TRUE(NativeFormat::loadAssembly(path, loaded));
+    ASSERT_EQ(loaded.mates().size(), 3u);
+
+    const auto& lc = loaded.mates()[0];
+    EXPECT_EQ(lc.type, MateType::Coincident);
+    EXPECT_EQ(lc.a.componentId, compA);
+    EXPECT_EQ(lc.a.faceId.tag(), "extrude_1/cap_top");
+    EXPECT_EQ(lc.b.faceId.tag(), "extrude_2/cap_bottom");
+
+    const auto& ld = loaded.mates()[1];
+    EXPECT_EQ(ld.type, MateType::Distance);
+    EXPECT_DOUBLE_EQ(ld.value, 12.5);
+
+    const auto& lf = loaded.mates()[2];
+    EXPECT_EQ(lf.type, MateType::Fixed);
+    EXPECT_EQ(lf.a.componentId, compA);
+    EXPECT_FALSE(lf.a.faceId.isValid());
+
+    std::remove(path.c_str());
+}
