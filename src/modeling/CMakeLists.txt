@@ -9,7 +9,11 @@ add_library(hz_modeling STATIC
     src/BooleanOp.cpp
     src/FilletOp.cpp
     src/ChamferOp.cpp
+    src/MateGeometry.cpp
+    src/AssemblySolver.cpp
 )
+
+find_package(Eigen3 CONFIG REQUIRED)
 
 target_include_directories(hz_modeling
     PUBLIC
@@ -24,6 +28,8 @@ target_link_libraries(hz_modeling
         Horizon::Topology
         Horizon::Render
         Horizon::Drafting
+    PRIVATE
+        Eigen3::Eigen
 )
 
 add_library(Horizon::Modeling ALIAS hz_modeling)

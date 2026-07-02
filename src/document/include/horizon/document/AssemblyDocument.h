@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "horizon/math/Mat4.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -39,16 +40,8 @@ struct ComponentInstance {
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).
-enum class MateType {
-    Coincident,     ///< Planar faces lie in the same plane (anti-parallel normals).
-    Concentric,     ///< Cylindrical faces share an axis.
-    Distance,       ///< Planar faces parallel at a signed offset.
-    Angle,          ///< Angle between planar face normals equals value (radians).
-    Parallel,       ///< Directions parallel.
-    Perpendicular,  ///< Directions perpendicular.
-    Tangent,        ///< Cylinder tangent to a plane.
-    Fixed,          ///< Grounds a component (uses reference `a` only).
-};
+/// Defined in the modeling layer next to the solver that consumes them.
+using MateType = model::MateType;
 
 /// One side of a mate: a face on a placed component, referenced by
 /// TopologyID so the mate survives part rebuilds (genealogy resolution).
