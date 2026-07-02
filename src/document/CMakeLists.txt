@@ -8,6 +8,8 @@ add_library(hz_document STATIC
     src/ParameterRegistry.cpp
     src/ExpressionEngine.cpp
     src/Sketch.cpp
+    src/AssemblyDocument.cpp
+    src/DocumentManager.cpp
 )
 
 target_include_directories(hz_document

@@ -1,29 +1,34 @@
 #include "horizon/fileio/NativeFormat.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <set>
+#include <system_error>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
-#include "horizon/drafting/SketchPlane.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftLinearDimension.h"
-#include "horizon/drafting/DraftRadialDimension.h"
-#include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/drafting/DraftLeader.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/BlockTable.h"
-
-#include <nlohmann/json.hpp>
-#include <fstream>
-#include <set>
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/SolidTessellator.h"
 
 using json = nlohmann::json;
 
@@ -35,15 +40,18 @@ namespace hz::io {
 
 static std::string featureTypeToString(cstr::FeatureType ft) {
     switch (ft) {
-        case cstr::FeatureType::Point:  return "point";
-        case cstr::FeatureType::Line:   return "line";
-        case cstr::FeatureType::Circle: return "circle";
+        case cstr::FeatureType::Point:
+            return "point";
+        case cstr::FeatureType::Line:
+            return "line";
+        case cstr::FeatureType::Circle:
+            return "circle";
     }
     return "point";
 }
 
 static cstr::FeatureType featureTypeFromString(const std::string& s) {
-    if (s == "line")   return cstr::FeatureType::Line;
+    if (s == "line") return cstr::FeatureType::Line;
     if (s == "circle") return cstr::FeatureType::Circle;
     return cstr::FeatureType::Point;
 }
@@ -64,16 +72,26 @@ static cstr::GeometryRef deserializeRef(const json& obj) {
 
 static std::string constraintTypeToString(cstr::ConstraintType ct) {
     switch (ct) {
-        case cstr::ConstraintType::Coincident:     return "coincident";
-        case cstr::ConstraintType::Horizontal:     return "horizontal";
-        case cstr::ConstraintType::Vertical:       return "vertical";
-        case cstr::ConstraintType::Perpendicular:  return "perpendicular";
-        case cstr::ConstraintType::Parallel:       return "parallel";
-        case cstr::ConstraintType::Tangent:        return "tangent";
-        case cstr::ConstraintType::Equal:          return "equal";
-        case cstr::ConstraintType::Fixed:          return "fixed";
-        case cstr::ConstraintType::Distance:       return "distance";
-        case cstr::ConstraintType::Angle:          return "angle";
+        case cstr::ConstraintType::Coincident:
+            return "coincident";
+        case cstr::ConstraintType::Horizontal:
+            return "horizontal";
+        case cstr::ConstraintType::Vertical:
+            return "vertical";
+        case cstr::ConstraintType::Perpendicular:
+            return "perpendicular";
+        case cstr::ConstraintType::Parallel:
+            return "parallel";
+        case cstr::ConstraintType::Tangent:
+            return "tangent";
+        case cstr::ConstraintType::Equal:
+            return "equal";
+        case cstr::ConstraintType::Fixed:
+            return "fixed";
+        case cstr::ConstraintType::Distance:
+            return "distance";
+        case cstr::ConstraintType::Angle:
+            return "angle";
     }
     return "unknown";
 }
@@ -96,7 +114,7 @@ static json serializeEntity(const draft::DraftEntity& entity) {
     if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
         obj["type"] = "line";
         obj["start"] = {{"x", line->start().x}, {"y", line->start().y}};
-        obj["end"]   = {{"x", line->end().x},   {"y", line->end().y}};
+        obj["end"] = {{"x", line->end().x}, {"y", line->end().y}};
     } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(&entity)) {
         obj["type"] = "circle";
         obj["center"] = {{"x", circle->center().x}, {"y", circle->center().y}};
@@ -197,23 +215,20 @@ static json serializeEntity(const draft::DraftEntity& entity) {
     return obj;
 }
 
-bool NativeFormat::save(const std::string& filePath,
-                        const doc::Document& doc) {
+bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
     json root;
-    root["version"] = 15;
-    root["type"] = "hcad";
+    root["version"] = 16;
+    root["type"] = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
 
     // --- Dimension style ---
     const auto& ds = doc.draftDocument().dimensionStyle();
-    root["dimensionStyle"] = {
-        {"textHeight",         ds.textHeight},
-        {"arrowSize",          ds.arrowSize},
-        {"arrowAngle",         ds.arrowAngle},
-        {"extensionGap",       ds.extensionGap},
-        {"extensionOvershoot", ds.extensionOvershoot},
-        {"precision",          ds.precision},
-        {"showUnits",          ds.showUnits}
-    };
+    root["dimensionStyle"] = {{"textHeight", ds.textHeight},
+                              {"arrowSize", ds.arrowSize},
+                              {"arrowAngle", ds.arrowAngle},
+                              {"extensionGap", ds.extensionGap},
+                              {"extensionOvershoot", ds.extensionOvershoot},
+                              {"precision", ds.precision},
+                              {"showUnits", ds.showUnits}};
 
     // --- Layer table ---
     json layersArray = json::array();
@@ -250,7 +265,7 @@ bool NativeFormat::save(const std::string& filePath,
             if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
                 se["type"] = "line";
                 se["start"] = {{"x", ln->start().x}, {"y", ln->start().y}};
-                se["end"]   = {{"x", ln->end().x},   {"y", ln->end().y}};
+                se["end"] = {{"x", ln->end().x}, {"y", ln->end().y}};
             } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
                 se["type"] = "circle";
                 se["center"] = {{"x", ci->center().x}, {"y", ci->center().y}};
@@ -275,7 +290,8 @@ bool NativeFormat::save(const std::string& filePath,
                 se["type"] = "spline";
                 se["closed"] = sp->closed();
                 json cps = json::array();
-                for (const auto& cp : sp->controlPoints()) cps.push_back({{"x", cp.x}, {"y", cp.y}});
+                for (const auto& cp : sp->controlPoints())
+                    cps.push_back({{"x", cp.x}, {"y", cp.y}});
                 se["controlPoints"] = cps;
                 if (sp->hasNonUniformWeights()) {
                     json wArr = json::array();
@@ -420,11 +436,9 @@ bool NativeFormat::save(const std::string& filePath,
         skObj["name"] = sketch->name();
 
         const auto& plane = sketch->plane();
-        skObj["plane"] = {
-            {"origin", {plane.origin().x, plane.origin().y, plane.origin().z}},
-            {"normal", {plane.normal().x, plane.normal().y, plane.normal().z}},
-            {"xAxis",  {plane.xAxis().x,  plane.xAxis().y,  plane.xAxis().z}}
-        };
+        skObj["plane"] = {{"origin", {plane.origin().x, plane.origin().y, plane.origin().z}},
+                          {"normal", {plane.normal().x, plane.normal().y, plane.normal().z}},
+                          {"xAxis", {plane.xAxis().x, plane.xAxis().y, plane.xAxis().z}}};
 
         json skEntities = json::array();
         for (const auto& entity : sketch->entities()) {
@@ -436,7 +450,7 @@ bool NativeFormat::save(const std::string& filePath,
     }
     root["sketches"] = sketchesArray;
 
-    // --- Feature tree (v15+) ---
+    // --- Feature tree (v15+; v16 stores real sketch IDs and full inputs) ---
     json featureTreeArray = json::array();
     const auto& ftree = doc.featureTree();
     for (size_t fi = 0; fi < ftree.featureCount(); ++fi) {
@@ -444,23 +458,34 @@ bool NativeFormat::save(const std::string& filePath,
         json fObj;
         fObj["featureID"] = feat->featureID();
 
-        if (feat->name() == "Extrude") {
+        if (const auto* ext = dynamic_cast<const doc::ExtrudeFeature*>(feat)) {
             fObj["type"] = "extrude";
-            auto params = feat->parameters();
-            fObj["distance"] = params["distance"];
-            // Sketch reference: find the matching sketch index
-            // For now, store the sketch index based on the feature ordering.
-            fObj["sketchIndex"] = static_cast<int>(fi);
-        } else if (feat->name() == "Revolve") {
+            fObj["distance"] = ext->distance();
+            fObj["direction"] = {ext->direction().x, ext->direction().y, ext->direction().z};
+            if (ext->sketch()) fObj["sketchId"] = ext->sketch()->id();
+        } else if (const auto* rev = dynamic_cast<const doc::RevolveFeature*>(feat)) {
             fObj["type"] = "revolve";
-            auto params = feat->parameters();
-            fObj["angle"] = params["angle"];
-            fObj["sketchIndex"] = static_cast<int>(fi);
+            fObj["angle"] = rev->angle();
+            fObj["axisPoint"] = {rev->axisPoint().x, rev->axisPoint().y, rev->axisPoint().z};
+            fObj["axisDir"] = {rev->axisDir().x, rev->axisDir().y, rev->axisDir().z};
+            if (rev->sketch()) fObj["sketchId"] = rev->sketch()->id();
         }
 
         featureTreeArray.push_back(fObj);
     }
     root["featureTree"] = featureTreeArray;
+
+    // --- Tessellation cache (v16+, parts only) ---
+    // Enables lightweight assembly loading: readers can display the part
+    // without replaying the feature tree.
+    if (doc.solid()) {
+        render::MeshData mesh = model::SolidTessellator::tessellate(*doc.solid());
+        json cache;
+        cache["positions"] = mesh.positions;
+        cache["normals"] = mesh.normals;
+        cache["indices"] = mesh.indices;
+        root["tessellationCache"] = cache;
+    }
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
@@ -472,8 +497,8 @@ bool NativeFormat::save(const std::string& filePath,
 // Entity deserialization helper
 // ---------------------------------------------------------------------------
 
-static std::shared_ptr<draft::DraftEntity> deserializeEntity(
-    const json& obj, const draft::BlockTable* blockTable) {
+static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
+                                                             const draft::BlockTable* blockTable) {
     std::string type = obj.value("type", "");
     std::string layer = obj.value("layer", "0");
     uint32_t color = obj.value("color", 0xFFFFFFFFu);
@@ -486,8 +511,7 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
         double sy = obj["start"]["y"].get<double>();
         double ex = obj["end"]["x"].get<double>();
         double ey = obj["end"]["y"].get<double>();
-        entity = std::make_shared<draft::DraftLine>(
-            math::Vec2(sx, sy), math::Vec2(ex, ey));
+        entity = std::make_shared<draft::DraftLine>(math::Vec2(sx, sy), math::Vec2(ex, ey));
     } else if (type == "circle") {
         double cx = obj["center"]["x"].get<double>();
         double cy = obj["center"]["y"].get<double>();
@@ -505,8 +529,8 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
         double c1y = obj["corner1"]["y"].get<double>();
         double c2x = obj["corner2"]["x"].get<double>();
         double c2y = obj["corner2"]["y"].get<double>();
-        entity = std::make_shared<draft::DraftRectangle>(
-            math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
+        entity =
+            std::make_shared<draft::DraftRectangle>(math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
     } else if (type == "polyline") {
         bool closed = obj.value("closed", false);
         std::vector<math::Vec2> points;
@@ -515,40 +539,38 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
         }
         entity = std::make_shared<draft::DraftPolyline>(points, closed);
     } else if (type == "linearDimension") {
-        auto p1 = math::Vec2(obj["defPoint1"]["x"].get<double>(),
-                              obj["defPoint1"]["y"].get<double>());
-        auto p2 = math::Vec2(obj["defPoint2"]["x"].get<double>(),
-                              obj["defPoint2"]["y"].get<double>());
+        auto p1 =
+            math::Vec2(obj["defPoint1"]["x"].get<double>(), obj["defPoint1"]["y"].get<double>());
+        auto p2 =
+            math::Vec2(obj["defPoint2"]["x"].get<double>(), obj["defPoint2"]["y"].get<double>());
         auto dp = math::Vec2(obj["dimLinePoint"]["x"].get<double>(),
-                              obj["dimLinePoint"]["y"].get<double>());
-        auto orient = static_cast<draft::DraftLinearDimension::Orientation>(
-            obj.value("orientation", 0));
+                             obj["dimLinePoint"]["y"].get<double>());
+        auto orient =
+            static_cast<draft::DraftLinearDimension::Orientation>(obj.value("orientation", 0));
         auto dim = std::make_shared<draft::DraftLinearDimension>(p1, p2, dp, orient);
         if (obj.contains("textOverride"))
             dim->setTextOverride(obj["textOverride"].get<std::string>());
         entity = dim;
     } else if (type == "radialDimension") {
-        auto center = math::Vec2(obj["center"]["x"].get<double>(),
-                                  obj["center"]["y"].get<double>());
+        auto center =
+            math::Vec2(obj["center"]["x"].get<double>(), obj["center"]["y"].get<double>());
         double radius = obj["radius"].get<double>();
-        auto textPt = math::Vec2(obj["textPoint"]["x"].get<double>(),
-                                  obj["textPoint"]["y"].get<double>());
+        auto textPt =
+            math::Vec2(obj["textPoint"]["x"].get<double>(), obj["textPoint"]["y"].get<double>());
         bool isDiam = obj.value("isDiameter", false);
-        auto dim = std::make_shared<draft::DraftRadialDimension>(
-            center, radius, textPt, isDiam);
+        auto dim = std::make_shared<draft::DraftRadialDimension>(center, radius, textPt, isDiam);
         if (obj.contains("textOverride"))
             dim->setTextOverride(obj["textOverride"].get<std::string>());
         entity = dim;
     } else if (type == "angularDimension") {
-        auto vertex = math::Vec2(obj["vertex"]["x"].get<double>(),
-                                  obj["vertex"]["y"].get<double>());
-        auto l1 = math::Vec2(obj["line1Point"]["x"].get<double>(),
-                              obj["line1Point"]["y"].get<double>());
-        auto l2 = math::Vec2(obj["line2Point"]["x"].get<double>(),
-                              obj["line2Point"]["y"].get<double>());
+        auto vertex =
+            math::Vec2(obj["vertex"]["x"].get<double>(), obj["vertex"]["y"].get<double>());
+        auto l1 =
+            math::Vec2(obj["line1Point"]["x"].get<double>(), obj["line1Point"]["y"].get<double>());
+        auto l2 =
+            math::Vec2(obj["line2Point"]["x"].get<double>(), obj["line2Point"]["y"].get<double>());
         double arcR = obj["arcRadius"].get<double>();
-        auto dim = std::make_shared<draft::DraftAngularDimension>(
-            vertex, l1, l2, arcR);
+        auto dim = std::make_shared<draft::DraftAngularDimension>(vertex, l1, l2, arcR);
         if (obj.contains("textOverride"))
             dim->setTextOverride(obj["textOverride"].get<std::string>());
         entity = dim;
@@ -568,20 +590,19 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
             auto def = blockTable->findBlock(blockName);
             if (def) {
                 auto pos = math::Vec2(obj["insertPos"]["x"].get<double>(),
-                                       obj["insertPos"]["y"].get<double>());
+                                      obj["insertPos"]["y"].get<double>());
                 double rot = obj.value("rotation", 0.0);
                 double scl = obj.value("scale", 1.0);
                 entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
             }
         }
     } else if (type == "text") {
-        auto pos = math::Vec2(obj["position"]["x"].get<double>(),
-                               obj["position"]["y"].get<double>());
+        auto pos =
+            math::Vec2(obj["position"]["x"].get<double>(), obj["position"]["y"].get<double>());
         std::string text = obj.value("text", "");
         double textHeight = obj.value("textHeight", 2.5);
         auto txt = std::make_shared<draft::DraftText>(pos, text, textHeight);
-        if (obj.contains("rotation"))
-            txt->setRotation(obj["rotation"].get<double>());
+        if (obj.contains("rotation")) txt->setRotation(obj["rotation"].get<double>());
         if (obj.contains("alignment"))
             txt->setAlignment(static_cast<draft::TextAlignment>(obj["alignment"].get<int>()));
         entity = txt;
@@ -607,11 +628,11 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
         auto hatchPattern = static_cast<draft::HatchPattern>(obj.value("pattern", 1));
         double hatchAngle = obj.value("angle", 0.0);
         double hatchSpacing = obj.value("spacing", 1.0);
-        entity = std::make_shared<draft::DraftHatch>(boundary, hatchPattern,
-                                                      hatchAngle, hatchSpacing);
+        entity =
+            std::make_shared<draft::DraftHatch>(boundary, hatchPattern, hatchAngle, hatchSpacing);
     } else if (type == "ellipse") {
-        auto center = math::Vec2(obj["center"]["x"].get<double>(),
-                                  obj["center"]["y"].get<double>());
+        auto center =
+            math::Vec2(obj["center"]["x"].get<double>(), obj["center"]["y"].get<double>());
         double semiMajor = obj.value("semiMajor", 1.0);
         double semiMinor = obj.value("semiMinor", 1.0);
         double rot = obj.value("rotation", 0.0);
@@ -635,8 +656,7 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(
     return entity;
 }
 
-bool NativeFormat::load(const std::string& filePath,
-                        doc::Document& doc) {
+bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
     std::ifstream file(filePath);
     if (!file.is_open()) return false;
 
@@ -654,17 +674,21 @@ bool NativeFormat::load(const std::string& filePath,
     doc.constraintSystem().clear();
     doc.parameterRegistry().clear();
 
+    // --- Document type (v16+; earlier files are all drawings) ---
+    doc.setType(root.value("type", "hcad") == "hzpart" ? doc::DocumentType::Part
+                                                       : doc::DocumentType::Drawing);
+
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
         const auto& dsObj = root["dimensionStyle"];
         draft::DimensionStyle ds;
-        ds.textHeight         = dsObj.value("textHeight", 2.5);
-        ds.arrowSize          = dsObj.value("arrowSize", 1.5);
-        ds.arrowAngle         = dsObj.value("arrowAngle", 0.3);
-        ds.extensionGap       = dsObj.value("extensionGap", 0.5);
+        ds.textHeight = dsObj.value("textHeight", 2.5);
+        ds.arrowSize = dsObj.value("arrowSize", 1.5);
+        ds.arrowAngle = dsObj.value("arrowAngle", 0.3);
+        ds.extensionGap = dsObj.value("extensionGap", 0.5);
         ds.extensionOvershoot = dsObj.value("extensionOvershoot", 1.0);
-        ds.precision          = dsObj.value("precision", 2);
-        ds.showUnits          = dsObj.value("showUnits", false);
+        ds.precision = dsObj.value("precision", 2);
+        ds.showUnits = dsObj.value("showUnits", false);
         doc.draftDocument().setDimensionStyle(ds);
     }
 
@@ -695,85 +719,91 @@ bool NativeFormat::load(const std::string& filePath,
     if (root.contains("blocks")) {
         for (const auto& blockObj : root["blocks"]) {
             try {
-            auto def = std::make_shared<draft::BlockDefinition>();
-            def->name = blockObj.value("name", "");
-            def->basePoint = math::Vec2(
-                blockObj["basePoint"]["x"].get<double>(),
-                blockObj["basePoint"]["y"].get<double>());
-            if (blockObj.contains("entities")) {
-                for (const auto& se : blockObj["entities"]) {
-                    std::string stype = se.value("type", "");
-                    std::shared_ptr<draft::DraftEntity> subEnt;
-                    if (stype == "line") {
-                        subEnt = std::make_shared<draft::DraftLine>(
-                            math::Vec2(se["start"]["x"].get<double>(), se["start"]["y"].get<double>()),
-                            math::Vec2(se["end"]["x"].get<double>(), se["end"]["y"].get<double>()));
-                    } else if (stype == "circle") {
-                        subEnt = std::make_shared<draft::DraftCircle>(
-                            math::Vec2(se["center"]["x"].get<double>(), se["center"]["y"].get<double>()),
-                            se["radius"].get<double>());
-                    } else if (stype == "arc") {
-                        subEnt = std::make_shared<draft::DraftArc>(
-                            math::Vec2(se["center"]["x"].get<double>(), se["center"]["y"].get<double>()),
-                            se["radius"].get<double>(),
-                            se["startAngle"].get<double>(),
-                            se["endAngle"].get<double>());
-                    } else if (stype == "rectangle") {
-                        subEnt = std::make_shared<draft::DraftRectangle>(
-                            math::Vec2(se["corner1"]["x"].get<double>(), se["corner1"]["y"].get<double>()),
-                            math::Vec2(se["corner2"]["x"].get<double>(), se["corner2"]["y"].get<double>()));
-                    } else if (stype == "polyline") {
-                        std::vector<math::Vec2> pts;
-                        for (const auto& pt : se["points"])
-                            pts.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
-                        subEnt = std::make_shared<draft::DraftPolyline>(pts, se.value("closed", false));
-                    } else if (stype == "spline") {
-                        std::vector<math::Vec2> cps;
-                        for (const auto& cp : se["controlPoints"])
-                            cps.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
-                        auto blkSp = std::make_shared<draft::DraftSpline>(cps, se.value("closed", false));
-                        if (se.contains("weights")) {
-                            std::vector<double> wts;
-                            wts.reserve(se["weights"].size());
-                            for (const auto& w : se["weights"]) wts.push_back(w.get<double>());
-                            blkSp->setWeights(wts);
+                auto def = std::make_shared<draft::BlockDefinition>();
+                def->name = blockObj.value("name", "");
+                def->basePoint = math::Vec2(blockObj["basePoint"]["x"].get<double>(),
+                                            blockObj["basePoint"]["y"].get<double>());
+                if (blockObj.contains("entities")) {
+                    for (const auto& se : blockObj["entities"]) {
+                        std::string stype = se.value("type", "");
+                        std::shared_ptr<draft::DraftEntity> subEnt;
+                        if (stype == "line") {
+                            subEnt = std::make_shared<draft::DraftLine>(
+                                math::Vec2(se["start"]["x"].get<double>(),
+                                           se["start"]["y"].get<double>()),
+                                math::Vec2(se["end"]["x"].get<double>(),
+                                           se["end"]["y"].get<double>()));
+                        } else if (stype == "circle") {
+                            subEnt = std::make_shared<draft::DraftCircle>(
+                                math::Vec2(se["center"]["x"].get<double>(),
+                                           se["center"]["y"].get<double>()),
+                                se["radius"].get<double>());
+                        } else if (stype == "arc") {
+                            subEnt = std::make_shared<draft::DraftArc>(
+                                math::Vec2(se["center"]["x"].get<double>(),
+                                           se["center"]["y"].get<double>()),
+                                se["radius"].get<double>(), se["startAngle"].get<double>(),
+                                se["endAngle"].get<double>());
+                        } else if (stype == "rectangle") {
+                            subEnt = std::make_shared<draft::DraftRectangle>(
+                                math::Vec2(se["corner1"]["x"].get<double>(),
+                                           se["corner1"]["y"].get<double>()),
+                                math::Vec2(se["corner2"]["x"].get<double>(),
+                                           se["corner2"]["y"].get<double>()));
+                        } else if (stype == "polyline") {
+                            std::vector<math::Vec2> pts;
+                            for (const auto& pt : se["points"])
+                                pts.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                            subEnt = std::make_shared<draft::DraftPolyline>(
+                                pts, se.value("closed", false));
+                        } else if (stype == "spline") {
+                            std::vector<math::Vec2> cps;
+                            for (const auto& cp : se["controlPoints"])
+                                cps.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+                            auto blkSp = std::make_shared<draft::DraftSpline>(
+                                cps, se.value("closed", false));
+                            if (se.contains("weights")) {
+                                std::vector<double> wts;
+                                wts.reserve(se["weights"].size());
+                                for (const auto& w : se["weights"]) wts.push_back(w.get<double>());
+                                blkSp->setWeights(wts);
+                            }
+                            subEnt = blkSp;
+                        } else if (stype == "text") {
+                            auto pos = math::Vec2(se["position"]["x"].get<double>(),
+                                                  se["position"]["y"].get<double>());
+                            auto txt = std::make_shared<draft::DraftText>(
+                                pos, se.value("text", ""), se.value("textHeight", 2.5));
+                            if (se.contains("rotation"))
+                                txt->setRotation(se["rotation"].get<double>());
+                            if (se.contains("alignment"))
+                                txt->setAlignment(
+                                    static_cast<draft::TextAlignment>(se["alignment"].get<int>()));
+                            subEnt = txt;
+                        } else if (stype == "hatch") {
+                            std::vector<math::Vec2> boundary;
+                            for (const auto& pt : se["boundary"])
+                                boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                            subEnt = std::make_shared<draft::DraftHatch>(
+                                boundary, static_cast<draft::HatchPattern>(se.value("pattern", 1)),
+                                se.value("angle", 0.0), se.value("spacing", 1.0));
+                        } else if (stype == "ellipse") {
+                            auto ctr = math::Vec2(se["center"]["x"].get<double>(),
+                                                  se["center"]["y"].get<double>());
+                            subEnt = std::make_shared<draft::DraftEllipse>(
+                                ctr, se.value("semiMajor", 1.0), se.value("semiMinor", 1.0),
+                                se.value("rotation", 0.0));
                         }
-                        subEnt = blkSp;
-                    } else if (stype == "text") {
-                        auto pos = math::Vec2(se["position"]["x"].get<double>(),
-                                               se["position"]["y"].get<double>());
-                        auto txt = std::make_shared<draft::DraftText>(
-                            pos, se.value("text", ""), se.value("textHeight", 2.5));
-                        if (se.contains("rotation"))
-                            txt->setRotation(se["rotation"].get<double>());
-                        if (se.contains("alignment"))
-                            txt->setAlignment(static_cast<draft::TextAlignment>(se["alignment"].get<int>()));
-                        subEnt = txt;
-                    } else if (stype == "hatch") {
-                        std::vector<math::Vec2> boundary;
-                        for (const auto& pt : se["boundary"])
-                            boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
-                        subEnt = std::make_shared<draft::DraftHatch>(
-                            boundary,
-                            static_cast<draft::HatchPattern>(se.value("pattern", 1)),
-                            se.value("angle", 0.0), se.value("spacing", 1.0));
-                    } else if (stype == "ellipse") {
-                        auto ctr = math::Vec2(se["center"]["x"].get<double>(),
-                                               se["center"]["y"].get<double>());
-                        subEnt = std::make_shared<draft::DraftEllipse>(
-                            ctr, se.value("semiMajor", 1.0),
-                            se.value("semiMinor", 1.0), se.value("rotation", 0.0));
-                    }
-                    if (subEnt) {
-                        subEnt->setLayer(se.value("layer", "0"));
-                        subEnt->setColor(se.value("color", 0u));
-                        subEnt->setLineWidth(se.value("lineWidth", 0.0));
-                        subEnt->setLineType(se.value("lineType", 0));
-                        def->entities.push_back(subEnt);
+                        if (subEnt) {
+                            subEnt->setLayer(se.value("layer", "0"));
+                            subEnt->setColor(se.value("color", 0u));
+                            subEnt->setLineWidth(se.value("lineWidth", 0.0));
+                            subEnt->setLineType(se.value("lineType", 0));
+                            def->entities.push_back(subEnt);
+                        }
                     }
                 }
-            }
-            doc.draftDocument().blockTable().addBlock(def);
+                doc.draftDocument().blockTable().addBlock(def);
             } catch (const nlohmann::json::exception&) {
                 continue;  // Skip malformed block definitions.
             }
@@ -822,13 +852,13 @@ bool NativeFormat::load(const std::string& filePath,
                 constraint = std::make_shared<cstr::TangentConstraint>(
                     deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
             } else if (ctype == "equal") {
-                constraint = std::make_shared<cstr::EqualConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                constraint = std::make_shared<cstr::EqualConstraint>(deserializeRef(cObj["refA"]),
+                                                                     deserializeRef(cObj["refB"]));
             } else if (ctype == "fixed") {
                 auto pos = math::Vec2(cObj["position"]["x"].get<double>(),
-                                       cObj["position"]["y"].get<double>());
-                constraint = std::make_shared<cstr::FixedConstraint>(
-                    deserializeRef(cObj["ref"]), pos);
+                                      cObj["position"]["y"].get<double>());
+                constraint =
+                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj["ref"]), pos);
             } else if (ctype == "distance") {
                 double val = cObj.value("value", 0.0);
                 constraint = std::make_shared<cstr::DistanceConstraint>(
@@ -912,8 +942,7 @@ bool NativeFormat::load(const std::string& filePath,
                     math::Vec3 normal(pObj["normal"][0].get<double>(),
                                       pObj["normal"][1].get<double>(),
                                       pObj["normal"][2].get<double>());
-                    math::Vec3 xAxis(pObj["xAxis"][0].get<double>(),
-                                     pObj["xAxis"][1].get<double>(),
+                    math::Vec3 xAxis(pObj["xAxis"][0].get<double>(), pObj["xAxis"][1].get<double>(),
                                      pObj["xAxis"][2].get<double>());
                     plane = draft::SketchPlane(origin, normal, xAxis);
                 }
@@ -968,32 +997,59 @@ bool NativeFormat::load(const std::string& filePath,
         }
     }
 
-    // --- Load feature tree (v15+) ---
+    // --- Load feature tree (v15+; v16 stores real sketch IDs) ---
     if (root.contains("featureTree")) {
         doc.featureTree().clear();
         for (const auto& fObj : root["featureTree"]) {
             try {
                 std::string ftype = fObj.value("type", "");
-                int sketchIndex = fObj.value("sketchIndex", -1);
 
-                // Resolve the sketch for this feature
+                // Resolve the sketch: v16 files reference the sketch by ID;
+                // v15 files stored a (buggy) index — fall back to it so old
+                // files keep loading.
                 std::shared_ptr<doc::Sketch> sketch;
-                if (sketchIndex >= 0 &&
-                    sketchIndex < static_cast<int>(doc.sketches().size())) {
-                    sketch = doc.sketches()[static_cast<size_t>(sketchIndex)];
+                if (fObj.contains("sketchId")) {
+                    uint64_t sketchId = fObj["sketchId"].get<uint64_t>();
+                    for (const auto& sk : doc.sketches()) {
+                        if (sk->id() == sketchId) {
+                            sketch = sk;
+                            break;
+                        }
+                    }
+                } else {
+                    int sketchIndex = fObj.value("sketchIndex", -1);
+                    if (sketchIndex >= 0 && sketchIndex < static_cast<int>(doc.sketches().size())) {
+                        sketch = doc.sketches()[static_cast<size_t>(sketchIndex)];
+                    }
                 }
                 if (!sketch) continue;
 
                 if (ftype == "extrude") {
                     double distance = fObj.value("distance", 1.0);
-                    auto feat = std::make_unique<doc::ExtrudeFeature>(
-                        sketch, hz::math::Vec3(0, 0, 1), distance);
+                    math::Vec3 direction(0, 0, 1);
+                    if (fObj.contains("direction")) {
+                        direction = math::Vec3(fObj["direction"][0].get<double>(),
+                                               fObj["direction"][1].get<double>(),
+                                               fObj["direction"][2].get<double>());
+                    }
+                    auto feat = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
                     doc.featureTree().addFeature(std::move(feat));
                 } else if (ftype == "revolve") {
                     double angle = fObj.value("angle", 6.283185307179586);
-                    auto feat = std::make_unique<doc::RevolveFeature>(
-                        sketch, hz::math::Vec3::Zero, hz::math::Vec3::UnitY,
-                        angle);
+                    math::Vec3 axisPoint = hz::math::Vec3::Zero;
+                    math::Vec3 axisDir = hz::math::Vec3::UnitY;
+                    if (fObj.contains("axisPoint")) {
+                        axisPoint = math::Vec3(fObj["axisPoint"][0].get<double>(),
+                                               fObj["axisPoint"][1].get<double>(),
+                                               fObj["axisPoint"][2].get<double>());
+                    }
+                    if (fObj.contains("axisDir")) {
+                        axisDir = math::Vec3(fObj["axisDir"][0].get<double>(),
+                                             fObj["axisDir"][1].get<double>(),
+                                             fObj["axisDir"][2].get<double>());
+                    }
+                    auto feat =
+                        std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
                     doc.featureTree().addFeature(std::move(feat));
                 }
             } catch (const nlohmann::json::exception&) {
@@ -1003,6 +1059,127 @@ bool NativeFormat::load(const std::string& filePath,
     }
 
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Assembly serialization (.hzasm)
+// ---------------------------------------------------------------------------
+
+bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc) {
+    json root;
+    root["version"] = 16;
+    root["type"] = "hzasm";
+
+    const std::filesystem::path asmDir = std::filesystem::path(filePath).parent_path();
+
+    json componentsArray = json::array();
+    for (const auto& comp : asmDoc.components()) {
+        json cObj;
+        cObj["id"] = comp.id;
+        cObj["name"] = comp.name;
+
+        // Store part paths relative to the assembly file when possible so
+        // the pair stays valid if the containing directory moves.
+        std::filesystem::path partPath(comp.partPath);
+        if (partPath.is_absolute() && !asmDir.empty()) {
+            std::error_code ec;
+            auto rel = std::filesystem::relative(partPath, asmDir, ec);
+            if (!ec && !rel.empty()) partPath = rel;
+        }
+        cObj["partPath"] = partPath.generic_string();
+
+        json transformArray = json::array();
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                transformArray.push_back(comp.transform.at(row, col));
+            }
+        }
+        cObj["transform"] = transformArray;
+        cObj["suppressed"] = comp.suppressed;
+
+        componentsArray.push_back(cObj);
+    }
+    root["components"] = componentsArray;
+
+    std::ofstream file(filePath);
+    if (!file.is_open()) return false;
+    file << root.dump(2);
+    return file.good();
+}
+
+bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) return false;
+
+    json root;
+    try {
+        file >> root;
+    } catch (...) {
+        return false;
+    }
+
+    if (root.value("type", "") != "hzasm") return false;
+
+    asmDoc.clear();
+
+    if (root.contains("components")) {
+        for (const auto& cObj : root["components"]) {
+            try {
+                doc::ComponentInstance comp;
+                comp.id = cObj.value("id", uint64_t{0});
+                comp.name = cObj.value("name", "");
+                comp.partPath = cObj.value("partPath", "");
+                comp.suppressed = cObj.value("suppressed", false);
+
+                if (cObj.contains("transform") && cObj["transform"].size() == 16) {
+                    const auto& t = cObj["transform"];
+                    for (int row = 0; row < 4; ++row) {
+                        for (int col = 0; col < 4; ++col) {
+                            comp.transform.at(row, col) =
+                                t[static_cast<size_t>(row * 4 + col)].get<double>();
+                        }
+                    }
+                }
+
+                asmDoc.addComponent(std::move(comp));
+            } catch (const nlohmann::json::exception&) {
+                continue;  // Skip malformed components.
+            }
+        }
+    }
+
+    asmDoc.setDirty(false);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight tessellation-cache read
+// ---------------------------------------------------------------------------
+
+std::shared_ptr<render::MeshData> NativeFormat::loadPartMesh(const std::string& filePath) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) return nullptr;
+
+    json root;
+    try {
+        file >> root;
+    } catch (...) {
+        return nullptr;
+    }
+
+    if (!root.contains("tessellationCache")) return nullptr;
+
+    try {
+        const auto& cache = root["tessellationCache"];
+        auto mesh = std::make_shared<render::MeshData>();
+        mesh->positions = cache.value("positions", std::vector<float>{});
+        mesh->normals = cache.value("normals", std::vector<float>{});
+        mesh->indices = cache.value("indices", std::vector<uint32_t>{});
+        if (mesh->positions.empty() || mesh->indices.empty()) return nullptr;
+        return mesh;
+    } catch (const nlohmann::json::exception&) {
+        return nullptr;
+    }
 }
 
 }  // namespace hz::io

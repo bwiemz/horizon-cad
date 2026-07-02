@@ -1,12 +1,12 @@
 #pragma once
 
-#include "horizon/math/Vec3.h"
-#include "horizon/topology/Solid.h"
-
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/math/Vec3.h"
+#include "horizon/topology/Solid.h"
 
 namespace hz::doc {
 
@@ -29,8 +29,7 @@ public:
     /// Execute this feature.
     /// @param inputSolid  The solid produced by the previous feature (nullptr for the first).
     /// @return The resulting solid, or nullptr on failure.
-    virtual std::unique_ptr<topo::Solid> execute(
-        std::unique_ptr<topo::Solid> inputSolid) const = 0;
+    virtual std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const = 0;
 
     /// Return editable parameters as name/value pairs.
     virtual std::map<std::string, double> parameters() const { return {}; }
@@ -46,15 +45,17 @@ public:
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.
 class ExtrudeFeature : public Feature {
 public:
-    ExtrudeFeature(std::shared_ptr<Sketch> sketch,
-                   const math::Vec3& direction, double distance);
+    ExtrudeFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& direction, double distance);
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(
-        std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+
+    const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    const math::Vec3& direction() const { return m_direction; }
+    double distance() const { return m_distance; }
 
 private:
     std::shared_ptr<Sketch> m_sketch;
@@ -68,16 +69,19 @@ private:
 /// Revolve feature: creates a solid by revolving a sketch profile around an axis.
 class RevolveFeature : public Feature {
 public:
-    RevolveFeature(std::shared_ptr<Sketch> sketch,
-                   const math::Vec3& axisPoint, const math::Vec3& axisDir,
-                   double angle);
+    RevolveFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& axisPoint,
+                   const math::Vec3& axisDir, double angle);
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(
-        std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+
+    const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    const math::Vec3& axisPoint() const { return m_axisPoint; }
+    const math::Vec3& axisDir() const { return m_axisDir; }
+    double angle() const { return m_angle; }
 
 private:
     std::shared_ptr<Sketch> m_sketch;
