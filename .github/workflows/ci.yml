@@ -50,6 +50,15 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Restore vcpkg root and install Ninja
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # msvc-dev-cmd points VCPKG_ROOT at the VS-bundled vcpkg; restore
+          # the instance run-vcpkg checked out so binary caching works.
+          echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
+          choco install ninja -y --no-progress
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
