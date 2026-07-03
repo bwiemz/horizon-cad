@@ -498,6 +498,12 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             json edges = json::array();
             for (const auto& id : fillet->edgeIds()) edges.push_back(id.tag());
             fObj["edges"] = edges;
+        } else if (const auto* chamfer = dynamic_cast<const doc::ChamferFeature*>(feat)) {
+            fObj["type"] = "chamfer";
+            fObj["distance"] = chamfer->distance();
+            json edges = json::array();
+            for (const auto& id : chamfer->edgeIds()) edges.push_back(id.tag());
+            fObj["edges"] = edges;
         } else if (const auto* pat = dynamic_cast<const doc::PatternFeature*>(feat)) {
             fObj["type"] = "pattern";
             fObj["kind"] = pat->kind() == doc::PatternFeature::Kind::Linear ? "linear" : "circular";
@@ -1172,6 +1178,19 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         }
                     }
                     auto feat = std::make_unique<doc::FilletFeature>(std::move(edges), radius);
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "chamfer") {
+                    double distance = fObj.value("distance", 1.0);
+                    std::vector<topo::TopologyID> edges;
+                    if (fObj.contains("edges")) {
+                        for (const auto& tagJson : fObj["edges"]) {
+                            edges.push_back(topo::TopologyID::fromTag(tagJson.get<std::string>()));
+                        }
+                    }
+                    auto feat = std::make_unique<doc::ChamferFeature>(std::move(edges), distance);
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;
