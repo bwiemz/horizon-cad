@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <numbers>
 
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -78,7 +79,7 @@ TEST(MateGeometryTest, TransformedFrame) {
     frame.origin = Vec3(1, 0, 0);
     frame.direction = Vec3(0, 0, 1);
 
-    Mat4 move = Mat4::translation(Vec3(0, 0, 5)) * Mat4::rotationX(M_PI / 2.0);
+    Mat4 move = Mat4::translation(Vec3(0, 0, 5)) * Mat4::rotationX(std::numbers::pi / 2.0);
     MateFrame placed = frame.transformed(move);
 
     // Right-handed rotation about X maps +Z to -Y; the origin rotates then

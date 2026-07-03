@@ -11,6 +11,15 @@ add_executable(hz_modeling_tests
     test_ChamferOp.cpp
     test_MateGeometry.cpp
     test_AssemblySolver.cpp
+    test_Loft.cpp
+    test_Sweep.cpp
+    test_Draft.cpp
+    test_Shell.cpp
+    test_Pattern.cpp
+    test_ReferenceGeometry.cpp
+    test_InterferenceChecker.cpp
+    test_MassProperties.cpp
+    test_Measure.cpp
 )
 
 target_link_libraries(hz_modeling_tests

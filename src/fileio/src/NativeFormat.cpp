@@ -469,6 +469,53 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             fObj["axisPoint"] = {rev->axisPoint().x, rev->axisPoint().y, rev->axisPoint().z};
             fObj["axisDir"] = {rev->axisDir().x, rev->axisDir().y, rev->axisDir().z};
             if (rev->sketch()) fObj["sketchId"] = rev->sketch()->id();
+        } else if (const auto* loft = dynamic_cast<const doc::LoftFeature*>(feat)) {
+            fObj["type"] = "loft";
+            json sectionIds = json::array();
+            for (const auto& sk : loft->sections()) {
+                if (sk) sectionIds.push_back(sk->id());
+            }
+            fObj["sketchIds"] = sectionIds;
+        } else if (const auto* sweep = dynamic_cast<const doc::SweepFeature*>(feat)) {
+            fObj["type"] = "sweep";
+            if (sweep->profile()) fObj["sketchId"] = sweep->profile()->id();
+            if (sweep->path()) fObj["pathSketchId"] = sweep->path()->id();
+        } else if (const auto* draft = dynamic_cast<const doc::DraftFeature*>(feat)) {
+            fObj["type"] = "draft";
+            fObj["pullDir"] = {draft->pullDir().x, draft->pullDir().y, draft->pullDir().z};
+            fObj["neutralPoint"] = {draft->neutralPoint().x, draft->neutralPoint().y,
+                                    draft->neutralPoint().z};
+            fObj["angle"] = draft->angle();
+        } else if (const auto* shell = dynamic_cast<const doc::ShellFeature*>(feat)) {
+            fObj["type"] = "shell";
+            fObj["thickness"] = shell->thickness();
+            json removed = json::array();
+            for (const auto& id : shell->removedFaceIds()) removed.push_back(id.tag());
+            fObj["removedFaces"] = removed;
+        } else if (const auto* pat = dynamic_cast<const doc::PatternFeature*>(feat)) {
+            fObj["type"] = "pattern";
+            fObj["kind"] = pat->kind() == doc::PatternFeature::Kind::Linear ? "linear" : "circular";
+            fObj["vecA"] = {pat->vecA().x, pat->vecA().y, pat->vecA().z};
+            fObj["vecB"] = {pat->vecB().x, pat->vecB().y, pat->vecB().z};
+            fObj["scalar"] = pat->scalar();
+            fObj["count"] = pat->count();
+            fObj["suppressed"] = pat->suppressed();
+        } else if (const auto* datum = dynamic_cast<const doc::DatumFeature*>(feat)) {
+            fObj["type"] = "datum";
+            switch (datum->datumKind()) {
+                case doc::DatumFeature::DatumKind::Plane:
+                    fObj["datumKind"] = "plane";
+                    break;
+                case doc::DatumFeature::DatumKind::Axis:
+                    fObj["datumKind"] = "axis";
+                    break;
+                case doc::DatumFeature::DatumKind::Point:
+                    fObj["datumKind"] = "point";
+                    break;
+            }
+            fObj["origin"] = {datum->origin().x, datum->origin().y, datum->origin().z};
+            fObj["dirA"] = {datum->dirA().x, datum->dirA().y, datum->dirA().z};
+            fObj["dirB"] = {datum->dirB().x, datum->dirB().y, datum->dirB().z};
         }
 
         featureTreeArray.push_back(fObj);
@@ -1014,19 +1061,138 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
         for (const auto& fObj : root["featureTree"]) {
             try {
                 std::string ftype = fObj.value("type", "");
+                std::string persistedId = fObj.value("featureID", "");
 
-                // Resolve the sketch: v16 files reference the sketch by ID;
-                // v15 files stored a (buggy) index — fall back to it so old
-                // files keep loading.
-                std::shared_ptr<doc::Sketch> sketch;
-                if (fObj.contains("sketchId")) {
-                    uint64_t sketchId = fObj["sketchId"].get<uint64_t>();
+                auto findSketch = [&](uint64_t id) -> std::shared_ptr<doc::Sketch> {
                     for (const auto& sk : doc.sketches()) {
-                        if (sk->id() == sketchId) {
-                            sketch = sk;
-                            break;
+                        if (sk->id() == id) return sk;
+                    }
+                    return nullptr;
+                };
+
+                // Multi-sketch features resolve their own references.
+                if (ftype == "loft") {
+                    std::vector<std::shared_ptr<doc::Sketch>> sections;
+                    if (fObj.contains("sketchIds")) {
+                        for (const auto& idJson : fObj["sketchIds"]) {
+                            auto sk = findSketch(idJson.get<uint64_t>());
+                            if (sk) sections.push_back(sk);
                         }
                     }
+                    if (sections.size() >= 2) {
+                        auto feat = std::make_unique<doc::LoftFeature>(std::move(sections));
+                        feat->restoreFeatureID(persistedId);
+                        doc.featureTree().addFeature(std::move(feat));
+                    }
+                    continue;
+                }
+                if (ftype == "sweep") {
+                    auto profile = fObj.contains("sketchId")
+                                       ? findSketch(fObj["sketchId"].get<uint64_t>())
+                                       : nullptr;
+                    auto path = fObj.contains("pathSketchId")
+                                    ? findSketch(fObj["pathSketchId"].get<uint64_t>())
+                                    : nullptr;
+                    if (profile && path) {
+                        auto feat = std::make_unique<doc::SweepFeature>(profile, path);
+                        feat->restoreFeatureID(persistedId);
+                        doc.featureTree().addFeature(std::move(feat));
+                    }
+                    continue;
+                }
+
+                // Input-consuming features (no sketch reference).
+                if (ftype == "draft") {
+                    math::Vec3 pullDir(0, 0, 1);
+                    math::Vec3 neutralPoint = math::Vec3::Zero;
+                    if (fObj.contains("pullDir")) {
+                        pullDir = math::Vec3(fObj["pullDir"][0].get<double>(),
+                                             fObj["pullDir"][1].get<double>(),
+                                             fObj["pullDir"][2].get<double>());
+                    }
+                    if (fObj.contains("neutralPoint")) {
+                        neutralPoint = math::Vec3(fObj["neutralPoint"][0].get<double>(),
+                                                  fObj["neutralPoint"][1].get<double>(),
+                                                  fObj["neutralPoint"][2].get<double>());
+                    }
+                    double angle = fObj.value("angle", 0.0);
+                    auto feat = std::make_unique<doc::DraftFeature>(pullDir, neutralPoint, angle);
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "shell") {
+                    double thickness = fObj.value("thickness", 1.0);
+                    std::vector<topo::TopologyID> removed;
+                    if (fObj.contains("removedFaces")) {
+                        for (const auto& tagJson : fObj["removedFaces"]) {
+                            removed.push_back(
+                                topo::TopologyID::fromTag(tagJson.get<std::string>()));
+                        }
+                    }
+                    auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "pattern") {
+                    auto readVec = [&](const char* key) {
+                        math::Vec3 v;
+                        if (fObj.contains(key)) {
+                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
+                                           fObj[key][2].get<double>());
+                        }
+                        return v;
+                    };
+                    math::Vec3 vecA = readVec("vecA");
+                    math::Vec3 vecB = readVec("vecB");
+                    double scalar = fObj.value("scalar", 0.0);
+                    int count = fObj.value("count", 1);
+                    std::vector<int> suppressed = fObj.value("suppressed", std::vector<int>{});
+                    std::unique_ptr<doc::PatternFeature> feat;
+                    if (fObj.value("kind", "linear") == "circular") {
+                        feat = doc::PatternFeature::makeCircular(vecA, vecB, scalar, count,
+                                                                 std::move(suppressed));
+                    } else {
+                        feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
+                                                               std::move(suppressed));
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "datum") {
+                    auto readVec = [&](const char* key) {
+                        math::Vec3 v;
+                        if (fObj.contains(key)) {
+                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
+                                           fObj[key][2].get<double>());
+                        }
+                        return v;
+                    };
+                    math::Vec3 origin = readVec("origin");
+                    math::Vec3 dirA = readVec("dirA");
+                    math::Vec3 dirB = readVec("dirB");
+                    std::string kind = fObj.value("datumKind", "plane");
+                    std::unique_ptr<doc::DatumFeature> feat;
+                    if (kind == "axis") {
+                        feat = doc::DatumFeature::makeAxis(model::DatumAxis{origin, dirA});
+                    } else if (kind == "point") {
+                        feat = doc::DatumFeature::makePoint(model::DatumPoint{origin});
+                    } else {
+                        feat = doc::DatumFeature::makePlane(model::DatumPlane{origin, dirA, dirB});
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+
+                // Single-sketch features (extrude/revolve): v16 files reference
+                // the sketch by ID; v15 files stored a (buggy) index — fall
+                // back to it so old files keep loading.
+                std::shared_ptr<doc::Sketch> sketch;
+                if (fObj.contains("sketchId")) {
+                    sketch = findSketch(fObj["sketchId"].get<uint64_t>());
                 } else {
                     int sketchIndex = fObj.value("sketchIndex", -1);
                     if (sketchIndex >= 0 && sketchIndex < static_cast<int>(doc.sketches().size())) {
@@ -1034,8 +1200,6 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                     }
                 }
                 if (!sketch) continue;
-
-                std::string persistedId = fObj.value("featureID", "");
 
                 if (ftype == "extrude") {
                     double distance = fObj.value("distance", 1.0);

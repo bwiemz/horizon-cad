@@ -3,8 +3,16 @@
 #include <cassert>
 
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/Loft.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/Shell.h"
+#include "horizon/modeling/Sweep.h"
 
 namespace hz::doc {
 
@@ -117,6 +125,347 @@ std::unique_ptr<topo::Solid> RevolveFeature::execute(
 }
 
 // ---------------------------------------------------------------------------
+// LoftFeature
+// ---------------------------------------------------------------------------
+
+int LoftFeature::s_nextID = 1;
+
+LoftFeature::LoftFeature(std::vector<std::shared_ptr<Sketch>> sections)
+    : m_sections(std::move(sections)), m_featureID("loft_" + std::to_string(s_nextID++)) {}
+
+std::string LoftFeature::name() const {
+    return "Loft";
+}
+
+std::string LoftFeature::featureID() const {
+    return m_featureID;
+}
+
+void LoftFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "loft_");
+}
+
+std::unique_ptr<topo::Solid> LoftFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    std::vector<model::LoftSection> sections;
+    sections.reserve(m_sections.size());
+    for (const auto& sk : m_sections) {
+        if (!sk) return nullptr;
+        sections.push_back({sk->entities(), sk->plane()});
+    }
+    return model::Loft::execute(sections, m_featureID);
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeature
+// ---------------------------------------------------------------------------
+
+int SweepFeature::s_nextID = 1;
+
+SweepFeature::SweepFeature(std::shared_ptr<Sketch> profile, std::shared_ptr<Sketch> path)
+    : m_profile(std::move(profile)),
+      m_path(std::move(path)),
+      m_featureID("sweep_" + std::to_string(s_nextID++)) {}
+
+std::string SweepFeature::name() const {
+    return "Sweep";
+}
+
+std::string SweepFeature::featureID() const {
+    return m_featureID;
+}
+
+void SweepFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "sweep_");
+}
+
+namespace {
+
+// Extract an open polyline of 3D path points from a path sketch: chain the
+// endpoints of its line/arc entities, or expand a single polyline entity.
+std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
+    const auto& plane = sketch.plane();
+    std::vector<math::Vec2> pts2D;
+
+    for (const auto& ent : sketch.entities()) {
+        if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(ent.get())) {
+            for (const auto& p : pl->points()) pts2D.push_back(p);
+            continue;
+        }
+        math::Vec2 s, e;
+        if (auto* line = dynamic_cast<const draft::DraftLine*>(ent.get())) {
+            s = line->start();
+            e = line->end();
+        } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(ent.get())) {
+            s = arc->startPoint();
+            e = arc->endPoint();
+        } else {
+            continue;
+        }
+        if (pts2D.empty()) {
+            pts2D.push_back(s);
+        } else {
+            const double ds = (pts2D.back() - s).length();
+            const double de = (pts2D.back() - e).length();
+            if (de < ds) std::swap(s, e);
+        }
+        pts2D.push_back(e);
+    }
+
+    std::vector<math::Vec3> pts3D;
+    pts3D.reserve(pts2D.size());
+    for (const auto& p : pts2D) pts3D.push_back(plane.localToWorld(p));
+    return pts3D;
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> SweepFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    if (!m_profile || !m_path) return nullptr;
+    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path);
+    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
+                                 m_featureID);
+}
+
+// ---------------------------------------------------------------------------
+// DraftFeature
+// ---------------------------------------------------------------------------
+
+int DraftFeature::s_nextID = 1;
+
+DraftFeature::DraftFeature(const math::Vec3& pullDir, const math::Vec3& neutralPoint, double angle)
+    : m_pullDir(pullDir),
+      m_neutralPoint(neutralPoint),
+      m_angle(angle),
+      m_featureID("draft_" + std::to_string(s_nextID++)) {}
+
+std::string DraftFeature::name() const {
+    return "Draft";
+}
+
+std::string DraftFeature::featureID() const {
+    return m_featureID;
+}
+
+void DraftFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "draft_");
+}
+
+std::map<std::string, double> DraftFeature::parameters() const {
+    return {{"angle", m_angle}};
+}
+
+bool DraftFeature::setParameter(const std::string& name, double value) {
+    if (name == "angle") {
+        m_angle = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    return model::Draft::execute(std::move(inputSolid), m_pullDir, m_neutralPoint, m_angle);
+}
+
+// ---------------------------------------------------------------------------
+// ShellFeature
+// ---------------------------------------------------------------------------
+
+int ShellFeature::s_nextID = 1;
+
+ShellFeature::ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds)
+    : m_thickness(thickness),
+      m_removedFaceIds(std::move(removedFaceIds)),
+      m_featureID("shell_" + std::to_string(s_nextID++)) {}
+
+std::string ShellFeature::name() const {
+    return "Shell";
+}
+
+std::string ShellFeature::featureID() const {
+    return m_featureID;
+}
+
+void ShellFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "shell_");
+}
+
+std::map<std::string, double> ShellFeature::parameters() const {
+    return {{"thickness", m_thickness}};
+}
+
+bool ShellFeature::setParameter(const std::string& name, double value) {
+    if (name == "thickness" && value > 0.0) {
+        m_thickness = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
+    return result.ok ? std::move(result.solid) : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// PatternFeature
+// ---------------------------------------------------------------------------
+
+int PatternFeature::s_nextID = 1;
+
+std::unique_ptr<PatternFeature> PatternFeature::makeLinear(const math::Vec3& direction,
+                                                           double spacing, int count,
+                                                           std::vector<int> suppressed) {
+    std::unique_ptr<PatternFeature> f(new PatternFeature());
+    f->m_kind = Kind::Linear;
+    f->m_vecA = direction;
+    f->m_scalar = spacing;
+    f->m_count = count;
+    f->m_suppressed = std::move(suppressed);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<PatternFeature> PatternFeature::makeCircular(const math::Vec3& axisPoint,
+                                                             const math::Vec3& axisDir,
+                                                             double angleStepRad, int count,
+                                                             std::vector<int> suppressed) {
+    std::unique_ptr<PatternFeature> f(new PatternFeature());
+    f->m_kind = Kind::Circular;
+    f->m_vecA = axisPoint;
+    f->m_vecB = axisDir;
+    f->m_scalar = angleStepRad;
+    f->m_count = count;
+    f->m_suppressed = std::move(suppressed);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::string PatternFeature::name() const {
+    return m_kind == Kind::Linear ? "LinearPattern" : "CircularPattern";
+}
+
+std::string PatternFeature::featureID() const {
+    return m_featureID;
+}
+
+void PatternFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "pattern_");
+}
+
+std::map<std::string, double> PatternFeature::parameters() const {
+    return {{"count", static_cast<double>(m_count)}, {"spacing", m_scalar}};
+}
+
+bool PatternFeature::setParameter(const std::string& name, double value) {
+    if (name == "count" && value >= 1.0) {
+        m_count = static_cast<int>(value);
+        return true;
+    }
+    if (name == "spacing") {
+        m_scalar = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> PatternFeature::execute(
+    std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    if (m_kind == Kind::Linear) {
+        return model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed);
+    }
+    return model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count, m_suppressed);
+}
+
+// ---------------------------------------------------------------------------
+// DatumFeature
+// ---------------------------------------------------------------------------
+
+int DatumFeature::s_nextID = 1;
+
+std::unique_ptr<DatumFeature> DatumFeature::makePlane(const model::DatumPlane& plane) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Plane;
+    f->m_origin = plane.origin;
+    f->m_dirA = plane.normal;
+    f->m_dirB = plane.xAxis;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<DatumFeature> DatumFeature::makeAxis(const model::DatumAxis& axis) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Axis;
+    f->m_origin = axis.origin;
+    f->m_dirA = axis.direction;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<DatumFeature> DatumFeature::makePoint(const model::DatumPoint& point) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Point;
+    f->m_origin = point.position;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::string DatumFeature::name() const {
+    switch (m_kind) {
+        case DatumKind::Plane:
+            return "DatumPlane";
+        case DatumKind::Axis:
+            return "DatumAxis";
+        case DatumKind::Point:
+            return "DatumPoint";
+    }
+    return "Datum";
+}
+
+std::string DatumFeature::featureID() const {
+    return m_featureID;
+}
+
+void DatumFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "datum_");
+}
+
+model::DatumPlane DatumFeature::asPlane() const {
+    return model::DatumPlane{m_origin, m_dirA, m_dirB};
+}
+
+model::DatumAxis DatumFeature::asAxis() const {
+    return model::DatumAxis{m_origin, m_dirA};
+}
+
+model::DatumPoint DatumFeature::asPoint() const {
+    return model::DatumPoint{m_origin};
+}
+
+std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    // Non-geometric: pass the body through unchanged. The feature tree skips
+    // construction features when building, so this is only reached if called
+    // directly.
+    return inputSolid;
+}
+
+// ---------------------------------------------------------------------------
 // FeatureTree
 // ---------------------------------------------------------------------------
 
@@ -154,6 +503,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (const auto& feat : m_features) {
+        if (feat->isConstruction()) continue;  // reference geometry: no solid effect
         solid = feat->execute(std::move(solid));
         if (!solid) {
             return nullptr;  // Feature failed
@@ -174,6 +524,10 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (int i = 0; i < limit; ++i) {
+        if (m_features[static_cast<size_t>(i)]->isConstruction()) {
+            result.lastSuccessfulFeature = i;  // construction features never fail
+            continue;
+        }
         auto next = m_features[static_cast<size_t>(i)]->execute(std::move(solid));
         if (!next) {
             result.failedFeatureIndex = i;

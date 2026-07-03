@@ -10,7 +10,9 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
 using hz::io::NativeFormat;
@@ -299,4 +301,218 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::remove(outOfRange.c_str());
     std::remove(negative.c_str());
     std::remove(good.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// LoftFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<Sketch> squareOnPlane(double s, double z) {
+    const double h = s * 0.5;
+    auto sketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, z), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(-h, -h), Vec2(h, -h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(h, -h), Vec2(h, h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(h, h), Vec2(-h, h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(-h, h), Vec2(-h, -h)));
+    return sketch;
+}
+
+TEST(PartFormatTest, LoftFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto s0 = squareOnPlane(6.0, 0.0);
+    auto s1 = squareOnPlane(3.0, 10.0);
+    original.addSketch(s0);
+    original.addSketch(s1);
+    original.featureTree().addFeature(
+        std::make_unique<LoftFeature>(std::vector<std::shared_ptr<Sketch>>{s0, s1}));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_loft_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+
+    const auto* loft = dynamic_cast<const LoftFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(loft, nullptr);
+    EXPECT_EQ(loft->sections().size(), 2u);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, SweepFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto profile = squareOnPlane(4.0, 0.0);
+    auto pathSketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, 1, 0), Vec3(1, 0, 0)));
+    pathSketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    original.addSketch(profile);
+    original.addSketch(pathSketch);
+    original.featureTree().addFeature(std::make_unique<SweepFeature>(profile, pathSketch));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_sweep_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+
+    const auto* sweep = dynamic_cast<const SweepFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(sweep, nullptr);
+    ASSERT_NE(sweep->profile(), nullptr);
+    ASSERT_NE(sweep->path(), nullptr);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// ShellAndDraftFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, ShellFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(10.0, 8.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    std::string extId = original.featureTree().feature(0)->featureID();
+    original.featureTree().addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make(extId, "cap_top")}));
+    ASSERT_TRUE(original.rebuildModel());
+    ASSERT_NE(original.solid(), nullptr);
+
+    std::string path = tempPath("hz_test_shell_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* shell = dynamic_cast<const ShellFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(shell, nullptr);
+    EXPECT_DOUBLE_EQ(shell->thickness(), 1.0);
+    ASSERT_EQ(shell->removedFaceIds().size(), 1u);
+    EXPECT_EQ(shell->removedFaceIds()[0].tag(), extId + "/cap_top");
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 14u);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, DraftFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(10.0, 10.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    original.featureTree().addFeature(
+        std::make_unique<DraftFeature>(Vec3(0, 0, 1), Vec3(0, 0, 0), 0.15));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_draft_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* draft = dynamic_cast<const DraftFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(draft, nullptr);
+    EXPECT_DOUBLE_EQ(draft->angle(), 0.15);
+    EXPECT_DOUBLE_EQ(draft->pullDir().z, 1.0);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// PatternFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, LinearPatternRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(2.0, 2.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    original.featureTree().addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 4, {2}));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_pattern_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* pat = dynamic_cast<const PatternFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(pat, nullptr);
+    EXPECT_EQ(pat->kind(), PatternFeature::Kind::Linear);
+    EXPECT_EQ(pat->count(), 4);
+    EXPECT_DOUBLE_EQ(pat->scalar(), 5.0);
+    ASSERT_EQ(pat->suppressed().size(), 1u);
+    EXPECT_EQ(pat->suppressed()[0], 2);
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    // 4 instances minus 1 suppressed = 3 bodies.
+    EXPECT_EQ(loaded.solid()->shellCount(), 3u);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// DatumFeatureRoundTrip — reference geometry persists and stays transparent
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, DatumFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(3.0, 3.0);
+    original.addSketch(sketch);
+    // Datum plane, then a solid; the datum must survive save/load and not
+    // disturb the rebuilt body.
+    original.featureTree().addFeature(DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 7), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_datum_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* datum = dynamic_cast<const DatumFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(datum, nullptr);
+    EXPECT_EQ(datum->datumKind(), DatumFeature::DatumKind::Plane);
+    EXPECT_TRUE(datum->isConstruction());
+    EXPECT_DOUBLE_EQ(datum->origin().z, 7.0);
+    EXPECT_DOUBLE_EQ(datum->dirA().z, 1.0);
+    EXPECT_DOUBLE_EQ(datum->dirB().x, 1.0);
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);  // just the box
+
+    std::remove(path.c_str());
 }

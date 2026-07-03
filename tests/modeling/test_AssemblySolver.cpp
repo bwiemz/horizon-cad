@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <numbers>
 
 #include "horizon/modeling/AssemblySolver.h"
 
@@ -172,11 +173,11 @@ TEST(AssemblySolverTest, ParallelPerpendicularAngle) {
         mate.componentB = 2;
         mate.frameA = plane(Vec3(0, 0, 0), Vec3(0, 0, 1));
         mate.frameB = plane(Vec3(0, 0, 0), Vec3(0, 0.1, 1.0).normalized());
-        mate.value = M_PI / 3.0;
+        mate.value = std::numbers::pi / 3.0;
         auto result = solver.solve(components, {mate});
         ASSERT_EQ(result.status, AssemblySolveStatus::Success);
         MateFrame placedB = mate.frameB.transformed(result.transforms.at(2));
-        EXPECT_NEAR(placedB.direction.dot(Vec3(0, 0, 1)), std::cos(M_PI / 3.0), 1e-6);
+        EXPECT_NEAR(placedB.direction.dot(Vec3(0, 0, 1)), std::cos(std::numbers::pi / 3.0), 1e-6);
     }
 }
 

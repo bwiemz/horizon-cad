@@ -11,6 +11,16 @@ add_library(hz_modeling STATIC
     src/ChamferOp.cpp
     src/MateGeometry.cpp
     src/AssemblySolver.cpp
+    src/RingStack.cpp
+    src/Loft.cpp
+    src/Sweep.cpp
+    src/Draft.cpp
+    src/Shell.cpp
+    src/Pattern.cpp
+    src/ReferenceGeometry.cpp
+    src/InterferenceChecker.cpp
+    src/MassProperties.cpp
+    src/Measure.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)

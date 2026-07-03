@@ -6,6 +6,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -144,4 +145,182 @@ TEST(FeatureTreeTest, FeatureAccess) {
     ASSERT_NE(f, nullptr);
     EXPECT_EQ(f->name(), "Extrude");
     EXPECT_FALSE(f->featureID().empty());
+}
+
+// ---------------------------------------------------------------------------
+// LoftFeatureBuilds
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<Sketch> makeSquareSketchOnPlane(double s, double z) {
+    const double h = s * 0.5;
+    auto sketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, z), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(-h, -h), Vec2(h, -h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(h, -h), Vec2(h, h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(h, h), Vec2(-h, h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(-h, h), Vec2(-h, -h)));
+    return sketch;
+}
+
+TEST(FeatureTreeTest, LoftFeatureBuilds) {
+    FeatureTree tree;
+    std::vector<std::shared_ptr<Sketch>> sections = {
+        makeSquareSketchOnPlane(6.0, 0.0),
+        makeSquareSketchOnPlane(3.0, 10.0),
+    };
+    tree.addFeature(std::make_unique<LoftFeature>(sections));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 6u);
+
+    const Feature* f = tree.feature(0);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->name(), "Loft");
+    EXPECT_FALSE(f->featureID().empty());
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeatureBuilds
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, SweepFeatureBuilds) {
+    FeatureTree tree;
+    auto profile = makeSquareSketchOnPlane(4.0, 0.0);
+    // Path sketch: a vertical line, drawn on the XZ plane so it rises in Z.
+    auto path = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, 1, 0), Vec3(1, 0, 0)));
+    path->addEntity(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+
+    tree.addFeature(std::make_unique<SweepFeature>(profile, path));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 6u);
+
+    const Feature* f = tree.feature(0);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->name(), "Sweep");
+}
+
+// ---------------------------------------------------------------------------
+// DraftAndShellFeaturesChain
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, DraftAndShellFeaturesChain) {
+    // Extrude a 10x8 rectangle 5 tall, then shell it (remove the top cap).
+    FeatureTree tree;
+    auto sketch = makeRectSketch(10.0, 8.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    // The extrude cap face id is "<featureID>/cap_top".
+    std::string extId = tree.feature(0)->featureID();
+    tree.addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make(extId, "cap_top")}));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 14u);  // cup
+
+    EXPECT_EQ(tree.feature(1)->name(), "Shell");
+}
+
+TEST(FeatureTreeTest, DraftFeatureTapers) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(10.0, 10.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    tree.addFeature(std::make_unique<DraftFeature>(Vec3(0, 0, 1), Vec3(0, 0, 0), std::atan(0.1)));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(tree.feature(1)->name(), "Draft");
+}
+
+// ---------------------------------------------------------------------------
+// PatternFeatureReplicates
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, PatternFeatureReplicates) {
+    // Extrude a small box, then linear-pattern it 3x.
+    FeatureTree tree;
+    auto sketch = makeRectSketch(2.0, 2.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    tree.addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 3u);
+    EXPECT_EQ(solid->faceCount(), 18u);
+    EXPECT_TRUE(solid->checkEulerFormula());
+    EXPECT_EQ(tree.feature(1)->name(), "LinearPattern");
+}
+
+TEST(FeatureTreeTest, CircularPatternFeature) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(1.0, 1.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 1.0));
+    tree.addFeature(PatternFeature::makeCircular(Vec3(0, 0, 0), Vec3(0, 0, 1), kTwoPi / 6.0, 6));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 6u);
+    EXPECT_EQ(tree.feature(1)->name(), "CircularPattern");
+}
+
+// ---------------------------------------------------------------------------
+// Datum (reference geometry) features are non-geometric and pass the body
+// through unchanged — even when they lead the tree.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, LeadingDatumDoesNotBreakBuild) {
+    FeatureTree tree;
+    // A datum plane before any solid; then extrude. The datum must not make
+    // the build fail even though there is no input solid when it is reached.
+    tree.addFeature(DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    auto sketch = makeRectSketch(4.0, 3.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+
+    EXPECT_TRUE(tree.feature(0)->isConstruction());
+    EXPECT_EQ(tree.feature(0)->name(), "DatumPlane");
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->faceCount(), 6u);  // just the box; datum contributes nothing
+    EXPECT_TRUE(solid->checkEulerFormula());
+}
+
+TEST(FeatureTreeTest, DatumBetweenFeaturesIsTransparent) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(2.0, 2.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    // Insert a datum axis in the middle, then pattern — the datum is skipped.
+    tree.addFeature(DatumFeature::makeAxis(hz::model::DatumAxis{Vec3::Zero, Vec3(0, 0, 1)}));
+    tree.addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3));
+
+    auto result = tree.buildWithDiagnostics();
+    ASSERT_NE(result.solid, nullptr);
+    EXPECT_EQ(result.solid->shellCount(), 3u);
+    EXPECT_EQ(result.failedFeatureIndex, -1);
+    EXPECT_TRUE(tree.feature(1)->isConstruction());
+}
+
+TEST(FeatureTreeTest, DatumAccessorsReconstructGeometry) {
+    auto planeFeat =
+        DatumFeature::makePlane(hz::model::DatumPlane{Vec3(1, 2, 3), Vec3(0, 0, 1), Vec3(1, 0, 0)});
+    EXPECT_EQ(planeFeat->datumKind(), DatumFeature::DatumKind::Plane);
+    EXPECT_NEAR(planeFeat->asPlane().origin.z, 3.0, 1e-12);
+
+    auto axisFeat = DatumFeature::makeAxis(hz::model::DatumAxis{Vec3(4, 5, 6), Vec3(0, 1, 0)});
+    EXPECT_EQ(axisFeat->datumKind(), DatumFeature::DatumKind::Axis);
+    EXPECT_EQ(axisFeat->name(), "DatumAxis");
+    EXPECT_NEAR(axisFeat->asAxis().direction.y, 1.0, 1e-12);
+
+    auto pointFeat = DatumFeature::makePoint(hz::model::DatumPoint{Vec3(7, 8, 9)});
+    EXPECT_EQ(pointFeat->datumKind(), DatumFeature::DatumKind::Point);
+    EXPECT_EQ(pointFeat->name(), "DatumPoint");
+    EXPECT_NEAR(pointFeat->asPoint().position.x, 7.0, 1e-12);
 }
