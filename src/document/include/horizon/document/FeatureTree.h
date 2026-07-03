@@ -200,6 +200,30 @@ private:
     static int s_nextID;
 };
 
+/// Fillet feature: rounds the given edges (by TopologyID) of the input solid
+/// with a constant radius. Consumes the previous feature's solid.
+class FilletFeature : public Feature {
+public:
+    FilletFeature(std::vector<topo::TopologyID> edgeIds, double radius);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    double radius() const { return m_radius; }
+    const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
+
+private:
+    std::vector<topo::TopologyID> m_edgeIds;
+    double m_radius;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Pattern feature: replicates the input solid linearly or circularly.
 /// Consumes the previous feature's solid.
 class PatternFeature : public Feature {

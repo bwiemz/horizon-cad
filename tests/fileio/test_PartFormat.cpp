@@ -547,3 +547,38 @@ TEST(PartFormatTest, PrimitiveFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// FilletFeatureRoundTrip — parametric fillet persists (edge tags + radius)
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, FilletFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    ASSERT_TRUE(original.rebuildModel());
+    ASSERT_NE(original.solid(), nullptr);
+    ASSERT_FALSE(original.solid()->edges().empty());
+    const auto edgeId = original.solid()->edges().front().topoId;
+    original.featureTree().addFeature(
+        std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 1.5));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_fillet_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* fillet = dynamic_cast<const FilletFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(fillet, nullptr);
+    EXPECT_DOUBLE_EQ(fillet->radius(), 1.5);
+    ASSERT_EQ(fillet->edgeIds().size(), 1u);
+    // The stored edge tag round-trips and still resolves against the rebuilt box.
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_TRUE(loaded.solid()->isValid());
+
+    std::remove(path.c_str());
+}
