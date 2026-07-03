@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -50,6 +51,21 @@ public:
     /// false. Used by `buildBodies()` for multi-body trees; the single-solid
     /// `build()` ignores it.
     virtual bool createsNewBody() const { return false; }
+
+    /// True if this feature consumes the entire current body list and replaces
+    /// it (e.g. a Boolean combine, which needs two or more operands). When true,
+    /// `buildBodies()` routes the feature through `executeMulti()` instead of the
+    /// single-solid `execute()`. The single-solid `build()` ignores such
+    /// features (via `execute()` returning its input unchanged).
+    virtual bool consumesAllBodies() const { return false; }
+
+    /// Multi-body execution: given all currently live bodies, return the
+    /// replacement body list. Default is identity (no change). Only called by
+    /// `buildBodies()` when `consumesAllBodies()` is true.
+    virtual std::vector<std::unique_ptr<topo::Solid>> executeMulti(
+        std::vector<std::unique_ptr<topo::Solid>> bodies) const {
+        return bodies;
+    }
 
     /// Return editable parameters as name/value pairs.
     virtual std::map<std::string, double> parameters() const { return {}; }
@@ -254,6 +270,37 @@ public:
 private:
     std::vector<topo::TopologyID> m_edgeIds;
     double m_distance;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
+/// Boolean feature: combines all currently live bodies into one via a Union,
+/// Subtract, or Intersect. It needs two or more operands, so it acts on the
+/// whole body list produced by `buildBodies()` rather than a single solid:
+/// bodies are folded left-to-right (for Subtract, the first body is the target
+/// and every later body is cut from it). In the single-solid `build()` path it
+/// is a no-op (returns its input unchanged), since Booleans are only meaningful
+/// with multiple bodies.
+class BooleanFeature : public Feature {
+public:
+    explicit BooleanFeature(model::BooleanType type);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    bool consumesAllBodies() const override { return true; }
+    std::vector<std::unique_ptr<topo::Solid>> executeMulti(
+        std::vector<std::unique_ptr<topo::Solid>> bodies) const override;
+
+    model::BooleanType booleanType() const { return m_type; }
+
+private:
+    model::BooleanType m_type;
     std::string m_featureID;
 
     static int s_nextID;

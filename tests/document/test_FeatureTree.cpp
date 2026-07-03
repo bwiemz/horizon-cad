@@ -505,3 +505,57 @@ TEST(FeatureTreeTest, BuildBodiesPrimitiveThenFilletIsOneBody) {
     ASSERT_NE(bodies[0], nullptr);
     EXPECT_TRUE(bodies[0]->isValid());
 }
+
+// ---------------------------------------------------------------------------
+// BooleanFeature — combines the multi-body list into one via a Boolean op.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, BooleanFeatureNameAndParameter) {
+    BooleanFeature f(hz::model::BooleanType::Subtract);
+    EXPECT_EQ(f.name(), "Boolean Subtract");
+    EXPECT_EQ(f.booleanType(), hz::model::BooleanType::Subtract);
+    EXPECT_TRUE(f.consumesAllBodies());
+
+    EXPECT_TRUE(f.setParameter("operation", 0));  // -> Union
+    EXPECT_EQ(f.booleanType(), hz::model::BooleanType::Union);
+    EXPECT_FALSE(f.setParameter("operation", 9));  // out of range
+    EXPECT_FALSE(f.setParameter("radius", 1.0));   // not a Boolean parameter
+    EXPECT_DOUBLE_EQ(f.parameters().at("operation"), 0.0);
+}
+
+TEST(FeatureTreeTest, BuildBodiesBooleanCombinesTwoBodiesIntoOne) {
+    // Two overlapping primitives are two bodies until a Boolean folds them.
+    for (auto op : {hz::model::BooleanType::Union, hz::model::BooleanType::Subtract,
+                    hz::model::BooleanType::Intersect}) {
+        FeatureTree tree;
+        tree.addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+        tree.addFeature(PrimitiveFeature::makeBox(6.0, 6.0, 6.0));
+        EXPECT_EQ(tree.buildBodies().size(), 2u);  // independent bodies
+
+        tree.addFeature(std::make_unique<BooleanFeature>(op));
+        auto bodies = tree.buildBodies();
+        ASSERT_EQ(bodies.size(), 1u);  // the Boolean folded them into one body
+        EXPECT_NE(bodies[0], nullptr);
+    }
+}
+
+TEST(FeatureTreeTest, BuildBodiesBooleanWithSingleBodyIsNoOp) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(4.0, 4.0, 4.0));
+    tree.addFeature(std::make_unique<BooleanFeature>(hz::model::BooleanType::Subtract));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 1u);  // fewer than two operands -> Boolean is a no-op
+    ASSERT_NE(bodies[0], nullptr);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);
+}
+
+TEST(FeatureTreeTest, BuildIgnoresBooleanFeature) {
+    // The single-solid build() path has no second operand, so a Boolean feature
+    // passes the running solid through unchanged.
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(4.0, 4.0, 4.0));
+    tree.addFeature(std::make_unique<BooleanFeature>(hz::model::BooleanType::Union));
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->faceCount(), 6u);  // Boolean is a no-op in single-solid build
+}

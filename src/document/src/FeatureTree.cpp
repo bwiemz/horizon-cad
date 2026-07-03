@@ -6,6 +6,7 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
@@ -409,6 +410,85 @@ std::unique_ptr<topo::Solid> ChamferFeature::execute(
 }
 
 // ---------------------------------------------------------------------------
+// BooleanFeature
+// ---------------------------------------------------------------------------
+
+int BooleanFeature::s_nextID = 1;
+
+BooleanFeature::BooleanFeature(model::BooleanType type)
+    : m_type(type), m_featureID("boolean_" + std::to_string(s_nextID++)) {}
+
+std::string BooleanFeature::name() const {
+    switch (m_type) {
+        case model::BooleanType::Union:
+            return "Boolean Union";
+        case model::BooleanType::Subtract:
+            return "Boolean Subtract";
+        case model::BooleanType::Intersect:
+            return "Boolean Intersect";
+    }
+    return "Boolean";
+}
+
+std::string BooleanFeature::featureID() const {
+    return m_featureID;
+}
+
+void BooleanFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "boolean_");
+}
+
+std::map<std::string, double> BooleanFeature::parameters() const {
+    return {{"operation", static_cast<double>(static_cast<int>(m_type))}};
+}
+
+bool BooleanFeature::setParameter(const std::string& name, double value) {
+    if (name == "operation") {
+        int v = static_cast<int>(value);
+        if (v >= 0 && v <= 2) {
+            m_type = static_cast<model::BooleanType>(v);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> BooleanFeature::execute(
+    std::unique_ptr<topo::Solid> inputSolid) const {
+    // A Boolean needs two or more operands; the single-solid build() path only
+    // has the running solid, so this is a no-op there. Multi-body combination
+    // happens in executeMulti() when driven by buildBodies().
+    return inputSolid;
+}
+
+std::vector<std::unique_ptr<topo::Solid>> BooleanFeature::executeMulti(
+    std::vector<std::unique_ptr<topo::Solid>> bodies) const {
+    if (bodies.size() < 2) {
+        return bodies;  // nothing to combine
+    }
+
+    // Fold left-to-right: the first body is the running result (for Subtract it
+    // is the target), each later body is combined into it.
+    auto accumulator = std::move(bodies[0]);
+    for (size_t i = 1; i < bodies.size(); ++i) {
+        if (!accumulator || !bodies[i]) continue;
+        auto combined = model::BooleanOp::execute(*accumulator, *bodies[i], m_type);
+        if (combined) {
+            accumulator = std::move(combined);
+        }
+        // If the op fails, keep the current accumulator and skip this operand.
+    }
+
+    std::vector<std::unique_ptr<topo::Solid>> result;
+    if (accumulator) {
+        result.push_back(std::move(accumulator));
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
 // PatternFeature
 // ---------------------------------------------------------------------------
 
@@ -740,7 +820,10 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     for (const auto& feat : m_features) {
         if (feat->isConstruction()) continue;  // reference geometry: no solid effect
 
-        if (feat->createsNewBody() || bodies.empty()) {
+        if (feat->consumesAllBodies()) {
+            // Boolean-style combine: replace the whole body list with its result.
+            bodies = feat->executeMulti(std::move(bodies));
+        } else if (feat->createsNewBody() || bodies.empty()) {
             // Start a fresh body. Create features ignore any input solid; a
             // transform with no active body (bodies.empty()) has nothing to act
             // on, so it too is executed against a null input and simply fails.
