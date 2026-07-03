@@ -492,6 +492,14 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             json removed = json::array();
             for (const auto& id : shell->removedFaceIds()) removed.push_back(id.tag());
             fObj["removedFaces"] = removed;
+        } else if (const auto* pat = dynamic_cast<const doc::PatternFeature*>(feat)) {
+            fObj["type"] = "pattern";
+            fObj["kind"] = pat->kind() == doc::PatternFeature::Kind::Linear ? "linear" : "circular";
+            fObj["vecA"] = {pat->vecA().x, pat->vecA().y, pat->vecA().z};
+            fObj["vecB"] = {pat->vecB().x, pat->vecB().y, pat->vecB().z};
+            fObj["scalar"] = pat->scalar();
+            fObj["count"] = pat->count();
+            fObj["suppressed"] = pat->suppressed();
         }
 
         featureTreeArray.push_back(fObj);
@@ -1107,6 +1115,32 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         }
                     }
                     auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "pattern") {
+                    auto readVec = [&](const char* key) {
+                        math::Vec3 v;
+                        if (fObj.contains(key)) {
+                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
+                                           fObj[key][2].get<double>());
+                        }
+                        return v;
+                    };
+                    math::Vec3 vecA = readVec("vecA");
+                    math::Vec3 vecB = readVec("vecB");
+                    double scalar = fObj.value("scalar", 0.0);
+                    int count = fObj.value("count", 1);
+                    std::vector<int> suppressed = fObj.value("suppressed", std::vector<int>{});
+                    std::unique_ptr<doc::PatternFeature> feat;
+                    if (fObj.value("kind", "linear") == "circular") {
+                        feat = doc::PatternFeature::makeCircular(vecA, vecB, scalar, count,
+                                                                 std::move(suppressed));
+                    } else {
+                        feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
+                                                               std::move(suppressed));
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;

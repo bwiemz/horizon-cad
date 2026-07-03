@@ -442,3 +442,39 @@ TEST(PartFormatTest, DraftFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// PatternFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, LinearPatternRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(2.0, 2.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    original.featureTree().addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 4, {2}));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_pattern_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* pat = dynamic_cast<const PatternFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(pat, nullptr);
+    EXPECT_EQ(pat->kind(), PatternFeature::Kind::Linear);
+    EXPECT_EQ(pat->count(), 4);
+    EXPECT_DOUBLE_EQ(pat->scalar(), 5.0);
+    ASSERT_EQ(pat->suppressed().size(), 1u);
+    EXPECT_EQ(pat->suppressed()[0], 2);
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    // 4 instances minus 1 suppressed = 3 bodies.
+    EXPECT_EQ(loaded.solid()->shellCount(), 3u);
+
+    std::remove(path.c_str());
+}

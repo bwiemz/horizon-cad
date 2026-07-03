@@ -16,6 +16,7 @@ add_library(hz_modeling STATIC
     src/Sweep.cpp
     src/Draft.cpp
     src/Shell.cpp
+    src/Pattern.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)

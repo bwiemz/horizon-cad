@@ -9,6 +9,7 @@
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Loft.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/Shell.h"
 #include "horizon/modeling/Sweep.h"
@@ -315,6 +316,79 @@ std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> 
     if (!inputSolid) return nullptr;
     auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
     return result.ok ? std::move(result.solid) : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// PatternFeature
+// ---------------------------------------------------------------------------
+
+int PatternFeature::s_nextID = 1;
+
+std::unique_ptr<PatternFeature> PatternFeature::makeLinear(const math::Vec3& direction,
+                                                           double spacing, int count,
+                                                           std::vector<int> suppressed) {
+    std::unique_ptr<PatternFeature> f(new PatternFeature());
+    f->m_kind = Kind::Linear;
+    f->m_vecA = direction;
+    f->m_scalar = spacing;
+    f->m_count = count;
+    f->m_suppressed = std::move(suppressed);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<PatternFeature> PatternFeature::makeCircular(const math::Vec3& axisPoint,
+                                                             const math::Vec3& axisDir,
+                                                             double angleStepRad, int count,
+                                                             std::vector<int> suppressed) {
+    std::unique_ptr<PatternFeature> f(new PatternFeature());
+    f->m_kind = Kind::Circular;
+    f->m_vecA = axisPoint;
+    f->m_vecB = axisDir;
+    f->m_scalar = angleStepRad;
+    f->m_count = count;
+    f->m_suppressed = std::move(suppressed);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::string PatternFeature::name() const {
+    return m_kind == Kind::Linear ? "LinearPattern" : "CircularPattern";
+}
+
+std::string PatternFeature::featureID() const {
+    return m_featureID;
+}
+
+void PatternFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "pattern_");
+}
+
+std::map<std::string, double> PatternFeature::parameters() const {
+    return {{"count", static_cast<double>(m_count)}, {"spacing", m_scalar}};
+}
+
+bool PatternFeature::setParameter(const std::string& name, double value) {
+    if (name == "count" && value >= 1.0) {
+        m_count = static_cast<int>(value);
+        return true;
+    }
+    if (name == "spacing") {
+        m_scalar = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> PatternFeature::execute(
+    std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    if (m_kind == Kind::Linear) {
+        return model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed);
+    }
+    return model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count, m_suppressed);
 }
 
 // ---------------------------------------------------------------------------

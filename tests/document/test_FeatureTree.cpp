@@ -238,3 +238,34 @@ TEST(FeatureTreeTest, DraftFeatureTapers) {
     EXPECT_TRUE(solid->isValid());
     EXPECT_EQ(tree.feature(1)->name(), "Draft");
 }
+
+// ---------------------------------------------------------------------------
+// PatternFeatureReplicates
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, PatternFeatureReplicates) {
+    // Extrude a small box, then linear-pattern it 3x.
+    FeatureTree tree;
+    auto sketch = makeRectSketch(2.0, 2.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    tree.addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 3u);
+    EXPECT_EQ(solid->faceCount(), 18u);
+    EXPECT_TRUE(solid->checkEulerFormula());
+    EXPECT_EQ(tree.feature(1)->name(), "LinearPattern");
+}
+
+TEST(FeatureTreeTest, CircularPatternFeature) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(1.0, 1.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 1.0));
+    tree.addFeature(PatternFeature::makeCircular(Vec3(0, 0, 0), Vec3(0, 0, 1), kTwoPi / 6.0, 6));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 6u);
+    EXPECT_EQ(tree.feature(1)->name(), "CircularPattern");
+}

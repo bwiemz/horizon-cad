@@ -193,6 +193,49 @@ private:
     static int s_nextID;
 };
 
+/// Pattern feature: replicates the input solid linearly or circularly.
+/// Consumes the previous feature's solid.
+class PatternFeature : public Feature {
+public:
+    enum class Kind { Linear, Circular };
+
+    /// Linear pattern constructor.
+    static std::unique_ptr<PatternFeature> makeLinear(const math::Vec3& direction, double spacing,
+                                                      int count, std::vector<int> suppressed = {});
+    /// Circular pattern constructor.
+    static std::unique_ptr<PatternFeature> makeCircular(const math::Vec3& axisPoint,
+                                                        const math::Vec3& axisDir,
+                                                        double angleStepRad, int count,
+                                                        std::vector<int> suppressed = {});
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    Kind kind() const { return m_kind; }
+    const math::Vec3& vecA() const { return m_vecA; }
+    const math::Vec3& vecB() const { return m_vecB; }
+    double scalar() const { return m_scalar; }
+    int count() const { return m_count; }
+    const std::vector<int>& suppressed() const { return m_suppressed; }
+
+private:
+    PatternFeature() = default;
+
+    Kind m_kind = Kind::Linear;
+    math::Vec3 m_vecA;    ///< Linear: direction. Circular: axis point.
+    math::Vec3 m_vecB;    ///< Linear: unused. Circular: axis direction.
+    double m_scalar = 0;  ///< Linear: spacing. Circular: angle step (rad).
+    int m_count = 1;
+    std::vector<int> m_suppressed;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Result of building the feature tree with diagnostics.
 struct BuildResult {
     std::unique_ptr<topo::Solid> solid;

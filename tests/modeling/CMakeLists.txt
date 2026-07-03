@@ -15,6 +15,7 @@ add_executable(hz_modeling_tests
     test_Sweep.cpp
     test_Draft.cpp
     test_Shell.cpp
+    test_Pattern.cpp
 )
 
 target_link_libraries(hz_modeling_tests
