@@ -40,15 +40,17 @@ enum class StandardView { Front, Top, Right, Isometric };
 
 /// Hidden-line removal for 2D drawing generation.
 ///
-/// Projects every edge of a solid onto a view plane and classifies each as
-/// visible or hidden by ray-casting from the edge midpoint toward the viewer
-/// against the solid's own tessellation. This is the Phase 53 core; a 2D R*-tree
-/// acceleration, tangent-edge classification, and per-edge partial-visibility
-/// splitting are follow-ups.
+/// Projects every edge of a solid onto a view plane and classifies it as visible
+/// or hidden by ray-casting toward the viewer against the solid's own
+/// tessellation. Each edge is sampled into sub-segments, so a partly occluded
+/// edge splits into separate visible and hidden runs; edges parallel to the view
+/// direction collapse to a point and are dropped. This is the Phase 53 core; a
+/// 2D R*-tree acceleration and tangent-edge classification are follow-ups.
 class DrawingProjection {
 public:
     /// Project and classify all edges of @p solid as seen through @p view.
-    /// Straight edges yield one segment; curved edges are sampled into several.
+    /// Returns one ProjectedEdge per maximal same-visibility run of each edge
+    /// (a fully visible or fully hidden edge yields a single segment).
     static std::vector<ProjectedEdge> project(const topo::Solid& solid, const ViewProjection& view);
 
     /// A canonical orthographic view direction/up. `origin` is the world origin;

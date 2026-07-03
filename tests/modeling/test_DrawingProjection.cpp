@@ -57,27 +57,18 @@ TEST(DrawingProjectionTest, IsometricCubeNineVisibleThreeHidden) {
 // (near) points, while edges across the near face keep their length.
 // ---------------------------------------------------------------------------
 
-TEST(DrawingProjectionTest, FrontViewCollapsesDepthEdges) {
+TEST(DrawingProjectionTest, FrontViewDropsViewParallelEdges) {
     auto box = PrimitiveFactory::makeBox(2.0, 2.0, 2.0);
-    // Front view looks along -Y, so the four Y-parallel "depth" edges project to
-    // points and the other eight (in the XZ plane) keep unit length.
+    // Front view looks along -Y: the four Y-parallel "depth" edges project to
+    // points and are dropped, leaving the eight edges in the XZ view plane —
+    // four on the near face (visible) and four on the far face (hidden).
     auto edges =
         DrawingProjection::project(*box, DrawingProjection::standardView(StandardView::Front));
-    ASSERT_EQ(edges.size(), 12u);
-
-    int collapsed = 0;
-    int fullLength = 0;
+    ASSERT_EQ(edges.size(), 8u);
     for (const auto& e : edges) {
-        const double len = segLength(e);
-        if (len < 1e-6) {
-            ++collapsed;
-        } else {
-            EXPECT_NEAR(len, 2.0, 1e-6);  // box edge length
-            ++fullLength;
-        }
+        EXPECT_NEAR(segLength(e), 2.0, 1e-6);  // no collapsed segments remain
     }
-    EXPECT_EQ(collapsed, 4);   // the four Y-parallel depth edges
-    EXPECT_EQ(fullLength, 8);  // near- and far-face edges in the view plane
+    EXPECT_EQ(countVisible(edges), 4);  // near face visible, far face hidden
 }
 
 // ---------------------------------------------------------------------------
@@ -100,13 +91,17 @@ TEST(DrawingProjectionTest, ProjectedEdgesCarrySourceTopologyId) {
 // several visible/hidden segments rather than collapsing away.
 // ---------------------------------------------------------------------------
 
-TEST(DrawingProjectionTest, CylinderProducesSegments) {
+TEST(DrawingProjectionTest, CylinderRimsSplitIntoVisibleAndHidden) {
     auto cyl = PrimitiveFactory::makeCylinder(3.0, 6.0);
     auto edges =
-        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Front));
-    EXPECT_GT(edges.size(), 0u);
-    // At least some edge segment should be visible (the near silhouette).
-    EXPECT_GT(countVisible(edges), 0);
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Isometric));
+    ASSERT_GT(edges.size(), 0u);
+    const int visible = countVisible(edges);
+    const int hidden = static_cast<int>(edges.size()) - visible;
+    // A cylinder rim's near arc is visible and its far arc is occluded by the
+    // body, so partial-visibility splitting yields both visible and hidden runs.
+    EXPECT_GT(visible, 0);
+    EXPECT_GT(hidden, 0);
 }
 
 // ---------------------------------------------------------------------------
