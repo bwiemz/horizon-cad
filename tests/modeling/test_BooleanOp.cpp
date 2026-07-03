@@ -203,3 +203,41 @@ TEST(BooleanOpTest, RandomTransformStressTest) {
     }
     EXPECT_GE(successCount, 5) << "Too many failures in stress test";
 }
+
+// ---------------------------------------------------------------------------
+// RandomOverlapProducesValidTopology (Phase 52 stabilization)
+//
+// Across all three Boolean types and a spread of random overlapping
+// configurations — from deep overlap to near-coincident faces — the operation
+// must not crash and must never emit invalid topology. A face-level Boolean is
+// allowed to give up (return nullptr) on a hard case, but any solid it does
+// return must be a valid, Euler-consistent B-Rep.
+// ---------------------------------------------------------------------------
+
+TEST(BooleanOpTest, RandomOverlapProducesValidTopology) {
+    std::mt19937 rng(1234);
+    // Box edge is 10; offsets in [1, 9.5] keep the boxes overlapping while
+    // sweeping toward (but never reaching) coincident faces.
+    std::uniform_real_distribution<double> offset(1.0, 9.5);
+    const BooleanType types[] = {BooleanType::Union, BooleanType::Subtract, BooleanType::Intersect};
+
+    int produced = 0;
+    for (int i = 0; i < 6; ++i) {
+        const Vec3 off(offset(rng), offset(rng), offset(rng));
+        for (BooleanType type : types) {
+            auto a = PrimitiveFactory::makeBox(10, 10, 10);
+            auto b = PrimitiveFactory::makeBox(10, 10, 10);
+            offsetSolid(*b, off);
+
+            auto result = BooleanOp::execute(*a, *b, type);
+            if (result) {
+                ++produced;
+                EXPECT_TRUE(result->isValid())
+                    << "Invalid topology from Boolean type " << static_cast<int>(type)
+                    << " at offset (" << off.x << ", " << off.y << ", " << off.z << ")";
+                EXPECT_TRUE(result->checkEulerFormula());
+            }
+        }
+    }
+    EXPECT_GT(produced, 0) << "No Boolean produced a result — the guard exercised nothing";
+}
