@@ -6,6 +6,10 @@ namespace hz::topo {
 
 TopologyID::TopologyID(std::string tag) : m_tag(std::move(tag)) {}
 
+TopologyID TopologyID::fromTag(const std::string& tag) {
+    return TopologyID(tag);
+}
+
 TopologyID TopologyID::make(const std::string& source, const std::string& role) {
     return TopologyID(source + "/" + role);
 }

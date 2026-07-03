@@ -9,6 +9,8 @@ add_executable(hz_modeling_tests
     test_BooleanOp.cpp
     test_FilletOp.cpp
     test_ChamferOp.cpp
+    test_MateGeometry.cpp
+    test_AssemblySolver.cpp
 )
 
 target_link_libraries(hz_modeling_tests

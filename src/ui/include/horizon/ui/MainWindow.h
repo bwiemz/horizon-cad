@@ -38,6 +38,7 @@ private slots:
     void onSaveFile();
     void onSaveFileAs();
     void onInsertComponent();
+    void onAddMate();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -148,6 +149,7 @@ private:
     DocTab* activeTab();
     bool saveActiveDocument();
     std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
+    bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
     void activateTabDocument();

@@ -134,3 +134,43 @@ TEST(AssemblyDocumentTest, ClearResetsEverything) {
     ComponentInstance b;
     EXPECT_EQ(asmDoc.addComponent(b), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// MateManagement
+// ---------------------------------------------------------------------------
+
+TEST(AssemblyDocumentTest, MateManagement) {
+    AssemblyDocument asmDoc;
+
+    ComponentInstance base;
+    uint64_t baseId = asmDoc.addComponent(base);
+    ComponentInstance lid;
+    uint64_t lidId = asmDoc.addComponent(lid);
+
+    Mate m;
+    m.type = MateType::Coincident;
+    m.a = {baseId, hz::topo::TopologyID::make("extrude_1", "cap_top")};
+    m.b = {lidId, hz::topo::TopologyID::make("extrude_2", "cap_bottom")};
+    uint64_t mateId = asmDoc.addMate(m);
+    EXPECT_NE(mateId, 0u);
+
+    Mate* found = asmDoc.mate(mateId);
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->type, MateType::Coincident);
+    EXPECT_EQ(found->a.componentId, baseId);
+    EXPECT_EQ(found->b.faceId.tag(), "extrude_2/cap_bottom");
+
+    // Explicit ids advance the counter.
+    Mate m2;
+    m2.id = 50;
+    EXPECT_EQ(asmDoc.addMate(m2), 50u);
+    Mate m3;
+    EXPECT_GT(asmDoc.addMate(m3), 50u);
+
+    EXPECT_TRUE(asmDoc.removeMate(mateId));
+    EXPECT_EQ(asmDoc.mate(mateId), nullptr);
+    EXPECT_FALSE(asmDoc.removeMate(mateId));
+
+    asmDoc.clear();
+    EXPECT_TRUE(asmDoc.mates().empty());
+}

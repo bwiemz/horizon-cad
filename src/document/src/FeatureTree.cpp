@@ -8,6 +8,21 @@
 
 namespace hz::doc {
 
+namespace {
+
+// Keep the per-class ID counter ahead of restored IDs so future features
+// never collide with loaded ones (mirrors the Sketch ID counter fix).
+void bumpCounter(int& counter, const std::string& id, const std::string& prefix) {
+    if (id.rfind(prefix, 0) != 0) return;
+    try {
+        int n = std::stoi(id.substr(prefix.size()));
+        if (n >= counter) counter = n + 1;
+    } catch (...) {
+    }
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // ExtrudeFeature
 // ---------------------------------------------------------------------------
@@ -39,6 +54,12 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
 
 std::string ExtrudeFeature::featureID() const {
     return m_featureID;
+}
+
+void ExtrudeFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "extrude_");
 }
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
@@ -81,6 +102,12 @@ bool RevolveFeature::setParameter(const std::string& name, double value) {
 
 std::string RevolveFeature::featureID() const {
     return m_featureID;
+}
+
+void RevolveFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "revolve_");
 }
 
 std::unique_ptr<topo::Solid> RevolveFeature::execute(

@@ -172,9 +172,11 @@ TEST(PartFormatTest, DrawingsKeepHcadTypeTag) {
     std::string path = tempPath("hz_test_drawing.hcad");
     ASSERT_TRUE(NativeFormat::save(path, doc));
 
-    std::ifstream in(path);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_NE(content.find("\"hcad\""), std::string::npos);
+    {
+        std::ifstream in(path);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"hcad\""), std::string::npos);
+    }
 
     Document loaded;
     ASSERT_TRUE(NativeFormat::load(path, loaded));
