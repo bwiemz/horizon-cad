@@ -166,7 +166,8 @@ Horizon is under active development. Completed and planned work:
 | 47 | Done | Era 2 — Python Scripting API (Phase 1): embedded CPython via pybind11, `horizon` module (math, reference geometry, document authoring), captured stdout & error reporting |
 | 48 | Done | Era 2 — Collision detection: R*-tree broad phase, robust mesh-overlap narrow phase (edge/face crossing + containment) with per-solid triangle R*-tree acceleration |
 | 49 | Done | Era 2 — Measurement & mass properties: B-Rep volume/area/centroid/inertia (Eberly integrals), material presets, point/angle/segment measurements |
-| 50-52 | Planned | Era 2 — STEP AP242, native binary, stabilization |
+| 52 | In progress | Era 2 stabilization — assembly solver sparse-Jacobian + sparse Cholesky (100-part / ~200-mate solve well under 1 s); Boolean perturbation robustness pending |
+| 50-51 | Planned | Era 2 — STEP AP242 (via OpenCASCADE), native binary format |
 | 53-64 | Planned | Era 3 — Drawings from 3D, GD&T, BOM, FEA, PDM, sheet metal |
 | 65-80 | Planned | Era 4 — Vulkan backend, PBR/ray tracing, cloud sync, CAM, 1.0 release |
 

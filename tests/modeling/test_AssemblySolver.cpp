@@ -350,3 +350,58 @@ TEST(AssemblySolverTest, NoMatesReportsFullDOF) {
     EXPECT_EQ(result.componentDOF.at(2), 6);
     EXPECT_EQ(result.remainingDOF, 6);
 }
+
+// ---------------------------------------------------------------------------
+// LargeAssemblySolvesQuickly — 100 parts, ~200 mates, sparse-solve scaling
+// ---------------------------------------------------------------------------
+
+TEST(AssemblySolverTest, LargeAssemblySolvesQuickly) {
+    // A 100-component stacked chain with two coincident mates per adjacent pair
+    // (198 mates). Diagnostics are disabled — the rank analysis is a separate
+    // dense O(n^3) step; this measures the sparse Newton solve, which must scale
+    // to the roadmap's 100-part / <1 s target.
+    constexpr int kN = 100;
+    std::vector<SolverComponent> comps;
+    comps.reserve(kN);
+    for (int i = 0; i < kN; ++i) {
+        SolverComponent c;
+        c.id = static_cast<uint64_t>(i + 1);
+        c.grounded = (i == 0);
+        // Start each roughly stacked but perturbed, so the solve has real work.
+        c.transform = Mat4::translation(Vec3(0.3 * i, -0.2 * i, 10.0 * i + 0.7 * ((i * 37) % 5)));
+        comps.push_back(c);
+    }
+
+    std::vector<SolverMate> mates;
+    for (int i = 1; i < kN; ++i) {
+        SolverMate top;  // top of i coincident with bottom of i+1
+        top.type = MateType::Coincident;
+        top.componentA = static_cast<uint64_t>(i);
+        top.componentB = static_cast<uint64_t>(i + 1);
+        top.frameA = plane(Vec3(0, 0, 5), Vec3(0, 0, 1));
+        top.frameB = plane(Vec3(0, 0, -5), Vec3(0, 0, -1));
+        mates.push_back(top);
+        SolverMate side;  // a side face pair to constrain in-plane sliding
+        side.type = MateType::Coincident;
+        side.componentA = static_cast<uint64_t>(i);
+        side.componentB = static_cast<uint64_t>(i + 1);
+        side.frameA = plane(Vec3(5, 0, 0), Vec3(1, 0, 0));
+        side.frameB = plane(Vec3(5, 0, 0), Vec3(1, 0, 0));
+        mates.push_back(side);
+    }
+
+    AssemblySolver solver;
+    solver.setComputeDiagnostics(false);
+    const auto start = std::chrono::steady_clock::now();
+    auto result = solver.solve(comps, mates);
+    const double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+
+    EXPECT_EQ(result.status, AssemblySolveStatus::Success);
+    EXPECT_LT(result.residualNorm, 1e-6);
+#ifdef NDEBUG
+    EXPECT_LT(ms, 1000.0) << "100-part assembly must solve in < 1 s (release)";
+#else
+    EXPECT_LT(ms, 6000.0) << "debug/unoptimized Eigen; generous bound for slow CI";
+#endif
+}
