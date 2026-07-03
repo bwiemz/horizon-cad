@@ -81,9 +81,11 @@ bool segmentVisible(const Vec3& p0, const Vec3& p1, const Vec3& viewDir,
     return !rayHitsMesh(mid, toViewer, mesh, minT);
 }
 
-/// Sample an edge into a polyline of 3D points (>= 2). Straight edges use their
-/// two endpoints; curved edges are evaluated across their parameter domain.
-std::vector<Vec3> sampleEdge(const topo::Edge& edge) {
+/// Sample an edge into @p n sub-segments (n + 1 points). Straight edges are
+/// interpolated between their endpoints; curved edges are evaluated across their
+/// parameter domain. Sampling every edge (not just curves) lets a straight edge
+/// that crosses a silhouette be split into visible and hidden runs.
+std::vector<Vec3> sampleEdge(const topo::Edge& edge, int n) {
     std::vector<Vec3> pts;
     const topo::HalfEdge* he = edge.halfEdge;
     if (he == nullptr || he->origin == nullptr || he->twin == nullptr ||
@@ -91,18 +93,20 @@ std::vector<Vec3> sampleEdge(const topo::Edge& edge) {
         return pts;
     }
 
+    pts.reserve(static_cast<size_t>(n) + 1);
     if (edge.curve && edge.curve->degree() > 1) {
-        constexpr int kSamples = 16;
         const double t0 = edge.curve->tMin();
         const double t1 = edge.curve->tMax();
-        pts.reserve(kSamples + 1);
-        for (int i = 0; i <= kSamples; ++i) {
-            const double t = t0 + (t1 - t0) * (static_cast<double>(i) / kSamples);
+        for (int i = 0; i <= n; ++i) {
+            const double t = t0 + (t1 - t0) * (static_cast<double>(i) / n);
             pts.push_back(edge.curve->evaluate(t));
         }
     } else {
-        pts.push_back(he->origin->point);
-        pts.push_back(he->twin->origin->point);
+        const Vec3 a = he->origin->point;
+        const Vec3 b = he->twin->origin->point;
+        for (int i = 0; i <= n; ++i) {
+            pts.push_back(a + (b - a) * (static_cast<double>(i) / n));
+        }
     }
     return pts;
 }
@@ -131,24 +135,46 @@ std::vector<ProjectedEdge> DrawingProjection::project(const topo::Solid& solid,
     // without missing genuine occluders (at t ~ model scale).
     const double minT = meshDiagonal(mesh) * 1e-3;
 
+    // Drop runs that collapse to a point in the view (edges parallel to the view
+    // direction) — they are not drawn as lines.
+    const double degenerate = meshDiagonal(mesh) * 1e-7;
+    constexpr int kSegments = 24;
+
+    // Emit one ProjectedEdge for the run of sub-segments [firstPt .. lastPt].
+    auto emitRun = [&](const std::vector<Vec3>& samples, size_t firstPt, size_t lastPt,
+                       bool visible, const topo::TopologyID& id, std::vector<ProjectedEdge>& out) {
+        ProjectedEdge pe;
+        pe.a = projectPoint(samples[firstPt], view, basis);
+        pe.b = projectPoint(samples[lastPt], view, basis);
+        const double dx = pe.a.x - pe.b.x;
+        const double dy = pe.a.y - pe.b.y;
+        if (std::sqrt(dx * dx + dy * dy) < degenerate) return;  // view-parallel: skip
+        pe.sourceEdge = id;
+        pe.visibility =
+            visible ? ProjectedEdge::Visibility::Visible : ProjectedEdge::Visibility::Hidden;
+        out.push_back(pe);
+    };
+
     std::vector<ProjectedEdge> out;
     for (const auto& edge : solid.edges()) {
-        const std::vector<Vec3> samples = sampleEdge(edge);
+        const std::vector<Vec3> samples = sampleEdge(edge, kSegments);
         if (samples.size() < 2) continue;
 
-        for (size_t i = 0; i + 1 < samples.size(); ++i) {
-            const Vec3& p0 = samples[i];
-            const Vec3& p1 = samples[i + 1];
-
-            ProjectedEdge pe;
-            pe.a = projectPoint(p0, view, basis);
-            pe.b = projectPoint(p1, view, basis);
-            pe.sourceEdge = edge.topoId;
-            pe.visibility = segmentVisible(p0, p1, basis.dir, mesh, minT)
-                                ? ProjectedEdge::Visibility::Visible
-                                : ProjectedEdge::Visibility::Hidden;
-            out.push_back(pe);
+        // Classify each sub-segment by its midpoint, then merge consecutive
+        // same-visibility sub-segments into a single run so a fully visible (or
+        // fully hidden) edge stays one segment and a partly occluded edge splits.
+        const size_t numSeg = samples.size() - 1;
+        size_t runStart = 0;
+        bool runVisible = segmentVisible(samples[0], samples[1], basis.dir, mesh, minT);
+        for (size_t s = 1; s < numSeg; ++s) {
+            const bool vis = segmentVisible(samples[s], samples[s + 1], basis.dir, mesh, minT);
+            if (vis != runVisible) {
+                emitRun(samples, runStart, s, runVisible, edge.topoId, out);
+                runStart = s;
+                runVisible = vis;
+            }
         }
+        emitRun(samples, runStart, numSeg, runVisible, edge.topoId, out);
     }
     return out;
 }
