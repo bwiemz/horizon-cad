@@ -2,7 +2,12 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFormLayout>
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
@@ -22,10 +27,12 @@
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
+#include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -182,6 +189,7 @@ void MainWindow::createMenus() {
     fileMenu->addSeparator();
 
     fileMenu->addAction(tr("&Insert Component..."), this, &MainWindow::onInsertComponent);
+    fileMenu->addAction(tr("Add &Mate..."), this, &MainWindow::onAddMate);
 
     fileMenu->addSeparator();
 
@@ -790,6 +798,8 @@ void MainWindow::onOpenFile() {
                 return;
             }
         }
+        // Saved assemblies come back positioned by their mates.
+        solveAssemblyMates(*assembly);
         auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
         addDocumentTab(std::move(backing), std::move(assembly),
                        tabTitleForPath(path, tr("Assembly")));
@@ -949,6 +959,189 @@ void MainWindow::onInsertComponent() {
     rebuildScene();
     m_viewport->camera().setIsometricView();
     m_statusPrompt->setText(tr("Component inserted."));
+}
+
+bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
+    if (asmDoc.mates().empty()) return true;
+
+    const std::string asmDir =
+        asmDoc.filePath().empty() ? std::string()
+                                  : std::filesystem::path(asmDoc.filePath()).parent_path().string();
+
+    // Frames come from B-Rep faces, so mate solving needs resolved parts.
+    std::vector<model::SolverComponent> solverComponents;
+    for (auto& comp : asmDoc.components()) {
+        if (!comp.resolvedPart) {
+            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
+        }
+        model::SolverComponent sc;
+        sc.id = comp.id;
+        sc.transform = comp.transform;
+        solverComponents.push_back(sc);
+    }
+
+    std::vector<model::SolverMate> solverMates;
+    for (const auto& mate : asmDoc.mates()) {
+        model::SolverMate sm;
+        sm.type = mate.type;
+        sm.componentA = mate.a.componentId;
+        sm.componentB = mate.b.componentId;
+        sm.value = mate.value;
+
+        if (mate.type != doc::MateType::Fixed) {
+            auto frameFor = [&](const doc::MateReference& ref, model::MateFrame& out) -> bool {
+                const auto* comp = asmDoc.component(ref.componentId);
+                if (!comp || !comp->resolvedPart || !comp->resolvedPart->solid()) return false;
+                const auto* face =
+                    model::MateGeometry::findFace(*comp->resolvedPart->solid(), ref.faceId);
+                if (!face) return false;
+                auto frame = model::MateGeometry::frameForFace(*face);
+                if (!frame) return false;
+                out = *frame;
+                return true;
+            };
+            if (!frameFor(mate.a, sm.frameA) || !frameFor(mate.b, sm.frameB)) {
+                statusBar()->showMessage(
+                    tr("Mate %1 references geometry that could not be resolved").arg(mate.id));
+                return false;
+            }
+        }
+        solverMates.push_back(sm);
+    }
+
+    model::AssemblySolver solver;
+    auto result = solver.solve(solverComponents, solverMates);
+
+    if (result.status == model::AssemblySolveStatus::Success) {
+        for (auto& comp : asmDoc.components()) {
+            auto it = result.transforms.find(comp.id);
+            if (it != result.transforms.end()) comp.transform = it->second;
+        }
+        QString status = tr("Mates solved (%1 iterations)").arg(result.iterations);
+        if (result.redundantCount > 0) {
+            status += tr("; %1 redundant constraint(s)").arg(result.redundantCount);
+        }
+        if (!result.ungroundedComponents.empty()) {
+            status += tr("; %1 component(s) not connected to ground")
+                          .arg(result.ungroundedComponents.size());
+        }
+        statusBar()->showMessage(status);
+        return true;
+    }
+
+    statusBar()->showMessage(
+        tr("Mate solve failed: %1")
+            .arg(QString::fromStdString(result.message.empty() ? "did not converge"
+                                                               : result.message)));
+    return false;
+}
+
+void MainWindow::onAddMate() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Add Mate is only available in an assembly document"));
+        return;
+    }
+    if (m_assembly->components().size() < 2) {
+        statusBar()->showMessage(tr("Insert at least two components first"));
+        return;
+    }
+
+    // Resolve parts so faces are available for picking.
+    const std::string asmDir =
+        m_assembly->filePath().empty()
+            ? std::string()
+            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
+    for (auto& comp : m_assembly->components()) {
+        if (!comp.resolvedPart) {
+            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
+        }
+    }
+
+    // Mate-capable faces per component (those with extractable frames).
+    auto faceTags = [](const doc::ComponentInstance& comp) {
+        QStringList tags;
+        if (comp.resolvedPart && comp.resolvedPart->solid()) {
+            for (const auto& face : comp.resolvedPart->solid()->faces()) {
+                if (!face.topoId.isValid()) continue;
+                if (model::MateGeometry::frameForFace(face)) {
+                    tags << QString::fromStdString(face.topoId.tag());
+                }
+            }
+        }
+        return tags;
+    };
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Add Mate"));
+    auto* form = new QFormLayout(&dialog);
+
+    auto* typeCombo = new QComboBox(&dialog);
+    typeCombo->addItems({tr("Coincident"), tr("Concentric"), tr("Distance"), tr("Angle"),
+                         tr("Parallel"), tr("Perpendicular"), tr("Tangent"), tr("Fixed")});
+    form->addRow(tr("Type:"), typeCombo);
+
+    auto* compACombo = new QComboBox(&dialog);
+    auto* compBCombo = new QComboBox(&dialog);
+    for (const auto& comp : m_assembly->components()) {
+        QString label =
+            QString("%1 (#%2)")
+                .arg(QString::fromStdString(comp.name.empty() ? "component" : comp.name))
+                .arg(comp.id);
+        compACombo->addItem(label, QVariant::fromValue<qulonglong>(comp.id));
+        compBCombo->addItem(label, QVariant::fromValue<qulonglong>(comp.id));
+    }
+    if (compBCombo->count() > 1) compBCombo->setCurrentIndex(1);
+
+    auto* faceACombo = new QComboBox(&dialog);
+    auto* faceBCombo = new QComboBox(&dialog);
+    auto refreshFaces = [&](QComboBox* compCombo, QComboBox* faceCombo) {
+        faceCombo->clear();
+        const auto id = static_cast<uint64_t>(compCombo->currentData().toULongLong());
+        if (const auto* comp = m_assembly->component(id)) {
+            faceCombo->addItems(faceTags(*comp));
+        }
+    };
+    refreshFaces(compACombo, faceACombo);
+    refreshFaces(compBCombo, faceBCombo);
+    connect(compACombo, &QComboBox::currentIndexChanged, &dialog,
+            [&] { refreshFaces(compACombo, faceACombo); });
+    connect(compBCombo, &QComboBox::currentIndexChanged, &dialog,
+            [&] { refreshFaces(compBCombo, faceBCombo); });
+
+    form->addRow(tr("Component A:"), compACombo);
+    form->addRow(tr("Face A:"), faceACombo);
+    form->addRow(tr("Component B:"), compBCombo);
+    form->addRow(tr("Face B:"), faceBCombo);
+
+    auto* valueSpin = new QDoubleSpinBox(&dialog);
+    valueSpin->setRange(-1e6, 1e6);
+    valueSpin->setDecimals(3);
+    form->addRow(tr("Value (distance / angle°):"), valueSpin);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    doc::Mate mate;
+    mate.type = static_cast<doc::MateType>(typeCombo->currentIndex());
+    mate.a.componentId = static_cast<uint64_t>(compACombo->currentData().toULongLong());
+    mate.a.faceId = topo::TopologyID::fromTag(faceACombo->currentText().toStdString());
+    if (mate.type != doc::MateType::Fixed) {
+        mate.b.componentId = static_cast<uint64_t>(compBCombo->currentData().toULongLong());
+        mate.b.faceId = topo::TopologyID::fromTag(faceBCombo->currentText().toStdString());
+    }
+    mate.value = mate.type == doc::MateType::Angle ? valueSpin->value() * std::numbers::pi / 180.0
+                                                   : valueSpin->value();
+
+    uint64_t mateId = m_assembly->addMate(std::move(mate));
+    if (!solveAssemblyMates(*m_assembly)) {
+        m_assembly->removeMate(mateId);
+        solveAssemblyMates(*m_assembly);
+    }
+    rebuildScene();
 }
 
 // ---------------------------------------------------------------------------

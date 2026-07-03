@@ -1035,6 +1035,8 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                 }
                 if (!sketch) continue;
 
+                std::string persistedId = fObj.value("featureID", "");
+
                 if (ftype == "extrude") {
                     double distance = fObj.value("distance", 1.0);
                     math::Vec3 direction(0, 0, 1);
@@ -1044,6 +1046,7 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                                                fObj["direction"][2].get<double>());
                     }
                     auto feat = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
+                    feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 } else if (ftype == "revolve") {
                     double angle = fObj.value("angle", 6.283185307179586);
@@ -1061,6 +1064,7 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                     }
                     auto feat =
                         std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
+                    feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 }
             } catch (const nlohmann::json::exception&) {

@@ -26,6 +26,11 @@ public:
     /// Unique identifier for TopologyID generation.
     virtual std::string featureID() const = 0;
 
+    /// Restore a persisted feature ID (used by file loaders). Face
+    /// TopologyIDs derive from this ID, so it must survive save/load or
+    /// every mate and downstream reference breaks.
+    virtual void restoreFeatureID(const std::string& id) { (void)id; }
+
     /// Execute this feature.
     /// @param inputSolid  The solid produced by the previous feature (nullptr for the first).
     /// @return The resulting solid, or nullptr on failure.
@@ -56,6 +61,7 @@ public:
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
     const math::Vec3& direction() const { return m_direction; }
     double distance() const { return m_distance; }
+    void restoreFeatureID(const std::string& id) override;
 
 private:
     std::shared_ptr<Sketch> m_sketch;
@@ -82,6 +88,7 @@ public:
     const math::Vec3& axisPoint() const { return m_axisPoint; }
     const math::Vec3& axisDir() const { return m_axisDir; }
     double angle() const { return m_angle; }
+    void restoreFeatureID(const std::string& id) override;
 
 private:
     std::shared_ptr<Sketch> m_sketch;

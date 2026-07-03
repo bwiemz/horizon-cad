@@ -1,6 +1,7 @@
 add_executable(hz_integration_tests
     test_Pipeline.cpp
     test_MultiDocument.cpp
+    test_AssemblyMates.cpp
 )
 
 target_link_libraries(hz_integration_tests

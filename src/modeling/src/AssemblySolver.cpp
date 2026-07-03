@@ -18,15 +18,17 @@ using hz::math::Vec3;
 namespace {
 
 // Placement from the 6 unknowns of one component: an incremental rigid
-// motion (rotation about the world origin, then translation) applied on
-// top of the base transform.
-Mat4 placement(const Mat4& base, const double* x) {
+// motion (rotation about the component's pivot, then translation) applied
+// on top of the base transform. Rotating about a pivot near the part's
+// mated geometry decouples rotation from translation, which conditions
+// the Newton iteration far better than rotating about the world origin.
+Mat4 placement(const Mat4& base, const Vec3& pivot, const double* x) {
     const Vec3 t(x[0], x[1], x[2]);
     const Vec3 w(x[3], x[4], x[5]);
     const double angle = w.length();
     Mat4 rot = angle < 1e-14 ? Mat4::identity()
                              : Mat4::rotation(Quaternion::fromAxisAngle(w * (1.0 / angle), angle));
-    return Mat4::translation(t) * rot * base;
+    return Mat4::translation(t + pivot) * rot * Mat4::translation(pivot * -1.0) * base;
 }
 
 struct ResidualBlock {
@@ -40,19 +42,26 @@ void mateResiduals(const SolverMate& mate, const MateFrame& a, const MateFrame& 
                    std::vector<double>& out) {
     const Vec3 d = b.origin - a.origin;
     switch (mate.type) {
-        case MateType::Coincident:
-            // Anti-parallel normals + point on plane.
-            out.push_back(b.direction.x + a.direction.x);
-            out.push_back(b.direction.y + a.direction.y);
-            out.push_back(b.direction.z + a.direction.z);
+        case MateType::Coincident: {
+            // Normals parallel up to sign (extracted surface normals carry
+            // no guaranteed orientation) + point on plane. The sign-agnostic
+            // cross form also avoids the saddle at a 180° misalignment.
+            const Vec3 cross = a.direction.cross(b.direction);
+            out.push_back(cross.x);
+            out.push_back(cross.y);
+            out.push_back(cross.z);
             out.push_back(d.dot(a.direction));
             break;
-        case MateType::Distance:
-            out.push_back(b.direction.x + a.direction.x);
-            out.push_back(b.direction.y + a.direction.y);
-            out.push_back(b.direction.z + a.direction.z);
+        }
+        case MateType::Distance: {
+            const Vec3 cross = a.direction.cross(b.direction);
+            out.push_back(cross.x);
+            out.push_back(cross.y);
+            out.push_back(cross.z);
+            // Offset measured along A's normal.
             out.push_back(d.dot(a.direction) - mate.value);
             break;
+        }
         case MateType::Concentric: {
             const Vec3 cross = a.direction.cross(b.direction);
             out.push_back(cross.x);
@@ -208,6 +217,30 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
     }
     const auto numUnknowns = static_cast<Eigen::Index>(freeComponents.size() * 6);
 
+    // Rotation pivot per component: the centroid of its mate-frame origins
+    // at the initial placement (falls back to the base translation).
+    std::unordered_map<uint64_t, Vec3> pivots;
+    std::unordered_map<uint64_t, int> pivotCounts;
+    for (const auto& mate : activeMates) {
+        const size_t ia = componentIndex.at(mate.componentA);
+        const size_t ib = componentIndex.at(mate.componentB);
+        Vec3 originA = mate.frameA.transformed(components[ia].transform).origin;
+        Vec3 originB = mate.frameB.transformed(components[ib].transform).origin;
+        pivots[mate.componentA] = pivots[mate.componentA] + originA;
+        pivotCounts[mate.componentA] += 1;
+        pivots[mate.componentB] = pivots[mate.componentB] + originB;
+        pivotCounts[mate.componentB] += 1;
+    }
+    for (const auto& comp : components) {
+        auto it = pivotCounts.find(comp.id);
+        if (it != pivotCounts.end() && it->second > 0) {
+            pivots[comp.id] = pivots[comp.id] * (1.0 / it->second);
+        } else {
+            pivots[comp.id] =
+                Vec3(comp.transform.at(0, 3), comp.transform.at(1, 3), comp.transform.at(2, 3));
+        }
+    }
+
     // Residual evaluation for the full system at unknown vector x.
     std::vector<ResidualBlock> blocks;
     auto evaluate = [&](const Eigen::VectorXd& x, Eigen::VectorXd& residuals, bool recordBlocks) {
@@ -221,7 +254,8 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
             auto placed = [&](size_t ci) {
                 if (grounded[ci]) return components[ci].transform;
                 const size_t off = unknownOffset.at(components[ci].id);
-                return placement(components[ci].transform, x.data() + off);
+                return placement(components[ci].transform, pivots.at(components[ci].id),
+                                 x.data() + off);
             };
 
             MateFrame a = mate.frameA.transformed(placed(ia));
@@ -324,7 +358,8 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
 
     for (size_t fi = 0; fi < freeComponents.size(); ++fi) {
         const auto& comp = components[freeComponents[fi]];
-        result.transforms[comp.id] = placement(comp.transform, x.data() + fi * 6);
+        result.transforms[comp.id] =
+            placement(comp.transform, pivots.at(comp.id), x.data() + fi * 6);
     }
 
     result.iterations = iteration;
