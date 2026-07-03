@@ -10,7 +10,9 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
 using hz::io::NativeFormat;
@@ -299,4 +301,81 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::remove(outOfRange.c_str());
     std::remove(negative.c_str());
     std::remove(good.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// LoftFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<Sketch> squareOnPlane(double s, double z) {
+    const double h = s * 0.5;
+    auto sketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, z), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(-h, -h), Vec2(h, -h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(h, -h), Vec2(h, h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(h, h), Vec2(-h, h)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(-h, h), Vec2(-h, -h)));
+    return sketch;
+}
+
+TEST(PartFormatTest, LoftFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto s0 = squareOnPlane(6.0, 0.0);
+    auto s1 = squareOnPlane(3.0, 10.0);
+    original.addSketch(s0);
+    original.addSketch(s1);
+    original.featureTree().addFeature(
+        std::make_unique<LoftFeature>(std::vector<std::shared_ptr<Sketch>>{s0, s1}));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_loft_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+
+    const auto* loft = dynamic_cast<const LoftFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(loft, nullptr);
+    EXPECT_EQ(loft->sections().size(), 2u);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);
+
+    std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, SweepFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto profile = squareOnPlane(4.0, 0.0);
+    auto pathSketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, 1, 0), Vec3(1, 0, 0)));
+    pathSketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    original.addSketch(profile);
+    original.addSketch(pathSketch);
+    original.featureTree().addFeature(std::make_unique<SweepFeature>(profile, pathSketch));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_sweep_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+
+    const auto* sweep = dynamic_cast<const SweepFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(sweep, nullptr);
+    ASSERT_NE(sweep->profile(), nullptr);
+    ASSERT_NE(sweep->path(), nullptr);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);
+
+    std::remove(path.c_str());
 }

@@ -6,6 +6,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -144,4 +145,62 @@ TEST(FeatureTreeTest, FeatureAccess) {
     ASSERT_NE(f, nullptr);
     EXPECT_EQ(f->name(), "Extrude");
     EXPECT_FALSE(f->featureID().empty());
+}
+
+// ---------------------------------------------------------------------------
+// LoftFeatureBuilds
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<Sketch> makeSquareSketchOnPlane(double s, double z) {
+    const double h = s * 0.5;
+    auto sketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, z), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(-h, -h), Vec2(h, -h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(h, -h), Vec2(h, h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(h, h), Vec2(-h, h)));
+    sketch->addEntity(std::make_shared<DraftLine>(Vec2(-h, h), Vec2(-h, -h)));
+    return sketch;
+}
+
+TEST(FeatureTreeTest, LoftFeatureBuilds) {
+    FeatureTree tree;
+    std::vector<std::shared_ptr<Sketch>> sections = {
+        makeSquareSketchOnPlane(6.0, 0.0),
+        makeSquareSketchOnPlane(3.0, 10.0),
+    };
+    tree.addFeature(std::make_unique<LoftFeature>(sections));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 6u);
+
+    const Feature* f = tree.feature(0);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->name(), "Loft");
+    EXPECT_FALSE(f->featureID().empty());
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeatureBuilds
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, SweepFeatureBuilds) {
+    FeatureTree tree;
+    auto profile = makeSquareSketchOnPlane(4.0, 0.0);
+    // Path sketch: a vertical line, drawn on the XZ plane so it rises in Z.
+    auto path = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, 1, 0), Vec3(1, 0, 0)));
+    path->addEntity(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+
+    tree.addFeature(std::make_unique<SweepFeature>(profile, path));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 6u);
+
+    const Feature* f = tree.feature(0);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->name(), "Sweep");
 }

@@ -100,6 +100,48 @@ private:
     static int s_nextID;
 };
 
+/// Loft feature: creates a solid by interpolating through ordered sketch
+/// sections (each a closed profile on its own plane).
+class LoftFeature : public Feature {
+public:
+    explicit LoftFeature(std::vector<std::shared_ptr<Sketch>> sections);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    void restoreFeatureID(const std::string& id) override;
+
+    const std::vector<std::shared_ptr<Sketch>>& sections() const { return m_sections; }
+
+private:
+    std::vector<std::shared_ptr<Sketch>> m_sections;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
+/// Sweep feature: creates a solid by transporting a profile sketch along a
+/// path sketch (open polyline). Translation transport (Era-2 scope).
+class SweepFeature : public Feature {
+public:
+    SweepFeature(std::shared_ptr<Sketch> profile, std::shared_ptr<Sketch> path);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    void restoreFeatureID(const std::string& id) override;
+
+    const std::shared_ptr<Sketch>& profile() const { return m_profile; }
+    const std::shared_ptr<Sketch>& path() const { return m_path; }
+
+private:
+    std::shared_ptr<Sketch> m_profile;
+    std::shared_ptr<Sketch> m_path;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Result of building the feature tree with diagnostics.
 struct BuildResult {
     std::unique_ptr<topo::Solid> solid;

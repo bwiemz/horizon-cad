@@ -3,8 +3,13 @@
 #include <cassert>
 
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/Loft.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/Sweep.h"
 
 namespace hz::doc {
 
@@ -114,6 +119,114 @@ std::unique_ptr<topo::Solid> RevolveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
                                    m_angle, m_featureID);
+}
+
+// ---------------------------------------------------------------------------
+// LoftFeature
+// ---------------------------------------------------------------------------
+
+int LoftFeature::s_nextID = 1;
+
+LoftFeature::LoftFeature(std::vector<std::shared_ptr<Sketch>> sections)
+    : m_sections(std::move(sections)), m_featureID("loft_" + std::to_string(s_nextID++)) {}
+
+std::string LoftFeature::name() const {
+    return "Loft";
+}
+
+std::string LoftFeature::featureID() const {
+    return m_featureID;
+}
+
+void LoftFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "loft_");
+}
+
+std::unique_ptr<topo::Solid> LoftFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    std::vector<model::LoftSection> sections;
+    sections.reserve(m_sections.size());
+    for (const auto& sk : m_sections) {
+        if (!sk) return nullptr;
+        sections.push_back({sk->entities(), sk->plane()});
+    }
+    return model::Loft::execute(sections, m_featureID);
+}
+
+// ---------------------------------------------------------------------------
+// SweepFeature
+// ---------------------------------------------------------------------------
+
+int SweepFeature::s_nextID = 1;
+
+SweepFeature::SweepFeature(std::shared_ptr<Sketch> profile, std::shared_ptr<Sketch> path)
+    : m_profile(std::move(profile)),
+      m_path(std::move(path)),
+      m_featureID("sweep_" + std::to_string(s_nextID++)) {}
+
+std::string SweepFeature::name() const {
+    return "Sweep";
+}
+
+std::string SweepFeature::featureID() const {
+    return m_featureID;
+}
+
+void SweepFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "sweep_");
+}
+
+namespace {
+
+// Extract an open polyline of 3D path points from a path sketch: chain the
+// endpoints of its line/arc entities, or expand a single polyline entity.
+std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
+    const auto& plane = sketch.plane();
+    std::vector<math::Vec2> pts2D;
+
+    for (const auto& ent : sketch.entities()) {
+        if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(ent.get())) {
+            for (const auto& p : pl->points()) pts2D.push_back(p);
+            continue;
+        }
+        math::Vec2 s, e;
+        if (auto* line = dynamic_cast<const draft::DraftLine*>(ent.get())) {
+            s = line->start();
+            e = line->end();
+        } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(ent.get())) {
+            s = arc->startPoint();
+            e = arc->endPoint();
+        } else {
+            continue;
+        }
+        if (pts2D.empty()) {
+            pts2D.push_back(s);
+        } else {
+            const double ds = (pts2D.back() - s).length();
+            const double de = (pts2D.back() - e).length();
+            if (de < ds) std::swap(s, e);
+        }
+        pts2D.push_back(e);
+    }
+
+    std::vector<math::Vec3> pts3D;
+    pts3D.reserve(pts2D.size());
+    for (const auto& p : pts2D) pts3D.push_back(plane.localToWorld(p));
+    return pts3D;
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> SweepFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    if (!m_profile || !m_path) return nullptr;
+    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path);
+    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
+                                 m_featureID);
 }
 
 // ---------------------------------------------------------------------------

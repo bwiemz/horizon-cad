@@ -158,7 +158,9 @@ Horizon is under active development. Completed and planned work:
 | 25-30 | Done | Era 0 — Foundation: R*-tree spatial indexing, parametric sketch solving, expression engine, sketch planes, Linux CI, stabilization |
 | 31-40 | Done | Era 1 — Geometry kernel: NURBS curves/surfaces, half-edge B-Rep, primitives, extrude/revolve, Booleans, fillet/chamfer, feature tree UI, viewport polish, kernel hardening |
 | 41 | Done | Era 2 — Multi-document architecture: .hzpart/.hzasm formats, DocumentManager, lightweight/resolved assembly loading, document tabs |
-| 42-52 | Planned | Era 2 — Assembly mates, loft/sweep, shell/draft, patterns, Python API, STEP AP242 |
+| 42 | Done | Era 2 — Assembly mates: 8 mate types, 6-DOF solver with kinematic pre-analysis, TopologyID mate references |
+| 43 | Done | Era 2 — Loft & Sweep: ring-stack B-Rep, profile interpolation with twist minimization, translation-transport sweep |
+| 44-52 | Planned | Era 2 — Shell/draft, patterns, reference geometry, Python API, collision, mass properties, STEP AP242 |
 | 53-64 | Planned | Era 3 — Drawings from 3D, GD&T, BOM, FEA, PDM, sheet metal |
 | 65-80 | Planned | Era 4 — Vulkan backend, PBR/ray tracing, cloud sync, CAM, 1.0 release |
 
