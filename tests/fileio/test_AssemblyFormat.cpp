@@ -97,11 +97,15 @@ TEST(AssemblyFormatTest, AbsolutePartPathsAreStoredRelative) {
     std::string path = (dir / "main.hzasm").string();
     ASSERT_TRUE(NativeFormat::saveAssembly(path, original));
 
-    // The stored path is relative to the assembly file.
-    std::ifstream in(path);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_NE(content.find("parts/bolt.hzpart"), std::string::npos);
-    EXPECT_EQ(content.find(dir.generic_string() + "/parts"), std::string::npos);
+    // The stored path is relative to the assembly file. Scope the stream so
+    // the file handle is closed before remove_all (Windows refuses to delete
+    // open files).
+    {
+        std::ifstream in(path);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("parts/bolt.hzpart"), std::string::npos);
+        EXPECT_EQ(content.find(dir.generic_string() + "/parts"), std::string::npos);
+    }
 
     // In memory the path is held absolute (resolved against the assembly
     // file) so a later Save As under a different directory re-relativizes

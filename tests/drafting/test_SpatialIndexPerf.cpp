@@ -55,7 +55,14 @@ TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
     auto end = std::chrono::high_resolution_clock::now();
     double ms = std::chrono::duration<double, std::milli>(end - start).count();
     std::cout << "[PERF] 10k entity insert: " << ms << " ms" << std::endl;
-    EXPECT_LT(ms, 200.0);  // 200ms threshold accommodates Debug builds
+#ifdef NDEBUG
+    EXPECT_LT(ms, 100.0);
+#else
+    // Debug builds on shared CI runners (especially MSVC with iterator
+    // debugging) run several times slower; the perf target only binds in
+    // Release.
+    EXPECT_LT(ms, 500.0);
+#endif
 }
 
 TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
