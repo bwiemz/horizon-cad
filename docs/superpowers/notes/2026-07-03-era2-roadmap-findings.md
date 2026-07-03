@@ -50,8 +50,29 @@ established DOF results — and is now gated behind `setComputeDiagnostics(bool)
 (default on); large-assembly callers turn it off. Covered by
 `AssemblySolverTest.LargeAssemblySolvesQuickly` (NDEBUG-guarded < 1 s bound).
 
-**Remaining Phase-52 work:** Boolean robustness under random coordinate
-perturbation (the other half of Era-2 stabilization) is still open.
+## Phase 52 — Boolean robustness & rebuild perf ✅ VALIDATED
+
+Two more Era-2 stabilization criteria are now checked by regression guards:
+
+- **Boolean robustness under coordinate perturbation.** `BooleanOp` was measured
+  across all three types (Union / Subtract / Intersect) over a spread of random
+  overlapping box configurations — from deep overlap to near-coincident faces.
+  Every operation either produced a **valid, Euler-consistent** B-Rep or gave up
+  cleanly (returned `nullptr`); none crashed or emitted invalid topology. This is
+  the roadmap's "no crashes, no invalid topology" bar. Guarded by
+  `BooleanOpTest.RandomOverlapProducesValidTopology`.
+  - Along the way, the classifier was found to re-tessellate the whole opposing
+    solid per face centroid (12 tessellations for a box-vs-box op); hoisting that
+    to 2 (`ExactPredicates::tessellateSolid` + `classifyPointAgainstMesh`) made
+    Booleans ~5.5× faster, which also keeps the robustness sweep affordable.
+
+- **50-feature rebuild < 5 s.** A 50-feature part rebuilds in ~3 ms (debug), far
+  under the 5 s target — the tree replay is not a bottleneck. Guarded by
+  `PerfTest.FeatureTreeRebuild` (now 50 features, single-rebuild < 5 s bound).
+
+**Remaining Phase-52 work:** STEP round-trip (blocked on the Phase 50 dependency
+above) and the 100-part < 2 GB memory bound (not yet instrumented) are the last
+open Era-2 stabilization items.
 
 ## Done in passing
 

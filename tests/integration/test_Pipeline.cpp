@@ -807,20 +807,19 @@ TEST(PerfTest, PrimitiveTessellation) {
 TEST(PerfTest, FeatureTreeRebuild) {
     using Clock = std::chrono::high_resolution_clock;
 
+    // Phase 52 stabilization target: a 50-feature part rebuilds in under 5 s.
     FeatureTree tree;
-    // Build a 5-feature tree (each feature is an independent extrude for now)
-    for (int i = 0; i < 5; ++i) {
-        auto sketch = makeRectSketch(5.0 + i, 3.0 + i);
-        tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3::UnitZ, 2.0 + i));
+    for (int i = 0; i < 50; ++i) {
+        auto sketch = makeRectSketch(5.0 + (i % 7), 3.0 + (i % 5));
+        tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3::UnitZ, 2.0 + (i % 4)));
     }
 
     auto start = Clock::now();
-    for (int iter = 0; iter < 10; ++iter) {
-        auto solid = tree.build();
-        EXPECT_NE(solid, nullptr);
-    }
+    auto solid = tree.build();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
-    // 10 rebuilds of 5-feature tree should complete in under 10 seconds
-    EXPECT_LT(elapsed.count(), 10000)
-        << "Feature tree rebuild too slow: " << elapsed.count() << "ms for 10 rebuilds";
+    ASSERT_NE(solid, nullptr);
+    // A 50-feature rebuild must stay interactive; measured ~3ms, so 5 s is a
+    // generous regression guard against an accidental O(N^2) replay.
+    EXPECT_LT(elapsed.count(), 5000)
+        << "50-feature rebuild too slow: " << elapsed.count() << "ms (target < 5000ms)";
 }
