@@ -735,6 +735,33 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
     return solid;
 }
 
+std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
+    std::vector<std::unique_ptr<topo::Solid>> bodies;
+    for (const auto& feat : m_features) {
+        if (feat->isConstruction()) continue;  // reference geometry: no solid effect
+
+        if (feat->createsNewBody() || bodies.empty()) {
+            // Start a fresh body. Create features ignore any input solid; a
+            // transform with no active body (bodies.empty()) has nothing to act
+            // on, so it too is executed against a null input and simply fails.
+            auto solid = feat->execute(nullptr);
+            if (solid) {
+                bodies.push_back(std::move(solid));
+            }
+        } else {
+            // Transform the active (most-recently-created) body in place.
+            auto solid = feat->execute(std::move(bodies.back()));
+            bodies.pop_back();
+            if (solid) {
+                bodies.push_back(std::move(solid));
+            }
+            // If the transform failed, the active body is dropped; the next
+            // create feature starts a new one.
+        }
+    }
+    return bodies;
+}
+
 BuildResult FeatureTree::buildWithDiagnostics() const {
     BuildResult result;
     if (m_features.empty()) {

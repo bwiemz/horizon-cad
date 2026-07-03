@@ -420,3 +420,88 @@ TEST(FeatureTreeTest, ChamferFeatureBevelsEdge) {
     EXPECT_EQ(tree.feature(1)->name(), "Chamfer");
     EXPECT_DOUBLE_EQ(tree.feature(1)->parameters().at("distance"), 1.0);
 }
+
+// ---------------------------------------------------------------------------
+// buildBodies() — multi-body trees: each create feature starts a new body,
+// transforms modify the active (most-recently-created) body.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, BuildBodiesEmptyTreeReturnsNoBodies) {
+    FeatureTree tree;
+    EXPECT_TRUE(tree.buildBodies().empty());
+}
+
+TEST(FeatureTreeTest, BuildBodiesSinglePrimitiveIsOneBody) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(2.0, 3.0, 4.0));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 1u);
+    ASSERT_NE(bodies[0], nullptr);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);
+    EXPECT_TRUE(bodies[0]->checkEulerFormula());
+}
+
+TEST(FeatureTreeTest, BuildBodiesTwoPrimitivesAreTwoBodies) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(2.0, 2.0, 2.0));
+    tree.addFeature(PrimitiveFeature::makeSphere(3.0));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 2u);
+    ASSERT_NE(bodies[0], nullptr);
+    ASSERT_NE(bodies[1], nullptr);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);  // box preserved as its own body
+    EXPECT_TRUE(bodies[0]->isValid());
+    EXPECT_TRUE(bodies[1]->isValid());
+}
+
+TEST(FeatureTreeTest, BuildBodiesTransformStaysOnActiveBody) {
+    // Box, then a second box, then a fillet: the fillet modifies the active
+    // (second) body, leaving two bodies total.
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    tree.addFeature(PrimitiveFeature::makeBox(6.0, 6.0, 6.0));
+
+    // Snapshot the second box's first edge to fillet it.
+    auto twoBoxes = tree.buildBodies();
+    ASSERT_EQ(twoBoxes.size(), 2u);
+    const size_t activeFaces = twoBoxes[1]->faceCount();
+    ASSERT_FALSE(twoBoxes[1]->edges().empty());
+    const auto edgeId = twoBoxes[1]->edges().front().topoId;
+
+    tree.addFeature(
+        std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 1.0));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 2u);
+    ASSERT_NE(bodies[0], nullptr);
+    ASSERT_NE(bodies[1], nullptr);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);           // first box untouched
+    EXPECT_GT(bodies[1]->faceCount(), activeFaces);  // fillet landed on active body
+    EXPECT_TRUE(bodies[1]->isValid());
+}
+
+TEST(FeatureTreeTest, BuildBodiesSkipsLeadingConstructionFeature) {
+    FeatureTree tree;
+    tree.addFeature(DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 0), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    tree.addFeature(PrimitiveFeature::makeBox(2.0, 2.0, 2.0));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 1u);  // datum contributes no body
+    ASSERT_NE(bodies[0], nullptr);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);
+}
+
+TEST(FeatureTreeTest, BuildBodiesPrimitiveThenFilletIsOneBody) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    auto box = tree.buildBodies();
+    ASSERT_EQ(box.size(), 1u);
+    ASSERT_FALSE(box[0]->edges().empty());
+    const auto edgeId = box[0]->edges().front().topoId;
+
+    tree.addFeature(
+        std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 1.0));
+    auto bodies = tree.buildBodies();
+    ASSERT_EQ(bodies.size(), 1u);  // fillet transforms, does not add a body
+    ASSERT_NE(bodies[0], nullptr);
+    EXPECT_TRUE(bodies[0]->isValid());
+}
