@@ -34,6 +34,13 @@ public:
     /// plane. Returns the new sketch's index.
     int addRectangleSketch(double w, double h);
 
+    // --- Primitives (parametric base features) -----------------------------
+    void addBox(double width, double height, double depth);
+    void addCylinder(double radius, double height);
+    void addSphere(double radius);
+    void addCone(double bottomRadius, double topRadius, double height);
+    void addTorus(double majorRadius, double minorRadius);
+
     // --- Features ----------------------------------------------------------
     /// Extrude the sketch at @p sketchIndex along @p direction by @p distance.
     /// Returns false if the index is out of range.

@@ -516,6 +516,28 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             fObj["origin"] = {datum->origin().x, datum->origin().y, datum->origin().z};
             fObj["dirA"] = {datum->dirA().x, datum->dirA().y, datum->dirA().z};
             fObj["dirB"] = {datum->dirB().x, datum->dirB().y, datum->dirB().z};
+        } else if (const auto* prim = dynamic_cast<const doc::PrimitiveFeature*>(feat)) {
+            fObj["type"] = "primitive";
+            switch (prim->kind()) {
+                case doc::PrimitiveFeature::Kind::Box:
+                    fObj["primitiveKind"] = "box";
+                    break;
+                case doc::PrimitiveFeature::Kind::Cylinder:
+                    fObj["primitiveKind"] = "cylinder";
+                    break;
+                case doc::PrimitiveFeature::Kind::Sphere:
+                    fObj["primitiveKind"] = "sphere";
+                    break;
+                case doc::PrimitiveFeature::Kind::Cone:
+                    fObj["primitiveKind"] = "cone";
+                    break;
+                case doc::PrimitiveFeature::Kind::Torus:
+                    fObj["primitiveKind"] = "torus";
+                    break;
+            }
+            fObj["p0"] = prim->p0();
+            fObj["p1"] = prim->p1();
+            fObj["p2"] = prim->p2();
         }
 
         featureTreeArray.push_back(fObj);
@@ -1181,6 +1203,27 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         feat = doc::DatumFeature::makePoint(model::DatumPoint{origin});
                     } else {
                         feat = doc::DatumFeature::makePlane(model::DatumPlane{origin, dirA, dirB});
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "primitive") {
+                    const double p0 = fObj.value("p0", 1.0);
+                    const double p1 = fObj.value("p1", 1.0);
+                    const double p2 = fObj.value("p2", 1.0);
+                    const std::string kind = fObj.value("primitiveKind", "box");
+                    std::unique_ptr<doc::PrimitiveFeature> feat;
+                    if (kind == "cylinder") {
+                        feat = doc::PrimitiveFeature::makeCylinder(p0, p1);
+                    } else if (kind == "sphere") {
+                        feat = doc::PrimitiveFeature::makeSphere(p0);
+                    } else if (kind == "cone") {
+                        feat = doc::PrimitiveFeature::makeCone(p0, p1, p2);
+                    } else if (kind == "torus") {
+                        feat = doc::PrimitiveFeature::makeTorus(p0, p1);
+                    } else {
+                        feat = doc::PrimitiveFeature::makeBox(p0, p1, p2);
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
