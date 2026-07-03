@@ -17,6 +17,7 @@ add_executable(hz_modeling_tests
     test_Shell.cpp
     test_Pattern.cpp
     test_ReferenceGeometry.cpp
+    test_InterferenceChecker.cpp
 )
 
 target_link_libraries(hz_modeling_tests
