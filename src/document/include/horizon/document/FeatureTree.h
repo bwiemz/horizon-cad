@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -36,6 +37,12 @@ public:
     /// @param inputSolid  The solid produced by the previous feature (nullptr for the first).
     /// @return The resulting solid, or nullptr on failure.
     virtual std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const = 0;
+
+    /// True for non-geometric construction features (datum planes, axes,
+    /// points). The feature tree skips these when building the solid, so they
+    /// can appear anywhere — including before any solid exists — without
+    /// affecting the body.
+    virtual bool isConstruction() const { return false; }
 
     /// Return editable parameters as name/value pairs.
     virtual std::map<std::string, double> parameters() const { return {}; }
@@ -231,6 +238,45 @@ private:
     double m_scalar = 0;  ///< Linear: spacing. Circular: angle step (rad).
     int m_count = 1;
     std::vector<int> m_suppressed;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
+/// Reference-geometry feature: a datum plane, axis, or point. Non-geometric —
+/// it lives in the feature tree as construction geometry that sketches and
+/// features reference, but does not alter the solid body.
+class DatumFeature : public Feature {
+public:
+    enum class DatumKind { Plane, Axis, Point };
+
+    static std::unique_ptr<DatumFeature> makePlane(const model::DatumPlane& plane);
+    static std::unique_ptr<DatumFeature> makeAxis(const model::DatumAxis& axis);
+    static std::unique_ptr<DatumFeature> makePoint(const model::DatumPoint& point);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    bool isConstruction() const override { return true; }
+    void restoreFeatureID(const std::string& id) override;
+
+    DatumKind datumKind() const { return m_kind; }
+    model::DatumPlane asPlane() const;
+    model::DatumAxis asAxis() const;
+    model::DatumPoint asPoint() const;
+
+    // Uniform storage slots (also the serialization shape).
+    const math::Vec3& origin() const { return m_origin; }
+    const math::Vec3& dirA() const { return m_dirA; }  ///< Plane: normal. Axis: direction.
+    const math::Vec3& dirB() const { return m_dirB; }  ///< Plane: xAxis.
+
+private:
+    DatumFeature() = default;
+
+    DatumKind m_kind = DatumKind::Plane;
+    math::Vec3 m_origin;
+    math::Vec3 m_dirA;
+    math::Vec3 m_dirB;
     std::string m_featureID;
 
     static int s_nextID;

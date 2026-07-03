@@ -500,6 +500,22 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             fObj["scalar"] = pat->scalar();
             fObj["count"] = pat->count();
             fObj["suppressed"] = pat->suppressed();
+        } else if (const auto* datum = dynamic_cast<const doc::DatumFeature*>(feat)) {
+            fObj["type"] = "datum";
+            switch (datum->datumKind()) {
+                case doc::DatumFeature::DatumKind::Plane:
+                    fObj["datumKind"] = "plane";
+                    break;
+                case doc::DatumFeature::DatumKind::Axis:
+                    fObj["datumKind"] = "axis";
+                    break;
+                case doc::DatumFeature::DatumKind::Point:
+                    fObj["datumKind"] = "point";
+                    break;
+            }
+            fObj["origin"] = {datum->origin().x, datum->origin().y, datum->origin().z};
+            fObj["dirA"] = {datum->dirA().x, datum->dirA().y, datum->dirA().z};
+            fObj["dirB"] = {datum->dirB().x, datum->dirB().y, datum->dirB().z};
         }
 
         featureTreeArray.push_back(fObj);
@@ -1140,6 +1156,31 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                     } else {
                         feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
                                                                std::move(suppressed));
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "datum") {
+                    auto readVec = [&](const char* key) {
+                        math::Vec3 v;
+                        if (fObj.contains(key)) {
+                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
+                                           fObj[key][2].get<double>());
+                        }
+                        return v;
+                    };
+                    math::Vec3 origin = readVec("origin");
+                    math::Vec3 dirA = readVec("dirA");
+                    math::Vec3 dirB = readVec("dirB");
+                    std::string kind = fObj.value("datumKind", "plane");
+                    std::unique_ptr<doc::DatumFeature> feat;
+                    if (kind == "axis") {
+                        feat = doc::DatumFeature::makeAxis(model::DatumAxis{origin, dirA});
+                    } else if (kind == "point") {
+                        feat = doc::DatumFeature::makePoint(model::DatumPoint{origin});
+                    } else {
+                        feat = doc::DatumFeature::makePlane(model::DatumPlane{origin, dirA, dirB});
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));

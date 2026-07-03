@@ -269,3 +269,58 @@ TEST(FeatureTreeTest, CircularPatternFeature) {
     EXPECT_EQ(solid->shellCount(), 6u);
     EXPECT_EQ(tree.feature(1)->name(), "CircularPattern");
 }
+
+// ---------------------------------------------------------------------------
+// Datum (reference geometry) features are non-geometric and pass the body
+// through unchanged — even when they lead the tree.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, LeadingDatumDoesNotBreakBuild) {
+    FeatureTree tree;
+    // A datum plane before any solid; then extrude. The datum must not make
+    // the build fail even though there is no input solid when it is reached.
+    tree.addFeature(DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    auto sketch = makeRectSketch(4.0, 3.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+
+    EXPECT_TRUE(tree.feature(0)->isConstruction());
+    EXPECT_EQ(tree.feature(0)->name(), "DatumPlane");
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->faceCount(), 6u);  // just the box; datum contributes nothing
+    EXPECT_TRUE(solid->checkEulerFormula());
+}
+
+TEST(FeatureTreeTest, DatumBetweenFeaturesIsTransparent) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(2.0, 2.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    // Insert a datum axis in the middle, then pattern — the datum is skipped.
+    tree.addFeature(DatumFeature::makeAxis(hz::model::DatumAxis{Vec3::Zero, Vec3(0, 0, 1)}));
+    tree.addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3));
+
+    auto result = tree.buildWithDiagnostics();
+    ASSERT_NE(result.solid, nullptr);
+    EXPECT_EQ(result.solid->shellCount(), 3u);
+    EXPECT_EQ(result.failedFeatureIndex, -1);
+    EXPECT_TRUE(tree.feature(1)->isConstruction());
+}
+
+TEST(FeatureTreeTest, DatumAccessorsReconstructGeometry) {
+    auto planeFeat =
+        DatumFeature::makePlane(hz::model::DatumPlane{Vec3(1, 2, 3), Vec3(0, 0, 1), Vec3(1, 0, 0)});
+    EXPECT_EQ(planeFeat->datumKind(), DatumFeature::DatumKind::Plane);
+    EXPECT_NEAR(planeFeat->asPlane().origin.z, 3.0, 1e-12);
+
+    auto axisFeat = DatumFeature::makeAxis(hz::model::DatumAxis{Vec3(4, 5, 6), Vec3(0, 1, 0)});
+    EXPECT_EQ(axisFeat->datumKind(), DatumFeature::DatumKind::Axis);
+    EXPECT_EQ(axisFeat->name(), "DatumAxis");
+    EXPECT_NEAR(axisFeat->asAxis().direction.y, 1.0, 1e-12);
+
+    auto pointFeat = DatumFeature::makePoint(hz::model::DatumPoint{Vec3(7, 8, 9)});
+    EXPECT_EQ(pointFeat->datumKind(), DatumFeature::DatumKind::Point);
+    EXPECT_EQ(pointFeat->name(), "DatumPoint");
+    EXPECT_NEAR(pointFeat->asPoint().position.x, 7.0, 1e-12);
+}

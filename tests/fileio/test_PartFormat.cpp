@@ -478,3 +478,41 @@ TEST(PartFormatTest, LinearPatternRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// DatumFeatureRoundTrip — reference geometry persists and stays transparent
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, DatumFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(3.0, 3.0);
+    original.addSketch(sketch);
+    // Datum plane, then a solid; the datum must survive save/load and not
+    // disturb the rebuilt body.
+    original.featureTree().addFeature(DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 7), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_datum_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* datum = dynamic_cast<const DatumFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(datum, nullptr);
+    EXPECT_EQ(datum->datumKind(), DatumFeature::DatumKind::Plane);
+    EXPECT_TRUE(datum->isConstruction());
+    EXPECT_DOUBLE_EQ(datum->origin().z, 7.0);
+    EXPECT_DOUBLE_EQ(datum->dirA().z, 1.0);
+    EXPECT_DOUBLE_EQ(datum->dirB().x, 1.0);
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 6u);  // just the box
+
+    std::remove(path.c_str());
+}

@@ -17,6 +17,7 @@ add_library(hz_modeling STATIC
     src/Draft.cpp
     src/Shell.cpp
     src/Pattern.cpp
+    src/ReferenceGeometry.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)

@@ -392,6 +392,80 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(
 }
 
 // ---------------------------------------------------------------------------
+// DatumFeature
+// ---------------------------------------------------------------------------
+
+int DatumFeature::s_nextID = 1;
+
+std::unique_ptr<DatumFeature> DatumFeature::makePlane(const model::DatumPlane& plane) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Plane;
+    f->m_origin = plane.origin;
+    f->m_dirA = plane.normal;
+    f->m_dirB = plane.xAxis;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<DatumFeature> DatumFeature::makeAxis(const model::DatumAxis& axis) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Axis;
+    f->m_origin = axis.origin;
+    f->m_dirA = axis.direction;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::unique_ptr<DatumFeature> DatumFeature::makePoint(const model::DatumPoint& point) {
+    std::unique_ptr<DatumFeature> f(new DatumFeature());
+    f->m_kind = DatumKind::Point;
+    f->m_origin = point.position;
+    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::string DatumFeature::name() const {
+    switch (m_kind) {
+        case DatumKind::Plane:
+            return "DatumPlane";
+        case DatumKind::Axis:
+            return "DatumAxis";
+        case DatumKind::Point:
+            return "DatumPoint";
+    }
+    return "Datum";
+}
+
+std::string DatumFeature::featureID() const {
+    return m_featureID;
+}
+
+void DatumFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "datum_");
+}
+
+model::DatumPlane DatumFeature::asPlane() const {
+    return model::DatumPlane{m_origin, m_dirA, m_dirB};
+}
+
+model::DatumAxis DatumFeature::asAxis() const {
+    return model::DatumAxis{m_origin, m_dirA};
+}
+
+model::DatumPoint DatumFeature::asPoint() const {
+    return model::DatumPoint{m_origin};
+}
+
+std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    // Non-geometric: pass the body through unchanged. The feature tree skips
+    // construction features when building, so this is only reached if called
+    // directly.
+    return inputSolid;
+}
+
+// ---------------------------------------------------------------------------
 // FeatureTree
 // ---------------------------------------------------------------------------
 
@@ -429,6 +503,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (const auto& feat : m_features) {
+        if (feat->isConstruction()) continue;  // reference geometry: no solid effect
         solid = feat->execute(std::move(solid));
         if (!solid) {
             return nullptr;  // Feature failed
@@ -449,6 +524,10 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (int i = 0; i < limit; ++i) {
+        if (m_features[static_cast<size_t>(i)]->isConstruction()) {
+            result.lastSuccessfulFeature = i;  // construction features never fail
+            continue;
+        }
         auto next = m_features[static_cast<size_t>(i)]->execute(std::move(solid));
         if (!next) {
             result.failedFeatureIndex = i;
