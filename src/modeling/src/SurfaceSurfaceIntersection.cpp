@@ -1,12 +1,12 @@
 #include "horizon/modeling/SurfaceSurfaceIntersection.h"
 
+#include <cmath>
+#include <unordered_map>
+
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/RTree.h"
 #include "horizon/topology/Solid.h"
-
-#include <cmath>
-#include <unordered_map>
 
 namespace hz::model {
 
@@ -29,9 +29,8 @@ inline math::Vec3 getVertex(const std::vector<float>& pos, uint32_t idx) {
 /// Compute the intersection of a line segment (p0->p1) with a plane defined by
 /// (planePoint, planeNormal).  Returns true if there is an intersection in [0,1]
 /// and sets `out` to the intersection point.
-bool segmentPlaneIntersect(const math::Vec3& p0, const math::Vec3& p1,
-                           const math::Vec3& planePoint, const math::Vec3& planeNormal,
-                           math::Vec3& out) {
+bool segmentPlaneIntersect(const math::Vec3& p0, const math::Vec3& p1, const math::Vec3& planePoint,
+                           const math::Vec3& planeNormal, math::Vec3& out) {
     math::Vec3 dir = p1 - p0;
     double denom = dir.dot(planeNormal);
     if (std::abs(denom) < 1e-15) return false;  // Parallel.
@@ -137,8 +136,8 @@ struct FacePairHash {
 
 }  // namespace
 
-SSIResult SurfaceSurfaceIntersection::compute(const topo::Solid& solidA,
-                                              const topo::Solid& solidB, double tolerance) {
+SSIResult SurfaceSurfaceIntersection::compute(const topo::Solid& solidA, const topo::Solid& solidB,
+                                              double tolerance) {
     SSIResult result;
 
     // Use the tolerance as the tessellation chord-height tolerance.

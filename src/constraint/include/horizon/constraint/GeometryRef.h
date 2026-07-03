@@ -1,9 +1,10 @@
 #pragma once
 
-#include "horizon/math/Vec2.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "horizon/math/Vec2.h"
 
 namespace hz::draft {
 class DraftEntity;
@@ -37,15 +38,14 @@ math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity
 
 /// Extract line endpoints (start, end) for a Line feature.
 std::pair<math::Vec2, math::Vec2> extractLine(const GeometryRef& ref,
-                                               const draft::DraftEntity& entity);
+                                              const draft::DraftEntity& entity);
 
 /// Extract circle center and radius for a Circle feature.
 std::pair<math::Vec2, double> extractCircle(const GeometryRef& ref,
-                                             const draft::DraftEntity& entity);
+                                            const draft::DraftEntity& entity);
 
 /// Find the entity matching a GeometryRef's entityId.
 const draft::DraftEntity* findEntity(
-    uint64_t entityId,
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities);
+    uint64_t entityId, const std::vector<std::shared_ptr<draft::DraftEntity>>& entities);
 
 }  // namespace hz::cstr

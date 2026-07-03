@@ -1,9 +1,9 @@
 #include "horizon/topology/EulerOps.h"
 
-#include "horizon/topology/Solid.h"
-
 #include <algorithm>
 #include <cassert>
+
+#include "horizon/topology/Solid.h"
 
 namespace hz::topo::euler {
 

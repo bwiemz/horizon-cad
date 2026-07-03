@@ -1,9 +1,9 @@
 #pragma once
 
-#include "horizon/math/Vec3.h"
-
 #include <cstdint>
 #include <vector>
+
+#include "horizon/math/Vec3.h"
 
 namespace hz::topo {
 class Solid;

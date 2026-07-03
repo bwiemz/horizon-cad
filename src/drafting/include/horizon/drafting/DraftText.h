@@ -1,7 +1,8 @@
 #pragma once
 
-#include "DraftEntity.h"
 #include <string>
+
+#include "DraftEntity.h"
 
 namespace hz::draft {
 
@@ -9,8 +10,7 @@ enum class TextAlignment { Left, Center, Right };
 
 class DraftText : public DraftEntity {
 public:
-    DraftText(const math::Vec2& position, const std::string& text,
-              double textHeight = 2.5);
+    DraftText(const math::Vec2& position, const std::string& text, double textHeight = 2.5);
 
     math::BoundingBox boundingBox() const override;
     bool hitTest(const math::Vec2& point, double tolerance) const override;

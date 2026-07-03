@@ -1,11 +1,12 @@
 #define _USE_MATH_DEFINES
-#include <cmath>
 #include <gtest/gtest.h>
 
-#include "horizon/document/ConstraintSolveHelper.h"
+#include <cmath>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/ParameterRegistry.h"
 #include "horizon/drafting/DraftDocument.h"
@@ -30,12 +31,9 @@ TEST(ConstraintSolveHelper, SolveMovesEntitiesToSatisfyCoincident) {
     cstr::GeometryRef fixL1Start{line1->id(), cstr::FeatureType::Point, 0};
     cstr::GeometryRef fixL1End{line1->id(), cstr::FeatureType::Point, 1};
     cstr::GeometryRef fixL2End{line2->id(), cstr::FeatureType::Point, 1};
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL1Start, math::Vec2{0.0, 0.0}));
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL1End, math::Vec2{10.0, 0.0}));
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL2End, math::Vec2{20.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL1Start, math::Vec2{0.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL1End, math::Vec2{10.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL2End, math::Vec2{20.0, 0.0}));
 
     // Coincident: line1.end == line2.start
     cstr::GeometryRef refA{line1->id(), cstr::FeatureType::Point, 1};
@@ -68,12 +66,9 @@ TEST(ConstraintSolveHelper, SolveReturnsSnapshotsForUndoCommand) {
     cstr::GeometryRef fixL1Start{line1->id(), cstr::FeatureType::Point, 0};
     cstr::GeometryRef fixL1End{line1->id(), cstr::FeatureType::Point, 1};
     cstr::GeometryRef fixL2End{line2->id(), cstr::FeatureType::Point, 1};
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL1Start, math::Vec2{0.0, 0.0}));
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL1End, math::Vec2{10.0, 0.0}));
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(fixL2End, math::Vec2{20.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL1Start, math::Vec2{0.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL1End, math::Vec2{10.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(fixL2End, math::Vec2{20.0, 0.0}));
 
     cstr::GeometryRef refA{line1->id(), cstr::FeatureType::Point, 1};
     cstr::GeometryRef refB{line2->id(), cstr::FeatureType::Point, 0};
@@ -116,15 +111,13 @@ TEST(ConstraintSolveHelper, DistanceConstraintReshapesOnValueEdit) {
     cstr::GeometryRef ptEnd{line->id(), cstr::FeatureType::Point, 1};
 
     // Fix start at origin.
-    sys.addConstraint(
-        std::make_shared<cstr::FixedConstraint>(ptStart, math::Vec2{0.0, 0.0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(ptStart, math::Vec2{0.0, 0.0}));
 
     // Horizontal constraint.
     sys.addConstraint(std::make_shared<cstr::HorizontalConstraint>(ptStart, ptEnd));
 
     // Distance = 10.
-    auto distConstraint =
-        std::make_shared<cstr::DistanceConstraint>(ptStart, ptEnd, 10.0);
+    auto distConstraint = std::make_shared<cstr::DistanceConstraint>(ptStart, ptEnd, 10.0);
     sys.addConstraint(distConstraint);
 
     // Solve with distance = 10.

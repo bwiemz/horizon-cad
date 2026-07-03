@@ -7,8 +7,8 @@ namespace hz::draft {
 /// A dimension measuring radius or diameter of a circle/arc.
 class DraftRadialDimension : public DraftDimension {
 public:
-    DraftRadialDimension(const math::Vec2& center, double radius,
-                         const math::Vec2& textPoint, bool isDiameter);
+    DraftRadialDimension(const math::Vec2& center, double radius, const math::Vec2& textPoint,
+                         bool isDiameter);
 
     const math::Vec2& center() const { return m_center; }
     double radius() const { return m_radius; }
@@ -20,12 +20,12 @@ public:
     std::string displayText(const DimensionStyle& style) const override;
     math::Vec2 textPosition() const override;
 
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        extensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        dimensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        arrowheadLines(const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> extensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> dimensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> arrowheadLines(
+        const DimensionStyle& style) const override;
 
     // DraftEntity overrides
     math::BoundingBox boundingBox() const override;

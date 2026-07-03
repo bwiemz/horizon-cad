@@ -1,11 +1,12 @@
 #include "horizon/ui/CircleTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftCircle.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -29,8 +30,8 @@ bool CircleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -63,8 +64,8 @@ bool CircleTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldP
         math::Vec2 snappedPos = worldPos;
         if (m_viewport && m_viewport->document()) {
             auto& draftDoc = m_viewport->document()->draftDocument();
-            auto result = m_viewport->snapEngine().snap(
-                worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+            auto result = m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(),
+                                                        draftDoc.entities());
             snappedPos = result.point;
             m_viewport->setLastSnapResult(result);
         }
@@ -105,12 +106,16 @@ std::vector<std::pair<math::Vec2, double>> CircleTool::getPreviewCircles() const
 
 std::string CircleTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForCenter: return "Specify center point";
-        case State::WaitingForRadius: return "Specify radius";
+        case State::WaitingForCenter:
+            return "Specify center point";
+        case State::WaitingForRadius:
+            return "Specify radius";
     }
     return "";
 }
 
-bool CircleTool::wantsCrosshair() const { return true; }
+bool CircleTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

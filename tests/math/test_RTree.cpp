@@ -91,8 +91,7 @@ TEST(RTreeTest, ManyInsertsForceSplits) {
     constexpr int count = 200;
     for (int i = 0; i < count; ++i) {
         double x = static_cast<double>(i * 3);
-        tree.insert(static_cast<uint64_t>(i),
-                    BoundingBox(Vec3(x, 0, 0), Vec3(x + 1, 1, 0)));
+        tree.insert(static_cast<uint64_t>(i), BoundingBox(Vec3(x, 0, 0), Vec3(x + 1, 1, 0)));
     }
     EXPECT_EQ(tree.size(), static_cast<size_t>(count));
 

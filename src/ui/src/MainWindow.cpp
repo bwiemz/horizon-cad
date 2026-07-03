@@ -1,77 +1,80 @@
 #include "horizon/ui/MainWindow.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/ui/ToolManager.h"
-#include "horizon/ui/Tool.h"
-#include "horizon/ui/SelectTool.h"
-#include "horizon/ui/LineTool.h"
-#include "horizon/ui/CircleTool.h"
-#include "horizon/ui/ArcTool.h"
-#include "horizon/ui/RectangleTool.h"
-#include "horizon/ui/PolylineTool.h"
-#include "horizon/ui/MoveTool.h"
-#include "horizon/ui/OffsetTool.h"
-#include "horizon/ui/TrimTool.h"
-#include "horizon/ui/FilletTool.h"
-#include "horizon/ui/ChamferTool.h"
-#include "horizon/ui/BreakTool.h"
-#include "horizon/ui/ExtendTool.h"
-#include "horizon/ui/StretchTool.h"
-#include "horizon/ui/PolylineEditTool.h"
-#include "horizon/ui/MirrorTool.h"
-#include "horizon/ui/RotateTool.h"
-#include "horizon/ui/ScaleTool.h"
-#include "horizon/ui/PasteTool.h"
-#include "horizon/ui/Clipboard.h"
-#include "horizon/ui/RectArrayDialog.h"
-#include "horizon/ui/PolarArrayDialog.h"
-#include "horizon/ui/PropertyPanel.h"
-#include "horizon/ui/LayerPanel.h"
-#include "horizon/ui/LinearDimensionTool.h"
-#include "horizon/ui/RadialDimensionTool.h"
-#include "horizon/ui/AngularDimensionTool.h"
-#include "horizon/ui/LeaderTool.h"
-#include "horizon/ui/TextTool.h"
-#include "horizon/ui/SplineTool.h"
-#include "horizon/ui/HatchTool.h"
-#include "horizon/ui/EllipseTool.h"
-#include "horizon/ui/MeasureDistanceTool.h"
-#include "horizon/ui/MeasureAngleTool.h"
-#include "horizon/ui/MeasureAreaTool.h"
-#include "horizon/ui/ConstraintTool.h"
-#include "horizon/ui/InsertBlockTool.h"
-#include "horizon/ui/InsertBlockDialog.h"
-#include "horizon/ui/RibbonBar.h"
-#include "horizon/ui/FeatureTreePanel.h"
-#include "horizon/ui/IconGenerator.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/math/BoundingBox.h"
-#include "horizon/math/MathUtils.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/document/Commands.h"
-#include "horizon/fileio/NativeFormat.h"
-#include "horizon/fileio/DxfFormat.h"
-#include "horizon/modeling/PrimitiveFactory.h"
-#include "horizon/modeling/SolidTessellator.h"
-#include "horizon/modeling/Extrude.h"
-#include "horizon/modeling/Revolve.h"
-#include "horizon/modeling/BooleanOp.h"
-#include "horizon/modeling/FilletOp.h"
-#include "horizon/modeling/ChamferOp.h"
-#include "horizon/topology/Solid.h"
-#include "horizon/render/SceneGraph.h"
-
-#include <numbers>
 
 #include <QAction>
 #include <QActionGroup>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenuBar>
-#include <QInputDialog>
 #include <QMessageBox>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QToolBar>
+#include <QVBoxLayout>
+#include <filesystem>
+#include <numbers>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/NativeFormat.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/math/MathUtils.h"
+#include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/ChamferOp.h"
+#include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/render/SceneGraph.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/ui/AngularDimensionTool.h"
+#include "horizon/ui/ArcTool.h"
+#include "horizon/ui/BreakTool.h"
+#include "horizon/ui/ChamferTool.h"
+#include "horizon/ui/CircleTool.h"
+#include "horizon/ui/Clipboard.h"
+#include "horizon/ui/ConstraintTool.h"
+#include "horizon/ui/EllipseTool.h"
+#include "horizon/ui/ExtendTool.h"
+#include "horizon/ui/FeatureTreePanel.h"
+#include "horizon/ui/FilletTool.h"
+#include "horizon/ui/HatchTool.h"
+#include "horizon/ui/IconGenerator.h"
+#include "horizon/ui/InsertBlockDialog.h"
+#include "horizon/ui/InsertBlockTool.h"
+#include "horizon/ui/LayerPanel.h"
+#include "horizon/ui/LeaderTool.h"
+#include "horizon/ui/LineTool.h"
+#include "horizon/ui/LinearDimensionTool.h"
+#include "horizon/ui/MeasureAngleTool.h"
+#include "horizon/ui/MeasureAreaTool.h"
+#include "horizon/ui/MeasureDistanceTool.h"
+#include "horizon/ui/MirrorTool.h"
+#include "horizon/ui/MoveTool.h"
+#include "horizon/ui/OffsetTool.h"
+#include "horizon/ui/PasteTool.h"
+#include "horizon/ui/PolarArrayDialog.h"
+#include "horizon/ui/PolylineEditTool.h"
+#include "horizon/ui/PolylineTool.h"
+#include "horizon/ui/PropertyPanel.h"
+#include "horizon/ui/RadialDimensionTool.h"
+#include "horizon/ui/RectArrayDialog.h"
+#include "horizon/ui/RectangleTool.h"
+#include "horizon/ui/RibbonBar.h"
+#include "horizon/ui/RotateTool.h"
+#include "horizon/ui/ScaleTool.h"
+#include "horizon/ui/SelectTool.h"
+#include "horizon/ui/SplineTool.h"
+#include "horizon/ui/StretchTool.h"
+#include "horizon/ui/TextTool.h"
+#include "horizon/ui/Tool.h"
+#include "horizon/ui/ToolManager.h"
+#include "horizon/ui/TrimTool.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -80,16 +83,43 @@ namespace hz::ui {
 // ---------------------------------------------------------------------------
 
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent)
-    , m_toolManager(std::make_unique<ToolManager>())
-    , m_document(std::make_unique<doc::Document>()) {
+    : QMainWindow(parent), m_toolManager(std::make_unique<ToolManager>()) {
     setWindowTitle("Horizon CAD");
     resize(1280, 800);
 
-    // Central viewport widget.
+    // Wire the document manager to the native file format.
+    m_docManager.setPartLoader([](const std::string& path, doc::Document& doc) {
+        return io::NativeFormat::load(path, doc);
+    });
+    m_docManager.setMeshLoader(
+        [](const std::string& path) { return io::NativeFormat::loadPartMesh(path); });
+    m_docManager.setAssemblyLoader([](const std::string& path, doc::AssemblyDocument& doc) {
+        return io::NativeFormat::loadAssembly(path, doc);
+    });
+
+    // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
+    m_tabBar = new QTabBar(this);
+    m_tabBar->setTabsClosable(true);
+    m_tabBar->setMovable(false);
+    m_tabBar->setExpanding(false);
+    m_tabBar->setDocumentMode(true);
+
+    auto* central = new QWidget(this);
+    auto* centralLayout = new QVBoxLayout(central);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(0);
+    centralLayout->addWidget(m_tabBar);
+    centralLayout->addWidget(m_viewport, 1);
+    setCentralWidget(central);
+
+    // Initial empty drawing document. The tab-bar signals are connected
+    // AFTER the panels exist (below) — addTab would otherwise fire
+    // currentChanged into slots that touch not-yet-created widgets.
+    m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
+    m_tabs.push_back(DocTab{m_document, nullptr});
+    m_tabBar->addTab(tr("Drawing 1"));
     m_viewport->setDocument(m_document.get());
-    setCentralWidget(m_viewport);
 
     // Dock panels (must exist before createMenus, which adds toggleViewAction).
     m_propertyPanel = new PropertyPanel(this, this);
@@ -105,12 +135,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_featureTreePanel = new FeatureTreePanel(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_featureTreePanel);
 
-    connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked,
-            this, &MainWindow::onFeatureDoubleClicked);
-    connect(m_featureTreePanel, &FeatureTreePanel::featureReordered,
-            this, &MainWindow::onFeatureReordered);
-    connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged,
-            this, &MainWindow::onRollbackChanged);
+    connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
+            &MainWindow::onFeatureDoubleClicked);
+    connect(m_featureTreePanel, &FeatureTreePanel::featureReordered, this,
+            &MainWindow::onFeatureReordered);
+    connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged, this,
+            &MainWindow::onRollbackChanged);
 
     // Build UI chrome.
     createMenus();
@@ -118,13 +148,16 @@ MainWindow::MainWindow(QWidget* parent)
     createStatusBar();
     registerTools();
 
+    // Tab switching (connected only now that all panels and the status bar
+    // exist — the slots refresh them).
+    connect(m_tabBar, &QTabBar::currentChanged, this, &MainWindow::onTabChanged);
+    connect(m_tabBar, &QTabBar::tabCloseRequested, this, &MainWindow::onTabCloseRequested);
+
     // Wire up the status bar coordinate display.
-    connect(m_viewport, &ViewportWidget::mouseMoved,
-            this, &MainWindow::onMouseMoved);
+    connect(m_viewport, &ViewportWidget::mouseMoved, this, &MainWindow::onMouseMoved);
 
     // Wire up selection changes to property panel.
-    connect(m_viewport, &ViewportWidget::selectionChanged,
-            this, &MainWindow::onSelectionChanged);
+    connect(m_viewport, &ViewportWidget::selectionChanged, this, &MainWindow::onSelectionChanged);
 
     // Start with the Select tool active.
     onSelectTool();
@@ -140,8 +173,17 @@ void MainWindow::createMenus() {
     // ---- File ----
     QMenu* fileMenu = menuBar()->addMenu(tr("&File"));
 
-    QAction* newAction = fileMenu->addAction(tr("&New"), this, &MainWindow::onNewFile);
+    QAction* newAction = fileMenu->addAction(tr("&New Drawing"), this, &MainWindow::onNewFile);
     newAction->setShortcut(QKeySequence::New);
+
+    fileMenu->addAction(tr("New &Part"), this, &MainWindow::onNewPart);
+    fileMenu->addAction(tr("New Asse&mbly"), this, &MainWindow::onNewAssembly);
+
+    fileMenu->addSeparator();
+
+    fileMenu->addAction(tr("&Insert Component..."), this, &MainWindow::onInsertComponent);
+
+    fileMenu->addSeparator();
 
     QAction* openAction = fileMenu->addAction(tr("&Open..."), this, &MainWindow::onOpenFile);
     openAction->setShortcut(QKeySequence::Open);
@@ -168,7 +210,8 @@ void MainWindow::createMenus() {
 
     editMenu->addSeparator();
 
-    QAction* duplicateAction = editMenu->addAction(tr("&Duplicate"), this, &MainWindow::onDuplicate);
+    QAction* duplicateAction =
+        editMenu->addAction(tr("&Duplicate"), this, &MainWindow::onDuplicate);
     duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
     editMenu->addSeparator();
@@ -187,7 +230,8 @@ void MainWindow::createMenus() {
     QAction* groupAction = editMenu->addAction(tr("&Group"), this, &MainWindow::onGroupEntities);
     groupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
 
-    QAction* ungroupAction = editMenu->addAction(tr("U&ngroup"), this, &MainWindow::onUngroupEntities);
+    QAction* ungroupAction =
+        editMenu->addAction(tr("U&ngroup"), this, &MainWindow::onUngroupEntities);
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
     // ---- View ----
@@ -282,26 +326,26 @@ void MainWindow::createRibbonBar() {
     auto* toolGroup = new QActionGroup(this);
     toolGroup->setExclusive(true);
 
-    auto addToolAction = [&](QToolBar* tb, const QString& iconName,
-                             const QString& tooltip, auto slot,
-                             const QKeySequence& shortcut = {}) -> QAction* {
+    auto addToolAction = [&](QToolBar* tb, const QString& iconName, const QString& tooltip,
+                             auto slot, const QKeySequence& shortcut = {}) -> QAction* {
         auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, this, slot);
         act->setCheckable(true);
-        act->setToolTip(shortcut.isEmpty()
-            ? tooltip
-            : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
+        act->setToolTip(
+            shortcut.isEmpty()
+                ? tooltip
+                : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
         if (!shortcut.isEmpty()) act->setShortcut(shortcut);
         toolGroup->addAction(act);
         return act;
     };
 
-    auto addAction = [](QToolBar* tb, const QString& iconName,
-                        const QString& tooltip, auto* receiver, auto slot,
-                        const QKeySequence& shortcut = {}) -> QAction* {
+    auto addAction = [](QToolBar* tb, const QString& iconName, const QString& tooltip,
+                        auto* receiver, auto slot, const QKeySequence& shortcut = {}) -> QAction* {
         auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);
-        act->setToolTip(shortcut.isEmpty()
-            ? tooltip
-            : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
+        act->setToolTip(
+            shortcut.isEmpty()
+                ? tooltip
+                : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
         if (!shortcut.isEmpty()) act->setShortcut(shortcut);
         return act;
     };
@@ -325,8 +369,8 @@ void MainWindow::createRibbonBar() {
     addAction(homeBar, "ungroup", tr("Ungroup"), this, &MainWindow::onUngroupEntities,
               QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
     homeBar->addSeparator();
-    auto* selectAct = addToolAction(homeBar, "select", tr("Select"),
-                                     &MainWindow::onSelectTool, QKeySequence(Qt::Key_Space));
+    auto* selectAct = addToolAction(homeBar, "select", tr("Select"), &MainWindow::onSelectTool,
+                                    QKeySequence(Qt::Key_Space));
     selectAct->setChecked(true);
     addAction(homeBar, "fit-all", tr("Fit All"), this, &MainWindow::onFitAll,
               QKeySequence(Qt::Key_F));
@@ -334,12 +378,10 @@ void MainWindow::createRibbonBar() {
 
     // ---- Draw tab ----
     auto* drawBar = new QToolBar(this);
-    addToolAction(drawBar, "line", tr("Line"), &MainWindow::onLineTool,
-                  QKeySequence(Qt::Key_L));
+    addToolAction(drawBar, "line", tr("Line"), &MainWindow::onLineTool, QKeySequence(Qt::Key_L));
     addToolAction(drawBar, "circle", tr("Circle"), &MainWindow::onCircleTool,
                   QKeySequence(Qt::Key_C));
-    addToolAction(drawBar, "arc", tr("Arc"), &MainWindow::onArcTool,
-                  QKeySequence(Qt::Key_A));
+    addToolAction(drawBar, "arc", tr("Arc"), &MainWindow::onArcTool, QKeySequence(Qt::Key_A));
     addToolAction(drawBar, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
                   QKeySequence(Qt::Key_R));
     addToolAction(drawBar, "polyline", tr("Polyline"), &MainWindow::onPolylineTool,
@@ -348,16 +390,13 @@ void MainWindow::createRibbonBar() {
                   QKeySequence(Qt::Key_E));
     addToolAction(drawBar, "spline", tr("Spline"), &MainWindow::onSplineTool,
                   QKeySequence(Qt::Key_S));
-    addToolAction(drawBar, "text", tr("Text"), &MainWindow::onTextTool,
-                  QKeySequence(Qt::Key_T));
-    addToolAction(drawBar, "hatch", tr("Hatch"), &MainWindow::onHatchTool,
-                  QKeySequence(Qt::Key_H));
+    addToolAction(drawBar, "text", tr("Text"), &MainWindow::onTextTool, QKeySequence(Qt::Key_T));
+    addToolAction(drawBar, "hatch", tr("Hatch"), &MainWindow::onHatchTool, QKeySequence(Qt::Key_H));
     m_ribbonBar->addTab(tr("Draw"), drawBar);
 
     // ---- Modify tab ----
     auto* modifyBar = new QToolBar(this);
-    addToolAction(modifyBar, "move", tr("Move"), &MainWindow::onMoveTool,
-                  QKeySequence(Qt::Key_M));
+    addToolAction(modifyBar, "move", tr("Move"), &MainWindow::onMoveTool, QKeySequence(Qt::Key_M));
     addToolAction(modifyBar, "offset", tr("Offset"), &MainWindow::onOffsetTool,
                   QKeySequence(Qt::Key_O));
     addToolAction(modifyBar, "mirror", tr("Mirror"), &MainWindow::onMirrorTool,
@@ -367,8 +406,7 @@ void MainWindow::createRibbonBar() {
     addToolAction(modifyBar, "scale", tr("Scale"), &MainWindow::onScaleTool,
                   QKeySequence(Qt::SHIFT | Qt::Key_S));
     modifyBar->addSeparator();
-    addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool,
-                  QKeySequence(Qt::Key_X));
+    addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool, QKeySequence(Qt::Key_X));
     addToolAction(modifyBar, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
     addToolAction(modifyBar, "chamfer", tr("Chamfer"), &MainWindow::onChamferTool);
     addToolAction(modifyBar, "break", tr("Break"), &MainWindow::onBreakTool,
@@ -379,10 +417,8 @@ void MainWindow::createRibbonBar() {
                   QKeySequence(Qt::Key_W));
     addToolAction(modifyBar, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
     modifyBar->addSeparator();
-    addAction(modifyBar, "rect-array", tr("Rect Array"), this,
-              &MainWindow::onRectangularArray);
-    addAction(modifyBar, "polar-array", tr("Polar Array"), this,
-              &MainWindow::onPolarArray);
+    addAction(modifyBar, "rect-array", tr("Rect Array"), this, &MainWindow::onRectangularArray);
+    addAction(modifyBar, "polar-array", tr("Polar Array"), this, &MainWindow::onPolarArray);
     m_ribbonBar->addTab(tr("Modify"), modifyBar);
 
     // ---- Annotate tab ----
@@ -413,27 +449,20 @@ void MainWindow::createRibbonBar() {
               &MainWindow::onConstraintPerpendicular);
     addAction(constrainBar, "cstr-parallel", tr("Parallel"), this,
               &MainWindow::onConstraintParallel);
-    addAction(constrainBar, "cstr-tangent", tr("Tangent"), this,
-              &MainWindow::onConstraintTangent);
-    addAction(constrainBar, "cstr-equal", tr("Equal"), this,
-              &MainWindow::onConstraintEqual);
+    addAction(constrainBar, "cstr-tangent", tr("Tangent"), this, &MainWindow::onConstraintTangent);
+    addAction(constrainBar, "cstr-equal", tr("Equal"), this, &MainWindow::onConstraintEqual);
     constrainBar->addSeparator();
-    addAction(constrainBar, "cstr-fixed", tr("Fixed"), this,
-              &MainWindow::onConstraintFixed);
+    addAction(constrainBar, "cstr-fixed", tr("Fixed"), this, &MainWindow::onConstraintFixed);
     addAction(constrainBar, "cstr-distance", tr("Distance"), this,
               &MainWindow::onConstraintDistance);
-    addAction(constrainBar, "cstr-angle", tr("Angle"), this,
-              &MainWindow::onConstraintAngle);
+    addAction(constrainBar, "cstr-angle", tr("Angle"), this, &MainWindow::onConstraintAngle);
     m_ribbonBar->addTab(tr("Constrain"), constrainBar);
 
     // ---- Block tab ----
     auto* blockBar = new QToolBar(this);
-    addAction(blockBar, "block-create", tr("Create Block"), this,
-              &MainWindow::onCreateBlock);
-    addAction(blockBar, "block-insert", tr("Insert Block"), this,
-              &MainWindow::onInsertBlock);
-    addAction(blockBar, "block-explode", tr("Explode"), this,
-              &MainWindow::onExplode);
+    addAction(blockBar, "block-create", tr("Create Block"), this, &MainWindow::onCreateBlock);
+    addAction(blockBar, "block-insert", tr("Insert Block"), this, &MainWindow::onInsertBlock);
+    addAction(blockBar, "block-explode", tr("Explode"), this, &MainWindow::onExplode);
     m_ribbonBar->addTab(tr("Block"), blockBar);
 
     // ---- 3D tab ----
@@ -448,7 +477,8 @@ void MainWindow::createRibbonBar() {
     solidBar->addSeparator();
     addAction(solidBar, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
     addAction(solidBar, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
-    addAction(solidBar, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
+    addAction(solidBar, "boolean-intersect", tr("Intersect"), this,
+              &MainWindow::onBooleanIntersect);
     solidBar->addSeparator();
     addAction(solidBar, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
     addAction(solidBar, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
@@ -516,8 +546,7 @@ void MainWindow::updateStatusBar() {
 
     auto ids = m_viewport->selectionManager().selectedIds();
     int count = static_cast<int>(ids.size());
-    m_statusSelection->setText(count == 1 ? tr("1 selected")
-                                          : tr("%1 selected").arg(count));
+    m_statusSelection->setText(count == 1 ? tr("1 selected") : tr("%1 selected").arg(count));
 }
 
 // ---------------------------------------------------------------------------
@@ -559,110 +588,367 @@ void MainWindow::registerTools() {
 }
 
 // ---------------------------------------------------------------------------
+// Document tabs
+// ---------------------------------------------------------------------------
+
+MainWindow::DocTab* MainWindow::activeTab() {
+    int index = m_tabBar->currentIndex();
+    if (index < 0 || index >= static_cast<int>(m_tabs.size())) return nullptr;
+    return &m_tabs[static_cast<size_t>(index)];
+}
+
+QString MainWindow::tabTitleForPath(const std::string& path, const QString& fallback) const {
+    if (path.empty()) return fallback;
+    return QString::fromStdString(std::filesystem::path(path).filename().string());
+}
+
+int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
+                               std::shared_ptr<doc::AssemblyDocument> assembly,
+                               const QString& title) {
+    m_tabs.push_back(DocTab{std::move(document), std::move(assembly)});
+    int index = m_tabBar->addTab(title);
+    m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
+    return index;
+}
+
+void MainWindow::activateTabDocument() {
+    DocTab* tab = activeTab();
+    if (!tab) return;
+
+    // Abort any in-flight tool interaction: tools may hold entity references
+    // (copy buffers, first-click state) from the previous document.
+    if (m_viewport->activeTool()) {
+        m_viewport->activeTool()->cancel();
+    }
+
+    m_document = tab->document;
+    m_assembly = tab->assembly;
+
+    m_viewport->setActiveSketch(nullptr);
+    m_viewport->setDocument(m_document.get());
+    rebuildScene();
+    refreshAllPanels();
+    updateWindowTitle();
+}
+
+void MainWindow::onTabChanged(int /*index*/) {
+    activateTabDocument();
+}
+
+void MainWindow::onTabCloseRequested(int index) {
+    if (index < 0 || index >= static_cast<int>(m_tabs.size())) return;
+
+    DocTab tab = m_tabs[static_cast<size_t>(index)];
+    bool dirty = tab.assembly ? tab.assembly->isDirty() : tab.document->isDirty();
+    if (dirty) {
+        auto result =
+            QMessageBox::question(this, tr("Unsaved Changes"),
+                                  tr("Close \"%1\" without saving?").arg(m_tabBar->tabText(index)),
+                                  QMessageBox::Close | QMessageBox::Cancel);
+        if (result != QMessageBox::Close) return;
+    }
+
+    if (tab.assembly) {
+        m_docManager.closeAssembly(tab.assembly);
+        m_docManager.closeDocument(tab.document);  // backing document
+    } else {
+        m_docManager.closeDocument(tab.document);
+    }
+    m_tabs.erase(m_tabs.begin() + index);
+    m_tabBar->removeTab(index);
+
+    // Never leave the window without a document.
+    if (m_tabs.empty()) {
+        auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
+        addDocumentTab(std::move(document), nullptr, tr("Drawing 1"));
+    } else {
+        activateTabDocument();
+    }
+}
+
+void MainWindow::rebuildScene() {
+    m_viewport->sceneGraph().clear();
+
+    if (m_assembly) {
+        const std::string asmDir =
+            m_assembly->filePath().empty()
+                ? std::string()
+                : std::filesystem::path(m_assembly->filePath()).parent_path().string();
+        for (auto& comp : m_assembly->components()) {
+            if (comp.suppressed) continue;
+            if (!comp.cachedMesh) {
+                m_docManager.resolveComponent(comp, doc::ComponentState::Lightweight, asmDir);
+            }
+            if (!comp.cachedMesh) continue;
+            auto node =
+                std::make_shared<render::SceneNode>(comp.name.empty() ? "Component" : comp.name);
+            node->setMesh(std::make_unique<render::MeshData>(*comp.cachedMesh));
+            node->setLocalTransform(comp.transform);
+            node->setMaterial(render::Material{math::Vec3{0.62, 0.68, 0.75}, 0.15f, 0.5f, 32.0f});
+            m_viewport->sceneGraph().addNode(node);
+        }
+    } else if (m_document->featureTree().featureCount() > 0) {
+        if (!m_document->solid()) m_document->rebuildModel();
+        if (m_document->solid()) {
+            auto meshData = model::SolidTessellator::tessellate(*m_document->solid(), 0.1);
+            auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
+            node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+            node->setMaterial(render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
+            m_viewport->sceneGraph().addNode(node);
+        }
+    }
+
+    m_viewport->update();
+}
+
+void MainWindow::refreshAllPanels() {
+    m_viewport->selectionManager().clearSelection();
+    m_layerPanel->refresh();
+    m_propertyPanel->refreshLayerList();
+    onSelectionChanged();
+
+    m_featureTreePanel->clearFailures();
+    m_featureTreePanel->refresh(m_document->featureTree());
+    if (m_document->failedFeatureIndex() >= 0) {
+        m_featureTreePanel->markFailed(m_document->failedFeatureIndex(),
+                                       m_document->lastBuildMessage());
+    }
+}
+
+void MainWindow::updateWindowTitle() {
+    const std::string& path = m_assembly ? m_assembly->filePath() : m_document->filePath();
+    if (path.empty()) {
+        setWindowTitle("Horizon CAD");
+    } else {
+        setWindowTitle(QString("Horizon CAD - %1").arg(QString::fromStdString(path)));
+    }
+    int index = m_tabBar->currentIndex();
+    if (index >= 0) {
+        QString fallback = m_tabBar->tabText(index);
+        m_tabBar->setTabText(index, tabTitleForPath(path, fallback));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Slots -- File
 // ---------------------------------------------------------------------------
 
 void MainWindow::onNewFile() {
-    if (m_document->isDirty()) {
-        auto result = QMessageBox::question(this, tr("Unsaved Changes"),
-            tr("Save changes before creating a new file?"),
-            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-        if (result == QMessageBox::Save) {
-            onSaveFile();
-        } else if (result == QMessageBox::Cancel) {
-            return;
-        }
-    }
-    m_document->clear();
-    m_viewport->selectionManager().clearSelection();
-    m_viewport->update();
-    m_layerPanel->refresh();
-    m_propertyPanel->refreshLayerList();
-    onSelectionChanged();
-    setWindowTitle("Horizon CAD");
+    auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
+    addDocumentTab(std::move(document), nullptr, tr("Drawing %1").arg(m_tabs.size() + 1));
+}
+
+void MainWindow::onNewPart() {
+    auto document = m_docManager.newDocument(doc::DocumentType::Part);
+    addDocumentTab(std::move(document), nullptr, tr("Part %1").arg(m_tabs.size() + 1));
+}
+
+void MainWindow::onNewAssembly() {
+    auto assembly = m_docManager.newAssembly();
+    // Assemblies still need a backing Document for the shared viewport.
+    auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
+    addDocumentTab(std::move(backing), std::move(assembly),
+                   tr("Assembly %1").arg(m_tabs.size() + 1));
 }
 
 void MainWindow::onOpenFile() {
     QString fileName = QFileDialog::getOpenFileName(
         this, tr("Open File"), QString(),
-        tr("All Supported Files (*.hcad *.dxf);;Horizon CAD Files (*.hcad);;DXF Files (*.dxf);;All Files (*)"));
+        tr("All Supported Files (*.hcad *.hzpart *.hzasm *.dxf);;"
+           "Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;"
+           "Horizon Assemblies (*.hzasm);;DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
 
-    doc::Document tempDoc;
     std::string path = fileName.toStdString();
-    bool ok = false;
-    if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
-        ok = io::DxfFormat::load(path, tempDoc);
-    } else {
-        ok = io::NativeFormat::load(path, tempDoc);
+
+    // If the file is already open, just focus its tab.
+    for (size_t i = 0; i < m_tabs.size(); ++i) {
+        const std::string& tabPath =
+            m_tabs[i].assembly ? m_tabs[i].assembly->filePath() : m_tabs[i].document->filePath();
+        std::error_code ec;
+        if (!tabPath.empty() &&
+            std::filesystem::equivalent(std::filesystem::path(tabPath), std::filesystem::path(path),
+                                        ec) &&
+            !ec) {
+            m_tabBar->setCurrentIndex(static_cast<int>(i));
+            return;
+        }
     }
-    if (ok) {
-        m_document->clear();
-        m_document->setFilePath(fileName.toStdString());
-        // Copy layers.
-        for (const auto& name : tempDoc.layerManager().layerNames()) {
-            const auto* lp = tempDoc.layerManager().getLayer(name);
-            if (lp && name == "0") {
-                auto* dst = m_document->layerManager().getLayer("0");
-                if (dst) *dst = *lp;
-            } else if (lp) {
-                m_document->layerManager().addLayer(*lp);
+
+    if (fileName.endsWith(".hzasm", Qt::CaseInsensitive)) {
+        auto assembly = m_docManager.openAssembly(path);
+        if (!assembly) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to open assembly."));
+            return;
+        }
+        // The manager dedups by canonical path — an existing instance means
+        // some tab already shows this assembly; focus it instead of adding
+        // a second tab aliasing the same object.
+        for (size_t i = 0; i < m_tabs.size(); ++i) {
+            if (m_tabs[i].assembly == assembly) {
+                m_tabBar->setCurrentIndex(static_cast<int>(i));
+                return;
             }
         }
-        m_document->layerManager().setCurrentLayer(tempDoc.layerManager().currentLayer());
-        // Copy entities.
-        for (const auto& entity : tempDoc.draftDocument().entities()) {
-            m_document->draftDocument().addEntity(entity);
-        }
-        // Copy block definitions.
-        for (const auto& name : tempDoc.draftDocument().blockTable().blockNames()) {
-            auto def = tempDoc.draftDocument().blockTable().findBlock(name);
-            if (def) m_document->draftDocument().blockTable().addBlock(def);
-        }
-        // Copy constraints.
-        for (const auto& c : tempDoc.constraintSystem().constraints()) {
-            m_document->constraintSystem().addConstraint(c);
-        }
-        m_document->setDirty(false);
-        m_viewport->selectionManager().clearSelection();
-        m_viewport->update();
-        m_layerPanel->refresh();
-        m_propertyPanel->refreshLayerList();
-        onSelectionChanged();
-        setWindowTitle(QString("Horizon CAD - %1").arg(fileName));
-    } else {
-        QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+        auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
+        addDocumentTab(std::move(backing), std::move(assembly),
+                       tabTitleForPath(path, tr("Assembly")));
+        return;
     }
+
+    if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
+        auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
+        if (!io::DxfFormat::load(path, *document)) {
+            m_docManager.closeDocument(document);
+            QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+            return;
+        }
+        document->setFilePath(path);
+        document->setDirty(false);
+        addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Drawing")));
+        return;
+    }
+
+    // .hcad and .hzpart both load through NativeFormat (full document —
+    // entities, sketches, feature tree, design variables).
+    auto document = m_docManager.openPart(path);
+    if (!document) {
+        QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+        return;
+    }
+    // Dedup hit → the document is already shown in some tab; focus it.
+    for (size_t i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs[i].document == document) {
+            m_tabBar->setCurrentIndex(static_cast<int>(i));
+            return;
+        }
+    }
+    addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Document")));
 }
 
-void MainWindow::onSaveFile() {
+bool MainWindow::saveActiveDocument() {
+    DocTab* tab = activeTab();
+    if (!tab) return false;
+
+    if (m_assembly) {
+        if (m_assembly->filePath().empty()) {
+            onSaveFileAs();
+            return !m_assembly->isDirty();
+        }
+        if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly)) {
+            m_assembly->setDirty(false);
+            m_docManager.noteSaved(m_assembly);
+            m_statusPrompt->setText(tr("Assembly saved."));
+            updateWindowTitle();
+            return true;
+        }
+        QMessageBox::warning(this, tr("Error"), tr("Failed to save assembly."));
+        return false;
+    }
+
     if (m_document->filePath().empty()) {
         onSaveFileAs();
-        return;
+        return !m_document->isDirty();
     }
     std::string path = m_document->filePath();
     bool ok = false;
     if (QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive)) {
         ok = io::DxfFormat::save(path, *m_document);
     } else {
+        // Make sure parts carry a fresh tessellation cache for lightweight
+        // assembly loading.
+        if (m_document->featureTree().featureCount() > 0 && !m_document->solid()) {
+            m_document->rebuildModel();
+        }
         ok = io::NativeFormat::save(path, *m_document);
     }
     if (ok) {
         m_document->setDirty(false);
+        m_docManager.noteSaved(m_document);
         m_statusPrompt->setText(tr("File saved."));
-    } else {
-        QMessageBox::warning(this, tr("Error"), tr("Failed to save file."));
+        updateWindowTitle();
+        return true;
     }
+    QMessageBox::warning(this, tr("Error"), tr("Failed to save file."));
+    return false;
+}
+
+void MainWindow::onSaveFile() {
+    saveActiveDocument();
 }
 
 void MainWindow::onSaveFileAs() {
-    QString fileName = QFileDialog::getSaveFileName(
-        this, tr("Save File"), QString(),
-        tr("Horizon CAD Files (*.hcad);;DXF Files (*.dxf);;All Files (*)"));
+    QString filter;
+    if (m_assembly) {
+        filter = tr("Horizon Assemblies (*.hzasm);;All Files (*)");
+    } else if (m_document->type() == doc::DocumentType::Part) {
+        filter =
+            tr("Horizon Parts (*.hzpart);;Horizon CAD Drawings (*.hcad);;"
+               "All Files (*)");
+    } else {
+        filter =
+            tr("Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;"
+               "DXF Files (*.dxf);;All Files (*)");
+    }
+
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), QString(), filter);
     if (fileName.isEmpty()) return;
 
+    // Apply the new path (and extension-driven type), but roll everything
+    // back if the save fails so a bad path doesn't silently retarget the
+    // document or flip its type.
+    if (m_assembly) {
+        const std::string oldPath = m_assembly->filePath();
+        m_assembly->setFilePath(fileName.toStdString());
+        if (!saveActiveDocument()) {
+            m_assembly->setFilePath(oldPath);
+        }
+        return;
+    }
+
+    const std::string oldPath = m_document->filePath();
+    const doc::DocumentType oldType = m_document->type();
+    // The chosen extension drives the document type.
+    if (fileName.endsWith(".hzpart", Qt::CaseInsensitive)) {
+        m_document->setType(doc::DocumentType::Part);
+    } else if (fileName.endsWith(".hcad", Qt::CaseInsensitive)) {
+        m_document->setType(doc::DocumentType::Drawing);
+    }
     m_document->setFilePath(fileName.toStdString());
-    onSaveFile();
+    if (!saveActiveDocument()) {
+        m_document->setFilePath(oldPath);
+        m_document->setType(oldType);
+    }
+}
+
+void MainWindow::onInsertComponent() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Insert Component is only available in an assembly document"));
+        return;
+    }
+
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Insert Component"), QString(),
+                                                    tr("Horizon Parts (*.hzpart);;All Files (*)"));
+    if (fileName.isEmpty()) return;
+
+    doc::ComponentInstance comp;
+    comp.partPath = fileName.toStdString();
+    comp.name = std::filesystem::path(comp.partPath).stem().string();
+
+    const std::string asmDir =
+        m_assembly->filePath().empty()
+            ? std::string()
+            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
+    if (!m_docManager.resolveComponent(comp, doc::ComponentState::Lightweight, asmDir)) {
+        QMessageBox::warning(this, tr("Error"),
+                             tr("Failed to load the part (no geometry could be produced)."));
+        return;
+    }
+
+    m_assembly->addComponent(std::move(comp));
+    rebuildScene();
+    m_viewport->camera().setIsometricView();
+    m_statusPrompt->setText(tr("Component inserted."));
 }
 
 // ---------------------------------------------------------------------------
@@ -700,8 +986,8 @@ void MainWindow::onDuplicate() {
     if (idVec.empty()) return;
 
     math::Vec2 offset(1.0, -1.0);
-    auto cmd = std::make_unique<doc::DuplicateEntityCommand>(
-        m_document->draftDocument(), idVec, offset);
+    auto cmd =
+        std::make_unique<doc::DuplicateEntityCommand>(m_document->draftDocument(), idVec, offset);
     auto* rawCmd = cmd.get();
     m_document->undoStack().push(std::move(cmd));
 
@@ -742,8 +1028,8 @@ void MainWindow::onCut() {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
-        composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(
-            m_document->draftDocument(), entity->id()));
+        composite->addCommand(
+            std::make_unique<doc::RemoveEntityCommand>(m_document->draftDocument(), entity->id()));
     }
     if (!composite->empty()) {
         m_document->undoStack().push(std::move(composite));
@@ -1107,8 +1393,7 @@ void MainWindow::onMeasureAreaTool() {
 // Slots -- Constraint tools
 // ---------------------------------------------------------------------------
 
-static void activateConstraintMode(ToolManager& tm, ViewportWidget* vp,
-                                    ConstraintTool::Mode mode) {
+static void activateConstraintMode(ToolManager& tm, ViewportWidget* vp, ConstraintTool::Mode mode) {
     tm.setActiveTool("Constraint");
     auto* tool = dynamic_cast<ConstraintTool*>(tm.activeTool());
     if (tool) tool->setMode(mode);
@@ -1173,8 +1458,7 @@ void MainWindow::onCreateBlock() {
     auto& sel = m_viewport->selectionManager();
     auto ids = sel.selectedIds();
     if (ids.empty()) {
-        QMessageBox::information(this, tr("Create Block"),
-                                 tr("Select entities first."));
+        QMessageBox::information(this, tr("Create Block"), tr("Select entities first."));
         return;
     }
 
@@ -1190,9 +1474,8 @@ void MainWindow::onCreateBlock() {
     if (filteredIds.empty()) return;
 
     bool ok = false;
-    QString name = QInputDialog::getText(this, tr("Create Block"),
-                                          tr("Block name:"), QLineEdit::Normal,
-                                          QString(), &ok);
+    QString name = QInputDialog::getText(this, tr("Create Block"), tr("Block name:"),
+                                         QLineEdit::Normal, QString(), &ok);
     if (!ok || name.trimmed().isEmpty()) return;
 
     std::string blockName = name.trimmed().toStdString();
@@ -1202,8 +1485,8 @@ void MainWindow::onCreateBlock() {
         return;
     }
 
-    auto cmd = std::make_unique<doc::CreateBlockCommand>(
-        m_document->draftDocument(), blockName, filteredIds);
+    auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->draftDocument(), blockName,
+                                                         filteredIds);
     auto* rawCmd = cmd.get();
     m_document->undoStack().push(std::move(cmd));
 
@@ -1295,8 +1578,8 @@ void MainWindow::onGroupEntities() {
     }
     if (filteredIds.size() < 2) return;
 
-    auto cmd = std::make_unique<doc::GroupEntitiesCommand>(
-        m_document->draftDocument(), filteredIds);
+    auto cmd =
+        std::make_unique<doc::GroupEntitiesCommand>(m_document->draftDocument(), filteredIds);
     m_document->undoStack().push(std::move(cmd));
     m_viewport->update();
 }
@@ -1317,8 +1600,8 @@ void MainWindow::onUngroupEntities() {
     if (groupIds.empty()) return;
 
     std::vector<uint64_t> groupIdVec(groupIds.begin(), groupIds.end());
-    auto cmd = std::make_unique<doc::UngroupEntitiesCommand>(
-        m_document->draftDocument(), groupIdVec);
+    auto cmd =
+        std::make_unique<doc::UngroupEntitiesCommand>(m_document->draftDocument(), groupIdVec);
     m_document->undoStack().push(std::move(cmd));
     m_viewport->update();
 }
@@ -1329,9 +1612,7 @@ void MainWindow::onUngroupEntities() {
 
 void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
     m_statusCoords->setText(
-        QString("X: %1  Y: %2")
-            .arg(worldPos.x, 0, 'f', 3)
-            .arg(worldPos.y, 0, 'f', 3));
+        QString("X: %1  Y: %2").arg(worldPos.x, 0, 'f', 3).arg(worldPos.y, 0, 'f', 3));
 
     // Update tool prompt dynamically as mouse moves.
     if (m_viewport && m_viewport->activeTool()) {
@@ -1427,14 +1708,41 @@ void MainWindow::onPrimitiveTorus() {
 // Slots -- Extrude and Revolve
 // ---------------------------------------------------------------------------
 
+std::shared_ptr<doc::Sketch> MainWindow::resolveProfileSketch(bool& createdWrapper) {
+    createdWrapper = false;
+
+    // The active sketch, when one is being edited.
+    if (auto* activeSketch = m_viewport->activeSketch()) {
+        for (const auto& sk : m_document->sketches()) {
+            if (sk.get() == activeSketch) return sk;
+        }
+    }
+
+    const auto& topEntities = m_document->draftDocument().entities();
+    if (topEntities.empty()) return nullptr;
+
+    // Reuse an existing wrapper sketch when the top-level profile has not
+    // changed — repeated extrudes must not accumulate duplicate sketches.
+    for (const auto& sk : m_document->sketches()) {
+        if (sk->entities() == topEntities) return sk;
+    }
+
+    // Wrap the top-level profile in a sketch so the feature is replayable
+    // (parametric history requires a sketch reference). The caller must add
+    // it to the document only once the operation is validated.
+    auto sketch = std::make_shared<doc::Sketch>();
+    sketch->setName(tr("Profile %1").arg(m_document->sketches().size()).toStdString());
+    for (const auto& entity : topEntities) sketch->addEntity(entity);
+    createdWrapper = true;
+    return sketch;
+}
+
 void MainWindow::onExtrudeSketch() {
     if (!m_viewport || !m_viewport->document()) return;
 
-    auto* sketch = m_viewport->activeSketch();
-    const auto& entities = sketch ? sketch->entities()
-                                   : m_viewport->document()->draftDocument().entities();
-
-    if (entities.empty()) {
+    bool createdWrapper = false;
+    auto sketch = resolveProfileSketch(createdWrapper);
+    if (!sketch || sketch->entities().empty()) {
         statusBar()->showMessage(tr("Draw a closed profile first"));
         return;
     }
@@ -1444,67 +1752,80 @@ void MainWindow::onExtrudeSketch() {
         QInputDialog::getDouble(this, tr("Extrude"), tr("Distance:"), 10.0, 0.01, 1e6, 2, &ok);
     if (!ok) return;
 
-    math::Vec3 direction = sketch ? sketch->plane().normal() : math::Vec3::UnitZ;
-    draft::SketchPlane plane = sketch ? sketch->plane() : draft::SketchPlane();
+    math::Vec3 direction = sketch->plane().normal();
 
-    auto solid = model::Extrude::execute(entities, plane, direction, distance, "extrude_1");
-    if (!solid) {
+    // Validate the profile BEFORE mutating the document: a failed extrude
+    // must not leave a wrapper sketch or a dead feature behind.
+    auto probe =
+        model::Extrude::execute(sketch->entities(), sketch->plane(), direction, distance, "probe");
+    if (!probe) {
         statusBar()->showMessage(tr("Extrude failed: profile is not a closed loop"));
         return;
     }
 
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Extrude");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
+    if (createdWrapper) m_document->addSketch(sketch);
 
-    m_viewport->sceneGraph().addNode(node);
-    if (sketch) m_viewport->setActiveSketch(nullptr);
+    // New features always go to the end of the active history.
+    m_document->featureTree().setRollbackIndex(-1);
+    m_document->featureTree().addFeature(
+        std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance));
+    m_document->setDirty(true);
+    rebuildFeatureTree();
+
+    if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
     m_viewport->camera().setIsometricView();
     m_viewport->update();
-    m_statusPrompt->setText(tr("Extruded successfully."));
+    if (m_document->failedFeatureIndex() >= 0) {
+        statusBar()->showMessage(tr("Extrude added, but an earlier feature fails to rebuild"));
+    } else {
+        m_statusPrompt->setText(tr("Extruded successfully."));
+    }
 }
 
 void MainWindow::onRevolveSketch() {
     if (!m_viewport || !m_viewport->document()) return;
 
-    auto* sketch = m_viewport->activeSketch();
-    const auto& entities = sketch ? sketch->entities()
-                                   : m_viewport->document()->draftDocument().entities();
-
-    if (entities.empty()) {
+    bool createdWrapper = false;
+    auto sketch = resolveProfileSketch(createdWrapper);
+    if (!sketch || sketch->entities().empty()) {
         statusBar()->showMessage(tr("Draw a closed profile first"));
         return;
     }
 
     bool ok;
-    double angleDeg =
-        QInputDialog::getDouble(this, tr("Revolve"), tr("Angle (degrees):"), 360.0, 1.0, 360.0, 1, &ok);
+    double angleDeg = QInputDialog::getDouble(this, tr("Revolve"), tr("Angle (degrees):"), 360.0,
+                                              1.0, 360.0, 1, &ok);
     if (!ok) return;
 
     const double angle = angleDeg * std::numbers::pi / 180.0;
 
-    draft::SketchPlane plane = sketch ? sketch->plane() : draft::SketchPlane();
     // Default revolve axis: Y axis through origin (world space)
     math::Vec3 axisPoint = math::Vec3::Zero;
     math::Vec3 axisDir = math::Vec3::UnitY;
 
-    auto solid = model::Revolve::execute(entities, plane, axisPoint, axisDir, angle, "revolve_1");
-    if (!solid) {
+    auto probe = model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir,
+                                         angle, "probe");
+    if (!probe) {
         statusBar()->showMessage(tr("Revolve failed: profile is not a closed loop"));
         return;
     }
 
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Revolve");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.55}, 0.15f, 0.5f, 32.0f});
+    if (createdWrapper) m_document->addSketch(sketch);
 
-    m_viewport->sceneGraph().addNode(node);
-    if (sketch) m_viewport->setActiveSketch(nullptr);
+    m_document->featureTree().setRollbackIndex(-1);
+    m_document->featureTree().addFeature(
+        std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle));
+    m_document->setDirty(true);
+    rebuildFeatureTree();
+
+    if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
     m_viewport->camera().setIsometricView();
     m_viewport->update();
-    m_statusPrompt->setText(tr("Revolved successfully."));
+    if (m_document->failedFeatureIndex() >= 0) {
+        statusBar()->showMessage(tr("Revolve added, but an earlier feature fails to rebuild"));
+    } else {
+        m_statusPrompt->setText(tr("Revolved successfully."));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1655,7 +1976,9 @@ void MainWindow::onChamfer() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::onFeatureDoubleClicked(int featureIndex) {
-    auto* feat = m_featureTree.feature(static_cast<size_t>(featureIndex));
+    auto& tree = m_document->featureTree();
+    if (featureIndex < 0 || static_cast<size_t>(featureIndex) >= tree.featureCount()) return;
+    auto* feat = tree.feature(static_cast<size_t>(featureIndex));
     if (!feat) return;
 
     auto params = feat->parameters();
@@ -1665,8 +1988,7 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         bool ok = false;
         double newValue = QInputDialog::getDouble(
             this, tr("Edit %1").arg(QString::fromStdString(feat->name())),
-            QString::fromStdString(paramName) + ":", paramValue, 0.001, 1e6, 3,
-            &ok);
+            QString::fromStdString(paramName) + ":", paramValue, 0.001, 1e6, 3, &ok);
         if (ok && newValue != paramValue) {
             feat->setParameter(paramName, newValue);
             changed = true;
@@ -1679,45 +2001,31 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
 }
 
 void MainWindow::onFeatureReordered(int fromIndex, int toIndex) {
-    m_featureTree.moveFeature(fromIndex, toIndex);
+    m_document->featureTree().moveFeature(fromIndex, toIndex);
+    m_document->setDirty(true);
     rebuildFeatureTree();
 }
 
 void MainWindow::onRollbackChanged(int newIndex) {
-    m_featureTree.setRollbackIndex(newIndex);
+    m_document->featureTree().setRollbackIndex(newIndex);
     rebuildFeatureTree();
 }
 
 void MainWindow::rebuildFeatureTree() {
-    auto result = m_featureTree.buildWithDiagnostics();
+    m_document->rebuildModel();
 
     m_featureTreePanel->clearFailures();
-    m_featureTreePanel->refresh(m_featureTree);
+    m_featureTreePanel->refresh(m_document->featureTree());
 
-    if (result.failedFeatureIndex >= 0) {
-        m_featureTreePanel->markFailed(result.failedFeatureIndex,
-                                        result.failureMessage);
-        statusBar()->showMessage(
-            tr("Feature rebuild failed at feature %1: %2")
-                .arg(result.failedFeatureIndex)
-                .arg(QString::fromStdString(result.failureMessage)));
+    if (m_document->failedFeatureIndex() >= 0) {
+        m_featureTreePanel->markFailed(m_document->failedFeatureIndex(),
+                                       m_document->lastBuildMessage());
+        statusBar()->showMessage(tr("Feature rebuild failed at feature %1: %2")
+                                     .arg(m_document->failedFeatureIndex())
+                                     .arg(QString::fromStdString(m_document->lastBuildMessage())));
     }
 
-    // Update viewport: clear existing 3D nodes and add the rebuilt solid
-    m_viewport->sceneGraph().clear();
-
-    if (result.solid) {
-        auto meshData =
-            model::SolidTessellator::tessellate(*result.solid, 0.1);
-        auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
-        node->setMesh(
-            std::make_unique<render::MeshData>(std::move(meshData)));
-        node->setMaterial(
-            render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
-        m_viewport->sceneGraph().addNode(node);
-    }
-
-    m_viewport->update();
+    rebuildScene();
 }
 
 }  // namespace hz::ui

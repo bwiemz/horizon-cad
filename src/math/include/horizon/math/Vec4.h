@@ -13,14 +13,10 @@ struct Vec4 {
     Vec4(double x, double y, double z, double w) : x(x), y(y), z(z), w(w) {}
     Vec4(const Vec3& v, double w) : x(v.x), y(v.y), z(v.z), w(w) {}
 
-    Vec4 operator+(const Vec4& rhs) const {
-        return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w};
-    }
+    Vec4 operator+(const Vec4& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w}; }
     Vec4 operator*(double s) const { return {x * s, y * s, z * s, w * s}; }
 
-    double dot(const Vec4& rhs) const {
-        return x * rhs.x + y * rhs.y + z * rhs.z + w * rhs.w;
-    }
+    double dot(const Vec4& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z + w * rhs.w; }
 
     Vec3 xyz() const { return {x, y, z}; }
 

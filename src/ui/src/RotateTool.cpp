@@ -1,21 +1,22 @@
 #include "horizon/ui/RotateTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -24,9 +25,7 @@ void RotateTool::deactivate() {
     Tool::deactivate();
 }
 
-
-static math::Vec2 rotatePoint(const math::Vec2& p,
-                               const math::Vec2& center, double angle) {
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = p - center;
     return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
@@ -59,8 +58,7 @@ bool RotateTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
         m_viewport->setLastSnapResult(result);
 
-        double angle = std::atan2(result.point.y - m_center.y,
-                                  result.point.x - m_center.x);
+        double angle = std::atan2(result.point.y - m_center.y, result.point.x - m_center.x);
         if (m_center.distanceTo(result.point) < 1e-6) return false;
 
         auto& sel = m_viewport->selectionManager();
@@ -145,10 +143,13 @@ bool RotateTool::keyPressEvent(QKeyEvent* event) {
                         if (!lp2 || !lp2->visible || lp2->locked) continue;
                         idVec.push_back(entity->id());
                     }
-                    if (idVec.empty()) { m_angleInput.clear(); return true; }
+                    if (idVec.empty()) {
+                        m_angleInput.clear();
+                        return true;
+                    }
 
-                    auto cmd = std::make_unique<doc::RotateEntityCommand>(
-                        doc, idVec, m_center, angleRad);
+                    auto cmd =
+                        std::make_unique<doc::RotateEntityCommand>(doc, idVec, m_center, angleRad);
                     auto* rawCmd = cmd.get();
                     m_viewport->document()->undoStack().push(std::move(cmd));
 
@@ -189,8 +190,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RotateTool::getPreviewLines() con
 
     if (m_center.distanceTo(m_currentPos) < 1e-6) return result;
 
-    double angle = std::atan2(m_currentPos.y - m_center.y,
-                              m_currentPos.x - m_center.x);
+    double angle = std::atan2(m_currentPos.y - m_center.y, m_currentPos.x - m_center.x);
 
     auto& doc = m_viewport->document()->draftDocument();
     auto& sel = m_viewport->selectionManager();
@@ -199,8 +199,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RotateTool::getPreviewLines() con
 
         auto segs = draft::extractSegments(*entity);
         for (const auto& [s, e] : segs) {
-            result.emplace_back(rotatePoint(s, m_center, angle),
-                                rotatePoint(e, m_center, angle));
+            result.emplace_back(rotatePoint(s, m_center, angle), rotatePoint(e, m_center, angle));
         }
 
         if (auto* c = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
@@ -208,10 +207,8 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RotateTool::getPreviewLines() con
             for (int i = 0; i < 32; ++i) {
                 double a1 = math::kTwoPi * i / 32.0;
                 double a2 = math::kTwoPi * (i + 1) / 32.0;
-                math::Vec2 p1(mc.x + c->radius() * std::cos(a1),
-                              mc.y + c->radius() * std::sin(a1));
-                math::Vec2 p2(mc.x + c->radius() * std::cos(a2),
-                              mc.y + c->radius() * std::sin(a2));
+                math::Vec2 p1(mc.x + c->radius() * std::cos(a1), mc.y + c->radius() * std::sin(a1));
+                math::Vec2 p2(mc.x + c->radius() * std::cos(a2), mc.y + c->radius() * std::sin(a2));
                 result.emplace_back(p1, p2);
             }
         }
@@ -249,12 +246,16 @@ std::vector<Tool::ArcPreview> RotateTool::getPreviewArcs() const {
 
 std::string RotateTool::promptText() const {
     switch (m_state) {
-        case State::SelectCenter: return "Specify center of rotation";
-        case State::SelectAngle: return "Specify rotation angle or type degrees";
+        case State::SelectCenter:
+            return "Specify center of rotation";
+        case State::SelectAngle:
+            return "Specify rotation angle or type degrees";
     }
     return "";
 }
 
-bool RotateTool::wantsCrosshair() const { return false; }
+bool RotateTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

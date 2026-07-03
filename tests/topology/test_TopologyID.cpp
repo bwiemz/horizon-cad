@@ -1,6 +1,6 @@
-#include "horizon/topology/TopologyID.h"
-
 #include <gtest/gtest.h>
+
+#include "horizon/topology/TopologyID.h"
 
 using hz::topo::TopologyID;
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "horizon/topology/Solid.h"
-
 #include <memory>
+
+#include "horizon/topology/Solid.h"
 
 namespace hz::model {
 
@@ -24,8 +24,7 @@ public:
     /// Execute a Boolean operation on two solids.
     /// @return A new solid containing the selected faces, or nullptr on failure.
     static std::unique_ptr<topo::Solid> execute(const topo::Solid& solidA,
-                                                 const topo::Solid& solidB,
-                                                 BooleanType type);
+                                                const topo::Solid& solidB, BooleanType type);
 };
 
 }  // namespace hz::model

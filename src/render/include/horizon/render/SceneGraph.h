@@ -1,12 +1,12 @@
 #pragma once
 
-#include "horizon/math/Mat4.h"
-#include "horizon/math/Vec3.h"
-
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Vec3.h"
 
 namespace hz::render {
 
@@ -18,16 +18,16 @@ struct Material {
     float shininess = 32.0f;
 
     // PBR-lite parameters
-    float roughness = 0.8f;    ///< Surface roughness [0..1]. 0 = mirror, 1 = matte.
-    float metallic = 0.0f;     ///< Metalness [0..1]. 0 = dielectric, 1 = metal.
-    float alpha = 1.0f;        ///< Opacity [0..1]. < 1 enables transparency.
+    float roughness = 0.8f;  ///< Surface roughness [0..1]. 0 = mirror, 1 = matte.
+    float metallic = 0.0f;   ///< Metalness [0..1]. 0 = dielectric, 1 = metal.
+    float alpha = 1.0f;      ///< Opacity [0..1]. < 1 enables transparency.
 };
 
 /// Mesh data stored on a scene node (CPU-side, indices + positions + normals).
 struct MeshData {
-    std::vector<float> positions;  // 3 floats per vertex
-    std::vector<float> normals;    // 3 floats per vertex
-    std::vector<uint32_t> indices; // triangle list
+    std::vector<float> positions;   // 3 floats per vertex
+    std::vector<float> normals;     // 3 floats per vertex
+    std::vector<uint32_t> indices;  // triangle list
 };
 
 /// A single node in the scene graph.
@@ -113,8 +113,7 @@ public:
 private:
     std::vector<std::shared_ptr<SceneNode>> m_nodes;
 
-    void collectVisibleHelper(SceneNode* node,
-                              std::vector<SceneNode*>& out) const;
+    void collectVisibleHelper(SceneNode* node, std::vector<SceneNode*>& out) const;
     SceneNode* findByIdHelper(SceneNode* node, uint32_t id) const;
 };
 

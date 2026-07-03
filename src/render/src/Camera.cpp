@@ -1,10 +1,10 @@
 #include "horizon/render/Camera.h"
 
-#include "horizon/math/Constants.h"
-#include "horizon/math/Vec4.h"
-
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/math/Constants.h"
+#include "horizon/math/Vec4.h"
 
 namespace hz::render {
 
@@ -170,8 +170,8 @@ math::Mat4 Camera::viewProjectionMatrix() const {
     return projectionMatrix() * viewMatrix();
 }
 
-std::pair<math::Vec3, math::Vec3> Camera::screenToRay(double screenX, double screenY,
-                                                       int vpW, int vpH) const {
+std::pair<math::Vec3, math::Vec3> Camera::screenToRay(double screenX, double screenY, int vpW,
+                                                      int vpH) const {
     // Convert screen coords to NDC [-1, 1]
     double ndcX = (2.0 * screenX / vpW) - 1.0;
     double ndcY = 1.0 - (2.0 * screenY / vpH);  // flip Y
@@ -192,8 +192,7 @@ std::pair<math::Vec3, math::Vec3> Camera::screenToRay(double screenX, double scr
     return {nearPt, dir};
 }
 
-math::Vec3 Camera::unproject(double screenX, double screenY, double depth,
-                              int vpW, int vpH) const {
+math::Vec3 Camera::unproject(double screenX, double screenY, double depth, int vpW, int vpH) const {
     double ndcX = (2.0 * screenX / vpW) - 1.0;
     double ndcY = 1.0 - (2.0 * screenY / vpH);
     // Map depth from [0,1] to NDC [-1,1]

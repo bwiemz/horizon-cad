@@ -1,8 +1,8 @@
 #pragma once
 
-#include "horizon/topology/HalfEdge.h"
-
 #include <vector>
+
+#include "horizon/topology/HalfEdge.h"
 
 namespace hz::topo {
 

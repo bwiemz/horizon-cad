@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
-#include "horizon/drafting/SpatialIndex.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/SnapEngine.h"
-#include "horizon/math/BoundingBox.h"
+
 #include <chrono>
 #include <iostream>
+
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SnapEngine.h"
+#include "horizon/drafting/SpatialIndex.h"
+#include "horizon/math/BoundingBox.h"
 
 using namespace hz::draft;
 using namespace hz::math;

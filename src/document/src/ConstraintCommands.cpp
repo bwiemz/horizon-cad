@@ -1,4 +1,5 @@
 #include "horizon/document/ConstraintCommands.h"
+
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
@@ -56,8 +57,7 @@ std::string RemoveConstraintCommand::description() const {
 // ---------------------------------------------------------------------------
 
 ModifyConstraintValueCommand::ModifyConstraintValueCommand(cstr::ConstraintSystem& system,
-                                                            uint64_t constraintId,
-                                                            double newValue)
+                                                           uint64_t constraintId, double newValue)
     : m_system(system), m_constraintId(constraintId), m_newValue(newValue) {}
 
 void ModifyConstraintValueCommand::execute() {
@@ -118,8 +118,8 @@ static void copyEntityGeometry(const draft::DraftEntity& src, draft::DraftEntity
     }
 }
 
-ApplyConstraintSolveCommand::ApplyConstraintSolveCommand(
-    draft::DraftDocument& doc, std::vector<EntitySnapshot> snapshots)
+ApplyConstraintSolveCommand::ApplyConstraintSolveCommand(draft::DraftDocument& doc,
+                                                         std::vector<EntitySnapshot> snapshots)
     : m_doc(doc), m_snapshots(std::move(snapshots)) {}
 
 void ApplyConstraintSolveCommand::execute() {

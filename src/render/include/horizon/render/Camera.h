@@ -1,10 +1,10 @@
 #pragma once
 
+#include <utility>
+
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
-
-#include <utility>
 
 namespace hz::render {
 
@@ -34,10 +34,9 @@ public:
     math::Mat4 projectionMatrix() const;
     math::Mat4 viewProjectionMatrix() const;
 
-    std::pair<math::Vec3, math::Vec3> screenToRay(double screenX, double screenY,
-                                                   int vpW, int vpH) const;
-    math::Vec3 unproject(double screenX, double screenY, double depth,
-                         int vpW, int vpH) const;
+    std::pair<math::Vec3, math::Vec3> screenToRay(double screenX, double screenY, int vpW,
+                                                  int vpH) const;
+    math::Vec3 unproject(double screenX, double screenY, double depth, int vpW, int vpH) const;
 
     const math::Vec3& eye() const { return m_eye; }
     const math::Vec3& target() const { return m_target; }

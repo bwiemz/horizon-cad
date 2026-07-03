@@ -1,28 +1,4 @@
 #include "horizon/ui/PropertyPanel.h"
-#include "horizon/ui/MainWindow.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftDimension.h"
-#include "horizon/drafting/DraftLinearDimension.h"
-#include "horizon/drafting/DraftRadialDimension.h"
-#include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/drafting/DraftLeader.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/drafting/LineType.h"
-#include "horizon/math/Constants.h"
-#include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/document/ConstraintCommands.h"
 
 #include <QColorDialog>
 #include <QComboBox>
@@ -36,11 +12,35 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/LineType.h"
+#include "horizon/math/Constants.h"
+#include "horizon/ui/MainWindow.h"
+#include "horizon/ui/ViewportWidget.h"
+
 namespace hz::ui {
 
 PropertyPanel::PropertyPanel(MainWindow* mainWindow, QWidget* parent)
-    : QDockWidget(tr("Properties"), parent)
-    , m_mainWindow(mainWindow) {
+    : QDockWidget(tr("Properties"), parent), m_mainWindow(mainWindow) {
     setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     createWidgets();
 }
@@ -55,8 +55,8 @@ void PropertyPanel::createWidgets() {
 
     m_layerCombo = new QComboBox(this);
     m_layerCombo->setEnabled(false);
-    connect(m_layerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::onLayerChanged);
+    connect(m_layerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &PropertyPanel::onLayerChanged);
     form->addRow(tr("Layer:"), m_layerCombo);
 
     auto* colorLayout = new QHBoxLayout();
@@ -79,22 +79,22 @@ void PropertyPanel::createWidgets() {
     m_lineWidthSpin->setDecimals(1);
     m_lineWidthSpin->setSpecialValueText(tr("ByLayer"));
     m_lineWidthSpin->setEnabled(false);
-    connect(m_lineWidthSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onLineWidthChanged);
+    connect(m_lineWidthSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onLineWidthChanged);
     form->addRow(tr("Width:"), m_lineWidthSpin);
 
     m_lineTypeCombo = new QComboBox(this);
-    m_lineTypeCombo->addItem(tr("ByLayer"));       // index 0
-    m_lineTypeCombo->addItem(tr("Continuous"));     // index 1
-    m_lineTypeCombo->addItem(tr("Dashed"));         // index 2
-    m_lineTypeCombo->addItem(tr("Dotted"));         // index 3
-    m_lineTypeCombo->addItem(tr("DashDot"));        // index 4
-    m_lineTypeCombo->addItem(tr("Center"));         // index 5
-    m_lineTypeCombo->addItem(tr("Hidden"));         // index 6
-    m_lineTypeCombo->addItem(tr("Phantom"));        // index 7
+    m_lineTypeCombo->addItem(tr("ByLayer"));     // index 0
+    m_lineTypeCombo->addItem(tr("Continuous"));  // index 1
+    m_lineTypeCombo->addItem(tr("Dashed"));      // index 2
+    m_lineTypeCombo->addItem(tr("Dotted"));      // index 3
+    m_lineTypeCombo->addItem(tr("DashDot"));     // index 4
+    m_lineTypeCombo->addItem(tr("Center"));      // index 5
+    m_lineTypeCombo->addItem(tr("Hidden"));      // index 6
+    m_lineTypeCombo->addItem(tr("Phantom"));     // index 7
     m_lineTypeCombo->setEnabled(false);
-    connect(m_lineTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::onLineTypeChanged);
+    connect(m_lineTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &PropertyPanel::onLineTypeChanged);
     form->addRow(tr("Line Type:"), m_lineTypeCombo);
 
     // Dimension-specific properties (hidden by default).
@@ -104,8 +104,8 @@ void PropertyPanel::createWidgets() {
 
     m_textOverrideEdit = new QLineEdit(m_dimPropsWidget);
     m_textOverrideEdit->setPlaceholderText(tr("Auto"));
-    connect(m_textOverrideEdit, &QLineEdit::editingFinished,
-            this, &PropertyPanel::onTextOverrideChanged);
+    connect(m_textOverrideEdit, &QLineEdit::editingFinished, this,
+            &PropertyPanel::onTextOverrideChanged);
     dimForm->addRow(tr("Text:"), m_textOverrideEdit);
     m_dimPropsWidget->hide();
 
@@ -121,15 +121,15 @@ void PropertyPanel::createWidgets() {
     m_blockRotationSpin->setRange(-360.0, 360.0);
     m_blockRotationSpin->setDecimals(2);
     m_blockRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
-    connect(m_blockRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onBlockRotationChanged);
+    connect(m_blockRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onBlockRotationChanged);
     blockForm->addRow(tr("Rotation:"), m_blockRotationSpin);
 
     m_blockScaleSpin = new QDoubleSpinBox(m_blockPropsWidget);
     m_blockScaleSpin->setRange(-1000.0, 1000.0);
     m_blockScaleSpin->setDecimals(3);
-    connect(m_blockScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onBlockScaleChanged);
+    connect(m_blockScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onBlockScaleChanged);
     blockForm->addRow(tr("Scale:"), m_blockScaleSpin);
 
     m_blockPropsWidget->hide();
@@ -140,32 +140,32 @@ void PropertyPanel::createWidgets() {
     textForm->setContentsMargins(0, 0, 0, 0);
 
     m_textContentEdit = new QLineEdit(m_textPropsWidget);
-    connect(m_textContentEdit, &QLineEdit::editingFinished,
-            this, &PropertyPanel::onTextContentChanged);
+    connect(m_textContentEdit, &QLineEdit::editingFinished, this,
+            &PropertyPanel::onTextContentChanged);
     textForm->addRow(tr("Content:"), m_textContentEdit);
 
     m_textHeightSpin = new QDoubleSpinBox(m_textPropsWidget);
     m_textHeightSpin->setRange(0.1, 1000.0);
     m_textHeightSpin->setDecimals(2);
     m_textHeightSpin->setSingleStep(0.5);
-    connect(m_textHeightSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onTextHeightChanged);
+    connect(m_textHeightSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onTextHeightChanged);
     textForm->addRow(tr("Height:"), m_textHeightSpin);
 
     m_textRotationSpin = new QDoubleSpinBox(m_textPropsWidget);
     m_textRotationSpin->setRange(-360.0, 360.0);
     m_textRotationSpin->setDecimals(2);
     m_textRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
-    connect(m_textRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onTextRotationChanged);
+    connect(m_textRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onTextRotationChanged);
     textForm->addRow(tr("Rotation:"), m_textRotationSpin);
 
     m_textAlignCombo = new QComboBox(m_textPropsWidget);
     m_textAlignCombo->addItem(tr("Left"));
     m_textAlignCombo->addItem(tr("Center"));
     m_textAlignCombo->addItem(tr("Right"));
-    connect(m_textAlignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::onTextAlignmentChanged);
+    connect(m_textAlignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &PropertyPanel::onTextAlignmentChanged);
     textForm->addRow(tr("Align:"), m_textAlignCombo);
 
     m_textPropsWidget->hide();
@@ -181,8 +181,8 @@ void PropertyPanel::createWidgets() {
     m_splineClosedCombo = new QComboBox(m_splinePropsWidget);
     m_splineClosedCombo->addItem(tr("Open"));
     m_splineClosedCombo->addItem(tr("Closed"));
-    connect(m_splineClosedCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::onSplineClosedChanged);
+    connect(m_splineClosedCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &PropertyPanel::onSplineClosedChanged);
     splineForm->addRow(tr("Type:"), m_splineClosedCombo);
 
     m_splinePropsWidget->hide();
@@ -196,24 +196,24 @@ void PropertyPanel::createWidgets() {
     m_hatchPatternCombo->addItem(tr("Solid"));
     m_hatchPatternCombo->addItem(tr("Lines"));
     m_hatchPatternCombo->addItem(tr("CrossHatch"));
-    connect(m_hatchPatternCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::onHatchPatternChanged);
+    connect(m_hatchPatternCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &PropertyPanel::onHatchPatternChanged);
     hatchForm->addRow(tr("Pattern:"), m_hatchPatternCombo);
 
     m_hatchAngleSpin = new QDoubleSpinBox(m_hatchPropsWidget);
     m_hatchAngleSpin->setRange(-360.0, 360.0);
     m_hatchAngleSpin->setDecimals(2);
     m_hatchAngleSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
-    connect(m_hatchAngleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onHatchAngleChanged);
+    connect(m_hatchAngleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onHatchAngleChanged);
     hatchForm->addRow(tr("Angle:"), m_hatchAngleSpin);
 
     m_hatchSpacingSpin = new QDoubleSpinBox(m_hatchPropsWidget);
     m_hatchSpacingSpin->setRange(0.01, 100.0);
     m_hatchSpacingSpin->setDecimals(3);
     m_hatchSpacingSpin->setSingleStep(0.1);
-    connect(m_hatchSpacingSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onHatchSpacingChanged);
+    connect(m_hatchSpacingSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onHatchSpacingChanged);
     hatchForm->addRow(tr("Spacing:"), m_hatchSpacingSpin);
 
     m_hatchPropsWidget->hide();
@@ -227,24 +227,24 @@ void PropertyPanel::createWidgets() {
     m_ellipseSemiMajorSpin->setRange(0.001, 1e6);
     m_ellipseSemiMajorSpin->setDecimals(4);
     m_ellipseSemiMajorSpin->setSingleStep(0.1);
-    connect(m_ellipseSemiMajorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onEllipseSemiMajorChanged);
+    connect(m_ellipseSemiMajorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onEllipseSemiMajorChanged);
     ellipseForm->addRow(tr("Semi-Major:"), m_ellipseSemiMajorSpin);
 
     m_ellipseSemiMinorSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
     m_ellipseSemiMinorSpin->setRange(0.001, 1e6);
     m_ellipseSemiMinorSpin->setDecimals(4);
     m_ellipseSemiMinorSpin->setSingleStep(0.1);
-    connect(m_ellipseSemiMinorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onEllipseSemiMinorChanged);
+    connect(m_ellipseSemiMinorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onEllipseSemiMinorChanged);
     ellipseForm->addRow(tr("Semi-Minor:"), m_ellipseSemiMinorSpin);
 
     m_ellipseRotationSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
     m_ellipseRotationSpin->setRange(-360.0, 360.0);
     m_ellipseRotationSpin->setDecimals(2);
     m_ellipseRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
-    connect(m_ellipseRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &PropertyPanel::onEllipseRotationChanged);
+    connect(m_ellipseRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &PropertyPanel::onEllipseRotationChanged);
     ellipseForm->addRow(tr("Rotation:"), m_ellipseRotationSpin);
 
     m_ellipsePropsWidget->hide();
@@ -260,8 +260,8 @@ void PropertyPanel::createWidgets() {
     m_deleteConstraintBtn = new QPushButton(tr("Delete Constraint"), m_constraintWidget);
     m_deleteConstraintBtn->setEnabled(false);
     connect(m_deleteConstraintBtn, &QPushButton::clicked, this, &PropertyPanel::onDeleteConstraint);
-    connect(m_constraintList, &QListWidget::currentRowChanged,
-            this, [this](int row) { m_deleteConstraintBtn->setEnabled(row >= 0); });
+    connect(m_constraintList, &QListWidget::currentRowChanged, this,
+            [this](int row) { m_deleteConstraintBtn->setEnabled(row >= 0); });
     cstrLayout->addWidget(m_deleteConstraintBtn);
     m_constraintWidget->hide();
 
@@ -353,20 +353,34 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     const draft::DraftDimension* dimEntity = nullptr;
     if (selectedIds.size() == 1) {
         QString typeName = "Entity";
-        if (dynamic_cast<const draft::DraftLine*>(first)) typeName = "Line";
-        else if (dynamic_cast<const draft::DraftCircle*>(first)) typeName = "Circle";
-        else if (dynamic_cast<const draft::DraftArc*>(first)) typeName = "Arc";
-        else if (dynamic_cast<const draft::DraftRectangle*>(first)) typeName = "Rectangle";
-        else if (dynamic_cast<const draft::DraftPolyline*>(first)) typeName = "Polyline";
-        else if (dynamic_cast<const draft::DraftLinearDimension*>(first)) typeName = "Linear Dim";
-        else if (dynamic_cast<const draft::DraftRadialDimension*>(first)) typeName = "Radial Dim";
-        else if (dynamic_cast<const draft::DraftAngularDimension*>(first)) typeName = "Angular Dim";
-        else if (dynamic_cast<const draft::DraftLeader*>(first)) typeName = "Leader";
-        else if (dynamic_cast<const draft::DraftBlockRef*>(first)) typeName = "Block Ref";
-        else if (dynamic_cast<const draft::DraftText*>(first)) typeName = "Text";
-        else if (dynamic_cast<const draft::DraftSpline*>(first)) typeName = "Spline";
-        else if (dynamic_cast<const draft::DraftHatch*>(first)) typeName = "Hatch";
-        else if (dynamic_cast<const draft::DraftEllipse*>(first)) typeName = "Ellipse";
+        if (dynamic_cast<const draft::DraftLine*>(first))
+            typeName = "Line";
+        else if (dynamic_cast<const draft::DraftCircle*>(first))
+            typeName = "Circle";
+        else if (dynamic_cast<const draft::DraftArc*>(first))
+            typeName = "Arc";
+        else if (dynamic_cast<const draft::DraftRectangle*>(first))
+            typeName = "Rectangle";
+        else if (dynamic_cast<const draft::DraftPolyline*>(first))
+            typeName = "Polyline";
+        else if (dynamic_cast<const draft::DraftLinearDimension*>(first))
+            typeName = "Linear Dim";
+        else if (dynamic_cast<const draft::DraftRadialDimension*>(first))
+            typeName = "Radial Dim";
+        else if (dynamic_cast<const draft::DraftAngularDimension*>(first))
+            typeName = "Angular Dim";
+        else if (dynamic_cast<const draft::DraftLeader*>(first))
+            typeName = "Leader";
+        else if (dynamic_cast<const draft::DraftBlockRef*>(first))
+            typeName = "Block Ref";
+        else if (dynamic_cast<const draft::DraftText*>(first))
+            typeName = "Text";
+        else if (dynamic_cast<const draft::DraftSpline*>(first))
+            typeName = "Spline";
+        else if (dynamic_cast<const draft::DraftHatch*>(first))
+            typeName = "Hatch";
+        else if (dynamic_cast<const draft::DraftEllipse*>(first))
+            typeName = "Ellipse";
         m_typeLabel->setText(typeName);
         dimEntity = dynamic_cast<const draft::DraftDimension*>(first);
     } else {
@@ -389,7 +403,9 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         int b = c & 0xFF;
         m_colorButton->setStyleSheet(
             QString("background-color: rgb(%1,%2,%3); border: 1px solid #555;")
-                .arg(r).arg(g).arg(b));
+                .arg(r)
+                .arg(g)
+                .arg(b));
     }
     m_colorButton->setEnabled(true);
     m_byLayerButton->setEnabled(true);
@@ -530,18 +546,18 @@ void PropertyPanel::onColorClicked() {
     QColor color = QColorDialog::getColor(initial, this, tr("Entity Color"));
     if (!color.isValid()) return;
 
-    uint32_t argb = 0xFF000000u
-        | (static_cast<uint32_t>(color.red()) << 16)
-        | (static_cast<uint32_t>(color.green()) << 8)
-        | static_cast<uint32_t>(color.blue());
+    uint32_t argb = 0xFF000000u | (static_cast<uint32_t>(color.red()) << 16) |
+                    (static_cast<uint32_t>(color.green()) << 8) |
+                    static_cast<uint32_t>(color.blue());
 
     auto cmd = std::make_unique<doc::ChangeEntityColorCommand>(
         viewport->document()->draftDocument(), m_currentIds, argb);
     viewport->document()->undoStack().push(std::move(cmd));
 
-    m_colorButton->setStyleSheet(
-        QString("background-color: rgb(%1,%2,%3); border: 1px solid #555;")
-            .arg(color.red()).arg(color.green()).arg(color.blue()));
+    m_colorButton->setStyleSheet(QString("background-color: rgb(%1,%2,%3); border: 1px solid #555;")
+                                     .arg(color.red())
+                                     .arg(color.green())
+                                     .arg(color.blue()));
     viewport->update();
 }
 
@@ -613,9 +629,8 @@ void PropertyPanel::updateConstraintList() {
     for (uint64_t entityId : m_currentIds) {
         auto constrs = cstrSys.constraintsForEntity(entityId);
         for (const auto* c : constrs) {
-            QString text = QString("[%1] %2")
-                .arg(c->id())
-                .arg(QString::fromStdString(c->typeName()));
+            QString text =
+                QString("[%1] %2").arg(c->id()).arg(QString::fromStdString(c->typeName()));
             if (c->hasDimensionalValue()) {
                 text += QString(" = %1").arg(c->dimensionalValue(), 0, 'f', 4);
             }
@@ -705,8 +720,8 @@ void PropertyPanel::onTextHeightChanged(double value) {
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    auto cmd = std::make_unique<doc::ChangeTextHeightCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), value);
+    auto cmd = std::make_unique<doc::ChangeTextHeightCommand>(viewport->document()->draftDocument(),
+                                                              m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -771,8 +786,8 @@ void PropertyPanel::onHatchAngleChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     double radians = value * math::kDegToRad;
-    auto cmd = std::make_unique<doc::ChangeHatchAngleCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+    auto cmd = std::make_unique<doc::ChangeHatchAngleCommand>(viewport->document()->draftDocument(),
+                                                              m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }

@@ -1,12 +1,14 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
-#include <memory>
-#include <vector>
 
 namespace hz::doc {
 
@@ -42,8 +44,8 @@ private:
 /// Command to modify the dimensional value of a Distance or Angle constraint.
 class ModifyConstraintValueCommand : public Command {
 public:
-    ModifyConstraintValueCommand(cstr::ConstraintSystem& system,
-                                  uint64_t constraintId, double newValue);
+    ModifyConstraintValueCommand(cstr::ConstraintSystem& system, uint64_t constraintId,
+                                 double newValue);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -64,8 +66,7 @@ public:
         std::shared_ptr<draft::DraftEntity> afterState;
     };
 
-    ApplyConstraintSolveCommand(draft::DraftDocument& doc,
-                                 std::vector<EntitySnapshot> snapshots);
+    ApplyConstraintSolveCommand(draft::DraftDocument& doc, std::vector<EntitySnapshot> snapshots);
     void execute() override;
     void undo() override;
     std::string description() const override;

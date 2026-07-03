@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "horizon/math/Quaternion.h"
-#include "horizon/math/Mat4.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Quaternion.h"
 
 using namespace hz::math;
 

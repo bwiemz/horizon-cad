@@ -1,13 +1,13 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/topology/Solid.h"
-
-#include <memory>
-#include <string>
-#include <vector>
 
 namespace hz::model {
 
@@ -31,9 +31,7 @@ public:
     /// @return The extruded solid, or nullptr if the profile is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
-        const draft::SketchPlane& plane,
-        const math::Vec3& direction,
-        double distance,
+        const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
         const std::string& featureID);
 };
 

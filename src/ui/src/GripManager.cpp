@@ -1,21 +1,21 @@
 #include "horizon/ui/GripManager.h"
 
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftLinearDimension.h"
-#include "horizon/drafting/DraftRadialDimension.h"
-#include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/drafting/DraftLeader.h"
-
 #include <cmath>
+
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
 
 namespace hz::ui {
 
@@ -33,11 +33,7 @@ std::vector<math::Vec2> GripManager::gripPoints(const draft::DraftEntity& entity
     if (auto* e = dynamic_cast<const draft::DraftCircle*>(&entity)) {
         auto c = e->center();
         double r = e->radius();
-        return {c,
-                {c.x + r, c.y},
-                {c.x, c.y + r},
-                {c.x - r, c.y},
-                {c.x, c.y - r}};
+        return {c, {c.x + r, c.y}, {c.x, c.y + r}, {c.x - r, c.y}, {c.x, c.y - r}};
     }
 
     // -- Arc: center, start point, end point --
@@ -117,29 +113,43 @@ std::vector<math::Vec2> GripManager::gripPoints(const draft::DraftEntity& entity
 // moveGrip() — apply a grip move for a specific index
 // ---------------------------------------------------------------------------
 
-bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
-                            const math::Vec2& newPos) {
+bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex, const math::Vec2& newPos) {
     // -- Line --
     if (auto* e = dynamic_cast<draft::DraftLine*>(&entity)) {
-        if (gripIndex == 0) { e->setStart(newPos); return true; }
-        if (gripIndex == 1) { e->setEnd(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setStart(newPos);
+            return true;
+        }
+        if (gripIndex == 1) {
+            e->setEnd(newPos);
+            return true;
+        }
         return false;
     }
 
     // -- Circle --
     if (auto* e = dynamic_cast<draft::DraftCircle*>(&entity)) {
-        if (gripIndex == 0) { e->setCenter(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setCenter(newPos);
+            return true;
+        }
         // Grips 1-4 are quadrant points — change radius.
         if (gripIndex >= 1 && gripIndex <= 4) {
             double r = newPos.distanceTo(e->center());
-            if (r > 1e-6) { e->setRadius(r); return true; }
+            if (r > 1e-6) {
+                e->setRadius(r);
+                return true;
+            }
         }
         return false;
     }
 
     // -- Arc --
     if (auto* e = dynamic_cast<draft::DraftArc*>(&entity)) {
-        if (gripIndex == 0) { e->setCenter(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setCenter(newPos);
+            return true;
+        }
         if (gripIndex == 1) {
             // Move start point: adjust start angle and radius.
             double dx = newPos.x - e->center().x;
@@ -171,8 +181,14 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
 
     // -- Rectangle --
     if (auto* e = dynamic_cast<draft::DraftRectangle*>(&entity)) {
-        if (gripIndex == 0) { e->setCorner1(newPos); return true; }
-        if (gripIndex == 1) { e->setCorner2(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setCorner1(newPos);
+            return true;
+        }
+        if (gripIndex == 1) {
+            e->setCorner2(newPos);
+            return true;
+        }
         return false;
     }
 
@@ -200,7 +216,10 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
 
     // -- Ellipse --
     if (auto* e = dynamic_cast<draft::DraftEllipse*>(&entity)) {
-        if (gripIndex == 0) { e->setCenter(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setCenter(newPos);
+            return true;
+        }
         // Major axis endpoints: grips 1,2.
         if (gripIndex == 1 || gripIndex == 2) {
             double dx = newPos.x - e->center().x;
@@ -219,7 +238,9 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
             double dx = newPos.x - e->center().x;
             double dy = newPos.y - e->center().y;
             double dist = std::sqrt(dx * dx + dy * dy);
-            if (dist > 1e-6) { e->setSemiMinor(dist); }
+            if (dist > 1e-6) {
+                e->setSemiMinor(dist);
+            }
             return true;
         }
         return false;
@@ -227,7 +248,10 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
 
     // -- Text --
     if (auto* e = dynamic_cast<draft::DraftText*>(&entity)) {
-        if (gripIndex == 0) { e->setPosition(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setPosition(newPos);
+            return true;
+        }
         return false;
     }
 
@@ -244,7 +268,10 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
 
     // -- Block ref --
     if (auto* e = dynamic_cast<draft::DraftBlockRef*>(&entity)) {
-        if (gripIndex == 0) { e->setInsertPos(newPos); return true; }
+        if (gripIndex == 0) {
+            e->setInsertPos(newPos);
+            return true;
+        }
         return false;
     }
 
@@ -253,14 +280,18 @@ bool GripManager::moveGrip(draft::DraftEntity& entity, int gripIndex,
     if (auto* e = dynamic_cast<draft::DraftLinearDimension*>(&entity)) {
         // Only allow moving the dim line point (grip 2).
         // defPoint1/defPoint2 are definition points that typically shouldn't be moved.
-        (void)e; (void)gripIndex; (void)newPos;
+        (void)e;
+        (void)gripIndex;
+        (void)newPos;
         return false;  // Not supported for now.
     }
 
     // -- Leader: move polyline points --
     if (auto* e = dynamic_cast<draft::DraftLeader*>(&entity)) {
         // Leader doesn't expose setPoints(), so we can't move individual points.
-        (void)e; (void)gripIndex; (void)newPos;
+        (void)e;
+        (void)gripIndex;
+        (void)newPos;
         return false;
     }
 

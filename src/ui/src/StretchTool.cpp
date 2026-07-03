@@ -1,26 +1,27 @@
 #include "horizon/ui/StretchTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftEllipse.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/Layer.h"
-#include "horizon/math/MathUtils.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <algorithm>
 #include <cmath>
 #include <set>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/Layer.h"
+#include "horizon/math/MathUtils.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -28,11 +29,9 @@ namespace hz::ui {
 // Helper: test if a 2D point is inside an axis-aligned rectangle
 // ---------------------------------------------------------------------------
 
-static bool pointInRect(const math::Vec2& pt,
-                        const math::Vec2& rectMin,
+static bool pointInRect(const math::Vec2& pt, const math::Vec2& rectMin,
                         const math::Vec2& rectMax) {
-    return pt.x >= rectMin.x && pt.x <= rectMax.x &&
-           pt.y >= rectMin.y && pt.y <= rectMax.y;
+    return pt.x >= rectMin.x && pt.x <= rectMax.x && pt.y >= rectMin.y && pt.y <= rectMax.y;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,10 +128,8 @@ static void restoreEntityState(const draft::DraftEntity& src, draft::DraftEntity
 // Helper: apply a stretch displacement to specific points of an entity
 // ---------------------------------------------------------------------------
 
-static void applyStretch(draft::DraftEntity& entity,
-                         const std::vector<int>& insideIndices,
-                         int totalPoints,
-                         const math::Vec2& disp) {
+static void applyStretch(draft::DraftEntity& entity, const std::vector<int>& insideIndices,
+                         int totalPoints, const math::Vec2& disp) {
     if (insideIndices.empty()) return;
 
     // If ALL points are inside, just translate.
@@ -204,8 +201,7 @@ static void applyStretch(draft::DraftEntity& entity,
     if (auto* e = dynamic_cast<draft::DraftPolyline*>(&entity)) {
         auto pts = e->points();
         for (int i : insideIndices) {
-            if (i >= 0 && i < static_cast<int>(pts.size()))
-                pts[i] = pts[i] + disp;
+            if (i >= 0 && i < static_cast<int>(pts.size())) pts[i] = pts[i] + disp;
         }
         e->setPoints(pts);
         return;
@@ -215,8 +211,7 @@ static void applyStretch(draft::DraftEntity& entity,
     if (auto* e = dynamic_cast<draft::DraftSpline*>(&entity)) {
         auto pts = e->controlPoints();
         for (int i : insideIndices) {
-            if (i >= 0 && i < static_cast<int>(pts.size()))
-                pts[i] = pts[i] + disp;
+            if (i >= 0 && i < static_cast<int>(pts.size())) pts[i] = pts[i] + disp;
         }
         e->setControlPoints(pts);
         return;
@@ -238,8 +233,7 @@ static void applyStretch(draft::DraftEntity& entity,
     if (auto* e = dynamic_cast<draft::DraftHatch*>(&entity)) {
         auto bnd = e->boundary();
         for (int i : insideIndices) {
-            if (i >= 0 && i < static_cast<int>(bnd.size()))
-                bnd[i] = bnd[i] + disp;
+            if (i >= 0 && i < static_cast<int>(bnd.size())) bnd[i] = bnd[i] + disp;
         }
         e->setBoundary(bnd);
         return;
@@ -270,8 +264,7 @@ void StretchTool::collectStretchEntities() {
                     std::max(m_windowStart.y, m_windowEnd.y)};
 
     // Build BoundingBox for entity-level intersection check.
-    math::BoundingBox windowBB(math::Vec3(wMin.x, wMin.y, -1e9),
-                               math::Vec3(wMax.x, wMax.y, 1e9));
+    math::BoundingBox windowBB(math::Vec3(wMin.x, wMin.y, -1e9), math::Vec3(wMax.x, wMax.y, 1e9));
 
     for (const auto& entity : doc.entities()) {
         const auto* lp = layerMgr.getLayer(entity->layer());
@@ -381,7 +374,8 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
         case State::WaitingBasePoint: {
             // Apply snapping for precise base point.
             auto& doc = m_viewport->document()->draftDocument();
-            auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result =
+                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
             m_basePoint = result.point;
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
@@ -392,12 +386,12 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
         case State::Dragging: {
             // Finalize the stretch.
             auto& doc = m_viewport->document()->draftDocument();
-            auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result =
+                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
 
-            math::Vec2 disp{m_currentPos.x - m_basePoint.x,
-                            m_currentPos.y - m_basePoint.y};
+            math::Vec2 disp{m_currentPos.x - m_basePoint.x, m_currentPos.y - m_basePoint.y};
 
             if (std::abs(disp.x) < 1e-10 && std::abs(disp.y) < 1e-10) {
                 // Zero displacement — just restore and cancel.
@@ -445,7 +439,8 @@ bool StretchTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& world
 
         case State::Dragging: {
             auto& doc = m_viewport->document()->draftDocument();
-            auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result =
+                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
 
@@ -459,8 +454,7 @@ bool StretchTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& world
     }
 }
 
-bool StretchTool::mouseReleaseEvent(QMouseEvent* /*event*/,
-                                     const math::Vec2& /*worldPos*/) {
+bool StretchTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*worldPos*/) {
     return false;
 }
 
@@ -526,6 +520,8 @@ std::string StretchTool::promptText() const {
     return "";
 }
 
-bool StretchTool::wantsCrosshair() const { return true; }
+bool StretchTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

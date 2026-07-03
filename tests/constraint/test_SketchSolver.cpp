@@ -1,14 +1,16 @@
 #define _USE_MATH_DEFINES
-#include <cmath>
 #include <gtest/gtest.h>
-#include "horizon/constraint/SketchSolver.h"
+
+#include <cmath>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/constraint/ParameterTable.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/constraint/ParameterTable.h"
+#include "horizon/constraint/SketchSolver.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/math/Vec2.h"
 
 using namespace hz;
@@ -31,8 +33,8 @@ TEST(SketchSolver, CoincidentSolve) {
     doc.addEntity(line2);
 
     cstr::ConstraintSystem sys;
-    cstr::GeometryRef refA{line1->id(), cstr::FeatureType::Point, 1};   // line1 end
-    cstr::GeometryRef refB{line2->id(), cstr::FeatureType::Point, 0};   // line2 start
+    cstr::GeometryRef refA{line1->id(), cstr::FeatureType::Point, 1};  // line1 end
+    cstr::GeometryRef refB{line2->id(), cstr::FeatureType::Point, 0};  // line2 start
     sys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(refA, refB));
 
     // Fix line1 start and end, and line2 end so the solver only moves line2 start.
@@ -156,10 +158,12 @@ TEST(SketchSolver, OverConstrainedDetection) {
     cstr::GeometryRef refA{line->id(), cstr::FeatureType::Point, 0};
     cstr::GeometryRef refB{line->id(), cstr::FeatureType::Point, 1};
 
-    // Fix both endpoints AND add a distance constraint — over-constrained if distance doesn't match.
+    // Fix both endpoints AND add a distance constraint — over-constrained if distance doesn't
+    // match.
     sys.addConstraint(std::make_shared<cstr::FixedConstraint>(refA, math::Vec2{0.0, 0.0}));
     sys.addConstraint(std::make_shared<cstr::FixedConstraint>(refB, math::Vec2{10.0, 0.0}));
-    sys.addConstraint(std::make_shared<cstr::DistanceConstraint>(refA, refB, 5.0));  // Contradicts fixed.
+    sys.addConstraint(
+        std::make_shared<cstr::DistanceConstraint>(refA, refB, 5.0));  // Contradicts fixed.
 
     auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
 

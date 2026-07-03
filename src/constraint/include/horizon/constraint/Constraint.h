@@ -1,12 +1,13 @@
 #pragma once
 
-#include "horizon/constraint/GeometryRef.h"
-#include "horizon/math/Vec2.h"
 #include <Eigen/Dense>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/constraint/GeometryRef.h"
+#include "horizon/math/Vec2.h"
 
 namespace hz::cstr {
 
@@ -93,8 +94,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& pointA() const { return m_pointA; }
@@ -115,8 +115,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& refA() const { return m_refA; }
@@ -136,8 +135,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& refA() const { return m_refA; }
@@ -157,8 +155,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& lineA() const { return m_lineA; }
@@ -178,8 +175,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& lineA() const { return m_lineA; }
@@ -199,8 +195,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& lineRef() const { return m_lineRef; }
@@ -220,8 +215,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     const GeometryRef& refA() const { return m_refA; }
@@ -241,8 +235,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     bool hasDimensionalValue() const override { return false; }
@@ -265,8 +258,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     bool hasDimensionalValue() const override { return true; }
@@ -291,8 +283,7 @@ public:
     std::vector<uint64_t> referencedEntityIds() const override;
     void evaluate(const ParameterTable& params, Eigen::VectorXd& residuals,
                   int offset) const override;
-    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
-                  int offset) const override;
+    void jacobian(const ParameterTable& params, Eigen::MatrixXd& jac, int offset) const override;
     std::shared_ptr<Constraint> clone() const override;
 
     bool hasDimensionalValue() const override { return true; }

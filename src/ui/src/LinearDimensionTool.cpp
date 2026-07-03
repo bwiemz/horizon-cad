@@ -1,12 +1,12 @@
 #include "horizon/ui/LinearDimensionTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
-
+#include <QMouseEvent>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -30,8 +30,8 @@ bool LinearDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -53,8 +53,8 @@ bool LinearDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
             if (!m_viewport || !m_viewport->document()) return false;
 
             auto orientation = detectOrientation();
-            auto dim = std::make_shared<draft::DraftLinearDimension>(
-                m_point1, m_point2, snapped, orientation);
+            auto dim = std::make_shared<draft::DraftLinearDimension>(m_point1, m_point2, snapped,
+                                                                     orientation);
             dim->setLayer(m_viewport->document()->layerManager().currentLayer());
 
             auto cmd = std::make_unique<doc::AddEntityCommand>(
@@ -76,8 +76,8 @@ bool LinearDimensionTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -85,7 +85,8 @@ bool LinearDimensionTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec
     return true;
 }
 
-bool LinearDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*worldPos*/) {
+bool LinearDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/,
+                                            const math::Vec2& /*worldPos*/) {
     return false;
 }
 
@@ -158,13 +159,18 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LinearDimensionTool::getPreviewLi
 
 std::string LinearDimensionTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForPoint1: return "Specify first dimension point";
-        case State::WaitingForPoint2: return "Specify second dimension point";
-        case State::WaitingForDimLine: return "Specify dimension line position";
+        case State::WaitingForPoint1:
+            return "Specify first dimension point";
+        case State::WaitingForPoint2:
+            return "Specify second dimension point";
+        case State::WaitingForDimLine:
+            return "Specify dimension line position";
     }
     return "";
 }
 
-bool LinearDimensionTool::wantsCrosshair() const { return true; }
+bool LinearDimensionTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

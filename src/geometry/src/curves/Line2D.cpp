@@ -2,8 +2,7 @@
 
 namespace hz::geo {
 
-Line2D::Line2D(const math::Vec2& start, const math::Vec2& end)
-    : m_start(start), m_end(end) {}
+Line2D::Line2D(const math::Vec2& start, const math::Vec2& end) : m_start(start), m_end(end) {}
 
 math::Vec2 Line2D::evaluate(double t) const {
     return m_start + (m_end - m_start) * t;

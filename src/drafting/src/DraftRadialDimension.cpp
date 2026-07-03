@@ -1,45 +1,39 @@
 #include "horizon/drafting/DraftRadialDimension.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
 
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
+
 namespace hz::draft {
 
 // ---- Helpers (file-local) ----
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
 }
 
-static math::Vec2 rotatePoint(const math::Vec2& p,
-                               const math::Vec2& center, double angle) {
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = p - center;
     return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
 }
 
-static math::Vec2 scalePoint(const math::Vec2& p,
-                              const math::Vec2& center, double factor) {
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
 }
 
 // ---- Construction ----
 
-DraftRadialDimension::DraftRadialDimension(
-    const math::Vec2& center, double radius,
-    const math::Vec2& textPoint, bool isDiameter)
-    : m_center(center)
-    , m_radius(radius)
-    , m_textPoint(textPoint)
-    , m_isDiameter(isDiameter) {}
+DraftRadialDimension::DraftRadialDimension(const math::Vec2& center, double radius,
+                                           const math::Vec2& textPoint, bool isDiameter)
+    : m_center(center), m_radius(radius), m_textPoint(textPoint), m_isDiameter(isDiameter) {}
 
 // ---- Measurement ----
 
@@ -70,14 +64,14 @@ math::Vec2 DraftRadialDimension::textPosition() const {
 
 // ---- Rendering geometry ----
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftRadialDimension::extensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftRadialDimension::extensionLines(
+    const DimensionStyle& /*style*/) const {
     // Radial dimensions don't have extension lines.
     return {};
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftRadialDimension::dimensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftRadialDimension::dimensionLines(
+    const DimensionStyle& /*style*/) const {
     math::Vec2 bp = boundaryPoint();
 
     if (m_isDiameter) {
@@ -91,8 +85,8 @@ DraftRadialDimension::dimensionLines(const DimensionStyle& /*style*/) const {
     return {{m_center, m_textPoint}};
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftRadialDimension::arrowheadLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftRadialDimension::arrowheadLines(
+    const DimensionStyle& style) const {
     math::Vec2 bp = boundaryPoint();
     math::Vec2 dir = (m_textPoint - m_center).normalized();
 
@@ -152,8 +146,8 @@ void DraftRadialDimension::translate(const math::Vec2& delta) {
 }
 
 std::shared_ptr<DraftEntity> DraftRadialDimension::clone() const {
-    auto copy = std::make_shared<DraftRadialDimension>(
-        m_center, m_radius, m_textPoint, m_isDiameter);
+    auto copy =
+        std::make_shared<DraftRadialDimension>(m_center, m_radius, m_textPoint, m_isDiameter);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());

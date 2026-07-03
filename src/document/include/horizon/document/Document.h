@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ExpressionEngine.h"
 #include "horizon/document/FeatureTree.h"
@@ -8,14 +13,21 @@
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
 
 namespace hz::doc {
 
 class UndoStack;
+
+/// Kind of content a Document represents.
+///
+/// Drawing  — 2D drafting document (.hcad, .dxf)
+/// Part     — parametric 3D part: sketches + feature tree (.hzpart)
+/// Assembly — component references + mates (.hzasm); see AssemblyDocument
+enum class DocumentType {
+    Drawing,
+    Part,
+    Assembly,
+};
 
 /// Central document model for Horizon CAD.
 /// Owns the DraftDocument (entity storage) and UndoStack.
@@ -66,6 +78,32 @@ public:
     FeatureTree& featureTree() { return m_featureTree; }
     const FeatureTree& featureTree() const { return m_featureTree; }
 
+    // --- Built model (result of replaying the feature tree) ---
+
+    /// Rebuild the solid by replaying the feature tree.
+    /// Stores the result (and failure diagnostics) on the document.
+    /// Returns true when no feature failed. An empty tree succeeds
+    /// with a null solid.
+    bool rebuildModel();
+
+    /// The solid produced by the last rebuildModel() call (may be null).
+    const topo::Solid* solid() const { return m_solid.get(); }
+    topo::Solid* solid() { return m_solid.get(); }
+
+    /// Take ownership of the built solid (e.g. loaded from a cache).
+    void setSolid(std::unique_ptr<topo::Solid> solid) { m_solid = std::move(solid); }
+
+    /// Failure message from the last rebuildModel() call (empty on success).
+    const std::string& lastBuildMessage() const { return m_lastBuildMessage; }
+
+    /// Index of the feature that failed in the last rebuild (-1 = none).
+    int failedFeatureIndex() const { return m_failedFeatureIndex; }
+
+    // --- Document type ---
+
+    DocumentType type() const { return m_type; }
+    void setType(DocumentType type) { m_type = type; }
+
     // --- Dirty tracking ---
 
     bool isDirty() const { return m_dirty; }
@@ -87,6 +125,10 @@ private:
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_defaultSketch;
     FeatureTree m_featureTree;
+    std::unique_ptr<topo::Solid> m_solid;
+    std::string m_lastBuildMessage;
+    int m_failedFeatureIndex = -1;
+    DocumentType m_type = DocumentType::Drawing;
 };
 
 }  // namespace hz::doc

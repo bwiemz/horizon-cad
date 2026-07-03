@@ -1,18 +1,19 @@
 #pragma once
 
-#include "horizon/topology/Solid.h"
-#include "horizon/topology/TopologyID.h"
-
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 namespace hz::model {
 
 /// Result of a fillet operation.
 struct FilletResult {
-    std::unique_ptr<topo::Solid> solid;  ///< The new solid with filleted edges, or nullptr on error.
-    std::string errorMessage;            ///< Non-empty if the operation failed.
+    std::unique_ptr<topo::Solid>
+        solid;                 ///< The new solid with filleted edges, or nullptr on error.
+    std::string errorMessage;  ///< Non-empty if the operation failed.
 };
 
 /// Creates a new solid with cylindrical fillet faces replacing selected edges.

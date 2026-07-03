@@ -1,8 +1,8 @@
 #pragma once
 
-#include "horizon/topology/Solid.h"
-
 #include <memory>
+
+#include "horizon/topology/Solid.h"
 
 namespace hz::model {
 
@@ -32,7 +32,7 @@ public:
     /// @param height        Height along Z.
     /// Uses box-like topology (8V, 12E, 6F) with conical NURBS patches.
     static std::unique_ptr<topo::Solid> makeCone(double bottomRadius, double topRadius,
-                                                  double height);
+                                                 double height);
 
     /// Torus centered at origin, axis along +Z.
     /// @param majorRadius  Distance from center to tube center.

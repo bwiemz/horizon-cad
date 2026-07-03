@@ -7,11 +7,8 @@ namespace hz::render {
 MeshBuffer::MeshBuffer() = default;
 MeshBuffer::~MeshBuffer() = default;
 
-
-void MeshBuffer::create(QOpenGLExtraFunctions* gl,
-                         const std::vector<float>& positions,
-                         const std::vector<float>& normals,
-                         const std::vector<uint32_t>& indices) {
+void MeshBuffer::create(QOpenGLExtraFunctions* gl, const std::vector<float>& positions,
+                        const std::vector<float>& normals, const std::vector<uint32_t>& indices) {
     if (positions.empty()) return;
 
     m_vertexCount = static_cast<int>(positions.size() / 3);
@@ -43,13 +40,11 @@ void MeshBuffer::create(QOpenGLExtraFunctions* gl,
     // Create VBO
     m_vbo.create();
     m_vbo.bind();
-    m_vbo.allocate(interleaved.data(),
-                   static_cast<int>(interleaved.size() * sizeof(float)));
+    m_vbo.allocate(interleaved.data(), static_cast<int>(interleaved.size() * sizeof(float)));
 
     // Position attribute (location 0)
     gl->glEnableVertexAttribArray(0);
-    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
-                              nullptr);
+    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
 
     // Normal attribute (location 1)
     gl->glEnableVertexAttribArray(1);
@@ -60,8 +55,7 @@ void MeshBuffer::create(QOpenGLExtraFunctions* gl,
     if (m_hasIndices) {
         m_ebo.create();
         m_ebo.bind();
-        m_ebo.allocate(indices.data(),
-                       static_cast<int>(indices.size() * sizeof(uint32_t)));
+        m_ebo.allocate(indices.data(), static_cast<int>(indices.size() * sizeof(uint32_t)));
     }
 
     m_vao.release();
@@ -70,7 +64,7 @@ void MeshBuffer::create(QOpenGLExtraFunctions* gl,
 }
 
 void MeshBuffer::createPositionOnly(QOpenGLExtraFunctions* gl,
-                                     const std::vector<float>& positions) {
+                                    const std::vector<float>& positions) {
     if (positions.empty()) return;
 
     m_vertexCount = static_cast<int>(positions.size() / 3);
@@ -82,13 +76,11 @@ void MeshBuffer::createPositionOnly(QOpenGLExtraFunctions* gl,
 
     m_vbo.create();
     m_vbo.bind();
-    m_vbo.allocate(positions.data(),
-                   static_cast<int>(positions.size() * sizeof(float)));
+    m_vbo.allocate(positions.data(), static_cast<int>(positions.size() * sizeof(float)));
 
     // Position attribute (location 0)
     gl->glEnableVertexAttribArray(0);
-    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float),
-                              nullptr);
+    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
     m_vao.release();
     m_vbo.release();

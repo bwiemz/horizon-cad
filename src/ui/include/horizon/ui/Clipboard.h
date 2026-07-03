@@ -1,9 +1,10 @@
 #pragma once
 
-#include "horizon/drafting/DraftEntity.h"
-#include "horizon/math/Vec2.h"
 #include <memory>
 #include <vector>
+
+#include "horizon/drafting/DraftEntity.h"
+#include "horizon/math/Vec2.h"
 
 namespace hz::ui {
 

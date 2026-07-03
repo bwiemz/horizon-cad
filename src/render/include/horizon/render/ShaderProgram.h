@@ -1,13 +1,12 @@
 #pragma once
 
+#include <QOpenGLShaderProgram>
+#include <memory>
+#include <string>
+
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/math/Vec4.h"
-
-#include <QOpenGLShaderProgram>
-
-#include <memory>
-#include <string>
 
 namespace hz::render {
 

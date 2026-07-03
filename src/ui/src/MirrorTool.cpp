@@ -1,21 +1,22 @@
 #include "horizon/ui/MirrorTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -24,10 +25,8 @@ void MirrorTool::deactivate() {
     Tool::deactivate();
 }
 
-
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
@@ -180,12 +179,16 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MirrorTool::getPreviewLines() con
 
 std::string MirrorTool::promptText() const {
     switch (m_state) {
-        case State::SelectFirstPoint: return "Specify first point of mirror axis";
-        case State::SelectSecondPoint: return "Specify second point of mirror axis";
+        case State::SelectFirstPoint:
+            return "Specify first point of mirror axis";
+        case State::SelectSecondPoint:
+            return "Specify second point of mirror axis";
     }
     return "";
 }
 
-bool MirrorTool::wantsCrosshair() const { return false; }
+bool MirrorTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

@@ -1,30 +1,28 @@
 #include "horizon/drafting/DraftLeader.h"
-#include "horizon/math/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
 // ---- Helpers (file-local) ----
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
 }
 
-static math::Vec2 rotatePoint(const math::Vec2& p,
-                               const math::Vec2& center, double angle) {
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = p - center;
     return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
 }
 
-static math::Vec2 scalePoint(const math::Vec2& p,
-                              const math::Vec2& center, double factor) {
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
 }
 
@@ -35,7 +33,9 @@ DraftLeader::DraftLeader(const std::vector<math::Vec2>& points, const std::strin
 
 // ---- Measurement ----
 
-double DraftLeader::computedValue() const { return 0.0; }
+double DraftLeader::computedValue() const {
+    return 0.0;
+}
 
 std::string DraftLeader::displayText(const DimensionStyle& /*style*/) const {
     return m_text;
@@ -48,13 +48,13 @@ math::Vec2 DraftLeader::textPosition() const {
 
 // ---- Rendering geometry ----
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLeader::extensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLeader::extensionLines(
+    const DimensionStyle& /*style*/) const {
     return {};  // Leaders don't have extension lines.
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLeader::dimensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLeader::dimensionLines(
+    const DimensionStyle& /*style*/) const {
     std::vector<std::pair<math::Vec2, math::Vec2>> lines;
     for (size_t i = 0; i + 1 < m_points.size(); ++i) {
         lines.push_back({m_points[i], m_points[i + 1]});
@@ -62,8 +62,8 @@ DraftLeader::dimensionLines(const DimensionStyle& /*style*/) const {
     return lines;
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLeader::arrowheadLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLeader::arrowheadLines(
+    const DimensionStyle& style) const {
     if (m_points.size() < 2) return {};
 
     // Arrow at the first point, pointing from second toward first.

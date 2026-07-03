@@ -33,6 +33,21 @@
       }
     },
     {
+      "name": "ci-windows",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HZ_BUILD_TESTS": "ON"
+      },
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "linux-default",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
@@ -81,6 +96,10 @@
     {
       "name": "linux-release",
       "configurePreset": "linux-release"
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows"
     }
   ],
   "testPresets": [
@@ -95,6 +114,13 @@
     {
       "name": "linux-debug",
       "configurePreset": "linux-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
       "output": {
         "outputOnFailure": true
       }

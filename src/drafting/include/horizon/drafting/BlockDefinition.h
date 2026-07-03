@@ -1,10 +1,11 @@
 #pragma once
 
-#include "DraftEntity.h"
-#include "horizon/math/Vec2.h"
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "DraftEntity.h"
+#include "horizon/math/Vec2.h"
 
 namespace hz::draft {
 

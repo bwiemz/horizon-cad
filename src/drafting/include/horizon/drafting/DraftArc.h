@@ -6,8 +6,7 @@ namespace hz::draft {
 
 class DraftArc : public DraftEntity {
 public:
-    DraftArc(const math::Vec2& center, double radius,
-             double startAngle, double endAngle);
+    DraftArc(const math::Vec2& center, double radius, double startAngle, double endAngle);
 
     math::BoundingBox boundingBox() const override;
     bool hitTest(const math::Vec2& point, double tolerance) const override;

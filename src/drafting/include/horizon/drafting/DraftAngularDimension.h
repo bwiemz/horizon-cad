@@ -11,10 +11,8 @@ public:
     /// \param line1Point point on first line (away from vertex, defines direction)
     /// \param line2Point point on second line (away from vertex, defines direction)
     /// \param arcRadius  distance of the dimension arc from vertex
-    DraftAngularDimension(const math::Vec2& vertex,
-                          const math::Vec2& line1Point,
-                          const math::Vec2& line2Point,
-                          double arcRadius);
+    DraftAngularDimension(const math::Vec2& vertex, const math::Vec2& line1Point,
+                          const math::Vec2& line2Point, double arcRadius);
 
     const math::Vec2& vertex() const { return m_vertex; }
     const math::Vec2& line1Point() const { return m_line1Point; }
@@ -26,12 +24,12 @@ public:
     std::string displayText(const DimensionStyle& style) const override;
     math::Vec2 textPosition() const override;
 
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        extensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        dimensionLines(const DimensionStyle& style) const override;
-    std::vector<std::pair<math::Vec2, math::Vec2>>
-        arrowheadLines(const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> extensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> dimensionLines(
+        const DimensionStyle& style) const override;
+    std::vector<std::pair<math::Vec2, math::Vec2>> arrowheadLines(
+        const DimensionStyle& style) const override;
 
     // DraftEntity overrides
     math::BoundingBox boundingBox() const override;

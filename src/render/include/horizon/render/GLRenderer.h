@@ -1,18 +1,17 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+#include "horizon/math/Vec2.h"
+#include "horizon/math/Vec4.h"
 #include "horizon/render/Camera.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshBuffer.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/ShaderProgram.h"
-
-#include "horizon/math/Vec2.h"
-#include "horizon/math/Vec4.h"
-
-#include <cstdint>
-#include <memory>
-#include <unordered_map>
-#include <vector>
 
 class QOpenGLExtraFunctions;
 
@@ -35,16 +34,14 @@ public:
     void resize(QOpenGLExtraFunctions* gl, int width, int height);
 
     /// Render the full scene (objects + grid).
-    void renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
-                     const Camera& camera);
+    void renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene, const Camera& camera);
 
     /// Render only the ground grid.
     void renderGrid(QOpenGLExtraFunctions* gl, const Camera& camera);
 
     /// Render 3D mesh nodes from the scene graph (Phong-shaded).
     /// Unlike renderScene, this does NOT clear the framebuffer or draw the grid.
-    void renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
-                     const Camera& camera);
+    void renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene, const Camera& camera);
 
     /// Background color.
     void setBackgroundColor(float r, float g, float b);
@@ -52,20 +49,17 @@ public:
     /// Draw a set of line segments given flat vertex data (x,y,z,dist per vertex, pairs).
     /// Vertex format: 4 floats per vertex (x, y, z, distance-along-entity).
     void drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
-                   const std::vector<float>& lineVertices,
-                   const math::Vec3& color, float lineWidth = 1.5f,
-                   int lineType = 1, float patternScale = 1.0f);
+                   const std::vector<float>& lineVertices, const math::Vec3& color,
+                   float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f);
 
     /// Draw a circle approximation given flat vertex data (line segments forming the circle).
     void drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
-                    const std::vector<float>& circleVertices,
-                    const math::Vec3& color, float lineWidth = 1.5f,
-                    int lineType = 1, float patternScale = 1.0f);
+                    const std::vector<float>& circleVertices, const math::Vec3& color,
+                    float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f);
 
     /// Draw a filled, semi-transparent quad between two world-space corners.
-    void drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
-                        const math::Vec2& corner1, const math::Vec2& corner2,
-                        const math::Vec4& color);
+    void drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera, const math::Vec2& corner1,
+                        const math::Vec2& corner2, const math::Vec4& color);
 
     // ---- Section Plane ----
 
@@ -94,8 +88,7 @@ private:
     void uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node);
 
     /// Render edges of visible mesh nodes as wireframe overlay.
-    void renderEdgeOverlay(QOpenGLExtraFunctions* gl,
-                           const std::vector<SceneNode*>& nodes,
+    void renderEdgeOverlay(QOpenGLExtraFunctions* gl, const std::vector<SceneNode*>& nodes,
                            const math::Mat4& vp);
 
     void initPickingFBO(QOpenGLExtraFunctions* gl, int width, int height);

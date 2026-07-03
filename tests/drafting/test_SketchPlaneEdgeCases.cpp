@@ -16,7 +16,7 @@ TEST(SketchPlaneEdgeCaseTest, RayParallelToPlane) {
 }
 
 TEST(SketchPlaneEdgeCaseTest, RayFromBehindPlane) {
-    SketchPlane plane;  // XY at Z=0
+    SketchPlane plane;         // XY at Z=0
     Vec3 rayOrigin(0, 0, -5);  // Below plane
     Vec3 rayDir(0, 0, 1);      // Shooting upward
     Vec2 result;

@@ -1,10 +1,11 @@
 #pragma once
 
-#include "DraftEntity.h"
-#include "DimensionStyle.h"
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "DimensionStyle.h"
+#include "DraftEntity.h"
 
 namespace hz::draft {
 
@@ -34,22 +35,23 @@ public:
     virtual math::Vec2 textPosition() const = 0;
 
     /// Extension lines (from definition points toward the dimension line).
-    virtual std::vector<std::pair<math::Vec2, math::Vec2>>
-        extensionLines(const DimensionStyle& style) const = 0;
+    virtual std::vector<std::pair<math::Vec2, math::Vec2>> extensionLines(
+        const DimensionStyle& style) const = 0;
 
     /// Dimension line(s) — the main measured line/arc.
-    virtual std::vector<std::pair<math::Vec2, math::Vec2>>
-        dimensionLines(const DimensionStyle& style) const = 0;
+    virtual std::vector<std::pair<math::Vec2, math::Vec2>> dimensionLines(
+        const DimensionStyle& style) const = 0;
 
     /// Arrowhead line segments (two lines forming a "V" at each arrowhead).
-    virtual std::vector<std::pair<math::Vec2, math::Vec2>>
-        arrowheadLines(const DimensionStyle& style) const = 0;
+    virtual std::vector<std::pair<math::Vec2, math::Vec2>> arrowheadLines(
+        const DimensionStyle& style) const = 0;
 
 protected:
     /// Helper: generate arrowhead "V" lines at a point, pointing along a direction.
-    static std::vector<std::pair<math::Vec2, math::Vec2>>
-        makeArrowhead(const math::Vec2& tip, const math::Vec2& direction,
-                      double size, double halfAngle);
+    static std::vector<std::pair<math::Vec2, math::Vec2>> makeArrowhead(const math::Vec2& tip,
+                                                                        const math::Vec2& direction,
+                                                                        double size,
+                                                                        double halfAngle);
 
     std::string m_textOverride;
 };

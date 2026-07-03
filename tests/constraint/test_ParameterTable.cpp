@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
-#include "horizon/constraint/ParameterTable.h"
-#include "horizon/constraint/ConstraintSystem.h"
+
 #include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/constraint/ParameterTable.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/math/Vec2.h"
 
 using namespace hz;

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "horizon/math/Transform.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Transform.h"
 
 using namespace hz::math;
 

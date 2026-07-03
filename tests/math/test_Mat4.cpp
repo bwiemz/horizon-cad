@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
+#include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
-#include "horizon/math/Constants.h"
 
 using namespace hz::math;
 
@@ -10,8 +10,7 @@ using namespace hz::math;
 static void expectMat4Near(const Mat4& a, const Mat4& b, double tol = 1e-10) {
     for (int r = 0; r < 4; ++r)
         for (int c = 0; c < 4; ++c)
-            EXPECT_NEAR(a.at(r, c), b.at(r, c), tol)
-                << "Mismatch at (" << r << ", " << c << ")";
+            EXPECT_NEAR(a.at(r, c), b.at(r, c), tol) << "Mismatch at (" << r << ", " << c << ")";
 }
 
 // ---------------------------------------------------------------------------

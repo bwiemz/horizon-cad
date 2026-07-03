@@ -1,11 +1,11 @@
 #include "horizon/render/GLRenderer.h"
 
-#include "horizon/math/Constants.h"
-#include "horizon/math/Mat4.h"
-
 #include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <algorithm>
+
+#include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 
 namespace hz::render {
 
@@ -271,14 +271,13 @@ void GLRenderer::destroyDynamicBuffers(QOpenGLExtraFunctions* gl) {
     m_dynamicVBOCapacity = 0;
 }
 
-void GLRenderer::uploadDynamic(QOpenGLExtraFunctions* gl, const void* data,
-                               size_t sizeBytes) {
+void GLRenderer::uploadDynamic(QOpenGLExtraFunctions* gl, const void* data, size_t sizeBytes) {
     gl->glBindBuffer(GL_ARRAY_BUFFER, m_dynamicVBO);
     if (sizeBytes > m_dynamicVBOCapacity) {
         // Grow to next power-of-two-like size or 2x, whichever is larger.
         m_dynamicVBOCapacity = std::max(sizeBytes, m_dynamicVBOCapacity * 2);
-        gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity),
-                         nullptr, GL_DYNAMIC_DRAW);
+        gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity), nullptr,
+                         GL_DYNAMIC_DRAW);
     }
     gl->glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(sizeBytes), data);
 }
@@ -325,8 +324,8 @@ void GLRenderer::initialize(QOpenGLExtraFunctions* gl) {
     gl->glGenBuffers(1, &m_dynamicVBO);
     m_dynamicVBOCapacity = sizeof(float) * 40000;  // ~160 KB initial
     gl->glBindBuffer(GL_ARRAY_BUFFER, m_dynamicVBO);
-    gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity),
-                     nullptr, GL_DYNAMIC_DRAW);
+    gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_dynamicVBOCapacity), nullptr,
+                     GL_DYNAMIC_DRAW);
     gl->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_initialized = true;
@@ -339,7 +338,7 @@ void GLRenderer::resize(QOpenGLExtraFunctions* gl, int width, int height) {
 }
 
 void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
-                              const Camera& camera) {
+                             const Camera& camera) {
     if (!m_initialized) return;
 
     // Clear
@@ -426,7 +425,7 @@ void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
 }
 
 void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
-                              const Camera& camera) {
+                             const Camera& camera) {
     if (!m_initialized) return;
 
     auto visibleNodes = scene.collectVisibleMeshNodes();
@@ -513,9 +512,8 @@ void GLRenderer::setBackgroundColor(float r, float g, float b) {
 }
 
 void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
-                            const std::vector<float>& lineVertices,
-                            const math::Vec3& color, float lineWidth,
-                            int lineType, float patternScale) {
+                           const std::vector<float>& lineVertices, const math::Vec3& color,
+                           float lineWidth, int lineType, float patternScale) {
     if (!m_initialized || lineVertices.empty()) return;
 
     math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
@@ -546,15 +544,14 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
 }
 
 void GLRenderer::drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
-                              const std::vector<float>& circleVertices,
-                              const math::Vec3& color, float lineWidth,
-                              int lineType, float patternScale) {
+                            const std::vector<float>& circleVertices, const math::Vec3& color,
+                            float lineWidth, int lineType, float patternScale) {
     drawLines(gl, camera, circleVertices, color, lineWidth, lineType, patternScale);
 }
 
 void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
-                                 const math::Vec2& corner1, const math::Vec2& corner2,
-                                 const math::Vec4& color) {
+                                const math::Vec2& corner1, const math::Vec2& corner2,
+                                const math::Vec4& color) {
     if (!m_initialized) return;
 
     float x0 = static_cast<float>(std::min(corner1.x, corner2.x));
@@ -564,8 +561,7 @@ void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
 
     // Two triangles forming a quad.
     float verts[] = {
-        x0, y0, 0.0f,  x1, y0, 0.0f,  x1, y1, 0.0f,
-        x0, y0, 0.0f,  x1, y1, 0.0f,  x0, y1, 0.0f,
+        x0, y0, 0.0f, x1, y0, 0.0f, x1, y1, 0.0f, x0, y0, 0.0f, x1, y1, 0.0f, x0, y1, 0.0f,
     };
 
     math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
@@ -604,9 +600,8 @@ void GLRenderer::uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node) {
 
 // ---- Edge wireframe overlay ----
 
-void GLRenderer::renderEdgeOverlay(QOpenGLExtraFunctions* gl,
-                                    const std::vector<SceneNode*>& nodes,
-                                    const math::Mat4& vp) {
+void GLRenderer::renderEdgeOverlay(QOpenGLExtraFunctions* gl, const std::vector<SceneNode*>& nodes,
+                                   const math::Mat4& vp) {
     if (nodes.empty() || !m_edgeShader.isValid()) return;
 
     // Resolve glPolygonMode at runtime — not exposed by QOpenGLExtraFunctions.
@@ -667,19 +662,19 @@ void GLRenderer::initPickingFBO(QOpenGLExtraFunctions* gl, int width, int height
     // Color attachment (RGBA8 for ID encoding).
     gl->glGenTextures(1, &m_pickColorTex);
     gl->glBindTexture(GL_TEXTURE_2D, m_pickColorTex);
-    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, nullptr);
+    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     nullptr);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                                m_pickColorTex, 0);
+    gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_pickColorTex,
+                               0);
 
     // Depth renderbuffer.
     gl->glGenRenderbuffers(1, &m_pickDepthRBO);
     gl->glBindRenderbuffer(GL_RENDERBUFFER, m_pickDepthRBO);
     gl->glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    gl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                                   GL_RENDERBUFFER, m_pickDepthRBO);
+    gl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
+                                  m_pickDepthRBO);
 
     gl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -700,7 +695,7 @@ void GLRenderer::destroyPickingFBO(QOpenGLExtraFunctions* gl) {
 }
 
 void GLRenderer::renderPickingPass(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
-                                    const Camera& camera) {
+                                   const Camera& camera) {
     if (!m_pickShader.isValid()) return;
 
     auto visibleNodes = scene.collectVisibleMeshNodes();
@@ -761,9 +756,8 @@ uint32_t GLRenderer::pickAtPixel(QOpenGLExtraFunctions* gl, int x, int y) {
 
     if (pixel[3] == 0) return 0;  // Background — no hit.
 
-    uint32_t id = static_cast<uint32_t>(pixel[0])
-                | (static_cast<uint32_t>(pixel[1]) << 8)
-                | (static_cast<uint32_t>(pixel[2]) << 16);
+    uint32_t id = static_cast<uint32_t>(pixel[0]) | (static_cast<uint32_t>(pixel[1]) << 8) |
+                  (static_cast<uint32_t>(pixel[2]) << 16);
     return id;
 }
 

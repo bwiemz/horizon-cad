@@ -6,11 +6,15 @@
     {
       "name": "qtbase",
       "default-features": false,
-      "features": ["widgets", "opengl"]
+      "features": [
+        "widgets",
+        "opengl"
+      ]
     },
     "spdlog",
     "nlohmann-json",
     "gtest",
     "eigen3"
-  ]
+  ],
+  "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35"
 }

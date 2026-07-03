@@ -1,18 +1,16 @@
 #include "horizon/geometry/curves/Circle2D.h"
-#include "horizon/math/Constants.h"
+
 #include <cmath>
+
+#include "horizon/math/Constants.h"
 
 namespace hz::geo {
 
-Circle2D::Circle2D(const math::Vec2& center, double radius)
-    : m_center(center), m_radius(radius) {}
+Circle2D::Circle2D(const math::Vec2& center, double radius) : m_center(center), m_radius(radius) {}
 
 math::Vec2 Circle2D::evaluate(double t) const {
     // t is the angle in radians, range [0, 2*pi)
-    return math::Vec2(
-        m_center.x + m_radius * std::cos(t),
-        m_center.y + m_radius * std::sin(t)
-    );
+    return math::Vec2(m_center.x + m_radius * std::cos(t), m_center.y + m_radius * std::sin(t));
 }
 
 math::Vec2 Circle2D::derivative(double t, int order) const {
@@ -20,20 +18,11 @@ math::Vec2 Circle2D::derivative(double t, int order) const {
     // d/dt (center + r*cos(t), center + r*sin(t)) = (-r*sin(t), r*cos(t))
     switch (order) {
         case 1:
-            return math::Vec2(
-                -m_radius * std::sin(t),
-                 m_radius * std::cos(t)
-            );
+            return math::Vec2(-m_radius * std::sin(t), m_radius * std::cos(t));
         case 2:
-            return math::Vec2(
-                -m_radius * std::cos(t),
-                -m_radius * std::sin(t)
-            );
+            return math::Vec2(-m_radius * std::cos(t), -m_radius * std::sin(t));
         case 3:
-            return math::Vec2(
-                 m_radius * std::sin(t),
-                -m_radius * std::cos(t)
-            );
+            return math::Vec2(m_radius * std::sin(t), -m_radius * std::cos(t));
         case 4:
             return evaluate(t) - m_center;  // Same as first derivative pattern repeats
         default:

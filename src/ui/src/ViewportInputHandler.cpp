@@ -1,11 +1,12 @@
 #include "horizon/ui/ViewportInputHandler.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/ui/Tool.h"
 
-#include <QMouseEvent>
-#include <QWheelEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QOpenGLWidget>
+#include <QWheelEvent>
+
+#include "horizon/ui/Tool.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -38,8 +39,8 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
     QPoint delta = event->pos() - m_lastMousePos;
 
     if (m_orbiting) {
-        double yaw   = static_cast<double>(delta.x()) * 0.005;
-        double pitch  = static_cast<double>(delta.y()) * 0.005;
+        double yaw = static_cast<double>(delta.x()) * 0.005;
+        double pitch = static_cast<double>(delta.y()) * 0.005;
         viewport->camera().orbit(yaw, pitch);
         m_lastMousePos = event->pos();
         viewport->update();
@@ -94,16 +95,14 @@ void ViewportInputHandler::handleMouseRelease(QMouseEvent* event, ViewportWidget
 void ViewportInputHandler::handleWheel(QWheelEvent* event, ViewportWidget* viewport) {
     // Zoom-to-cursor: keep the world point under the cursor stationary.
     math::Vec2 worldBefore = viewport->worldPositionAtCursor(
-        static_cast<int>(event->position().x()),
-        static_cast<int>(event->position().y()));
+        static_cast<int>(event->position().x()), static_cast<int>(event->position().y()));
 
     double delta = event->angleDelta().y() / 120.0;
     double factor = 1.0 + delta * 0.1;
     viewport->camera().zoom(factor);
 
     math::Vec2 worldAfter = viewport->worldPositionAtCursor(
-        static_cast<int>(event->position().x()),
-        static_cast<int>(event->position().y()));
+        static_cast<int>(event->position().x()), static_cast<int>(event->position().y()));
 
     // Pan so the same world point stays under the cursor.
     double dx = worldBefore.x - worldAfter.x;

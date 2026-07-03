@@ -1,49 +1,49 @@
 #include "horizon/ui/ViewportRenderer.h"
-#include "horizon/ui/Tool.h"
-#include "horizon/ui/SelectTool.h"
-#include "horizon/ui/GripManager.h"
-#include "horizon/render/GLRenderer.h"
-#include "horizon/render/Camera.h"
-#include "horizon/render/SelectionManager.h"
-#include "horizon/document/Document.h"
+
+#include <QFont>
+#include <QFontMetrics>
+#include <QImage>
+#include <QOpenGLExtraFunctions>
+#include <QPainter>
+#include <QPointF>
+#include <cmath>
+#include <set>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/constraint/ParameterTable.h"
 #include "horizon/constraint/SketchSolver.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
+#include "horizon/document/Document.h"
 #include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftText.h"
-#include "horizon/drafting/DraftSpline.h"
-#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/math/Vec4.h"
-#include "horizon/math/Mat4.h"
-
-#include <QOpenGLExtraFunctions>
-#include <QPainter>
-#include <QFont>
-#include <QFontMetrics>
-#include <QImage>
-#include <QPointF>
-
-#include <cmath>
-#include <set>
+#include "horizon/render/Camera.h"
+#include "horizon/render/GLRenderer.h"
+#include "horizon/render/SelectionManager.h"
+#include "horizon/ui/GripManager.h"
+#include "horizon/ui/SelectTool.h"
+#include "horizon/ui/Tool.h"
 
 namespace {
 
 static hz::math::Vec3 argbToVec3(uint32_t argb) {
-    return { static_cast<double>((argb >> 16) & 0xFF) / 255.0,
-             static_cast<double>((argb >> 8)  & 0xFF) / 255.0,
-             static_cast<double>( argb        & 0xFF) / 255.0 };
+    return {static_cast<double>((argb >> 16) & 0xFF) / 255.0,
+            static_cast<double>((argb >> 8) & 0xFF) / 255.0,
+            static_cast<double>(argb & 0xFF) / 255.0};
 }
 
 struct BatchKey {
@@ -51,8 +51,7 @@ struct BatchKey {
     float lineWidth;
     int lineType;
     bool operator==(const BatchKey& o) const {
-        return colorARGB == o.colorARGB && lineWidth == o.lineWidth &&
-               lineType == o.lineType;
+        return colorARGB == o.colorARGB && lineWidth == o.lineWidth && lineType == o.lineType;
     }
 };
 
@@ -106,13 +105,9 @@ void ViewportRenderer::initTextOverlayGL(QOpenGLExtraFunctions* gl) {
     // Two triangles covering [-1,1] in clip space.
     float quadVerts[] = {
         // pos        uv
-        -1.f, -1.f,  0.f, 0.f,
-         1.f, -1.f,  1.f, 0.f,
-         1.f,  1.f,  1.f, 1.f,
+        -1.f, -1.f, 0.f, 0.f, 1.f, -1.f, 1.f, 0.f, 1.f,  1.f, 1.f, 1.f,
 
-        -1.f, -1.f,  0.f, 0.f,
-         1.f,  1.f,  1.f, 1.f,
-        -1.f,  1.f,  0.f, 1.f,
+        -1.f, -1.f, 0.f, 0.f, 1.f, 1.f,  1.f, 1.f, -1.f, 1.f, 0.f, 1.f,
     };
 
     gl->glGenVertexArrays(1, &m_textOverlayVAO);
@@ -166,8 +161,7 @@ void ViewportRenderer::recomputeDOF(doc::Document* doc) {
         return;
     }
 
-    auto params = cstr::ParameterTable::buildFromEntities(
-        doc->draftDocument().entities(), csys);
+    auto params = cstr::ParameterTable::buildFromEntities(doc->draftDocument().entities(), csys);
     cstr::SketchSolver solver;
     m_dofAnalysis = solver.analyzeDOF(params, csys);
     m_dofDirty = false;
@@ -177,11 +171,9 @@ void ViewportRenderer::recomputeDOF(doc::Document* doc) {
 // Entity rendering
 // ---------------------------------------------------------------------------
 
-void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
-                                       render::GLRenderer& renderer,
-                                       const render::Camera& camera,
-                                       doc::Document& doc,
-                                       const render::SelectionManager& selection) {
+void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                                      const render::Camera& camera, doc::Document& doc,
+                                      const render::SelectionManager& selection) {
     m_dimTexts.clear();
 
     const auto& entities = doc.draftDocument().entities();
@@ -262,9 +254,8 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
         };
 
         // Helper: emit a line segment with per-vertex distance for a point sequence.
-        auto emitPointSeq = [&emitVert](std::vector<float>& v,
-                                         const std::vector<math::Vec2>& pts,
-                                         bool closed) {
+        auto emitPointSeq = [&emitVert](std::vector<float>& v, const std::vector<math::Vec2>& pts,
+                                        bool closed) {
             double cumDist = 0.0;
             for (size_t i = 0; i + 1 < pts.size(); ++i) {
                 double segLen = pts[i].distanceTo(pts[i + 1]);
@@ -287,14 +278,12 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
             emitVert(verts, line->end().x, line->end().y, static_cast<float>(len));
         } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
             auto verts = circleVertices(circle->center(), circle->radius());
-            renderer.drawCircle(gl, camera, verts,
-                                argbToVec3(resolvedColor), resolvedWidth,
+            renderer.drawCircle(gl, camera, verts, argbToVec3(resolvedColor), resolvedWidth,
                                 resolvedLineType);
         } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
-            auto verts = arcVertices(arc->center(), arc->radius(),
-                                     arc->startAngle(), arc->endAngle());
-            renderer.drawLines(gl, camera, verts,
-                               argbToVec3(resolvedColor), resolvedWidth,
+            auto verts =
+                arcVertices(arc->center(), arc->radius(), arc->startAngle(), arc->endAngle());
+            renderer.drawLines(gl, camera, verts, argbToVec3(resolvedColor), resolvedWidth,
                                resolvedLineType);
         } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
             auto c = rect->corners();
@@ -352,8 +341,7 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
             addSegments(dim->arrowheadLines(style));
 
             // Collect text for QPainter overlay.
-            m_dimTexts.push_back({dim->textPosition(),
-                                  dim->displayText(style), resolvedColor});
+            m_dimTexts.push_back({dim->textPosition(), dim->displayText(style), resolvedColor});
         } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
             // Render each sub-entity of the block definition, transformed to world space.
             for (const auto& subEnt : bref->definition()->entities) {
@@ -377,19 +365,20 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
                     auto wc = bref->transformPoint(ci->center());
                     double wr = ci->radius() * std::abs(bref->uniformScale());
                     auto cv = circleVertices(wc, wr);
-                    renderer.drawCircle(gl, camera, cv,
-                                        argbToVec3(subColor), subWidth, subLineType);
+                    renderer.drawCircle(gl, camera, cv, argbToVec3(subColor), subWidth,
+                                        subLineType);
                 } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
                     auto wc = bref->transformPoint(ar->center());
                     double wr = ar->radius() * std::abs(bref->uniformScale());
                     double sa = ar->startAngle() + bref->rotation();
                     double ea = ar->endAngle() + bref->rotation();
                     if (bref->uniformScale() < 0.0) {
-                        double tmp = sa; sa = -ea; ea = -tmp;
+                        double tmp = sa;
+                        sa = -ea;
+                        ea = -tmp;
                     }
                     auto av = arcVertices(wc, wr, sa, ea);
-                    renderer.drawLines(gl, camera, av,
-                                       argbToVec3(subColor), subWidth, subLineType);
+                    renderer.drawLines(gl, camera, av, argbToVec3(subColor), subWidth, subLineType);
                 } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
                     auto c = re->corners();
                     auto& v = findOrCreateBatch(subKey);
@@ -450,17 +439,15 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
             }
         } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
             // Text entity — collect for QPainter overlay.
-            m_dimTexts.push_back({txt->position(), txt->text(), resolvedColor,
-                                  txt->textHeight(), txt->rotation(),
-                                  static_cast<int>(txt->alignment())});
+            m_dimTexts.push_back({txt->position(), txt->text(), resolvedColor, txt->textHeight(),
+                                  txt->rotation(), static_cast<int>(txt->alignment())});
         }
     }
 
     // Draw all batches.
     for (const auto& [key, verts] : batches) {
         if (!verts.empty()) {
-            renderer.drawLines(gl, camera, verts,
-                               argbToVec3(key.colorARGB), key.lineWidth,
+            renderer.drawLines(gl, camera, verts, argbToVec3(key.colorARGB), key.lineWidth,
                                key.lineType);
         }
     }
@@ -470,10 +457,8 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl,
 // Tool preview rendering
 // ---------------------------------------------------------------------------
 
-void ViewportRenderer::renderToolPreview(QOpenGLExtraFunctions* gl,
-                                          render::GLRenderer& renderer,
-                                          const render::Camera& camera,
-                                          Tool* activeTool) {
+void ViewportRenderer::renderToolPreview(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                                         const render::Camera& camera, Tool* activeTool) {
     if (!activeTool) return;
 
     math::Vec3 previewCol = activeTool->previewColor();
@@ -510,8 +495,7 @@ void ViewportRenderer::renderToolPreview(QOpenGLExtraFunctions* gl,
     auto previewArcs = activeTool->getPreviewArcs();
     if (!previewArcs.empty()) {
         for (const auto& arc : previewArcs) {
-            auto verts = arcVertices(arc.center, arc.radius,
-                                     arc.startAngle, arc.endAngle);
+            auto verts = arcVertices(arc.center, arc.radius, arc.startAngle, arc.endAngle);
             renderer.drawLines(gl, camera, verts, previewCol);
         }
     }
@@ -520,12 +504,9 @@ void ViewportRenderer::renderToolPreview(QOpenGLExtraFunctions* gl,
     if (auto* selectTool = dynamic_cast<SelectTool*>(activeTool)) {
         if (selectTool->isDraggingBox()) {
             bool isWindow = selectTool->isWindowSelection();
-            math::Vec4 fillColor = isWindow
-                ? math::Vec4{0.2, 0.4, 0.8, 0.12}    // Blue tint
-                : math::Vec4{0.2, 0.8, 0.4, 0.12};   // Green tint
-            renderer.drawFilledQuad(gl, camera,
-                                    selectTool->boxCorner1(),
-                                    selectTool->boxCorner2(),
+            math::Vec4 fillColor = isWindow ? math::Vec4{0.2, 0.4, 0.8, 0.12}   // Blue tint
+                                            : math::Vec4{0.2, 0.8, 0.4, 0.12};  // Green tint
+            renderer.drawFilledQuad(gl, camera, selectTool->boxCorner1(), selectTool->boxCorner2(),
                                     fillColor);
         }
     }
@@ -537,12 +518,10 @@ void ViewportRenderer::renderToolPreview(QOpenGLExtraFunctions* gl,
 // Grip rendering
 // ---------------------------------------------------------------------------
 
-void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl,
-                                    render::GLRenderer& renderer,
-                                    const render::Camera& camera,
-                                    doc::Document& doc,
-                                    const render::SelectionManager& selection,
-                                    double pixelToWorldScale) {
+void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
+                                   const render::Camera& camera, doc::Document& doc,
+                                   const render::SelectionManager& selection,
+                                   double pixelToWorldScale) {
     auto selectedIds = selection.selectedIds();
     if (selectedIds.empty()) return;
 
@@ -563,17 +542,41 @@ void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl,
                 float hs = static_cast<float>(s * 0.5);
                 float side = hs * 2.0f;
                 // Draw a small square (4 line segments) with distance attribute.
-                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(0.0f);
-                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side);
+                verts.push_back(gx - hs);
+                verts.push_back(gy - hs);
+                verts.push_back(0.0f);
+                verts.push_back(0.0f);
+                verts.push_back(gx + hs);
+                verts.push_back(gy - hs);
+                verts.push_back(0.0f);
+                verts.push_back(side);
 
-                verts.push_back(gx + hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side);
-                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 2.0f);
+                verts.push_back(gx + hs);
+                verts.push_back(gy - hs);
+                verts.push_back(0.0f);
+                verts.push_back(side);
+                verts.push_back(gx + hs);
+                verts.push_back(gy + hs);
+                verts.push_back(0.0f);
+                verts.push_back(side * 2.0f);
 
-                verts.push_back(gx + hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 2.0f);
-                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 3.0f);
+                verts.push_back(gx + hs);
+                verts.push_back(gy + hs);
+                verts.push_back(0.0f);
+                verts.push_back(side * 2.0f);
+                verts.push_back(gx - hs);
+                verts.push_back(gy + hs);
+                verts.push_back(0.0f);
+                verts.push_back(side * 3.0f);
 
-                verts.push_back(gx - hs); verts.push_back(gy + hs); verts.push_back(0.0f); verts.push_back(side * 3.0f);
-                verts.push_back(gx - hs); verts.push_back(gy - hs); verts.push_back(0.0f); verts.push_back(side * 4.0f);
+                verts.push_back(gx - hs);
+                verts.push_back(gy + hs);
+                verts.push_back(0.0f);
+                verts.push_back(side * 3.0f);
+                verts.push_back(gx - hs);
+                verts.push_back(gy - hs);
+                verts.push_back(0.0f);
+                verts.push_back(side * 4.0f);
             }
             break;
         }
@@ -589,7 +592,7 @@ void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl,
 // ---------------------------------------------------------------------------
 
 std::vector<float> ViewportRenderer::circleVertices(const math::Vec2& center, double radius,
-                                                     int segments) const {
+                                                    int segments) const {
     std::vector<float> verts;
     verts.reserve(static_cast<size_t>(segments) * 8);
 
@@ -606,15 +609,21 @@ std::vector<float> ViewportRenderer::circleVertices(const math::Vec2& center, do
         float d0 = static_cast<float>(arcStep * static_cast<double>(i));
         float d1 = static_cast<float>(arcStep * static_cast<double>(i + 1));
 
-        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f); verts.push_back(d0);
-        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f); verts.push_back(d1);
+        verts.push_back(x0);
+        verts.push_back(y0);
+        verts.push_back(0.0f);
+        verts.push_back(d0);
+        verts.push_back(x1);
+        verts.push_back(y1);
+        verts.push_back(0.0f);
+        verts.push_back(d1);
     }
     return verts;
 }
 
 std::vector<float> ViewportRenderer::arcVertices(const math::Vec2& center, double radius,
-                                                  double startAngle, double endAngle,
-                                                  int segments) const {
+                                                 double startAngle, double endAngle,
+                                                 int segments) const {
     double sweep = endAngle - startAngle;
     if (sweep <= 0.0) sweep += math::kTwoPi;
 
@@ -635,8 +644,14 @@ std::vector<float> ViewportRenderer::arcVertices(const math::Vec2& center, doubl
         float d0 = static_cast<float>(arcStep * static_cast<double>(i));
         float d1 = static_cast<float>(arcStep * static_cast<double>(i + 1));
 
-        verts.push_back(x0); verts.push_back(y0); verts.push_back(0.0f); verts.push_back(d0);
-        verts.push_back(x1); verts.push_back(y1); verts.push_back(0.0f); verts.push_back(d1);
+        verts.push_back(x0);
+        verts.push_back(y0);
+        verts.push_back(0.0f);
+        verts.push_back(d0);
+        verts.push_back(x1);
+        verts.push_back(y1);
+        verts.push_back(0.0f);
+        verts.push_back(d1);
     }
     return verts;
 }
@@ -645,11 +660,9 @@ std::vector<float> ViewportRenderer::arcVertices(const math::Vec2& center, doubl
 // Text overlay
 // ---------------------------------------------------------------------------
 
-QPointF ViewportRenderer::worldToScreen(const render::Camera& camera,
-                                         const math::Vec2& wp,
-                                         int viewportWidth, int viewportHeight) {
-    math::Vec4 clip = camera.viewProjectionMatrix()
-                      * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);
+QPointF ViewportRenderer::worldToScreen(const render::Camera& camera, const math::Vec2& wp,
+                                        int viewportWidth, int viewportHeight) {
+    math::Vec4 clip = camera.viewProjectionMatrix() * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);
     if (std::abs(clip.w) < 1e-15) return {0.0, 0.0};
 
     math::Vec3 ndc = clip.perspectiveDivide();
@@ -658,12 +671,11 @@ QPointF ViewportRenderer::worldToScreen(const render::Camera& camera,
     return {sx, sy};
 }
 
-void ViewportRenderer::renderTextToImage(QImage& image,
-                                          const render::Camera& camera,
-                                          doc::Document* doc,
-                                          const render::SelectionManager& selection,
-                                          int viewportWidth, int viewportHeight,
-                                          double pixelToWorldScale) {
+void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& camera,
+                                         doc::Document* doc,
+                                         const render::SelectionManager& selection,
+                                         int viewportWidth, int viewportHeight,
+                                         double pixelToWorldScale) {
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
 
@@ -681,8 +693,7 @@ void ViewportRenderer::renderTextToImage(QImage& image,
     auto drawItem = [&](const TextItem& item) {
         QPointF sp = worldToScreen(camera, item.worldPos, viewportWidth, viewportHeight);
         QColor qc(static_cast<int>((item.color >> 16) & 0xFF),
-                   static_cast<int>((item.color >> 8) & 0xFF),
-                   static_cast<int>(item.color & 0xFF));
+                  static_cast<int>((item.color >> 8) & 0xFF), static_cast<int>(item.color & 0xFF));
         painter.setPen(qc);
 
         QFont font("Arial", item.fontSize);
@@ -700,16 +711,22 @@ void ViewportRenderer::renderTextToImage(QImage& image,
             // QPainter rotates clockwise in degrees; world rotation is CCW radians.
             painter.rotate(-item.rotation * 180.0 / 3.14159265358979323846);
             double dx = 0.0;
-            if (item.alignment == 0)      dx = 0.0;
-            else if (item.alignment == 1)  dx = -tw * 0.5;
-            else                           dx = -tw;
+            if (item.alignment == 0)
+                dx = 0.0;
+            else if (item.alignment == 1)
+                dx = -tw * 0.5;
+            else
+                dx = -tw;
             painter.drawText(QPointF(dx, th * 0.25), text);
             painter.restore();
         } else {
             double dx = 0.0;
-            if (item.alignment == 0)      dx = 0.0;
-            else if (item.alignment == 1)  dx = -tw * 0.5;
-            else                           dx = -tw;
+            if (item.alignment == 0)
+                dx = 0.0;
+            else if (item.alignment == 1)
+                dx = -tw * 0.5;
+            else
+                dx = -tw;
             painter.drawText(QPointF(sp.x() + dx, sp.y() + th * 0.25), text);
         }
     };
@@ -718,17 +735,15 @@ void ViewportRenderer::renderTextToImage(QImage& image,
     if (!m_dimTexts.empty() && doc) {
         const auto& style = doc->draftDocument().dimensionStyle();
         double pxPerWorld = 1.0 / pixelToWorldScale;
-        int defaultFontSize = std::max(8, std::min(48,
-            static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
+        int defaultFontSize =
+            std::max(8, std::min(48, static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
 
         for (const auto& dt : m_dimTexts) {
             int fs = defaultFontSize;
             if (dt.textHeight > 0.0) {
-                fs = std::max(8, std::min(200,
-                    static_cast<int>(dt.textHeight * pxPerWorld * 0.4)));
+                fs = std::max(8, std::min(200, static_cast<int>(dt.textHeight * pxPerWorld * 0.4)));
             }
-            drawItem({dt.worldPos, dt.text, dt.color, fs, false,
-                      dt.rotation, dt.alignment});
+            drawItem({dt.worldPos, dt.text, dt.color, fs, false, dt.rotation, dt.alignment});
         }
     }
 
@@ -749,7 +764,10 @@ void ViewportRenderer::renderTextToImage(QImage& image,
                 auto refIds = c->referencedEntityIds();
                 bool anySelected = false;
                 for (uint64_t eid : refIds) {
-                    if (selectedSet.count(eid)) { anySelected = true; break; }
+                    if (selectedSet.count(eid)) {
+                        anySelected = true;
+                        break;
+                    }
                 }
                 if (anySelected) continue;
 
@@ -758,14 +776,30 @@ void ViewportRenderer::renderTextToImage(QImage& image,
                 uint32_t color = kAnnotationColor;
 
                 switch (c->type()) {
-                    case cstr::ConstraintType::Coincident:  symbol = "\xE2\x97\x8F"; break;
-                    case cstr::ConstraintType::Horizontal:  symbol = "H"; break;
-                    case cstr::ConstraintType::Vertical:    symbol = "V"; break;
-                    case cstr::ConstraintType::Perpendicular: symbol = "\xE2\x9F\x82"; break;
-                    case cstr::ConstraintType::Parallel:    symbol = "//"; break;
-                    case cstr::ConstraintType::Tangent:     symbol = "T"; break;
-                    case cstr::ConstraintType::Equal:       symbol = "="; break;
-                    case cstr::ConstraintType::Fixed:       symbol = "F"; break;
+                    case cstr::ConstraintType::Coincident:
+                        symbol = "\xE2\x97\x8F";
+                        break;
+                    case cstr::ConstraintType::Horizontal:
+                        symbol = "H";
+                        break;
+                    case cstr::ConstraintType::Vertical:
+                        symbol = "V";
+                        break;
+                    case cstr::ConstraintType::Perpendicular:
+                        symbol = "\xE2\x9F\x82";
+                        break;
+                    case cstr::ConstraintType::Parallel:
+                        symbol = "//";
+                        break;
+                    case cstr::ConstraintType::Tangent:
+                        symbol = "T";
+                        break;
+                    case cstr::ConstraintType::Equal:
+                        symbol = "=";
+                        break;
+                    case cstr::ConstraintType::Fixed:
+                        symbol = "F";
+                        break;
                     case cstr::ConstraintType::Distance: {
                         auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
                         if (dc) {
@@ -806,7 +840,8 @@ void ViewportRenderer::renderTextToImage(QImage& image,
                             }
                         }
                     }
-                } catch (...) {}
+                } catch (...) {
+                }
 
                 // Offset slightly above the position.
                 pos.y += pixelToWorldScale * 12.0;
@@ -820,24 +855,22 @@ void ViewportRenderer::renderTextToImage(QImage& image,
     painter.end();
 }
 
-void ViewportRenderer::blitTextOverlay(QOpenGLExtraFunctions* gl,
-                                        const render::Camera& camera,
-                                        doc::Document* doc,
-                                        const render::SelectionManager& selection,
-                                        int viewportWidth, int viewportHeight,
-                                        double pixelToWorldScale) {
+void ViewportRenderer::blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                                       doc::Document* doc,
+                                       const render::SelectionManager& selection, int viewportWidth,
+                                       int viewportHeight, double pixelToWorldScale) {
     if (viewportWidth <= 0 || viewportHeight <= 0) return;
 
     // 1. Render text to a QImage (QPainter on QImage is pure CPU).
     QImage image(viewportWidth, viewportHeight, QImage::Format_RGBA8888_Premultiplied);
     image.fill(Qt::transparent);
-    renderTextToImage(image, camera, doc, selection,
-                      viewportWidth, viewportHeight, pixelToWorldScale);
+    renderTextToImage(image, camera, doc, selection, viewportWidth, viewportHeight,
+                      pixelToWorldScale);
 
     // 2. Upload QImage pixels to the GL texture.
     gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
-    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewportWidth, viewportHeight, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, image.constBits());
+    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewportWidth, viewportHeight, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, image.constBits());
 
     // 3. Draw a fullscreen quad with alpha blending.
     // Use premultiplied-alpha blend (GL_ONE) since the QImage is premultiplied.

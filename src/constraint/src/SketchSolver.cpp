@@ -1,16 +1,18 @@
 #include "horizon/constraint/SketchSolver.h"
-#include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/constraint/ParameterTable.h"
+
 #include <Eigen/SVD>
 #include <cmath>
 #include <set>
+
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/constraint/ParameterTable.h"
 
 namespace hz::cstr {
 
 SketchSolver::SketchSolver() = default;
 
 Eigen::VectorXd SketchSolver::buildResiduals(const ParameterTable& params,
-                                              const ConstraintSystem& constraints) const {
+                                             const ConstraintSystem& constraints) const {
     int m = constraints.totalEquations();
     Eigen::VectorXd F = Eigen::VectorXd::Zero(m);
     int offset = 0;
@@ -22,7 +24,7 @@ Eigen::VectorXd SketchSolver::buildResiduals(const ParameterTable& params,
 }
 
 Eigen::MatrixXd SketchSolver::buildJacobian(const ParameterTable& params,
-                                              const ConstraintSystem& constraints) const {
+                                            const ConstraintSystem& constraints) const {
     int m = constraints.totalEquations();
     int n = params.parameterCount();
     Eigen::MatrixXd J = Eigen::MatrixXd::Zero(m, n);
@@ -34,8 +36,7 @@ Eigen::MatrixXd SketchSolver::buildJacobian(const ParameterTable& params,
     return J;
 }
 
-SolveResult SketchSolver::solve(ParameterTable& params,
-                                 const ConstraintSystem& constraints) {
+SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& constraints) {
     SolveResult result;
 
     int m = constraints.totalEquations();
@@ -126,8 +127,7 @@ SolveResult SketchSolver::solve(ParameterTable& params,
     if (m > rank) {
         result.status = SolveStatus::OverConstrained;
         result.message =
-            "Over-constrained: " + std::to_string(m) + " equations, rank " +
-            std::to_string(rank);
+            "Over-constrained: " + std::to_string(m) + " equations, rank " + std::to_string(rank);
     } else if (result.residualNorm > m_tolerance * 100.0) {
         result.status = SolveStatus::Inconsistent;
         result.message =

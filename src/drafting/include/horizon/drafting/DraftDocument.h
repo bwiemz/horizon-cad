@@ -1,12 +1,13 @@
 #pragma once
 
-#include "BlockTable.h"
-#include "DraftEntity.h"
-#include "DimensionStyle.h"
-#include "SpatialIndex.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "BlockTable.h"
+#include "DimensionStyle.h"
+#include "DraftEntity.h"
+#include "SpatialIndex.h"
 
 namespace hz::draft {
 

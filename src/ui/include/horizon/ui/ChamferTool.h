@@ -1,7 +1,9 @@
 #pragma once
 
-#include "horizon/ui/Tool.h"
+#include <cstdint>
+
 #include "horizon/math/Vec2.h"
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 
@@ -39,11 +41,10 @@ private:
 
     math::Vec2 m_currentPos;
 
-    bool computeChamfer(uint64_t lineAId, const math::Vec2& clickA,
-                        uint64_t lineBId, const math::Vec2& clickB,
-                        math::Vec2& chamferPtA, math::Vec2& chamferPtB,
-                        math::Vec2& trimA_start, math::Vec2& trimA_end,
-                        math::Vec2& trimB_start, math::Vec2& trimB_end) const;
+    bool computeChamfer(uint64_t lineAId, const math::Vec2& clickA, uint64_t lineBId,
+                        const math::Vec2& clickB, math::Vec2& chamferPtA, math::Vec2& chamferPtB,
+                        math::Vec2& trimA_start, math::Vec2& trimA_end, math::Vec2& trimB_start,
+                        math::Vec2& trimB_end) const;
 };
 
 }  // namespace hz::ui

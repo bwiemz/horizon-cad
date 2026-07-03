@@ -1,9 +1,9 @@
 #pragma once
 
-#include "horizon/math/Vec2.h"
-#include "horizon/drafting/SnapEngine.h"
-
 #include <vector>
+
+#include "horizon/drafting/SnapEngine.h"
+#include "horizon/math/Vec2.h"
 
 class QOpenGLExtraFunctions;
 
@@ -21,10 +21,8 @@ public:
     OverlayRenderer() = default;
 
     /// Render all overlays.  Call after main scene rendering, before text overlay.
-    void render(QOpenGLExtraFunctions* gl,
-                const render::Camera& camera,
-                render::GLRenderer* renderer,
-                int viewportWidth, int viewportHeight,
+    void render(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                render::GLRenderer* renderer, int viewportWidth, int viewportHeight,
                 double pixelScale);
 
     // ---- Snap markers ----
@@ -41,22 +39,14 @@ public:
     void setAxisIndicatorEnabled(bool enabled) { m_axisEnabled = enabled; }
 
 private:
-    void renderSnapMarker(QOpenGLExtraFunctions* gl,
-                          const render::Camera& camera,
-                          render::GLRenderer* renderer,
-                          double pixelScale);
+    void renderSnapMarker(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                          render::GLRenderer* renderer, double pixelScale);
 
-    void renderCrosshair(QOpenGLExtraFunctions* gl,
-                         const render::Camera& camera,
-                         render::GLRenderer* renderer,
-                         int vpW, int vpH,
-                         double pixelScale);
+    void renderCrosshair(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                         render::GLRenderer* renderer, int vpW, int vpH, double pixelScale);
 
-    void renderAxisIndicator(QOpenGLExtraFunctions* gl,
-                             const render::Camera& camera,
-                             render::GLRenderer* renderer,
-                             int vpW, int vpH,
-                             double pixelScale);
+    void renderAxisIndicator(QOpenGLExtraFunctions* gl, const render::Camera& camera,
+                             render::GLRenderer* renderer, int vpW, int vpH, double pixelScale);
 
     draft::SnapResult m_snapResult;
     bool m_crosshairEnabled = false;

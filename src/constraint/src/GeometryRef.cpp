@@ -1,11 +1,13 @@
 #include "horizon/constraint/GeometryRef.h"
+
+#include <stdexcept>
+
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
-#include <stdexcept>
 
 namespace hz::cstr {
 
@@ -32,7 +34,7 @@ math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity
 }
 
 std::pair<math::Vec2, math::Vec2> extractLine(const GeometryRef& ref,
-                                               const draft::DraftEntity& entity) {
+                                              const draft::DraftEntity& entity) {
     if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
         if (ref.featureIndex == 0) return {line->start(), line->end()};
     } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(&entity)) {
@@ -51,7 +53,7 @@ std::pair<math::Vec2, math::Vec2> extractLine(const GeometryRef& ref,
 }
 
 std::pair<math::Vec2, double> extractCircle(const GeometryRef& ref,
-                                             const draft::DraftEntity& entity) {
+                                            const draft::DraftEntity& entity) {
     if (auto* circle = dynamic_cast<const draft::DraftCircle*>(&entity)) {
         if (ref.featureIndex == 0) return {circle->center(), circle->radius()};
     } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(&entity)) {
@@ -62,8 +64,7 @@ std::pair<math::Vec2, double> extractCircle(const GeometryRef& ref,
 }
 
 const draft::DraftEntity* findEntity(
-    uint64_t entityId,
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
+    uint64_t entityId, const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
     for (const auto& e : entities) {
         if (e->id() == entityId) return e.get();
     }

@@ -1,4 +1,5 @@
 #include "horizon/drafting/BlockTable.h"
+
 #include <algorithm>
 
 namespace hz::draft {

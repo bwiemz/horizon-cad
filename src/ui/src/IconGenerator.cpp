@@ -2,15 +2,13 @@
 
 #include <QColor>
 #include <QFont>
+#include <QHash>
+#include <QImage>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
-#include <QImage>
 #include <QPixmap>
 #include <QPolygonF>
-
-#include <QHash>
-
 #include <cmath>
 #include <functional>
 
@@ -19,7 +17,7 @@ namespace hz::ui {
 // ---------------------------------------------------------------------------
 // Color palette
 // ---------------------------------------------------------------------------
-static const QColor kPrimary(192, 192, 192);   // light gray — geometry lines
+static const QColor kPrimary(192, 192, 192);    // light gray — geometry lines
 static const QColor kAccent(74, 144, 217);      // blue — points / arrows
 static const QColor kSecondary(160, 160, 160);  // medium gray — dimension lines
 static const QColor kDimText(200, 200, 200);    // light — dimension text
@@ -74,10 +72,10 @@ static void drawDot(QPainter& p, qreal x, qreal y, qreal r, const QColor& c) {
 /// Draw a small arrowhead at `tip` pointing in direction `angle` (radians).
 static void drawArrowhead(QPainter& p, QPointF tip, qreal angle, qreal len, const QColor& c) {
     const qreal halfAngle = 0.45;
-    QPointF p1 = tip - QPointF(std::cos(angle - halfAngle) * len,
-                                std::sin(angle - halfAngle) * len);
-    QPointF p2 = tip - QPointF(std::cos(angle + halfAngle) * len,
-                                std::sin(angle + halfAngle) * len);
+    QPointF p1 =
+        tip - QPointF(std::cos(angle - halfAngle) * len, std::sin(angle - halfAngle) * len);
+    QPointF p2 =
+        tip - QPointF(std::cos(angle + halfAngle) * len, std::sin(angle + halfAngle) * len);
     p.setPen(Qt::NoPen);
     p.setBrush(c);
     QPolygonF tri;
@@ -92,69 +90,69 @@ QIcon IconGenerator::icon(const QString& name) {
     using DrawFn = std::function<QIcon(int)>;
     static const QHash<QString, DrawFn> dispatch = {
         // File
-        {"new",           drawNew},
-        {"open",          drawOpen},
-        {"save",          drawSave},
-        {"undo",          drawUndo},
-        {"redo",          drawRedo},
+        {"new", drawNew},
+        {"open", drawOpen},
+        {"save", drawSave},
+        {"undo", drawUndo},
+        {"redo", drawRedo},
         // Edit
-        {"copy",          drawCopy},
-        {"paste",         drawPaste},
-        {"duplicate",     drawDuplicate},
-        {"group",         drawGroup},
-        {"ungroup",       drawUngroup},
+        {"copy", drawCopy},
+        {"paste", drawPaste},
+        {"duplicate", drawDuplicate},
+        {"group", drawGroup},
+        {"ungroup", drawUngroup},
         // Tools
-        {"select",        drawSelect},
-        {"line",          drawLine},
-        {"circle",        drawCircle},
-        {"arc",           drawArc},
-        {"rectangle",     drawRectangle},
-        {"polyline",      drawPolyline},
-        {"ellipse",       drawEllipse},
-        {"spline",        drawSpline},
-        {"text",          drawText},
-        {"hatch",         drawHatch},
+        {"select", drawSelect},
+        {"line", drawLine},
+        {"circle", drawCircle},
+        {"arc", drawArc},
+        {"rectangle", drawRectangle},
+        {"polyline", drawPolyline},
+        {"ellipse", drawEllipse},
+        {"spline", drawSpline},
+        {"text", drawText},
+        {"hatch", drawHatch},
         // Modify
-        {"move",          drawMove},
-        {"offset",        drawOffset},
-        {"mirror",        drawMirror},
-        {"rotate",        drawRotate},
-        {"scale",         drawScale},
-        {"trim",          drawTrim},
-        {"fillet",         drawFillet},
-        {"chamfer",        drawChamfer},
-        {"break",          drawBreak},
-        {"extend",         drawExtend},
-        {"stretch",        drawStretch},
-        {"polyline-edit",  drawPolylineEdit},
-        {"rect-array",    drawRectArray},
-        {"polar-array",   drawPolarArray},
+        {"move", drawMove},
+        {"offset", drawOffset},
+        {"mirror", drawMirror},
+        {"rotate", drawRotate},
+        {"scale", drawScale},
+        {"trim", drawTrim},
+        {"fillet", drawFillet},
+        {"chamfer", drawChamfer},
+        {"break", drawBreak},
+        {"extend", drawExtend},
+        {"stretch", drawStretch},
+        {"polyline-edit", drawPolylineEdit},
+        {"rect-array", drawRectArray},
+        {"polar-array", drawPolarArray},
         // Dimension
-        {"dim-linear",    drawDimLinear},
-        {"dim-radial",    drawDimRadial},
-        {"dim-angular",   drawDimAngular},
-        {"leader",        drawLeader},
+        {"dim-linear", drawDimLinear},
+        {"dim-radial", drawDimRadial},
+        {"dim-angular", drawDimAngular},
+        {"leader", drawLeader},
         // Constraint
-        {"cstr-coincident",    drawCstrCoincident},
-        {"cstr-horizontal",    drawCstrHorizontal},
-        {"cstr-vertical",      drawCstrVertical},
+        {"cstr-coincident", drawCstrCoincident},
+        {"cstr-horizontal", drawCstrHorizontal},
+        {"cstr-vertical", drawCstrVertical},
         {"cstr-perpendicular", drawCstrPerpendicular},
-        {"cstr-parallel",      drawCstrParallel},
-        {"cstr-tangent",       drawCstrTangent},
-        {"cstr-equal",         drawCstrEqual},
-        {"cstr-fixed",         drawCstrFixed},
-        {"cstr-distance",      drawCstrDistance},
-        {"cstr-angle",         drawCstrAngle},
+        {"cstr-parallel", drawCstrParallel},
+        {"cstr-tangent", drawCstrTangent},
+        {"cstr-equal", drawCstrEqual},
+        {"cstr-fixed", drawCstrFixed},
+        {"cstr-distance", drawCstrDistance},
+        {"cstr-angle", drawCstrAngle},
         // Measure
-        {"measure-distance",   drawMeasureDistance},
-        {"measure-angle",      drawMeasureAngle},
-        {"measure-area",       drawMeasureArea},
+        {"measure-distance", drawMeasureDistance},
+        {"measure-angle", drawMeasureAngle},
+        {"measure-area", drawMeasureArea},
         // Block
-        {"block-create",  drawBlockCreate},
-        {"block-insert",  drawBlockInsert},
+        {"block-create", drawBlockCreate},
+        {"block-insert", drawBlockInsert},
         {"block-explode", drawBlockExplode},
         // View
-        {"fit-all",       drawFitAll},
+        {"fit-all", drawFitAll},
     };
 
     auto it = dispatch.find(name);
@@ -773,18 +771,18 @@ QIcon IconGenerator::drawStretch(int s) {
     initPainter(p);
     // Original rectangle (bottom-left portion stays, top-right corner stretches)
     p.setPen(primaryPen(1.8));
-    p.drawLine(QPointF(4, 20), QPointF(14, 20));   // bottom edge
-    p.drawLine(QPointF(4, 20), QPointF(4, 8));      // left edge
-    p.drawLine(QPointF(4, 8), QPointF(14, 8));       // top edge (original)
-    p.drawLine(QPointF(14, 20), QPointF(14, 8));     // right edge (original)
+    p.drawLine(QPointF(4, 20), QPointF(14, 20));  // bottom edge
+    p.drawLine(QPointF(4, 20), QPointF(4, 8));    // left edge
+    p.drawLine(QPointF(4, 8), QPointF(14, 8));    // top edge (original)
+    p.drawLine(QPointF(14, 20), QPointF(14, 8));  // right edge (original)
     // Stretched corner displaced to top-right
     p.setPen(accentPen(1.5));
-    p.drawLine(QPointF(14, 8), QPointF(20, 4));      // arrow from corner to new position
+    p.drawLine(QPointF(14, 8), QPointF(20, 4));  // arrow from corner to new position
     drawArrowhead(p, QPointF(20, 4), -M_PI / 4.0, 4.0, kAccent);
     // Stretched edges (dashed to show new position)
     p.setPen(QPen(kAccent, 1.2, Qt::DashLine, Qt::RoundCap));
-    p.drawLine(QPointF(4, 8), QPointF(20, 4));       // new top edge hint
-    p.drawLine(QPointF(14, 20), QPointF(20, 4));      // new right edge hint
+    p.drawLine(QPointF(4, 8), QPointF(20, 4));    // new top edge hint
+    p.drawLine(QPointF(14, 20), QPointF(20, 4));  // new right edge hint
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
@@ -1026,7 +1024,7 @@ QIcon IconGenerator::drawCstrPerpendicular(int s) {
     initPainter(p);
     // Two perpendicular lines
     p.setPen(primaryPen(1.8));
-    p.drawLine(QPointF(4, 20), QPointF(4, 4));   // vertical
+    p.drawLine(QPointF(4, 20), QPointF(4, 4));    // vertical
     p.drawLine(QPointF(4, 20), QPointF(20, 20));  // horizontal
     // Right-angle square symbol
     p.setPen(accentPen(1.5));
@@ -1195,8 +1193,7 @@ QIcon IconGenerator::drawMeasureDistance(int s) {
     for (int i = 1; i < 6; ++i) {
         qreal mx = 3.0 + i * dx;
         qreal my = 18.0 + i * dy;
-        p.drawLine(QPointF(mx - nx * 1.5, my - ny * 1.5),
-                   QPointF(mx + nx * 1.5, my + ny * 1.5));
+        p.drawLine(QPointF(mx - nx * 1.5, my - ny * 1.5), QPointF(mx + nx * 1.5, my + ny * 1.5));
     }
     p.end();
     return QIcon(QPixmap::fromImage(img));
@@ -1233,8 +1230,7 @@ QIcon IconGenerator::drawMeasureArea(int s) {
     initPainter(p);
     // Closed polygon filled with semi-transparent green
     QPolygonF poly;
-    poly << QPointF(4, 20) << QPointF(4, 6) << QPointF(14, 3)
-         << QPointF(20, 10) << QPointF(18, 20);
+    poly << QPointF(4, 20) << QPointF(4, 6) << QPointF(14, 3) << QPointF(20, 10) << QPointF(18, 20);
     p.setPen(QPen(kGreen, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.setBrush(QColor(100, 200, 100, 50));
     p.drawPolygon(poly);
@@ -1264,8 +1260,8 @@ QIcon IconGenerator::drawBlockCreate(int s) {
     // Inner geometry — a small house shape
     p.setPen(primaryPen(1.8));
     QPolygonF house;
-    house << QPointF(7, 18) << QPointF(7, 11) << QPointF(12, 7)
-          << QPointF(17, 11) << QPointF(17, 18);
+    house << QPointF(7, 18) << QPointF(7, 11) << QPointF(12, 7) << QPointF(17, 11)
+          << QPointF(17, 18);
     p.drawPolyline(house);
     p.drawLine(QPointF(7, 18), QPointF(17, 18));
     // Plus sign in corner
@@ -1304,7 +1300,7 @@ QIcon IconGenerator::drawBlockExplode(int s) {
     // Center point
     drawDot(p, 12, 12, 2.0, kAccent);
     // Exploding pieces — small lines radiating outward
-    const qreal angles[] = {0, M_PI / 3.0, 2.0 * M_PI / 3.0,
+    const qreal angles[] = {0,    M_PI / 3.0,       2.0 * M_PI / 3.0,
                             M_PI, 4.0 * M_PI / 3.0, 5.0 * M_PI / 3.0};
     for (qreal a : angles) {
         qreal x1 = 12 + 4 * std::cos(a);
@@ -1366,4 +1362,4 @@ QIcon IconGenerator::drawFitAll(int s) {
     return QIcon(QPixmap::fromImage(img));
 }
 
-} // namespace hz::ui
+}  // namespace hz::ui

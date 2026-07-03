@@ -1,7 +1,9 @@
 #include "horizon/drafting/DraftRectangle.h"
-#include "horizon/math/MathUtils.h"
+
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
@@ -13,8 +15,8 @@ std::array<math::Vec2, 4> DraftRectangle::corners() const {
     double minY = std::min(m_corner1.y, m_corner2.y);
     double maxX = std::max(m_corner1.x, m_corner2.x);
     double maxY = std::max(m_corner1.y, m_corner2.y);
-    return {math::Vec2(minX, minY), math::Vec2(maxX, minY),
-            math::Vec2(maxX, maxY), math::Vec2(minX, maxY)};
+    return {math::Vec2(minX, minY), math::Vec2(maxX, minY), math::Vec2(maxX, maxY),
+            math::Vec2(minX, maxY)};
 }
 
 math::BoundingBox DraftRectangle::boundingBox() const {
@@ -22,8 +24,7 @@ math::BoundingBox DraftRectangle::boundingBox() const {
     double minY = std::min(m_corner1.y, m_corner2.y);
     double maxX = std::max(m_corner1.x, m_corner2.x);
     double maxY = std::max(m_corner1.y, m_corner2.y);
-    return math::BoundingBox(math::Vec3(minX, minY, 0.0),
-                             math::Vec3(maxX, maxY, 0.0));
+    return math::BoundingBox(math::Vec3(minX, minY, 0.0), math::Vec3(maxX, maxY, 0.0));
 }
 
 bool DraftRectangle::hitTest(const math::Vec2& point, double tolerance) const {
@@ -48,10 +49,15 @@ bool DraftRectangle::hitTest(const math::Vec2& point, double tolerance) const {
 std::vector<math::Vec2> DraftRectangle::snapPoints() const {
     auto c = corners();
     return {
-        c[0], c[1], c[2], c[3],                                     // corners
-        (c[0] + c[1]) * 0.5, (c[1] + c[2]) * 0.5,                  // edge midpoints
-        (c[2] + c[3]) * 0.5, (c[3] + c[0]) * 0.5,
-        (m_corner1 + m_corner2) * 0.5                                 // center
+        c[0],
+        c[1],
+        c[2],
+        c[3],  // corners
+        (c[0] + c[1]) * 0.5,
+        (c[1] + c[2]) * 0.5,  // edge midpoints
+        (c[2] + c[3]) * 0.5,
+        (c[3] + c[0]) * 0.5,
+        (m_corner1 + m_corner2) * 0.5  // center
     };
 }
 
@@ -60,9 +66,8 @@ void DraftRectangle::translate(const math::Vec2& delta) {
     m_corner2 += delta;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;

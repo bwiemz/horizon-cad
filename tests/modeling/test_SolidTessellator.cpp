@@ -1,9 +1,8 @@
-#include "horizon/modeling/PrimitiveFactory.h"
-#include "horizon/modeling/SolidTessellator.h"
+#include <gtest/gtest.h>
 
 #include "horizon/math/Vec3.h"
-
-#include <gtest/gtest.h>
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 
 using namespace hz::model;
 using hz::math::Vec3;

@@ -45,8 +45,7 @@ public:
     SolveResult solve(ParameterTable& params, const ConstraintSystem& constraints);
 
     /// Analyze degrees of freedom per entity without modifying parameters.
-    DOFAnalysis analyzeDOF(const ParameterTable& params,
-                           const ConstraintSystem& constraints) const;
+    DOFAnalysis analyzeDOF(const ParameterTable& params, const ConstraintSystem& constraints) const;
 
     void setMaxIterations(int n) { m_maxIterations = n; }
     void setTolerance(double tol) { m_tolerance = tol; }
@@ -57,9 +56,9 @@ public:
 
 private:
     Eigen::VectorXd buildResiduals(const ParameterTable& params,
-                                    const ConstraintSystem& constraints) const;
-    Eigen::MatrixXd buildJacobian(const ParameterTable& params,
                                    const ConstraintSystem& constraints) const;
+    Eigen::MatrixXd buildJacobian(const ParameterTable& params,
+                                  const ConstraintSystem& constraints) const;
 
     int m_maxIterations = 100;
     double m_tolerance = 1e-10;

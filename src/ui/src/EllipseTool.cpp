@@ -1,12 +1,13 @@
 #include "horizon/ui/EllipseTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftEllipse.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftEllipse.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -27,37 +28,37 @@ bool EllipseTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
 
     switch (m_state) {
-    case State::Center:
-        m_center = snappedPos;
-        m_currentPos = snappedPos;
-        m_state = State::MajorAxis;
-        break;
+        case State::Center:
+            m_center = snappedPos;
+            m_currentPos = snappedPos;
+            m_state = State::MajorAxis;
+            break;
 
-    case State::MajorAxis: {
-        m_majorAxisPt = snappedPos;
-        double dx = snappedPos.x - m_center.x;
-        double dy = snappedPos.y - m_center.y;
-        m_semiMajor = std::sqrt(dx * dx + dy * dy);
-        m_rotation = std::atan2(dy, dx);
-        if (m_semiMajor < 1e-6) {
-            // Degenerate — stay in this state.
+        case State::MajorAxis: {
+            m_majorAxisPt = snappedPos;
+            double dx = snappedPos.x - m_center.x;
+            double dy = snappedPos.y - m_center.y;
+            m_semiMajor = std::sqrt(dx * dx + dy * dy);
+            m_rotation = std::atan2(dy, dx);
+            if (m_semiMajor < 1e-6) {
+                // Degenerate — stay in this state.
+                break;
+            }
+            m_currentPos = snappedPos;
+            m_state = State::MinorAxis;
             break;
         }
-        m_currentPos = snappedPos;
-        m_state = State::MinorAxis;
-        break;
-    }
 
-    case State::MinorAxis:
-        finishEllipse();
-        break;
+        case State::MinorAxis:
+            finishEllipse();
+            break;
     }
 
     return true;
@@ -67,8 +68,8 @@ bool EllipseTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& world
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -105,16 +106,16 @@ void EllipseTool::finishEllipse() {
     double dy = m_currentPos.y - m_center.y;
     // Perpendicular direction to major axis.
     double perpX = -std::sin(m_rotation);
-    double perpY =  std::cos(m_rotation);
+    double perpY = std::cos(m_rotation);
     double semiMinor = std::abs(dx * perpX + dy * perpY);
     if (semiMinor < 1e-6) semiMinor = m_semiMajor * 0.01;  // Prevent degenerate.
 
-    auto ellipse = std::make_shared<draft::DraftEllipse>(
-        m_center, m_semiMajor, semiMinor, m_rotation);
+    auto ellipse =
+        std::make_shared<draft::DraftEllipse>(m_center, m_semiMajor, semiMinor, m_rotation);
     ellipse->setLayer(m_viewport->document()->layerManager().currentLayer());
 
-    auto cmd = std::make_unique<doc::AddEntityCommand>(
-        m_viewport->document()->draftDocument(), ellipse);
+    auto cmd =
+        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), ellipse);
     m_viewport->document()->undoStack().push(std::move(cmd));
 
     m_state = State::Center;
@@ -125,9 +126,9 @@ void EllipseTool::finishEllipse() {
 // Preview
 // ---------------------------------------------------------------------------
 
-std::vector<math::Vec2> EllipseTool::evaluateEllipse(
-    const math::Vec2& center, double semiMajor, double semiMinor,
-    double rotation, int segments) {
+std::vector<math::Vec2> EllipseTool::evaluateEllipse(const math::Vec2& center, double semiMajor,
+                                                     double semiMinor, double rotation,
+                                                     int segments) {
     std::vector<math::Vec2> pts;
     pts.reserve(static_cast<size_t>(segments + 1));
     double cosR = std::cos(rotation);
@@ -137,8 +138,7 @@ std::vector<math::Vec2> EllipseTool::evaluateEllipse(
         double t = i * step;
         double lx = semiMajor * std::cos(t);
         double ly = semiMinor * std::sin(t);
-        pts.push_back({center.x + lx * cosR - ly * sinR,
-                        center.y + lx * sinR + ly * cosR});
+        pts.push_back({center.x + lx * cosR - ly * sinR, center.y + lx * sinR + ly * cosR});
     }
     return pts;
 }
@@ -154,7 +154,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> EllipseTool::getPreviewLines() co
         double dx = m_currentPos.x - m_center.x;
         double dy = m_currentPos.y - m_center.y;
         double perpX = -std::sin(m_rotation);
-        double perpY =  std::cos(m_rotation);
+        double perpY = std::cos(m_rotation);
         double semiMinor = std::abs(dx * perpX + dy * perpY);
         if (semiMinor < 1e-6) semiMinor = m_semiMajor * 0.01;
 
@@ -169,13 +169,18 @@ std::vector<std::pair<math::Vec2, math::Vec2>> EllipseTool::getPreviewLines() co
 
 std::string EllipseTool::promptText() const {
     switch (m_state) {
-        case State::Center: return "Specify center point";
-        case State::MajorAxis: return "Specify major axis endpoint";
-        case State::MinorAxis: return "Specify minor axis radius";
+        case State::Center:
+            return "Specify center point";
+        case State::MajorAxis:
+            return "Specify major axis endpoint";
+        case State::MinorAxis:
+            return "Specify minor axis radius";
     }
     return "";
 }
 
-bool EllipseTool::wantsCrosshair() const { return true; }
+bool EllipseTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

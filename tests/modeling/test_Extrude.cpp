@@ -1,16 +1,16 @@
-#include "horizon/modeling/Extrude.h"
-
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/SketchPlane.h"
-#include "horizon/topology/Solid.h"
-#include "horizon/topology/TopologyID.h"
-
 #include <gtest/gtest.h>
+
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/Extrude.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 using namespace hz::model;
 using namespace hz::topo;
@@ -132,8 +132,8 @@ TEST(ExtrudeTest, ExtrudeHasNURBSGeometry) {
 
     // All faces should have NURBS surfaces.
     for (const auto& f : solid->faces()) {
-        EXPECT_NE(f.surface, nullptr) << "Face " << f.id << " (" << f.topoId.tag()
-                                      << ") has no NURBS surface";
+        EXPECT_NE(f.surface, nullptr)
+            << "Face " << f.id << " (" << f.topoId.tag() << ") has no NURBS surface";
     }
 
     // All edges should have NURBS curves.

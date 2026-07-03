@@ -1,17 +1,18 @@
 #include "horizon/drafting/DraftArc.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
+
 #include <algorithm>
 #include <cmath>
 
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
+
 namespace hz::draft {
 
-DraftArc::DraftArc(const math::Vec2& center, double radius,
-                   double startAngle, double endAngle)
-    : m_center(center)
-    , m_radius(radius)
-    , m_startAngle(math::normalizeAngle(startAngle))
-    , m_endAngle(math::normalizeAngle(endAngle)) {}
+DraftArc::DraftArc(const math::Vec2& center, double radius, double startAngle, double endAngle)
+    : m_center(center),
+      m_radius(radius),
+      m_startAngle(math::normalizeAngle(startAngle)),
+      m_endAngle(math::normalizeAngle(endAngle)) {}
 
 math::Vec2 DraftArc::startPoint() const {
     return {m_center.x + m_radius * std::cos(m_startAngle),
@@ -31,8 +32,7 @@ double DraftArc::sweepAngle() const {
 
 math::Vec2 DraftArc::midPoint() const {
     double midAngle = m_startAngle + sweepAngle() * 0.5;
-    return {m_center.x + m_radius * std::cos(midAngle),
-            m_center.y + m_radius * std::sin(midAngle)};
+    return {m_center.x + m_radius * std::cos(midAngle), m_center.y + m_radius * std::sin(midAngle)};
 }
 
 bool DraftArc::containsAngle(double angle) const {
@@ -54,13 +54,12 @@ math::BoundingBox DraftArc::boundingBox() const {
     double maxY = std::max(sp.y, ep.y);
 
     // Expand if arc crosses a quadrant boundary.
-    if (containsAngle(0.0))              maxX = m_center.x + m_radius;
-    if (containsAngle(math::kHalfPi))    maxY = m_center.y + m_radius;
-    if (containsAngle(math::kPi))        minX = m_center.x - m_radius;
-    if (containsAngle(math::kPi * 1.5))  minY = m_center.y - m_radius;
+    if (containsAngle(0.0)) maxX = m_center.x + m_radius;
+    if (containsAngle(math::kHalfPi)) maxY = m_center.y + m_radius;
+    if (containsAngle(math::kPi)) minX = m_center.x - m_radius;
+    if (containsAngle(math::kPi * 1.5)) minY = m_center.y - m_radius;
 
-    return math::BoundingBox(math::Vec3(minX, minY, 0.0),
-                             math::Vec3(maxX, maxY, 0.0));
+    return math::BoundingBox(math::Vec3(minX, minY, 0.0), math::Vec3(maxX, maxY, 0.0));
 }
 
 bool DraftArc::hitTest(const math::Vec2& point, double tolerance) const {
@@ -80,9 +79,8 @@ void DraftArc::translate(const math::Vec2& delta) {
     m_center += delta;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;

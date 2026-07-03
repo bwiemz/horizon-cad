@@ -1,12 +1,12 @@
 #include "horizon/document/Document.h"
-#include "horizon/document/UndoStack.h"
 
 #include <algorithm>
 
+#include "horizon/document/UndoStack.h"
+
 namespace hz::doc {
 
-Document::Document()
-    : m_undoStack(std::make_unique<UndoStack>()) {
+Document::Document() : m_undoStack(std::make_unique<UndoStack>()) {
     m_defaultSketch = std::make_shared<Sketch>();
     m_defaultSketch->setName("Default Sketch");
     m_sketches.push_back(m_defaultSketch);
@@ -49,6 +49,19 @@ void Document::clear() {
     m_defaultSketch = std::make_shared<Sketch>();
     m_defaultSketch->setName("Default Sketch");
     m_sketches.push_back(m_defaultSketch);
+
+    m_featureTree.clear();
+    m_solid.reset();
+    m_lastBuildMessage.clear();
+    m_failedFeatureIndex = -1;
+}
+
+bool Document::rebuildModel() {
+    BuildResult result = m_featureTree.buildWithDiagnostics();
+    m_solid = std::move(result.solid);
+    m_lastBuildMessage = result.failureMessage;
+    m_failedFeatureIndex = result.failedFeatureIndex;
+    return m_failedFeatureIndex < 0;
 }
 
 void Document::addSketch(std::shared_ptr<Sketch> sketch) {
@@ -66,7 +79,11 @@ std::shared_ptr<Sketch> Document::removeSketch(uint64_t sketchId) {
     return nullptr;
 }
 
-UndoStack& Document::undoStack() { return *m_undoStack; }
-const UndoStack& Document::undoStack() const { return *m_undoStack; }
+UndoStack& Document::undoStack() {
+    return *m_undoStack;
+}
+const UndoStack& Document::undoStack() const {
+    return *m_undoStack;
+}
 
 }  // namespace hz::doc

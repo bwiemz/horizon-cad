@@ -1,15 +1,16 @@
 #include "horizon/ui/PolylineEditTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -81,8 +82,8 @@ void PolylineEditTool::pushSnapshot(const std::string& desc) {
         if (entity->id() == m_editEntityId) {
             auto afterClone = entity->clone();
             auto& cstrSys = m_viewport->document()->constraintSystem();
-            auto cmd = std::make_unique<doc::GripMoveCommand>(
-                doc, m_editEntityId, m_beforeClone, afterClone, cstrSys);
+            auto cmd = std::make_unique<doc::GripMoveCommand>(doc, m_editEntityId, m_beforeClone,
+                                                              afterClone, cstrSys);
             m_viewport->document()->undoStack().push(std::move(cmd));
             m_beforeClone = nullptr;
             return;
@@ -315,8 +316,7 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
             auto composite = std::make_unique<doc::CompositeCommand>("Join polylines");
             composite->addCommand(std::make_unique<doc::GripMoveCommand>(
                 doc, m_editEntityId, m_beforeClone, afterClone, cstrSys));
-            composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(
-                doc, entity->id()));
+            composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, entity->id()));
             m_viewport->document()->undoStack().push(std::move(composite));
             m_beforeClone = nullptr;
 
@@ -341,7 +341,8 @@ bool PolylineEditTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& 
             if (!poly) break;
 
             // Snap.
-            auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result =
+                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
             math::Vec2 snappedPos = result.point;
 
             auto pts = poly->points();
@@ -461,6 +462,8 @@ std::string PolylineEditTool::promptText() const {
     return "";
 }
 
-bool PolylineEditTool::wantsCrosshair() const { return false; }
+bool PolylineEditTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

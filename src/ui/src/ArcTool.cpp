@@ -1,13 +1,14 @@
 #include "horizon/ui/ArcTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/math/Constants.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -30,8 +31,8 @@ bool ArcTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -46,18 +47,16 @@ bool ArcTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
         case State::WaitingForStart:
             m_radius = m_center.distanceTo(snappedPos);
             if (m_radius < 1e-10) return true;  // ignore degenerate
-            m_startAngle = std::atan2(snappedPos.y - m_center.y,
-                                      snappedPos.x - m_center.x);
+            m_startAngle = std::atan2(snappedPos.y - m_center.y, snappedPos.x - m_center.x);
             m_currentPos = snappedPos;
             m_state = State::WaitingForEnd;
             return true;
 
         case State::WaitingForEnd: {
-            double endAngle = std::atan2(snappedPos.y - m_center.y,
-                                         snappedPos.x - m_center.x);
+            double endAngle = std::atan2(snappedPos.y - m_center.y, snappedPos.x - m_center.x);
             if (m_viewport && m_viewport->document()) {
-                auto arc = std::make_shared<draft::DraftArc>(
-                    m_center, m_radius, m_startAngle, endAngle);
+                auto arc =
+                    std::make_shared<draft::DraftArc>(m_center, m_radius, m_startAngle, endAngle);
                 arc->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
                     m_viewport->document()->draftDocument(), arc);
@@ -76,8 +75,8 @@ bool ArcTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos)
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -120,8 +119,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ArcTool::getPreviewLines() const 
 
 std::vector<Tool::ArcPreview> ArcTool::getPreviewArcs() const {
     if (m_state == State::WaitingForEnd) {
-        double endAngle = std::atan2(m_currentPos.y - m_center.y,
-                                      m_currentPos.x - m_center.x);
+        double endAngle = std::atan2(m_currentPos.y - m_center.y, m_currentPos.x - m_center.x);
         return {{m_center, m_radius, m_startAngle, endAngle}};
     }
     return {};
@@ -129,13 +127,18 @@ std::vector<Tool::ArcPreview> ArcTool::getPreviewArcs() const {
 
 std::string ArcTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForCenter: return "Specify center point";
-        case State::WaitingForStart: return "Specify start point";
-        case State::WaitingForEnd: return "Specify end point";
+        case State::WaitingForCenter:
+            return "Specify center point";
+        case State::WaitingForStart:
+            return "Specify start point";
+        case State::WaitingForEnd:
+            return "Specify end point";
     }
     return "";
 }
 
-bool ArcTool::wantsCrosshair() const { return true; }
+bool ArcTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

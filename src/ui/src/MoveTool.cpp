@@ -1,12 +1,13 @@
 #include "horizon/ui/MoveTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/UndoStack.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <algorithm>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -60,8 +61,8 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
 
     math::Vec2 snappedPos = worldPos;
     auto& draftDoc = m_viewport->document()->draftDocument();
-    auto result = m_viewport->snapEngine().snap(
-        worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+    auto result =
+        m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
     snappedPos = result.point;
     m_viewport->setLastSnapResult(result);
 
@@ -116,8 +117,8 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
         auto& cstrSys = m_viewport->document()->constraintSystem();
         auto& pReg = m_viewport->document()->parameterRegistry();
         auto varResolver = [&pReg](const std::string& n) { return pReg.get(n); };
-        auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta,
-                                                            cstrSys, varResolver);
+        auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta, cstrSys,
+                                                            varResolver);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
 
@@ -159,6 +160,8 @@ std::string MoveTool::promptText() const {
     return "Select entities and click to drag";
 }
 
-bool MoveTool::wantsCrosshair() const { return false; }
+bool MoveTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

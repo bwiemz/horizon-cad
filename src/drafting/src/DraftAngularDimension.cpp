@@ -1,33 +1,31 @@
 #include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
 
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
+
 namespace hz::draft {
 
 // ---- Helpers (file-local) ----
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
 }
 
-static math::Vec2 rotatePoint(const math::Vec2& p,
-                               const math::Vec2& center, double angle) {
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = p - center;
     return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
 }
 
-static math::Vec2 scalePoint(const math::Vec2& p,
-                              const math::Vec2& center, double factor) {
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
 }
 
@@ -40,13 +38,12 @@ static double normalizeAngle(double a) {
 
 // ---- Construction ----
 
-DraftAngularDimension::DraftAngularDimension(
-    const math::Vec2& vertex, const math::Vec2& line1Point,
-    const math::Vec2& line2Point, double arcRadius)
-    : m_vertex(vertex)
-    , m_line1Point(line1Point)
-    , m_line2Point(line2Point)
-    , m_arcRadius(arcRadius) {}
+DraftAngularDimension::DraftAngularDimension(const math::Vec2& vertex, const math::Vec2& line1Point,
+                                             const math::Vec2& line2Point, double arcRadius)
+    : m_vertex(vertex),
+      m_line1Point(line1Point),
+      m_line2Point(line2Point),
+      m_arcRadius(arcRadius) {}
 
 // ---- Angle helpers ----
 
@@ -95,22 +92,22 @@ math::Vec2 DraftAngularDimension::textPosition() const {
 
 // ---- Rendering geometry ----
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftAngularDimension::extensionLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftAngularDimension::extensionLines(
+    const DimensionStyle& style) const {
     // Extension lines from vertex outward along each line direction.
     math::Vec2 dir1 = (m_line1Point - m_vertex).normalized();
     math::Vec2 dir2 = (m_line2Point - m_vertex).normalized();
 
     math::Vec2 ext1Start = m_vertex + dir1 * style.extensionGap;
-    math::Vec2 ext1End   = m_vertex + dir1 * (m_arcRadius + style.extensionOvershoot);
+    math::Vec2 ext1End = m_vertex + dir1 * (m_arcRadius + style.extensionOvershoot);
     math::Vec2 ext2Start = m_vertex + dir2 * style.extensionGap;
-    math::Vec2 ext2End   = m_vertex + dir2 * (m_arcRadius + style.extensionOvershoot);
+    math::Vec2 ext2End = m_vertex + dir2 * (m_arcRadius + style.extensionOvershoot);
 
     return {{ext1Start, ext1End}, {ext2Start, ext2End}};
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftAngularDimension::dimensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftAngularDimension::dimensionLines(
+    const DimensionStyle& /*style*/) const {
     // Arc approximated as line segments.
     double a1 = normalizeAngle(startAngle());
     double a2 = normalizeAngle(endAngle());
@@ -139,8 +136,8 @@ DraftAngularDimension::dimensionLines(const DimensionStyle& /*style*/) const {
     return lines;
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftAngularDimension::arrowheadLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftAngularDimension::arrowheadLines(
+    const DimensionStyle& style) const {
     double a1 = normalizeAngle(startAngle());
     double a2 = normalizeAngle(endAngle());
     double sweep = a2 - a1;
@@ -241,8 +238,8 @@ void DraftAngularDimension::translate(const math::Vec2& delta) {
 }
 
 std::shared_ptr<DraftEntity> DraftAngularDimension::clone() const {
-    auto copy = std::make_shared<DraftAngularDimension>(
-        m_vertex, m_line1Point, m_line2Point, m_arcRadius);
+    auto copy =
+        std::make_shared<DraftAngularDimension>(m_vertex, m_line1Point, m_line2Point, m_arcRadius);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());

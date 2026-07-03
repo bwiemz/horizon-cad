@@ -1,15 +1,15 @@
 #include "horizon/ui/AngularDimensionTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftAngularDimension.h"
-#include "horizon/drafting/Layer.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
-
+#include <QMouseEvent>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftAngularDimension.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/Layer.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -24,10 +24,9 @@ void AngularDimensionTool::deactivate() {
     Tool::deactivate();
 }
 
-bool AngularDimensionTool::lineIntersection(
-    const math::Vec2& a1, const math::Vec2& a2,
-    const math::Vec2& b1, const math::Vec2& b2,
-    math::Vec2& result) {
+bool AngularDimensionTool::lineIntersection(const math::Vec2& a1, const math::Vec2& a2,
+                                            const math::Vec2& b1, const math::Vec2& b2,
+                                            math::Vec2& result) {
     math::Vec2 d1 = a2 - a1;
     math::Vec2 d2 = b2 - b1;
     double denom = d1.cross(d2);
@@ -67,8 +66,8 @@ bool AngularDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2&
                 m_line2End = line->end();
 
                 // Compute intersection.
-                if (!lineIntersection(m_line1Start, m_line1End,
-                                       m_line2Start, m_line2End, m_vertex)) {
+                if (!lineIntersection(m_line1Start, m_line1End, m_line2Start, m_line2End,
+                                      m_vertex)) {
                     // Parallel lines — can't measure angle. Reset.
                     m_state = State::WaitingForLine1;
                     return true;
@@ -102,12 +101,12 @@ bool AngularDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2&
         math::Vec2 line1Pt = pickDirection(m_line1Start, m_line1End);
         math::Vec2 line2Pt = pickDirection(m_line2Start, m_line2End);
 
-        auto dim = std::make_shared<draft::DraftAngularDimension>(
-            m_vertex, line1Pt, line2Pt, arcRadius);
+        auto dim =
+            std::make_shared<draft::DraftAngularDimension>(m_vertex, line1Pt, line2Pt, arcRadius);
         dim->setLayer(m_viewport->document()->layerManager().currentLayer());
 
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), dim);
+        auto cmd =
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), dim);
         m_viewport->document()->undoStack().push(std::move(cmd));
 
         m_state = State::WaitingForLine1;
@@ -125,7 +124,8 @@ bool AngularDimensionTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Ve
     return false;
 }
 
-bool AngularDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*worldPos*/) {
+bool AngularDimensionTool::mouseReleaseEvent(QMouseEvent* /*event*/,
+                                             const math::Vec2& /*worldPos*/) {
     return false;
 }
 
@@ -179,13 +179,18 @@ std::vector<std::pair<math::Vec2, math::Vec2>> AngularDimensionTool::getPreviewL
 
 std::string AngularDimensionTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForLine1: return "Select first line";
-        case State::WaitingForLine2: return "Select second line";
-        case State::WaitingForArcPos: return "Specify dimension arc position";
+        case State::WaitingForLine1:
+            return "Select first line";
+        case State::WaitingForLine2:
+            return "Select second line";
+        case State::WaitingForArcPos:
+            return "Specify dimension arc position";
     }
     return "";
 }
 
-bool AngularDimensionTool::wantsCrosshair() const { return true; }
+bool AngularDimensionTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

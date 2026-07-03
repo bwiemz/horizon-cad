@@ -1,11 +1,11 @@
 #pragma once
 
-#include "horizon/math/Vec3.h"
-#include "horizon/topology/TopologyID.h"
-
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "horizon/math/Vec3.h"
+#include "horizon/topology/TopologyID.h"
 
 namespace hz::geo {
 class NurbsCurve;
@@ -68,7 +68,8 @@ struct Face {
 struct Shell {
     uint32_t id = 0;
     std::vector<Face*> faces;
-    class Solid* solid = nullptr;  ///< Owning solid (use class to avoid ambiguity with struct forward decl).
+    class Solid* solid =
+        nullptr;  ///< Owning solid (use class to avoid ambiguity with struct forward decl).
 };
 
 }  // namespace hz::topo

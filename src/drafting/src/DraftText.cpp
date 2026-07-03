@@ -1,12 +1,13 @@
 #include "horizon/drafting/DraftText.h"
-#include "horizon/math/MathUtils.h"
+
 #include <algorithm>
 #include <cmath>
 
+#include "horizon/math/MathUtils.h"
+
 namespace hz::draft {
 
-DraftText::DraftText(const math::Vec2& position, const std::string& text,
-                     double textHeight)
+DraftText::DraftText(const math::Vec2& position, const std::string& text, double textHeight)
     : m_position(position), m_text(text), m_textHeight(textHeight) {}
 
 double DraftText::approxWidth() const {
@@ -21,9 +22,18 @@ math::BoundingBox DraftText::boundingBox() const {
     // Compute local-space corners relative to anchor based on alignment.
     double x0 = 0.0, x1 = 0.0;
     switch (m_alignment) {
-        case TextAlignment::Left:   x0 = 0.0; x1 = w;        break;
-        case TextAlignment::Center: x0 = -w * 0.5; x1 = w * 0.5; break;
-        case TextAlignment::Right:  x0 = -w; x1 = 0.0;       break;
+        case TextAlignment::Left:
+            x0 = 0.0;
+            x1 = w;
+            break;
+        case TextAlignment::Center:
+            x0 = -w * 0.5;
+            x1 = w * 0.5;
+            break;
+        case TextAlignment::Right:
+            x0 = -w;
+            x1 = 0.0;
+            break;
     }
     double y0 = -h * 0.25;  // baseline offset
     double y1 = h * 0.75;
@@ -34,10 +44,8 @@ math::BoundingBox DraftText::boundingBox() const {
 
     math::BoundingBox bbox;
     for (const auto& corner : corners) {
-        math::Vec2 rotated = {corner.x * c - corner.y * s,
-                              corner.x * s + corner.y * c};
-        bbox.expand(math::Vec3(m_position.x + rotated.x,
-                               m_position.y + rotated.y, 0.0));
+        math::Vec2 rotated = {corner.x * c - corner.y * s, corner.x * s + corner.y * c};
+        bbox.expand(math::Vec3(m_position.x + rotated.x, m_position.y + rotated.y, 0.0));
     }
     return bbox;
 }
@@ -52,15 +60,24 @@ bool DraftText::hitTest(const math::Vec2& point, double tolerance) const {
     double h = m_textHeight;
     double x0 = 0.0, x1 = 0.0;
     switch (m_alignment) {
-        case TextAlignment::Left:   x0 = 0.0; x1 = w;        break;
-        case TextAlignment::Center: x0 = -w * 0.5; x1 = w * 0.5; break;
-        case TextAlignment::Right:  x0 = -w; x1 = 0.0;       break;
+        case TextAlignment::Left:
+            x0 = 0.0;
+            x1 = w;
+            break;
+        case TextAlignment::Center:
+            x0 = -w * 0.5;
+            x1 = w * 0.5;
+            break;
+        case TextAlignment::Right:
+            x0 = -w;
+            x1 = 0.0;
+            break;
     }
     double y0 = -h * 0.25;
     double y1 = h * 0.75;
 
-    return local.x >= x0 - tolerance && local.x <= x1 + tolerance &&
-           local.y >= y0 - tolerance && local.y <= y1 + tolerance;
+    return local.x >= x0 - tolerance && local.x <= x1 + tolerance && local.y >= y0 - tolerance &&
+           local.y <= y1 + tolerance;
 }
 
 std::vector<math::Vec2> DraftText::snapPoints() const {
@@ -83,9 +100,8 @@ std::shared_ptr<DraftEntity> DraftText::clone() const {
     return copy;
 }
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
@@ -109,8 +125,7 @@ void DraftText::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
 void DraftText::rotate(const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = m_position - center;
-    m_position = {center.x + v.x * c - v.y * s,
-                  center.y + v.x * s + v.y * c};
+    m_position = {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
     m_rotation = math::normalizeAngle(m_rotation + angle);
 }
 

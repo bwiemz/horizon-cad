@@ -1,19 +1,19 @@
 #include "horizon/ui/PasteTool.h"
-#include "horizon/ui/Clipboard.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/Intersection.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
+#include "horizon/ui/Clipboard.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
-PasteTool::PasteTool(Clipboard* clipboard)
-    : m_clipboard(clipboard) {}
+PasteTool::PasteTool(Clipboard* clipboard) : m_clipboard(clipboard) {}
 
 void PasteTool::deactivate() {
     cancel();
@@ -119,6 +119,8 @@ std::string PasteTool::promptText() const {
     return "Click to place pasted entities";
 }
 
-bool PasteTool::wantsCrosshair() const { return false; }
+bool PasteTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

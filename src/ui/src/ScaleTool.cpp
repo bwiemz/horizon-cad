@@ -1,21 +1,22 @@
 #include "horizon/ui/ScaleTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
+
 #include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
-
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -24,13 +25,11 @@ void ScaleTool::deactivate() {
     Tool::deactivate();
 }
 
-static math::Vec2 scalePoint(const math::Vec2& p,
-                              const math::Vec2& center, double factor) {
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
 }
 
-static double computeSelectionCentroidDist(const math::Vec2& basePoint,
-                                           ViewportWidget* viewport) {
+static double computeSelectionCentroidDist(const math::Vec2& basePoint, ViewportWidget* viewport) {
     auto& doc = viewport->document()->draftDocument();
     auto& sel = viewport->selectionManager();
     math::Vec2 sum{0.0, 0.0};
@@ -147,7 +146,10 @@ bool ScaleTool::keyPressEvent(QKeyEvent* event) {
             if (!m_factorInput.empty() && m_viewport && m_viewport->document()) {
                 try {
                     double factor = std::stod(m_factorInput);
-                    if (factor < 1e-6) { m_factorInput.clear(); return true; }
+                    if (factor < 1e-6) {
+                        m_factorInput.clear();
+                        return true;
+                    }
 
                     auto& doc = m_viewport->document()->draftDocument();
                     auto& sel = m_viewport->selectionManager();
@@ -159,10 +161,13 @@ bool ScaleTool::keyPressEvent(QKeyEvent* event) {
                         if (!lp2 || !lp2->visible || lp2->locked) continue;
                         idVec.push_back(entity->id());
                     }
-                    if (idVec.empty()) { m_factorInput.clear(); return true; }
+                    if (idVec.empty()) {
+                        m_factorInput.clear();
+                        return true;
+                    }
 
-                    auto cmd = std::make_unique<doc::ScaleEntityCommand>(
-                        doc, idVec, m_basePoint, factor);
+                    auto cmd =
+                        std::make_unique<doc::ScaleEntityCommand>(doc, idVec, m_basePoint, factor);
                     auto* rawCmd = cmd.get();
                     m_viewport->document()->undoStack().push(std::move(cmd));
 
@@ -253,12 +258,16 @@ std::vector<Tool::ArcPreview> ScaleTool::getPreviewArcs() const {
 
 std::string ScaleTool::promptText() const {
     switch (m_state) {
-        case State::SelectBasePoint: return "Specify base point";
-        case State::SelectScaleFactor: return "Specify scale factor or type value";
+        case State::SelectBasePoint:
+            return "Specify base point";
+        case State::SelectScaleFactor:
+            return "Specify scale factor or type value";
     }
     return "";
 }
 
-bool ScaleTool::wantsCrosshair() const { return false; }
+bool ScaleTool::wantsCrosshair() const {
+    return false;
+}
 
 }  // namespace hz::ui

@@ -1,18 +1,25 @@
 #include "horizon/document/Sketch.h"
-#include "horizon/constraint/ConstraintSystem.h"
 
 #include <algorithm>
 #include <stdexcept>
+
+#include "horizon/constraint/ConstraintSystem.h"
 
 namespace hz::doc {
 
 uint64_t Sketch::s_nextId = 1;
 
 Sketch::Sketch()
-    : m_id(s_nextId++), m_name(), m_plane(), m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
+    : m_id(s_nextId++),
+      m_name(),
+      m_plane(),
+      m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
 
 Sketch::Sketch(const draft::SketchPlane& plane)
-    : m_id(s_nextId++), m_name(), m_plane(plane), m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
+    : m_id(s_nextId++),
+      m_name(),
+      m_plane(plane),
+      m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
 
 Sketch::~Sketch() = default;
 
@@ -25,6 +32,9 @@ uint64_t Sketch::id() const {
 
 void Sketch::setId(uint64_t id) {
     m_id = id;
+    // Keep the global counter ahead of loaded IDs so sketches created later
+    // (possibly in another open document) never collide.
+    if (id >= s_nextId) s_nextId = id + 1;
 }
 
 const std::string& Sketch::name() const {
@@ -51,12 +61,11 @@ void Sketch::addEntity(std::shared_ptr<draft::DraftEntity> entity) {
 
 void Sketch::removeEntity(uint64_t entityId) {
     m_spatialIndex.remove(entityId);
-    m_entities.erase(
-        std::remove_if(m_entities.begin(), m_entities.end(),
-                       [entityId](const std::shared_ptr<draft::DraftEntity>& e) {
-                           return e && e->id() == entityId;
-                       }),
-        m_entities.end());
+    m_entities.erase(std::remove_if(m_entities.begin(), m_entities.end(),
+                                    [entityId](const std::shared_ptr<draft::DraftEntity>& e) {
+                                        return e && e->id() == entityId;
+                                    }),
+                     m_entities.end());
 }
 
 const std::vector<std::shared_ptr<draft::DraftEntity>>& Sketch::entities() const {

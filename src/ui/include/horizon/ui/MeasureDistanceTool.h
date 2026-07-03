@@ -1,7 +1,7 @@
 #pragma once
 
-#include "horizon/ui/Tool.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 

@@ -63,11 +63,16 @@ double BinaryOpExpr::evaluate(const std::map<std::string, double>& variables) co
     double l = m_left->evaluate(variables);
     double r = m_right->evaluate(variables);
     switch (m_op) {
-        case Op::Add: return l + r;
-        case Op::Sub: return l - r;
-        case Op::Mul: return l * r;
-        case Op::Div: return l / r;
-        case Op::Pow: return std::pow(l, r);
+        case Op::Add:
+            return l + r;
+        case Op::Sub:
+            return l - r;
+        case Op::Mul:
+            return l * r;
+        case Op::Div:
+            return l / r;
+        case Op::Pow:
+            return std::pow(l, r);
     }
     return 0.0;  // unreachable
 }
@@ -82,11 +87,21 @@ std::set<std::string> BinaryOpExpr::variables() const {
 std::string BinaryOpExpr::toString() const {
     char opChar = '+';
     switch (m_op) {
-        case Op::Add: opChar = '+'; break;
-        case Op::Sub: opChar = '-'; break;
-        case Op::Mul: opChar = '*'; break;
-        case Op::Div: opChar = '/'; break;
-        case Op::Pow: opChar = '^'; break;
+        case Op::Add:
+            opChar = '+';
+            break;
+        case Op::Sub:
+            opChar = '-';
+            break;
+        case Op::Mul:
+            opChar = '*';
+            break;
+        case Op::Div:
+            opChar = '/';
+            break;
+        case Op::Pow:
+            opChar = '^';
+            break;
     }
     return "(" + m_left->toString() + " " + opChar + " " + m_right->toString() + ")";
 }
@@ -94,13 +109,26 @@ std::string BinaryOpExpr::toString() const {
 nlohmann::json BinaryOpExpr::toJson() const {
     std::string opStr;
     switch (m_op) {
-        case Op::Add: opStr = "+"; break;
-        case Op::Sub: opStr = "-"; break;
-        case Op::Mul: opStr = "*"; break;
-        case Op::Div: opStr = "/"; break;
-        case Op::Pow: opStr = "^"; break;
+        case Op::Add:
+            opStr = "+";
+            break;
+        case Op::Sub:
+            opStr = "-";
+            break;
+        case Op::Mul:
+            opStr = "*";
+            break;
+        case Op::Div:
+            opStr = "/";
+            break;
+        case Op::Pow:
+            opStr = "^";
+            break;
     }
-    return {{"type", "binary"}, {"op", opStr}, {"left", m_left->toJson()}, {"right", m_right->toJson()}};
+    return {{"type", "binary"},
+            {"op", opStr},
+            {"left", m_left->toJson()},
+            {"right", m_right->toJson()}};
 }
 
 // --- UnaryOpExpr -----------------------------------------------------------
@@ -108,7 +136,8 @@ nlohmann::json BinaryOpExpr::toJson() const {
 double UnaryOpExpr::evaluate(const std::map<std::string, double>& variables) const {
     double val = m_child->evaluate(variables);
     switch (m_op) {
-        case Op::Negate: return -val;
+        case Op::Negate:
+            return -val;
     }
     return 0.0;  // unreachable
 }
@@ -124,7 +153,9 @@ std::string UnaryOpExpr::toString() const {
 nlohmann::json UnaryOpExpr::toJson() const {
     std::string opStr;
     switch (m_op) {
-        case Op::Negate: opStr = "-"; break;
+        case Op::Negate:
+            opStr = "-";
+            break;
     }
     return {{"type", "unary"}, {"op", opStr}, {"child", m_child->toJson()}};
 }
@@ -201,12 +232,18 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
         if (!j.contains("op") || !j.contains("left") || !j.contains("right")) return nullptr;
         const std::string opStr = j.at("op").get<std::string>();
         BinaryOpExpr::Op op;
-        if (opStr == "+") op = BinaryOpExpr::Op::Add;
-        else if (opStr == "-") op = BinaryOpExpr::Op::Sub;
-        else if (opStr == "*") op = BinaryOpExpr::Op::Mul;
-        else if (opStr == "/") op = BinaryOpExpr::Op::Div;
-        else if (opStr == "^") op = BinaryOpExpr::Op::Pow;
-        else return nullptr;
+        if (opStr == "+")
+            op = BinaryOpExpr::Op::Add;
+        else if (opStr == "-")
+            op = BinaryOpExpr::Op::Sub;
+        else if (opStr == "*")
+            op = BinaryOpExpr::Op::Mul;
+        else if (opStr == "/")
+            op = BinaryOpExpr::Op::Div;
+        else if (opStr == "^")
+            op = BinaryOpExpr::Op::Pow;
+        else
+            return nullptr;
 
         auto left = fromJson(j.at("left"));
         auto right = fromJson(j.at("right"));
@@ -218,8 +255,10 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
         if (!j.contains("op") || !j.contains("child")) return nullptr;
         const std::string opStr = j.at("op").get<std::string>();
         UnaryOpExpr::Op op;
-        if (opStr == "-") op = UnaryOpExpr::Op::Negate;
-        else return nullptr;
+        if (opStr == "-")
+            op = UnaryOpExpr::Op::Negate;
+        else
+            return nullptr;
 
         auto child = fromJson(j.at("child"));
         if (!child) return nullptr;
@@ -285,15 +324,32 @@ public:
 
         // Single-character tokens
         switch (c) {
-            case '+': ++m_pos; return {TokenType::Plus, "+", 0.0};
-            case '-': ++m_pos; return {TokenType::Minus, "-", 0.0};
-            case '*': ++m_pos; return {TokenType::Star, "*", 0.0};
-            case '/': ++m_pos; return {TokenType::Slash, "/", 0.0};
-            case '^': ++m_pos; return {TokenType::Caret, "^", 0.0};
-            case '(': ++m_pos; return {TokenType::LParen, "(", 0.0};
-            case ')': ++m_pos; return {TokenType::RParen, ")", 0.0};
-            case ',': ++m_pos; return {TokenType::Comma, ",", 0.0};
-            default: break;
+            case '+':
+                ++m_pos;
+                return {TokenType::Plus, "+", 0.0};
+            case '-':
+                ++m_pos;
+                return {TokenType::Minus, "-", 0.0};
+            case '*':
+                ++m_pos;
+                return {TokenType::Star, "*", 0.0};
+            case '/':
+                ++m_pos;
+                return {TokenType::Slash, "/", 0.0};
+            case '^':
+                ++m_pos;
+                return {TokenType::Caret, "^", 0.0};
+            case '(':
+                ++m_pos;
+                return {TokenType::LParen, "(", 0.0};
+            case ')':
+                ++m_pos;
+                return {TokenType::RParen, ")", 0.0};
+            case ',':
+                ++m_pos;
+                return {TokenType::Comma, ",", 0.0};
+            default:
+                break;
         }
 
         // Number: [0-9]+ ('.' [0-9]+)?
@@ -311,16 +367,14 @@ public:
 
 private:
     void skipWhitespace() {
-        while (m_pos < m_input.size() &&
-               std::isspace(static_cast<unsigned char>(m_input[m_pos]))) {
+        while (m_pos < m_input.size() && std::isspace(static_cast<unsigned char>(m_input[m_pos]))) {
             ++m_pos;
         }
     }
 
     Token readNumber() {
         size_t start = m_pos;
-        while (m_pos < m_input.size() &&
-               std::isdigit(static_cast<unsigned char>(m_input[m_pos]))) {
+        while (m_pos < m_input.size() && std::isdigit(static_cast<unsigned char>(m_input[m_pos]))) {
             ++m_pos;
         }
         if (m_pos < m_input.size() && m_input[m_pos] == '.') {
@@ -342,9 +396,9 @@ private:
 
     Token readIdentifier() {
         size_t start = m_pos;
-        while (m_pos < m_input.size() &&
-               (std::isalnum(static_cast<unsigned char>(m_input[m_pos])) ||
-                m_input[m_pos] == '_')) {
+        while (
+            m_pos < m_input.size() &&
+            (std::isalnum(static_cast<unsigned char>(m_input[m_pos])) || m_input[m_pos] == '_')) {
             ++m_pos;
         }
         std::string text = m_input.substr(start, m_pos - start);
@@ -361,9 +415,7 @@ private:
 
 class Parser {
 public:
-    explicit Parser(const std::string& input) : m_tokenizer(input), m_hasError(false) {
-        advance();
-    }
+    explicit Parser(const std::string& input) : m_tokenizer(input), m_hasError(false) { advance(); }
 
     std::unique_ptr<Expression> parseExpression() {
         auto result = parseAddSub();
@@ -398,8 +450,8 @@ private:
         if (m_hasError || !left) return nullptr;
 
         while (m_current.type == TokenType::Plus || m_current.type == TokenType::Minus) {
-            auto op = (m_current.type == TokenType::Plus) ? BinaryOpExpr::Op::Add
-                                                          : BinaryOpExpr::Op::Sub;
+            auto op =
+                (m_current.type == TokenType::Plus) ? BinaryOpExpr::Op::Add : BinaryOpExpr::Op::Sub;
             advance();
             auto right = parseMulDiv();
             if (m_hasError || !right) return nullptr;
@@ -414,8 +466,8 @@ private:
         if (m_hasError || !left) return nullptr;
 
         while (m_current.type == TokenType::Star || m_current.type == TokenType::Slash) {
-            auto op = (m_current.type == TokenType::Star) ? BinaryOpExpr::Op::Mul
-                                                          : BinaryOpExpr::Op::Div;
+            auto op =
+                (m_current.type == TokenType::Star) ? BinaryOpExpr::Op::Mul : BinaryOpExpr::Op::Div;
             advance();
             auto right = parsePower();
             if (m_hasError || !right) return nullptr;

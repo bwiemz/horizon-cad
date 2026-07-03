@@ -7,9 +7,14 @@
 
 namespace hz::math {
 
-Mat4::Mat4() { std::memset(m, 0, sizeof(m)); m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.0; }
+Mat4::Mat4() {
+    std::memset(m, 0, sizeof(m));
+    m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.0;
+}
 
-Mat4 Mat4::identity() { return Mat4(); }
+Mat4 Mat4::identity() {
+    return Mat4();
+}
 
 Mat4 Mat4::translation(const Vec3& t) {
     Mat4 r;
@@ -19,7 +24,9 @@ Mat4 Mat4::translation(const Vec3& t) {
     return r;
 }
 
-Mat4 Mat4::rotation(const Quaternion& q) { return q.toMatrix(); }
+Mat4 Mat4::rotation(const Quaternion& q) {
+    return q.toMatrix();
+}
 
 Mat4 Mat4::rotationX(double a) {
     double c = std::cos(a), s = std::sin(a);
@@ -59,7 +66,9 @@ Mat4 Mat4::scale(const Vec3& s) {
     return r;
 }
 
-Mat4 Mat4::scale(double s) { return scale({s, s, s}); }
+Mat4 Mat4::scale(double s) {
+    return scale({s, s, s});
+}
 
 Mat4 Mat4::lookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
     Vec3 f = (target - eye).normalized();
@@ -158,8 +167,8 @@ Mat4 Mat4::inverse() const {
              s[9] * s[7] * s[14] + s[13] * s[6] * s[11] - s[13] * s[7] * s[10];
     inv[1] = -s[1] * s[10] * s[15] + s[1] * s[11] * s[14] + s[9] * s[2] * s[15] -
              s[9] * s[3] * s[14] - s[13] * s[2] * s[11] + s[13] * s[3] * s[10];
-    inv[2] = s[1] * s[6] * s[15] - s[1] * s[7] * s[14] - s[5] * s[2] * s[15] +
-             s[5] * s[3] * s[14] + s[13] * s[2] * s[7] - s[13] * s[3] * s[6];
+    inv[2] = s[1] * s[6] * s[15] - s[1] * s[7] * s[14] - s[5] * s[2] * s[15] + s[5] * s[3] * s[14] +
+             s[13] * s[2] * s[7] - s[13] * s[3] * s[6];
     inv[3] = -s[1] * s[6] * s[11] + s[1] * s[7] * s[10] + s[5] * s[2] * s[11] -
              s[5] * s[3] * s[10] - s[9] * s[2] * s[7] + s[9] * s[3] * s[6];
     inv[4] = -s[4] * s[10] * s[15] + s[4] * s[11] * s[14] + s[8] * s[6] * s[15] -
@@ -168,24 +177,24 @@ Mat4 Mat4::inverse() const {
              s[8] * s[3] * s[14] + s[12] * s[2] * s[11] - s[12] * s[3] * s[10];
     inv[6] = -s[0] * s[6] * s[15] + s[0] * s[7] * s[14] + s[4] * s[2] * s[15] -
              s[4] * s[3] * s[14] - s[12] * s[2] * s[7] + s[12] * s[3] * s[6];
-    inv[7] = s[0] * s[6] * s[11] - s[0] * s[7] * s[10] - s[4] * s[2] * s[11] +
-             s[4] * s[3] * s[10] + s[8] * s[2] * s[7] - s[8] * s[3] * s[6];
+    inv[7] = s[0] * s[6] * s[11] - s[0] * s[7] * s[10] - s[4] * s[2] * s[11] + s[4] * s[3] * s[10] +
+             s[8] * s[2] * s[7] - s[8] * s[3] * s[6];
     inv[8] = s[4] * s[9] * s[15] - s[4] * s[11] * s[13] - s[8] * s[5] * s[15] +
              s[8] * s[7] * s[13] + s[12] * s[5] * s[11] - s[12] * s[7] * s[9];
     inv[9] = -s[0] * s[9] * s[15] + s[0] * s[11] * s[13] + s[8] * s[1] * s[15] -
              s[8] * s[3] * s[13] - s[12] * s[1] * s[11] + s[12] * s[3] * s[9];
     inv[10] = s[0] * s[5] * s[15] - s[0] * s[7] * s[13] - s[4] * s[1] * s[15] +
               s[4] * s[3] * s[13] + s[12] * s[1] * s[7] - s[12] * s[3] * s[5];
-    inv[11] = -s[0] * s[5] * s[11] + s[0] * s[7] * s[9] + s[4] * s[1] * s[11] -
-              s[4] * s[3] * s[9] - s[8] * s[1] * s[7] + s[8] * s[3] * s[5];
+    inv[11] = -s[0] * s[5] * s[11] + s[0] * s[7] * s[9] + s[4] * s[1] * s[11] - s[4] * s[3] * s[9] -
+              s[8] * s[1] * s[7] + s[8] * s[3] * s[5];
     inv[12] = -s[4] * s[9] * s[14] + s[4] * s[10] * s[13] + s[8] * s[5] * s[14] -
               s[8] * s[6] * s[13] - s[12] * s[5] * s[10] + s[12] * s[6] * s[9];
     inv[13] = s[0] * s[9] * s[14] - s[0] * s[10] * s[13] - s[8] * s[1] * s[14] +
               s[8] * s[2] * s[13] + s[12] * s[1] * s[10] - s[12] * s[2] * s[9];
     inv[14] = -s[0] * s[5] * s[14] + s[0] * s[6] * s[13] + s[4] * s[1] * s[14] -
               s[4] * s[2] * s[13] - s[12] * s[1] * s[6] + s[12] * s[2] * s[5];
-    inv[15] = s[0] * s[5] * s[10] - s[0] * s[6] * s[9] - s[4] * s[1] * s[10] +
-              s[4] * s[2] * s[9] + s[8] * s[1] * s[6] - s[8] * s[2] * s[5];
+    inv[15] = s[0] * s[5] * s[10] - s[0] * s[6] * s[9] - s[4] * s[1] * s[10] + s[4] * s[2] * s[9] +
+              s[8] * s[1] * s[6] - s[8] * s[2] * s[5];
 
     double det = s[0] * inv[0] + s[1] * inv[4] + s[2] * inv[8] + s[3] * inv[12];
     if (std::abs(det) < 1e-15) return identity();

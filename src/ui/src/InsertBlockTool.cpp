@@ -1,26 +1,25 @@
 #include "horizon/ui/InsertBlockTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftBlockRef.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/math/MathUtils.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/math/MathUtils.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
 InsertBlockTool::InsertBlockTool(std::shared_ptr<draft::BlockDefinition> definition,
                                  double rotation, double scale)
-    : m_definition(std::move(definition))
-    , m_rotation(math::degToRad(rotation))
-    , m_scale(scale) {}
+    : m_definition(std::move(definition)), m_rotation(math::degToRad(rotation)), m_scale(scale) {}
 
 void InsertBlockTool::deactivate() {
     cancel();
@@ -34,8 +33,8 @@ bool InsertBlockTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worl
     math::Vec2 pos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         pos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -44,8 +43,8 @@ bool InsertBlockTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worl
     if (m_viewport && m_viewport->document()) {
         auto ref = std::make_shared<draft::DraftBlockRef>(m_definition, pos, m_rotation, m_scale);
         ref->setLayer(m_viewport->document()->layerManager().currentLayer());
-        auto cmd = std::make_unique<doc::AddEntityCommand>(
-            m_viewport->document()->draftDocument(), ref);
+        auto cmd =
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), ref);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
     return true;
@@ -55,8 +54,8 @@ bool InsertBlockTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& w
     math::Vec2 pos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         pos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -84,11 +83,10 @@ void InsertBlockTool::cancel() {
 
 // Helper to transform a point from definition space to preview world space.
 static math::Vec2 xform(const math::Vec2& pt, const math::Vec2& basePoint,
-                         const math::Vec2& insertPos, double rotation, double scale) {
+                        const math::Vec2& insertPos, double rotation, double scale) {
     math::Vec2 local = (pt - basePoint) * scale;
     double c = std::cos(rotation), s = std::sin(rotation);
-    return {insertPos.x + local.x * c - local.y * s,
-            insertPos.y + local.x * s + local.y * c};
+    return {insertPos.x + local.x * c - local.y * s, insertPos.y + local.x * s + local.y * c};
 }
 
 std::vector<std::pair<math::Vec2, math::Vec2>> InsertBlockTool::getPreviewLines() const {
@@ -129,9 +127,8 @@ std::vector<std::pair<math::Vec2, math::Vec2>> InsertBlockTool::getPreviewLines(
             for (int i = 0; i < segs; ++i) {
                 double a0 = sa + step * i;
                 double a1 = sa + step * (i + 1);
-                lines.emplace_back(
-                    math::Vec2(wc.x + wr * std::cos(a0), wc.y + wr * std::sin(a0)),
-                    math::Vec2(wc.x + wr * std::cos(a1), wc.y + wr * std::sin(a1)));
+                lines.emplace_back(math::Vec2(wc.x + wr * std::cos(a0), wc.y + wr * std::sin(a0)),
+                                   math::Vec2(wc.x + wr * std::cos(a1), wc.y + wr * std::sin(a1)));
             }
         }
     }
@@ -156,6 +153,8 @@ std::string InsertBlockTool::promptText() const {
     return "Click to place block";
 }
 
-bool InsertBlockTool::wantsCrosshair() const { return true; }
+bool InsertBlockTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

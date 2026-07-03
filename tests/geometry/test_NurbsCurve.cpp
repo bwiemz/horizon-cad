@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
-
-#include <cmath>
 
 using namespace hz::geo;
 using namespace hz::math;
@@ -431,4 +431,3 @@ TEST(NurbsCurveTest, SemicircleArc) {
     EXPECT_NEAR(end.x, -5.0, 1e-6);
     EXPECT_NEAR(end.y, 0.0, 1e-5);
 }
-

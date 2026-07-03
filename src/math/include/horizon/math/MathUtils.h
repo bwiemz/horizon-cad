@@ -7,12 +7,20 @@
 
 namespace hz::math {
 
-inline double degToRad(double degrees) { return degrees * kDegToRad; }
-inline double radToDeg(double radians) { return radians * kRadToDeg; }
+inline double degToRad(double degrees) {
+    return degrees * kDegToRad;
+}
+inline double radToDeg(double radians) {
+    return radians * kRadToDeg;
+}
 
-inline double clamp(double val, double lo, double hi) { return std::max(lo, std::min(hi, val)); }
+inline double clamp(double val, double lo, double hi) {
+    return std::max(lo, std::min(hi, val));
+}
 
-inline double lerp(double a, double b, double t) { return a + t * (b - a); }
+inline double lerp(double a, double b, double t) {
+    return a + t * (b - a);
+}
 
 inline double normalizeAngle(double radians) {
     radians = std::fmod(radians, kTwoPi);

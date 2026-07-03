@@ -1,14 +1,15 @@
 #include "horizon/ui/MeasureAreaTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QStatusBar>
 #include <cmath>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
+
+#include "horizon/document/Document.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -31,8 +32,8 @@ bool MeasureAreaTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worl
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -62,8 +63,8 @@ bool MeasureAreaTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& w
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -108,14 +109,12 @@ void MeasureAreaTool::finishMeasure() {
     }
 
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(4)
-        << "Area: " << area << "  Perimeter: " << perimeter;
+    oss << std::fixed << std::setprecision(4) << "Area: " << area << "  Perimeter: " << perimeter;
 
     if (m_viewport) {
         auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());
         if (mainWin && mainWin->statusBar()) {
-            mainWin->statusBar()->showMessage(
-                QString::fromStdString(oss.str()), 10000);
+            mainWin->statusBar()->showMessage(QString::fromStdString(oss.str()), 10000);
         }
     }
 
@@ -157,6 +156,8 @@ std::string MeasureAreaTool::promptText() const {
     return "Specify next vertex, Enter to finish";
 }
 
-bool MeasureAreaTool::wantsCrosshair() const { return true; }
+bool MeasureAreaTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

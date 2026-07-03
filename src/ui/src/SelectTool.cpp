@@ -1,30 +1,29 @@
 #include "horizon/ui/SelectTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/ui/GripManager.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/document/ConstraintCommands.h"
-#include "horizon/document/ConstraintSolveHelper.h"
-#include "horizon/document/UndoStack.h"
-#include "horizon/constraint/ConstraintSystem.h"
-#include "horizon/math/BoundingBox.h"
 
 #include <QInputDialog>
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <set>
 
+#include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/ui/GripManager.h"
+#include "horizon/ui/ViewportWidget.h"
+
 namespace hz::ui {
 
 // Expand the current selection to include all group mates of selected entities.
 // Respects layer visibility/lock — hidden/locked entities are NOT added.
-static void expandSelectionToGroups(
-    render::SelectionManager& sel,
-    const draft::DraftDocument& doc,
-    const draft::LayerManager& layerMgr) {
+static void expandSelectionToGroups(render::SelectionManager& sel, const draft::DraftDocument& doc,
+                                    const draft::LayerManager& layerMgr) {
     std::set<uint64_t> groupIds;
     for (uint64_t id : sel.selectedIds()) {
         for (const auto& e : doc.entities()) {
@@ -111,8 +110,8 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
 
         math::Vec2 snappedPos = worldPos;
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
 
@@ -209,8 +208,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         double minY = std::min(m_dragStart.y, m_dragCurrent.y);
         double maxX = std::max(m_dragStart.x, m_dragCurrent.x);
         double maxY = std::max(m_dragStart.y, m_dragCurrent.y);
-        math::BoundingBox selectRect(math::Vec3(minX, minY, -1e9),
-                                     math::Vec3(maxX, maxY, 1e9));
+        math::BoundingBox selectRect(math::Vec3(minX, minY, -1e9), math::Vec3(maxX, maxY, 1e9));
 
         bool windowMode = isWindowSelection();
 
@@ -293,8 +291,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
             if (hitGroupId != 0 && sel.isSelected(hitId)) {
                 // Deselect entire group.
                 for (const auto& entity : doc.entities()) {
-                    if (entity->groupId() == hitGroupId)
-                        sel.deselect(entity->id());
+                    if (entity->groupId() == hitGroupId) sel.deselect(entity->id());
                 }
             } else {
                 sel.select(hitId);
@@ -338,8 +335,8 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
             auto constrs = cstrSys.constraintsForEntity(id);
             for (const auto* c : constrs) {
                 if (removedConstraints.insert(c->id()).second) {
-                    composite->addCommand(std::make_unique<doc::RemoveConstraintCommand>(
-                        cstrSys, c->id()));
+                    composite->addCommand(
+                        std::make_unique<doc::RemoveConstraintCommand>(cstrSys, c->id()));
                 }
             }
         }
@@ -393,14 +390,13 @@ bool SelectTool::handleConstraintDoubleClick(const math::Vec2& worldPos) {
         if (hit) {
             bool isAngle = (constraint->type() == cstr::ConstraintType::Angle);
             return editConstraintDimension(constraint->id(), constraint->dimensionalValue(),
-                                          isAngle);
+                                           isAngle);
         }
     }
     return false;
 }
 
-bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentValue,
-                                          bool isAngle) {
+bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentValue, bool isAngle) {
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& cstrSys = m_viewport->document()->constraintSystem();
@@ -413,13 +409,12 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
     QString label = isAngle ? QStringLiteral("Angle (degrees):") : QStringLiteral("Distance:");
 
     bool ok = false;
-    double newDisplay = QInputDialog::getDouble(
-        m_viewport, QStringLiteral("Edit Constraint"), label,
-        displayValue,
-        isAngle ? 0.001 : 0.001,  // min
-        isAngle ? 359.999 : 1e9,  // max
-        4,                         // decimals
-        &ok);
+    double newDisplay =
+        QInputDialog::getDouble(m_viewport, QStringLiteral("Edit Constraint"), label, displayValue,
+                                isAngle ? 0.001 : 0.001,  // min
+                                isAngle ? 359.999 : 1e9,  // max
+                                4,                        // decimals
+                                &ok);
 
     if (!ok) return false;
 
@@ -438,8 +433,7 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
 
     auto& paramReg = m_viewport->document()->parameterRegistry();
     auto resolver = [&paramReg](const std::string& name) { return paramReg.get(name); };
-    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, cstrSys,
-                                                                      resolver);
+    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, cstrSys, resolver);
 
     // Restore old value — ModifyConstraintValueCommand::execute() will re-apply it.
     c->setDimensionalValue(currentValue);
@@ -510,12 +504,14 @@ std::string SelectTool::promptText() const {
     return "Click to select, drag for box selection. Shift to add.";
 }
 
-bool SelectTool::wantsCrosshair() const { return false; }
+bool SelectTool::wantsCrosshair() const {
+    return false;
+}
 
 math::Vec3 SelectTool::previewColor() const {
     if (m_draggingBox) {
-        return isWindowSelection() ? math::Vec3{0.3, 0.5, 1.0}    // Blue for window
-                                   : math::Vec3{0.3, 1.0, 0.5};   // Green for crossing
+        return isWindowSelection() ? math::Vec3{0.3, 0.5, 1.0}   // Blue for window
+                                   : math::Vec3{0.3, 1.0, 0.5};  // Green for crossing
     }
     return {0.0, 0.8, 1.0};  // Default cyan
 }

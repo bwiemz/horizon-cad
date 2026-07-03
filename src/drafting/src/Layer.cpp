@@ -1,4 +1,5 @@
 #include "horizon/drafting/Layer.h"
+
 #include <algorithm>
 
 namespace hz::draft {

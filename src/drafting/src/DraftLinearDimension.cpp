@@ -1,43 +1,40 @@
 #include "horizon/drafting/DraftLinearDimension.h"
-#include "horizon/math/Constants.h"
-#include "horizon/math/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
+
+#include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
 // ---- Helpers (file-local) ----
 
-static math::Vec2 mirrorPoint(const math::Vec2& p,
-                               const math::Vec2& axisP1,
-                               const math::Vec2& axisP2) {
+static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
+                              const math::Vec2& axisP2) {
     math::Vec2 d = (axisP2 - axisP1).normalized();
     math::Vec2 v = p - axisP1;
     return axisP1 + d * (2.0 * v.dot(d)) - v;
 }
 
-static math::Vec2 rotatePoint(const math::Vec2& p,
-                               const math::Vec2& center, double angle) {
+static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, double angle) {
     double c = std::cos(angle), s = std::sin(angle);
     math::Vec2 v = p - center;
     return {center.x + v.x * c - v.y * s, center.y + v.x * s + v.y * c};
 }
 
-static math::Vec2 scalePoint(const math::Vec2& p,
-                              const math::Vec2& center, double factor) {
+static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
 }
 
 // ---- Construction ----
 
-DraftLinearDimension::DraftLinearDimension(
-    const math::Vec2& defPoint1, const math::Vec2& defPoint2,
-    const math::Vec2& dimLinePoint, Orientation orientation)
-    : m_defPoint1(defPoint1)
-    , m_defPoint2(defPoint2)
-    , m_dimLinePoint(dimLinePoint)
-    , m_orientation(orientation) {}
+DraftLinearDimension::DraftLinearDimension(const math::Vec2& defPoint1, const math::Vec2& defPoint2,
+                                           const math::Vec2& dimLinePoint, Orientation orientation)
+    : m_defPoint1(defPoint1),
+      m_defPoint2(defPoint2),
+      m_dimLinePoint(dimLinePoint),
+      m_orientation(orientation) {}
 
 // ---- Measurement ----
 
@@ -89,8 +86,8 @@ math::Vec2 DraftLinearDimension::textPosition() const {
 
 // ---- Rendering geometry ----
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLinearDimension::extensionLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLinearDimension::extensionLines(
+    const DimensionStyle& style) const {
     auto [dlA, dlB] = dimLineEndpoints();
 
     // Perpendicular direction from defPoint to its dim line endpoint.
@@ -101,28 +98,26 @@ DraftLinearDimension::extensionLines(const DimensionStyle& style) const {
 
         math::Vec2 d = dir / len;
         math::Vec2 start = defPt + d * style.extensionGap;
-        math::Vec2 end   = dlPt  + d * style.extensionOvershoot;
+        math::Vec2 end = dlPt + d * style.extensionOvershoot;
         return std::make_pair(start, end);
     };
 
     std::vector<std::pair<math::Vec2, math::Vec2>> lines;
     auto ext1 = makeExtLine(m_defPoint1, dlA);
     auto ext2 = makeExtLine(m_defPoint2, dlB);
-    if (ext1.first.distanceTo(ext1.second) > 1e-12)
-        lines.push_back(ext1);
-    if (ext2.first.distanceTo(ext2.second) > 1e-12)
-        lines.push_back(ext2);
+    if (ext1.first.distanceTo(ext1.second) > 1e-12) lines.push_back(ext1);
+    if (ext2.first.distanceTo(ext2.second) > 1e-12) lines.push_back(ext2);
     return lines;
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLinearDimension::dimensionLines(const DimensionStyle& /*style*/) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLinearDimension::dimensionLines(
+    const DimensionStyle& /*style*/) const {
     auto [a, b] = dimLineEndpoints();
     return {{a, b}};
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftLinearDimension::arrowheadLines(const DimensionStyle& style) const {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftLinearDimension::arrowheadLines(
+    const DimensionStyle& style) const {
     auto [a, b] = dimLineEndpoints();
     math::Vec2 dir = (b - a).normalized();
 
@@ -182,8 +177,8 @@ void DraftLinearDimension::translate(const math::Vec2& delta) {
 }
 
 std::shared_ptr<DraftEntity> DraftLinearDimension::clone() const {
-    auto copy = std::make_shared<DraftLinearDimension>(
-        m_defPoint1, m_defPoint2, m_dimLinePoint, m_orientation);
+    auto copy = std::make_shared<DraftLinearDimension>(m_defPoint1, m_defPoint2, m_dimLinePoint,
+                                                       m_orientation);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());

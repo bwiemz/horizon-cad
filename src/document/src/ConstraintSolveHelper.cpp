@@ -41,8 +41,7 @@ static void copyEntityGeometry(const draft::DraftEntity& src, draft::DraftEntity
 }
 
 static bool isSolveSuccess(cstr::SolveStatus status) {
-    return status == cstr::SolveStatus::Success ||
-           status == cstr::SolveStatus::Converged ||
+    return status == cstr::SolveStatus::Success || status == cstr::SolveStatus::Converged ||
            status == cstr::SolveStatus::UnderConstrained;
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "horizon/ui/Tool.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/ui/Tool.h"
 
 namespace hz::ui {
 
@@ -35,9 +35,9 @@ private:
     void finishEllipse();
 
     /// Generate preview points for an ellipse.
-    static std::vector<math::Vec2> evaluateEllipse(
-        const math::Vec2& center, double semiMajor, double semiMinor,
-        double rotation, int segments = 64);
+    static std::vector<math::Vec2> evaluateEllipse(const math::Vec2& center, double semiMajor,
+                                                   double semiMinor, double rotation,
+                                                   int segments = 64);
 
     State m_state = State::Center;
     math::Vec2 m_center;

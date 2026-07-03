@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
+
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/Tolerance.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
-#include "horizon/math/Tolerance.h"
 
 using namespace hz::draft;
 using namespace hz::math;
@@ -122,8 +123,7 @@ TEST(SketchPlaneTest, TransformMatricesAreInverses) {
     for (int r = 0; r < 4; ++r) {
         for (int c = 0; c < 4; ++c) {
             double expected = (r == c) ? 1.0 : 0.0;
-            EXPECT_NEAR(product.at(r, c), expected, 1e-9)
-                << "at (" << r << "," << c << ")";
+            EXPECT_NEAR(product.at(r, c), expected, 1e-9) << "at (" << r << "," << c << ")";
         }
     }
 }

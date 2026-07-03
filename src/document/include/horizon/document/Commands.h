@@ -1,5 +1,12 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/UndoStack.h"
@@ -8,19 +15,13 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Vec2.h"
-#include <functional>
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace hz::doc {
 
 /// Command to add a DraftEntity to a DraftDocument.
 class AddEntityCommand : public Command {
 public:
-    AddEntityCommand(draft::DraftDocument& doc,
-                     std::shared_ptr<draft::DraftEntity> entity);
+    AddEntityCommand(draft::DraftDocument& doc, std::shared_ptr<draft::DraftEntity> entity);
 
     void execute() override;
     void undo() override;
@@ -50,10 +51,8 @@ private:
 /// Command to move (translate) one or more DraftEntities.
 class MoveEntityCommand : public Command {
 public:
-    MoveEntityCommand(draft::DraftDocument& doc,
-                      const std::vector<uint64_t>& entityIds,
-                      const math::Vec2& delta,
-                      cstr::ConstraintSystem& constraintSystem,
+    MoveEntityCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
+                      const math::Vec2& delta, cstr::ConstraintSystem& constraintSystem,
                       std::function<double(const std::string&)> variableResolver = nullptr);
 
     void execute() override;
@@ -88,8 +87,7 @@ private:
 /// Command to duplicate (clone) one or more entities with an offset.
 class DuplicateEntityCommand : public Command {
 public:
-    DuplicateEntityCommand(draft::DraftDocument& doc,
-                           const std::vector<uint64_t>& sourceIds,
+    DuplicateEntityCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& sourceIds,
                            const math::Vec2& offset);
 
     void execute() override;
@@ -109,10 +107,8 @@ private:
 /// Command to mirror one or more entities across an axis, creating copies.
 class MirrorEntityCommand : public Command {
 public:
-    MirrorEntityCommand(draft::DraftDocument& doc,
-                        const std::vector<uint64_t>& entityIds,
-                        const math::Vec2& axisP1,
-                        const math::Vec2& axisP2);
+    MirrorEntityCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
+                        const math::Vec2& axisP1, const math::Vec2& axisP2);
 
     void execute() override;
     void undo() override;
@@ -130,10 +126,8 @@ private:
 /// Command to rotate-copy one or more entities around a center point.
 class RotateEntityCommand : public Command {
 public:
-    RotateEntityCommand(draft::DraftDocument& doc,
-                        const std::vector<uint64_t>& entityIds,
-                        const math::Vec2& center,
-                        double angle);
+    RotateEntityCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
+                        const math::Vec2& center, double angle);
 
     void execute() override;
     void undo() override;
@@ -152,10 +146,8 @@ private:
 /// Command to scale-copy one or more entities from a base point.
 class ScaleEntityCommand : public Command {
 public:
-    ScaleEntityCommand(draft::DraftDocument& doc,
-                       const std::vector<uint64_t>& entityIds,
-                       const math::Vec2& basePoint,
-                       double factor);
+    ScaleEntityCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
+                       const math::Vec2& basePoint, double factor);
 
     void execute() override;
     void undo() override;
@@ -178,8 +170,7 @@ private:
 /// Command to change the layer of one or more entities.
 class ChangeEntityLayerCommand : public Command {
 public:
-    ChangeEntityLayerCommand(draft::DraftDocument& doc,
-                             const std::vector<uint64_t>& entityIds,
+    ChangeEntityLayerCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
                              const std::string& newLayer);
     void execute() override;
     void undo() override;
@@ -195,8 +186,7 @@ private:
 /// Command to change the color of one or more entities.
 class ChangeEntityColorCommand : public Command {
 public:
-    ChangeEntityColorCommand(draft::DraftDocument& doc,
-                             const std::vector<uint64_t>& entityIds,
+    ChangeEntityColorCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
                              uint32_t newColor);
     void execute() override;
     void undo() override;
@@ -212,8 +202,7 @@ private:
 /// Command to change the line width of one or more entities.
 class ChangeEntityLineWidthCommand : public Command {
 public:
-    ChangeEntityLineWidthCommand(draft::DraftDocument& doc,
-                                 const std::vector<uint64_t>& entityIds,
+    ChangeEntityLineWidthCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
                                  double newWidth);
     void execute() override;
     void undo() override;
@@ -229,8 +218,7 @@ private:
 /// Command to change the line type of one or more entities.
 class ChangeEntityLineTypeCommand : public Command {
 public:
-    ChangeEntityLineTypeCommand(draft::DraftDocument& doc,
-                                const std::vector<uint64_t>& entityIds,
+    ChangeEntityLineTypeCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds,
                                 int newLineType);
     void execute() override;
     void undo() override;
@@ -246,8 +234,7 @@ private:
 /// Command to change the text override of a dimension entity.
 class ChangeTextOverrideCommand : public Command {
 public:
-    ChangeTextOverrideCommand(draft::DraftDocument& doc,
-                              uint64_t entityId,
+    ChangeTextOverrideCommand(draft::DraftDocument& doc, uint64_t entityId,
                               const std::string& newText);
     void execute() override;
     void undo() override;
@@ -333,8 +320,7 @@ private:
 /// Removes originals and inserts a block reference at the centroid.
 class CreateBlockCommand : public Command {
 public:
-    CreateBlockCommand(draft::DraftDocument& doc,
-                       const std::string& blockName,
+    CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
                        const std::vector<uint64_t>& entityIds);
     void execute() override;
     void undo() override;
@@ -372,9 +358,7 @@ private:
 /// Command to change a block reference's rotation.
 class ChangeBlockRefRotationCommand : public Command {
 public:
-    ChangeBlockRefRotationCommand(draft::DraftDocument& doc,
-                                  uint64_t entityId,
-                                  double newRotation);
+    ChangeBlockRefRotationCommand(draft::DraftDocument& doc, uint64_t entityId, double newRotation);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -389,9 +373,7 @@ private:
 /// Command to change a block reference's uniform scale.
 class ChangeBlockRefScaleCommand : public Command {
 public:
-    ChangeBlockRefScaleCommand(draft::DraftDocument& doc,
-                               uint64_t entityId,
-                               double newScale);
+    ChangeBlockRefScaleCommand(draft::DraftDocument& doc, uint64_t entityId, double newScale);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -410,8 +392,7 @@ private:
 /// Command to change a text entity's content string.
 class ChangeTextContentCommand : public Command {
 public:
-    ChangeTextContentCommand(draft::DraftDocument& doc,
-                             uint64_t entityId,
+    ChangeTextContentCommand(draft::DraftDocument& doc, uint64_t entityId,
                              const std::string& newText);
     void execute() override;
     void undo() override;
@@ -427,9 +408,7 @@ private:
 /// Command to change a text entity's height.
 class ChangeTextHeightCommand : public Command {
 public:
-    ChangeTextHeightCommand(draft::DraftDocument& doc,
-                            uint64_t entityId,
-                            double newHeight);
+    ChangeTextHeightCommand(draft::DraftDocument& doc, uint64_t entityId, double newHeight);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -444,9 +423,7 @@ private:
 /// Command to change a text entity's rotation.
 class ChangeTextRotationCommand : public Command {
 public:
-    ChangeTextRotationCommand(draft::DraftDocument& doc,
-                              uint64_t entityId,
-                              double newRotation);
+    ChangeTextRotationCommand(draft::DraftDocument& doc, uint64_t entityId, double newRotation);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -461,9 +438,7 @@ private:
 /// Command to change a text entity's alignment.
 class ChangeTextAlignmentCommand : public Command {
 public:
-    ChangeTextAlignmentCommand(draft::DraftDocument& doc,
-                               uint64_t entityId,
-                               int newAlignment);
+    ChangeTextAlignmentCommand(draft::DraftDocument& doc, uint64_t entityId, int newAlignment);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -482,9 +457,7 @@ private:
 /// Command to toggle a spline's closed/open state.
 class ChangeSplineClosedCommand : public Command {
 public:
-    ChangeSplineClosedCommand(draft::DraftDocument& doc,
-                              uint64_t entityId,
-                              bool newClosed);
+    ChangeSplineClosedCommand(draft::DraftDocument& doc, uint64_t entityId, bool newClosed);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -503,9 +476,7 @@ private:
 /// Command to change a hatch entity's pattern type.
 class ChangeHatchPatternCommand : public Command {
 public:
-    ChangeHatchPatternCommand(draft::DraftDocument& doc,
-                              uint64_t entityId,
-                              int newPattern);
+    ChangeHatchPatternCommand(draft::DraftDocument& doc, uint64_t entityId, int newPattern);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -520,9 +491,7 @@ private:
 /// Command to change a hatch entity's angle.
 class ChangeHatchAngleCommand : public Command {
 public:
-    ChangeHatchAngleCommand(draft::DraftDocument& doc,
-                            uint64_t entityId,
-                            double newAngle);
+    ChangeHatchAngleCommand(draft::DraftDocument& doc, uint64_t entityId, double newAngle);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -537,9 +506,7 @@ private:
 /// Command to change a hatch entity's spacing.
 class ChangeHatchSpacingCommand : public Command {
 public:
-    ChangeHatchSpacingCommand(draft::DraftDocument& doc,
-                              uint64_t entityId,
-                              double newSpacing);
+    ChangeHatchSpacingCommand(draft::DraftDocument& doc, uint64_t entityId, double newSpacing);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -558,8 +525,7 @@ private:
 /// Command to change an ellipse's semi-major radius.
 class ChangeEllipseSemiMajorCommand : public Command {
 public:
-    ChangeEllipseSemiMajorCommand(draft::DraftDocument& doc,
-                                  uint64_t entityId, double newValue);
+    ChangeEllipseSemiMajorCommand(draft::DraftDocument& doc, uint64_t entityId, double newValue);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -574,8 +540,7 @@ private:
 /// Command to change an ellipse's semi-minor radius.
 class ChangeEllipseSemiMinorCommand : public Command {
 public:
-    ChangeEllipseSemiMinorCommand(draft::DraftDocument& doc,
-                                  uint64_t entityId, double newValue);
+    ChangeEllipseSemiMinorCommand(draft::DraftDocument& doc, uint64_t entityId, double newValue);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -590,8 +555,7 @@ private:
 /// Command to change an ellipse's rotation.
 class ChangeEllipseRotationCommand : public Command {
 public:
-    ChangeEllipseRotationCommand(draft::DraftDocument& doc,
-                                 uint64_t entityId, double newRotation);
+    ChangeEllipseRotationCommand(draft::DraftDocument& doc, uint64_t entityId, double newRotation);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -648,8 +612,7 @@ private:
 /// Command to group a set of entities under a shared groupId.
 class GroupEntitiesCommand : public Command {
 public:
-    GroupEntitiesCommand(draft::DraftDocument& doc,
-                         const std::vector<uint64_t>& entityIds);
+    GroupEntitiesCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -664,8 +627,7 @@ private:
 /// Command to ungroup entities by dissolving one or more groups.
 class UngroupEntitiesCommand : public Command {
 public:
-    UngroupEntitiesCommand(draft::DraftDocument& doc,
-                           const std::vector<uint64_t>& groupIds);
+    UngroupEntitiesCommand(draft::DraftDocument& doc, const std::vector<uint64_t>& groupIds);
     void execute() override;
     void undo() override;
     std::string description() const override;

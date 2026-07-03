@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "horizon/math/Vec3.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Vec3.h"
 
 using namespace hz::math;
 

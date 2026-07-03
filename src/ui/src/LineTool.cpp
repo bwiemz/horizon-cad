@@ -1,11 +1,12 @@
 #include "horizon/ui/LineTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftLine.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -29,8 +30,8 @@ bool LineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
         auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(
-            worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result =
+            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -62,8 +63,8 @@ bool LineTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
         math::Vec2 snappedPos = worldPos;
         if (m_viewport && m_viewport->document()) {
             auto& draftDoc = m_viewport->document()->draftDocument();
-            auto result = m_viewport->snapEngine().snap(
-                worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+            auto result = m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(),
+                                                        draftDoc.entities());
             snappedPos = result.point;
             m_viewport->setLastSnapResult(result);
         }
@@ -101,12 +102,16 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LineTool::getPreviewLines() const
 
 std::string LineTool::promptText() const {
     switch (m_state) {
-        case State::WaitingForStart: return "Specify first point";
-        case State::WaitingForEnd: return "Specify next point or press Escape";
+        case State::WaitingForStart:
+            return "Specify first point";
+        case State::WaitingForEnd:
+            return "Specify next point or press Escape";
     }
     return "";
 }
 
-bool LineTool::wantsCrosshair() const { return true; }
+bool LineTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

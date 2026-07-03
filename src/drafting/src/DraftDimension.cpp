@@ -1,9 +1,10 @@
 #include "horizon/drafting/DraftDimension.h"
-#include "horizon/math/Constants.h"
 
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+
+#include "horizon/math/Constants.h"
 
 namespace hz::draft {
 
@@ -17,9 +18,8 @@ std::string DraftDimension::displayText(const DimensionStyle& style) const {
     return oss.str();
 }
 
-std::vector<std::pair<math::Vec2, math::Vec2>>
-DraftDimension::makeArrowhead(const math::Vec2& tip, const math::Vec2& direction,
-                               double size, double halfAngle) {
+std::vector<std::pair<math::Vec2, math::Vec2>> DraftDimension::makeArrowhead(
+    const math::Vec2& tip, const math::Vec2& direction, double size, double halfAngle) {
     // direction should point away from the measured area (into the arrow).
     double dirAngle = std::atan2(direction.y, direction.x);
 

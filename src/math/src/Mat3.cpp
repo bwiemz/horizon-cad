@@ -34,7 +34,9 @@ Mat3 Mat3::scale(const Vec2& s) {
     return r;
 }
 
-Mat3 Mat3::scale(double s) { return scale({s, s}); }
+Mat3 Mat3::scale(double s) {
+    return scale({s, s});
+}
 
 Mat3 Mat3::operator*(const Mat3& rhs) const {
     Mat3 r;

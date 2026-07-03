@@ -1,15 +1,16 @@
 #include "horizon/ui/HatchTool.h"
-#include "horizon/ui/ViewportWidget.h"
-#include "horizon/document/Document.h"
-#include "horizon/document/Commands.h"
-#include "horizon/drafting/DraftHatch.h"
-#include "horizon/drafting/DraftRectangle.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftCircle.h"
 
-#include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <cmath>
+
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
 
@@ -119,6 +120,8 @@ std::string HatchTool::promptText() const {
     return "Click a closed entity to hatch";
 }
 
-bool HatchTool::wantsCrosshair() const { return true; }
+bool HatchTool::wantsCrosshair() const {
+    return true;
+}
 
 }  // namespace hz::ui

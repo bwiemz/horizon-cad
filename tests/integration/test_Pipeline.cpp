@@ -67,10 +67,8 @@ static std::vector<std::shared_ptr<DraftEntity>> makeCircleProfile(double r) {
     return profile;
 }
 
-static std::vector<std::shared_ptr<DraftEntity>> makeOffsetRectProfile(double xMin,
-                                                                        double xMax,
-                                                                        double yMin,
-                                                                        double yMax) {
+static std::vector<std::shared_ptr<DraftEntity>> makeOffsetRectProfile(double xMin, double xMax,
+                                                                       double yMin, double yMax) {
     std::vector<std::shared_ptr<DraftEntity>> profile;
     profile.push_back(std::make_shared<DraftLine>(Vec2(xMin, yMin), Vec2(xMax, yMin)));
     profile.push_back(std::make_shared<DraftLine>(Vec2(xMax, yMin), Vec2(xMax, yMax)));
@@ -226,8 +224,7 @@ TEST(PipelineTest, ExtrudeHasNURBSSurfaces) {
 TEST(PipelineTest, RevolveRectangle) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_rect");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_rect");
     ASSERT_NE(solid, nullptr);
     EXPECT_EQ(solid->faceCount(), 6u);
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
@@ -236,8 +233,7 @@ TEST(PipelineTest, RevolveRectangle) {
 TEST(PipelineTest, RevolveHasValidEuler) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_euler");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_euler");
     ASSERT_NE(solid, nullptr);
     EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->checkManifold());
@@ -247,16 +243,14 @@ TEST(PipelineTest, RevolveInvalidProfileFails) {
     std::vector<std::shared_ptr<DraftEntity>> profile;
     profile.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0)));
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_bad");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_bad");
     EXPECT_EQ(solid, nullptr);
 }
 
 TEST(PipelineTest, RevolveHasTopologyIDs) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_id");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_id");
     ASSERT_NE(solid, nullptr);
     for (const auto& f : solid->faces()) {
         EXPECT_TRUE(f.topoId.isValid());
@@ -269,8 +263,7 @@ TEST(PipelineTest, RevolveHasTopologyIDs) {
 TEST(PipelineTest, RevolveHasNURBSSurfaces) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY,
-                                   kTwoPi, "rev_nurbs");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_nurbs");
     ASSERT_NE(solid, nullptr);
     for (const auto& f : solid->faces()) {
         EXPECT_NE(f.surface, nullptr);
@@ -762,8 +755,7 @@ TEST(TNPRegressionTest, FeatureTreePreservesIDs) {
         faceTags2.insert(f.topoId.tag());
     }
 
-    EXPECT_EQ(faceTags1, faceTags2)
-        << "Feature tree rebuild changed TopologyIDs";
+    EXPECT_EQ(faceTags1, faceTags2) << "Feature tree rebuild changed TopologyIDs";
 }
 
 // ===========================================================================
@@ -778,16 +770,14 @@ TEST(PerfTest, PrimitiveTessellation) {
     {
         auto start = Clock::now();
         auto mesh = SolidTessellator::tessellate(*box, 1.0);
-        auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
         EXPECT_LT(elapsed.count(), 1000) << "Box tessellation (tol=1.0) too slow";
         EXPECT_FALSE(mesh.positions.empty());
     }
     {
         auto start = Clock::now();
         auto mesh = SolidTessellator::tessellate(*box, 0.01);
-        auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
         // Generous thresholds for Debug builds (unoptimized code)
         EXPECT_LT(elapsed.count(), 60000) << "Box tessellation (tol=0.01) too slow";
         EXPECT_FALSE(mesh.positions.empty());
@@ -798,8 +788,7 @@ TEST(PerfTest, PrimitiveTessellation) {
     {
         auto start = Clock::now();
         auto mesh = SolidTessellator::tessellate(*cyl, 0.1);
-        auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
         EXPECT_LT(elapsed.count(), 30000) << "Cylinder tessellation too slow";
         EXPECT_FALSE(mesh.positions.empty());
     }
@@ -809,8 +798,7 @@ TEST(PerfTest, PrimitiveTessellation) {
     {
         auto start = Clock::now();
         auto mesh = SolidTessellator::tessellate(*sph, 0.1);
-        auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
         EXPECT_LT(elapsed.count(), 30000) << "Sphere tessellation too slow";
         EXPECT_FALSE(mesh.positions.empty());
     }
@@ -823,8 +811,7 @@ TEST(PerfTest, FeatureTreeRebuild) {
     // Build a 5-feature tree (each feature is an independent extrude for now)
     for (int i = 0; i < 5; ++i) {
         auto sketch = makeRectSketch(5.0 + i, 3.0 + i);
-        tree.addFeature(std::make_unique<ExtrudeFeature>(
-            sketch, Vec3::UnitZ, 2.0 + i));
+        tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3::UnitZ, 2.0 + i));
     }
 
     auto start = Clock::now();
@@ -832,8 +819,7 @@ TEST(PerfTest, FeatureTreeRebuild) {
         auto solid = tree.build();
         EXPECT_NE(solid, nullptr);
     }
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
     // 10 rebuilds of 5-feature tree should complete in under 10 seconds
     EXPECT_LT(elapsed.count(), 10000)
         << "Feature tree rebuild too slow: " << elapsed.count() << "ms for 10 rebuilds";
