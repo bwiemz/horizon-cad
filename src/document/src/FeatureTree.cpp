@@ -6,6 +6,7 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
@@ -360,6 +361,50 @@ bool FilletFeature::setParameter(const std::string& name, double value) {
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
     if (!inputSolid) return nullptr;
     auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID);
+    return result.solid ? std::move(result.solid) : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// ChamferFeature
+// ---------------------------------------------------------------------------
+
+int ChamferFeature::s_nextID = 1;
+
+ChamferFeature::ChamferFeature(std::vector<topo::TopologyID> edgeIds, double distance)
+    : m_edgeIds(std::move(edgeIds)),
+      m_distance(distance),
+      m_featureID("chamfer_" + std::to_string(s_nextID++)) {}
+
+std::string ChamferFeature::name() const {
+    return "Chamfer";
+}
+
+std::string ChamferFeature::featureID() const {
+    return m_featureID;
+}
+
+void ChamferFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "chamfer_");
+}
+
+std::map<std::string, double> ChamferFeature::parameters() const {
+    return {{"distance", m_distance}};
+}
+
+bool ChamferFeature::setParameter(const std::string& name, double value) {
+    if (name == "distance" && value > 0.0) {
+        m_distance = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> ChamferFeature::execute(
+    std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    auto result = model::ChamferOp::executeEqual(*inputSolid, m_edgeIds, m_distance, m_featureID);
     return result.solid ? std::move(result.solid) : nullptr;
 }
 

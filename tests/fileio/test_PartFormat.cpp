@@ -582,3 +582,37 @@ TEST(PartFormatTest, FilletFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// ChamferFeatureRoundTrip — parametric chamfer persists (edge tags + distance)
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, ChamferFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    ASSERT_TRUE(original.rebuildModel());
+    ASSERT_NE(original.solid(), nullptr);
+    ASSERT_FALSE(original.solid()->edges().empty());
+    const auto edgeId = original.solid()->edges().front().topoId;
+    original.featureTree().addFeature(
+        std::make_unique<ChamferFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 0.8));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_chamfer_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* chamfer = dynamic_cast<const ChamferFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(chamfer, nullptr);
+    EXPECT_DOUBLE_EQ(chamfer->distance(), 0.8);
+    ASSERT_EQ(chamfer->edgeIds().size(), 1u);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_TRUE(loaded.solid()->isValid());
+
+    std::remove(path.c_str());
+}
