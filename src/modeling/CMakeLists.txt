@@ -21,6 +21,7 @@ add_library(hz_modeling STATIC
     src/InterferenceChecker.cpp
     src/MassProperties.cpp
     src/Measure.cpp
+    src/DrawingProjection.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
