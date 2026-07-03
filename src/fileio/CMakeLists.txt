@@ -3,6 +3,7 @@ add_library(hz_fileio STATIC
     src/StlExporter.cpp
     src/DxfFormat.cpp
     src/DrawingExport.cpp
+    src/DrawingDocumentIO.cpp
 )
 
 target_include_directories(hz_fileio
