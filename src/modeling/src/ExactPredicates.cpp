@@ -39,19 +39,8 @@ bool rayTriangleIntersect(const math::Vec3& rayOrigin, const math::Vec3& rayDir,
 
 }  // namespace
 
-int ExactPredicates::classifyPoint(const math::Vec3& point, const topo::Solid& solid,
-                                   double tolerance) {
-    // Use a slightly off-axis ray direction to reduce the chance of
-    // hitting edges or vertices (which would produce degenerate intersections).
-    const math::Vec3 rayDir = math::Vec3(1.0, 0.1, 0.01).normalized();
-
-    // Use a reasonable tessellation tolerance — the `tolerance` parameter
-    // controls boundary detection, not mesh density.  A coarser tessellation
-    // is sufficient for ray-casting classification.
-    const double tessTol = 0.1;
-
-    int hitCount = 0;
-
+std::vector<math::Vec3> ExactPredicates::tessellateSolid(const topo::Solid& solid, double tessTol) {
+    std::vector<math::Vec3> triangles;
     for (const auto& face : solid.faces()) {
         if (!face.surface) continue;
 
@@ -63,27 +52,47 @@ int ExactPredicates::classifyPoint(const math::Vec3& point, const topo::Solid& s
             uint32_t i0 = idx[i];
             uint32_t i1 = idx[i + 1];
             uint32_t i2 = idx[i + 2];
+            triangles.emplace_back(pos[i0 * 3], pos[i0 * 3 + 1], pos[i0 * 3 + 2]);
+            triangles.emplace_back(pos[i1 * 3], pos[i1 * 3 + 1], pos[i1 * 3 + 2]);
+            triangles.emplace_back(pos[i2 * 3], pos[i2 * 3 + 1], pos[i2 * 3 + 2]);
+        }
+    }
+    return triangles;
+}
 
-            math::Vec3 v0(pos[i0 * 3], pos[i0 * 3 + 1], pos[i0 * 3 + 2]);
-            math::Vec3 v1(pos[i1 * 3], pos[i1 * 3 + 1], pos[i1 * 3 + 2]);
-            math::Vec3 v2(pos[i2 * 3], pos[i2 * 3 + 1], pos[i2 * 3 + 2]);
+int ExactPredicates::classifyPointAgainstMesh(const math::Vec3& point,
+                                              const std::vector<math::Vec3>& triangles,
+                                              double tolerance) {
+    // Use a slightly off-axis ray direction to reduce the chance of
+    // hitting edges or vertices (which would produce degenerate intersections).
+    const math::Vec3 rayDir = math::Vec3(1.0, 0.1, 0.01).normalized();
 
-            // Check if the query point is very close to this triangle (boundary).
-            // Use distance-to-triangle to detect boundary case.
-            // For simplicity, check distance to each vertex first.
-            if (point.distanceTo(v0) < tolerance || point.distanceTo(v1) < tolerance ||
-                point.distanceTo(v2) < tolerance) {
-                return 0;  // On boundary.
-            }
+    int hitCount = 0;
+    for (size_t i = 0; i + 2 < triangles.size(); i += 3) {
+        const math::Vec3& v0 = triangles[i];
+        const math::Vec3& v1 = triangles[i + 1];
+        const math::Vec3& v2 = triangles[i + 2];
 
-            double t = 0.0;
-            if (rayTriangleIntersect(point, rayDir, v0, v1, v2, t)) {
-                ++hitCount;
-            }
+        // Check if the query point is very close to this triangle (boundary).
+        if (point.distanceTo(v0) < tolerance || point.distanceTo(v1) < tolerance ||
+            point.distanceTo(v2) < tolerance) {
+            return 0;  // On boundary.
+        }
+
+        double t = 0.0;
+        if (rayTriangleIntersect(point, rayDir, v0, v1, v2, t)) {
+            ++hitCount;
         }
     }
 
     return (hitCount % 2 == 1) ? -1 : 1;
+}
+
+int ExactPredicates::classifyPoint(const math::Vec3& point, const topo::Solid& solid,
+                                   double tolerance) {
+    // The `tolerance` parameter controls boundary detection, not mesh density;
+    // a coarse tessellation is sufficient for ray-casting classification.
+    return classifyPointAgainstMesh(point, tessellateSolid(solid), tolerance);
 }
 
 }  // namespace hz::model

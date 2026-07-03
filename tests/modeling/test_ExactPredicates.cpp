@@ -68,3 +68,34 @@ TEST(ExactPredicatesTest, PointOnBoxSurface) {
     Vec3 onSurface(0.0, 0.0, 0.0);
     EXPECT_EQ(ExactPredicates::classifyPoint(onSurface, *box), 0);
 }
+
+// --- cached-mesh classification (tessellateSolid + classifyPointAgainstMesh) ---
+
+TEST(ExactPredicatesTest, TessellateSolidProducesTriangles) {
+    auto box = PrimitiveFactory::makeBox(2.0, 2.0, 2.0);
+    auto mesh = ExactPredicates::tessellateSolid(*box);
+    EXPECT_FALSE(mesh.empty());
+    EXPECT_EQ(mesh.size() % 3u, 0u);  // whole triangles (3 corners each)
+}
+
+TEST(ExactPredicatesTest, ClassifyAgainstMeshMatchesClassifyPoint) {
+    // The cached-mesh path must agree with the tessellate-per-call path so the
+    // Boolean fast path (tessellate once, classify many) is behavior-preserving.
+    auto box = PrimitiveFactory::makeBox(2.0, 2.0, 2.0);
+    auto mesh = ExactPredicates::tessellateSolid(*box);
+
+    const Vec3 inside(1.0, 1.0, 1.0);
+    const Vec3 outside(5.0, 5.0, 5.0);
+    const Vec3 boundary(0.0, 0.0, 0.0);
+
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(inside, mesh),
+              ExactPredicates::classifyPoint(inside, *box));
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(outside, mesh),
+              ExactPredicates::classifyPoint(outside, *box));
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(boundary, mesh),
+              ExactPredicates::classifyPoint(boundary, *box));
+
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(inside, mesh), -1);
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(outside, mesh), 1);
+    EXPECT_EQ(ExactPredicates::classifyPointAgainstMesh(boundary, mesh), 0);
+}
