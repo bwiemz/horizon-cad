@@ -20,33 +20,38 @@ default build never depends on it, and validate the Windows path deliberately.
 Alternatively evaluate OpenCASCADE's STEP reader (which *is* in vcpkg) as the
 import/export backend instead of STEPcode.
 
-## Phase 52 — assembly-solver scaling: dense → sparse needed
+## Phase 52 — assembly-solver scaling: dense → sparse ✅ DONE
 
-The Phase-42 `AssemblySolver` is correct but does not meet the roadmap's
-"100-part assembly, 200+ mates, solve < 1 s" target. Measured solve time on a
-chained stack (2 coincident mates per adjacent pair, debug build):
+The Phase-42 `AssemblySolver` was correct but O(N³), missing the roadmap's
+"100-part assembly, 200+ mates, solve < 1 s" target — a chained 100-part stack
+did not finish in tens of seconds (debug). Two O(N³) hot spots in
+`AssemblySolver::solve`:
 
-| N components | time |
-|---|---|
-| 10 | 54 ms |
-| 20 | 399 ms |
-| 30 | 1.47 s |
-| 40 | 3.33 s |
+1. **Numerical Jacobian** recomputed *all* residuals for *every* unknown column.
+2. **Dense normal-equations solve** `(JᵀJ + λI).ldlt()` each iteration.
 
-Growth is ~N³, so N=100 is ~50 s (debug); even a ~10× release speedup leaves it
-well above 1 s. Two O(N³) hot spots in `AssemblySolver::solve`:
+**Fix (implemented):** the Jacobian is now assembled per mate — each mate's rows
+touch only its two components' 12 columns, differenced in place — into an
+`Eigen::SparseMatrix`, and the LM step solves `JᵀJ + λI` with
+`Eigen::SimplicialLDLT`. The finite-difference values are identical to the dense
+version, so every existing `AssemblySolver`/`AssemblyMates` test still passes
+with the same convergence. Measured (debug, unoptimized Eigen):
 
-1. **Numerical Jacobian** (forward differences) recomputes *all* residuals for
-   *every* unknown column, though perturbing component k's DOF only affects
-   mates that touch component k.
-2. **Dense normal-equations solve** (`(JᵀJ + λI).ldlt()`), an O(unknowns³) dense
-   factorization each iteration.
+| N components | before | after |
+|---|---|---|
+| 40 | 3.33 s | 78 ms |
+| 100 | ~50 s | 471 ms |
+| 200 | — | 1.33 s |
 
-**Recommendation (bounded but not a rush job):** exploit the block sparsity —
-build the Jacobian per-mate touching only its two components' 12 columns, and
-solve with an Eigen sparse factorization (`SimplicialLDLT` on the sparse
-`JᵀJ`, or a sparse QR on `J`). This is localized to the solve loop but needs
-careful re-testing of all assembly-solver cases, so it deserves its own change.
+100 parts / 198 mates now solves in **~0.47 s even in debug** — comfortably under
+1 s (release is far faster). The post-solve rank analysis (redundancy + DOF) is
+still a dense O(N³) QR — kept dense so its rank threshold matches the
+established DOF results — and is now gated behind `setComputeDiagnostics(bool)`
+(default on); large-assembly callers turn it off. Covered by
+`AssemblySolverTest.LargeAssemblySolvesQuickly` (NDEBUG-guarded < 1 s bound).
+
+**Remaining Phase-52 work:** Boolean robustness under random coordinate
+perturbation (the other half of Era-2 stabilization) is still open.
 
 ## Done in passing
 

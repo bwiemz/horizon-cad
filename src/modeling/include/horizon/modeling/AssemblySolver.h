@@ -81,9 +81,16 @@ public:
     void setMaxIterations(int n) { m_maxIterations = n; }
     void setTolerance(double tol) { m_tolerance = tol; }
 
+    /// Post-solve rank analysis (redundant-constraint count and per-component
+    /// remaining DOF) uses a dense QR that costs O(unknowns^3). It is on by
+    /// default; disable it for large assemblies where only the placements are
+    /// needed, to keep the solve within the sparse-solver's near-linear cost.
+    void setComputeDiagnostics(bool enable) { m_computeDiagnostics = enable; }
+
 private:
     int m_maxIterations = 100;
     double m_tolerance = 1e-9;
+    bool m_computeDiagnostics = true;
 };
 
 }  // namespace hz::model

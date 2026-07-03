@@ -1,11 +1,14 @@
 #include "horizon/modeling/AssemblySolver.h"
 
 #include <Eigen/Dense>
+#include <Eigen/SparseCholesky>
+#include <Eigen/SparseCore>
 #include <algorithm>
 #include <cmath>
 #include <queue>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 #include "horizon/math/Quaternion.h"
 
@@ -276,35 +279,100 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
     Eigen::VectorXd residuals;
     evaluate(x, residuals, /*recordBlocks=*/true);
 
-    // --- Newton-Raphson with LM damping ------------------------------------
-
     const auto numResiduals = static_cast<Eigen::Index>(residuals.size());
+    constexpr double kStep = 1e-7;
+
+    // Row offset of each mate's residual block, for assembling the sparse
+    // Jacobian by mate.
+    std::vector<int> mateRowStart(activeMates.size(), 0);
+    for (size_t mi = 1; mi < activeMates.size(); ++mi) {
+        mateRowStart[mi] = mateRowStart[mi - 1] + blocks[mi - 1].rows;
+    }
+
+    // Placement of one component, and one mate's residual rows, at a given
+    // unknown vector — the per-mate primitives the sparse Jacobian needs.
+    auto placedAt = [&](size_t ci, const Eigen::VectorXd& xv) -> Mat4 {
+        if (grounded[ci]) return components[ci].transform;
+        const size_t off = unknownOffset.at(components[ci].id);
+        return placement(components[ci].transform, pivots.at(components[ci].id), xv.data() + off);
+    };
+    auto evalMate = [&](size_t mi, const Eigen::VectorXd& xv, std::vector<double>& out) {
+        out.clear();
+        const auto& mate = activeMates[mi];
+        MateFrame a = mate.frameA.transformed(placedAt(componentIndex.at(mate.componentA), xv));
+        MateFrame b = mate.frameB.transformed(placedAt(componentIndex.at(mate.componentB), xv));
+        mateResiduals(mate, a, b, out);
+    };
+
+    // --- Newton-Raphson with LM damping (block-sparse) ---------------------
+    //
+    // A mate's residual rows depend only on the 12 columns of its two
+    // components, so the Jacobian is assembled per mate (perturbing in place to
+    // avoid per-column vector copies) and the normal equations are solved with
+    // a sparse Cholesky. The solve is then near-linear in the component count
+    // rather than the dense O(unknowns^3).
+
+    Eigen::VectorXd xw = x;  // scratch for in-place differencing
+    std::vector<double> baseM, pertM;
+    auto buildJacobian = [&](const Eigen::VectorXd& xEval) {
+        std::vector<Eigen::Triplet<double>> trips;
+        trips.reserve(static_cast<size_t>(numResiduals) * 12);
+        xw = xEval;
+        for (size_t mi = 0; mi < activeMates.size(); ++mi) {
+            evalMate(mi, xEval, baseM);
+            const int rows = static_cast<int>(baseM.size());
+            const int rowStart = mateRowStart[mi];
+            const auto& mate = activeMates[mi];
+            for (uint64_t cid : {mate.componentA, mate.componentB}) {
+                const size_t ci = componentIndex.at(cid);
+                if (grounded[ci]) continue;
+                const auto off = static_cast<Eigen::Index>(unknownOffset.at(cid));
+                for (int k = 0; k < 6; ++k) {
+                    const Eigen::Index col = off + k;
+                    const double saved = xw(col);
+                    xw(col) = saved + kStep;
+                    evalMate(mi, xw, pertM);
+                    xw(col) = saved;
+                    for (int r = 0; r < rows; ++r) {
+                        const double dv =
+                            (pertM[static_cast<size_t>(r)] - baseM[static_cast<size_t>(r)]) / kStep;
+                        if (dv != 0.0) trips.emplace_back(rowStart + r, static_cast<int>(col), dv);
+                    }
+                }
+            }
+        }
+        Eigen::SparseMatrix<double> J(numResiduals, numUnknowns);
+        J.setFromTriplets(trips.begin(), trips.end());
+        return J;
+    };
+
+    Eigen::SparseMatrix<double> identity(numUnknowns, numUnknowns);
+    identity.setIdentity();
+
     double lambda = 1e-4;
     double residualNorm = residuals.norm();
-
-    Eigen::MatrixXd jacobian(numResiduals, numUnknowns);
     int iteration = 0;
     for (; iteration < m_maxIterations; ++iteration) {
         if (residuals.lpNorm<Eigen::Infinity>() < m_tolerance) break;
         if (numUnknowns == 0) break;
 
-        // Numerical Jacobian (forward differences).
-        constexpr double kStep = 1e-7;
-        Eigen::VectorXd perturbed;
-        for (Eigen::Index c = 0; c < numUnknowns; ++c) {
-            Eigen::VectorXd xp = x;
-            xp(c) += kStep;
-            evaluate(xp, perturbed, false);
-            jacobian.col(c) = (perturbed - residuals) / kStep;
-        }
+        const Eigen::SparseMatrix<double> jac = buildJacobian(x);
+        const Eigen::SparseMatrix<double> jt = jac.transpose();
+        const Eigen::SparseMatrix<double> jtj = jt * jac;
+        const Eigen::VectorXd jtf = jt * residuals;
 
-        // LM step: (JᵀJ + λ diag) dx = -JᵀF
-        Eigen::MatrixXd jtj = jacobian.transpose() * jacobian;
-        Eigen::VectorXd jtf = jacobian.transpose() * residuals;
         for (int attempt = 0; attempt < 8; ++attempt) {
-            Eigen::MatrixXd damped = jtj;
-            damped.diagonal().array() += lambda;
-            Eigen::VectorXd dx = damped.ldlt().solve(-jtf);
+            Eigen::SparseMatrix<double> damped = jtj + lambda * identity;
+            Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(damped);
+            if (solver.info() != Eigen::Success) {
+                lambda *= 10.0;
+                continue;
+            }
+            const Eigen::VectorXd dx = solver.solve(-jtf);
+            if (solver.info() != Eigen::Success) {
+                lambda *= 10.0;
+                continue;
+            }
 
             Eigen::VectorXd xNew = x + dx;
             Eigen::VectorXd rNew;
@@ -320,18 +388,22 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
         }
     }
 
-    // --- Rank analysis (redundancy + DOF) -----------------------------------
+    // --- Rank analysis (redundancy + DOF), optional -------------------------
+    //
+    // A dense QR (O(unknowns^3)) — kept dense because its rank threshold must
+    // match the established DOF results. Skipped when diagnostics are off (the
+    // path large assemblies take to stay within the sparse solve budget).
 
-    if (numUnknowns > 0) {
-        constexpr double kStep = 1e-7;
+    if (m_computeDiagnostics && numUnknowns > 0) {
+        Eigen::MatrixXd denseJac(numResiduals, numUnknowns);
         Eigen::VectorXd perturbed;
         for (Eigen::Index c = 0; c < numUnknowns; ++c) {
             Eigen::VectorXd xp = x;
             xp(c) += kStep;
             evaluate(xp, perturbed, false);
-            jacobian.col(c) = (perturbed - residuals) / kStep;
+            denseJac.col(c) = (perturbed - residuals) / kStep;
         }
-        Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(jacobian);
+        Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(denseJac);
         qr.setThreshold(1e-8);
         const auto rank = static_cast<int>(qr.rank());
 
@@ -343,7 +415,7 @@ AssemblySolveResult AssemblySolver::solve(const std::vector<SolverComponent>& co
         // Per-component DOF: rank of the Jacobian restricted to that
         // component's 6 columns.
         for (size_t fi = 0; fi < freeComponents.size(); ++fi) {
-            Eigen::MatrixXd sub = jacobian.middleCols(static_cast<Eigen::Index>(fi * 6), 6);
+            Eigen::MatrixXd sub = denseJac.middleCols(static_cast<Eigen::Index>(fi * 6), 6);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> subQr(sub);
             subQr.setThreshold(1e-8);
             result.componentDOF[components[freeComponents[fi]].id] =
