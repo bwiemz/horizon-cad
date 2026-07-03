@@ -125,6 +125,28 @@ print(doc.solid_shell_count())
     EXPECT_EQ(doc.solid()->shellCount(), 3u);
 }
 
+TEST(ScriptEngineTest, ScriptQueriesMassProperties) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(R"(
+import horizon as hz
+i = doc.add_rectangle_sketch(2.0, 2.0)
+doc.add_extrude(i, hz.Vec3(0, 0, 1), 3.0)
+doc.rebuild()
+mp = doc.mass_properties()          # unit density
+mp2 = doc.mass_properties(2.0)      # density 2
+print(round(mp.volume, 3), round(mp.mass, 3), round(mp.center_of_mass.z, 3))
+print(round(mp2.mass, 3), mp.valid)
+)",
+                          &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    // Box 2x2x3: volume 12, unit mass 12, centroid z = 1.5; density 2 -> mass 24.
+    EXPECT_EQ(res.output, "12.0 12.0 1.5\n24.0 True\n");
+}
+
 TEST(ScriptEngineTest, ScriptAddsTransparentDatum) {
     hz::doc::Document doc;
     doc.setType(hz::doc::DocumentType::Part);

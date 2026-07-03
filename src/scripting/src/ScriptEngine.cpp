@@ -7,6 +7,7 @@
 #include <string>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/scripting/ScriptContext.h"
 
@@ -78,6 +79,14 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def(py::init([](const Vec3& p) { return DatumPoint{p}; }), py::arg("position"))
         .def_readwrite("position", &DatumPoint::position);
 
+    py::class_<hz::model::MassProperties>(m, "MassProperties")
+        .def_readonly("volume", &hz::model::MassProperties::volume)
+        .def_readonly("surface_area", &hz::model::MassProperties::surfaceArea)
+        .def_readonly("center_of_mass", &hz::model::MassProperties::centerOfMass)
+        .def_readonly("mass", &hz::model::MassProperties::mass)
+        .def_readonly("density", &hz::model::MassProperties::density)
+        .def_readonly("valid", &hz::model::MassProperties::valid);
+
     // Reference-geometry constructions. Fallible ones (std::optional) return
     // None on degenerate input.
     m.def("plane_offset", &refgeo::planeOffset, py::arg("base"), py::arg("offset"));
@@ -110,6 +119,7 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("add_datum_axis", &ScriptContext::addDatumAxis, py::arg("origin"),
              py::arg("direction"))
         .def("add_datum_point", &ScriptContext::addDatumPoint, py::arg("position"))
+        .def("mass_properties", &ScriptContext::massProperties, py::arg("density") = 1.0)
         .def("rebuild", &ScriptContext::rebuild);
 }
 

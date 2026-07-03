@@ -3,6 +3,7 @@
 #include <string>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/MassProperties.h"
 
 namespace hz::doc {
 class Document;
@@ -46,6 +47,11 @@ public:
     void addDatumPlane(const math::Vec3& origin, const math::Vec3& normal, const math::Vec3& xAxis);
     void addDatumAxis(const math::Vec3& origin, const math::Vec3& direction);
     void addDatumPoint(const math::Vec3& position);
+
+    // --- Analysis ----------------------------------------------------------
+    /// Mass properties of the current solid (volume/area/centroid/inertia/mass)
+    /// at the given density. `valid` is false when there is no solid.
+    model::MassProperties massProperties(double density = 1.0) const;
 
     // --- Rebuild -----------------------------------------------------------
     /// Replay the feature tree. Returns true on success.

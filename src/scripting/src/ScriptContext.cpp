@@ -81,6 +81,13 @@ void ScriptContext::addDatumPoint(const Vec3& position) {
     m_document.featureTree().addFeature(doc::DatumFeature::makePoint(model::DatumPoint{position}));
 }
 
+model::MassProperties ScriptContext::massProperties(double density) const {
+    const auto* solid = m_document.solid();
+    if (!solid) return {};
+    const model::Material material{"custom", density};
+    return model::MassPropertiesCalculator::compute(*solid, &material);
+}
+
 bool ScriptContext::rebuild() {
     return m_document.rebuildModel();
 }
