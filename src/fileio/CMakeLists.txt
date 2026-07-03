@@ -2,6 +2,7 @@ add_library(hz_fileio STATIC
     src/NativeFormat.cpp
     src/StlExporter.cpp
     src/DxfFormat.cpp
+    src/DrawingExport.cpp
 )
 
 target_include_directories(hz_fileio
@@ -18,6 +19,7 @@ target_link_libraries(hz_fileio
         Horizon::Drafting
         Horizon::Constraint
         Horizon::Document
+        Horizon::Modeling
         nlohmann_json::nlohmann_json
 )
 
