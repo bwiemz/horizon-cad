@@ -7,6 +7,7 @@
 
 #include "horizon/math/Vec3.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 namespace hz::doc {
 
@@ -137,6 +138,56 @@ public:
 private:
     std::shared_ptr<Sketch> m_profile;
     std::shared_ptr<Sketch> m_path;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
+/// Draft feature: tapers the input solid's lateral faces about a neutral
+/// plane. Consumes the previous feature's solid.
+class DraftFeature : public Feature {
+public:
+    DraftFeature(const math::Vec3& pullDir, const math::Vec3& neutralPoint, double angle);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    const math::Vec3& pullDir() const { return m_pullDir; }
+    const math::Vec3& neutralPoint() const { return m_neutralPoint; }
+    double angle() const { return m_angle; }
+
+private:
+    math::Vec3 m_pullDir;
+    math::Vec3 m_neutralPoint;
+    double m_angle;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
+/// Shell feature: hollows the input solid to a thin wall, removing the given
+/// faces (by TopologyID). Consumes the previous feature's solid.
+class ShellFeature : public Feature {
+public:
+    ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    double thickness() const { return m_thickness; }
+    const std::vector<topo::TopologyID>& removedFaceIds() const { return m_removedFaceIds; }
+
+private:
+    double m_thickness;
+    std::vector<topo::TopologyID> m_removedFaceIds;
     std::string m_featureID;
 
     static int s_nextID;

@@ -6,9 +6,11 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Loft.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/Shell.h"
 #include "horizon/modeling/Sweep.h"
 
 namespace hz::doc {
@@ -227,6 +229,92 @@ std::unique_ptr<topo::Solid> SweepFeature::execute(
     std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path);
     return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
                                  m_featureID);
+}
+
+// ---------------------------------------------------------------------------
+// DraftFeature
+// ---------------------------------------------------------------------------
+
+int DraftFeature::s_nextID = 1;
+
+DraftFeature::DraftFeature(const math::Vec3& pullDir, const math::Vec3& neutralPoint, double angle)
+    : m_pullDir(pullDir),
+      m_neutralPoint(neutralPoint),
+      m_angle(angle),
+      m_featureID("draft_" + std::to_string(s_nextID++)) {}
+
+std::string DraftFeature::name() const {
+    return "Draft";
+}
+
+std::string DraftFeature::featureID() const {
+    return m_featureID;
+}
+
+void DraftFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "draft_");
+}
+
+std::map<std::string, double> DraftFeature::parameters() const {
+    return {{"angle", m_angle}};
+}
+
+bool DraftFeature::setParameter(const std::string& name, double value) {
+    if (name == "angle") {
+        m_angle = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    return model::Draft::execute(std::move(inputSolid), m_pullDir, m_neutralPoint, m_angle);
+}
+
+// ---------------------------------------------------------------------------
+// ShellFeature
+// ---------------------------------------------------------------------------
+
+int ShellFeature::s_nextID = 1;
+
+ShellFeature::ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds)
+    : m_thickness(thickness),
+      m_removedFaceIds(std::move(removedFaceIds)),
+      m_featureID("shell_" + std::to_string(s_nextID++)) {}
+
+std::string ShellFeature::name() const {
+    return "Shell";
+}
+
+std::string ShellFeature::featureID() const {
+    return m_featureID;
+}
+
+void ShellFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "shell_");
+}
+
+std::map<std::string, double> ShellFeature::parameters() const {
+    return {{"thickness", m_thickness}};
+}
+
+bool ShellFeature::setParameter(const std::string& name, double value) {
+    if (name == "thickness" && value > 0.0) {
+        m_thickness = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
+    return result.ok ? std::move(result.solid) : nullptr;
 }
 
 // ---------------------------------------------------------------------------

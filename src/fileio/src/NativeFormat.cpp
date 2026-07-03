@@ -480,6 +480,18 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             fObj["type"] = "sweep";
             if (sweep->profile()) fObj["sketchId"] = sweep->profile()->id();
             if (sweep->path()) fObj["pathSketchId"] = sweep->path()->id();
+        } else if (const auto* draft = dynamic_cast<const doc::DraftFeature*>(feat)) {
+            fObj["type"] = "draft";
+            fObj["pullDir"] = {draft->pullDir().x, draft->pullDir().y, draft->pullDir().z};
+            fObj["neutralPoint"] = {draft->neutralPoint().x, draft->neutralPoint().y,
+                                    draft->neutralPoint().z};
+            fObj["angle"] = draft->angle();
+        } else if (const auto* shell = dynamic_cast<const doc::ShellFeature*>(feat)) {
+            fObj["type"] = "shell";
+            fObj["thickness"] = shell->thickness();
+            json removed = json::array();
+            for (const auto& id : shell->removedFaceIds()) removed.push_back(id.tag());
+            fObj["removedFaces"] = removed;
         }
 
         featureTreeArray.push_back(fObj);
@@ -1062,6 +1074,41 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         feat->restoreFeatureID(persistedId);
                         doc.featureTree().addFeature(std::move(feat));
                     }
+                    continue;
+                }
+
+                // Input-consuming features (no sketch reference).
+                if (ftype == "draft") {
+                    math::Vec3 pullDir(0, 0, 1);
+                    math::Vec3 neutralPoint = math::Vec3::Zero;
+                    if (fObj.contains("pullDir")) {
+                        pullDir = math::Vec3(fObj["pullDir"][0].get<double>(),
+                                             fObj["pullDir"][1].get<double>(),
+                                             fObj["pullDir"][2].get<double>());
+                    }
+                    if (fObj.contains("neutralPoint")) {
+                        neutralPoint = math::Vec3(fObj["neutralPoint"][0].get<double>(),
+                                                  fObj["neutralPoint"][1].get<double>(),
+                                                  fObj["neutralPoint"][2].get<double>());
+                    }
+                    double angle = fObj.value("angle", 0.0);
+                    auto feat = std::make_unique<doc::DraftFeature>(pullDir, neutralPoint, angle);
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "shell") {
+                    double thickness = fObj.value("thickness", 1.0);
+                    std::vector<topo::TopologyID> removed;
+                    if (fObj.contains("removedFaces")) {
+                        for (const auto& tagJson : fObj["removedFaces"]) {
+                            removed.push_back(
+                                topo::TopologyID::fromTag(tagJson.get<std::string>()));
+                        }
+                    }
+                    auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
                     continue;
                 }
 

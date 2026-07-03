@@ -204,3 +204,37 @@ TEST(FeatureTreeTest, SweepFeatureBuilds) {
     ASSERT_NE(f, nullptr);
     EXPECT_EQ(f->name(), "Sweep");
 }
+
+// ---------------------------------------------------------------------------
+// DraftAndShellFeaturesChain
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, DraftAndShellFeaturesChain) {
+    // Extrude a 10x8 rectangle 5 tall, then shell it (remove the top cap).
+    FeatureTree tree;
+    auto sketch = makeRectSketch(10.0, 8.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    // The extrude cap face id is "<featureID>/cap_top".
+    std::string extId = tree.feature(0)->featureID();
+    tree.addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make(extId, "cap_top")}));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(solid->faceCount(), 14u);  // cup
+
+    EXPECT_EQ(tree.feature(1)->name(), "Shell");
+}
+
+TEST(FeatureTreeTest, DraftFeatureTapers) {
+    FeatureTree tree;
+    auto sketch = makeRectSketch(10.0, 10.0);
+    tree.addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    tree.addFeature(std::make_unique<DraftFeature>(Vec3(0, 0, 1), Vec3(0, 0, 0), std::atan(0.1)));
+
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(solid->isValid());
+    EXPECT_EQ(tree.feature(1)->name(), "Draft");
+}

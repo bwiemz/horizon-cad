@@ -379,3 +379,66 @@ TEST(PartFormatTest, SweepFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// ShellAndDraftFeatureRoundTrip
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, ShellFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(10.0, 8.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    std::string extId = original.featureTree().feature(0)->featureID();
+    original.featureTree().addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make(extId, "cap_top")}));
+    ASSERT_TRUE(original.rebuildModel());
+    ASSERT_NE(original.solid(), nullptr);
+
+    std::string path = tempPath("hz_test_shell_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* shell = dynamic_cast<const ShellFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(shell, nullptr);
+    EXPECT_DOUBLE_EQ(shell->thickness(), 1.0);
+    ASSERT_EQ(shell->removedFaceIds().size(), 1u);
+    EXPECT_EQ(shell->removedFaceIds()[0].tag(), extId + "/cap_top");
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_EQ(loaded.solid()->faceCount(), 14u);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, DraftFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(10.0, 10.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0));
+    original.featureTree().addFeature(
+        std::make_unique<DraftFeature>(Vec3(0, 0, 1), Vec3(0, 0, 0), 0.15));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_draft_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+
+    const auto* draft = dynamic_cast<const DraftFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(draft, nullptr);
+    EXPECT_DOUBLE_EQ(draft->angle(), 0.15);
+    EXPECT_DOUBLE_EQ(draft->pullDir().z, 1.0);
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+
+    std::remove(path.c_str());
+}

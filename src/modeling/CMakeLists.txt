@@ -14,6 +14,8 @@ add_library(hz_modeling STATIC
     src/RingStack.cpp
     src/Loft.cpp
     src/Sweep.cpp
+    src/Draft.cpp
+    src/Shell.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
