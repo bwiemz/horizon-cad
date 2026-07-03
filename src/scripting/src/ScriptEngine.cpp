@@ -128,6 +128,7 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
              py::arg("direction"))
         .def("add_datum_point", &ScriptContext::addDatumPoint, py::arg("position"))
         .def("mass_properties", &ScriptContext::massProperties, py::arg("density") = 1.0)
+        .def("export_drawing_dxf", &ScriptContext::exportDrawingDxf, py::arg("path"))
         .def("rebuild", &ScriptContext::rebuild);
 }
 

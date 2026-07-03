@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <filesystem>
+#include <string>
+
 #include "horizon/document/Document.h"
 #include "horizon/scripting/ScriptContext.h"
 #include "horizon/scripting/ScriptEngine.h"
@@ -181,4 +185,30 @@ print(doc.feature_count(), doc.solid_face_count())
     ASSERT_TRUE(res.ok) << res.error;
     // 2 features (datum + extrude); the datum does not add faces.
     EXPECT_EQ(res.output, "2 6\n");
+}
+
+TEST(ScriptEngineTest, ScriptExportsDrawingDxf) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    // generic_string() uses forward slashes, so the path embeds safely in the
+    // Python string literal on every platform.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "hz_test_script_drawing.dxf").generic_string();
+    std::remove(path.c_str());
+
+    ScriptEngine engine;
+    const std::string script =
+        "doc.add_box(6.0, 4.0, 2.0)\n"
+        "doc.rebuild()\n"
+        "print(doc.export_drawing_dxf('" +
+        path + "'))\n";
+    auto res = engine.run(script.c_str(), &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\n");
+    EXPECT_TRUE(std::filesystem::exists(path));
+    EXPECT_GT(std::filesystem::file_size(path), 0u);
+
+    std::remove(path.c_str());
 }
