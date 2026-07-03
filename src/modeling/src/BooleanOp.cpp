@@ -262,17 +262,23 @@ static std::unique_ptr<Solid> buildResultSolid(const std::vector<FaceRecord>& se
 std::unique_ptr<Solid> BooleanOp::execute(const Solid& solidA, const Solid& solidB,
                                           BooleanType type) {
     // Step 1: Classify each face of A against B, and each face of B against A.
+    // Tessellate each solid once and reuse the mesh across all classification
+    // queries — classifyPoint(point, solid) would otherwise re-tessellate the
+    // whole opposing solid for every face (O(faces) redundant tessellations).
     std::vector<FaceRecord> allFaces;
+
+    const auto meshA = ExactPredicates::tessellateSolid(solidA);
+    const auto meshB = ExactPredicates::tessellateSolid(solidB);
 
     for (const auto& face : solidA.faces()) {
         Vec3 centroid = computeFaceCentroid(face);
-        int cls = ExactPredicates::classifyPoint(centroid, solidB);
+        int cls = ExactPredicates::classifyPointAgainstMesh(centroid, meshB);
         allFaces.push_back({&face, &solidA, cls, false});
     }
 
     for (const auto& face : solidB.faces()) {
         Vec3 centroid = computeFaceCentroid(face);
-        int cls = ExactPredicates::classifyPoint(centroid, solidA);
+        int cls = ExactPredicates::classifyPointAgainstMesh(centroid, meshA);
         allFaces.push_back({&face, &solidB, cls, false});
     }
 

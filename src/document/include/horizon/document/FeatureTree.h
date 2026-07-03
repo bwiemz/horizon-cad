@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -44,6 +45,28 @@ public:
     /// affecting the body.
     virtual bool isConstruction() const { return false; }
 
+    /// True if this feature starts a new body rather than transforming the
+    /// current one. Create features (primitives, extrude, revolve, loft, sweep)
+    /// return true; transforms (fillet, chamfer, shell, draft, pattern) return
+    /// false. Used by `buildBodies()` for multi-body trees; the single-solid
+    /// `build()` ignores it.
+    virtual bool createsNewBody() const { return false; }
+
+    /// True if this feature consumes the entire current body list and replaces
+    /// it (e.g. a Boolean combine, which needs two or more operands). When true,
+    /// `buildBodies()` routes the feature through `executeMulti()` instead of the
+    /// single-solid `execute()`. The single-solid `build()` ignores such
+    /// features (via `execute()` returning its input unchanged).
+    virtual bool consumesAllBodies() const { return false; }
+
+    /// Multi-body execution: given all currently live bodies, return the
+    /// replacement body list. Default is identity (no change). Only called by
+    /// `buildBodies()` when `consumesAllBodies()` is true.
+    virtual std::vector<std::unique_ptr<topo::Solid>> executeMulti(
+        std::vector<std::unique_ptr<topo::Solid>> bodies) const {
+        return bodies;
+    }
+
     /// Return editable parameters as name/value pairs.
     virtual std::map<std::string, double> parameters() const { return {}; }
 
@@ -67,6 +90,7 @@ public:
     bool setParameter(const std::string& name, double value) override;
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    bool createsNewBody() const override { return true; }
     const math::Vec3& direction() const { return m_direction; }
     double distance() const { return m_distance; }
     void restoreFeatureID(const std::string& id) override;
@@ -94,6 +118,7 @@ public:
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
     const math::Vec3& axisPoint() const { return m_axisPoint; }
+    bool createsNewBody() const override { return true; }
     const math::Vec3& axisDir() const { return m_axisDir; }
     double angle() const { return m_angle; }
     void restoreFeatureID(const std::string& id) override;
@@ -119,6 +144,7 @@ public:
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
     void restoreFeatureID(const std::string& id) override;
 
+    bool createsNewBody() const override { return true; }
     const std::vector<std::shared_ptr<Sketch>>& sections() const { return m_sections; }
 
 private:
@@ -140,6 +166,7 @@ public:
     void restoreFeatureID(const std::string& id) override;
 
     const std::shared_ptr<Sketch>& profile() const { return m_profile; }
+    bool createsNewBody() const override { return true; }
     const std::shared_ptr<Sketch>& path() const { return m_path; }
 
 private:
@@ -248,6 +275,37 @@ private:
     static int s_nextID;
 };
 
+/// Boolean feature: combines all currently live bodies into one via a Union,
+/// Subtract, or Intersect. It needs two or more operands, so it acts on the
+/// whole body list produced by `buildBodies()` rather than a single solid:
+/// bodies are folded left-to-right (for Subtract, the first body is the target
+/// and every later body is cut from it). In the single-solid `build()` path it
+/// is a no-op (returns its input unchanged), since Booleans are only meaningful
+/// with multiple bodies.
+class BooleanFeature : public Feature {
+public:
+    explicit BooleanFeature(model::BooleanType type);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    bool consumesAllBodies() const override { return true; }
+    std::vector<std::unique_ptr<topo::Solid>> executeMulti(
+        std::vector<std::unique_ptr<topo::Solid>> bodies) const override;
+
+    model::BooleanType booleanType() const { return m_type; }
+
+private:
+    model::BooleanType m_type;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Pattern feature: replicates the input solid linearly or circularly.
 /// Consumes the previous feature's solid.
 class PatternFeature : public Feature {
@@ -314,6 +372,7 @@ public:
     void restoreFeatureID(const std::string& id) override;
 
     Kind kind() const { return m_kind; }
+    bool createsNewBody() const override { return true; }
     double p0() const { return m_p0; }  ///< Box:width Cyl:radius Sph:radius Cone:botR Torus:majR
     double p1() const { return m_p1; }  ///< Box:height Cyl:height Cone:topR Torus:minR
     double p2() const { return m_p2; }  ///< Box:depth Cone:height
@@ -407,6 +466,13 @@ public:
     /// Rebuild the solid by replaying all features from scratch.
     /// Returns nullptr if the tree is empty or any feature fails.
     std::unique_ptr<topo::Solid> build() const;
+
+    /// Rebuild as a multi-body model: each `createsNewBody()` feature starts a
+    /// new body; transforms modify the current (most-recently-created) body,
+    /// following the standard "active body" convention. Construction features
+    /// (datums) are skipped. A feature that fails to execute drops the current
+    /// body and starts fresh. Returns one solid per surviving body.
+    std::vector<std::unique_ptr<topo::Solid>> buildBodies() const;
 
     /// Rebuild with diagnostics: records which feature failed and why.
     /// Respects the rollback index (features beyond it are skipped).

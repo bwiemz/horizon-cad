@@ -504,6 +504,19 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             json edges = json::array();
             for (const auto& id : chamfer->edgeIds()) edges.push_back(id.tag());
             fObj["edges"] = edges;
+        } else if (const auto* boolean = dynamic_cast<const doc::BooleanFeature*>(feat)) {
+            fObj["type"] = "boolean";
+            switch (boolean->booleanType()) {
+                case model::BooleanType::Union:
+                    fObj["operation"] = "union";
+                    break;
+                case model::BooleanType::Subtract:
+                    fObj["operation"] = "subtract";
+                    break;
+                case model::BooleanType::Intersect:
+                    fObj["operation"] = "intersect";
+                    break;
+            }
         } else if (const auto* pat = dynamic_cast<const doc::PatternFeature*>(feat)) {
             fObj["type"] = "pattern";
             fObj["kind"] = pat->kind() == doc::PatternFeature::Kind::Linear ? "linear" : "circular";
@@ -1191,6 +1204,19 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         }
                     }
                     auto feat = std::make_unique<doc::ChamferFeature>(std::move(edges), distance);
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "boolean") {
+                    const std::string op = fObj.value("operation", "union");
+                    model::BooleanType type = model::BooleanType::Union;
+                    if (op == "subtract") {
+                        type = model::BooleanType::Subtract;
+                    } else if (op == "intersect") {
+                        type = model::BooleanType::Intersect;
+                    }
+                    auto feat = std::make_unique<doc::BooleanFeature>(type);
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;

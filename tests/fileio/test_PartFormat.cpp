@@ -616,3 +616,33 @@ TEST(PartFormatTest, ChamferFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// BooleanFeatureRoundTrip — Boolean operation type persists across save/load
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, BooleanFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    original.featureTree().addFeature(PrimitiveFeature::makeBox(6.0, 6.0, 6.0));
+    original.featureTree().addFeature(
+        std::make_unique<BooleanFeature>(hz::model::BooleanType::Subtract));
+
+    std::string path = tempPath("hz_test_boolean_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 3u);
+
+    const auto* boolean = dynamic_cast<const BooleanFeature*>(loaded.featureTree().feature(2));
+    ASSERT_NE(boolean, nullptr);
+    EXPECT_EQ(boolean->booleanType(), hz::model::BooleanType::Subtract);
+    EXPECT_EQ(boolean->name(), "Boolean Subtract");
+
+    // The multi-body build folds the two boxes through the persisted Boolean.
+    EXPECT_EQ(loaded.featureTree().buildBodies().size(), 1u);
+
+    std::remove(path.c_str());
+}
