@@ -243,6 +243,45 @@ private:
     static int s_nextID;
 };
 
+/// Primitive feature: creates a solid primitive (box, cylinder, sphere, cone,
+/// torus). A base feature — it ignores the input solid — so toolbar primitives
+/// become parametric, editable tree features that persist and rebuild instead
+/// of one-shot scene edits.
+class PrimitiveFeature : public Feature {
+public:
+    enum class Kind { Box, Cylinder, Sphere, Cone, Torus };
+
+    static std::unique_ptr<PrimitiveFeature> makeBox(double width, double height, double depth);
+    static std::unique_ptr<PrimitiveFeature> makeCylinder(double radius, double height);
+    static std::unique_ptr<PrimitiveFeature> makeSphere(double radius);
+    static std::unique_ptr<PrimitiveFeature> makeCone(double bottomRadius, double topRadius,
+                                                      double height);
+    static std::unique_ptr<PrimitiveFeature> makeTorus(double majorRadius, double minorRadius);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    void restoreFeatureID(const std::string& id) override;
+
+    Kind kind() const { return m_kind; }
+    double p0() const { return m_p0; }  ///< Box:width Cyl:radius Sph:radius Cone:botR Torus:majR
+    double p1() const { return m_p1; }  ///< Box:height Cyl:height Cone:topR Torus:minR
+    double p2() const { return m_p2; }  ///< Box:depth Cone:height
+
+private:
+    PrimitiveFeature() = default;
+
+    Kind m_kind = Kind::Box;
+    double m_p0 = 1.0;
+    double m_p1 = 1.0;
+    double m_p2 = 1.0;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Reference-geometry feature: a datum plane, axis, or point. Non-geometric —
 /// it lives in the feature tree as construction geometry that sketches and
 /// features reference, but does not alter the solid body.

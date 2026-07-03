@@ -10,6 +10,7 @@
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Loft.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/Shell.h"
 #include "horizon/modeling/Sweep.h"
@@ -392,8 +393,141 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(
 }
 
 // ---------------------------------------------------------------------------
-// DatumFeature
+// PrimitiveFeature
 // ---------------------------------------------------------------------------
+
+int PrimitiveFeature::s_nextID = 1;
+
+std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double height,
+                                                            double depth) {
+    std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
+    f->m_kind = Kind::Box;
+    f->m_p0 = width;
+    f->m_p1 = height;
+    f->m_p2 = depth;
+    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    return f;
+}
+std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCylinder(double radius, double height) {
+    std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
+    f->m_kind = Kind::Cylinder;
+    f->m_p0 = radius;
+    f->m_p1 = height;
+    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    return f;
+}
+std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeSphere(double radius) {
+    std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
+    f->m_kind = Kind::Sphere;
+    f->m_p0 = radius;
+    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    return f;
+}
+std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCone(double bottomRadius, double topRadius,
+                                                             double height) {
+    std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
+    f->m_kind = Kind::Cone;
+    f->m_p0 = bottomRadius;
+    f->m_p1 = topRadius;
+    f->m_p2 = height;
+    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    return f;
+}
+std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeTorus(double majorRadius,
+                                                              double minorRadius) {
+    std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
+    f->m_kind = Kind::Torus;
+    f->m_p0 = majorRadius;
+    f->m_p1 = minorRadius;
+    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    return f;
+}
+
+std::string PrimitiveFeature::name() const {
+    switch (m_kind) {
+        case Kind::Box:
+            return "Box";
+        case Kind::Cylinder:
+            return "Cylinder";
+        case Kind::Sphere:
+            return "Sphere";
+        case Kind::Cone:
+            return "Cone";
+        case Kind::Torus:
+            return "Torus";
+    }
+    return "Primitive";
+}
+
+std::string PrimitiveFeature::featureID() const {
+    return m_featureID;
+}
+
+void PrimitiveFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "primitive_");
+}
+
+std::map<std::string, double> PrimitiveFeature::parameters() const {
+    switch (m_kind) {
+        case Kind::Box:
+            return {{"width", m_p0}, {"height", m_p1}, {"depth", m_p2}};
+        case Kind::Cylinder:
+            return {{"radius", m_p0}, {"height", m_p1}};
+        case Kind::Sphere:
+            return {{"radius", m_p0}};
+        case Kind::Cone:
+            return {{"bottomRadius", m_p0}, {"topRadius", m_p1}, {"height", m_p2}};
+        case Kind::Torus:
+            return {{"majorRadius", m_p0}, {"minorRadius", m_p1}};
+    }
+    return {};
+}
+
+bool PrimitiveFeature::setParameter(const std::string& name, double value) {
+    switch (m_kind) {
+        case Kind::Box:
+            if (name == "width") return (m_p0 = value, true);
+            if (name == "height") return (m_p1 = value, true);
+            if (name == "depth") return (m_p2 = value, true);
+            break;
+        case Kind::Cylinder:
+            if (name == "radius") return (m_p0 = value, true);
+            if (name == "height") return (m_p1 = value, true);
+            break;
+        case Kind::Sphere:
+            if (name == "radius") return (m_p0 = value, true);
+            break;
+        case Kind::Cone:
+            if (name == "bottomRadius") return (m_p0 = value, true);
+            if (name == "topRadius") return (m_p1 = value, true);
+            if (name == "height") return (m_p2 = value, true);
+            break;
+        case Kind::Torus:
+            if (name == "majorRadius") return (m_p0 = value, true);
+            if (name == "minorRadius") return (m_p1 = value, true);
+            break;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    switch (m_kind) {
+        case Kind::Box:
+            return model::PrimitiveFactory::makeBox(m_p0, m_p1, m_p2);
+        case Kind::Cylinder:
+            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1);
+        case Kind::Sphere:
+            return model::PrimitiveFactory::makeSphere(m_p0);
+        case Kind::Cone:
+            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2);
+        case Kind::Torus:
+            return model::PrimitiveFactory::makeTorus(m_p0, m_p1);
+    }
+    return nullptr;
+}
 
 int DatumFeature::s_nextID = 1;
 

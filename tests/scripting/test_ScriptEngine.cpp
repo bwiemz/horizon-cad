@@ -125,6 +125,22 @@ print(doc.solid_shell_count())
     EXPECT_EQ(doc.solid()->shellCount(), 3u);
 }
 
+TEST(ScriptEngineTest, ScriptBuildsPrimitive) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(R"(
+doc.add_box(4.0, 4.0, 4.0)
+doc.rebuild()
+print(doc.solid_face_count(), round(doc.mass_properties().volume, 1))
+)",
+                          &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "6 64.0\n");  // box 4^3 = volume 64
+}
+
 TEST(ScriptEngineTest, ScriptQueriesMassProperties) {
     hz::doc::Document doc;
     doc.setType(hz::doc::DocumentType::Part);

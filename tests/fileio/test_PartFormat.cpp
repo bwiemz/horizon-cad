@@ -516,3 +516,34 @@ TEST(PartFormatTest, DatumFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// PrimitiveFeatureRoundTrip — parametric primitives persist and rebuild
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, PrimitiveFeatureRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(PrimitiveFeature::makeCone(4.0, 2.0, 6.0));
+    ASSERT_TRUE(original.rebuildModel());
+
+    std::string path = tempPath("hz_test_primitive_roundtrip.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+
+    const auto* prim = dynamic_cast<const PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_EQ(prim->kind(), PrimitiveFeature::Kind::Cone);
+    EXPECT_DOUBLE_EQ(prim->p0(), 4.0);
+    EXPECT_DOUBLE_EQ(prim->p1(), 2.0);
+    EXPECT_DOUBLE_EQ(prim->p2(), 6.0);
+
+    EXPECT_TRUE(loaded.rebuildModel());
+    ASSERT_NE(loaded.solid(), nullptr);
+    EXPECT_TRUE(loaded.solid()->isValid());
+
+    std::remove(path.c_str());
+}

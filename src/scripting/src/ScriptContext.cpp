@@ -51,6 +51,23 @@ int ScriptContext::addRectangleSketch(double w, double h) {
     return static_cast<int>(m_document.sketches().size()) - 1;
 }
 
+void ScriptContext::addBox(double width, double height, double depth) {
+    m_document.featureTree().addFeature(doc::PrimitiveFeature::makeBox(width, height, depth));
+}
+void ScriptContext::addCylinder(double radius, double height) {
+    m_document.featureTree().addFeature(doc::PrimitiveFeature::makeCylinder(radius, height));
+}
+void ScriptContext::addSphere(double radius) {
+    m_document.featureTree().addFeature(doc::PrimitiveFeature::makeSphere(radius));
+}
+void ScriptContext::addCone(double bottomRadius, double topRadius, double height) {
+    m_document.featureTree().addFeature(
+        doc::PrimitiveFeature::makeCone(bottomRadius, topRadius, height));
+}
+void ScriptContext::addTorus(double majorRadius, double minorRadius) {
+    m_document.featureTree().addFeature(doc::PrimitiveFeature::makeTorus(majorRadius, minorRadius));
+}
+
 bool ScriptContext::addExtrude(int sketchIndex, const Vec3& direction, double distance) {
     if (sketchIndex < 0 || sketchIndex >= static_cast<int>(m_document.sketches().size())) {
         return false;

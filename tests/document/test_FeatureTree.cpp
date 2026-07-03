@@ -324,3 +324,57 @@ TEST(FeatureTreeTest, DatumAccessorsReconstructGeometry) {
     EXPECT_EQ(pointFeat->name(), "DatumPoint");
     EXPECT_NEAR(pointFeat->asPoint().position.x, 7.0, 1e-12);
 }
+
+// ---------------------------------------------------------------------------
+// Primitive features — parametric box/cylinder/sphere/cone/torus base features
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, PrimitiveBoxBuilds) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(2.0, 3.0, 4.0));
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->faceCount(), 6u);
+    EXPECT_TRUE(solid->checkEulerFormula());
+    EXPECT_EQ(tree.feature(0)->name(), "Box");
+}
+
+TEST(FeatureTreeTest, PrimitiveAllKindsBuildValidSolids) {
+    struct Case {
+        std::unique_ptr<Feature> feat;
+        const char* name;
+    };
+    std::vector<Case> cases;
+    cases.push_back({PrimitiveFeature::makeCylinder(5.0, 10.0), "Cylinder"});
+    cases.push_back({PrimitiveFeature::makeSphere(4.0), "Sphere"});
+    cases.push_back({PrimitiveFeature::makeCone(4.0, 2.0, 6.0), "Cone"});
+    cases.push_back({PrimitiveFeature::makeTorus(8.0, 2.0), "Torus"});
+    for (auto& c : cases) {
+        const std::string expected = c.name;
+        FeatureTree tree;
+        EXPECT_EQ(c.feat->name(), expected);
+        tree.addFeature(std::move(c.feat));
+        auto solid = tree.build();
+        ASSERT_NE(solid, nullptr) << expected;
+        EXPECT_TRUE(solid->isValid()) << expected;
+        EXPECT_TRUE(solid->checkEulerFormula()) << expected;
+    }
+}
+
+TEST(FeatureTreeTest, PrimitiveParametricEdit) {
+    auto box = PrimitiveFeature::makeBox(2.0, 2.0, 2.0);
+    EXPECT_DOUBLE_EQ(box->parameters().at("width"), 2.0);
+    EXPECT_TRUE(box->setParameter("width", 8.0));
+    EXPECT_FALSE(box->setParameter("radius", 5.0));  // not a box parameter
+
+    FeatureTree tree;
+    tree.addFeature(std::move(box));
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    double minX = 1e9, maxX = -1e9;
+    for (const auto& v : solid->vertices()) {
+        minX = std::min(minX, v.point.x);
+        maxX = std::max(maxX, v.point.x);
+    }
+    EXPECT_NEAR(maxX - minX, 8.0, 1e-9);  // edited width took effect on rebuild
+}

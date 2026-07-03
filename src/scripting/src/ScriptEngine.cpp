@@ -109,6 +109,14 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("solid_face_count", &ScriptContext::solidFaceCount)
         .def("solid_shell_count", &ScriptContext::solidShellCount)
         .def("last_error", &ScriptContext::lastError)
+        .def("add_box", &ScriptContext::addBox, py::arg("width"), py::arg("height"),
+             py::arg("depth"))
+        .def("add_cylinder", &ScriptContext::addCylinder, py::arg("radius"), py::arg("height"))
+        .def("add_sphere", &ScriptContext::addSphere, py::arg("radius"))
+        .def("add_cone", &ScriptContext::addCone, py::arg("bottom_radius"), py::arg("top_radius"),
+             py::arg("height"))
+        .def("add_torus", &ScriptContext::addTorus, py::arg("major_radius"),
+             py::arg("minor_radius"))
         .def("add_rectangle_sketch", &ScriptContext::addRectangleSketch, py::arg("w"), py::arg("h"))
         .def("add_extrude", &ScriptContext::addExtrude, py::arg("sketch_index"),
              py::arg("direction"), py::arg("distance"))
