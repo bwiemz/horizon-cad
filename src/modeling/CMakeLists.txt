@@ -22,6 +22,7 @@ add_library(hz_modeling STATIC
     src/MassProperties.cpp
     src/Measure.cpp
     src/DrawingProjection.cpp
+    src/DrawingView.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
