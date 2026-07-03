@@ -1,6 +1,7 @@
 add_executable(hz_fileio_tests
     test_PartFormat.cpp
     test_AssemblyFormat.cpp
+    test_DrawingExport.cpp
 )
 
 target_link_libraries(hz_fileio_tests
