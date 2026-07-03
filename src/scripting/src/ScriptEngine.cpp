@@ -14,13 +14,15 @@ namespace py = pybind11;
 
 namespace {
 
-// A single embedded interpreter is shared per process. A function-local static
-// is constructed exactly once (on first use) and torn down at process exit,
-// after every ScriptEngine has already been destroyed — so no bound object
-// outlives the interpreter. The constructing thread holds the GIL thereafter.
+// A single embedded interpreter is shared per process. Initialize on first use
+// and NEVER finalize: finalizing an embedded CPython at process exit is
+// crash-prone once embedded modules are registered (it segfaults during
+// teardown on some Python/pybind11 versions). Leaking the interpreter for the
+// process lifetime is the supported embedding pattern; the OS reclaims it.
 void ensureInterpreter() {
-    static py::scoped_interpreter interpreter{};
-    (void)interpreter;
+    if (!Py_IsInitialized()) {
+        py::initialize_interpreter();
+    }
 }
 
 }  // namespace
