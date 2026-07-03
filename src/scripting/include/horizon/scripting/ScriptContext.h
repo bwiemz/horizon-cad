@@ -60,6 +60,12 @@ public:
     /// at the given density. `valid` is false when there is no solid.
     model::MassProperties massProperties(double density = 1.0) const;
 
+    // --- Drawings ----------------------------------------------------------
+    /// Generate the standard four-view drawing (front/top/right/isometric,
+    /// hidden lines removed) of the current solid and write it to a DXF file.
+    /// Returns false when there is no solid or on I/O failure.
+    bool exportDrawingDxf(const std::string& path) const;
+
     // --- Rebuild -----------------------------------------------------------
     /// Replay the feature tree. Returns true on success.
     bool rebuild();

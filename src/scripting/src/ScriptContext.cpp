@@ -6,6 +6,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/fileio/DrawingExport.h"
 #include "horizon/math/Vec2.h"
 
 namespace hz::script {
@@ -107,6 +108,12 @@ model::MassProperties ScriptContext::massProperties(double density) const {
 
 bool ScriptContext::rebuild() {
     return m_document.rebuildModel();
+}
+
+bool ScriptContext::exportDrawingDxf(const std::string& path) const {
+    const auto* solid = m_document.solid();
+    if (!solid) return false;
+    return io::DrawingExport::standardViewsToDxf(path, *solid);
 }
 
 }  // namespace hz::script

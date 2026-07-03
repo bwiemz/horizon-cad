@@ -19,6 +19,7 @@ target_link_libraries(hz_scripting
         pybind11::embed
     PRIVATE
         Horizon::Drafting
+        Horizon::FileIO
 )
 
 add_library(Horizon::Scripting ALIAS hz_scripting)
