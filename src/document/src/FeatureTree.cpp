@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/Loft.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -317,6 +318,49 @@ std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> 
     if (!inputSolid) return nullptr;
     auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
     return result.ok ? std::move(result.solid) : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// FilletFeature
+// ---------------------------------------------------------------------------
+
+int FilletFeature::s_nextID = 1;
+
+FilletFeature::FilletFeature(std::vector<topo::TopologyID> edgeIds, double radius)
+    : m_edgeIds(std::move(edgeIds)),
+      m_radius(radius),
+      m_featureID("fillet_" + std::to_string(s_nextID++)) {}
+
+std::string FilletFeature::name() const {
+    return "Fillet";
+}
+
+std::string FilletFeature::featureID() const {
+    return m_featureID;
+}
+
+void FilletFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "fillet_");
+}
+
+std::map<std::string, double> FilletFeature::parameters() const {
+    return {{"radius", m_radius}};
+}
+
+bool FilletFeature::setParameter(const std::string& name, double value) {
+    if (name == "radius" && value > 0.0) {
+        m_radius = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+    if (!inputSolid) return nullptr;
+    auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID);
+    return result.solid ? std::move(result.solid) : nullptr;
 }
 
 // ---------------------------------------------------------------------------

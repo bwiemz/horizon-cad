@@ -378,3 +378,26 @@ TEST(FeatureTreeTest, PrimitiveParametricEdit) {
     }
     EXPECT_NEAR(maxX - minX, 8.0, 1e-9);  // edited width took effect on rebuild
 }
+
+// ---------------------------------------------------------------------------
+// FilletFeature — parametric edge rounding on the running solid
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, FilletFeatureRoundsEdge) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    auto box = tree.build();
+    ASSERT_NE(box, nullptr);
+    ASSERT_FALSE(box->edges().empty());
+    const auto edgeId = box->edges().front().topoId;
+    const size_t boxFaces = box->faceCount();
+
+    tree.addFeature(
+        std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 1.0));
+    auto filleted = tree.build();
+    ASSERT_NE(filleted, nullptr);
+    EXPECT_TRUE(filleted->isValid());
+    EXPECT_GT(filleted->faceCount(), boxFaces);  // filleting an edge adds a face
+    EXPECT_EQ(tree.feature(1)->name(), "Fillet");
+    EXPECT_DOUBLE_EQ(tree.feature(1)->parameters().at("radius"), 1.0);
+}

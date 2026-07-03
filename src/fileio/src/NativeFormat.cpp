@@ -492,6 +492,12 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
             json removed = json::array();
             for (const auto& id : shell->removedFaceIds()) removed.push_back(id.tag());
             fObj["removedFaces"] = removed;
+        } else if (const auto* fillet = dynamic_cast<const doc::FilletFeature*>(feat)) {
+            fObj["type"] = "fillet";
+            fObj["radius"] = fillet->radius();
+            json edges = json::array();
+            for (const auto& id : fillet->edgeIds()) edges.push_back(id.tag());
+            fObj["edges"] = edges;
         } else if (const auto* pat = dynamic_cast<const doc::PatternFeature*>(feat)) {
             fObj["type"] = "pattern";
             fObj["kind"] = pat->kind() == doc::PatternFeature::Kind::Linear ? "linear" : "circular";
@@ -1153,6 +1159,19 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
                         }
                     }
                     auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
+                    feat->restoreFeatureID(persistedId);
+                    doc.featureTree().addFeature(std::move(feat));
+                    continue;
+                }
+                if (ftype == "fillet") {
+                    double radius = fObj.value("radius", 1.0);
+                    std::vector<topo::TopologyID> edges;
+                    if (fObj.contains("edges")) {
+                        for (const auto& tagJson : fObj["edges"]) {
+                            edges.push_back(topo::TopologyID::fromTag(tagJson.get<std::string>()));
+                        }
+                    }
+                    auto feat = std::make_unique<doc::FilletFeature>(std::move(edges), radius);
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;
