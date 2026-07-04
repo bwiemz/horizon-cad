@@ -40,6 +40,54 @@ Eigen::Matrix<double, 6, 6> elasticityMatrix(const ElasticMaterial& m) {
     return D;
 }
 
+/// The (constant) strain-displacement matrix B (6x12) and absolute volume of a
+/// linear tetrahedron. `valid` is false for a degenerate (near-zero-volume)
+/// element, in which case B is left zero.
+struct ElementGeom {
+    Eigen::Matrix<double, 6, 12> B = Eigen::Matrix<double, 6, 12>::Zero();
+    double volume = 0.0;
+    bool valid = false;
+};
+
+ElementGeom computeGeom(const TetMesh& mesh, const Tet4& element) {
+    ElementGeom g;
+    const Eigen::Matrix<double, 4, 3> p = nodePositions(mesh, element);
+
+    // Shape-function coefficients: N_i = a_i + b_i x + c_i y + d_i z with
+    // N_i(p_j) = delta_ij. Stacking [1, x, y, z] over the four nodes gives C, and
+    // the coefficient columns are C^{-1}. Rows 1..3 of C^{-1} are the (constant)
+    // spatial gradients of the shape functions.
+    Eigen::Matrix4d C;
+    C.col(0).setOnes();
+    C.block<4, 3>(0, 1) = p;
+
+    const double detC = C.determinant();
+    g.volume = std::abs(detC) / 6.0;
+    if (g.volume < 1e-18) return g;  // degenerate element
+
+    const Eigen::Matrix4d Cinv = C.inverse();
+    // grad(3x4): column i holds (dN_i/dx, dN_i/dy, dN_i/dz).
+    const Eigen::Matrix<double, 3, 4> grad = Cinv.block<3, 4>(1, 0);
+
+    for (int i = 0; i < 4; ++i) {
+        const double bx = grad(0, i);
+        const double by = grad(1, i);
+        const double bz = grad(2, i);
+        const int c = 3 * i;
+        g.B(0, c + 0) = bx;
+        g.B(1, c + 1) = by;
+        g.B(2, c + 2) = bz;
+        g.B(3, c + 0) = by;
+        g.B(3, c + 1) = bx;
+        g.B(4, c + 1) = bz;
+        g.B(4, c + 2) = by;
+        g.B(5, c + 0) = bz;
+        g.B(5, c + 2) = bx;
+    }
+    g.valid = true;
+    return g;
+}
+
 }  // namespace
 
 double tetVolume(const TetMesh& mesh, const Tet4& element) {
@@ -56,44 +104,11 @@ std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& elemen
     std::array<double, 144> out{};  // zero-initialised
     if (!material.isValid()) return out;
 
-    const Eigen::Matrix<double, 4, 3> p = nodePositions(mesh, element);
-
-    // Shape-function coefficients: N_i = a_i + b_i x + c_i y + d_i z with
-    // N_i(p_j) = delta_ij. Stacking [1, x, y, z] over the four nodes gives C, and
-    // the coefficient columns are C^{-1}. Rows 1..3 of C^{-1} are the (constant)
-    // spatial gradients of the shape functions.
-    Eigen::Matrix4d C;
-    C.col(0).setOnes();
-    C.block<4, 3>(0, 1) = p;
-
-    const double detC = C.determinant();
-    const double volume = std::abs(detC) / 6.0;
-    if (volume < 1e-18) return out;  // degenerate element
-
-    const Eigen::Matrix4d Cinv = C.inverse();
-    // grad(3x4): column i holds (dN_i/dx, dN_i/dy, dN_i/dz).
-    const Eigen::Matrix<double, 3, 4> grad = Cinv.block<3, 4>(1, 0);
-
-    // Strain-displacement matrix B (6x12).
-    Eigen::Matrix<double, 6, 12> B = Eigen::Matrix<double, 6, 12>::Zero();
-    for (int i = 0; i < 4; ++i) {
-        const double bx = grad(0, i);
-        const double by = grad(1, i);
-        const double bz = grad(2, i);
-        const int c = 3 * i;
-        B(0, c + 0) = bx;
-        B(1, c + 1) = by;
-        B(2, c + 2) = bz;
-        B(3, c + 0) = by;
-        B(3, c + 1) = bx;
-        B(4, c + 1) = bz;
-        B(4, c + 2) = by;
-        B(5, c + 0) = bz;
-        B(5, c + 2) = bx;
-    }
+    const ElementGeom g = computeGeom(mesh, element);
+    if (!g.valid) return out;
 
     const Eigen::Matrix<double, 6, 6> D = elasticityMatrix(material);
-    const Eigen::Matrix<double, 12, 12> Ke = volume * (B.transpose() * D * B);
+    const Eigen::Matrix<double, 12, 12> Ke = g.volume * (g.B.transpose() * D * g.B);
 
     for (int r = 0; r < 12; ++r) {
         for (int col = 0; col < 12; ++col) {
@@ -101,6 +116,32 @@ std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& elemen
         }
     }
     return out;
+}
+
+std::array<double, 6> elementStress(const TetMesh& mesh, const Tet4& element,
+                                    const ElasticMaterial& material,
+                                    const std::array<double, 12>& displacements) {
+    std::array<double, 6> out{};  // zero-initialised
+    if (!material.isValid()) return out;
+
+    const ElementGeom g = computeGeom(mesh, element);
+    if (!g.valid) return out;
+
+    Eigen::Matrix<double, 12, 1> ue;
+    for (int i = 0; i < 12; ++i) ue(i) = displacements[i];
+
+    const Eigen::Matrix<double, 6, 1> sigma = elasticityMatrix(material) * (g.B * ue);
+    for (int i = 0; i < 6; ++i) out[i] = sigma(i);
+    return out;
+}
+
+double vonMises(const std::array<double, 6>& s) {
+    const double sxx = s[0], syy = s[1], szz = s[2];
+    const double sxy = s[3], syz = s[4], szx = s[5];
+    const double dev =
+        (sxx - syy) * (sxx - syy) + (syy - szz) * (syy - szz) + (szz - sxx) * (szz - sxx);
+    const double shear = sxy * sxy + syz * syz + szx * szx;
+    return std::sqrt(0.5 * dev + 3.0 * shear);
 }
 
 }  // namespace hz::sim

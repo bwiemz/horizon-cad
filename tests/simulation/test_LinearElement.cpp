@@ -89,6 +89,34 @@ TEST(LinearElementTest, DegenerateAndInvalidYieldZero) {
     for (double v : kBad) EXPECT_EQ(v, 0.0);
 }
 
+// A prescribed uniform uniaxial-strain field recovers the exact analytical
+// stress: for strain [e0, 0, 0, 0, 0, 0], sigma = D * strain =
+// [(lambda+2mu) e0, lambda e0, lambda e0, 0, 0, 0].
+TEST(LinearElementTest, ElementStressUniaxialStrainIsExact) {
+    TetMesh m = unitTet();
+    const ElasticMaterial mat = hz::sim::materials::steel();
+    const double E = mat.youngsModulus, nu = mat.poissonRatio;
+    const double lambda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu));
+    const double mu = E / (2.0 * (1.0 + nu));
+
+    // u = (e0 * x, 0, 0): only node 1 (at x=1) has x-displacement e0, giving a
+    // uniform strain exx = e0 on the unit tet (N1 = x, dN1/dx = 1).
+    const double e0 = 1.0e-4;
+    std::array<double, 12> u{};
+    u[3 * 1 + 0] = e0;
+
+    const auto s = hz::sim::elementStress(m, m.elements[0], mat, u);
+    EXPECT_NEAR(s[0], (lambda + 2.0 * mu) * e0, 1.0);  // sxx
+    EXPECT_NEAR(s[1], lambda * e0, 1.0);               // syy
+    EXPECT_NEAR(s[2], lambda * e0, 1.0);               // szz
+    EXPECT_NEAR(s[3], 0.0, 1e-6);                      // sxy
+    EXPECT_NEAR(s[4], 0.0, 1e-6);                      // syz
+    EXPECT_NEAR(s[5], 0.0, 1e-6);                      // szx
+
+    // von Mises of a uniaxial-strain state equals |sxx - syy| = 2 mu e0.
+    EXPECT_NEAR(hz::sim::vonMises(s), 2.0 * mu * e0, 1.0);
+}
+
 // Material presets are physically sensible and valid for analysis.
 TEST(LinearElementTest, MaterialPresetsAreValid) {
     EXPECT_TRUE(hz::sim::materials::steel().isValid());
