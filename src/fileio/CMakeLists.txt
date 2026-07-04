@@ -8,6 +8,7 @@ add_library(hz_fileio STATIC
     src/GeometricToleranceRenderer.cpp
     src/BalloonRenderer.cpp
     src/BomExport.cpp
+    src/TitleBlockRenderer.cpp
 )
 
 target_include_directories(hz_fileio

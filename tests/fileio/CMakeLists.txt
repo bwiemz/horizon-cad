@@ -7,6 +7,7 @@ add_executable(hz_fileio_tests
     test_GeometricToleranceRenderer.cpp
     test_BalloonRenderer.cpp
     test_BomExport.cpp
+    test_TitleBlockRenderer.cpp
 )
 
 target_link_libraries(hz_fileio_tests

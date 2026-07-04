@@ -12,7 +12,10 @@
 #include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GeometricToleranceRenderer.h"
+#include "horizon/fileio/TitleBlockRenderer.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Sheet.h"
+#include "horizon/modeling/TitleBlock.h"
 
 namespace hz::io {
 
@@ -47,14 +50,18 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties balloons;
     balloons.name = kBalloonLayer;
     doc.layerManager().addLayer(balloons);
+
+    draft::LayerProperties border;
+    border.name = TitleBlockRenderer::kBorderLayer;
+    doc.layerManager().addLayer(border);
+
+    draft::LayerProperties titleBlock;
+    titleBlock.name = TitleBlockRenderer::kTitleBlockLayer;
+    doc.layerManager().addLayer(titleBlock);
 }
 
-}  // namespace
-
-bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing) {
-    doc::Document doc;  // defaults to DocumentType::Drawing
-    addDrawingLayers(doc);
-
+// Populate @p doc with the drawing's views, dimensions, GD&T and balloons.
+void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
     for (const model::DrawingView& view : drawing.views) {
         // Map view-space coordinates onto the sheet: shift the view's lower-left
         // corner (boundsMin) to its placement, so views never overlap.
@@ -108,6 +115,28 @@ bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing
             }
         }
     }
+}
+
+}  // namespace
+
+bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing) {
+    doc::Document doc;  // defaults to DocumentType::Drawing
+    addDrawingLayers(doc);
+    populateDrawing(doc, drawing);
+    return DxfFormat::save(path, doc);
+}
+
+bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing,
+                          const model::Sheet& sheet, const model::TitleBlock& titleBlock) {
+    doc::Document doc;  // defaults to DocumentType::Drawing
+    addDrawingLayers(doc);
+
+    // Sheet frame + title block first, then the drawing content.
+    for (auto& e : TitleBlockRenderer::renderBorder(sheet)) doc.addEntity(std::move(e));
+    for (auto& e : TitleBlockRenderer::renderTitleBlock(sheet, titleBlock)) {
+        doc.addEntity(std::move(e));
+    }
+    populateDrawing(doc, drawing);
 
     return DxfFormat::save(path, doc);
 }
