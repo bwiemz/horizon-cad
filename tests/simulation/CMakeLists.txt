@@ -1,5 +1,6 @@
 add_executable(hz_simulation_tests
     test_LinearElement.cpp
+    test_LinearStaticSolver.cpp
 )
 
 target_link_libraries(hz_simulation_tests

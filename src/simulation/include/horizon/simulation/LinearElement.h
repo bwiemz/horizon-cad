@@ -23,4 +23,16 @@ double tetVolume(const TetMesh& mesh, const Tet4& element);
 std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& element,
                                          const ElasticMaterial& material);
 
+/// The constant stress in a linear tetrahedron given its 12 nodal displacements
+/// (order [n0x, n0y, n0z, n1x, ...]). Returns the Voigt stress vector
+/// [sxx, syy, szz, sxy, syz, szx] = D * B * u. A degenerate element or invalid
+/// material yields all zeros.
+std::array<double, 6> elementStress(const TetMesh& mesh, const Tet4& element,
+                                    const ElasticMaterial& material,
+                                    const std::array<double, 12>& displacements);
+
+/// The von Mises equivalent stress of a Voigt stress vector
+/// [sxx, syy, szz, sxy, syz, szx].
+double vonMises(const std::array<double, 6>& stress);
+
 }  // namespace hz::sim
