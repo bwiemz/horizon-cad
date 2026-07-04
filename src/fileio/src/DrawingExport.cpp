@@ -5,10 +5,12 @@
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/drafting/LineType.h"
 #include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/GeometricToleranceRenderer.h"
 #include "horizon/modeling/DrawingView.h"
 
 namespace hz::io {
@@ -18,7 +20,10 @@ namespace {
 constexpr char kVisibleLayer[] = "Visible";
 constexpr char kHiddenLayer[] = "Hidden";
 constexpr char kDimensionLayer[] = "Dimensions";
+constexpr char kToleranceLayer[] = "Tolerances";
 constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
+constexpr double kToleranceOffset = 8.0;  ///< sheet distance from the edge to a GD&T frame
+constexpr double kDatumOffset = -8.0;     ///< opposite side, so datums clear tolerances
 
 void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties visible;
@@ -32,6 +37,10 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties dimensions;
     dimensions.name = kDimensionLayer;
     doc.layerManager().addLayer(dimensions);
+
+    draft::LayerProperties tolerances;
+    tolerances.name = kToleranceLayer;
+    doc.layerManager().addLayer(tolerances);
 }
 
 }  // namespace
@@ -63,6 +72,23 @@ bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing
             auto drafted = DrawingDimensionRenderer::render(view, dim, kDimensionOffset);
             if (drafted) {
                 drafted->setLayer(kDimensionLayer);
+                doc.addEntity(std::move(drafted));
+            }
+        }
+
+        // Render this view's GD&T annotations as text near the toleranced
+        // feature. Frames/datums whose feature isn't in the view are skipped.
+        for (const model::FeatureControlFrame& frame : view.tolerances) {
+            auto drafted = GeometricToleranceRenderer::render(view, frame, kToleranceOffset);
+            if (drafted) {
+                drafted->setLayer(kToleranceLayer);
+                doc.addEntity(std::move(drafted));
+            }
+        }
+        for (const model::DatumFeature& datum : view.datums) {
+            auto drafted = GeometricToleranceRenderer::render(view, datum, kDatumOffset);
+            if (drafted) {
+                drafted->setLayer(kToleranceLayer);
                 doc.addEntity(std::move(drafted));
             }
         }

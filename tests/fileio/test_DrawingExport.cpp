@@ -10,6 +10,7 @@
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/GeometricTolerance.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -19,6 +20,8 @@ using hz::io::DxfFormat;
 using hz::model::Drawing;
 using hz::model::DrawingDimensioner;
 using hz::model::DrawingGenerator;
+using hz::model::FeatureControlFrame;
+using hz::model::GeometricCharacteristic;
 using hz::model::LinearDimension;
 using hz::model::PrimitiveFactory;
 
@@ -114,6 +117,44 @@ TEST(DrawingExportTest, ExportsDimensionsOnDimensionLayer) {
         if (e->layer() == "Dimensions") ++dimensionEntities;
     }
     EXPECT_GT(dimensionEntities, 0);
+
+    std::remove(path.c_str());
+}
+
+// A drawing carrying GD&T frames/datums exports them as text on the "Tolerances"
+// layer, anchored to the toleranced feature's projected edge.
+TEST(DrawingExportTest, ExportsGdtOnToleranceLayer) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    Drawing drawing = DrawingGenerator::standardViews(*box);
+    ASSERT_FALSE(drawing.views.empty());
+
+    auto& front = drawing.views.front();
+    ASSERT_FALSE(front.edges.empty());
+    const auto edgeId = front.edges.front().sourceEdge;
+
+    FeatureControlFrame frame;
+    frame.characteristic = GeometricCharacteristic::Perpendicularity;
+    frame.tolerance = 0.05;
+    frame.datumRefs = {"A"};
+    frame.feature = edgeId;
+    front.tolerances.push_back(frame);
+
+    hz::model::DatumFeature datum;
+    datum.label = "A";
+    datum.feature = edgeId;
+    front.datums.push_back(datum);
+
+    const std::string path = tempPath("hz_test_drawing_export_gdt.dxf");
+    ASSERT_TRUE(DrawingExport::toDxf(path, drawing));
+
+    Document loaded;
+    ASSERT_TRUE(DxfFormat::load(path, loaded));
+
+    int toleranceEntities = 0;
+    for (const auto& e : loaded.draftDocument().entities()) {
+        if (e->layer() == "Tolerances") ++toleranceEntities;
+    }
+    EXPECT_GE(toleranceEntities, 2);  // one frame + one datum symbol
 
     std::remove(path.c_str());
 }

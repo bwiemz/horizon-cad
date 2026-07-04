@@ -5,6 +5,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
+#include "horizon/modeling/GeometricTolerance.h"
 
 namespace hz::topo {
 class Solid;
@@ -22,7 +23,9 @@ struct DrawingView {
     StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
     ViewProjection projection;                ///< the camera this view was projected through
     std::vector<ProjectedEdge> edges;
-    std::vector<LinearDimension> dimensions;  ///< dimensions anchored to this view's edges
+    std::vector<LinearDimension> dimensions;      ///< dimensions anchored to this view's edges
+    std::vector<FeatureControlFrame> tolerances;  ///< GD&T frames anchored to this view's edges
+    std::vector<DatumFeature> datums;             ///< datum feature symbols anchored to edges
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};

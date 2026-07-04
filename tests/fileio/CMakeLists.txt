@@ -4,6 +4,7 @@ add_executable(hz_fileio_tests
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
     test_DrawingDimensionRenderer.cpp
+    test_GeometricToleranceRenderer.cpp
 )
 
 target_link_libraries(hz_fileio_tests
