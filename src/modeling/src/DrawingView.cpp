@@ -7,10 +7,10 @@
 
 namespace hz::model {
 
-DrawingView DrawingGenerator::makeView(const topo::Solid& solid, StandardView view) {
+DrawingView DrawingGenerator::makeView(const topo::Solid& solid, const ViewProjection& projection) {
     DrawingView dv;
-    dv.kind = view;
-    dv.edges = DrawingProjection::project(solid, DrawingProjection::standardView(view));
+    dv.projection = projection;
+    dv.edges = DrawingProjection::project(solid, projection);
 
     double minX = std::numeric_limits<double>::max();
     double minY = std::numeric_limits<double>::max();
@@ -32,6 +32,22 @@ DrawingView DrawingGenerator::makeView(const topo::Solid& solid, StandardView vi
         dv.boundsMax = {maxX, maxY};
     }
     return dv;
+}
+
+DrawingView DrawingGenerator::makeView(const topo::Solid& solid, StandardView view) {
+    DrawingView dv = makeView(solid, DrawingProjection::standardView(view));
+    dv.kind = view;
+    return dv;
+}
+
+DrawingView DrawingGenerator::auxiliaryView(const topo::Solid& solid, const math::Vec3& faceNormal,
+                                            const math::Vec3& up) {
+    // Look opposite the outward normal so the face faces the viewer.
+    ViewProjection view;
+    view.origin = math::Vec3(0.0, 0.0, 0.0);
+    view.dir = -faceNormal;
+    view.up = up;
+    return makeView(solid, view);
 }
 
 Drawing DrawingGenerator::standardViews(const topo::Solid& solid, double gap) {

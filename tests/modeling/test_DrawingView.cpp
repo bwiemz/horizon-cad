@@ -1,14 +1,17 @@
 #include <gtest/gtest.h>
 
+#include "horizon/math/Vec3.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
+using hz::math::Vec3;
 using hz::model::Drawing;
 using hz::model::DrawingGenerator;
 using hz::model::DrawingView;
 using hz::model::PrimitiveFactory;
 using hz::model::StandardView;
+using hz::model::ViewProjection;
 
 namespace {
 
@@ -65,4 +68,33 @@ TEST(DrawingViewTest, StandardViewsAreLaidOutWithoutOverlap) {
                 << "views " << i << " and " << j << " overlap";
         }
     }
+}
+
+TEST(DrawingViewTest, MakeViewFromArbitraryProjection) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    ViewProjection proj;
+    proj.dir = Vec3(-1.0, -1.0, -1.0);  // an isometric-ish direction
+    proj.up = Vec3(0.0, 0.0, 1.0);
+
+    DrawingView v = DrawingGenerator::makeView(*box, proj);
+    EXPECT_FALSE(v.edges.empty());
+    EXPECT_GT(v.width(), 0.0);
+    EXPECT_GT(v.height(), 0.0);
+    // The view records the camera it was projected through.
+    EXPECT_DOUBLE_EQ(v.projection.dir.x, -1.0);
+    EXPECT_DOUBLE_EQ(v.projection.dir.z, -1.0);
+}
+
+TEST(DrawingViewTest, AuxiliaryViewMatchesEquivalentStandardView) {
+    // Looking square at the +X face (outward normal +X) means viewing along -X,
+    // which is exactly the Right standard view — so the two agree edge-for-edge.
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+
+    DrawingView aux = DrawingGenerator::auxiliaryView(*box, Vec3(1.0, 0.0, 0.0));
+    DrawingView right = DrawingGenerator::makeView(*box, StandardView::Right);
+
+    EXPECT_DOUBLE_EQ(aux.projection.dir.x, -1.0);  // opposite the outward normal
+    EXPECT_EQ(aux.edges.size(), right.edges.size());
+    EXPECT_NEAR(aux.width(), right.width(), 1e-9);
+    EXPECT_NEAR(aux.height(), right.height(), 1e-9);
 }
