@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/drafting/LineType.h"
+#include "horizon/fileio/BalloonRenderer.h"
 #include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GeometricToleranceRenderer.h"
@@ -21,6 +22,7 @@ constexpr char kVisibleLayer[] = "Visible";
 constexpr char kHiddenLayer[] = "Hidden";
 constexpr char kDimensionLayer[] = "Dimensions";
 constexpr char kToleranceLayer[] = "Tolerances";
+constexpr char kBalloonLayer[] = "Balloons";
 constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
 constexpr double kToleranceOffset = 8.0;  ///< sheet distance from the edge to a GD&T frame
 constexpr double kDatumOffset = -8.0;     ///< opposite side, so datums clear tolerances
@@ -41,6 +43,10 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties tolerances;
     tolerances.name = kToleranceLayer;
     doc.layerManager().addLayer(tolerances);
+
+    draft::LayerProperties balloons;
+    balloons.name = kBalloonLayer;
+    doc.layerManager().addLayer(balloons);
 }
 
 }  // namespace
@@ -90,6 +96,15 @@ bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing
             if (drafted) {
                 drafted->setLayer(kToleranceLayer);
                 doc.addEntity(std::move(drafted));
+            }
+        }
+
+        // Render this view's BOM balloons: each is a leader + circle + number.
+        // Balloons whose feature isn't in the view render to nothing.
+        for (const model::DrawingBalloon& balloon : view.balloons) {
+            for (auto& entity : BalloonRenderer::render(view, balloon)) {
+                entity->setLayer(kBalloonLayer);
+                doc.addEntity(std::move(entity));
             }
         }
     }
