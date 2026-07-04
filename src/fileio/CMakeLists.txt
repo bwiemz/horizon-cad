@@ -5,6 +5,7 @@ add_library(hz_fileio STATIC
     src/DrawingExport.cpp
     src/DrawingDocumentIO.cpp
     src/DrawingDimensionRenderer.cpp
+    src/GeometricToleranceRenderer.cpp
 )
 
 target_include_directories(hz_fileio
