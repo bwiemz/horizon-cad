@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
+#include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
+using hz::math::Vec2;
 using hz::math::Vec3;
 using hz::model::Drawing;
 using hz::model::DrawingGenerator;
@@ -97,4 +101,36 @@ TEST(DrawingViewTest, AuxiliaryViewMatchesEquivalentStandardView) {
     EXPECT_EQ(aux.edges.size(), right.edges.size());
     EXPECT_NEAR(aux.width(), right.width(), 1e-9);
     EXPECT_NEAR(aux.height(), right.height(), 1e-9);
+}
+
+TEST(DrawingViewTest, DetailViewCropsToCircleAndEnlarges) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    DrawingView front = DrawingGenerator::makeView(*box, StandardView::Front);
+    ASSERT_FALSE(front.edges.empty());
+
+    // Detail around a corner of the front view.
+    const Vec2 corner = front.boundsMin;
+    const double radius = 1.0;
+    const double scale = 3.0;
+    DrawingView detail = DrawingGenerator::detailView(front, corner, radius, scale);
+
+    ASSERT_FALSE(detail.edges.empty());  // the corner has geometry within the circle
+    // Cropped geometry lies within `radius` of the corner, then is enlarged
+    // `scale`x about it — so every kept point is within radius*scale of the
+    // corner.
+    const double maxDist = radius * scale + 1e-6;
+    for (const auto& e : detail.edges) {
+        for (const Vec2& p : {e.a, e.b}) {
+            const double dx = p.x - corner.x;
+            const double dy = p.y - corner.y;
+            EXPECT_LE(std::sqrt(dx * dx + dy * dy), maxDist);
+        }
+    }
+}
+
+TEST(DrawingViewTest, DetailViewEmptyWhenCircleMissesGeometry) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    DrawingView front = DrawingGenerator::makeView(*box, StandardView::Front);
+    DrawingView detail = DrawingGenerator::detailView(front, Vec2(1000.0, 1000.0), 1.0, 2.0);
+    EXPECT_TRUE(detail.edges.empty());
 }
