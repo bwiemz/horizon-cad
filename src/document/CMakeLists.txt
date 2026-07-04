@@ -10,6 +10,7 @@ add_library(hz_document STATIC
     src/Sketch.cpp
     src/AssemblyDocument.cpp
     src/DocumentManager.cpp
+    src/BillOfMaterials.cpp
 )
 
 target_include_directories(hz_document
