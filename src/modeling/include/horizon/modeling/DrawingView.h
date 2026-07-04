@@ -18,7 +18,8 @@ namespace hz::model {
 /// so `placement` is the sheet position of the view's lower-left corner and each
 /// view occupies `[placement, placement + (boundsMax - boundsMin)]`.
 struct DrawingView {
-    StandardView kind = StandardView::Front;
+    StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
+    ViewProjection projection;                ///< the camera this view was projected through
     std::vector<ProjectedEdge> edges;
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
@@ -36,9 +37,20 @@ struct Drawing {
 /// Builds standard multi-view drawings from a solid.
 class DrawingGenerator {
 public:
-    /// Project @p solid through @p view, compute its 2D bounds, and return the
-    /// (unplaced) DrawingView.
+    /// Project @p solid through a standard @p view, compute its 2D bounds, and
+    /// return the (unplaced) DrawingView.
     static DrawingView makeView(const topo::Solid& solid, StandardView view);
+
+    /// Project @p solid through an arbitrary camera — the basis for auxiliary
+    /// views (e.g. looking square at an angled face). `kind` is left at its
+    /// default; `projection` records the camera used.
+    static DrawingView makeView(const topo::Solid& solid, const ViewProjection& projection);
+
+    /// An auxiliary view looking straight at a face with the given outward
+    /// @p faceNormal (the view direction is the negated normal, so the face
+    /// faces the viewer). @p up orients the vertical axis.
+    static DrawingView auxiliaryView(const topo::Solid& solid, const math::Vec3& faceNormal,
+                                     const math::Vec3& up = math::Vec3(0.0, 0.0, 1.0));
 
     /// The classic engineering layout: front (lower-left), top (above front),
     /// right (right of front), and isometric (upper-right), placed without
