@@ -25,6 +25,7 @@ add_library(hz_modeling STATIC
     src/DrawingView.cpp
     src/DrawingDimension.cpp
     src/GeometricTolerance.cpp
+    src/Sheet.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)

@@ -24,6 +24,7 @@ add_executable(hz_modeling_tests
     test_DrawingView.cpp
     test_DrawingDimension.cpp
     test_GeometricTolerance.cpp
+    test_Sheet.cpp
 )
 
 target_link_libraries(hz_modeling_tests

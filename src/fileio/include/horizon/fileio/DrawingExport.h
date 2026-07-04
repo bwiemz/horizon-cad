@@ -8,6 +8,8 @@ class Solid;
 
 namespace hz::model {
 struct Drawing;
+struct Sheet;
+struct TitleBlock;
 }  // namespace hz::model
 
 namespace hz::io {
@@ -23,6 +25,12 @@ public:
     /// Write a laid-out multi-view drawing to a DXF file. Returns false on I/O
     /// failure.
     static bool toDxf(const std::string& path, const model::Drawing& drawing);
+
+    /// Write a drawing framed by a sheet border and title block to a DXF file.
+    /// The border and title block are drawn on their own layers ("Border",
+    /// "TitleBlock"), sized for @p sheet, with @p titleBlock's fields populated.
+    static bool toDxf(const std::string& path, const model::Drawing& drawing,
+                      const model::Sheet& sheet, const model::TitleBlock& titleBlock);
 
     /// Convenience: generate the standard four-view drawing of @p solid and write
     /// it to a DXF file.
