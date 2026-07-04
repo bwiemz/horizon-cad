@@ -24,6 +24,7 @@ add_library(hz_modeling STATIC
     src/DrawingProjection.cpp
     src/DrawingView.cpp
     src/DrawingDimension.cpp
+    src/GeometricTolerance.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
