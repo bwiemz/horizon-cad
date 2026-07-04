@@ -3,6 +3,7 @@ add_library(hz_simulation STATIC
     src/LinearElement.cpp
     src/BoxMesher.cpp
     src/LinearStaticSolver.cpp
+    src/HeatTransfer.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
