@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/modeling/DrawingBalloon.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/GeometricTolerance.h"
@@ -155,6 +156,36 @@ TEST(DrawingExportTest, ExportsGdtOnToleranceLayer) {
         if (e->layer() == "Tolerances") ++toleranceEntities;
     }
     EXPECT_GE(toleranceEntities, 2);  // one frame + one datum symbol
+
+    std::remove(path.c_str());
+}
+
+// A drawing carrying BOM balloons exports them on the "Balloons" layer (a circle
+// and a number, at minimum, per balloon).
+TEST(DrawingExportTest, ExportsBalloonsOnBalloonLayer) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    Drawing drawing = DrawingGenerator::standardViews(*box);
+    ASSERT_FALSE(drawing.views.empty());
+
+    auto& front = drawing.views.front();
+    ASSERT_FALSE(front.edges.empty());
+
+    hz::model::DrawingBalloon balloon;
+    balloon.item = 3;
+    balloon.feature = front.edges.front().sourceEdge;
+    front.balloons.push_back(balloon);
+
+    const std::string path = tempPath("hz_test_drawing_export_balloons.dxf");
+    ASSERT_TRUE(DrawingExport::toDxf(path, drawing));
+
+    Document loaded;
+    ASSERT_TRUE(DxfFormat::load(path, loaded));
+
+    int balloonEntities = 0;
+    for (const auto& e : loaded.draftDocument().entities()) {
+        if (e->layer() == "Balloons") ++balloonEntities;
+    }
+    EXPECT_GE(balloonEntities, 2);  // at least the circle and the number text
 
     std::remove(path.c_str());
 }

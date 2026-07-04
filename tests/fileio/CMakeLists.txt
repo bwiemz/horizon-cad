@@ -5,6 +5,7 @@ add_executable(hz_fileio_tests
     test_DrawingDocumentIO.cpp
     test_DrawingDimensionRenderer.cpp
     test_GeometricToleranceRenderer.cpp
+    test_BalloonRenderer.cpp
     test_BomExport.cpp
 )
 

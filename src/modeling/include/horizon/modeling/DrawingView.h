@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "horizon/math/Vec2.h"
+#include "horizon/modeling/DrawingBalloon.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/GeometricTolerance.h"
@@ -26,6 +27,7 @@ struct DrawingView {
     std::vector<LinearDimension> dimensions;      ///< dimensions anchored to this view's edges
     std::vector<FeatureControlFrame> tolerances;  ///< GD&T frames anchored to this view's edges
     std::vector<DatumFeature> datums;             ///< datum feature symbols anchored to edges
+    std::vector<DrawingBalloon> balloons;         ///< BOM balloons anchored to this view's edges
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};
