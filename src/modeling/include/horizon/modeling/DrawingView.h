@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "horizon/math/Vec2.h"
+#include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 
 namespace hz::topo {
@@ -21,6 +22,7 @@ struct DrawingView {
     StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
     ViewProjection projection;                ///< the camera this view was projected through
     std::vector<ProjectedEdge> edges;
+    std::vector<LinearDimension> dimensions;  ///< dimensions anchored to this view's edges
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};

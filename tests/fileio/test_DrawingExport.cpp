@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
@@ -15,7 +16,10 @@
 using hz::doc::Document;
 using hz::io::DrawingExport;
 using hz::io::DxfFormat;
+using hz::model::Drawing;
+using hz::model::DrawingDimensioner;
 using hz::model::DrawingGenerator;
+using hz::model::LinearDimension;
 using hz::model::PrimitiveFactory;
 
 namespace {
@@ -81,6 +85,35 @@ TEST(DrawingExportTest, MultiViewLayoutIsPlacedOnSheet) {
         }
     }
     EXPECT_TRUE(sawPlaced);
+
+    std::remove(path.c_str());
+}
+
+// A drawing carrying dimensions exports them: after round-trip, entities land on
+// the "Dimensions" layer (the DXF writer decomposes each dimension to lines/text).
+TEST(DrawingExportTest, ExportsDimensionsOnDimensionLayer) {
+    auto box = PrimitiveFactory::makeBox(4.0, 3.0, 2.0);
+    Drawing drawing = DrawingGenerator::standardViews(*box);
+    ASSERT_FALSE(drawing.views.empty());
+
+    // Anchor a dimension to an edge of the front view.
+    auto& front = drawing.views.front();
+    ASSERT_FALSE(front.edges.empty());
+    LinearDimension dim;
+    ASSERT_TRUE(DrawingDimensioner::dimensionEdge(*box, front.edges.front().sourceEdge, dim));
+    front.dimensions.push_back(dim);
+
+    const std::string path = tempPath("hz_test_drawing_export_dims.dxf");
+    ASSERT_TRUE(DrawingExport::toDxf(path, drawing));
+
+    Document loaded;
+    ASSERT_TRUE(DxfFormat::load(path, loaded));
+
+    int dimensionEntities = 0;
+    for (const auto& e : loaded.draftDocument().entities()) {
+        if (e->layer() == "Dimensions") ++dimensionEntities;
+    }
+    EXPECT_GT(dimensionEntities, 0);
 
     std::remove(path.c_str());
 }

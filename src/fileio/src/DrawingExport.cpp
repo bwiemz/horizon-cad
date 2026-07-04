@@ -4,8 +4,10 @@
 
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/drafting/LineType.h"
+#include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/modeling/DrawingView.h"
 
@@ -15,6 +17,8 @@ namespace {
 
 constexpr char kVisibleLayer[] = "Visible";
 constexpr char kHiddenLayer[] = "Hidden";
+constexpr char kDimensionLayer[] = "Dimensions";
+constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
 
 void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties visible;
@@ -24,6 +28,10 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties hidden;
     hidden.name = kHiddenLayer;
     doc.layerManager().addLayer(hidden);
+
+    draft::LayerProperties dimensions;
+    dimensions.name = kDimensionLayer;
+    doc.layerManager().addLayer(dimensions);
 }
 
 }  // namespace
@@ -47,6 +55,16 @@ bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing
             line->setLineType(
                 static_cast<int>(visible ? draft::LineType::Continuous : draft::LineType::Hidden));
             doc.addEntity(std::move(line));
+        }
+
+        // Render this view's dimensions (the DXF writer decomposes them to
+        // lines + text). Dimensions whose edge isn't in the view are skipped.
+        for (const model::LinearDimension& dim : view.dimensions) {
+            auto drafted = DrawingDimensionRenderer::render(view, dim, kDimensionOffset);
+            if (drafted) {
+                drafted->setLayer(kDimensionLayer);
+                doc.addEntity(std::move(drafted));
+            }
         }
     }
 
