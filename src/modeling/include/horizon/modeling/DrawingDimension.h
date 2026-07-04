@@ -20,6 +20,15 @@ struct LinearDimension {
     double value = 0.0;     ///< measured length, recomputed from the model
 };
 
+/// An angular dimension between two model edges, anchored by their TopologyIDs.
+/// The value is the unsigned angle between the two edge lines (0..pi/2),
+/// re-measured from the model.
+struct AngularDimension {
+    topo::TopologyID edgeA;
+    topo::TopologyID edgeB;
+    double value = 0.0;  ///< radians (unsigned line-to-line angle)
+};
+
 /// Measures model geometry for drawing dimensions.
 class DrawingDimensioner {
 public:
@@ -33,6 +42,17 @@ public:
     /// Returns false if the edge is not found.
     static bool dimensionEdge(const topo::Solid& solid, const topo::TopologyID& edgeId,
                               LinearDimension& out);
+
+    /// Unsigned angle (0..pi/2 radians) between the two model edges @p edgeA and
+    /// @p edgeB. Returns false (leaving @p outRadians untouched) if either edge is
+    /// missing or degenerate (zero length).
+    static bool measureAngle(const topo::Solid& solid, const topo::TopologyID& edgeA,
+                             const topo::TopologyID& edgeB, double& outRadians);
+
+    /// Build an AngularDimension for the two edges, measuring the angle from the
+    /// model. Returns false if either edge is not found or is degenerate.
+    static bool dimensionAngle(const topo::Solid& solid, const topo::TopologyID& edgeA,
+                               const topo::TopologyID& edgeB, AngularDimension& out);
 };
 
 }  // namespace hz::model
