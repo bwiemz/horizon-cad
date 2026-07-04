@@ -5,6 +5,7 @@ add_executable(hz_document_tests
     test_FeatureTree.cpp
     test_AssemblyDocument.cpp
     test_DocumentManager.cpp
+    test_BillOfMaterials.cpp
 )
 
 target_link_libraries(hz_document_tests
