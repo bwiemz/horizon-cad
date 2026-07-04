@@ -56,6 +56,14 @@ public:
     /// right (right of front), and isometric (upper-right), placed without
     /// overlap and separated by @p gap.
     static Drawing standardViews(const topo::Solid& solid, double gap = 10.0);
+
+    /// A detail view: crop @p source's geometry to the circle (@p center,
+    /// @p radius) in view space and enlarge it by @p scale about that center.
+    /// Edges crossing the circle are clipped to it; each kept edge preserves its
+    /// visibility and source TopologyID. The returned view carries @p source's
+    /// projection and its own recomputed bounds.
+    static DrawingView detailView(const DrawingView& source, const math::Vec2& center,
+                                  double radius, double scale);
 };
 
 }  // namespace hz::model
