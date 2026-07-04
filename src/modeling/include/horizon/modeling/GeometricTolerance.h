@@ -23,6 +23,14 @@ enum class GeometricCharacteristic {
     Profile,
 };
 
+/// Material-condition modifier for a tolerance zone (ASME Y14.5).
+/// RFS (regardless of feature size) is the default and prints no symbol.
+enum class MaterialCondition {
+    None,  ///< regardless of feature size (RFS) — no modifier symbol
+    MMC,   ///< maximum material condition — Ⓜ
+    LMC,   ///< least material condition — Ⓛ
+};
+
 /// A GD&T feature control frame: a geometric tolerance applied to a model
 /// feature (identified by TopologyID) with an optional list of datum references.
 ///
@@ -31,9 +39,21 @@ enum class GeometricCharacteristic {
 /// changes — the associative basis for GD&T on regenerated drawings.
 struct FeatureControlFrame {
     GeometricCharacteristic characteristic = GeometricCharacteristic::Position;
-    double tolerance = 0.0;              ///< tolerance-zone size
-    std::vector<std::string> datumRefs;  ///< datum letters, e.g. {"A", "B", "C"}
-    topo::TopologyID feature;            ///< the toleranced model feature
+    double tolerance = 0.0;                                ///< tolerance-zone size
+    MaterialCondition modifier = MaterialCondition::None;  ///< applied to the zone
+    std::vector<std::string> datumRefs;                    ///< datum letters, e.g. {"A", "B", "C"}
+    topo::TopologyID feature;                              ///< the toleranced model feature
+};
+
+/// A datum feature: the physical model feature (identified by TopologyID) that
+/// establishes a datum, labelled with a single reference letter ("A", "B", …).
+///
+/// A drawing renders it as a datum feature symbol ([A]) attached to the feature.
+/// Anchoring to a TopologyID keeps the datum bound to the same feature across
+/// rebuilds, matching the associative behaviour of dimensions and frames.
+struct DatumFeature {
+    std::string label;         ///< datum reference letter, e.g. "A"
+    topo::TopologyID feature;  ///< the model feature establishing the datum
 };
 
 /// GD&T symbol/formatting utilities.
@@ -50,8 +70,15 @@ public:
     /// profile do not; orientation, location, and runout do.
     static bool requiresDatum(GeometricCharacteristic c);
 
-    /// A compact one-line frame, e.g. "⊥ 0.05 | A | B" — the symbol, the
-    /// tolerance, then each datum reference separated by " | ".
+    /// The material-condition modifier symbol (UTF-8), or "" for None (RFS).
+    static std::string modifierSymbol(MaterialCondition m);
+
+    /// A datum feature symbol, the boxed reference letter, e.g. "[A]".
+    static std::string datumSymbol(const DatumFeature& d);
+
+    /// A compact one-line frame, e.g. "⟂ 0.05 Ⓜ | A | B" — the characteristic
+    /// symbol, the tolerance, an optional material-condition modifier, then each
+    /// datum reference separated by " | ".
     static std::string format(const FeatureControlFrame& fcf);
 };
 

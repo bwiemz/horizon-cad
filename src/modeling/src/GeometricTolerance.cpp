@@ -87,9 +87,29 @@ bool Gdt::requiresDatum(GeometricCharacteristic c) {
     return false;
 }
 
+std::string Gdt::modifierSymbol(MaterialCondition m) {
+    switch (m) {
+        case MaterialCondition::None:
+            return "";  // regardless of feature size — no symbol
+        case MaterialCondition::MMC:
+            return "Ⓜ";  // maximum material condition
+        case MaterialCondition::LMC:
+            return "Ⓛ";  // least material condition
+    }
+    return "";
+}
+
+std::string Gdt::datumSymbol(const DatumFeature& d) {
+    return "[" + d.label + "]";
+}
+
 std::string Gdt::format(const FeatureControlFrame& fcf) {
     std::ostringstream oss;
     oss << symbol(fcf.characteristic) << ' ' << fcf.tolerance;
+    const std::string mod = modifierSymbol(fcf.modifier);
+    if (!mod.empty()) {
+        oss << ' ' << mod;
+    }
     for (const std::string& datum : fcf.datumRefs) {
         oss << " | " << datum;
     }
