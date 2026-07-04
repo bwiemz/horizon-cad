@@ -23,6 +23,7 @@ add_library(hz_modeling STATIC
     src/Measure.cpp
     src/DrawingProjection.cpp
     src/DrawingView.cpp
+    src/DrawingDimension.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
