@@ -22,6 +22,7 @@ add_executable(hz_modeling_tests
     test_Measure.cpp
     test_DrawingProjection.cpp
     test_DrawingView.cpp
+    test_DrawingDimension.cpp
 )
 
 target_link_libraries(hz_modeling_tests
