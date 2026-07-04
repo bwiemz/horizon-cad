@@ -51,28 +51,13 @@ struct ElementGeom {
 
 ElementGeom computeGeom(const TetMesh& mesh, const Tet4& element) {
     ElementGeom g;
-    const Eigen::Matrix<double, 4, 3> p = nodePositions(mesh, element);
-
-    // Shape-function coefficients: N_i = a_i + b_i x + c_i y + d_i z with
-    // N_i(p_j) = delta_ij. Stacking [1, x, y, z] over the four nodes gives C, and
-    // the coefficient columns are C^{-1}. Rows 1..3 of C^{-1} are the (constant)
-    // spatial gradients of the shape functions.
-    Eigen::Matrix4d C;
-    C.col(0).setOnes();
-    C.block<4, 3>(0, 1) = p;
-
-    const double detC = C.determinant();
-    g.volume = std::abs(detC) / 6.0;
-    if (g.volume < 1e-18) return g;  // degenerate element
-
-    const Eigen::Matrix4d Cinv = C.inverse();
-    // grad(3x4): column i holds (dN_i/dx, dN_i/dy, dN_i/dz).
-    const Eigen::Matrix<double, 3, 4> grad = Cinv.block<3, 4>(1, 0);
+    std::array<math::Vec3, 4> grad;
+    if (!tetShapeGradients(mesh, element, grad, g.volume)) return g;
 
     for (int i = 0; i < 4; ++i) {
-        const double bx = grad(0, i);
-        const double by = grad(1, i);
-        const double bz = grad(2, i);
+        const double bx = grad[i].x;
+        const double by = grad[i].y;
+        const double bz = grad[i].z;
         const int c = 3 * i;
         g.B(0, c + 0) = bx;
         g.B(1, c + 1) = by;
@@ -97,6 +82,32 @@ double tetVolume(const TetMesh& mesh, const Tet4& element) {
     J.row(1) = p.row(2) - p.row(0);
     J.row(2) = p.row(3) - p.row(0);
     return J.determinant() / 6.0;
+}
+
+bool tetShapeGradients(const TetMesh& mesh, const Tet4& element,
+                       std::array<math::Vec3, 4>& gradients, double& volume) {
+    const Eigen::Matrix<double, 4, 3> p = nodePositions(mesh, element);
+
+    // Shape-function coefficients: N_i = a_i + b_i x + c_i y + d_i z with
+    // N_i(p_j) = delta_ij. Stacking [1, x, y, z] over the four nodes gives C, and
+    // the coefficient columns are C^{-1}. Rows 1..3 of C^{-1} are the (constant)
+    // spatial gradients of the shape functions.
+    Eigen::Matrix4d C;
+    C.col(0).setOnes();
+    C.block<4, 3>(0, 1) = p;
+
+    const double detC = C.determinant();
+    const double vol = std::abs(detC) / 6.0;
+    if (vol < 1e-18) return false;  // degenerate element
+
+    const Eigen::Matrix4d Cinv = C.inverse();
+    // grad(3x4): column i holds (dN_i/dx, dN_i/dy, dN_i/dz).
+    const Eigen::Matrix<double, 3, 4> grad = Cinv.block<3, 4>(1, 0);
+    for (int i = 0; i < 4; ++i) {
+        gradients[i] = math::Vec3(grad(0, i), grad(1, i), grad(2, i));
+    }
+    volume = vol;
+    return true;
 }
 
 std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& element,

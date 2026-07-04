@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "horizon/math/Vec3.h"
 #include "horizon/simulation/Material.h"
 #include "horizon/simulation/TetMesh.h"
 
@@ -10,6 +11,13 @@ namespace hz::sim {
 /// Signed volume of a linear tetrahedron: det([p1-p0, p2-p0, p3-p0]) / 6.
 /// Positive for a counter-clockwise (canonically oriented) element.
 double tetVolume(const TetMesh& mesh, const Tet4& element);
+
+/// The four (constant) shape-function spatial gradients of a linear tetrahedron
+/// and its absolute volume. Returns false for a degenerate (near-zero-volume)
+/// element, leaving @p gradients and @p volume untouched. This is the shared
+/// geometric core of both the structural and thermal element operators.
+bool tetShapeGradients(const TetMesh& mesh, const Tet4& element,
+                       std::array<math::Vec3, 4>& gradients, double& volume);
 
 /// The 12x12 stiffness matrix of a constant-strain linear tetrahedron, in
 /// row-major order. DOF order is [n0x, n0y, n0z, n1x, n1y, n1z, ...] following
