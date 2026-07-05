@@ -20,6 +20,7 @@ target_link_libraries(hz_scripting
     PRIVATE
         Horizon::Drafting
         Horizon::FileIO
+        Horizon::Simulation
 )
 
 add_library(Horizon::Scripting ALIAS hz_scripting)

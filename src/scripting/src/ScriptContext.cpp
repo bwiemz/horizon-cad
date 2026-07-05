@@ -1,6 +1,7 @@
 #include "horizon/scripting/ScriptContext.h"
 
 #include <memory>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
@@ -8,6 +9,9 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/simulation/LinearStaticSolver.h"
+#include "horizon/simulation/Material.h"
+#include "horizon/simulation/SolidMesher.h"
 
 namespace hz::script {
 
@@ -104,6 +108,43 @@ model::MassProperties ScriptContext::massProperties(double density) const {
     if (!solid) return {};
     const model::Material material{"custom", density};
     return model::MassPropertiesCalculator::compute(*solid, &material);
+}
+
+ScriptContext::StaticAnalysisResult ScriptContext::staticAnalysis(double force,
+                                                                  double youngsModulus,
+                                                                  double poissonRatio, int axis,
+                                                                  int resolution) const {
+    StaticAnalysisResult out;
+    const auto* solid = m_document.solid();
+    if (!solid || axis < 0 || axis > 2 || resolution < 1) return out;
+
+    sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
+    if (mesh.elements.empty()) return out;
+
+    const sim::Aabb box = sim::solidAabb(*solid);
+    const double lo = axis == 0 ? box.min.x : (axis == 1 ? box.min.y : box.min.z);
+    const double hi = axis == 0 ? box.max.x : (axis == 1 ? box.max.y : box.max.z);
+
+    const auto fixed = sim::nodesOnPlane(mesh, axis, lo);
+    const auto loaded = sim::nodesOnPlane(mesh, axis, hi);
+    if (fixed.empty() || loaded.empty()) return out;
+
+    sim::ElasticMaterial mat;
+    mat.youngsModulus = youngsModulus;
+    mat.poissonRatio = poissonRatio;
+    mat.density = 1.0;
+    if (!mat.isValid()) return out;
+
+    const double per = force / static_cast<double>(loaded.size());
+    const Vec3 dir(axis == 0 ? per : 0.0, axis == 1 ? per : 0.0, axis == 2 ? per : 0.0);
+    std::vector<sim::NodalLoad> loads;
+    for (int n : loaded) loads.push_back(sim::NodalLoad{n, dir});
+
+    const sim::StaticResult r = sim::LinearStaticSolver::solve(mesh, mat, fixed, loads);
+    out.converged = r.converged;
+    out.maxDisplacement = r.maxDisplacementMagnitude;
+    out.maxVonMises = r.maxVonMises;
+    return out;
 }
 
 bool ScriptContext::rebuild() {

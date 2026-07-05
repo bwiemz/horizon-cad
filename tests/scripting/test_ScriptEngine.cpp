@@ -246,3 +246,43 @@ TEST(ScriptEngineTest, SheetMetalDevelopedLength) {
     ASSERT_TRUE(res.ok) << res.error;
     EXPECT_EQ(res.output, "True\n");
 }
+
+// ---------------------------------------------------------------------------
+// horizon API — FEA static analysis on the document's solid
+// ---------------------------------------------------------------------------
+
+TEST(ScriptEngineTest, StaticAnalysisOnSolid) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    // A steel bar (10 x 1 x 1) pulled axially: delta = FL/(A E) is recovered as
+    // the peak displacement, and the stress is non-zero.
+    ScriptEngine engine;
+    const std::string script =
+        "doc.add_box(10.0, 1.0, 1.0)\n"
+        "doc.rebuild()\n"
+        "E = 200e9\n"
+        "F = 1.0e6\n"
+        "r = doc.static_analysis(force=F, youngs_modulus=E, poisson_ratio=0.3,\n"
+        "                        axis=0, resolution=6)\n"
+        "expected = F * 10.0 / (1.0 * E)\n"
+        "print(r.converged)\n"
+        "print(abs(r.max_displacement - expected) < 0.1 * expected)\n"
+        "print(r.max_von_mises > 0.0)\n";
+    auto res = engine.run(script, &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\nTrue\nTrue\n");
+}
+
+TEST(ScriptEngineTest, StaticAnalysisWithoutSolidDoesNotConverge) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(
+        "r = doc.static_analysis(force=1.0, youngs_modulus=200e9)\nprint(r.converged)\n", &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "False\n");
+}

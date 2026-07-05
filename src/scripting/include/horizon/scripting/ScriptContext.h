@@ -60,6 +60,20 @@ public:
     /// at the given density. `valid` is false when there is no solid.
     model::MassProperties massProperties(double density = 1.0) const;
 
+    /// Summary result of a linear-static finite-element analysis.
+    struct StaticAnalysisResult {
+        bool converged = false;        ///< false if there is no solid or the solve fails
+        double maxDisplacement = 0.0;  ///< peak nodal displacement magnitude
+        double maxVonMises = 0.0;      ///< peak element von Mises stress
+    };
+
+    /// Run a simple axial linear-static analysis on the current solid: mesh its
+    /// bounding box (@p resolution subdivisions per side), fix the minimum face
+    /// along @p axis (0=x, 1=y, 2=z) and apply a total @p force along +axis on
+    /// the maximum face, for a material with @p youngsModulus and @p poissonRatio.
+    StaticAnalysisResult staticAnalysis(double force, double youngsModulus, double poissonRatio,
+                                        int axis, int resolution) const;
+
     // --- Drawings ----------------------------------------------------------
     /// Generate the standard four-view drawing (front/top/right/isometric,
     /// hidden lines removed) of the current solid and write it to a DXF file.
