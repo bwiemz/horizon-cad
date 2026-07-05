@@ -1,5 +1,6 @@
 add_library(hz_pdm STATIC
     src/RevisionArchive.cpp
+    src/SemanticDiff.cpp
 )
 
 target_include_directories(hz_pdm
