@@ -4,6 +4,7 @@ add_library(hz_simulation STATIC
     src/BoxMesher.cpp
     src/LinearStaticSolver.cpp
     src/HeatTransfer.cpp
+    src/SolidMesher.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)
@@ -18,6 +19,7 @@ target_link_libraries(hz_simulation
     PUBLIC
         Horizon::Math
     PRIVATE
+        Horizon::Topology
         Eigen3::Eigen
 )
 
