@@ -1,5 +1,6 @@
 add_executable(hz_kinematics_tests
     test_ForwardKinematics.cpp
+    test_InverseKinematics.cpp
 )
 
 target_link_libraries(hz_kinematics_tests
