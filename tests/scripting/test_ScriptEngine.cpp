@@ -212,3 +212,37 @@ TEST(ScriptEngineTest, ScriptExportsDrawingDxf) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// horizon API module — sheet metal
+// ---------------------------------------------------------------------------
+
+TEST(ScriptEngineTest, SheetMetalBendAllowance) {
+    ScriptEngine engine;
+    // Compare against the analytical value in Python to avoid float-format
+    // fragility, printing a single boolean.
+    const std::string script =
+        "import math\n"
+        "p = horizon.SheetMetalParams(thickness=2.0, bend_radius=3.0, k_factor=0.44)\n"
+        "ba = horizon.bend_allowance(math.pi / 2, p)\n"
+        "expected = (math.pi / 2) * (3.0 + 0.44 * 2.0)\n"
+        "print(abs(ba - expected) < 1e-9 and p.is_valid())\n";
+    auto res = engine.run(script);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\n");
+}
+
+TEST(ScriptEngineTest, SheetMetalDevelopedLength) {
+    ScriptEngine engine;
+    const std::string script =
+        "import math\n"
+        "p = horizon.SheetMetalParams(1.0, 1.0, 0.5)\n"
+        "strip = horizon.SheetMetalStrip(segments=[10.0, 10.0, 10.0],\n"
+        "                                bend_angles=[math.pi/2, math.pi/2])\n"
+        "length = horizon.developed_length(strip, p)\n"
+        "expected = 30.0 + 2.0 * (math.pi / 2) * 1.5\n"
+        "print(abs(length - expected) < 1e-9)\n";
+    auto res = engine.run(script);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\n");
+}

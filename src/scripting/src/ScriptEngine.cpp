@@ -9,6 +9,7 @@
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/ReferenceGeometry.h"
+#include "horizon/modeling/SheetMetal.h"
 #include "horizon/scripting/ScriptContext.h"
 
 namespace py = pybind11;
@@ -86,6 +87,41 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def_readonly("mass", &hz::model::MassProperties::mass)
         .def_readonly("density", &hz::model::MassProperties::density)
         .def_readonly("valid", &hz::model::MassProperties::valid);
+
+    // Sheet-metal bend allowance / flat-pattern development.
+    using hz::model::SheetMetalParams;
+    using hz::model::SheetMetalStrip;
+
+    py::class_<SheetMetalParams>(m, "SheetMetalParams")
+        .def(py::init<>())
+        .def(py::init([](double t, double r, double k) {
+                 SheetMetalParams p;
+                 p.thickness = t;
+                 p.bendRadius = r;
+                 p.kFactor = k;
+                 return p;
+             }),
+             py::arg("thickness"), py::arg("bend_radius"), py::arg("k_factor") = 0.44)
+        .def_readwrite("thickness", &SheetMetalParams::thickness)
+        .def_readwrite("bend_radius", &SheetMetalParams::bendRadius)
+        .def_readwrite("k_factor", &SheetMetalParams::kFactor)
+        .def("is_valid", &SheetMetalParams::isValid);
+
+    py::class_<SheetMetalStrip>(m, "SheetMetalStrip")
+        .def(py::init<>())
+        .def(py::init([](std::vector<double> segments, std::vector<double> bendAngles) {
+                 SheetMetalStrip s;
+                 s.segments = std::move(segments);
+                 s.bendAngles = std::move(bendAngles);
+                 return s;
+             }),
+             py::arg("segments"), py::arg("bend_angles"))
+        .def_readwrite("segments", &SheetMetalStrip::segments)
+        .def_readwrite("bend_angles", &SheetMetalStrip::bendAngles);
+
+    m.def("bend_allowance", &hz::model::bendAllowance, py::arg("angle"), py::arg("params"));
+    m.def("bend_deduction", &hz::model::bendDeduction, py::arg("angle"), py::arg("params"));
+    m.def("developed_length", &hz::model::developedLength, py::arg("strip"), py::arg("params"));
 
     // Reference-geometry constructions. Fallible ones (std::optional) return
     // None on degenerate input.
