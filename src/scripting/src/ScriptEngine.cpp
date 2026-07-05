@@ -138,6 +138,11 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     m.def("point_centroid", &refgeo::pointCentroid, py::arg("points"));
     m.def("point_line_intersection", &refgeo::pointLineIntersection, py::arg("a"), py::arg("b"));
 
+    py::class_<ScriptContext::StaticAnalysisResult>(m, "StaticAnalysisResult")
+        .def_readonly("converged", &ScriptContext::StaticAnalysisResult::converged)
+        .def_readonly("max_displacement", &ScriptContext::StaticAnalysisResult::maxDisplacement)
+        .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises);
+
     py::class_<ScriptContext>(m, "Document")
         .def("feature_count", &ScriptContext::featureCount)
         .def("sketch_count", &ScriptContext::sketchCount)
@@ -164,6 +169,9 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
              py::arg("direction"))
         .def("add_datum_point", &ScriptContext::addDatumPoint, py::arg("position"))
         .def("mass_properties", &ScriptContext::massProperties, py::arg("density") = 1.0)
+        .def("static_analysis", &ScriptContext::staticAnalysis, py::arg("force"),
+             py::arg("youngs_modulus"), py::arg("poisson_ratio") = 0.3, py::arg("axis") = 0,
+             py::arg("resolution") = 6)
         .def("export_drawing_dxf", &ScriptContext::exportDrawingDxf, py::arg("path"))
         .def("rebuild", &ScriptContext::rebuild);
 }
