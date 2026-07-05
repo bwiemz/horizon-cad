@@ -173,8 +173,10 @@ Horizon is under active development. Completed and planned work:
 | 56 | Done | Era 3 — Sheets & title blocks: ISO A0-A4 / ANSI A-D paper sizes, ISO 128 line weights, parametric title block, border + populated title-block panel framed into DXF export |
 | 57 | Done | Era 3 — FEA (linear static): in-house Eigen solver — constant-strain tetrahedra, structured box mesher, global sparse assembly + fixed-DOF BCs + nodal loads, displacement/von-Mises recovery; validated vs analytical bar-in-tension |
 | 58 | Done | Era 3 — Thermal FEA: steady-state heat conduction on the same tet mesh (element Laplacian, non-zero Dirichlet BCs, nodal sources), nodal temperatures + element flux; validated vs analytical 1D profile |
+| 59 | Done | Era 3 — PDM local version control: file-system `.hzarchive` revision store (commit/history/checkout, stable FNV-1a content hash, unchanged-content no-op) + semantic JSON diff of feature tree/parameters (added/removed/modified with JSON-pointer paths) |
+| 62 | Done | Era 3 — Sheet metal (core): bend allowance / K-factor, bend deduction, and flat-pattern developed-length unfold; validated vs analytical formulas |
 | 50-51 | Planned | Era 2 — STEP AP242 (via OpenCASCADE), native binary format |
-| 59-64 | Planned | Era 3 — PDM version control, advanced fillet, sheet metal, Python API phase 2; drawing section views & radial dimensions |
+| 60-64 | Planned | Era 3 — PDM multi-user vault, advanced fillet, sheet-metal 3D features, Python API phase 2; drawing section views & radial dimensions |
 | 65-80 | Planned | Era 4 — Vulkan backend, PBR/ray tracing, cloud sync, CAM, 1.0 release |
 
 The full multi-year design is in
