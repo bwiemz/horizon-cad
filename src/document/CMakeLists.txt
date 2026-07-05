@@ -11,6 +11,7 @@ add_library(hz_document STATIC
     src/AssemblyDocument.cpp
     src/DocumentManager.cpp
     src/BillOfMaterials.cpp
+    src/ConfigurationTable.cpp
 )
 
 target_include_directories(hz_document
