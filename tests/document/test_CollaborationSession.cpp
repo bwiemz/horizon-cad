@@ -142,3 +142,57 @@ TEST(CollaborationSessionTest, FromJsonRejectsGarbage) {
     EXPECT_FALSE(CollaborationSession::fromJson("{}", out));
     EXPECT_FALSE(CollaborationSession::fromJson("[1,2,3]", out));
 }
+
+// -- Adversarial-review regressions ------------------------------------------
+
+TEST(CollaborationSessionTest, FromJsonRejectsOverlappingTokenCoverage) {
+    // A hostile/corrupt snapshot granting two users overlapping coverage
+    // must not parse — the single-owner invariant is re-validated.
+    const std::string payload = R"({
+        "session": "s",
+        "participants": [{"userId": "alice"}, {"userId": "bob"}],
+        "tokens": [
+            {"featureId": 1, "covered": [1, 2], "owner": "alice", "acquiredAt": ""},
+            {"featureId": 2, "covered": [2, 3], "owner": "bob", "acquiredAt": ""}
+        ]
+    })";
+    CollaborationSession out;
+    EXPECT_FALSE(CollaborationSession::fromJson(payload, out));
+}
+
+TEST(CollaborationSessionTest, FromJsonRejectsTokensOfUnknownOwners) {
+    // A token owned by a user missing from the participant list would be a
+    // permanently stuck lock (nobody can release it).
+    const std::string payload = R"({
+        "session": "s",
+        "participants": [{"userId": "alice"}],
+        "tokens": [{"featureId": 1, "covered": [1], "owner": "ghost", "acquiredAt": ""}]
+    })";
+    CollaborationSession out;
+    EXPECT_FALSE(CollaborationSession::fromJson(payload, out));
+}
+
+TEST(CollaborationSessionTest, FromJsonDropsPresenceOfUnknownUsers) {
+    const std::string payload = R"({
+        "session": "s",
+        "participants": [{"userId": "alice"}],
+        "presence": {"alice": {"x": 1.0, "y": 2.0, "selectedFeature": 0},
+                     "ghost": {"x": 9.0, "y": 9.0, "selectedFeature": 7}}
+    })";
+    CollaborationSession out;
+    ASSERT_TRUE(CollaborationSession::fromJson(payload, out));
+    EXPECT_EQ(out.presence().size(), 1u);
+    EXPECT_EQ(out.presence().count("ghost"), 0u);
+}
+
+TEST(CollaborationSessionTest, FromJsonPreservesAcquiredAtStamps) {
+    CollaborationSession session("s");
+    session.join(user("alice"));
+    session.acquireToken("alice", 10);
+    const std::string original = session.tokens().front().acquiredAt;
+
+    CollaborationSession restored;
+    ASSERT_TRUE(CollaborationSession::fromJson(session.toJson(), restored));
+    ASSERT_EQ(restored.tokens().size(), 1u);
+    EXPECT_EQ(restored.tokens().front().acquiredAt, original);
+}

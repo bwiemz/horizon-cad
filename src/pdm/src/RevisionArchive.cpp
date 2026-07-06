@@ -102,17 +102,26 @@ bool RevisionArchive::writeManifest() const {
                      {"message", r.message},
                      {"hash", r.contentHash}});
     }
-    return writeFile(manifestPath(), j.dump(2));
+    // Write-temp-then-rename: a crash mid-write must not leave a truncated
+    // manifest (which load() would treat as an empty archive).
+    const std::string tmp = manifestPath() + ".tmp";
+    if (!writeFile(tmp, j.dump(2))) return false;
+    std::error_code ec;
+    fs::rename(tmp, manifestPath(), ec);
+    return !ec;
 }
 
 int RevisionArchive::commit(const std::string& content, const std::string& author,
                             const std::string& message) {
-    // No-op if the content is byte-identical to the current head.
+    // No-op if the content is byte-identical to the current head. When the
+    // head blob cannot be read (partially synced shared folder, corrupt
+    // store) REFUSE the commit instead of blindly appending — appending
+    // without the dedupe check can create duplicate consecutive revisions,
+    // which replication treats as corruption.
     if (!m_revisions.empty()) {
         std::string head;
-        if (contentAt(latestIndex(), head) && head == content) {
-            return latestIndex();
-        }
+        if (!contentAt(latestIndex(), head)) return -1;
+        if (head == content) return latestIndex();
     }
 
     std::error_code ec;

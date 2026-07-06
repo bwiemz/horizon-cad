@@ -12,6 +12,19 @@ namespace {
 
 constexpr char kArchiveSuffix[] = ".hzarchive";
 
+/// docIds become filesystem path components: restrict them to a safe
+/// character set so endpoint- or caller-supplied ids cannot escape the
+/// vault root ("..", separators, drive letters).
+bool isValidDocId(const std::string& docId) {
+    if (docId.empty() || docId == "." || docId == "..") return false;
+    for (const char c : docId) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
 /// docIds of `<docId>.hzarchive` directories under @p root.
 std::vector<std::string> listArchives(const std::string& root) {
     std::vector<std::string> ids;
@@ -100,6 +113,11 @@ SyncReport SyncEngine::syncDocument(const std::string& docId) {
 }
 
 void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
+    if (!isValidDocId(docId)) {
+        report.conflicts.push_back("invalid:" + docId);
+        return;
+    }
+
     RevisionArchive local((fs::path(m_localRoot) / (docId + kArchiveSuffix)).string());
     local.load();
     const int localCount = local.latestIndex() + 1;
@@ -130,6 +148,15 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
             return;
         }
         for (int i = remoteCount; i < localCount; ++i) {
+            // Guard against a concurrent pusher: the remote must still be
+            // exactly where we expect before each append. This narrows (it
+            // cannot fully close) the shared-folder race window — check-out
+            // locking via the VaultManifest is the intended way to serialize
+            // multi-machine writes to one document.
+            if (m_endpoint.revisionCount(docId) != i) {
+                report.conflicts.push_back("raced:" + docId);
+                return;
+            }
             std::string content;
             if (!local.contentAt(i, content) ||
                 !m_endpoint.pushRevision(docId, local.history()[static_cast<size_t>(i)], content)) {
@@ -144,9 +171,28 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
         for (int i = localCount; i < remoteCount; ++i) {
             RevisionInfo info;
             std::string content;
-            if (!m_endpoint.fetchRevision(docId, i, info, content) ||
-                local.commit(content, info.author, info.message) < 0) {
+            if (!m_endpoint.fetchRevision(docId, i, info, content)) {
                 report.ok = false;
+                return;
+            }
+            // A torn/partial remote read must not enter local history:
+            // the fetched bytes have to hash to what the remote manifest
+            // declared.
+            if (RevisionArchive::hashContent(content) != info.contentHash) {
+                report.conflicts.push_back("corrupt:" + docId);
+                return;
+            }
+            if (local.commit(content, info.author, info.message) < 0) {
+                report.ok = false;
+                return;
+            }
+            // RevisionArchive::commit dedupes content identical to the head:
+            // a remote history containing consecutive duplicates (external
+            // tooling, partially synced shares) would silently misalign every
+            // following index and permanently deadlock the document in
+            // conflict. Detect the skip and stop cleanly instead.
+            if (local.latestIndex() != i) {
+                report.conflicts.push_back("corrupt:" + docId);
                 return;
             }
             ++report.fetched;

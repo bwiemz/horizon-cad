@@ -166,6 +166,10 @@ bool CollaborationSession::fromJson(const std::string& text, CollaborationSessio
         return false;
     }
 
+    // Rebuild through the mutating API so every session invariant is
+    // re-validated — a snapshot is transport payload and must not be trusted
+    // to encode overlapping token coverage, tokens owned by non-participants,
+    // or presence for unknown users.
     CollaborationSession session(root["session"].get<std::string>());
     try {
         for (const auto& m : root.value("participants", json::array())) {
@@ -173,17 +177,22 @@ bool CollaborationSession::fromJson(const std::string& text, CollaborationSessio
             p.userId = m.value("userId", "");
             p.displayName = m.value("displayName", "");
             p.colorRgb = m.value("colorRgb", 0u);
-            if (!p.userId.empty()) session.m_participants.push_back(std::move(p));
+            if (!p.userId.empty() && !session.join(p)) return false;  // duplicate userId
         }
         for (const auto& t : root.value("tokens", json::array())) {
-            EditToken token;
-            token.featureId = t.value("featureId", uint64_t{0});
-            token.covered = t.value("covered", std::vector<uint64_t>{});
-            token.owner = t.value("owner", "");
-            token.acquiredAt = t.value("acquiredAt", "");
-            if (token.featureId != 0 && !token.owner.empty()) {
-                session.m_tokens.push_back(std::move(token));
+            const auto featureId = t.value("featureId", uint64_t{0});
+            const auto covered = t.value("covered", std::vector<uint64_t>{});
+            const std::string owner = t.value("owner", "");
+            const std::string acquiredAt = t.value("acquiredAt", "");
+            if (featureId == 0 || owner.empty()) return false;
+
+            std::vector<uint64_t> downstream;
+            for (uint64_t id : covered) {
+                if (id != featureId) downstream.push_back(id);
             }
+            // Rejects unknown owners and any coverage overlap between tokens.
+            if (!session.acquireToken(owner, featureId, downstream)) return false;
+            session.m_tokens.back().acquiredAt = acquiredAt;  // preserve original stamp
         }
         if (root.contains("presence") && root["presence"].is_object()) {
             for (const auto& [userId, p] : root["presence"].items()) {
@@ -191,7 +200,7 @@ bool CollaborationSession::fromJson(const std::string& text, CollaborationSessio
                 presence.x = p.value("x", 0.0);
                 presence.y = p.value("y", 0.0);
                 presence.selectedFeature = p.value("selectedFeature", uint64_t{0});
-                session.m_presence[userId] = presence;
+                session.updatePresence(userId, presence);  // drops non-members
             }
         }
     } catch (...) {
