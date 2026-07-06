@@ -1,5 +1,7 @@
 add_executable(hz_render_tests
     test_RenderBackend.cpp
+    test_InstanceBatcher.cpp
+    test_FrustumCuller.cpp
     test_OpenGLBackend.cpp
     test_VulkanBackend.cpp
     test_GpuTessellator.cpp

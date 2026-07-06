@@ -5,6 +5,8 @@ add_library(hz_render STATIC
     src/GLRenderer.cpp
     src/Grid.cpp
     src/SceneGraph.cpp
+    src/InstanceBatcher.cpp
+    src/FrustumCuller.cpp
     src/SelectionManager.cpp
     src/OpenGLBackend.cpp
     src/MaterialLibrary.cpp
