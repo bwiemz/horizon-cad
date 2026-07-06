@@ -67,5 +67,13 @@
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
+    <message>
+        <source>0 selected</source>
+        <translation>0 seleccionado</translation>
+    </message>
+    <message>
+        <source>1 selected</source>
+        <translation>1 seleccionado</translation>
+    </message>
 </context>
 </TS>

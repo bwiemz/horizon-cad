@@ -4,6 +4,12 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <string>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -162,7 +168,16 @@ TEST(GltfExportTest, MultipleItemsShareOneBuffer) {
 
 TEST(GltfExportTest, SaveSolidWritesFile) {
     auto box = PrimitiveFactory::makeBox(2.0, 2.0, 2.0);
-    const auto path = std::filesystem::temp_directory_path() / "hz_gltf_test.glb";
+    // Unique per process so parallel `ctest -j` runs never clobber each other.
+    const auto path = std::filesystem::temp_directory_path() / ("hz_gltf_test_" +
+                                                                std::to_string(
+#ifdef _WIN32
+                                                                    ::GetCurrentProcessId()
+#else
+                                                                    ::getpid()
+#endif
+                                                                        ) +
+                                                                ".glb");
     ASSERT_TRUE(
         GltfExport::saveSolid(path.string(), *box, hz::render::MaterialLibrary::find("Wood")));
     EXPECT_GT(std::filesystem::file_size(path), 500u);
@@ -174,4 +189,34 @@ TEST(GltfExportTest, EmptyInputFails) {
     GltfExport::Item empty;
     empty.name = "nothing";
     EXPECT_TRUE(GltfExport::toGlb({empty}).empty());
+}
+
+TEST(GltfExportTest, DegenerateMeshesAreSkippedNotEmittedInvalid) {
+    // Partial vertex (2 floats): would otherwise emit a count-0 accessor with
+    // sentinel FLT_MAX min/max.
+    GltfExport::Item partial;
+    partial.name = "partial";
+    partial.mesh.positions = {0.0f, 1.0f};
+    partial.mesh.indices = {0, 0, 0};
+    EXPECT_TRUE(GltfExport::toGlb({partial}).empty());
+
+    // Index out of range: 3 vertices but an index of 5.
+    GltfExport::Item oob;
+    oob.name = "oob";
+    oob.mesh.positions = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+    oob.mesh.indices = {0, 1, 5};
+    EXPECT_TRUE(GltfExport::toGlb({oob}).empty());
+}
+
+TEST(GltfExportTest, NonUtf8NameDoesNotThrow) {
+    // An item name with invalid UTF-8 must not make json::dump() throw past
+    // the export boundary; it should still produce a valid GLB.
+    GltfExport::Item item;
+    item.name = std::string("bad\xff\xfename");
+    item.mesh.positions = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+    item.mesh.normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+    item.mesh.indices = {0, 1, 2};
+    std::vector<uint8_t> glb;
+    EXPECT_NO_THROW(glb = GltfExport::toGlb({item}));
+    EXPECT_FALSE(glb.empty());
 }

@@ -26,9 +26,16 @@ bool stripIsFoldable(const SheetMetalStrip& strip, const SheetMetalParams& param
     for (const double length : strip.segments) {
         if (length <= 0.0) return false;
     }
+    bool hasBend = false;
     for (const double angle : strip.bendAngles) {
         if (std::abs(angle) >= math::kPi) return false;
+        if (angle != 0.0) hasBend = true;
     }
+    // A real fold needs a positive inside radius; a zero-radius bend would
+    // collapse the arc polyline to coincident points (zero-length edges and
+    // zero-normal faces). SheetMetalParams allows radius 0 for the flat-pattern
+    // limit, so gate it here rather than in the shared params validator.
+    if (hasBend && params.bendRadius <= 1e-9) return false;
     return true;
 }
 
@@ -107,7 +114,13 @@ std::unique_ptr<topo::Solid> SheetMetalSolid::fold(const SheetMetalStrip& strip,
 std::vector<Vec2> SheetMetalSolid::flatPattern(const SheetMetalStrip& strip,
                                                const SheetMetalParams& params, double width) {
     if (width <= 0.0 || !stripIsFoldable(strip, params)) return {};
-    const double length = developedLength(strip, params);
+    // developedLength adds a bend allowance only for positive angles; a
+    // downward (negative) bend develops the same flat length as an upward one
+    // of the same magnitude, so pass the magnitudes to avoid an undersized
+    // blank that omits the down-bend allowances.
+    SheetMetalStrip magnitudes = strip;
+    for (double& angle : magnitudes.bendAngles) angle = std::abs(angle);
+    const double length = developedLength(magnitudes, params);
     if (length <= 0.0) return {};
     return {{0.0, 0.0}, {length, 0.0}, {length, width}, {0.0, width}};
 }

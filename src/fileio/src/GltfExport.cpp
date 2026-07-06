@@ -60,10 +60,25 @@ std::vector<uint8_t> GltfExport::toGlb(const std::vector<Item>& items) {
     bool anyTriangles = false;
     for (const Item& item : items) {
         const render::MeshData& mesh = item.mesh;
-        if (mesh.positions.empty() || mesh.indices.size() < 3) continue;
-        anyTriangles = true;
-
+        // Need at least one whole triangle: a multiple-of-3 position buffer with
+        // >= 3 vertices and >= 3 indices. Reject partial vertices (which would
+        // otherwise emit a count-0 accessor with sentinel FLT_MAX min/max).
+        if (mesh.positions.size() < 9 || mesh.positions.size() % 3 != 0 ||
+            mesh.indices.size() < 3) {
+            continue;
+        }
         const size_t vertexCount = mesh.positions.size() / 3;
+
+        // Every index must address a real vertex, or the glTF is invalid.
+        bool indicesInRange = true;
+        for (uint32_t index : mesh.indices) {
+            if (index >= vertexCount) {
+                indicesInRange = false;
+                break;
+            }
+        }
+        if (!indicesInRange) continue;
+        anyTriangles = true;
 
         // Positions accessor needs min/max per the glTF spec.
         float mn[3] = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
@@ -159,16 +174,24 @@ std::vector<uint8_t> GltfExport::toGlb(const std::vector<Item>& items) {
     // -- GLB container ------------------------------------------------------------
     std::vector<uint8_t> jsonChunk;
     {
-        const std::string text = root.dump();
+        // A user-supplied item name with invalid UTF-8 would make dump() throw;
+        // replace bad bytes instead so export never throws past this boundary.
+        const std::string text = root.dump(-1, ' ', false, json::error_handler_t::replace);
         jsonChunk.assign(text.begin(), text.end());
         padTo4(jsonChunk, ' ');  // JSON chunks pad with spaces
     }
     padTo4(bin, 0);
 
+    // GLB stores its total length and both chunk lengths as uint32; refuse to
+    // emit a silently-truncated (corrupt) file for a >= 4 GiB payload.
+    const size_t totalLength = 12 + 8 + jsonChunk.size() + 8 + bin.size();
+    constexpr size_t kU32Max = std::numeric_limits<uint32_t>::max();
+    if (totalLength > kU32Max || jsonChunk.size() > kU32Max || bin.size() > kU32Max) return {};
+
     std::vector<uint8_t> glb;
     appendU32(glb, kGlbMagic);
     appendU32(glb, kGlbVersion);
-    appendU32(glb, static_cast<uint32_t>(12 + 8 + jsonChunk.size() + 8 + bin.size()));
+    appendU32(glb, static_cast<uint32_t>(totalLength));
     appendU32(glb, static_cast<uint32_t>(jsonChunk.size()));
     appendU32(glb, kChunkJson);
     glb.insert(glb.end(), jsonChunk.begin(), jsonChunk.end());

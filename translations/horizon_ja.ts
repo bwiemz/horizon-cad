@@ -67,5 +67,13 @@
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
+    <message>
+        <source>0 selected</source>
+        <translation>0 個選択</translation>
+    </message>
+    <message>
+        <source>1 selected</source>
+        <translation>1 個選択</translation>
+    </message>
 </context>
 </TS>

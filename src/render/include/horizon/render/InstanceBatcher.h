@@ -11,6 +11,12 @@ namespace hz::render {
 /// One instanced draw batch: a shared mesh plus per-instance data. A batch
 /// with N instances renders as a single instanced draw call instead of N
 /// separate ones — the large-assembly path for "1000 identical bolts".
+///
+/// Lifetime: `mesh` and every `nodes` pointer alias data owned by the
+/// SceneGraph that produced the batch. They are valid only until that scene
+/// is mutated (a node added/removed, a mesh replaced). Batches are meant to
+/// be rebuilt from the scene rather than retained across edits; do not hold
+/// them past a scene change.
 struct InstanceBatch {
     const MeshData* mesh = nullptr;       ///< shared geometry (first-seen node's mesh)
     uint64_t contentHash = 0;             ///< identity of the shared geometry

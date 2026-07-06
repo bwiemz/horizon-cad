@@ -125,6 +125,22 @@ TEST(InstanceBatcherTest, HidingAParentHidesItsSubtree) {
     EXPECT_TRUE(InstanceBatcher::batch(scene).empty());
 }
 
+TEST(InstanceBatcherTest, SameSizeDifferentGeometryDoesNotMerge) {
+    // Two meshes with byte-identical buffer *sizes* but different vertex data
+    // must never share a batch — otherwise a hash collision (or the old
+    // size-only guard) would render one mesh with the other's geometry.
+    SceneGraph scene;
+    scene.addNode(makeNode("a", 1.0f));
+    scene.addNode(makeNode("b", 2.0f));  // same 3-vertex layout, different coords
+
+    const auto batches = InstanceBatcher::batch(scene);
+    ASSERT_EQ(batches.size(), 2u);
+    EXPECT_EQ(batches[0].transforms.size(), 1u);
+    EXPECT_EQ(batches[1].transforms.size(), 1u);
+    // Each batch's shared mesh is the geometry it actually represents.
+    EXPECT_NE(batches[0].mesh->positions, batches[1].mesh->positions);
+}
+
 TEST(InstanceBatcherTest, ContentHashIsOrderStable) {
     const auto meshA = makeTriangle(1.0f);
     const auto meshB = makeTriangle(1.0f);

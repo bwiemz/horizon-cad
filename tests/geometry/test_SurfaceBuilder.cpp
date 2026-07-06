@@ -59,6 +59,30 @@ TEST(SurfaceBuilderTest, BoundaryCurvesAreReproducedExactly) {
     }
 }
 
+TEST(SurfaceBuilderTest, LeftAndRightBoundaryCurvesAreReproducedExactly) {
+    // The u = const boundaries (left c1, right c3) must reproduce their input
+    // curves just as the v = const boundaries do — the earlier test only
+    // checked bottom/top.
+    const NurbsCurve bottom = arch({0, 0, 0}, {10, 0, 0}, {0, 0, 3});
+    const NurbsCurve top = arch({0, 6, 1}, {10, 6, 1}, {0, 0, 3});
+    const NurbsCurve leftC = arch({0, 0, 0}, {0, 6, 1}, {0, 0, 1});
+    const NurbsCurve rightC = arch({10, 0, 0}, {10, 6, 1}, {0, 0, 1});
+
+    const auto patch = SurfaceBuilder::coonsPatch(bottom, leftC, top, rightC);
+    ASSERT_TRUE(patch.has_value());
+
+    for (double t = 0.0; t <= 1.0001; t += 0.1) {
+        const double v = patch->vMin() + (patch->vMax() - patch->vMin()) * t;
+        const double ct = leftC.tMin() + (leftC.tMax() - leftC.tMin()) * t;
+
+        const Vec3 onLeft = patch->evaluate(patch->uMin(), v);
+        EXPECT_NEAR(onLeft.distanceTo(leftC.evaluate(ct)), 0.0, 1e-6) << "t=" << t;
+
+        const Vec3 onRight = patch->evaluate(patch->uMax(), v);
+        EXPECT_NEAR(onRight.distanceTo(rightC.evaluate(ct)), 0.0, 1e-6) << "t=" << t;
+    }
+}
+
 TEST(SurfaceBuilderTest, MismatchedCornersAreRejected) {
     const auto patch = SurfaceBuilder::coonsPatch(
         line({0, 0, 0}, {10, 0, 0}), line({0, 0, 5}, {0, 6, 0}),  // left starts off-corner

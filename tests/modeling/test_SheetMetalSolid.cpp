@@ -173,6 +173,17 @@ TEST(SheetMetalSolidTest, InvalidInputsAreRejected) {
     overfold.bendAngles = {kPi};  // 180-degree hems need their own feature
     EXPECT_TRUE(SheetMetalSolid::crossSection(overfold, good).empty());
 
+    // A bend with zero inside radius would collapse the arc to coincident
+    // points (zero-length edges); refuse it for the 3D fold.
+    SheetMetalParams sharp = good;
+    sharp.bendRadius = 0.0;
+    EXPECT_TRUE(SheetMetalSolid::crossSection(strip, sharp).empty());
+    EXPECT_EQ(SheetMetalSolid::fold(strip, sharp, 5.0, "sharp"), nullptr);
+    // But a zero-radius *flat* strip (no bends) is still fine.
+    SheetMetalStrip flat;
+    flat.segments = {20.0};
+    EXPECT_EQ(SheetMetalSolid::crossSection(flat, sharp).size(), 4u);
+
     SheetMetalStrip zeroSegment = strip;
     zeroSegment.segments = {30.0, 0.0};
     EXPECT_TRUE(SheetMetalSolid::crossSection(zeroSegment, good).empty());
@@ -180,6 +191,26 @@ TEST(SheetMetalSolidTest, InvalidInputsAreRejected) {
     EXPECT_TRUE(SheetMetalSolid::crossSection(strip, good, 0).empty());
     EXPECT_EQ(SheetMetalSolid::fold(strip, good, 0.0, "w0"), nullptr);
     EXPECT_TRUE(SheetMetalSolid::flatPattern(strip, good, -1.0).empty());
+}
+
+TEST(SheetMetalSolidTest, FlatPatternCountsNegativeBendAllowance) {
+    // A downward bend develops the same flat length as an upward one of equal
+    // magnitude; the blank must not come out short by dropping its allowance.
+    SheetMetalStrip up;
+    up.segments = {30.0, 20.0};
+    up.bendAngles = {kPi / 2.0};
+    SheetMetalStrip down;
+    down.segments = {30.0, 20.0};
+    down.bendAngles = {-kPi / 2.0};
+    const SheetMetalParams p = params();
+
+    const auto upFlat = SheetMetalSolid::flatPattern(up, p, 10.0);
+    const auto downFlat = SheetMetalSolid::flatPattern(down, p, 10.0);
+    ASSERT_EQ(upFlat.size(), 4u);
+    ASSERT_EQ(downFlat.size(), 4u);
+    EXPECT_NEAR(downFlat[1].x, upFlat[1].x, 1e-12);
+    // And strictly longer than the bare flats (allowance actually included).
+    EXPECT_GT(downFlat[1].x, 50.0);
 }
 
 TEST(SheetMetalSolidTest, ZeroAngleJointBehavesAsOneFlat) {

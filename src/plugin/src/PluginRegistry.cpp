@@ -35,18 +35,56 @@ std::optional<Permission> permissionFromString(const std::string& text) {
     return std::nullopt;
 }
 
-/// The entry script must resolve to a regular file strictly inside the
-/// plugin directory: relative, no absolute paths, no `..` escapes.
+/// Reads an optional string field. Returns false (with an error) when the key
+/// is present but not a string — nlohmann's json::value() would otherwise throw
+/// a type_error that escapes discovery and crashes the scan.
+bool readStringField(const nlohmann::json& root, const char* key, std::string& out,
+                     std::string* error) {
+    if (!root.contains(key)) return true;  // absent → keep the default
+    const nlohmann::json& value = root[key];
+    if (!value.is_string()) return fail(error, std::string(key) + " must be a string");
+    out = value.get<std::string>();
+    return true;
+}
+
+/// True when @p child is @p parent followed by at least one more component,
+/// comparing already-canonicalized paths component by component.
+bool isStrictlyInside(const fs::path& parent, const fs::path& child) {
+    auto p = parent.begin();
+    auto c = child.begin();
+    for (; p != parent.end(); ++p, ++c) {
+        if (c == child.end() || *c != *p) return false;
+    }
+    return c != child.end();  // at least one trailing component
+}
+
+/// The entry script must resolve to a regular file strictly inside the plugin
+/// directory. Rejected: absolute paths, Windows drive-relative ("C:evil.py")
+/// and root-relative ("\\evil.py") paths (both carry a root name/directory),
+/// `..` components, and — via canonicalization — symlinks whose target escapes
+/// the plugin directory.
 bool validEntry(const std::string& entry, const fs::path& pluginDir, std::string* error) {
     if (entry.empty()) return fail(error, "entry is required");
     const fs::path rel(entry);
-    if (rel.is_absolute()) return fail(error, "entry must be a relative path");
+    if (rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {
+        return fail(error, "entry must be a relative path inside the plugin directory");
+    }
     for (const auto& part : rel) {
         if (part == "..") return fail(error, "entry must not escape the plugin directory");
     }
+
     std::error_code ec;
-    const fs::path full = pluginDir / rel;
-    if (!fs::is_regular_file(full, ec)) return fail(error, "entry script not found: " + entry);
+    const fs::path canonicalDir = fs::weakly_canonical(pluginDir, ec);
+    const fs::path canonicalFull = fs::weakly_canonical(pluginDir / rel, ec);
+    if (ec || canonicalDir.empty() || canonicalFull.empty()) {
+        return fail(error, "entry path could not be resolved: " + entry);
+    }
+    if (!isStrictlyInside(canonicalDir, canonicalFull)) {
+        return fail(error, "entry must stay inside the plugin directory");
+    }
+    if (!fs::is_regular_file(canonicalFull, ec)) {
+        return fail(error, "entry script not found: " + entry);
+    }
     return true;
 }
 
@@ -89,12 +127,16 @@ std::optional<PluginManifest> PluginRegistry::parseManifest(const std::string& j
 
     PluginManifest manifest;
     manifest.rootDir = pluginDir;
-    manifest.name = root.value("name", "");
-    manifest.version = root.value("version", "");
-    manifest.entry = root.value("entry", "");
-    manifest.description = root.value("description", "");
-    manifest.author = root.value("author", "");
-    manifest.minAppVersion = root.value("minAppVersion", "");
+    // Read each field defensively: a present-but-non-string value is a
+    // validation error, not an exception that aborts the whole scan.
+    if (!readStringField(root, "name", manifest.name, error) ||
+        !readStringField(root, "version", manifest.version, error) ||
+        !readStringField(root, "entry", manifest.entry, error) ||
+        !readStringField(root, "description", manifest.description, error) ||
+        !readStringField(root, "author", manifest.author, error) ||
+        !readStringField(root, "minAppVersion", manifest.minAppVersion, error)) {
+        return std::nullopt;
+    }
 
     if (!validName(manifest.name)) {
         fail(error, "name must match [a-z][a-z0-9-]{2,63}: '" + manifest.name + "'");
@@ -139,9 +181,19 @@ size_t PluginRegistry::discover(const fs::path& pluginsRoot) {
     std::error_code ec;
     if (!fs::is_directory(pluginsRoot, ec)) return 0;
 
+    // Iterate with the error_code-aware increment so a mid-scan I/O error
+    // (a directory vanishing, a permission failure) stops the loop instead of
+    // throwing filesystem_error out of discover().
+    fs::directory_iterator it(pluginsRoot, ec);
+    if (ec) return 0;
+    const fs::directory_iterator end;
+
     size_t added = 0;
-    for (const auto& child : fs::directory_iterator(pluginsRoot, ec)) {
-        if (!child.is_directory()) continue;
+    for (; it != end; it.increment(ec)) {
+        if (ec) break;
+        const fs::directory_entry& child = *it;
+        std::error_code childEc;
+        if (!child.is_directory(childEc) || childEc) continue;
         const fs::path manifestPath = child.path() / "plugin.json";
         std::error_code fileEc;
         if (!fs::is_regular_file(manifestPath, fileEc)) continue;

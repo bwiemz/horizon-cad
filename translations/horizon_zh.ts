@@ -67,5 +67,13 @@
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
+    <message>
+        <source>0 selected</source>
+        <translation>已选择 0 个</translation>
+    </message>
+    <message>
+        <source>1 selected</source>
+        <translation>已选择 1 个</translation>
+    </message>
 </context>
 </TS>

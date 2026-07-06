@@ -142,3 +142,61 @@ fans are exact for any simple planar polygon — normalizing the global
 inward/outward sign via the total volume, and accumulating surface area as
 per-face signed vector area. All prior MassProperties consumers pass
 unchanged.
+
+## Adversarial review of the Phases 75/76/77/78/79/61b batch
+
+An 8-lens finder + 2-verifier workflow surfaced 29 raw findings. The Fable
+verifier pass was cut short by a spend limit, so each finding was verified by
+hand against the code before acting. Dispositions:
+
+**Fixed (real defects):**
+- glTF: refuse >= 4 GiB payloads instead of emitting a uint32-truncated
+  (corrupt) GLB that `save()` reports as success; `dump()` with
+  `error_handler_t::replace` so an invalid-UTF-8 item name can't throw past
+  the export boundary; skip degenerate meshes (partial final vertex, < 3
+  vertices, or out-of-range indices) that would otherwise emit a count-0
+  accessor with sentinel FLT_MAX min/max.
+- InstanceBatcher: the hash bucket now maps to a *list* of batches, each
+  confirmed by an exact buffer compare — a size-only guard could merge two
+  different equal-size meshes (wrong geometry) and the old collision path
+  overwrote the map entry, degenerating batching to one batch per node.
+- Plugin registry: read manifest fields defensively (a present-but-non-string
+  field was an uncaught `json::type_error` that crashed the whole scan);
+  reject Windows drive-relative (`C:evil.py`) and root-relative (`\evil.py`)
+  entry paths and canonicalize to catch symlink escapes; iterate the plugins
+  directory with the error_code-aware increment so a mid-scan I/O error can't
+  throw out of `discover()`.
+- Sheet metal: `flatPattern` uses bend-angle magnitudes so a downward bend
+  isn't dropped from the developed length (undersized blank); reject a
+  zero inside radius for the 3D fold (it would collapse the arc to coincident
+  points → zero-length edges).
+- MassProperties: reverted surface area to the sum of unsigned triangle areas
+  (the Phase-61b refactor to a single signed vector area per loop undercounts
+  non-planar saddle loops from Loft/Fillet). The volume fix (loop winding +
+  global sign) is unchanged.
+- i18n: `.qm` output placed with a POST_BUILD copy — a generator expression in
+  a source file's `OUTPUT_LOCATION` property is not evaluated and would break
+  catalog placement on machines that actually have lrelease. Added the
+  distinct `0 selected` / `1 selected` status-bar strings to all six catalogs.
+- Test hygiene: per-process temp paths in the glTF and plugin tests (fixed
+  shared names race under `ctest -j`); hex-escaped the non-ASCII literals in
+  the locale test to match the repo convention and stay MSVC-safe without
+  `/utf-8`. Added a Coons test covering the u = const boundaries.
+
+**Deferred with justification (not code-changed):**
+- glTF is little-endian per the spec and every target/CI host is LE; big-endian
+  output is out of scope.
+- The Coons interior uses uniform blend parameters; the four boundaries are
+  still reproduced exactly (boundary control rows are the input control points,
+  now covered by a u = const boundary test) — non-uniform-knot interior
+  fidelity via Greville abscissae is a documented surfacing follow-up.
+- The two-pass NURBS surface evaluation's U-pass weight handling is pre-existing
+  and inert for the unit-weight Coons patches.
+- The translations branch is intentionally dead where qttools is absent (vcpkg
+  ships only qtbase); the runtime load path is still exercised by the tests.
+- `Solid::isValid()` is combinatorial-only by design, so a self-penetrating
+  sheet-metal fold from too-short flats is not flagged; a full self-intersection
+  test is a heavier follow-up beyond this slice's degeneracy guards.
+- Volume of a non-watertight BooleanOp result is ill-defined regardless of the
+  sign convention; and `makeTorus`'s degenerate B-Rep is pre-existing and
+  verified unaffected by the mass-properties change.

@@ -67,5 +67,13 @@
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
+    <message>
+        <source>0 selected</source>
+        <translation>0개 선택됨</translation>
+    </message>
+    <message>
+        <source>1 selected</source>
+        <translation>1개 선택됨</translation>
+    </message>
 </context>
 </TS>

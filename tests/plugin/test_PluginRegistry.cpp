@@ -3,6 +3,11 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "horizon/plugin/PluginRegistry.h"
 
@@ -17,10 +22,18 @@ namespace {
 class PluginRegistryTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        m_root =
-            fs::temp_directory_path() /
-            ("hz_plugin_test_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
-             "_" + ::testing::UnitTest::GetInstance()->current_test_info()->name());
+        // Process id keeps the scratch root unique across parallel `ctest -j`
+        // runs (gtest's random_seed defaults to 0 without --gtest_shuffle, so
+        // it is not a reliable disambiguator).
+        const unsigned long pid =
+#ifdef _WIN32
+            ::GetCurrentProcessId();
+#else
+            static_cast<unsigned long>(::getpid());
+#endif
+        m_root = fs::temp_directory_path() /
+                 ("hz_plugin_test_" + std::to_string(pid) + "_" +
+                  ::testing::UnitTest::GetInstance()->current_test_info()->name());
         fs::remove_all(m_root);
         fs::create_directories(m_root);
     }
@@ -142,6 +155,41 @@ TEST_F(PluginRegistryTest, MalformedJsonIsAnErrorNotACrash) {
     EXPECT_FALSE(PluginRegistry::parseManifest("{ not json", dir, &error).has_value());
     EXPECT_FALSE(PluginRegistry::parseManifest("[1, 2, 3]", dir, &error).has_value());
     EXPECT_FALSE(PluginRegistry::parseManifest("", dir, &error).has_value());
+}
+
+TEST_F(PluginRegistryTest, NonStringFieldsAreRejectedNotThrown) {
+    const fs::path dir = makePlugin("typed", "{}");
+    std::string error;
+    // A present-but-wrong-typed field must be a validation error, not an
+    // uncaught nlohmann type_error that aborts the scan.
+    for (const std::string bad : {
+             R"({"name": 123, "version": "1.0.0", "entry": "main.py"})",
+             R"({"name": "my-plugin", "version": ["1", "0"], "entry": "main.py"})",
+             R"({"name": "my-plugin", "version": "1.0.0", "entry": {"x": 1}})",
+             R"({"name": "my-plugin", "version": "1.0.0", "entry": "main.py", "author": 5})",
+         }) {
+        EXPECT_FALSE(PluginRegistry::parseManifest(bad, dir, &error).has_value()) << bad;
+    }
+
+    // And discover() survives a directory full of wrong-typed manifests.
+    makePlugin("numeric-name", R"({"name": 42, "version": "1.0.0", "entry": "main.py"})");
+    PluginRegistry registry;
+    EXPECT_NO_THROW(registry.discover(m_root));
+    EXPECT_FALSE(registry.errors().empty());
+}
+
+TEST_F(PluginRegistryTest, RootAndDriveRelativeEntriesAreRejected) {
+    const fs::path dir = makePlugin("winpaths", "{}");
+    std::string error;
+    // Forward-slash root ("/foo"), JSON-escaped backslash root ("\\foo"), and
+    // Windows drive-relative ("C:foo") entries must all be refused: none is
+    // caught by is_absolute() alone on every platform. (JSON strings escape a
+    // backslash as "\\", i.e. the C++ raw literal R"(\\evil.py)".)
+    for (const std::string bad : {R"(/evil.py)", R"(\\evil.py)", R"(C:evil.py)"}) {
+        const auto manifest = PluginRegistry::parseManifest(
+            R"({"name": "my-plugin", "version": "1.0.0", "entry": ")" + bad + R"("})", dir, &error);
+        EXPECT_FALSE(manifest.has_value()) << bad;
+    }
 }
 
 TEST_F(PluginRegistryTest, DiscoverScansValidatesAndSorts) {

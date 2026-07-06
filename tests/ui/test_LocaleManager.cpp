@@ -93,8 +93,9 @@ void writeFile(const QString& path, const QByteArray& bytes) {
 }
 
 QByteArray germanCatalog() {
-    return makeQm("hz::ui::MainWindow", {{"&File", QString::fromUtf8("&Datei")},
-                                         {"%1 selected", QString::fromUtf8("%1 ausgewählt")}});
+    return makeQm("hz::ui::MainWindow",
+                  {{"&File", QString::fromUtf8("&Datei")},
+                   {"%1 selected", QString::fromUtf8("%1 ausgew\xC3\xA4hlt")}});
 }
 
 QString translated(const char* source) {
@@ -138,7 +139,7 @@ TEST(LocaleManagerTest, ApplyInstallsARealCatalog) {
     ASSERT_TRUE(mgr.apply(tmp.path(), "de_DE"));
     EXPECT_EQ(mgr.currentLocale(), "de_DE");
     EXPECT_EQ(translated("&File"), QString::fromUtf8("&Datei"));
-    EXPECT_EQ(translated("%1 selected").arg(3), QString::fromUtf8("3 ausgewählt"));
+    EXPECT_EQ(translated("%1 selected").arg(3), QString::fromUtf8("3 ausgew\xC3\xA4hlt"));
     // Strings missing from the catalog fall back to the English source.
     EXPECT_EQ(translated("&Quit"), QString::fromUtf8("&Quit"));
 
