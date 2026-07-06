@@ -31,6 +31,25 @@ public:
     /// a Document (lightweight component resolution). Returns nullptr when
     /// the file has no cache or cannot be read.
     static std::shared_ptr<render::MeshData> loadPartMesh(const std::string& filePath);
+
+    // -- JSON envelope helpers (shared with BinaryFormat) ---------------------
+
+    /// Serialize the document envelope to a JSON string. BinaryFormat stores
+    /// this payload inside its FlatBuffers container, with the tessellation
+    /// cache carried as typed binary vectors instead of JSON numbers.
+    static std::string documentToJson(const doc::Document& doc, bool includeTessellation);
+
+    /// Populate a Document from a JSON envelope string.
+    static bool documentFromJson(const std::string& text, doc::Document& doc);
+
+    /// Serialize the assembly envelope. @p filePath anchors relative component
+    /// paths (pass the eventual on-disk location; empty keeps paths as-is).
+    static std::string assemblyToJson(const doc::AssemblyDocument& asmDoc,
+                                      const std::string& filePath);
+
+    /// Populate an AssemblyDocument from a JSON envelope string.
+    static bool assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
+                                 const std::string& filePath);
 };
 
 }  // namespace hz::io

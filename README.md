@@ -81,7 +81,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 | GUI | Qt 6 (Widgets, OpenGL) |
 | Graphics | OpenGL 3.3 Core Profile |
 | Build | CMake 3.28+ with vcpkg |
-| Serialization | nlohmann/json |
+| Serialization | nlohmann/json + FlatBuffers |
 | Logging | spdlog |
 | Testing | Google Test |
 
@@ -182,7 +182,7 @@ Horizon is under active development. Completed and planned work:
 | 72 | Done | Era 4 — Kinematics: serial-chain forward kinematics (revolute/prismatic joints) + CCD inverse kinematics; validated vs analytical arm poses |
 | 74 | Done | Era 4 — Configuration management: named design-table configurations of parameter overrides driving part-family variants, applied onto the parameter registry |
 | 50 | Done | Era 2 — STEP AP242 import/export: in-house ISO 10303-21 writer/reader, lossless (rational) B-spline mapping of the NURBS B-Rep, MANIFOLD_SOLID_BREP reconstruction with manifold validation, PLANE/LINE/CIRCLE/CYLINDRICAL_SURFACE interop for external files, round-trip idempotence guard |
-| 51 | Planned | Era 2 — native binary format |
+| 51 | Done | Era 2 — Native binary format: FlatBuffers `.hzpart`/`.hzasm` container (file id `HZBF`) wrapping the canonical JSON envelope + typed zero-copy tessellation cache; lightweight mesh loads skip the JSON parse entirely; verifier-gated against corrupt/truncated files; JSON/binary sniffing shares the extensions |
 | 61 | Planned | Era 3 — Advanced fillet/chamfer (variable-radius, vertex blends); sheet-metal 3D features, drawing section views & radial dimensions |
 | 65-80 | Planned | Era 4 — Vulkan/Metal backend, PBR/ray tracing, cloud sync, live collaboration, 1.0 release |
 

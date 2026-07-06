@@ -215,7 +215,10 @@ static json serializeEntity(const draft::DraftEntity& entity) {
     return obj;
 }
 
-bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
+/// Build the complete document JSON envelope. Shared by save() and by
+/// BinaryFormat, which stores the same envelope inside a FlatBuffers container
+/// (without the tessellation cache — that lives in typed binary vectors).
+static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
     json root;
     root["version"] = 16;
     root["type"] = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
@@ -572,7 +575,7 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
     // --- Tessellation cache (v16+, parts only) ---
     // Enables lightweight assembly loading: readers can display the part
     // without replaying the feature tree.
-    if (doc.solid()) {
+    if (includeTessellation && doc.solid()) {
         render::MeshData mesh = model::SolidTessellator::tessellate(*doc.solid());
         json cache;
         cache["positions"] = mesh.positions;
@@ -580,6 +583,12 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
         cache["indices"] = mesh.indices;
         root["tessellationCache"] = cache;
     }
+
+    return root;
+}
+
+bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
+    const json root = buildDocumentRoot(doc, /*includeTessellation=*/true);
 
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
@@ -592,6 +601,10 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
         file << root.dump(2);
     }
     return file.good();
+}
+
+std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeTessellation) {
+    return buildDocumentRoot(doc, includeTessellation).dump();
 }
 
 // ---------------------------------------------------------------------------
@@ -757,17 +770,9 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
     return entity;
 }
 
-bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
-    std::ifstream file(filePath);
-    if (!file.is_open()) return false;
-
-    json root;
-    try {
-        file >> root;
-    } catch (...) {
-        return false;
-    }
-
+/// Populate a Document from a parsed envelope. Shared by load() and
+/// BinaryFormat.
+static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     if (!root.contains("version") || !root.contains("entities")) return false;
 
     doc.draftDocument().clear();
@@ -1347,11 +1352,38 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
     return true;
 }
 
+bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) return false;
+
+    json root;
+    try {
+        file >> root;
+    } catch (...) {
+        return false;
+    }
+
+    return loadDocumentRoot(root, doc);
+}
+
+bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc) {
+    json root;
+    try {
+        root = json::parse(text);
+    } catch (...) {
+        return false;
+    }
+    return loadDocumentRoot(root, doc);
+}
+
 // ---------------------------------------------------------------------------
 // Assembly serialization (.hzasm)
 // ---------------------------------------------------------------------------
 
-bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc) {
+/// Build the assembly JSON envelope. @p filePath anchors relative component
+/// paths (empty → paths stored as-is). Shared by saveAssembly() and
+/// BinaryFormat.
+static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::string& filePath) {
     json root;
     root["version"] = 16;
     root["type"] = "hzasm";
@@ -1422,23 +1454,27 @@ bool NativeFormat::saveAssembly(const std::string& filePath, const doc::Assembly
     }
     root["mates"] = matesArray;
 
+    return root;
+}
+
+bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc) {
+    const json root = buildAssemblyRoot(asmDoc, filePath);
+
     std::ofstream file(filePath);
     if (!file.is_open()) return false;
     file << root.dump(2);
     return file.good();
 }
 
-bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc) {
-    std::ifstream file(filePath);
-    if (!file.is_open()) return false;
+std::string NativeFormat::assemblyToJson(const doc::AssemblyDocument& asmDoc,
+                                         const std::string& filePath) {
+    return buildAssemblyRoot(asmDoc, filePath).dump();
+}
 
-    json root;
-    try {
-        file >> root;
-    } catch (...) {
-        return false;
-    }
-
+/// Populate an AssemblyDocument from a parsed envelope. @p filePath anchors
+/// relative component paths. Shared by loadAssembly() and BinaryFormat.
+static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
+                             const std::string& filePath) {
     if (!root.contains("type") || !root["type"].is_string() ||
         root["type"].get<std::string>() != "hzasm") {
         return false;
@@ -1519,6 +1555,31 @@ bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocume
 
     asmDoc.setDirty(false);
     return true;
+}
+
+bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) return false;
+
+    json root;
+    try {
+        file >> root;
+    } catch (...) {
+        return false;
+    }
+
+    return loadAssemblyRoot(root, asmDoc, filePath);
+}
+
+bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
+                                    const std::string& filePath) {
+    json root;
+    try {
+        root = json::parse(text);
+    } catch (...) {
+        return false;
+    }
+    return loadAssemblyRoot(root, asmDoc, filePath);
 }
 
 // ---------------------------------------------------------------------------
