@@ -1,5 +1,6 @@
 add_executable(hz_cam_tests
     test_Toolpath.cpp
+    test_FeedsAndSpeeds.cpp
 )
 
 target_link_libraries(hz_cam_tests

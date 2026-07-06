@@ -1,6 +1,7 @@
 add_library(hz_cam STATIC
     src/Toolpath.cpp
     src/GcodeWriter.cpp
+    src/FeedsAndSpeeds.cpp
 )
 
 target_include_directories(hz_cam

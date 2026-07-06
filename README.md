@@ -176,11 +176,14 @@ Horizon is under active development. Completed and planned work:
 | 59 | Done | Era 3 — PDM local version control: file-system `.hzarchive` revision store (commit/history/checkout, stable FNV-1a content hash, unchanged-content no-op) + semantic JSON diff of feature tree/parameters (added/removed/modified with JSON-pointer paths) |
 | 60 | Done | Era 3 — PDM multi-user vault: shared JSON lock manifest, per-document pessimistic check-out/check-in/break-lock with read-modify-write shared-folder concurrency |
 | 62 | Done | Era 3 — Sheet metal (core): bend allowance / K-factor, bend deduction, and flat-pattern developed-length unfold; validated vs analytical formulas |
-| 63 | Done | Era 3 — Python API (phase 2): sheet-metal params/strip + bend-allowance/deduction/developed-length bound into the embedded `horizon` module |
+| 63 | Done | Era 3 — Python API (phase 2): sheet-metal, and FEA static analysis on the current solid (`doc.static_analysis`), bound into the embedded `horizon` module |
 | 64 | Done | Era 3 — Stabilization: end-to-end integration test composing annotated/framed drawing → DXF round-trip, model → FEA, and PDM commit → semantic diff on one model |
+| 71 | Done | Era 4 — CAM (core): 2.5-axis contour + drilling toolpaths with cutting/rapid length accounting, RS-274 G-code output (G0/G1, modal feed), feeds & speeds (spindle RPM, chip-load feed) |
+| 72 | Done | Era 4 — Kinematics: serial-chain forward kinematics (revolute/prismatic joints) + CCD inverse kinematics; validated vs analytical arm poses |
+| 74 | Done | Era 4 — Configuration management: named design-table configurations of parameter overrides driving part-family variants, applied onto the parameter registry |
 | 50-51 | Planned | Era 2 — STEP AP242 (via OpenCASCADE), native binary format |
 | 61 | Planned | Era 3 — Advanced fillet/chamfer (variable-radius, vertex blends); sheet-metal 3D features, drawing section views & radial dimensions |
-| 65-80 | Planned | Era 4 — Vulkan backend, PBR/ray tracing, cloud sync, CAM, 1.0 release |
+| 65-80 | Planned | Era 4 — Vulkan/Metal backend, PBR/ray tracing, cloud sync, live collaboration, 1.0 release |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
