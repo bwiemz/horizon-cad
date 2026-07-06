@@ -6,6 +6,10 @@
 
 #include <string>
 
+#include "horizon/cam/FeedsAndSpeeds.h"
+#include "horizon/cam/GcodeWriter.h"
+#include "horizon/cam/Toolpath.h"
+#include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/ReferenceGeometry.h"
@@ -57,6 +61,15 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("__repr__", [](const Vec3& v) {
             return "Vec3(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " +
                    std::to_string(v.z) + ")";
+        });
+
+    py::class_<hz::math::Vec2>(m, "Vec2")
+        .def(py::init<>())
+        .def(py::init<double, double>(), py::arg("x"), py::arg("y"))
+        .def_readwrite("x", &hz::math::Vec2::x)
+        .def_readwrite("y", &hz::math::Vec2::y)
+        .def("__repr__", [](const hz::math::Vec2& v) {
+            return "Vec2(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ")";
         });
 
     py::class_<DatumPlane>(m, "DatumPlane")
@@ -145,6 +158,35 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
           py::arg("mean"), py::arg("yield_strength"));
     m.def("fatigue_safety_factor", &hz::sim::fatigueSafetyFactor, py::arg("sn"),
           py::arg("amplitude"), py::arg("mean"));
+
+    // CAM: 2.5-axis toolpaths, G-code, feeds & speeds (Phase 71).
+    py::class_<hz::cam::Toolpath>(m, "Toolpath")
+        .def("cutting_length", &hz::cam::Toolpath::cuttingLength)
+        .def("rapid_length", &hz::cam::Toolpath::rapidLength)
+        .def("move_count", [](const hz::cam::Toolpath& t) { return t.moves.size(); });
+
+    py::class_<hz::cam::Tool>(m, "Tool")
+        .def(py::init<>())
+        .def(py::init([](double d, int f) {
+                 hz::cam::Tool t;
+                 t.diameter = d;
+                 t.flutes = f;
+                 return t;
+             }),
+             py::arg("diameter"), py::arg("flutes"))
+        .def_readwrite("diameter", &hz::cam::Tool::diameter)
+        .def_readwrite("flutes", &hz::cam::Tool::flutes);
+
+    m.def("cam_contour", &hz::cam::CamGenerator::contour, py::arg("profile"), py::arg("cut_depth"),
+          py::arg("safe_z"), py::arg("feed"), py::arg("closed") = true);
+    m.def("cam_drill", &hz::cam::CamGenerator::drill, py::arg("holes"), py::arg("cut_depth"),
+          py::arg("safe_z"), py::arg("feed"));
+    m.def("cam_pocket_rect", &hz::cam::CamGenerator::pocketRect, py::arg("min"), py::arg("max"),
+          py::arg("tool_radius"), py::arg("stepover"), py::arg("cut_depth"), py::arg("safe_z"),
+          py::arg("feed"));
+    m.def("cam_gcode", &hz::cam::GcodeWriter::toGcode, py::arg("path"), py::arg("decimals") = 3);
+    m.def("spindle_rpm", &hz::cam::spindleRpm, py::arg("surface_speed"), py::arg("diameter"));
+    m.def("feed_rate", &hz::cam::feedRate, py::arg("rpm"), py::arg("flutes"), py::arg("chip_load"));
 
     // Reference-geometry constructions. Fallible ones (std::optional) return
     // None on degenerate input.

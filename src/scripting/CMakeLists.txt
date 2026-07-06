@@ -21,6 +21,7 @@ target_link_libraries(hz_scripting
         Horizon::Drafting
         Horizon::FileIO
         Horizon::Simulation
+        Horizon::Cam
 )
 
 add_library(Horizon::Scripting ALIAS hz_scripting)

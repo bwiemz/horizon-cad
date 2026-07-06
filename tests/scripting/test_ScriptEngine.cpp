@@ -248,6 +248,32 @@ TEST(ScriptEngineTest, SheetMetalDevelopedLength) {
 }
 
 // ---------------------------------------------------------------------------
+// horizon API — CAM (toolpaths, G-code, feeds & speeds)
+// ---------------------------------------------------------------------------
+
+TEST(ScriptEngineTest, CamToolpathsAndGcode) {
+    ScriptEngine engine;
+    const std::string script =
+        "import math\n"
+        "sq = [horizon.Vec2(0, 0), horizon.Vec2(10, 0), horizon.Vec2(10, 10), horizon.Vec2(0, "
+        "10)]\n"
+        "c = horizon.cam_contour(sq, cut_depth=-2.0, safe_z=5.0, feed=100.0, closed=True)\n"
+        "print(abs(c.cutting_length() - 47.0) < 1e-9)\n"  // 40 perimeter + 7 plunge
+        "g = horizon.cam_gcode(c)\n"
+        "print('G21' in g and 'M2' in g)\n"
+        "pk = horizon.cam_pocket_rect(horizon.Vec2(0, 0), horizon.Vec2(100, 100),\n"
+        "                             tool_radius=5.0, stepover=10.0, cut_depth=-2.0,\n"
+        "                             safe_z=5.0, feed=100.0)\n"
+        "print(pk.move_count() == 22)\n"
+        "rpm = horizon.spindle_rpm(100.0, 10.0)\n"
+        "print(abs(rpm - 1000.0 * 100.0 / (math.pi * 10.0)) < 1e-6)\n"
+        "print(abs(horizon.feed_rate(rpm, 2, 0.05) - rpm * 2 * 0.05) < 1e-9)\n";
+    auto res = engine.run(script);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\nTrue\nTrue\nTrue\nTrue\n");
+}
+
+// ---------------------------------------------------------------------------
 // horizon API — stress-life fatigue
 // ---------------------------------------------------------------------------
 

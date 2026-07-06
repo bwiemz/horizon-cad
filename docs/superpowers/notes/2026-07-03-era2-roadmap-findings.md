@@ -97,3 +97,15 @@ files took ~2 min, which is the Phase-51 zero-copy payoff measured directly.
 - Scripting API (Phase 47) now exposes Phase-49 mass properties:
   `doc.mass_properties(density)` → `MassProperties{volume, surface_area,
   center_of_mass, mass, density, valid}`.
+
+## Phase 68 — ray tracing: Embree deviation (in-house path tracer)
+
+The roadmap calls for **Embree** as the CPU ray-tracing backend. Phase 68
+shipped an in-house Monte Carlo path tracer instead (hz::render::PathTracer):
+median-split BVH + Möller–Trumbore, cosine/GGX importance sampling with the
+viewport material model, sun next-event estimation over a hemisphere
+environment, Russian roulette, and deterministic per-pixel seeding (bit-equal
+single- vs multi-threaded output). Same dependency-light trade as the FEA
+solver and STEP parser: CI stays lean and the renderer is testable headless.
+Embree can later replace the intersector behind the same interface if
+profiling demands it.

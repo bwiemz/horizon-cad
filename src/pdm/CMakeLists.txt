@@ -2,6 +2,7 @@ add_library(hz_pdm STATIC
     src/RevisionArchive.cpp
     src/SemanticDiff.cpp
     src/VaultManifest.cpp
+    src/SyncEngine.cpp
 )
 
 target_include_directories(hz_pdm
