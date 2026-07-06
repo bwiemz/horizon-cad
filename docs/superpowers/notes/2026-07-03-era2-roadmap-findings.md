@@ -109,3 +109,36 @@ single- vs multi-threaded output). Same dependency-light trade as the FEA
 solver and STEP parser: CI stays lean and the renderer is testable headless.
 Embree can later replace the intersector behind the same interface if
 profiling demands it.
+
+## Phase 71 — CAM: OpenCAMLib deviation (in-house 2.5D slice)
+
+The roadmap mandates **OpenCAMLib** for toolpath math ("do NOT write
+toolpath offset math from scratch"), a risk note aimed at general
+Voronoi-based pocketing and gouge checking on complex contours. The shipped
+Phase-71 core (hz::cam) deliberately stays inside the trivial subset —
+contour-following, drilling cycles, and rectangular pocket clearing with a
+tool-radius inset zig-zag raster — where the offset math is closed-form and
+exhaustively testable, so the dependency-light precedent (FEA, STEP, path
+tracer) applies. General free-form pocketing/waterline operations remain
+staged behind an OpenCAMLib integration; nothing in the current API shape
+blocks swapping the toolpath source.
+
+## Phase 77 — i18n: catalog compilation without qttools
+
+vcpkg carries only qtbase, so `lrelease` is absent locally and on CI.
+Shipped `.ts` sources compile to `.qm` only when Qt Linguist tools are
+present (quiet CMake gating in src/app). Test coverage does not depend on
+that: tests/ui emits a minimal spec-conformant `.qm` in-process (magic +
+Hashes/Messages blocks, ELF hash, UTF-16BE payloads) and drives the real
+QTranslator load path through LocaleManager.
+
+## Phase 61b — mass-properties fix uncovered by sheet metal
+
+Folded flange cross-sections are non-convex, which exposed a pre-existing
+MassProperties defect: per-triangle "orient outward from interior point"
+flipping is only valid for star-shaped solids (an L-prism reported a third
+of its volume). Fixed by keeping fan triangles in loop winding — signed
+fans are exact for any simple planar polygon — normalizing the global
+inward/outward sign via the total volume, and accumulating surface area as
+per-face signed vector area. All prior MassProperties consumers pass
+unchanged.
