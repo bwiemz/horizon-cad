@@ -10,6 +10,25 @@
 
 #include "horizon/ui/LocaleManager.h"
 
+// Qt's QCoreApplication constructs process-lifetime singletons (metatype
+// registry, thread data, plugin factories) that LeakSanitizer reports at exit.
+// Disable *leak* detection for this Qt-driven test binary while keeping every
+// other AddressSanitizer check (use-after-free, buffer overflow) fully active.
+// The symbol is picked up by the sanitizer runtime only under GCC/Clang ASan;
+// it is a harmless no-op in every other build.
+#if defined(__SANITIZE_ADDRESS__)
+#define HZ_ASAN_ACTIVE 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define HZ_ASAN_ACTIVE 1
+#endif
+#endif
+#ifdef HZ_ASAN_ACTIVE
+extern "C" const char* __lsan_default_options() {
+    return "detect_leaks=0";
+}
+#endif
+
 using hz::ui::LocaleManager;
 
 namespace {
