@@ -126,6 +126,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ASan-instrumented, statically-linked Qt test binaries are several
+      # hundred MB each; with the full test suite they overran the runner's
+      # ~14 GB free disk during linking ("ld: No space left on device").
+      # Reclaim the large preinstalled toolchains we don't use (~25 GB).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost /usr/local/share/powershell \
+            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-}"
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Export GitHub Actions cache variables
         uses: actions/github-script@v7
         with:
