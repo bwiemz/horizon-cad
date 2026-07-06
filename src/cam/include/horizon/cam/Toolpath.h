@@ -46,6 +46,18 @@ public:
     /// @p cutDepth, then rapid retract to @p safeZ.
     static Toolpath drill(const std::vector<math::Vec2>& holes, double cutDepth, double safeZ,
                           double feed);
+
+    /// A rectangular pocket-clearing toolpath. Clears the axis-aligned rectangle
+    /// [@p min, @p max] with a tool of radius @p toolRadius using a continuous
+    /// zig-zag (boustrophedon) raster of X-parallel passes spaced @p stepover
+    /// apart in Y. The tool centre stays a full radius inside the walls, and the
+    /// final pass is snapped to the far inset wall so the whole floor is covered.
+    /// Rapids to the first pass at @p safeZ, plunges to @p cutDepth, feeds the
+    /// raster, then retracts to @p safeZ. Returns an empty path when the tool
+    /// cannot fit inside the rectangle or any of @p toolRadius / @p stepover /
+    /// @p feed is non-positive.
+    static Toolpath pocketRect(const math::Vec2& min, const math::Vec2& max, double toolRadius,
+                               double stepover, double cutDepth, double safeZ, double feed);
 };
 
 }  // namespace hz::cam

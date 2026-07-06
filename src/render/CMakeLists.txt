@@ -7,6 +7,7 @@ add_library(hz_render STATIC
     src/SceneGraph.cpp
     src/SelectionManager.cpp
     src/OpenGLBackend.cpp
+    src/MaterialLibrary.cpp
 )
 
 # Vulkan backend (Phase 65): staged bring-up behind quiet SDK detection —

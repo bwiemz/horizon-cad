@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,75 @@ TEST(ToolpathTest, DrillCycle) {
 TEST(ToolpathTest, EmptyProfile) {
     EXPECT_TRUE(CamGenerator::contour({}, -1.0, 2.0, 100.0, true).moves.empty());
     EXPECT_TRUE(CamGenerator::drill({}, -1.0, 2.0, 100.0).moves.empty());
+}
+
+// A rectangular pocket cleared with a 5 mm-radius tool at 10 mm stepover: the
+// raster stays a full radius inside the walls and the cutting length matches the
+// analytical pass + step-over + plunge total.
+TEST(ToolpathTest, PocketRectRaster) {
+    const Toolpath p = CamGenerator::pocketRect(/*min=*/{0, 0}, /*max=*/{100, 100},
+                                                /*toolRadius=*/5.0, /*stepover=*/10.0,
+                                                /*cutDepth=*/-2.0, /*safeZ=*/5.0, /*feed=*/100.0);
+    ASSERT_FALSE(p.moves.empty());
+
+    // Inset rectangle is [5,95] x [5,95]; passes at y = 5,15,...,85,95 -> 10 lanes.
+    // Feeds: plunge + lane0 + (9 lanes * (stepover + lane)) = 1 + 1 + 18 = 20.
+    EXPECT_EQ(countType(p, MoveType::Rapid), 2);
+    EXPECT_EQ(countType(p, MoveType::Feed), 20);
+
+    // Every cutting move stays within the inset walls and at the cut depth.
+    for (const Move& m : p.moves) {
+        if (m.type != MoveType::Feed) continue;
+        EXPECT_GE(m.target.x, 5.0 - 1e-9);
+        EXPECT_LE(m.target.x, 95.0 + 1e-9);
+        EXPECT_GE(m.target.y, 5.0 - 1e-9);
+        EXPECT_LE(m.target.y, 95.0 + 1e-9);
+        EXPECT_NEAR(m.target.z, -2.0, 1e-9);
+    }
+
+    // 10 passes * 90 (width) + 9 step-overs * 10 + plunge (safeZ 5 -> depth -2 = 7).
+    EXPECT_NEAR(p.cuttingLength(), 10 * 90.0 + 9 * 10.0 + 7.0, 1e-9);
+    EXPECT_NEAR(p.rapidLength(), 7.0, 1e-9);  // retract only
+
+    // Boustrophedon: pass 0 runs left->right (ends at x=95), pass 1 right->left.
+    EXPECT_NEAR(p.moves[2].target.x, 95.0, 1e-9);  // end of first pass
+    EXPECT_NEAR(p.moves[4].target.x, 5.0, 1e-9);   // end of second pass
+}
+
+// When the stepover does not divide the inset height evenly, the final pass is
+// snapped to the far wall so the floor is fully covered.
+TEST(ToolpathTest, PocketRectSnapsLastPassToWall) {
+    const Toolpath p =
+        CamGenerator::pocketRect({0, 0}, {100, 100}, 5.0, /*stepover=*/30.0, -1.0, 2.0, 50.0);
+    ASSERT_FALSE(p.moves.empty());
+
+    // Inset y in [5,95]; passes at 5,35,65 then snapped 95 -> 4 lanes.
+    double maxY = 0.0;
+    for (const Move& m : p.moves) {
+        if (m.type == MoveType::Feed) maxY = std::max(maxY, m.target.y);
+    }
+    EXPECT_NEAR(maxY, 95.0, 1e-9);  // reaches the top inset wall
+    // 4 lanes -> plunge + lane0 + 3*(step + lane) = 8 feeds.
+    EXPECT_EQ(countType(p, MoveType::Feed), 8);
+}
+
+// Guards: a tool too big for the pocket, or non-positive parameters, yield no path.
+TEST(ToolpathTest, PocketRectRejectsBadInput) {
+    EXPECT_TRUE(CamGenerator::pocketRect({0, 0}, {100, 100}, 60.0, 10.0, -1, 2, 50).moves.empty());
+    EXPECT_TRUE(CamGenerator::pocketRect({0, 0}, {100, 100}, 5.0, 0.0, -1, 2, 50).moves.empty());
+    EXPECT_TRUE(CamGenerator::pocketRect({0, 0}, {100, 100}, 5.0, 10.0, -1, 2, 0.0).moves.empty());
+    EXPECT_TRUE(CamGenerator::pocketRect({0, 0}, {100, 100}, -5.0, 10.0, -1, 2, 50).moves.empty());
+}
+
+// A pocket path feeds through the G-code writer like any other toolpath.
+TEST(GcodeWriterTest, EmitsPocket) {
+    const Toolpath p = CamGenerator::pocketRect({0, 0}, {40, 40}, 5.0, 10.0, -2.0, 5.0, 120.0);
+    const std::string g = GcodeWriter::toGcode(p);
+    EXPECT_NE(g.find("G21\n"), std::string::npos);
+    EXPECT_NE(g.find("M2\n"), std::string::npos);
+    EXPECT_EQ(countOccurrences(g, "G0 "), 2);        // rapid in + retract
+    EXPECT_GT(countOccurrences(g, "G1 "), 2);        // several cutting passes
+    EXPECT_EQ(countOccurrences(g, " F120.000"), 1);  // modal feed once
 }
 
 // G-code carries the metric/absolute preamble, G0/G1 words, a modal feed, and an

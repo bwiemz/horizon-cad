@@ -91,8 +91,19 @@ void main() {
     vec3 kD = (1.0 - F) * (1.0 - uMetallic);
     vec3 diffuse = kD * uObjectColor / 3.14159265;
 
-    // Ambient approximation.
-    vec3 ambient = 0.15 * uObjectColor;
+    // IBL-lite ambient (Phase 67): hemisphere irradiance (cool sky over
+    // warm ground) plus a roughness-aware Fresnel rim for the specular
+    // environment term — no textures required.
+    float hemi = 0.5 + 0.5 * normal.z;
+    vec3 skyColor = vec3(0.18, 0.19, 0.21);
+    vec3 groundColor = vec3(0.10, 0.095, 0.09);
+    vec3 irradiance = mix(groundColor, skyColor, hemi);
+    vec3 kDAmbient = (1.0 - F0) * (1.0 - uMetallic);
+    vec3 ambientDiffuse = kDAmbient * uObjectColor * irradiance;
+    vec3 Fenv = F0 + (max(vec3(1.0 - uRoughness), F0) - F0) * pow(1.0 - NdotV, 5.0);
+    vec3 ambientSpecular = Fenv * irradiance * (1.0 - uRoughness * 0.7);
+    vec3 ambient = ambientDiffuse + ambientSpecular;
+
 
     vec3 result = ambient + (diffuse + specular) * NdotL;
     FragColor = vec4(result, uAlpha);
