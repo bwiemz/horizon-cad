@@ -1,5 +1,6 @@
 add_executable(hz_document_tests
     test_ParameterRegistry.cpp
+    test_CollaborationSession.cpp
     test_ExpressionEngine.cpp
     test_Sketch.cpp
     test_FeatureTree.cpp
