@@ -22,6 +22,7 @@ add_library(hz_modeling STATIC
     src/MassProperties.cpp
     src/Measure.cpp
     src/DrawingProjection.cpp
+    src/SectionView.cpp
     src/DrawingView.cpp
     src/DrawingDimension.cpp
     src/GeometricTolerance.cpp

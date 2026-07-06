@@ -6,6 +6,7 @@
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
 
@@ -444,6 +445,28 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, doubl
     // -- Edge curves (linear for vertical edges, arc segments for circle edges) ---
     for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
         assignEdgeCurve(&e);
+    }
+    // Rim edges carry true circular arcs (Phase 61): both endpoints sit on a
+    // cap circle, so replace the chord with the quarter arc between them.
+    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
+        if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
+        const Vec3& a = e.halfEdge->origin->point;
+        const Vec3& b = e.halfEdge->twin->origin->point;
+        const bool sameCap =
+            std::abs(a.z - b.z) < 1e-9 && (std::abs(a.z) < 1e-9 || std::abs(a.z - h) < 1e-9);
+        const bool onCircle =
+            std::abs(std::hypot(a.x, a.y) - r) < 1e-9 && std::abs(std::hypot(b.x, b.y) - r) < 1e-9;
+        if (!sameCap || !onCircle) continue;
+
+        double a0 = std::atan2(a.y, a.x);
+        double a1 = std::atan2(b.y, b.x);
+        // makeArc sweeps counterclockwise from a0 to a1; pick the short way
+        // (the edge itself is directionless — a reversed curve is fine).
+        double sweep = a1 - a0;
+        while (sweep <= 0.0) sweep += 2.0 * math::kPi;
+        if (sweep > math::kPi) std::swap(a0, a1);
+        e.curve = std::make_shared<geo::NurbsCurve>(
+            geo::NurbsCurve::makeArc(Vec3(0, 0, a.z), r, a0, a1, Vec3(0, 0, 1)));
     }
 
     // -- Surfaces ---

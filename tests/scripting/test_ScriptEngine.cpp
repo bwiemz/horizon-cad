@@ -248,6 +248,27 @@ TEST(ScriptEngineTest, SheetMetalDevelopedLength) {
 }
 
 // ---------------------------------------------------------------------------
+// horizon API — stress-life fatigue
+// ---------------------------------------------------------------------------
+
+TEST(ScriptEngineTest, FatigueSafetyFactor) {
+    ScriptEngine engine;
+    // Steel S-N curve from Su = 500 MPa (Se = 250 MPa). A fully-reversed load at
+    // half the endurance limit has a safety factor of 2; a tensile mean lowers it.
+    const std::string script =
+        "import math\n"
+        "sn = horizon.SNCurve.steel(500e6)\n"
+        "print(sn.is_valid())\n"
+        "print(abs(horizon.fatigue_safety_factor(sn, sn.endurance_limit, 0.0) - 1.0) < 1e-9)\n"
+        "print(abs(horizon.fatigue_safety_factor(sn, 0.5 * sn.endurance_limit, 0.0) - 2.0) < "
+        "1e-9)\n"
+        "print(math.isinf(horizon.cycles_to_failure(sn, 0.4 * 500e6)))\n";
+    auto res = engine.run(script);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\nTrue\nTrue\nTrue\n");
+}
+
+// ---------------------------------------------------------------------------
 // horizon API — FEA static analysis on the document's solid
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,9 @@
 #include "horizon/fileio/DrawingExport.h"
 
+#include <cmath>
+#include <cstdio>
 #include <memory>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftLine.h"
@@ -26,9 +29,12 @@ constexpr char kHiddenLayer[] = "Hidden";
 constexpr char kDimensionLayer[] = "Dimensions";
 constexpr char kToleranceLayer[] = "Tolerances";
 constexpr char kBalloonLayer[] = "Balloons";
-constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
-constexpr double kToleranceOffset = 8.0;  ///< sheet distance from the edge to a GD&T frame
-constexpr double kDatumOffset = -8.0;     ///< opposite side, so datums clear tolerances
+constexpr char kSectionLayer[] = "Section";  ///< cut-profile boundaries of section views
+constexpr char kHatchLayer[] = "Hatch";      ///< cross-hatching inside cut profiles
+constexpr double kDimensionOffset = 5.0;     ///< sheet distance from the edge to the dimension line
+constexpr double kToleranceOffset = 8.0;     ///< sheet distance from the edge to a GD&T frame
+constexpr double kDatumOffset = -8.0;        ///< opposite side, so datums clear tolerances
+constexpr double kRadialTextHeight = 3.0;
 
 void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties visible;
@@ -51,6 +57,14 @@ void addDrawingLayers(doc::Document& doc) {
     balloons.name = kBalloonLayer;
     doc.layerManager().addLayer(balloons);
 
+    draft::LayerProperties section;
+    section.name = kSectionLayer;
+    doc.layerManager().addLayer(section);
+
+    draft::LayerProperties hatch;
+    hatch.name = kHatchLayer;
+    doc.layerManager().addLayer(hatch);
+
     draft::LayerProperties border;
     border.name = TitleBlockRenderer::kBorderLayer;
     doc.layerManager().addLayer(border);
@@ -60,16 +74,50 @@ void addDrawingLayers(doc::Document& doc) {
     doc.layerManager().addLayer(titleBlock);
 }
 
+// Fit a 2D circle through the view's projected segments of @p edgeId.
+// Returns false when the view has fewer than three distinct points for it.
+bool fitProjectedCircle(const model::DrawingView& view, const topo::TopologyID& edgeId,
+                        math::Vec2& outCenter, double& outRadius) {
+    std::vector<math::Vec2> pts;
+    for (const model::ProjectedEdge& e : view.edges) {
+        if (!(e.sourceEdge == edgeId)) continue;
+        pts.push_back(e.a);
+        pts.push_back(e.b);
+    }
+    if (pts.size() < 3) return false;
+
+    // Three spread samples → circumcenter.
+    const math::Vec2 a = pts[0];
+    const math::Vec2 b = pts[pts.size() / 3];
+    const math::Vec2 c = pts[(2 * pts.size()) / 3];
+    const double d1x = b.x - a.x;
+    const double d1y = b.y - a.y;
+    const double d2x = c.x - a.x;
+    const double d2y = c.y - a.y;
+    const double d11 = d1x * d1x + d1y * d1y;
+    const double d22 = d2x * d2x + d2y * d2y;
+    const double cross = d1x * d2y - d1y * d2x;
+    if (std::abs(cross) < 1e-12) return false;
+    const double cx = a.x + (d2y * d11 - d1y * d22) / (2.0 * cross);
+    const double cy = a.y + (d1x * d22 - d2x * d11) / (2.0 * cross);
+    outCenter = math::Vec2{cx, cy};
+    outRadius = std::hypot(a.x - cx, a.y - cy);
+    return outRadius > 1e-12;
+}
+
 // Populate @p doc with the drawing's views, dimensions, GD&T and balloons.
 void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
     for (const model::DrawingView& view : drawing.views) {
         // Map view-space coordinates onto the sheet: shift the view's lower-left
         // corner (boundsMin) to its placement, so views never overlap.
+        const auto toSheet = [&view](const math::Vec2& p) {
+            return math::Vec2{(p.x - view.boundsMin.x) + view.placement.x,
+                              (p.y - view.boundsMin.y) + view.placement.y};
+        };
+
         for (const model::ProjectedEdge& e : view.edges) {
-            const math::Vec2 a{(e.a.x - view.boundsMin.x) + view.placement.x,
-                               (e.a.y - view.boundsMin.y) + view.placement.y};
-            const math::Vec2 b{(e.b.x - view.boundsMin.x) + view.placement.x,
-                               (e.b.y - view.boundsMin.y) + view.placement.y};
+            const math::Vec2 a = toSheet(e.a);
+            const math::Vec2 b = toSheet(e.b);
 
             auto line = std::make_shared<draft::DraftLine>(a, b);
             const bool visible = e.visibility == model::ProjectedEdge::Visibility::Visible;
@@ -77,6 +125,52 @@ void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
             line->setLineType(
                 static_cast<int>(visible ? draft::LineType::Continuous : draft::LineType::Hidden));
             doc.addEntity(std::move(line));
+        }
+
+        // Section views: cut-profile loops and hatch lines (Phase 61).
+        for (const auto& loop : view.sectionLoops) {
+            for (size_t i = 0; i < loop.size(); ++i) {
+                auto line = std::make_shared<draft::DraftLine>(
+                    toSheet(loop[i]), toSheet(loop[(i + 1) % loop.size()]));
+                line->setLayer(kSectionLayer);
+                line->setLineType(static_cast<int>(draft::LineType::Continuous));
+                doc.addEntity(std::move(line));
+            }
+        }
+        for (const auto& seg : view.sectionHatch) {
+            auto line = std::make_shared<draft::DraftLine>(toSheet(seg.first), toSheet(seg.second));
+            line->setLayer(kHatchLayer);
+            line->setLineType(static_cast<int>(draft::LineType::Continuous));
+            doc.addEntity(std::move(line));
+        }
+
+        // Radial dimensions (Phase 61): leader from the projected circle at
+        // 45°, annotated "R…" or "⌀…".
+        for (const model::RadialDimension& dim : view.radialDimensions) {
+            math::Vec2 center;
+            double radius = 0.0;
+            if (!fitProjectedCircle(view, dim.edge, center, radius)) continue;
+
+            const double kInvSqrt2 = 0.7071067811865476;
+            const math::Vec2 dir{kInvSqrt2, kInvSqrt2};
+            const math::Vec2 onCircle{center.x + dir.x * radius, center.y + dir.y * radius};
+            const math::Vec2 textPos{center.x + dir.x * (radius + kDimensionOffset),
+                                     center.y + dir.y * (radius + kDimensionOffset)};
+
+            auto leader = std::make_shared<draft::DraftLine>(toSheet(onCircle), toSheet(textPos));
+            leader->setLayer(kDimensionLayer);
+            doc.addEntity(std::move(leader));
+
+            char buf[64];
+            if (dim.diameter) {
+                std::snprintf(buf, sizeof(buf), "\xE2\x8C\x80%.2f", dim.value * 2.0);
+            } else {
+                std::snprintf(buf, sizeof(buf), "R%.2f", dim.value);
+            }
+            auto text =
+                std::make_shared<draft::DraftText>(toSheet(textPos), buf, kRadialTextHeight);
+            text->setLayer(kDimensionLayer);
+            doc.addEntity(std::move(text));
         }
 
         // Render this view's dimensions (the DXF writer decomposes them to
