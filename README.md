@@ -96,7 +96,7 @@ cmake --preset debug
 # Build
 cmake --build build/debug --config Debug
 
-# Run tests (109 tests)
+# Run tests (~900 tests)
 ctest --test-dir build/debug -C Debug
 
 # Run
@@ -113,16 +113,24 @@ src/
                  R*-tree spatial index, expression engine
   drafting/      Entity model, layers, snap engine, dimension styles, sketch planes
   document/      Document ownership, undo/redo, sketches, feature tree,
-                 multi-document manager, assembly documents
-  render/        OpenGL renderer, camera, grid, shaders, selection, scene graph
+                 multi-document manager, assembly documents, collaboration sessions
+  render/        OpenGL/Vulkan backends, camera, grid, shaders, selection, scene graph,
+                 PBR materials, CPU path tracer, GPU tessellation, instancing/culling
   constraint/    Geometric constraint solver (Newton-Raphson + LM damping)
-  fileio/        Native formats (.hcad, .hzpart, .hzasm), DXF import/export
-  geometry/      NURBS curves and surfaces with adaptive tessellation
+  fileio/        Native formats (.hcad, .hzpart, .hzasm), DXF, STEP AP242, glTF/GLB
+  geometry/      NURBS curves and surfaces, adaptive tessellation, Coons surfacing
   topology/      Half-edge B-Rep with TopologyID genealogy and Euler operators
-  modeling/      Extrude, revolve, Booleans, fillet/chamfer, primitives
-  ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs
-  app/           Application entry point, dark theme, resources
-tests/           One suite per module + cross-module integration tests
+  modeling/      Extrude, revolve, Booleans, fillet/chamfer, primitives, loft/sweep,
+                 shell/draft, patterns, drawings/GD&T/BOM, sheet metal, mass properties
+  simulation/    In-house FEA — linear static, steady-state thermal, modal, fatigue
+  pdm/           .hzarchive revision store, multi-user vault locks, local-first cloud sync
+  kinematics/    Serial-chain forward kinematics + CCD inverse kinematics
+  cam/           2.5-axis toolpaths (contour/drill/pocket), feeds & speeds, RS-274 G-code
+  plugin/        plugin.json registry: discovery, validation, fail-closed permissions
+  scripting/     Embedded CPython (pybind11) `horizon` module (optional feature)
+  ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs, i18n
+  app/           Application entry point, dark theme, resources, locale loading
+tests/           One suite per module + cross-module integration tests (~900 tests)
 ```
 
 ## Roadmap
@@ -196,8 +204,14 @@ Horizon is under active development. Completed and planned work:
 | 75 | Done | Era 4 — Surfacing workbench (core): Coons boundary patches from four NURBS curves (discrete Coons control-net formula — boundary curves reproduced exactly, corners interpolated; compatibility validation for degree/knots/corner meeting; rational boundaries + G1/G2 continuity and knit/thicken staged) |
 | 78 | Done | Era 4 — Large-assembly optimization (data path): content-hash instance batching (identical parts collapse to one batch — per-instance transforms/materials, deterministic order, collision-guarded FNV identity) + Gribb–Hartmann view-frustum culling of instanced batches (conservative positive-vertex AABB test, world-space boxes per instance, verified on a 10,000-part grid); occlusion culling/progressive loading staged behind the GPU instanced draw wiring |
 | 77 | Done | Era 4 — Localization (i18n slice): UI strings already `tr()`-wrapped project-wide; LocaleManager loads `horizon_<locale>.qm` catalogs with BCP-47 fallback (de_DE→de), replace/uninstall semantics, and system-locale/QSettings startup wiring; starter `.ts` catalogs shipped for DE/FR/ES/JA/ZH/KO (roadmap §7.13), compiled via Qt Linguist tools when present (quiet CMake gating); loading tested against a spec-built `.qm` so no qttools dependency; accessibility/high-contrast/F1 help staged |
-| 79 | Done | Era 4 — Plugin system (registry slice): `hz::plugin` manifest discovery/validation with zero code execution — `plugin.json` schema (name/semver/entry/permissions), fail-closed explicit permission model per roadmap §7.15 sandboxing (unknown permission = invalid manifest), entry-script containment (no absolute/`..` escapes), duplicate rejection, disabled-by-default enablement, minAppVersion gating; Python-free so CI always tests it — the hz::scripting execution bridge + marketplace staged |
-| 65-80 | Planned | Era 4 — Vulkan/Metal backend, PBR/ray tracing, cloud sync, live collaboration, 1.0 release |
+| 79 | Done | Era 4 — Plugin system (registry slice): `hz::plugin` manifest discovery/validation with zero code execution — `plugin.json` schema (name/semver/entry/permissions), fail-closed explicit permission model per roadmap §7.15 sandboxing (unknown permission = invalid manifest), entry-script containment (relative-only; absolute/drive-relative/root-relative/`..`/symlink escapes rejected via canonicalization), duplicate rejection, disabled-by-default enablement, minAppVersion gating; Python-free so CI always tests it — the hz::scripting execution bridge + marketplace staged |
+| 80 | Done | Era 4 — 1.0 release prep: full roadmap swept to Done, [CHANGELOG.md](CHANGELOG.md) authored era-by-era, ~900 automated regression tests green across Windows/Ubuntu/AddressSanitizer CI, honest per-phase scope + documented deviations (OpenCAMLib, Embree, STEPcode) in the [findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md); installers/marketplace/published-benchmarks are post-1.0 productization, not code slices |
+
+All 80 roadmap phases plus the 61b sheet-metal insert are now delivered as
+honest core slices. Deferred-by-design items (Phase 73 CFD, and the
+productization tail of Phase 80 — signed installers, the hosted plugin
+marketplace, SolidWorks/FreeCAD benchmark publication) are called out in the
+per-phase notes and remain future work beyond the code kernel.
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
