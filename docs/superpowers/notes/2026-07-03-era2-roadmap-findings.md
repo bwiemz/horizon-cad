@@ -4,7 +4,7 @@ Notes captured while working through Era 2, to keep the roadmap status honest
 and hand off the two items that warrant dedicated, careful efforts rather than a
 rushed change.
 
-## Phase 50 — STEP AP242: dependency deferred
+## Phase 50 — STEP AP242: dependency deferred → ✅ DONE in-house
 
 The roadmap calls for integrating **STEPcode** (BSD) for EXPRESS/Part-21
 parsing. STEPcode is **not available as a vcpkg port** (no
@@ -14,11 +14,23 @@ submodule build of STEPcode's own CMake project (which also code-generates C++
 from EXPRESS schemas) — a heavy, non-binary-cached build that would add
 substantial Windows CI time and flakiness.
 
-**Recommendation:** do Phase 50 as a focused effort. Gate it behind
-`HZ_ENABLE_STEP` with quiet detection (mirroring `HZ_ENABLE_SCRIPTING`) so the
-default build never depends on it, and validate the Windows path deliberately.
-Alternatively evaluate OpenCASCADE's STEP reader (which *is* in vcpkg) as the
-import/export backend instead of STEPcode.
+**Resolution (implemented):** neither STEPcode nor OpenCASCADE. Horizon's
+kernel is uniformly NURBS-backed, so AP242 export maps 1:1 onto
+`(RATIONAL_)B_SPLINE_CURVE/SURFACE_WITH_KNOTS` with zero loss, and a compact
+in-house Part-21 tokenizer + entity resolver covers import. `hz::io::StepFormat`
+writes MANIFOLD_SOLID_BREP + product structure and reconstructs `topo::Solid`
+(half-edge structure rebuilt from EDGE_LOOP/ORIENTED_EDGE, twins linked with a
+strict 2-use manifold check, `Solid::isValid()` gate). External-file interop
+covers LINE / CIRCLE edge geometry and PLANE / CYLINDRICAL_SURFACE face
+geometry (untrimmed-patch limitation documented in the header). This keeps CI
+dependency-free — the same trade Phase 57 made with the in-house FEA solver
+instead of TetGen/CalculiX.
+
+Found in passing: Phase-36 Boolean results are not seam-stitched at the A/B
+boundary (documented "may not be perfectly watertight"), so their STEP
+re-import correctly *fails* the manifold check —
+`StepFormat.BooleanSeamDefectIsDetectedOnReimport` pins that behaviour until
+SSI face splitting lands.
 
 ## Phase 52 — assembly-solver scaling: dense → sparse ✅ DONE
 

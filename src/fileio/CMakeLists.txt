@@ -1,6 +1,7 @@
 add_library(hz_fileio STATIC
     src/NativeFormat.cpp
     src/StlExporter.cpp
+    src/StepFormat.cpp
     src/DxfFormat.cpp
     src/DrawingExport.cpp
     src/DrawingDocumentIO.cpp
