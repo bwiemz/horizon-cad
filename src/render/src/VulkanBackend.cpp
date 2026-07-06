@@ -76,6 +76,8 @@ VulkanBackend::VulkanBackend() {
         m_device = nullptr;
         return;
     }
+    m_queueFamily = graphicsFamily;
+    vkGetDeviceQueue(m_device, graphicsFamily, 0, &m_queue);
 
     // -- Memory type table: selection happens per allocation ---------------------
     VkPhysicalDeviceMemoryProperties memProps{};
@@ -119,6 +121,9 @@ BufferHandle VulkanBackend::createBuffer(BufferUsage usage, const void* data, si
             break;
         case BufferUsage::Uniform:
             usageFlags = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            break;
+        case BufferUsage::Storage:
+            usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             break;
     }
 
@@ -184,6 +189,181 @@ void VulkanBackend::destroyBuffer(BufferHandle handle) {
     vkDestroyBuffer(m_device, it->second.buffer, nullptr);
     vkFreeMemory(m_device, it->second.memory, nullptr);
     m_buffers.erase(it);
+}
+
+bool VulkanBackend::runComputeSpirv(const uint32_t* spirv, size_t wordCount,
+                                    const std::vector<BufferHandle>& storageBuffers,
+                                    uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) {
+    if (!isAvailable() || m_queue == nullptr || spirv == nullptr || wordCount == 0 ||
+        storageBuffers.empty()) {
+        return false;
+    }
+
+    std::vector<VkBuffer> buffers;
+    buffers.reserve(storageBuffers.size());
+    for (const BufferHandle& h : storageBuffers) {
+        auto it = m_buffers.find(h.id);
+        if (it == m_buffers.end()) return false;
+        buffers.push_back(it->second.buffer);
+    }
+
+    // One-shot pipeline: everything created here is destroyed before return.
+    // Dispatch caching is a follow-up once compute becomes per-frame work.
+    bool ok = false;
+    VkShaderModule shader = VK_NULL_HANDLE;
+    VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+
+    do {
+        VkShaderModuleCreateInfo shaderInfo{};
+        shaderInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shaderInfo.codeSize = wordCount * sizeof(uint32_t);
+        shaderInfo.pCode = spirv;
+        if (vkCreateShaderModule(m_device, &shaderInfo, nullptr, &shader) != VK_SUCCESS) break;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings(storageBuffers.size());
+        for (uint32_t i = 0; i < bindings.size(); ++i) {
+            bindings[i].binding = i;
+            bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+        if (vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr, &setLayout) != VK_SUCCESS) {
+            break;
+        }
+
+        VkPipelineLayoutCreateInfo plInfo{};
+        plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        plInfo.setLayoutCount = 1;
+        plInfo.pSetLayouts = &setLayout;
+        if (vkCreatePipelineLayout(m_device, &plInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+            break;
+        }
+
+        VkComputePipelineCreateInfo pipeInfo{};
+        pipeInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipeInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipeInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipeInfo.stage.module = shader;
+        pipeInfo.stage.pName = "main";
+        pipeInfo.layout = pipelineLayout;
+        if (vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipeline) !=
+            VK_SUCCESS) {
+            break;
+        }
+
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSize.descriptorCount = static_cast<uint32_t>(storageBuffers.size());
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.maxSets = 1;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            break;
+        }
+
+        VkDescriptorSetAllocateInfo setAlloc{};
+        setAlloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        setAlloc.descriptorPool = descriptorPool;
+        setAlloc.descriptorSetCount = 1;
+        setAlloc.pSetLayouts = &setLayout;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        if (vkAllocateDescriptorSets(m_device, &setAlloc, &descriptorSet) != VK_SUCCESS) break;
+
+        std::vector<VkDescriptorBufferInfo> bufferInfos(buffers.size());
+        std::vector<VkWriteDescriptorSet> writes(buffers.size());
+        for (uint32_t i = 0; i < buffers.size(); ++i) {
+            bufferInfos[i].buffer = buffers[i];
+            bufferInfos[i].offset = 0;
+            bufferInfos[i].range = VK_WHOLE_SIZE;
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = descriptorSet;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo = &bufferInfos[i];
+        }
+        vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                               nullptr);
+
+        VkCommandPoolCreateInfo cpInfo{};
+        cpInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        cpInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        cpInfo.queueFamilyIndex = m_queueFamily;
+        if (vkCreateCommandPool(m_device, &cpInfo, nullptr, &commandPool) != VK_SUCCESS) break;
+
+        VkCommandBufferAllocateInfo cbInfo{};
+        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbInfo.commandPool = commandPool;
+        cbInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbInfo.commandBufferCount = 1;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(m_device, &cbInfo, &cmd) != VK_SUCCESS) break;
+
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(cmd, &begin) != VK_SUCCESS) break;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1,
+                                &descriptorSet, 0, nullptr);
+        vkCmdDispatch(cmd, groupsX, groupsY, groupsZ);
+
+        // Make shader writes visible to the host read-back.
+        VkMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                             0, 1, &barrier, 0, nullptr, 0, nullptr);
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS) break;
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        if (vkCreateFence(m_device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) break;
+
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &cmd;
+        if (vkQueueSubmit(m_queue, 1, &submit, fence) != VK_SUCCESS) break;
+        if (vkWaitForFences(m_device, 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) break;
+
+        ok = true;
+    } while (false);
+
+    if (fence != VK_NULL_HANDLE) vkDestroyFence(m_device, fence, nullptr);
+    if (commandPool != VK_NULL_HANDLE) vkDestroyCommandPool(m_device, commandPool, nullptr);
+    if (descriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(m_device, descriptorPool, nullptr);
+    }
+    if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(m_device, pipeline, nullptr);
+    if (pipelineLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
+    }
+    if (setLayout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(m_device, setLayout, nullptr);
+    if (shader != VK_NULL_HANDLE) vkDestroyShaderModule(m_device, shader, nullptr);
+    return ok;
+}
+
+bool VulkanBackend::readBuffer(BufferHandle handle, void* out, size_t size) {
+    auto it = m_buffers.find(handle.id);
+    if (it == m_buffers.end() || out == nullptr || size > it->second.size) return false;
+    void* mapped = nullptr;
+    if (vkMapMemory(m_device, it->second.memory, 0, size, 0, &mapped) != VK_SUCCESS) return false;
+    std::memcpy(out, mapped, size);
+    vkUnmapMemory(m_device, it->second.memory);
+    return true;
 }
 
 // -- Staged features: honest no-ops until the SPIR-V pipeline lands ----------

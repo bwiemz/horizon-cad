@@ -6,6 +6,10 @@
 
 namespace hz::render {
 
+#ifndef GL_SHADER_STORAGE_BUFFER
+#define GL_SHADER_STORAGE_BUFFER 0x90D2
+#endif
+
 namespace {
 
 uint32_t glTargetFor(BufferUsage usage) {
@@ -16,6 +20,8 @@ uint32_t glTargetFor(BufferUsage usage) {
             return GL_ELEMENT_ARRAY_BUFFER;
         case BufferUsage::Uniform:
             return GL_UNIFORM_BUFFER;
+        case BufferUsage::Storage:
+            return GL_SHADER_STORAGE_BUFFER;  // requires a GL 4.3 context
     }
     return GL_ARRAY_BUFFER;
 }

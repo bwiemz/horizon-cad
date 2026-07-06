@@ -21,7 +21,7 @@ struct ShaderHandle {
     bool isValid() const { return id != 0; }
 };
 
-enum class BufferUsage { Vertex, Index, Uniform };
+enum class BufferUsage { Vertex, Index, Uniform, Storage };
 enum class PrimitiveTopology { Triangles, Lines };
 
 /// One render pass: clear state for the bound framebuffer.
