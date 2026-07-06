@@ -2,6 +2,7 @@ add_executable(hz_simulation_tests
     test_LinearElement.cpp
     test_LinearStaticSolver.cpp
     test_ModalSolver.cpp
+    test_Fatigue.cpp
     test_HeatTransfer.cpp
     test_SolidMesher.cpp
 )

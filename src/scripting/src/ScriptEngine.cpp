@@ -11,6 +11,7 @@
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/modeling/SheetMetal.h"
 #include "horizon/scripting/ScriptContext.h"
+#include "horizon/simulation/Fatigue.h"
 
 namespace py = pybind11;
 
@@ -122,6 +123,28 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     m.def("bend_allowance", &hz::model::bendAllowance, py::arg("angle"), py::arg("params"));
     m.def("bend_deduction", &hz::model::bendDeduction, py::arg("angle"), py::arg("params"));
     m.def("developed_length", &hz::model::developedLength, py::arg("strip"), py::arg("params"));
+
+    // Stress-life fatigue (Phase 73).
+    py::class_<hz::sim::SNCurve>(m, "SNCurve")
+        .def(py::init<>())
+        .def_readwrite("basquin_coefficient", &hz::sim::SNCurve::basquinCoefficient)
+        .def_readwrite("basquin_exponent", &hz::sim::SNCurve::basquinExponent)
+        .def_readwrite("endurance_limit", &hz::sim::SNCurve::enduranceLimit)
+        .def_readwrite("ultimate_strength", &hz::sim::SNCurve::ultimateStrength)
+        .def("is_valid", &hz::sim::SNCurve::isValid)
+        .def_static("from_two_points", &hz::sim::SNCurve::fromTwoPoints, py::arg("s1"),
+                    py::arg("n1"), py::arg("s2"), py::arg("n2"), py::arg("endurance_limit"),
+                    py::arg("ultimate_strength"))
+        .def_static("steel", &hz::sim::SNCurve::steel, py::arg("ultimate_strength"));
+
+    m.def("cycles_to_failure", &hz::sim::cyclesToFailure, py::arg("sn"),
+          py::arg("stress_amplitude"));
+    m.def("goodman_equivalent", &hz::sim::goodmanEquivalent, py::arg("amplitude"), py::arg("mean"),
+          py::arg("ultimate_strength"));
+    m.def("soderberg_equivalent", &hz::sim::soderbergEquivalent, py::arg("amplitude"),
+          py::arg("mean"), py::arg("yield_strength"));
+    m.def("fatigue_safety_factor", &hz::sim::fatigueSafetyFactor, py::arg("sn"),
+          py::arg("amplitude"), py::arg("mean"));
 
     // Reference-geometry constructions. Fallible ones (std::optional) return
     // None on degenerate input.
