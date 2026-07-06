@@ -157,6 +157,58 @@ TEST(PathTracerTest, MoreSamplesReduceVariance) {
     EXPECT_LT(meanDiff(high), meanDiff(low));
 }
 
+/// Review regression: NEE must evaluate the full BRDF — pure metals have no
+/// diffuse lobe, so without specular NEE the sun had zero effect on them.
+TEST(PathTracerTest, MetalsRespondToSunRadiance) {
+    PathTracer tracer;
+    tracer.addMesh(makeCubeMesh(), hz::render::MaterialLibrary::find("Polished Steel"));
+
+    RtSettings dim = smallSettings();
+    dim.samplesPerPixel = 16;
+    dim.sunDirection = Vec3(0.2, -0.3, 1.0);
+    dim.sunRadiance = Vec3(0.1, 0.1, 0.1);
+    RtSettings bright = dim;
+    bright.sunRadiance = Vec3(10.0, 10.0, 10.0);
+
+    const RtImage a = tracer.render(lookAtOrigin(), dim);
+    const RtImage b = tracer.render(lookAtOrigin(), bright);
+
+    double diff = 0.0;
+    for (size_t i = 0; i < a.pixels.size(); ++i) diff += a.pixels[i].distanceTo(b.pixels[i]);
+    EXPECT_GT(diff, 1e-3) << "sun radiance had no effect on a pure metal";
+}
+
+/// Review regression: Material::alpha was silently ignored — Glass rendered
+/// fully opaque. A dark object placed BEHIND a glass slab must show through.
+TEST(PathTracerTest, GlassTransmitsLight) {
+    RtSettings settings = smallSettings();
+    settings.samplesPerPixel = 32;
+
+    RtCamera cam;
+    cam.eye = Vec3(0.0, -30.0, 0.0);
+    cam.target = Vec3(0.0, 0.0, 0.0);
+
+    const auto behind = hz::math::Mat4::translation(Vec3(0.0, 15.0, 0.0));
+
+    PathTracer glassOnly;
+    glassOnly.addMesh(makeCubeMesh(), hz::render::MaterialLibrary::find("Glass"));
+
+    PathTracer glassWithRubberBehind;
+    glassWithRubberBehind.addMesh(makeCubeMesh(), hz::render::MaterialLibrary::find("Glass"));
+    glassWithRubberBehind.addMesh(makeCubeMesh(), hz::render::MaterialLibrary::find("Rubber"),
+                                  behind);
+
+    const RtImage a = glassOnly.render(cam, settings);
+    const RtImage b = glassWithRubberBehind.render(cam, settings);
+
+    // Through the glass, the dark rubber block replaces the bright sky:
+    // the center pixel darkens noticeably. Were alpha ignored (opaque
+    // glass), the object behind could not influence the pixel.
+    const size_t center = 64 * 24 + 32;
+    EXPECT_LT(luminance(b.pixels[center]), luminance(a.pixels[center]) * 0.8)
+        << "object behind glass is invisible — transmission not working";
+}
+
 TEST(PathTracerTest, SavesPpm) {
     PathTracer tracer;
     tracer.addMesh(makeCubeMesh(), hz::render::MaterialLibrary::find("Wood"));

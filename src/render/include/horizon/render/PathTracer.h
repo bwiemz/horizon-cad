@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -98,10 +99,12 @@ private:
     std::vector<Triangle> m_triangles;
     std::vector<Material> m_materials;
 
-    // BVH built lazily on first render.
+    // BVH built lazily on first render; the mutex makes concurrent const
+    // render() calls safe (the build is double-checked).
     mutable std::vector<BvhNode> m_nodes;
     mutable std::vector<uint32_t> m_order;
     mutable bool m_bvhDirty = true;
+    mutable std::mutex m_bvhMutex;
 };
 
 }  // namespace hz::render

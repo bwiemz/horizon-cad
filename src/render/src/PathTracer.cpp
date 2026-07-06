@@ -249,7 +249,10 @@ bool intersectTriangle(const Vec3& origin, const Vec3& dir, const Vec3& a, const
 }  // namespace
 
 bool PathTracer::intersect(const Vec3& origin, const Vec3& dir, Hit& hit) const {
-    if (m_bvhDirty) buildBvh();
+    if (m_bvhDirty) {
+        const std::lock_guard<std::mutex> lock(m_bvhMutex);
+        if (m_bvhDirty) buildBvh();
+    }
     if (m_nodes.empty()) return false;
 
     const Vec3 invDir(1.0 / (dir.x != 0.0 ? dir.x : 1e-300), 1.0 / (dir.y != 0.0 ? dir.y : 1e-300),
@@ -295,6 +298,26 @@ bool PathTracer::occluded(const Vec3& origin, const Vec3& dir, double maxT) cons
 
 // -- Path tracing --------------------------------------------------------------------
 
+namespace {
+
+/// Schlick-GGX separable Smith masking-shadowing.
+double smithG(double nDotV, double nDotL, double roughness) {
+    const double k = (roughness * roughness) / 2.0;
+    const double gv = nDotV / (nDotV * (1.0 - k) + k);
+    const double gl = nDotL / (nDotL * (1.0 - k) + k);
+    return gv * gl;
+}
+
+/// GGX normal distribution.
+double ggxD(double nDotH, double roughness) {
+    const double a = roughness * roughness;
+    const double a2 = a * a;
+    const double d = nDotH * nDotH * (a2 - 1.0) + 1.0;
+    return a2 / (hz::math::kPi * d * d + 1e-12);
+}
+
+}  // namespace
+
 Vec3 PathTracer::trace(Vec3 origin, Vec3 dir, const RtSettings& settings, uint64_t& rng) const {
     Vec3 throughput(1, 1, 1);
     Vec3 radiance(0, 0, 0);
@@ -312,19 +335,45 @@ Vec3 PathTracer::trace(Vec3 origin, Vec3 dir, const RtSettings& settings, uint64
         }
 
         const Material& mat = m_materials[hit.materialIndex];
+
+        // Alpha as thin transmission: transparent materials (Glass) pass the
+        // ray straight through with a tint. No refraction — a documented
+        // approximation.
+        if (mat.alpha < 1.0f && rand01(rng) >= mat.alpha) {
+            const Vec3 tint = mat.color * 0.5 + Vec3(0.5, 0.5, 0.5);
+            throughput = Vec3(throughput.x * tint.x, throughput.y * tint.y, throughput.z * tint.z);
+            origin = hit.point + dir * kRayEpsilon * 10.0;
+            continue;  // same direction, through the surface
+        }
+
         const Vec3 albedo = mat.color;
         const double metallic = mat.metallic;
         const double roughness = std::clamp(static_cast<double>(mat.roughness), 0.05, 1.0);
         const Vec3 f0 = Vec3(0.04, 0.04, 0.04) * (1.0 - metallic) + albedo * metallic;
+        const Vec3 view = dir * -1.0;
+        const double nDotV = std::max(hit.normal.dot(view), 1e-4);
 
-        // Next-event estimation toward the sun.
+        // Next-event estimation toward the sun with the FULL BRDF (diffuse +
+        // GGX specular): the sun is a delta light unreachable by BRDF
+        // sampling, so omitting the specular lobe would leave metals with no
+        // direct sun response at all.
         const double nDotSun = hit.normal.dot(sunDir);
         if (nDotSun > 0.0 &&
             !occluded(hit.point + hit.normal * kRayEpsilon * 10.0, sunDir, 1e300)) {
-            const Vec3 diffuse = albedo * ((1.0 - metallic) / hz::math::kPi);
+            const Vec3 h = (sunDir + view).normalized();
+            const double nDotH = std::max(hit.normal.dot(h), 0.0);
+            const double vDotH = std::max(view.dot(h), 0.0);
+            const Vec3 fresnel = schlick(f0, vDotH);
+            const double d = ggxD(nDotH, roughness);
+            const double g = smithG(nDotV, nDotSun, roughness);
+            const Vec3 specular = fresnel * (d * g / (4.0 * nDotV * nDotSun + 1e-6));
+            const Vec3 kd = (Vec3(1, 1, 1) - fresnel) * (1.0 - metallic);
+            const Vec3 diffuse =
+                Vec3(kd.x * albedo.x, kd.y * albedo.y, kd.z * albedo.z) * (1.0 / hz::math::kPi);
+            const Vec3 brdf = diffuse + specular;
             const Vec3 direct =
-                Vec3(diffuse.x * settings.sunRadiance.x, diffuse.y * settings.sunRadiance.y,
-                     diffuse.z * settings.sunRadiance.z) *
+                Vec3(brdf.x * settings.sunRadiance.x, brdf.y * settings.sunRadiance.y,
+                     brdf.z * settings.sunRadiance.z) *
                 nDotSun;
             radiance = radiance + Vec3(throughput.x * direct.x, throughput.y * direct.y,
                                        throughput.z * direct.z);
@@ -337,14 +386,27 @@ Vec3 PathTracer::trace(Vec3 origin, Vec3 dir, const RtSettings& settings, uint64
         if (rand01(rng) < specProb) {
             const Vec3 h = ggxHalfVector(hit.normal, roughness * roughness, rng);
             nextDir = reflect(dir, h);
-            if (nextDir.dot(hit.normal) <= 0.0) break;  // absorbed into the surface
-            const Vec3 f = schlick(f0, nextDir.dot(h));
-            weight = f * (1.0 / specProb);
+            const double nDotL = nextDir.dot(hit.normal);
+            if (nDotL <= 0.0) break;  // absorbed into the surface
+            // Half-vector estimator: f·cosθ/pdf with pdf = D·(n·h)/(4·(v·h))
+            // reduces to F·G·(v·h)/((n·v)·(n·h)).
+            const double vDotH = std::max(view.dot(h), 1e-6);
+            const double nDotH = std::max(hit.normal.dot(h), 1e-6);
+            const Vec3 fresnel = schlick(f0, vDotH);
+            const double g = smithG(nDotV, nDotL, roughness);
+            weight = fresnel * (g * vDotH / (nDotV * nDotH * specProb));
         } else {
             nextDir = cosineHemisphere(hit.normal, rng);
-            weight = albedo * ((1.0 - metallic) / (1.0 - specProb));
+            // Energy conservation: the diffuse lobe carries only what the
+            // Fresnel layer transmits.
+            const Vec3 fresnel = schlick(f0, nDotV);
+            const Vec3 kd = (Vec3(1, 1, 1) - fresnel) * (1.0 - metallic);
+            weight =
+                Vec3(kd.x * albedo.x, kd.y * albedo.y, kd.z * albedo.z) * (1.0 / (1.0 - specProb));
         }
 
+        // Clamp fireflies from low-probability samples.
+        weight = Vec3(std::min(weight.x, 4.0), std::min(weight.y, 4.0), std::min(weight.z, 4.0));
         throughput =
             Vec3(throughput.x * weight.x, throughput.y * weight.y, throughput.z * weight.z);
 
@@ -370,7 +432,10 @@ RtImage PathTracer::render(const RtCamera& camera, const RtSettings& settings) c
     if (settings.width <= 0 || settings.height <= 0 || settings.samplesPerPixel <= 0) {
         return image;
     }
-    if (m_bvhDirty) buildBvh();
+    if (m_bvhDirty) {
+        const std::lock_guard<std::mutex> lock(m_bvhMutex);
+        if (m_bvhDirty) buildBvh();
+    }
 
     const Vec3 forward = (camera.target - camera.eye).normalized();
     const Vec3 right = forward.cross(camera.up).normalized();
