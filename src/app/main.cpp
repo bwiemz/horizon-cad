@@ -1,11 +1,15 @@
 #include <spdlog/spdlog.h>
 
 #include <QApplication>
+#include <QDir>
 #include <QFile>
+#include <QLocale>
 #include <QPalette>
+#include <QSettings>
 #include <QStyleFactory>
 #include <QSurfaceFormat>
 
+#include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/MainWindow.h"
 
 // Suppress a specific Qt 6.10 qpixmap_win.cpp assertion on MSVC debug builds.
@@ -81,6 +85,17 @@ int main(int argc, char* argv[]) {
     app.setApplicationVersion("0.1.0");
 
     applyDarkTheme(app);
+
+    // Load the UI translation before any widgets are built (Phase 77).
+    // An explicit choice in settings wins; otherwise follow the system locale.
+    hz::ui::LocaleManager localeManager;
+    const QString translationsDir =
+        QDir(QApplication::applicationDirPath()).filePath("translations");
+    const QString uiLanguage =
+        QSettings().value("ui/language", QLocale::system().name()).toString();
+    if (localeManager.apply(translationsDir, uiLanguage)) {
+        spdlog::info("UI language: {}", uiLanguage.toStdString());
+    }
 
     spdlog::info("Horizon CAD starting...");
 
