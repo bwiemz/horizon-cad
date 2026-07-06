@@ -286,3 +286,40 @@ TEST(ScriptEngineTest, StaticAnalysisWithoutSolidDoesNotConverge) {
     ASSERT_TRUE(res.ok) << res.error;
     EXPECT_EQ(res.output, "False\n");
 }
+
+TEST(ScriptEngineTest, ModalAnalysisOnSolid) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    // A steel bar fixed at one end has strictly positive, ascending natural
+    // frequencies. The list is returned as a plain Python list of floats.
+    ScriptEngine engine;
+    const std::string script =
+        "doc.add_box(10.0, 1.0, 1.0)\n"
+        "doc.rebuild()\n"
+        "r = doc.modal_analysis(youngs_modulus=200e9, poisson_ratio=0.3, density=7850.0,\n"
+        "                       axis=0, num_modes=4, resolution=4)\n"
+        "f = r.natural_frequencies\n"
+        "print(r.converged)\n"
+        "print(len(f) == 4)\n"
+        "print(f[0] > 0.0)\n"
+        "print(all(f[i] >= f[i - 1] - 1e-6 for i in range(1, len(f))))\n";
+    auto res = engine.run(script, &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\nTrue\nTrue\nTrue\n");
+}
+
+TEST(ScriptEngineTest, ModalAnalysisWithoutSolidDoesNotConverge) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(
+        "r = doc.modal_analysis(youngs_modulus=200e9)\n"
+        "print(r.converged)\nprint(len(r.natural_frequencies))\n",
+        &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "False\n0\n");
+}

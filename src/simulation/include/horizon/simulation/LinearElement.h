@@ -31,6 +31,16 @@ bool tetShapeGradients(const TetMesh& mesh, const Tet4& element,
 std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& element,
                                          const ElasticMaterial& material);
 
+/// The 12x12 consistent mass matrix of a linear tetrahedron, in row-major order.
+/// DOF order matches elementStiffness ([n0x, n0y, n0z, n1x, ...]).
+///
+/// Me = (rho * V / 20) * (1 + delta_ij) coupling each pair of nodes, expanded to
+/// a 3x3 identity block per translational direction (x, y, z do not couple). The
+/// row sums in any single direction total rho * V — the element's mass. A
+/// degenerate (near-zero-volume) element or non-positive density yields an
+/// all-zero matrix.
+std::array<double, 144> elementMass(const TetMesh& mesh, const Tet4& element, double density);
+
 /// The constant stress in a linear tetrahedron given its 12 nodal displacements
 /// (order [n0x, n0y, n0z, n1x, ...]). Returns the Voigt stress vector
 /// [sxx, syy, szz, sxy, syz, szx] = D * B * u. A degenerate element or invalid

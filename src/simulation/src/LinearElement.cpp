@@ -129,6 +129,30 @@ std::array<double, 144> elementStiffness(const TetMesh& mesh, const Tet4& elemen
     return out;
 }
 
+std::array<double, 144> elementMass(const TetMesh& mesh, const Tet4& element, double density) {
+    std::array<double, 144> out{};  // zero-initialised
+    if (density <= 0.0) return out;
+
+    std::array<math::Vec3, 4> grad;
+    double volume = 0.0;
+    if (!tetShapeGradients(mesh, element, grad, volume)) return out;
+
+    // Consistent mass: diagonal node blocks weigh 2*c, off-diagonal 1*c, with
+    // c = rho*V/20, each replicated on the three translational DOFs of a node.
+    const double c = density * volume / 20.0;
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            const double m = (i == j) ? 2.0 * c : c;
+            for (int d = 0; d < 3; ++d) {
+                const int r = 3 * i + d;
+                const int col = 3 * j + d;
+                out[r * 12 + col] = m;
+            }
+        }
+    }
+    return out;
+}
+
 std::array<double, 6> elementStress(const TetMesh& mesh, const Tet4& element,
                                     const ElasticMaterial& material,
                                     const std::array<double, 12>& displacements) {
