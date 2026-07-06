@@ -15,12 +15,16 @@ namespace {
 
 using Triangle = std::array<Vec3, 3>;
 
-// Triangulate the solid's boundary directly from its B-Rep face loops (fan from
-// each outer loop's first vertex). This is exact for planar-faced solids and,
-// unlike the render tessellation, has no overlapping/inconsistently-wound
-// triangles. Curved faces are approximated by their loop polygon (the follow-up
-// for smooth-surface accuracy is per-face NURBS integration). Inner loops
-// (holes) are not yet subtracted.
+// Triangulate the solid's boundary directly from its B-Rep face loops (fan
+// from each outer loop's first vertex). Manifold twin-linking makes every
+// loop's winding globally consistent up to one overall inward/outward sign,
+// which compute() fixes by negating all integrals when the total volume comes
+// out negative. Triangles therefore keep their loop winding; flipping them
+// individually (the old interior-reference heuristic) only worked for
+// star-shaped solids and reported non-convex solids — like a sheet-metal
+// L-fold — at a fraction of their true volume. Curved faces are approximated
+// by their loop polygon (the follow-up for smooth-surface accuracy is per-face
+// NURBS integration). Inner loops (holes) are not yet subtracted.
 std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
     std::vector<Triangle> tris;
     for (const auto& face : solid.faces()) {
@@ -39,21 +43,6 @@ std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
             tris.push_back({loop[0], loop[i], loop[i + 1]});
     }
     return tris;
-}
-
-// Face loops are not guaranteed to be wound consistently outward; orient every
-// triangle away from an interior reference (the vertex average, inside any
-// convex/star-shaped solid) so the divergence integrals share a sign.
-void orientOutward(std::vector<Triangle>& tris) {
-    Vec3 ref;
-    for (const Triangle& t : tris) ref = ref + t[0] + t[1] + t[2];
-    if (tris.empty()) return;
-    ref = ref / static_cast<double>(tris.size() * 3);
-    for (Triangle& t : tris) {
-        const Vec3 ng = (t[1] - t[0]).cross(t[2] - t[0]);
-        const Vec3 tc = (t[0] + t[1] + t[2]) / 3.0;
-        if ((tc - ref).dot(ng) < 0.0) std::swap(t[1], t[2]);
-    }
 }
 
 // Eberly, "Polyhedral Mass Properties (Revisited)": the 10 volume integrals
@@ -80,7 +69,6 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
 
     std::vector<Triangle> tris = boundaryTriangles(solid);
     if (tris.size() < 4) return props;  // need a closed volume
-    orientOutward(tris);
 
     constexpr double kOneDiv6 = 1.0 / 6.0;
     constexpr double kOneDiv24 = 1.0 / 24.0;
@@ -89,6 +77,9 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     const std::array<double, 10> mult = {kOneDiv6,  kOneDiv24, kOneDiv24,  kOneDiv24,  kOneDiv60,
                                          kOneDiv60, kOneDiv60, kOneDiv120, kOneDiv120, kOneDiv120};
     std::array<double, 10> intg = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // Surface area is the sum of unsigned triangle areas — accurate for the
+    // non-planar (saddle) face loops that Loft/Fillet produce, where a single
+    // signed vector area over the whole loop would undercount.
     double area = 0.0;
 
     for (const Triangle& t : tris) {

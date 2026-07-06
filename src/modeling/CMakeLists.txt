@@ -28,6 +28,7 @@ add_library(hz_modeling STATIC
     src/GeometricTolerance.cpp
     src/Sheet.cpp
     src/SheetMetal.cpp
+    src/SheetMetalSolid.cpp
 )
 
 find_package(Eigen3 CONFIG REQUIRED)

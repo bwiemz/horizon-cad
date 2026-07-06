@@ -96,7 +96,7 @@ cmake --preset debug
 # Build
 cmake --build build/debug --config Debug
 
-# Run tests (109 tests)
+# Run tests (~900 tests)
 ctest --test-dir build/debug -C Debug
 
 # Run
@@ -113,16 +113,24 @@ src/
                  R*-tree spatial index, expression engine
   drafting/      Entity model, layers, snap engine, dimension styles, sketch planes
   document/      Document ownership, undo/redo, sketches, feature tree,
-                 multi-document manager, assembly documents
-  render/        OpenGL renderer, camera, grid, shaders, selection, scene graph
+                 multi-document manager, assembly documents, collaboration sessions
+  render/        OpenGL/Vulkan backends, camera, grid, shaders, selection, scene graph,
+                 PBR materials, CPU path tracer, GPU tessellation, instancing/culling
   constraint/    Geometric constraint solver (Newton-Raphson + LM damping)
-  fileio/        Native formats (.hcad, .hzpart, .hzasm), DXF import/export
-  geometry/      NURBS curves and surfaces with adaptive tessellation
+  fileio/        Native formats (.hcad, .hzpart, .hzasm), DXF, STEP AP242, glTF/GLB
+  geometry/      NURBS curves and surfaces, adaptive tessellation, Coons surfacing
   topology/      Half-edge B-Rep with TopologyID genealogy and Euler operators
-  modeling/      Extrude, revolve, Booleans, fillet/chamfer, primitives
-  ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs
-  app/           Application entry point, dark theme, resources
-tests/           One suite per module + cross-module integration tests
+  modeling/      Extrude, revolve, Booleans, fillet/chamfer, primitives, loft/sweep,
+                 shell/draft, patterns, drawings/GD&T/BOM, sheet metal, mass properties
+  simulation/    In-house FEA — linear static, steady-state thermal, modal, fatigue
+  pdm/           .hzarchive revision store, multi-user vault locks, local-first cloud sync
+  kinematics/    Serial-chain forward kinematics + CCD inverse kinematics
+  cam/           2.5-axis toolpaths (contour/drill/pocket), feeds & speeds, RS-274 G-code
+  plugin/        plugin.json registry: discovery, validation, fail-closed permissions
+  scripting/     Embedded CPython (pybind11) `horizon` module (optional feature)
+  ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs, i18n
+  app/           Application entry point, dark theme, resources, locale loading
+tests/           One suite per module + cross-module integration tests (~900 tests)
 ```
 
 ## Roadmap
@@ -185,14 +193,25 @@ Horizon is under active development. Completed and planned work:
 | 50 | Done | Era 2 — STEP AP242 import/export: in-house ISO 10303-21 writer/reader, lossless (rational) B-spline mapping of the NURBS B-Rep, MANIFOLD_SOLID_BREP reconstruction with manifold validation, PLANE/LINE/CIRCLE/CYLINDRICAL_SURFACE interop for external files, round-trip idempotence guard |
 | 51 | Done | Era 2 — Native binary format: FlatBuffers `.hzpart`/`.hzasm` container (file id `HZBF`) wrapping the canonical JSON envelope + typed zero-copy tessellation cache; lightweight mesh loads skip the JSON parse entirely; verifier-gated against corrupt/truncated files; JSON/binary sniffing shares the extensions |
 | 61 | Done | Era 3 — Advanced fillets & drawings: variable-radius fillets (radius-stop table → exact ruled conic patches), 3-edge spherical corner vertex blends; fillet reconstruction rewritten to strict half-edge assembly (proper chord-cut ends, perpendicular-convex gate refuses oblique/reentrant edges instead of emitting wrong geometry, Newell-normal side selection); drawing section views (tessellation cut → closed profiles + 45° hatching + retained outline, DXF `Section`/`Hatch` layers); model-driven radial/diameter dimensions (circle-fit measurement, R/⌀ leaders in DXF); cylinder rims now carry true arc curves |
-| 61b | Planned | Era 3 — sheet-metal 3D features (flange bodies) |
+| 61b | Done | Era 3 — Sheet-metal 3D flange bodies: folded solids from the Phase-62 strip model (signed bend angles, concentric inside/outside arc boundaries offset by thickness, arc-polyline bends swept to width via Extrude), flat-pattern outline via developedLength; volumes validated against analytic flats+bend-annulus formulas; en route fixed a pre-existing MassProperties bug — per-triangle outward orientation broke non-convex solids (L-prism reported 4 instead of 12); signed fans + global sign normalization are exact for any simple-polygon B-Rep |
 | 65 | Done | Era 4 — Rendering abstraction layer: `RenderBackend` interface (buffers/textures/shaders/passes/draws/compute per roadmap §7.1), `OpenGLBackend` over the existing Qt GL path (incl. GL 4.3 compute dispatch), `VulkanBackend` staged bring-up behind quiet SDK detection (instance + discrete-GPU device + queue + host-visible buffer allocation, verified on RTX 5070 Ti; textures/draws staged pending SPIR-V pipeline); RAL contract tests + opt-in GL runtime tests |
 | 66 | Done | Era 4 — GPU compute (core): Vulkan compute pipeline (SPIR-V one-shot dispatch with storage-buffer descriptor sets, fence-synchronized, host readback), NURBS surface evaluation kernel (Cox–de Boor in GLSL, compiled at build time via glslangValidator, matching `NurbsSurface::evaluate`'s two-pass rational semantics exactly), `GpuTessellator` grid evaluator — verified against the CPU reference on plane/cylinder/sphere/torus grids on an RTX 5070 Ti; compute shaders only per roadmap §7.2 (MoltenVK-portable) |
 | 67 | Done | Era 4 — PBR materials: named metallic-roughness preset library (brushed aluminum, polished steel, matte plastic, rubber, glass, carbon fiber, wood per roadmap §7.3) on top of the existing Cook–Torrance viewport shader; IBL-lite ambient (hemisphere irradiance + roughness-aware Fresnel environment term, texture-free); HDR environment maps and per-face assignment staged |
 | 68 | Done | Era 4 — Ray tracing (core): in-house CPU Monte Carlo path tracer (median-split BVH + Möller–Trumbore, cosine/GGX importance sampling of the viewport material model, sun next-event estimation + hemisphere environment, Russian roulette), deterministic per-pixel seeding (multithreaded output bit-identical), Reinhard+gamma PPM export; Embree deviation documented in the findings note |
 | 69 | Done | Era 4 — Cloud sync (core): local-first vault replication (roadmap §7.5) — SyncEngine replicates whole .hzarchive revision histories between the local vault and a SyncEndpoint (file-system transport first, HTTP staged); append-only + hash-verified (divergent histories conflict and stay untouched — sync never merges), pessimistic locks extend to sync (pushes to documents checked out by others are refused); fully offline-capable |
 | 70 | Done | Era 4 — Live collaboration (core): transport-agnostic CollaborationSession with feature-level pessimistic token locking per roadmap §7.6 (deliberately NOT OT/CRDT) — tokens cover a feature plus its downstream chain, release on confirm+rebuild, leave releases everything; participant presence (cursor/selection/color); JSON snapshots ready for a WebSocket transport (staged) |
-| 65-80 | Planned | Era 4 — Vulkan/Metal backend, PBR/ray tracing, cloud sync, live collaboration, 1.0 release |
+| 76 | Done | Era 4 — Import/export ecosystem (glTF slice): self-contained GLB 2.0 export of tessellated solids/scenes — one shared binary buffer, spec-compliant accessors with position bounds, metallic-roughness material passthrough (BLEND for transparent presets), Z-up→Y-up root transform; STL export existed; IGES/3MF/DWG staged |
+| 75 | Done | Era 4 — Surfacing workbench (core): Coons boundary patches from four NURBS curves (discrete Coons control-net formula — boundary curves reproduced exactly, corners interpolated; compatibility validation for degree/knots/corner meeting; rational boundaries + G1/G2 continuity and knit/thicken staged) |
+| 78 | Done | Era 4 — Large-assembly optimization (data path): content-hash instance batching (identical parts collapse to one batch — per-instance transforms/materials, deterministic order, collision-guarded FNV identity) + Gribb–Hartmann view-frustum culling of instanced batches (conservative positive-vertex AABB test, world-space boxes per instance, verified on a 10,000-part grid); occlusion culling/progressive loading staged behind the GPU instanced draw wiring |
+| 77 | Done | Era 4 — Localization (i18n slice): UI strings already `tr()`-wrapped project-wide; LocaleManager loads `horizon_<locale>.qm` catalogs with BCP-47 fallback (de_DE→de), replace/uninstall semantics, and system-locale/QSettings startup wiring; starter `.ts` catalogs shipped for DE/FR/ES/JA/ZH/KO (roadmap §7.13), compiled via Qt Linguist tools when present (quiet CMake gating); loading tested against a spec-built `.qm` so no qttools dependency; accessibility/high-contrast/F1 help staged |
+| 79 | Done | Era 4 — Plugin system (registry slice): `hz::plugin` manifest discovery/validation with zero code execution — `plugin.json` schema (name/semver/entry/permissions), fail-closed explicit permission model per roadmap §7.15 sandboxing (unknown permission = invalid manifest), entry-script containment (relative-only; absolute/drive-relative/root-relative/`..`/symlink escapes rejected via canonicalization), duplicate rejection, disabled-by-default enablement, minAppVersion gating; Python-free so CI always tests it — the hz::scripting execution bridge + marketplace staged |
+| 80 | Done | Era 4 — 1.0 release prep: full roadmap swept to Done, [CHANGELOG.md](CHANGELOG.md) authored era-by-era, ~900 automated regression tests green across Windows/Ubuntu/AddressSanitizer CI, honest per-phase scope + documented deviations (OpenCAMLib, Embree, STEPcode) in the [findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md); installers/marketplace/published-benchmarks are post-1.0 productization, not code slices |
+
+All 80 roadmap phases plus the 61b sheet-metal insert are now delivered as
+honest core slices. Deferred-by-design items (Phase 73 CFD, and the
+productization tail of Phase 80 — signed installers, the hosted plugin
+marketplace, SolidWorks/FreeCAD benchmark publication) are called out in the
+per-phase notes and remain future work beyond the code kernel.
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

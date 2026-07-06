@@ -27,6 +27,7 @@ add_executable(hz_modeling_tests
     test_GeometricTolerance.cpp
     test_Sheet.cpp
     test_SheetMetal.cpp
+    test_SheetMetalSolid.cpp
 )
 
 target_link_libraries(hz_modeling_tests

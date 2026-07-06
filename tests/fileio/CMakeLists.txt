@@ -3,6 +3,7 @@ add_executable(hz_fileio_tests
     test_AssemblyFormat.cpp
     test_BinaryFormat.cpp
     test_StepFormat.cpp
+    test_GltfExport.cpp
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
     test_DrawingDimensionRenderer.cpp
