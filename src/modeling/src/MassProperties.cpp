@@ -15,14 +15,22 @@ namespace {
 
 using Triangle = std::array<Vec3, 3>;
 
-// Triangulate the solid's boundary directly from its B-Rep face loops (fan from
-// each outer loop's first vertex). This is exact for planar-faced solids and,
-// unlike the render tessellation, has no overlapping/inconsistently-wound
-// triangles. Curved faces are approximated by their loop polygon (the follow-up
-// for smooth-surface accuracy is per-face NURBS integration). Inner loops
-// (holes) are not yet subtracted.
-std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
+// Triangulate the solid's boundary directly from its B-Rep face loops (fan
+// from each outer loop's first vertex), and accumulate the exact surface area
+// per face as the signed vector area of that fan. A signed fan is exact for
+// ANY simple planar polygon — reflex corners produce opposite-normal triangles
+// whose contributions cancel — so no convex/star-shaped assumption is needed
+// anywhere. Manifold twin-linking makes every loop's winding globally
+// consistent up to one overall inward/outward sign, which compute() fixes by
+// negating all integrals when the total volume comes out negative. Triangles
+// must therefore keep their loop winding; flipping them individually (the old
+// interior-reference heuristic) broke non-convex solids. Curved faces are
+// approximated by their loop polygon (the follow-up for smooth-surface
+// accuracy is per-face NURBS integration). Inner loops (holes) are not yet
+// subtracted.
+std::vector<Triangle> boundaryTriangles(const topo::Solid& solid, double& areaOut) {
     std::vector<Triangle> tris;
+    areaOut = 0.0;
     for (const auto& face : solid.faces()) {
         const topo::Wire* w = face.outerLoop;
         if (!w || !w->halfEdge) continue;
@@ -35,25 +43,14 @@ std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
             cur = cur ? cur->next : nullptr;
         } while (cur && cur != start && loop.size() < 100000);
 
-        for (size_t i = 1; i + 1 < loop.size(); ++i)
+        Vec3 vectorArea;
+        for (size_t i = 1; i + 1 < loop.size(); ++i) {
             tris.push_back({loop[0], loop[i], loop[i + 1]});
+            vectorArea = vectorArea + (loop[i] - loop[0]).cross(loop[i + 1] - loop[0]);
+        }
+        areaOut += 0.5 * vectorArea.length();
     }
     return tris;
-}
-
-// Face loops are not guaranteed to be wound consistently outward; orient every
-// triangle away from an interior reference (the vertex average, inside any
-// convex/star-shaped solid) so the divergence integrals share a sign.
-void orientOutward(std::vector<Triangle>& tris) {
-    Vec3 ref;
-    for (const Triangle& t : tris) ref = ref + t[0] + t[1] + t[2];
-    if (tris.empty()) return;
-    ref = ref / static_cast<double>(tris.size() * 3);
-    for (Triangle& t : tris) {
-        const Vec3 ng = (t[1] - t[0]).cross(t[2] - t[0]);
-        const Vec3 tc = (t[0] + t[1] + t[2]) / 3.0;
-        if ((tc - ref).dot(ng) < 0.0) std::swap(t[1], t[2]);
-    }
 }
 
 // Eberly, "Polyhedral Mass Properties (Revisited)": the 10 volume integrals
@@ -78,9 +75,9 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     MassProperties props;
     props.density = material ? material->density : 1.0;
 
-    std::vector<Triangle> tris = boundaryTriangles(solid);
+    double area = 0.0;
+    std::vector<Triangle> tris = boundaryTriangles(solid, area);
     if (tris.size() < 4) return props;  // need a closed volume
-    orientOutward(tris);
 
     constexpr double kOneDiv6 = 1.0 / 6.0;
     constexpr double kOneDiv24 = 1.0 / 24.0;
@@ -89,14 +86,11 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     const std::array<double, 10> mult = {kOneDiv6,  kOneDiv24, kOneDiv24,  kOneDiv24,  kOneDiv60,
                                          kOneDiv60, kOneDiv60, kOneDiv120, kOneDiv120, kOneDiv120};
     std::array<double, 10> intg = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    double area = 0.0;
 
     for (const Triangle& t : tris) {
         const Vec3& p0 = t[0];
         const Vec3& p1 = t[1];
         const Vec3& p2 = t[2];
-
-        area += 0.5 * (p1 - p0).cross(p2 - p0).length();
 
         const double a1 = p1.x - p0.x, b1 = p1.y - p0.y, c1 = p1.z - p0.z;
         const double a2 = p2.x - p0.x, b2 = p2.y - p0.y, c2 = p2.z - p0.z;
