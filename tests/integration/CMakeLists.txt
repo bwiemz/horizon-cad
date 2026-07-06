@@ -2,6 +2,7 @@ add_executable(hz_integration_tests
     test_Pipeline.cpp
     test_MultiDocument.cpp
     test_AssemblyMates.cpp
+    test_Era2Memory.cpp
     test_Era3Pipeline.cpp
 )
 

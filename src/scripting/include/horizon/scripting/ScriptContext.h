@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/MassProperties.h"
@@ -73,6 +74,19 @@ public:
     /// the maximum face, for a material with @p youngsModulus and @p poissonRatio.
     StaticAnalysisResult staticAnalysis(double force, double youngsModulus, double poissonRatio,
                                         int axis, int resolution) const;
+
+    /// Result of a modal (free-vibration) analysis.
+    struct ModalAnalysisResult {
+        bool converged = false;                  ///< false if there is no solid or the solve fails
+        std::vector<double> naturalFrequencies;  ///< hertz, ascending
+    };
+
+    /// Run a modal analysis on the current solid: mesh its bounding box
+    /// (@p resolution subdivisions per side), fix the minimum face along @p axis
+    /// (0=x, 1=y, 2=z), and solve for the lowest @p numModes natural frequencies
+    /// of a material with @p youngsModulus, @p poissonRatio and @p density.
+    ModalAnalysisResult modalAnalysis(double youngsModulus, double poissonRatio, double density,
+                                      int axis, int numModes, int resolution) const;
 
     // --- Drawings ----------------------------------------------------------
     /// Generate the standard four-view drawing (front/top/right/isometric,

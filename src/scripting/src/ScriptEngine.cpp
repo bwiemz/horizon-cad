@@ -143,6 +143,11 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def_readonly("max_displacement", &ScriptContext::StaticAnalysisResult::maxDisplacement)
         .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises);
 
+    py::class_<ScriptContext::ModalAnalysisResult>(m, "ModalAnalysisResult")
+        .def_readonly("converged", &ScriptContext::ModalAnalysisResult::converged)
+        .def_readonly("natural_frequencies",
+                      &ScriptContext::ModalAnalysisResult::naturalFrequencies);
+
     py::class_<ScriptContext>(m, "Document")
         .def("feature_count", &ScriptContext::featureCount)
         .def("sketch_count", &ScriptContext::sketchCount)
@@ -172,6 +177,9 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("static_analysis", &ScriptContext::staticAnalysis, py::arg("force"),
              py::arg("youngs_modulus"), py::arg("poisson_ratio") = 0.3, py::arg("axis") = 0,
              py::arg("resolution") = 6)
+        .def("modal_analysis", &ScriptContext::modalAnalysis, py::arg("youngs_modulus"),
+             py::arg("poisson_ratio") = 0.3, py::arg("density") = 7850.0, py::arg("axis") = 0,
+             py::arg("num_modes") = 6, py::arg("resolution") = 5)
         .def("export_drawing_dxf", &ScriptContext::exportDrawingDxf, py::arg("path"))
         .def("rebuild", &ScriptContext::rebuild);
 }

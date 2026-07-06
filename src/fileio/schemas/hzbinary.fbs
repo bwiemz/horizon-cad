@@ -1,0 +1,27 @@
+// Horizon CAD binary document container (.hzpart / .hzasm), Phase 51.
+//
+// Layout: a typed FlatBuffers envelope carrying
+//   - the canonical NativeFormat JSON payload (feature tree, sketches,
+//     entities, parameters — everything except the tessellation cache), and
+//   - the tessellation cache as typed vectors, so lightweight loaders can
+//     read render meshes zero-copy without touching the JSON payload.
+
+namespace hz.io.fb;
+
+file_identifier "HZBF";
+file_extension "hzpart";
+
+table Mesh {
+  positions: [float];   // 3 floats per vertex
+  normals:   [float];   // 3 floats per vertex (same count as positions)
+  indices:   [uint32];  // triangle list
+}
+
+table BinaryDocument {
+  version: uint32;      // binary container version (1)
+  kind:    string;      // "hzpart" | "hcad" | "hzasm"
+  payload: string;      // NativeFormat JSON envelope (no tessellation cache)
+  meshes:  [Mesh];      // tessellation cache; index 0 is the part mesh
+}
+
+root_type BinaryDocument;

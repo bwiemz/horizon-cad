@@ -82,9 +82,15 @@ Two more Era-2 stabilization criteria are now checked by regression guards:
   under the 5 s target — the tree replay is not a bottleneck. Guarded by
   `PerfTest.FeatureTreeRebuild` (now 50 features, single-rebuild < 5 s bound).
 
-**Remaining Phase-52 work:** STEP round-trip (blocked on the Phase 50 dependency
-above) and the 100-part < 2 GB memory bound (not yet instrumented) are the last
-open Era-2 stabilization items.
+**Remaining Phase-52 work:** ✅ ALL CLOSED. The STEP round-trip landed with
+Phase 50 (`StepFormat.RoundTripIsIdempotent`). The 100-part < 2 GB memory
+bound is instrumented by
+`Era2MemoryTest.HundredPartLightweightAssemblyStaysUnderMemoryBound`
+(RSS-delta measured across 100 lightweight component resolutions from
+Phase-51 binary part files; also pins that lightweight resolution never
+falls back to full part loads). Resolving 100 components from the binary
+tessellation cache takes ~2 s in debug — the same loop through JSON part
+files took ~2 min, which is the Phase-51 zero-copy payoff measured directly.
 
 ## Done in passing
 

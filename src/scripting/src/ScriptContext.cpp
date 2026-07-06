@@ -11,6 +11,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/simulation/LinearStaticSolver.h"
 #include "horizon/simulation/Material.h"
+#include "horizon/simulation/ModalSolver.h"
 #include "horizon/simulation/SolidMesher.h"
 
 namespace hz::script {
@@ -144,6 +145,34 @@ ScriptContext::StaticAnalysisResult ScriptContext::staticAnalysis(double force,
     out.converged = r.converged;
     out.maxDisplacement = r.maxDisplacementMagnitude;
     out.maxVonMises = r.maxVonMises;
+    return out;
+}
+
+ScriptContext::ModalAnalysisResult ScriptContext::modalAnalysis(double youngsModulus,
+                                                                double poissonRatio, double density,
+                                                                int axis, int numModes,
+                                                                int resolution) const {
+    ModalAnalysisResult out;
+    const auto* solid = m_document.solid();
+    if (!solid || axis < 0 || axis > 2 || numModes < 1 || resolution < 1) return out;
+
+    sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
+    if (mesh.elements.empty()) return out;
+
+    const sim::Aabb box = sim::solidAabb(*solid);
+    const double lo = axis == 0 ? box.min.x : (axis == 1 ? box.min.y : box.min.z);
+    const auto fixed = sim::nodesOnPlane(mesh, axis, lo);
+    if (fixed.empty()) return out;
+
+    sim::ElasticMaterial mat;
+    mat.youngsModulus = youngsModulus;
+    mat.poissonRatio = poissonRatio;
+    mat.density = density;
+    if (!mat.isValid() || density <= 0.0) return out;
+
+    const sim::ModalResult r = sim::ModalSolver::solve(mesh, mat, fixed, numModes);
+    out.converged = r.converged;
+    out.naturalFrequencies = r.naturalFrequencies;
     return out;
 }
 

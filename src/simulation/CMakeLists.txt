@@ -3,6 +3,7 @@ add_library(hz_simulation STATIC
     src/LinearElement.cpp
     src/BoxMesher.cpp
     src/LinearStaticSolver.cpp
+    src/ModalSolver.cpp
     src/HeatTransfer.cpp
     src/SolidMesher.cpp
 )
