@@ -1,5 +1,6 @@
 add_library(hz_kinematics STATIC
     src/ForwardKinematics.cpp
+    src/InverseKinematics.cpp
 )
 
 target_include_directories(hz_kinematics
