@@ -1,0 +1,112 @@
+#version 450
+// GPU NURBS surface evaluation (Phase 66, roadmap §7.2 — compute shaders
+// only). Evaluates an evalX × evalY parameter grid of a rational tensor-
+// product B-spline surface: for each grid point, find the knot spans, run
+// Cox–de Boor basis evaluation in U and V, and combine the weighted control
+// net in homogeneous coordinates.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+const uint kMaxOrder = 8u;  // supports degrees up to 7
+
+layout(std430, binding = 0) readonly buffer Meta {
+    uint degreeU;
+    uint degreeV;
+    uint countU;   // control points in U
+    uint countV;   // control points in V
+    uint evalX;    // grid columns (U direction)
+    uint evalY;    // grid rows (V direction)
+    uint pad0;
+    uint pad1;
+} meta;
+
+layout(std430, binding = 1) readonly buffer KnotsU { float knotsU[]; };
+layout(std430, binding = 2) readonly buffer KnotsV { float knotsV[]; };
+// Control points row-major [u][v], xyz = position, w = weight.
+layout(std430, binding = 3) readonly buffer ControlPoints { vec4 cps[]; };
+layout(std430, binding = 4) writeonly buffer OutPositions { vec4 outPos[]; };
+
+// Knot span index k such that knots[k] <= t < knots[k+1], clamped to the
+// valid range [degree, count-1].
+uint findSpan(uint degree, uint count, float t, uint knotCount, uint which) {
+    uint low = degree;
+    uint high = count;  // last valid span + 1
+    float tEnd = (which == 0u) ? knotsU[count] : knotsV[count];
+    if (t >= tEnd) return count - 1u;
+
+    for (uint k = low; k < high; ++k) {
+        float a = (which == 0u) ? knotsU[k] : knotsV[k];
+        float b = (which == 0u) ? knotsU[k + 1u] : knotsV[k + 1u];
+        if (t >= a && t < b) return k;
+    }
+    return count - 1u;
+}
+
+// Cox–de Boor basis functions for the span (triangular scheme).
+void basisFunctions(uint span, float t, uint degree, uint which, out float N[kMaxOrder]) {
+    float left[kMaxOrder];
+    float right[kMaxOrder];
+    N[0] = 1.0;
+    for (uint j = 1u; j <= degree; ++j) {
+        float lv = t - ((which == 0u) ? knotsU[span + 1u - j] : knotsV[span + 1u - j]);
+        float rv = ((which == 0u) ? knotsU[span + j] : knotsV[span + j]) - t;
+        left[j] = lv;
+        right[j] = rv;
+        float saved = 0.0;
+        for (uint r = 0u; r < j; ++r) {
+            float denom = right[r + 1u] + left[j - r];
+            float temp = (abs(denom) > 1e-12) ? N[r] / denom : 0.0;
+            N[r] = saved + right[r + 1u] * temp;
+            saved = left[j - r] * temp;
+        }
+        N[j] = saved;
+    }
+}
+
+void main() {
+    uint gx = gl_GlobalInvocationID.x;
+    uint gy = gl_GlobalInvocationID.y;
+    if (gx >= meta.evalX || gy >= meta.evalY) return;
+
+    float uMin = knotsU[meta.degreeU];
+    float uMax = knotsU[meta.countU];
+    float vMin = knotsV[meta.degreeV];
+    float vMax = knotsV[meta.countV];
+
+    float u = uMin + (uMax - uMin) * float(gx) / float(meta.evalX - 1u);
+    float v = vMin + (vMax - vMin) * float(gy) / float(meta.evalY - 1u);
+
+    uint spanU = findSpan(meta.degreeU, meta.countU, u, meta.countU + meta.degreeU + 1u, 0u);
+    uint spanV = findSpan(meta.degreeV, meta.countV, v, meta.countV + meta.degreeV + 1u, 1u);
+
+    float Nu[kMaxOrder];
+    float Nv[kMaxOrder];
+    basisFunctions(spanU, u, meta.degreeU, 0u, Nu);
+    basisFunctions(spanV, v, meta.degreeV, 1u, Nv);
+
+    // Two-pass accumulation matching hz::geo::NurbsSurface::evaluate: each
+    // U-row is evaluated as a rational V-curve (projected to 3D per row),
+    // then the rows combine through the U basis with UNIT weights. This is
+    // deliberately the CPU kernel's semantics — not the single homogeneous
+    // division of the standard tensor-product formula, which differs on
+    // surfaces rational in U — so GPU and CPU geometry always agree.
+    vec3 p = vec3(0.0);
+    float uDen = 0.0;
+    for (uint i = 0u; i <= meta.degreeU; ++i) {
+        uint cu = spanU - meta.degreeU + i;
+        vec3 rowNum = vec3(0.0);
+        float rowDen = 0.0;
+        for (uint j = 0u; j <= meta.degreeV; ++j) {
+            uint cv = spanV - meta.degreeV + j;
+            vec4 cp = cps[cu * meta.countV + cv];
+            float w = Nv[j] * cp.w;
+            rowNum += cp.xyz * w;
+            rowDen += w;
+        }
+        vec3 rowPoint = (abs(rowDen) > 1e-12) ? rowNum / rowDen : vec3(0.0);
+        p += rowPoint * Nu[i];
+        uDen += Nu[i];
+    }
+    p = (abs(uDen) > 1e-12) ? p / uDen : vec3(0.0);
+    outPos[gy * meta.evalX + gx] = vec4(p, 1.0);
+}

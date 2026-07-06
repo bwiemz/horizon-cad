@@ -9,6 +9,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/simulation/HeatTransfer.h"
 #include "horizon/simulation/LinearStaticSolver.h"
 #include "horizon/simulation/Material.h"
 #include "horizon/simulation/ModalSolver.h"
@@ -173,6 +174,39 @@ ScriptContext::ModalAnalysisResult ScriptContext::modalAnalysis(double youngsMod
     const sim::ModalResult r = sim::ModalSolver::solve(mesh, mat, fixed, numModes);
     out.converged = r.converged;
     out.naturalFrequencies = r.naturalFrequencies;
+    return out;
+}
+
+ScriptContext::ThermalAnalysisResult ScriptContext::thermalAnalysis(double conductivity,
+                                                                    double hotTemperature,
+                                                                    double coldTemperature,
+                                                                    int axis,
+                                                                    int resolution) const {
+    ThermalAnalysisResult out;
+    const auto* solid = m_document.solid();
+    if (!solid || axis < 0 || axis > 2 || resolution < 1 || conductivity <= 0.0) return out;
+
+    sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
+    if (mesh.elements.empty()) return out;
+
+    const sim::Aabb box = sim::solidAabb(*solid);
+    const double lo = axis == 0 ? box.min.x : (axis == 1 ? box.min.y : box.min.z);
+    const double hi = axis == 0 ? box.max.x : (axis == 1 ? box.max.y : box.max.z);
+
+    const auto coldNodes = sim::nodesOnPlane(mesh, axis, lo);
+    const auto hotNodes = sim::nodesOnPlane(mesh, axis, hi);
+    if (coldNodes.empty() || hotNodes.empty()) return out;
+
+    std::vector<sim::PrescribedTemperature> fixed;
+    for (int n : coldNodes) fixed.push_back(sim::PrescribedTemperature{n, coldTemperature});
+    for (int n : hotNodes) fixed.push_back(sim::PrescribedTemperature{n, hotTemperature});
+
+    const sim::ThermalResult r =
+        sim::SteadyHeatSolver::solve(mesh, conductivity, fixed, /*sources=*/{});
+    out.converged = r.converged;
+    out.minTemperature = r.minTemperature;
+    out.maxTemperature = r.maxTemperature;
+    out.maxFlux = r.maxFluxMagnitude;
     return out;
 }
 
