@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 
 #include "horizon/math/Vec2.h"
@@ -24,10 +25,16 @@ struct DrawingView {
     StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
     ViewProjection projection;                ///< the camera this view was projected through
     std::vector<ProjectedEdge> edges;
-    std::vector<LinearDimension> dimensions;      ///< dimensions anchored to this view's edges
-    std::vector<FeatureControlFrame> tolerances;  ///< GD&T frames anchored to this view's edges
-    std::vector<DatumFeature> datums;             ///< datum feature symbols anchored to edges
-    std::vector<DrawingBalloon> balloons;         ///< BOM balloons anchored to this view's edges
+    std::vector<LinearDimension> dimensions;        ///< dimensions anchored to this view's edges
+    std::vector<RadialDimension> radialDimensions;  ///< R/⌀ dimensions on circular edges
+    std::vector<FeatureControlFrame> tolerances;    ///< GD&T frames anchored to this view's edges
+    std::vector<DatumFeature> datums;               ///< datum feature symbols anchored to edges
+    std::vector<DrawingBalloon> balloons;           ///< BOM balloons anchored to this view's edges
+
+    // Section views (Phase 61): the cut profile and its hatching, in view
+    // space. Empty for ordinary projection views.
+    std::vector<std::vector<math::Vec2>> sectionLoops;            ///< closed cut boundaries
+    std::vector<std::pair<math::Vec2, math::Vec2>> sectionHatch;  ///< 45° hatch segments
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};

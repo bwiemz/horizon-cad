@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
@@ -79,6 +81,69 @@ bool DrawingDimensioner::dimensionAngle(const topo::Solid& solid, const topo::To
     out.edgeA = edgeA;
     out.edgeB = edgeB;
     out.value = radians;
+    return true;
+}
+
+bool DrawingDimensioner::measureRadius(const topo::Solid& solid, const topo::TopologyID& edgeId,
+                                       double& outRadius) {
+    if (!edgeId.isValid()) return false;
+
+    const geo::NurbsCurve* curve = nullptr;
+    for (const topo::Edge& e : solid.edges()) {
+        if (!(e.topoId == edgeId)) continue;
+        curve = e.curve.get();
+        break;
+    }
+    if (curve == nullptr) return false;
+
+    // Sample the curve and fit a circle through three spread samples, then
+    // verify every sample sits on it — that separates true circles/arcs from
+    // straight edges and free-form splines.
+    constexpr int kSamples = 16;
+    std::vector<math::Vec3> pts;
+    pts.reserve(kSamples);
+    const double t0 = curve->tMin();
+    const double t1 = curve->tMax();
+    for (int i = 0; i < kSamples; ++i) {
+        const double t = t0 + (t1 - t0) * (static_cast<double>(i) / (kSamples - 1));
+        pts.push_back(curve->evaluate(t));
+    }
+
+    const math::Vec3& a = pts[0];
+    const math::Vec3& b = pts[kSamples / 3];
+    const math::Vec3& c = pts[(2 * kSamples) / 3];
+
+    // Circumcenter of (a, b, c) in their common plane.
+    const math::Vec3 d1 = b - a;
+    const math::Vec3 d2 = c - a;
+    const double d11 = d1.dot(d1);
+    const double d22 = d2.dot(d2);
+    const double d12 = d1.dot(d2);
+    const double denom = 2.0 * (d11 * d22 - d12 * d12);
+    if (std::abs(denom) < 1e-12) return false;  // collinear — a straight edge
+    const double u = (d22 * (d11 - d12)) / denom;
+    const double v = (d11 * (d22 - d12)) / denom;
+    const math::Vec3 center = a + d1 * u + d2 * v;
+
+    const double radius = a.distanceTo(center);
+    if (radius < 1e-12) return false;
+
+    const double tol = std::max(1e-9, radius * 1e-6);
+    for (const math::Vec3& p : pts) {
+        if (std::abs(p.distanceTo(center) - radius) > tol) return false;  // not circular
+    }
+
+    outRadius = radius;
+    return true;
+}
+
+bool DrawingDimensioner::dimensionRadius(const topo::Solid& solid, const topo::TopologyID& edgeId,
+                                         bool diameter, RadialDimension& out) {
+    double radius = 0.0;
+    if (!measureRadius(solid, edgeId, radius)) return false;
+    out.edge = edgeId;
+    out.value = radius;
+    out.diameter = diameter;
     return true;
 }
 

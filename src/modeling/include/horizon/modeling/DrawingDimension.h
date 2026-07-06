@@ -29,6 +29,15 @@ struct AngularDimension {
     double value = 0.0;  ///< radians (unsigned line-to-line angle)
 };
 
+/// A radial dimension anchored to a circular model edge (Phase 61).
+/// The radius is re-measured from the model edge's curve, so it tracks
+/// rebuilds just like linear dimensions.
+struct RadialDimension {
+    topo::TopologyID edge;  ///< a circular model edge
+    double value = 0.0;     ///< measured radius
+    bool diameter = false;  ///< display as ⌀ (2·radius) instead of R
+};
+
 /// Measures model geometry for drawing dimensions.
 class DrawingDimensioner {
 public:
@@ -53,6 +62,18 @@ public:
     /// model. Returns false if either edge is not found or is degenerate.
     static bool dimensionAngle(const topo::Solid& solid, const topo::TopologyID& edgeA,
                                const topo::TopologyID& edgeB, AngularDimension& out);
+
+    /// Radius of the circular model edge with @p edgeId, measured by sampling
+    /// its curve and fitting a circle. Returns false if the edge is missing,
+    /// has no curve, or is not circular within tolerance (straight edges,
+    /// free-form splines).
+    static bool measureRadius(const topo::Solid& solid, const topo::TopologyID& edgeId,
+                              double& outRadius);
+
+    /// Build a RadialDimension for @p edgeId. @p diameter selects ⌀ display.
+    /// Returns false if the edge is not found or not circular.
+    static bool dimensionRadius(const topo::Solid& solid, const topo::TopologyID& edgeId,
+                                bool diameter, RadialDimension& out);
 };
 
 }  // namespace hz::model
