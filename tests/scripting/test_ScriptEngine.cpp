@@ -344,3 +344,39 @@ TEST(ScriptEngineTest, ModalAnalysisWithoutSolidDoesNotConverge) {
     ASSERT_TRUE(res.ok) << res.error;
     EXPECT_EQ(res.output, "False\n0\n");
 }
+
+TEST(ScriptEngineTest, ThermalAnalysisOnSolid) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    // Hold the x=0 face at 0 and the x=L face at 100; steady 1-D conduction gives
+    // a linear profile, so min=0, max=100, and |q| = k*dT/L is uniform.
+    ScriptEngine engine;
+    const std::string script =
+        "doc.add_box(10.0, 2.0, 2.0)\n"
+        "doc.rebuild()\n"
+        "r = doc.thermal_analysis(conductivity=50.0, hot_temperature=100.0,\n"
+        "                         cold_temperature=0.0, axis=0, resolution=4)\n"
+        "print(r.converged)\n"
+        "print(abs(r.max_temperature - 100.0) < 1e-6)\n"
+        "print(abs(r.min_temperature - 0.0) < 1e-6)\n"
+        "print(abs(r.max_flux - 50.0 * 100.0 / 10.0) < 1e-3)\n";
+    auto res = engine.run(script, &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True\nTrue\nTrue\nTrue\n");
+}
+
+TEST(ScriptEngineTest, ThermalAnalysisWithoutSolidDoesNotConverge) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(
+        "r = doc.thermal_analysis(conductivity=50.0, hot_temperature=100.0)\n"
+        "print(r.converged)\n",
+        &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "False\n");
+}

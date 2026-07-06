@@ -171,6 +171,12 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def_readonly("natural_frequencies",
                       &ScriptContext::ModalAnalysisResult::naturalFrequencies);
 
+    py::class_<ScriptContext::ThermalAnalysisResult>(m, "ThermalAnalysisResult")
+        .def_readonly("converged", &ScriptContext::ThermalAnalysisResult::converged)
+        .def_readonly("min_temperature", &ScriptContext::ThermalAnalysisResult::minTemperature)
+        .def_readonly("max_temperature", &ScriptContext::ThermalAnalysisResult::maxTemperature)
+        .def_readonly("max_flux", &ScriptContext::ThermalAnalysisResult::maxFlux);
+
     py::class_<ScriptContext>(m, "Document")
         .def("feature_count", &ScriptContext::featureCount)
         .def("sketch_count", &ScriptContext::sketchCount)
@@ -203,6 +209,9 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("modal_analysis", &ScriptContext::modalAnalysis, py::arg("youngs_modulus"),
              py::arg("poisson_ratio") = 0.3, py::arg("density") = 7850.0, py::arg("axis") = 0,
              py::arg("num_modes") = 6, py::arg("resolution") = 5)
+        .def("thermal_analysis", &ScriptContext::thermalAnalysis, py::arg("conductivity"),
+             py::arg("hot_temperature"), py::arg("cold_temperature") = 0.0, py::arg("axis") = 0,
+             py::arg("resolution") = 6)
         .def("export_drawing_dxf", &ScriptContext::exportDrawingDxf, py::arg("path"))
         .def("rebuild", &ScriptContext::rebuild);
 }

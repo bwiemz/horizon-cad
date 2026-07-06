@@ -88,6 +88,21 @@ public:
     ModalAnalysisResult modalAnalysis(double youngsModulus, double poissonRatio, double density,
                                       int axis, int numModes, int resolution) const;
 
+    /// Summary result of a steady-state thermal analysis.
+    struct ThermalAnalysisResult {
+        bool converged = false;       ///< false if there is no solid or the solve fails
+        double minTemperature = 0.0;  ///< min nodal temperature
+        double maxTemperature = 0.0;  ///< max nodal temperature
+        double maxFlux = 0.0;         ///< peak element heat-flux magnitude
+    };
+
+    /// Run a steady-state conduction analysis on the current solid: mesh its
+    /// bounding box (@p resolution subdivisions per side), hold the minimum face
+    /// along @p axis (0=x, 1=y, 2=z) at @p coldTemperature and the maximum face
+    /// at @p hotTemperature, for a material with thermal @p conductivity.
+    ThermalAnalysisResult thermalAnalysis(double conductivity, double hotTemperature,
+                                          double coldTemperature, int axis, int resolution) const;
+
     // --- Drawings ----------------------------------------------------------
     /// Generate the standard four-view drawing (front/top/right/isometric,
     /// hidden lines removed) of the current solid and write it to a DXF file.
