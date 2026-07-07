@@ -31,6 +31,7 @@ public:
     ~MainWindow() override;
 
 private slots:
+    void onCommandPalette();
     void onNewFile();
     void onNewPart();
     void onNewAssembly();

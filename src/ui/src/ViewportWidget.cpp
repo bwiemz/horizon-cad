@@ -148,7 +148,9 @@ void ViewportWidget::initializeGL() {
 
     m_renderer = std::make_unique<render::GLRenderer>();
     m_renderer->initialize(gl);
-    m_renderer->setBackgroundColor(0.18f, 0.18f, 0.20f);
+    // Deep canvas — darker than the panel chrome so the viewport reads as the
+    // focal surface (panels #2d–#32, data surfaces #1e, viewport ~#1c1d21).
+    m_renderer->setBackgroundColor(0.11f, 0.115f, 0.13f);
 
     // Set up GL resources for text overlay (QImage -> texture -> quad).
     m_viewportRenderer.initTextOverlayGL(gl);
@@ -169,8 +171,8 @@ void ViewportWidget::paintGL() {
     // Recompute DOF analysis every frame (small matrix -- fast enough for real-time).
     m_viewportRenderer.recomputeDOF(m_document);
 
-    // Clear with background color.
-    gl->glClearColor(0.18f, 0.18f, 0.20f, 1.0f);
+    // Clear with background color (kept in sync with setBackgroundColor above).
+    gl->glClearColor(0.11f, 0.115f, 0.13f, 1.0f);
     gl->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     gl->glEnable(GL_DEPTH_TEST);
@@ -221,7 +223,53 @@ void ViewportWidget::paintGL() {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
+    m_viewCubeCapturedPress = false;
+    // A left-click on the orientation gizmo snaps the view instead of drawing.
+    if (event->button() == Qt::LeftButton) {
+        const ViewCube::Region region =
+            m_viewportRenderer.viewCube().hitTest(event->position().toPoint());
+        if (region != ViewCube::Region::None) {
+            m_viewCubeCapturedPress = true;
+            applyViewCubeRegion(region);
+            update();
+            return;
+        }
+    }
     m_inputHandler.handleMousePress(event, this);
+}
+
+void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
+    using Region = ViewCube::Region;
+    double dist = (m_camera.eye() - m_camera.target()).length();
+    if (dist < 1e-10) dist = 10.0;
+    const math::Vec3 t = m_camera.target();
+    const math::Vec3 zUp(0.0, 0.0, 1.0);
+    switch (region) {
+        case Region::Front:
+            m_camera.setFrontView();
+            break;
+        case Region::Top:
+            m_camera.setTopView();
+            break;
+        case Region::Right:
+            m_camera.setRightView();
+            break;
+        case Region::Iso:
+            m_camera.setIsometricView();
+            break;
+        // Back / Bottom / Left have no camera preset; mirror the preset math.
+        case Region::Back:
+            m_camera.lookAt(t + math::Vec3(0.0, dist, 0.0), t, zUp);
+            break;
+        case Region::Bottom:
+            m_camera.lookAt(t + math::Vec3(0.0, 0.0, -dist), t, math::Vec3(0.0, 1.0, 0.0));
+            break;
+        case Region::Left:
+            m_camera.lookAt(t + math::Vec3(-dist, 0.0, 0.0), t, zUp);
+            break;
+        case Region::None:
+            break;
+    }
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
@@ -229,6 +277,12 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
+    // Swallow the release that pairs with a view-cube press so the active tool
+    // does not run a pick/clear at the release point.
+    if (event->button() == Qt::LeftButton && m_viewCubeCapturedPress) {
+        m_viewCubeCapturedPress = false;
+        return;
+    }
     m_inputHandler.handleMouseRelease(event, this);
 }
 

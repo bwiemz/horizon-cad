@@ -88,6 +88,74 @@ QToolButton:checked {
     border: 1px solid #5ba0e8;
 }
 
+/* ---- Ribbon ---- */
+QToolBar#RibbonToolBar {
+    background-color: #323232;
+    border: none;
+    border-bottom: 1px solid #262626;
+    padding: 0px;
+    spacing: 0px;
+}
+#ribbonBar, #ribbonPage {
+    background-color: #323232;
+}
+/* Ribbon category tabs: larger, flatter, strong active underline. */
+#ribbonTabBar::tab {
+    background: transparent;
+    color: #b0b0b0;
+    padding: 6px 20px;
+    border: none;
+    min-width: 58px;
+    font-size: 12px;
+}
+#ribbonTabBar::tab:selected {
+    background-color: #3b3b3b;
+    color: #ffffff;
+    border-bottom: 2px solid #4a90d9;
+}
+#ribbonTabBar::tab:hover:!selected {
+    background-color: #383838;
+    color: #e4e4e4;
+}
+/* A command group: subtle right divider + centered caption below the tools. */
+#ribbonGroup {
+    background: transparent;
+    border: none;
+    border-right: 1px solid #444444;
+}
+#ribbonGroupTitle {
+    color: #8a8a8a;
+    font-size: 10px;
+    padding-top: 1px;
+}
+#ribbonGroupBar {
+    background: transparent;
+    border: none;
+    spacing: 2px;
+    padding: 0px;
+}
+#ribbonGroupBar QToolButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 6px 2px 6px;
+    color: #d6d6d6;
+    font-size: 11px;
+    min-width: 46px;
+}
+#ribbonGroupBar QToolButton:hover {
+    background-color: #404040;
+    border: 1px solid #565656;
+}
+#ribbonGroupBar QToolButton:pressed {
+    background-color: #383838;
+}
+#ribbonGroupBar QToolButton:checked {
+    background-color: #4a90d9;
+    color: #ffffff;
+    border: 1px solid #5ba0e8;
+}
+
 /* ---- Dock Widgets ---- */
 QDockWidget {
     color: #d0d0d0;
@@ -350,4 +418,44 @@ QCheckBox::indicator:hover {
 /* ---- Form Labels in Property Panel ---- */
 QFormLayout QLabel {
     color: #a0a0a0;
+}
+
+/* ---- Command Palette (Ctrl+K) ---- */
+#commandPalette {
+    background-color: #2a2a2a;
+    border: 1px solid #4a90d9;
+    border-radius: 6px;
+}
+#commandPaletteSearch {
+    background-color: #1e1e1e;
+    border: 1px solid #4a90d9;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 14px;
+    color: #e8e8e8;
+}
+#commandPaletteList {
+    background-color: #232323;
+    border: none;
+    outline: none;
+    font-size: 12px;
+}
+#commandPaletteList::item {
+    padding: 6px 8px;
+    border-radius: 3px;
+}
+#commandPaletteList::item:selected {
+    background-color: #4a90d9;
+    color: #ffffff;
+}
+
+/* ---- Empty-state placeholders (Feature Tree / Properties) ---- */
+#emptyStateTitle {
+    color: #d0d0d0;
+    font-size: 14px;
+    font-weight: bold;
+}
+#emptyStateHint {
+    color: #808080;
+    font-size: 11px;
 }

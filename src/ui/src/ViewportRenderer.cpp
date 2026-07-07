@@ -852,6 +852,25 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
         }
     }
 
+    // Orientation gizmo (top-right) and view-mode badge (top-left).
+    m_viewCube.paint(painter, viewportWidth, viewportHeight, camera);
+
+    {
+        const QString label = ViewCube::orientationLabel(camera);
+        QFont badgeFont("Arial", 9);
+        badgeFont.setBold(true);
+        painter.setFont(badgeFont);
+        QFontMetrics fm(badgeFont);
+        const int tw = fm.horizontalAdvance(label);
+        QRectF badge(12.0, 12.0, tw + 20.0, 22.0);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setBrush(QColor(40, 44, 52, 210));
+        painter.setPen(QPen(QColor(90, 98, 112), 1.0));
+        painter.drawRoundedRect(badge, 4.0, 4.0);
+        painter.setPen(QColor(210, 216, 224));
+        painter.drawText(badge, Qt::AlignCenter, label);
+    }
+
     painter.end();
 }
 

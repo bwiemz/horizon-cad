@@ -10,6 +10,7 @@ class QLineEdit;
 class QPushButton;
 class QDoubleSpinBox;
 class QListWidget;
+class QStackedWidget;
 
 namespace hz::ui {
 
@@ -49,10 +50,15 @@ private slots:
 private:
     void createWidgets();
     void updateConstraintList();
+    void showEmptyState();  ///< switch to the "no selection" placeholder page
 
     MainWindow* m_mainWindow;
     std::vector<uint64_t> m_currentIds;
     bool m_updatingUI = false;
+
+    // Page 0 = property form, page 1 = "no selection" placeholder.
+    QStackedWidget* m_stack = nullptr;
+    QLabel* m_emptyDocInfo = nullptr;
 
     QLabel* m_typeLabel = nullptr;
     QComboBox* m_layerCombo = nullptr;

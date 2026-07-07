@@ -25,14 +25,22 @@ public:
     /// Measure:    "measure-distance", "measure-angle", "measure-area"
     /// Block:      "block-create", "block-insert", "block-explode"
     /// View:       "fit-all"
+    /// 3D:         "box", "cylinder", "sphere", "cone", "torus", "extrude",
+    ///             "revolve", "boolean-union", "boolean-subtract",
+    ///             "boolean-intersect", "fillet-3d", "chamfer-3d"
     ///
     /// Returns a blank transparent icon for unrecognized names.
-    static QIcon icon(const QString& name);
+    ///
+    /// @param size  Rendered pixel size. Icons are drawn as vectors in a 24-unit
+    ///              space and scaled to @p size, so larger sizes stay crisp
+    ///              (e.g. 32 px for ribbon command buttons).
+    static QIcon icon(const QString& name, int size = kRenderSize);
 
     IconGenerator() = delete;
 
 private:
-    static constexpr int kDefaultSize = 24;
+    static constexpr int kDesignSize = 24;  ///< Vector coordinate space icons are drawn in.
+    static constexpr int kRenderSize = 32;  ///< Default rasterized size (crisp for the ribbon).
 
     // File
     static QIcon drawNew(int s);
@@ -106,6 +114,20 @@ private:
 
     // View
     static QIcon drawFitAll(int s);
+
+    // 3D — primitives, features, boolean operations, edge modifiers
+    static QIcon drawBox(int s);
+    static QIcon drawCylinder(int s);
+    static QIcon drawSphere(int s);
+    static QIcon drawCone(int s);
+    static QIcon drawTorus(int s);
+    static QIcon drawExtrude(int s);
+    static QIcon drawRevolve(int s);
+    static QIcon drawBooleanUnion(int s);
+    static QIcon drawBooleanSubtract(int s);
+    static QIcon drawBooleanIntersect(int s);
+    static QIcon drawFillet3d(int s);
+    static QIcon drawChamfer3d(int s);
 };
 
 }  // namespace hz::ui

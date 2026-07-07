@@ -133,6 +133,14 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
+    /// Snap the camera to the standard view requested by a view-cube click.
+    void applyViewCubeRegion(ViewCube::Region region);
+
+    /// True while a left-press was consumed by the view cube, so the matching
+    /// release is swallowed instead of reaching the active tool (which would
+    /// otherwise pick/clear the selection at the release point).
+    bool m_viewCubeCapturedPress = false;
+
     // Camera
     render::Camera m_camera;
 
