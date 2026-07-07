@@ -223,11 +223,13 @@ void ViewportWidget::paintGL() {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
+    m_viewCubeCapturedPress = false;
     // A left-click on the orientation gizmo snaps the view instead of drawing.
     if (event->button() == Qt::LeftButton) {
         const ViewCube::Region region =
             m_viewportRenderer.viewCube().hitTest(event->position().toPoint());
         if (region != ViewCube::Region::None) {
+            m_viewCubeCapturedPress = true;
             applyViewCubeRegion(region);
             update();
             return;
@@ -275,6 +277,12 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
+    // Swallow the release that pairs with a view-cube press so the active tool
+    // does not run a pick/clear at the release point.
+    if (event->button() == Qt::LeftButton && m_viewCubeCapturedPress) {
+        m_viewCubeCapturedPress = false;
+        return;
+    }
     m_inputHandler.handleMouseRelease(event, this);
 }
 
