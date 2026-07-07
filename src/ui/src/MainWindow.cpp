@@ -11,6 +11,7 @@
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QStatusBar>
@@ -18,6 +19,7 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <filesystem>
+#include <functional>
 #include <numbers>
 
 #include "horizon/document/Commands.h"
@@ -44,6 +46,7 @@
 #include "horizon/ui/ChamferTool.h"
 #include "horizon/ui/CircleTool.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/CommandPalette.h"
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
@@ -159,6 +162,13 @@ MainWindow::MainWindow(QWidget* parent)
     createStatusBar();
     registerTools();
 
+    // Global command palette (Ctrl+K) — a searchable launcher for every command.
+    auto* paletteAct = new QAction(tr("Command Palette…"), this);
+    paletteAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
+    paletteAct->setShortcutContext(Qt::ApplicationShortcut);
+    connect(paletteAct, &QAction::triggered, this, &MainWindow::onCommandPalette);
+    addAction(paletteAct);
+
     // Tab switching (connected only now that all panels and the status bar
     // exist — the slots refresh them).
     connect(m_tabBar, &QTabBar::currentChanged, this, &MainWindow::onTabChanged);
@@ -175,6 +185,29 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() = default;
+
+void MainWindow::onCommandPalette() {
+    // Gather every leaf command from the menu bar (the menus mirror the ribbon
+    // and cover all commands). Recurse into submenus; skip separators.
+    QList<QAction*> commands;
+    std::function<void(QMenu*)> collect = [&](QMenu* menu) {
+        for (QAction* act : menu->actions()) {
+            if (act->isSeparator()) continue;
+            if (act->menu()) {
+                collect(act->menu());
+            } else {
+                commands.push_back(act);
+            }
+        }
+    };
+    for (QAction* top : menuBar()->actions()) {
+        if (top->menu()) collect(top->menu());
+    }
+
+    CommandPalette palette(commands, this);
+    palette.move(x() + (width() - palette.width()) / 2, y() + 120);
+    palette.exec();
+}
 
 // ---------------------------------------------------------------------------
 // Menu bar

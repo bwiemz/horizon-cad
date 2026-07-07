@@ -420,6 +420,35 @@ QFormLayout QLabel {
     color: #a0a0a0;
 }
 
+/* ---- Command Palette (Ctrl+K) ---- */
+#commandPalette {
+    background-color: #2a2a2a;
+    border: 1px solid #4a90d9;
+    border-radius: 6px;
+}
+#commandPaletteSearch {
+    background-color: #1e1e1e;
+    border: 1px solid #4a90d9;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 14px;
+    color: #e8e8e8;
+}
+#commandPaletteList {
+    background-color: #232323;
+    border: none;
+    outline: none;
+    font-size: 12px;
+}
+#commandPaletteList::item {
+    padding: 6px 8px;
+    border-radius: 3px;
+}
+#commandPaletteList::item:selected {
+    background-color: #4a90d9;
+    color: #ffffff;
+}
+
 /* ---- Empty-state placeholders (Feature Tree / Properties) ---- */
 #emptyStateTitle {
     color: #d0d0d0;
