@@ -1,8 +1,11 @@
 #include "horizon/modeling/ExactPredicates.h"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 
-#include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/geometry/MeshData.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -40,22 +43,21 @@ bool rayTriangleIntersect(const math::Vec3& rayOrigin, const math::Vec3& rayDir,
 }  // namespace
 
 std::vector<math::Vec3> ExactPredicates::tessellateSolid(const topo::Solid& solid, double tessTol) {
+    // Reuse the display tessellator so classification and rendering agree on
+    // the solid's boundary: planar bounding-rectangle patches are triangulated
+    // from their trimmed loops (they otherwise over-cover, see Extrude), while
+    // curved faces keep smooth surface tessellation — the latter matters for
+    // ray-parity on cylinders/spheres/tori, whose coarse box-topology loops
+    // enclose little-to-no volume (a torus's are coplanar). Expand the indexed
+    // mesh into a flat triangle-corner list.
+    const geo::MeshData mesh = SolidTessellator::tessellate(solid, tessTol);
     std::vector<math::Vec3> triangles;
-    for (const auto& face : solid.faces()) {
-        if (!face.surface) continue;
-
-        auto tess = face.surface->tessellate(tessTol);
-        const auto& pos = tess.positions;
-        const auto& idx = tess.indices;
-
-        for (size_t i = 0; i + 2 < idx.size(); i += 3) {
-            uint32_t i0 = idx[i];
-            uint32_t i1 = idx[i + 1];
-            uint32_t i2 = idx[i + 2];
-            triangles.emplace_back(pos[i0 * 3], pos[i0 * 3 + 1], pos[i0 * 3 + 2]);
-            triangles.emplace_back(pos[i1 * 3], pos[i1 * 3 + 1], pos[i1 * 3 + 2]);
-            triangles.emplace_back(pos[i2 * 3], pos[i2 * 3 + 1], pos[i2 * 3 + 2]);
-        }
+    triangles.reserve(mesh.indices.size());
+    for (uint32_t idx : mesh.indices) {
+        const size_t base = static_cast<size_t>(idx) * 3;
+        if (base + 2 >= mesh.positions.size()) break;
+        triangles.emplace_back(mesh.positions[base], mesh.positions[base + 1],
+                               mesh.positions[base + 2]);
     }
     return triangles;
 }

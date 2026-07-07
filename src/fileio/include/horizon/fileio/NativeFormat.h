@@ -30,7 +30,7 @@ public:
     /// Read only the tessellation cache of a part file, without constructing
     /// a Document (lightweight component resolution). Returns nullptr when
     /// the file has no cache or cannot be read.
-    static std::shared_ptr<render::MeshData> loadPartMesh(const std::string& filePath);
+    static std::shared_ptr<geo::MeshData> loadPartMesh(const std::string& filePath);
 
     // -- JSON envelope helpers (shared with BinaryFormat) ---------------------
 

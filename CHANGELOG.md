@@ -9,6 +9,79 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Kernel hardening (post-1.0 review response)
+
+Response to the external senior review: fix the Boolean/kernel reality gap
+first, then the architecture boundary, interop pinning, and CI enforcement.
+
+- **Boolean rework (the headline).** `BooleanOp` is now a BSP-tree CSG
+  pipeline: the trimmed boundary is extracted from face loops
+  (`BoundaryMesh`, with ear-clip triangulation of non-convex faces and
+  global outward orientation), faces are split along the other solid's face
+  planes with exact fragment classification and coplanar-face resolution
+  (`MeshCsg`), and selected fragments are welded, T-junction-freed, and sewn
+  into a manifold half-edge solid (`SolidSewer`).  Results carry TopologyID
+  provenance, chain into further Booleans, and round-trip through STEP.
+  Volumes are closed-form-exact for planar-faced solids (unions, subtracts,
+  intersects, cavities, through-holes, multi-shell operands).  Curved faces
+  participate as their loop polyhedra — analytic surface–surface
+  intersection remains future work.
+- **Faithful boundary evaluation everywhere.**
+  `ExactPredicates::tessellateSolid` and `SolidTessellator` no longer
+  tessellate the over-covering bounding-rectangle surface patches for planar
+  faces (or re-emit shared curved surfaces once per face) — classification,
+  display, interference, and export now agree with the actual solid.
+- **CSG-exact interference.** `InterferenceChecker`'s narrow phase is now
+  "does the Boolean intersection enclose volume", replacing edge-crossing
+  heuristics that missed exactly-grazing symmetric configurations; surface
+  touching no longer counts as interference, and cavities are respected.
+- **Modeling kernel decoupled from render.** The mesh POD moved to
+  `hz::geo::MeshData`; `render::MeshData` is an alias.  `hz_modeling` and
+  `hz_document` no longer link `Horizon::Render`.
+- **STEP interop pinned by fixtures.** Hand-authored third-party-style
+  Part-21 fixtures (FreeCAD/OCC and SolidWorks formatting, analytic
+  PLANE/LINE geometry, assembly product structure, `BREP_WITH_VOIDS`) with a
+  drop-in directory contract for real vendor exports; documented
+  limitations are enforced as tests, and restyled-reimport tests pin parser
+  robustness (comments, reflow, entity reordering).
+- **Adversarial model suite.** Hole patterns against multi-shell operands,
+  nested pockets, non-convex bracket extrudes, shelled containers, Boolean
+  volume-conservation fuzzing, and long feature chains — all with
+  closed-form expected volumes.  The suite exposed and pins a real
+  `ChamferOp` defect (combinatorially valid topology with geometrically
+  inconsistent loops; volume integrator undercounts) for a future rebuild on
+  `SolidSewer`.
+- **clang-tidy is now a gate.** CI fails on any `bugprone-*`/`performance-*`
+  finding outside a 10-check known-dirty backlog (which stays visible as
+  advisory warnings).
+- **Honest maturity documentation.** README gained a per-module Feature
+  Maturity table (stable / experimental / prototype) and no longer implies
+  1.0 production readiness.
+
+Adversarial-review follow-ups (self-verified from code after the review's
+automated verify pass was cut short):
+
+- Fixed a self-inflicted regression: `ExactPredicates::tessellateSolid` (the
+  `DrawingProjection` hidden-line occluder) had been switched to pure
+  loop triangulation, which collapses curved solids — a torus's eight ring
+  corners are coplanar — to a flat, zero-volume mesh.  It now delegates to
+  `SolidTessellator`, keeping smooth surface tessellation for curved faces
+  and restoring the `tessTol` control.
+- The `checkManifold()` output contract now applies on **every** `BooleanOp`
+  path, including the disjoint fast paths (previously only the CSG path was
+  gated).
+- Tolerance stack made consistent: the CSG on-plane epsilon is exported as
+  `kCsgPlaneEps`, and `BooleanOp` welds CSG fragments at that tolerance so
+  seams the splitter is allowed to open are always reconcilable during
+  sewing.
+- `SolidSewer`'s degenerate-face area test is now computed relative to the
+  loop's first vertex, so a far-from-origin loop's true zero area no longer
+  drowns in `R²` cancellation noise.
+- Documented (in headers) the remaining known limitations the review
+  surfaced: unbalanced BSP recursion depth, discarded face inner-loops on
+  inputs, greedy twin pairing at non-manifold edges, and Booleans against
+  coarse-box-topology curved primitives (torus/revolve).
+
 ## 1.0.0 — Production readiness
 
 All 80 roadmap phases (plus the 61b sheet-metal insert) delivered. ~900

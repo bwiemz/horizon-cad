@@ -576,7 +576,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
     // Enables lightweight assembly loading: readers can display the part
     // without replaying the feature tree.
     if (includeTessellation && doc.solid()) {
-        render::MeshData mesh = model::SolidTessellator::tessellate(*doc.solid());
+        geo::MeshData mesh = model::SolidTessellator::tessellate(*doc.solid());
         json cache;
         cache["positions"] = mesh.positions;
         cache["normals"] = mesh.normals;
@@ -1586,7 +1586,7 @@ bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocume
 // Lightweight tessellation-cache read
 // ---------------------------------------------------------------------------
 
-std::shared_ptr<render::MeshData> NativeFormat::loadPartMesh(const std::string& filePath) {
+std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& filePath) {
     std::ifstream file(filePath);
     if (!file.is_open()) return nullptr;
 
@@ -1601,7 +1601,7 @@ std::shared_ptr<render::MeshData> NativeFormat::loadPartMesh(const std::string& 
 
     try {
         const auto& cache = root["tessellationCache"];
-        auto mesh = std::make_shared<render::MeshData>();
+        auto mesh = std::make_shared<geo::MeshData>();
         mesh->positions = cache.value("positions", std::vector<float>{});
         mesh->normals = cache.value("normals", std::vector<float>{});
 

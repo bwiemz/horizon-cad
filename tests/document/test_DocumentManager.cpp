@@ -210,7 +210,7 @@ TEST(DocumentManagerTest, ResolveComponentLightweightUsesMeshLoader) {
     bool meshLoaderCalled = false;
     mgr.setMeshLoader([&](const std::string&) {
         meshLoaderCalled = true;
-        auto mesh = std::make_shared<hz::render::MeshData>();
+        auto mesh = std::make_shared<hz::geo::MeshData>();
         mesh->positions = {0, 0, 0, 1, 0, 0, 0, 1, 0};
         mesh->normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
         mesh->indices = {0, 1, 2};

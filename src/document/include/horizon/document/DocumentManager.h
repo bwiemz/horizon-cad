@@ -30,7 +30,7 @@ public:
 
     /// Load only the cached tessellated mesh from a part file (nullptr if
     /// absent). Used for lightweight component resolution.
-    using MeshLoader = std::function<std::shared_ptr<render::MeshData>(const std::string& path)>;
+    using MeshLoader = std::function<std::shared_ptr<geo::MeshData>(const std::string& path)>;
 
     /// Load an assembly document from a file. Returns false on failure.
     using AssemblyLoader = std::function<bool(const std::string& path, AssemblyDocument& doc)>;

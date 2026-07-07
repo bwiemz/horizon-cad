@@ -3,6 +3,7 @@ add_executable(hz_fileio_tests
     test_AssemblyFormat.cpp
     test_BinaryFormat.cpp
     test_StepFormat.cpp
+    test_StepFixtures.cpp
     test_GltfExport.cpp
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
@@ -11,6 +12,11 @@ add_executable(hz_fileio_tests
     test_BalloonRenderer.cpp
     test_BomExport.cpp
     test_TitleBlockRenderer.cpp
+)
+
+target_compile_definitions(hz_fileio_tests
+    PRIVATE
+        HZ_STEP_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/step"
 )
 
 target_link_libraries(hz_fileio_tests

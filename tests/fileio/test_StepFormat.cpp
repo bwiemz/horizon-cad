@@ -152,12 +152,11 @@ TEST(StepFormat, ConeRoundTrip) {
     expectSameMassProperties(*cone, *solids[0]);
 }
 
-/// Phase-36 Booleans keep partially-intersecting faces whole, so their results
-/// are not seam-stitched at the A/B boundary ("may not be perfectly
-/// watertight").  The STEP importer must *detect* that defect rather than
-/// silently building broken topology.  When SSI face splitting lands, this
-/// test should flip to a full round-trip expectation.
-TEST(StepFormat, BooleanSeamDefectIsDetectedOnReimport) {
+/// The BSP-CSG Boolean splits faces at the A/B boundary and sews a manifold
+/// result, so Boolean output now survives a full STEP round trip.  (The
+/// phase-36 face-level Boolean left an unstitched seam here, which this test
+/// used to pin as a detected import failure.)
+TEST(StepFormat, BooleanResultRoundTripsThroughStep) {
     auto a = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
     auto b = PrimitiveFactory::makeBox(4.0, 4.0, 20.0);
     ASSERT_NE(a, nullptr);
@@ -165,16 +164,14 @@ TEST(StepFormat, BooleanSeamDefectIsDetectedOnReimport) {
 
     auto cut = BooleanOp::execute(*a, *b, BooleanType::Subtract);
     ASSERT_NE(cut, nullptr);
+    EXPECT_TRUE(cut->checkManifold()) << cut->validationReport();
 
-    // Export always succeeds — the writer serializes whatever topology exists.
     const std::string text = StepFormat::toString(refs(*cut));
     EXPECT_NE(text.find("MANIFOLD_SOLID_BREP"), std::string::npos);
 
-    // Re-import detects the unstitched seam and fails with a manifold error.
     auto solids = StepFormat::fromString(text);
-    EXPECT_TRUE(solids.empty());
-    EXPECT_NE(StepFormat::lastError().find("manifold"), std::string::npos)
-        << StepFormat::lastError();
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    expectSameMassProperties(*cut, *solids[0]);
 }
 
 TEST(StepFormat, MultiSolidRoundTrip) {

@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/MateGeometry.h"
-#include "horizon/render/SceneGraph.h"
 #include "horizon/topology/TopologyID.h"
 
 namespace hz::doc {
@@ -35,8 +35,8 @@ struct ComponentInstance {
     bool suppressed = false;
 
     ComponentState state = ComponentState::Lightweight;
-    std::shared_ptr<render::MeshData> cachedMesh;  ///< Lightweight display mesh.
-    std::shared_ptr<Document> resolvedPart;        ///< Non-null when Resolved.
+    std::shared_ptr<geo::MeshData> cachedMesh;  ///< Lightweight display mesh.
+    std::shared_ptr<Document> resolvedPart;     ///< Non-null when Resolved.
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).

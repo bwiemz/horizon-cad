@@ -33,7 +33,7 @@ public:
     /// Read only the tessellation cache, without constructing a Document or
     /// parsing the JSON payload. Returns nullptr when the file has no cache
     /// or fails verification.
-    static std::shared_ptr<render::MeshData> loadPartMesh(const std::string& filePath);
+    static std::shared_ptr<geo::MeshData> loadPartMesh(const std::string& filePath);
 
     /// True when the file carries the "HZBF" FlatBuffers identifier.
     static bool isBinaryFile(const std::string& filePath);

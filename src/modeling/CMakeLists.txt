@@ -6,6 +6,9 @@ add_library(hz_modeling STATIC
     src/SolidTessellator.cpp
     src/ExactPredicates.cpp
     src/SurfaceSurfaceIntersection.cpp
+    src/BoundaryMesh.cpp
+    src/MeshCsg.cpp
+    src/SolidSewer.cpp
     src/BooleanOp.cpp
     src/FilletOp.cpp
     src/ChamferOp.cpp
@@ -44,7 +47,6 @@ target_link_libraries(hz_modeling
         Horizon::Math
         Horizon::Geometry
         Horizon::Topology
-        Horizon::Render
         Horizon::Drafting
     PRIVATE
         Eigen3::Eigen

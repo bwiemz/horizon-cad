@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 
@@ -23,12 +24,10 @@ struct Material {
     float alpha = 1.0f;      ///< Opacity [0..1]. < 1 enables transparency.
 };
 
-/// Mesh data stored on a scene node (CPU-side, indices + positions + normals).
-struct MeshData {
-    std::vector<float> positions;   // 3 floats per vertex
-    std::vector<float> normals;     // 3 floats per vertex
-    std::vector<uint32_t> indices;  // triangle list
-};
+/// Mesh data stored on a scene node.  The struct itself lives in geometry
+/// (hz::geo::MeshData) so the modeling kernel can produce meshes without
+/// depending on the render module.
+using MeshData = geo::MeshData;
 
 /// A single node in the scene graph.
 class SceneNode {
