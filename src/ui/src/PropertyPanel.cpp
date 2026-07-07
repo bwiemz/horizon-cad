@@ -9,6 +9,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -274,7 +275,51 @@ void PropertyPanel::createWidgets() {
     layout->addWidget(m_ellipsePropsWidget);
     layout->addWidget(m_constraintWidget);
     layout->addStretch();
-    setWidget(container);
+
+    // Empty-state page shown when nothing is selected.
+    auto* emptyPage = new QWidget(this);
+    auto* emptyLayout = new QVBoxLayout(emptyPage);
+    emptyLayout->setContentsMargins(20, 28, 20, 20);
+    emptyLayout->setSpacing(8);
+    emptyLayout->addStretch(1);
+    auto* emptyTitle = new QLabel(tr("Nothing selected"), emptyPage);
+    emptyTitle->setObjectName("emptyStateTitle");
+    emptyTitle->setAlignment(Qt::AlignHCenter);
+    emptyLayout->addWidget(emptyTitle);
+    auto* emptyHint = new QLabel(
+        tr("Select an object in the viewport to\nview and edit its properties."), emptyPage);
+    emptyHint->setObjectName("emptyStateHint");
+    emptyHint->setAlignment(Qt::AlignHCenter);
+    emptyHint->setWordWrap(true);
+    emptyLayout->addWidget(emptyHint);
+    emptyLayout->addSpacing(14);
+    m_emptyDocInfo = new QLabel(emptyPage);
+    m_emptyDocInfo->setObjectName("emptyStateHint");
+    m_emptyDocInfo->setAlignment(Qt::AlignHCenter);
+    emptyLayout->addWidget(m_emptyDocInfo);
+    emptyLayout->addStretch(2);
+
+    // Stack the form and the placeholder; start on the placeholder.
+    m_stack = new QStackedWidget(this);
+    m_stack->addWidget(container);  // page 0: property form
+    m_stack->addWidget(emptyPage);  // page 1: empty state
+    m_stack->setCurrentIndex(1);
+    setWidget(m_stack);
+}
+
+void PropertyPanel::showEmptyState() {
+    // Surface the document's current defaults so the panel isn't just blank.
+    QString info;
+    if (m_mainWindow) {
+        if (auto* viewport = m_mainWindow->findChild<ViewportWidget*>()) {
+            if (viewport->document()) {
+                const auto& lm = viewport->document()->layerManager();
+                info = tr("Active layer:  %1").arg(QString::fromStdString(lm.currentLayer()));
+            }
+        }
+    }
+    if (m_emptyDocInfo) m_emptyDocInfo->setText(info);
+    if (m_stack) m_stack->setCurrentIndex(1);
 }
 
 void PropertyPanel::refreshLayerList() {
@@ -297,20 +342,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     m_currentIds = selectedIds;
 
     if (selectedIds.empty()) {
-        m_typeLabel->setText(tr("No selection"));
-        m_layerCombo->setEnabled(false);
-        m_colorButton->setEnabled(false);
-        m_byLayerButton->setEnabled(false);
-        m_lineWidthSpin->setEnabled(false);
-        m_lineTypeCombo->setEnabled(false);
-        m_colorButton->setStyleSheet("");
-        m_dimPropsWidget->hide();
-        m_blockPropsWidget->hide();
-        m_textPropsWidget->hide();
-        m_splinePropsWidget->hide();
-        m_hatchPropsWidget->hide();
-        m_ellipsePropsWidget->hide();
-        m_constraintWidget->hide();
+        showEmptyState();
         return;
     }
 
@@ -329,23 +361,18 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         }
     }
     if (!first) {
-        m_typeLabel->setText(tr("No selection"));
-        m_layerCombo->setEnabled(false);
-        m_colorButton->setEnabled(false);
-        m_byLayerButton->setEnabled(false);
-        m_lineWidthSpin->setEnabled(false);
-        m_lineTypeCombo->setEnabled(false);
-        m_colorButton->setStyleSheet("");
-        m_dimPropsWidget->hide();
-        m_blockPropsWidget->hide();
-        m_textPropsWidget->hide();
-        m_splinePropsWidget->hide();
-        m_hatchPropsWidget->hide();
-        m_ellipsePropsWidget->hide();
-        m_constraintWidget->hide();
         m_currentIds.clear();
+        showEmptyState();
         return;
     }
+
+    // A real entity is selected — show the property form.
+    m_stack->setCurrentIndex(0);
+    m_layerCombo->setEnabled(true);
+    m_colorButton->setEnabled(true);
+    m_byLayerButton->setEnabled(true);
+    m_lineWidthSpin->setEnabled(true);
+    m_lineTypeCombo->setEnabled(true);
 
     m_updatingUI = true;
 

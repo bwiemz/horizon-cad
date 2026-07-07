@@ -121,54 +121,68 @@ void OverlayRenderer::renderCrosshair(QOpenGLExtraFunctions* gl, const render::C
 }
 
 // ---------------------------------------------------------------------------
-// Axis indicator — small X/Y axes in the bottom-left corner
+// Axis triad — screen-anchored X/Y/Z orientation gizmo (bottom-left)
 // ---------------------------------------------------------------------------
+
+// Push a 3D segment with a distance attribute (solid overlays use dist=0).
+static void pushSeg3(std::vector<float>& v, float x0, float y0, float z0, float x1, float y1,
+                     float z1) {
+    v.push_back(x0);
+    v.push_back(y0);
+    v.push_back(z0);
+    v.push_back(0.0f);
+    v.push_back(x1);
+    v.push_back(y1);
+    v.push_back(z1);
+    v.push_back(0.0f);
+}
 
 void OverlayRenderer::renderAxisIndicator(QOpenGLExtraFunctions* gl, const render::Camera& camera,
                                           render::GLRenderer* renderer, int vpW, int vpH,
                                           double pixelScale) {
-    double margin = 35.0 * pixelScale;
-    double axisLen = 30.0 * pixelScale;
+    const double axisLen = 30.0 * pixelScale;
 
-    auto [rayO, rayD] = camera.screenToRay(35.0, static_cast<double>(vpH) - 35.0, vpW, vpH);
-
-    math::Vec2 origin;
+    // Anchor the triad to the ground plane under a fixed bottom-left screen
+    // point so it stays put while the user pans/zooms.
+    auto [rayO, rayD] = camera.screenToRay(40.0, static_cast<double>(vpH) - 40.0, vpW, vpH);
+    math::Vec3 origin;
     if (std::abs(rayD.z) > 1e-12) {
-        double t = -rayO.z / rayD.z;
-        math::Vec3 hit = rayO + rayD * t;
-        origin = {hit.x, hit.y};
+        origin = rayO + rayD * (-rayO.z / rayD.z);
     } else {
-        origin = {rayO.x, rayO.y};
+        origin = {rayO.x, rayO.y, 0.0};
     }
 
-    float ox = static_cast<float>(origin.x);
-    float oy = static_cast<float>(origin.y);
-    float len = static_cast<float>(axisLen);
-    float arrow = static_cast<float>(6.0 * pixelScale);
+    const float ox = static_cast<float>(origin.x);
+    const float oy = static_cast<float>(origin.y);
+    const float oz = static_cast<float>(origin.z);
+    const float len = static_cast<float>(axisLen);
+    const float a = static_cast<float>(6.0 * pixelScale);
 
-    // X axis (red)
-    std::vector<float> xVerts;
-    pushSeg(xVerts, ox, oy, ox + len, oy);
-    math::Vec3 red{0.9, 0.2, 0.2};
-    renderer->drawLines(gl, camera, xVerts, red, 2.0f);
+    const math::Vec3 red{0.92, 0.26, 0.26};
+    const math::Vec3 green{0.30, 0.82, 0.30};
+    const math::Vec3 blue{0.36, 0.56, 0.95};
 
-    // Y axis (green)
-    std::vector<float> yVerts;
-    pushSeg(yVerts, ox, oy, ox, oy + len);
-    math::Vec3 green{0.2, 0.8, 0.2};
-    renderer->drawLines(gl, camera, yVerts, green, 2.0f);
+    // X axis (+world X, red) with a chevron arrowhead in the XY plane.
+    std::vector<float> xv;
+    pushSeg3(xv, ox, oy, oz, ox + len, oy, oz);
+    pushSeg3(xv, ox + len, oy, oz, ox + len - a, oy + a * 0.5f, oz);
+    pushSeg3(xv, ox + len, oy, oz, ox + len - a, oy - a * 0.5f, oz);
+    renderer->drawLines(gl, camera, xv, red, 2.2f);
 
-    // X arrowhead
-    std::vector<float> xArrow;
-    pushSeg(xArrow, ox + len, oy, ox + len - arrow, oy + arrow * 0.5f);
-    pushSeg(xArrow, ox + len, oy, ox + len - arrow, oy - arrow * 0.5f);
-    renderer->drawLines(gl, camera, xArrow, red, 2.0f);
+    // Y axis (+world Y, green).
+    std::vector<float> yv;
+    pushSeg3(yv, ox, oy, oz, ox, oy + len, oz);
+    pushSeg3(yv, ox, oy + len, oz, ox - a * 0.5f, oy + len - a, oz);
+    pushSeg3(yv, ox, oy + len, oz, ox + a * 0.5f, oy + len - a, oz);
+    renderer->drawLines(gl, camera, yv, green, 2.2f);
 
-    // Y arrowhead
-    std::vector<float> yArrow;
-    pushSeg(yArrow, ox, oy + len, ox - arrow * 0.5f, oy + len - arrow);
-    pushSeg(yArrow, ox, oy + len, ox + arrow * 0.5f, oy + len - arrow);
-    renderer->drawLines(gl, camera, yArrow, green, 2.0f);
+    // Z axis (+world Z / up, blue) — the new third axis that makes this a true
+    // 3D orientation triad; arrowhead splayed in the XZ plane.
+    std::vector<float> zv;
+    pushSeg3(zv, ox, oy, oz, ox, oy, oz + len);
+    pushSeg3(zv, ox, oy, oz + len, ox - a * 0.5f, oy, oz + len - a);
+    pushSeg3(zv, ox, oy, oz + len, ox + a * 0.5f, oy, oz + len - a);
+    renderer->drawLines(gl, camera, zv, blue, 2.2f);
 }
 
 }  // namespace hz::ui
