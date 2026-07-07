@@ -358,139 +358,136 @@ void MainWindow::createRibbonBar() {
         return act;
     };
 
+    // A ribbon "group" is a small captioned panel; addGroup returns its
+    // toolbar so the same addToolAction/addAction helpers fill it.
+    auto group = [&](const QString& tab, const QString& title) {
+        return m_ribbonBar->addGroup(tab, title);
+    };
+
     // ---- Home tab ----
-    auto* homeBar = new QToolBar(this);
-    addAction(homeBar, "new", tr("New"), this, &MainWindow::onNewFile, QKeySequence::New);
-    addAction(homeBar, "open", tr("Open"), this, &MainWindow::onOpenFile, QKeySequence::Open);
-    addAction(homeBar, "save", tr("Save"), this, &MainWindow::onSaveFile, QKeySequence::Save);
-    homeBar->addSeparator();
-    addAction(homeBar, "undo", tr("Undo"), this, &MainWindow::onUndo, QKeySequence::Undo);
-    addAction(homeBar, "redo", tr("Redo"), this, &MainWindow::onRedo, QKeySequence::Redo);
-    homeBar->addSeparator();
-    addAction(homeBar, "copy", tr("Copy"), this, &MainWindow::onCopy, QKeySequence::Copy);
-    addAction(homeBar, "paste", tr("Paste"), this, &MainWindow::onPaste, QKeySequence::Paste);
-    addAction(homeBar, "duplicate", tr("Duplicate"), this, &MainWindow::onDuplicate,
+    QToolBar* g = group(tr("Home"), tr("File"));
+    addAction(g, "new", tr("New"), this, &MainWindow::onNewFile, QKeySequence::New);
+    addAction(g, "open", tr("Open"), this, &MainWindow::onOpenFile, QKeySequence::Open);
+    addAction(g, "save", tr("Save"), this, &MainWindow::onSaveFile, QKeySequence::Save);
+
+    g = group(tr("Home"), tr("Edit"));
+    addAction(g, "undo", tr("Undo"), this, &MainWindow::onUndo, QKeySequence::Undo);
+    addAction(g, "redo", tr("Redo"), this, &MainWindow::onRedo, QKeySequence::Redo);
+    addAction(g, "copy", tr("Copy"), this, &MainWindow::onCopy, QKeySequence::Copy);
+    addAction(g, "paste", tr("Paste"), this, &MainWindow::onPaste, QKeySequence::Paste);
+    addAction(g, "duplicate", tr("Duplicate"), this, &MainWindow::onDuplicate,
               QKeySequence(Qt::CTRL | Qt::Key_D));
-    homeBar->addSeparator();
-    addAction(homeBar, "group", tr("Group"), this, &MainWindow::onGroupEntities,
+
+    g = group(tr("Home"), tr("Organize"));
+    addAction(g, "group", tr("Group"), this, &MainWindow::onGroupEntities,
               QKeySequence(Qt::CTRL | Qt::Key_G));
-    addAction(homeBar, "ungroup", tr("Ungroup"), this, &MainWindow::onUngroupEntities,
+    addAction(g, "ungroup", tr("Ungroup"), this, &MainWindow::onUngroupEntities,
               QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
-    homeBar->addSeparator();
-    auto* selectAct = addToolAction(homeBar, "select", tr("Select"), &MainWindow::onSelectTool,
+
+    g = group(tr("Home"), tr("View"));
+    auto* selectAct = addToolAction(g, "select", tr("Select"), &MainWindow::onSelectTool,
                                     QKeySequence(Qt::Key_Space));
     selectAct->setChecked(true);
-    addAction(homeBar, "fit-all", tr("Fit All"), this, &MainWindow::onFitAll,
-              QKeySequence(Qt::Key_F));
-    m_ribbonBar->addTab(tr("Home"), homeBar);
+    addAction(g, "fit-all", tr("Fit All"), this, &MainWindow::onFitAll, QKeySequence(Qt::Key_F));
 
     // ---- Draw tab ----
-    auto* drawBar = new QToolBar(this);
-    addToolAction(drawBar, "line", tr("Line"), &MainWindow::onLineTool, QKeySequence(Qt::Key_L));
-    addToolAction(drawBar, "circle", tr("Circle"), &MainWindow::onCircleTool,
-                  QKeySequence(Qt::Key_C));
-    addToolAction(drawBar, "arc", tr("Arc"), &MainWindow::onArcTool, QKeySequence(Qt::Key_A));
-    addToolAction(drawBar, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
+    g = group(tr("Draw"), tr("Basic"));
+    addToolAction(g, "line", tr("Line"), &MainWindow::onLineTool, QKeySequence(Qt::Key_L));
+    addToolAction(g, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
                   QKeySequence(Qt::Key_R));
-    addToolAction(drawBar, "polyline", tr("Polyline"), &MainWindow::onPolylineTool,
+    addToolAction(g, "circle", tr("Circle"), &MainWindow::onCircleTool, QKeySequence(Qt::Key_C));
+    addToolAction(g, "arc", tr("Arc"), &MainWindow::onArcTool, QKeySequence(Qt::Key_A));
+
+    g = group(tr("Draw"), tr("Curves"));
+    addToolAction(g, "polyline", tr("Polyline"), &MainWindow::onPolylineTool,
                   QKeySequence(Qt::Key_P));
-    addToolAction(drawBar, "ellipse", tr("Ellipse"), &MainWindow::onEllipseTool,
-                  QKeySequence(Qt::Key_E));
-    addToolAction(drawBar, "spline", tr("Spline"), &MainWindow::onSplineTool,
-                  QKeySequence(Qt::Key_S));
-    addToolAction(drawBar, "text", tr("Text"), &MainWindow::onTextTool, QKeySequence(Qt::Key_T));
-    addToolAction(drawBar, "hatch", tr("Hatch"), &MainWindow::onHatchTool, QKeySequence(Qt::Key_H));
-    m_ribbonBar->addTab(tr("Draw"), drawBar);
+    addToolAction(g, "ellipse", tr("Ellipse"), &MainWindow::onEllipseTool, QKeySequence(Qt::Key_E));
+    addToolAction(g, "spline", tr("Spline"), &MainWindow::onSplineTool, QKeySequence(Qt::Key_S));
+
+    g = group(tr("Draw"), tr("Detail"));
+    addToolAction(g, "text", tr("Text"), &MainWindow::onTextTool, QKeySequence(Qt::Key_T));
+    addToolAction(g, "hatch", tr("Hatch"), &MainWindow::onHatchTool, QKeySequence(Qt::Key_H));
 
     // ---- Modify tab ----
-    auto* modifyBar = new QToolBar(this);
-    addToolAction(modifyBar, "move", tr("Move"), &MainWindow::onMoveTool, QKeySequence(Qt::Key_M));
-    addToolAction(modifyBar, "offset", tr("Offset"), &MainWindow::onOffsetTool,
-                  QKeySequence(Qt::Key_O));
-    addToolAction(modifyBar, "mirror", tr("Mirror"), &MainWindow::onMirrorTool,
-                  QKeySequence(Qt::SHIFT | Qt::Key_M));
-    addToolAction(modifyBar, "rotate", tr("Rotate"), &MainWindow::onRotateTool,
+    g = group(tr("Modify"), tr("Transform"));
+    addToolAction(g, "move", tr("Move"), &MainWindow::onMoveTool, QKeySequence(Qt::Key_M));
+    addToolAction(g, "rotate", tr("Rotate"), &MainWindow::onRotateTool,
                   QKeySequence(Qt::SHIFT | Qt::Key_R));
-    addToolAction(modifyBar, "scale", tr("Scale"), &MainWindow::onScaleTool,
+    addToolAction(g, "scale", tr("Scale"), &MainWindow::onScaleTool,
                   QKeySequence(Qt::SHIFT | Qt::Key_S));
-    modifyBar->addSeparator();
-    addToolAction(modifyBar, "trim", tr("Trim"), &MainWindow::onTrimTool, QKeySequence(Qt::Key_X));
-    addToolAction(modifyBar, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
-    addToolAction(modifyBar, "chamfer", tr("Chamfer"), &MainWindow::onChamferTool);
-    addToolAction(modifyBar, "break", tr("Break"), &MainWindow::onBreakTool,
-                  QKeySequence(Qt::Key_B));
-    addToolAction(modifyBar, "extend", tr("Extend"), &MainWindow::onExtendTool,
+    addToolAction(g, "mirror", tr("Mirror"), &MainWindow::onMirrorTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_M));
+
+    g = group(tr("Modify"), tr("Modify"));
+    addToolAction(g, "trim", tr("Trim"), &MainWindow::onTrimTool, QKeySequence(Qt::Key_X));
+    addToolAction(g, "extend", tr("Extend"), &MainWindow::onExtendTool,
                   QKeySequence(Qt::SHIFT | Qt::Key_E));
-    addToolAction(modifyBar, "stretch", tr("Stretch"), &MainWindow::onStretchTool,
-                  QKeySequence(Qt::Key_W));
-    addToolAction(modifyBar, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
-    modifyBar->addSeparator();
-    addAction(modifyBar, "rect-array", tr("Rect Array"), this, &MainWindow::onRectangularArray);
-    addAction(modifyBar, "polar-array", tr("Polar Array"), this, &MainWindow::onPolarArray);
-    m_ribbonBar->addTab(tr("Modify"), modifyBar);
+    addToolAction(g, "offset", tr("Offset"), &MainWindow::onOffsetTool, QKeySequence(Qt::Key_O));
+    addToolAction(g, "fillet", tr("Fillet"), &MainWindow::onFilletTool);
+    addToolAction(g, "chamfer", tr("Chamfer"), &MainWindow::onChamferTool);
+    addToolAction(g, "break", tr("Break"), &MainWindow::onBreakTool, QKeySequence(Qt::Key_B));
+    addToolAction(g, "stretch", tr("Stretch"), &MainWindow::onStretchTool, QKeySequence(Qt::Key_W));
+    addToolAction(g, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
+
+    g = group(tr("Modify"), tr("Array"));
+    addAction(g, "rect-array", tr("Rect Array"), this, &MainWindow::onRectangularArray);
+    addAction(g, "polar-array", tr("Polar Array"), this, &MainWindow::onPolarArray);
 
     // ---- Annotate tab ----
-    auto* annotateBar = new QToolBar(this);
-    addToolAction(annotateBar, "dim-linear", tr("Linear Dim"), &MainWindow::onLinearDimTool,
+    g = group(tr("Annotate"), tr("Dimensions"));
+    addToolAction(g, "dim-linear", tr("Linear"), &MainWindow::onLinearDimTool,
                   QKeySequence(Qt::Key_D));
-    addToolAction(annotateBar, "dim-radial", tr("Radial Dim"), &MainWindow::onRadialDimTool);
-    addToolAction(annotateBar, "dim-angular", tr("Angular Dim"), &MainWindow::onAngularDimTool);
-    addToolAction(annotateBar, "leader", tr("Leader"), &MainWindow::onLeaderTool);
-    annotateBar->addSeparator();
-    addAction(annotateBar, "measure-distance", tr("Measure Distance"), this,
-              &MainWindow::onMeasureDistanceTool);
-    addAction(annotateBar, "measure-angle", tr("Measure Angle"), this,
-              &MainWindow::onMeasureAngleTool);
-    addAction(annotateBar, "measure-area", tr("Measure Area"), this,
-              &MainWindow::onMeasureAreaTool);
-    m_ribbonBar->addTab(tr("Annotate"), annotateBar);
+    addToolAction(g, "dim-radial", tr("Radial"), &MainWindow::onRadialDimTool);
+    addToolAction(g, "dim-angular", tr("Angular"), &MainWindow::onAngularDimTool);
+    addToolAction(g, "leader", tr("Leader"), &MainWindow::onLeaderTool);
+
+    g = group(tr("Annotate"), tr("Measure"));
+    addAction(g, "measure-distance", tr("Distance"), this, &MainWindow::onMeasureDistanceTool);
+    addAction(g, "measure-angle", tr("Angle"), this, &MainWindow::onMeasureAngleTool);
+    addAction(g, "measure-area", tr("Area"), this, &MainWindow::onMeasureAreaTool);
 
     // ---- Constrain tab ----
-    auto* constrainBar = new QToolBar(this);
-    addAction(constrainBar, "cstr-coincident", tr("Coincident"), this,
-              &MainWindow::onConstraintCoincident);
-    addAction(constrainBar, "cstr-horizontal", tr("Horizontal"), this,
-              &MainWindow::onConstraintHorizontal);
-    addAction(constrainBar, "cstr-vertical", tr("Vertical"), this,
-              &MainWindow::onConstraintVertical);
-    addAction(constrainBar, "cstr-perpendicular", tr("Perpendicular"), this,
+    g = group(tr("Constrain"), tr("Geometric"));
+    addAction(g, "cstr-coincident", tr("Coincident"), this, &MainWindow::onConstraintCoincident);
+    addAction(g, "cstr-horizontal", tr("Horizontal"), this, &MainWindow::onConstraintHorizontal);
+    addAction(g, "cstr-vertical", tr("Vertical"), this, &MainWindow::onConstraintVertical);
+    addAction(g, "cstr-perpendicular", tr("Perpendicular"), this,
               &MainWindow::onConstraintPerpendicular);
-    addAction(constrainBar, "cstr-parallel", tr("Parallel"), this,
-              &MainWindow::onConstraintParallel);
-    addAction(constrainBar, "cstr-tangent", tr("Tangent"), this, &MainWindow::onConstraintTangent);
-    addAction(constrainBar, "cstr-equal", tr("Equal"), this, &MainWindow::onConstraintEqual);
-    constrainBar->addSeparator();
-    addAction(constrainBar, "cstr-fixed", tr("Fixed"), this, &MainWindow::onConstraintFixed);
-    addAction(constrainBar, "cstr-distance", tr("Distance"), this,
-              &MainWindow::onConstraintDistance);
-    addAction(constrainBar, "cstr-angle", tr("Angle"), this, &MainWindow::onConstraintAngle);
-    m_ribbonBar->addTab(tr("Constrain"), constrainBar);
+    addAction(g, "cstr-parallel", tr("Parallel"), this, &MainWindow::onConstraintParallel);
+    addAction(g, "cstr-tangent", tr("Tangent"), this, &MainWindow::onConstraintTangent);
+    addAction(g, "cstr-equal", tr("Equal"), this, &MainWindow::onConstraintEqual);
+
+    g = group(tr("Constrain"), tr("Dimensional"));
+    addAction(g, "cstr-fixed", tr("Fixed"), this, &MainWindow::onConstraintFixed);
+    addAction(g, "cstr-distance", tr("Distance"), this, &MainWindow::onConstraintDistance);
+    addAction(g, "cstr-angle", tr("Angle"), this, &MainWindow::onConstraintAngle);
 
     // ---- Block tab ----
-    auto* blockBar = new QToolBar(this);
-    addAction(blockBar, "block-create", tr("Create Block"), this, &MainWindow::onCreateBlock);
-    addAction(blockBar, "block-insert", tr("Insert Block"), this, &MainWindow::onInsertBlock);
-    addAction(blockBar, "block-explode", tr("Explode"), this, &MainWindow::onExplode);
-    m_ribbonBar->addTab(tr("Block"), blockBar);
+    g = group(tr("Block"), tr("Blocks"));
+    addAction(g, "block-create", tr("Create"), this, &MainWindow::onCreateBlock);
+    addAction(g, "block-insert", tr("Insert"), this, &MainWindow::onInsertBlock);
+    addAction(g, "block-explode", tr("Explode"), this, &MainWindow::onExplode);
 
     // ---- 3D tab ----
-    auto* solidBar = new QToolBar(this);
-    addAction(solidBar, "box", tr("Box"), this, &MainWindow::onPrimitiveBox);
-    addAction(solidBar, "cylinder", tr("Cylinder"), this, &MainWindow::onPrimitiveCylinder);
-    addAction(solidBar, "sphere", tr("Sphere"), this, &MainWindow::onPrimitiveSphere);
-    addAction(solidBar, "cone", tr("Cone"), this, &MainWindow::onPrimitiveCone);
-    addAction(solidBar, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
-    addAction(solidBar, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
-    addAction(solidBar, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
-    solidBar->addSeparator();
-    addAction(solidBar, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
-    addAction(solidBar, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
-    addAction(solidBar, "boolean-intersect", tr("Intersect"), this,
-              &MainWindow::onBooleanIntersect);
-    solidBar->addSeparator();
-    addAction(solidBar, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
-    addAction(solidBar, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
-    m_ribbonBar->addTab(tr("3D"), solidBar);
+    g = group(tr("3D"), tr("Primitives"));
+    addAction(g, "box", tr("Box"), this, &MainWindow::onPrimitiveBox);
+    addAction(g, "cylinder", tr("Cylinder"), this, &MainWindow::onPrimitiveCylinder);
+    addAction(g, "sphere", tr("Sphere"), this, &MainWindow::onPrimitiveSphere);
+    addAction(g, "cone", tr("Cone"), this, &MainWindow::onPrimitiveCone);
+    addAction(g, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
+
+    g = group(tr("3D"), tr("Features"));
+    addAction(g, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
+    addAction(g, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
+
+    g = group(tr("3D"), tr("Boolean"));
+    addAction(g, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
+    addAction(g, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
+    addAction(g, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
+
+    g = group(tr("3D"), tr("Modify"));
+    addAction(g, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
+    addAction(g, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
     auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);

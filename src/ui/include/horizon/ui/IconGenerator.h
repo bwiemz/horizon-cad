@@ -27,12 +27,17 @@ public:
     /// View:       "fit-all"
     ///
     /// Returns a blank transparent icon for unrecognized names.
-    static QIcon icon(const QString& name);
+    ///
+    /// @param size  Rendered pixel size. Icons are drawn as vectors in a 24-unit
+    ///              space and scaled to @p size, so larger sizes stay crisp
+    ///              (e.g. 32 px for ribbon command buttons).
+    static QIcon icon(const QString& name, int size = kRenderSize);
 
     IconGenerator() = delete;
 
 private:
-    static constexpr int kDefaultSize = 24;
+    static constexpr int kDesignSize = 24;  ///< Vector coordinate space icons are drawn in.
+    static constexpr int kRenderSize = 32;  ///< Default rasterized size (crisp for the ribbon).
 
     // File
     static QIcon drawNew(int s);
