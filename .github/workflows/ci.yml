@@ -265,17 +265,30 @@ jobs:
       - name: Configure with compile_commands.json
         run: cmake --preset linux-debug
 
+      - name: Generate build-time headers for analysis
+        # clang-tidy parses each TU, so generated headers (e.g. the FlatBuffers
+        # hzbinary_generated.h that BinaryFormat.cpp includes) must exist on
+        # disk first — configuring alone does not run the flatc custom command.
+        run: cmake --build build/linux-debug --target hz_fileio_fbs
+
       - name: Run clang-tidy
         run: |
           # Enforced gate: every bugprone-*/performance-* warning FAILS the
           # build except the known-dirty backlog below (advisory-only until
           # their existing findings are burned down).  Do not add a check to
           # the exclusion list to get a PR green — fix the finding instead.
+          #
+          # Tidy only files that have a real compile command in
+          # compile_commands.json, so optional modules disabled in this
+          # configuration (e.g. scripting) are not parsed with a guessed
+          # command and reported as spurious "file not found" errors.
           set -o pipefail
-          find src -name '*.cpp' | \
-            xargs clang-tidy-15 \
+          jq -r '.[].file' build/linux-debug/compile_commands.json \
+            | grep -E '/src/.*\.cpp$' | sort -u > tidy-files.txt
+          echo "Analyzing $(wc -l < tidy-files.txt) source files with clang-tidy"
+          xargs clang-tidy-15 \
               -p build/linux-debug \
               --checks='-*,bugprone-*,performance-*' \
               --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
-              2>&1 | tee clang-tidy-output.txt
+              < tidy-files.txt 2>&1 | tee clang-tidy-output.txt
           echo "::notice::clang-tidy gate passed (excluded-check warnings above are the advisory backlog)."
