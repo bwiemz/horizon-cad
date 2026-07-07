@@ -25,6 +25,9 @@ public:
     /// Measure:    "measure-distance", "measure-angle", "measure-area"
     /// Block:      "block-create", "block-insert", "block-explode"
     /// View:       "fit-all"
+    /// 3D:         "box", "cylinder", "sphere", "cone", "torus", "extrude",
+    ///             "revolve", "boolean-union", "boolean-subtract",
+    ///             "boolean-intersect", "fillet-3d", "chamfer-3d"
     ///
     /// Returns a blank transparent icon for unrecognized names.
     ///
@@ -111,6 +114,20 @@ private:
 
     // View
     static QIcon drawFitAll(int s);
+
+    // 3D — primitives, features, boolean operations, edge modifiers
+    static QIcon drawBox(int s);
+    static QIcon drawCylinder(int s);
+    static QIcon drawSphere(int s);
+    static QIcon drawCone(int s);
+    static QIcon drawTorus(int s);
+    static QIcon drawExtrude(int s);
+    static QIcon drawRevolve(int s);
+    static QIcon drawBooleanUnion(int s);
+    static QIcon drawBooleanSubtract(int s);
+    static QIcon drawBooleanIntersect(int s);
+    static QIcon drawFillet3d(int s);
+    static QIcon drawChamfer3d(int s);
 };
 
 }  // namespace hz::ui

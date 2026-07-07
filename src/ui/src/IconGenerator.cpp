@@ -157,6 +157,22 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"block-explode", drawBlockExplode},
         // View
         {"fit-all", drawFitAll},
+        // 3D — primitives
+        {"box", drawBox},
+        {"cylinder", drawCylinder},
+        {"sphere", drawSphere},
+        {"cone", drawCone},
+        {"torus", drawTorus},
+        // 3D — features
+        {"extrude", drawExtrude},
+        {"revolve", drawRevolve},
+        // 3D — boolean
+        {"boolean-union", drawBooleanUnion},
+        {"boolean-subtract", drawBooleanSubtract},
+        {"boolean-intersect", drawBooleanIntersect},
+        // 3D — modify
+        {"fillet-3d", drawFillet3d},
+        {"chamfer-3d", drawChamfer3d},
     };
 
     const int s = size > 0 ? size : kRenderSize;
@@ -1366,6 +1382,235 @@ QIcon IconGenerator::drawFitAll(int s) {
     // Bottom-right
     p.drawLine(QPointF(d - a, d - a), QPointF(d - b, d - b));
     drawArrowhead(p, QPointF(d - b, d - b), -3.0 * M_PI / 4.0, 3.0, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+// ===========================================================================
+//  3D icons — isometric primitives, features and modelling operations
+// ===========================================================================
+
+// Isometric cube laid out in the shared 24-unit design space. Vertices:
+//   A top, B upper-right, C lower-right, D bottom, E lower-left, F upper-left,
+//   G front-centre where the three visible faces meet. Draws the hexagonal
+//   silhouette plus the interior "Y" (edges G-B, G-F, G-D).
+static void drawIsoCube(QPainter& p, const QPen& edge) {
+    const QPointF A(12, 4), B(20, 8), C(20, 16), D(12, 20), E(4, 16), F(4, 8), G(12, 12);
+    p.setPen(edge);
+    p.setBrush(Qt::NoBrush);
+    QPolygonF hex;
+    hex << A << B << C << D << E << F;
+    p.drawPolygon(hex);
+    p.drawLine(G, B);
+    p.drawLine(G, F);
+    p.drawLine(G, D);
+}
+
+QIcon IconGenerator::drawBox(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    drawIsoCube(p, primaryPen(1.8));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawCylinder(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    const qreal rx = 7, ry = 2.6, l = 5, r = 19, topY = 6, botY = 18;
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    // Vertical sides.
+    p.drawLine(QPointF(l, topY), QPointF(l, botY));
+    p.drawLine(QPointF(r, topY), QPointF(r, botY));
+    // Top ellipse (fully visible).
+    p.drawEllipse(QPointF(12, topY), rx, ry);
+    // Bottom: front half solid, back half dashed (hidden).
+    QRectF botRect(12 - rx, botY - ry, 2 * rx, 2 * ry);
+    p.drawArc(botRect, 180 * 16, 180 * 16);  // front (lower) half
+    p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
+    p.drawArc(botRect, 0, 180 * 16);  // back (upper) half
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawSphere(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(QPointF(12, 12), 8.0, 8.0);
+    // Equator (foreshortened ellipse) to read as a globe.
+    p.setPen(accentPen(1.4));
+    p.drawEllipse(QPointF(12, 12), 8.0, 3.0);
+    // A faint meridian.
+    p.setPen(QPen(kSecondary, 1.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawEllipse(QPointF(12, 12), 3.0, 8.0);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawCone(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    const qreal rx = 8, ry = 2.6, apexY = 4, baseY = 18;
+    const QPointF apex(12, apexY);
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    // Slanted sides down to the base ellipse extremes.
+    p.drawLine(apex, QPointF(12 - rx, baseY));
+    p.drawLine(apex, QPointF(12 + rx, baseY));
+    // Base: front half solid, back half dashed (hidden).
+    QRectF baseRect(12 - rx, baseY - ry, 2 * rx, 2 * ry);
+    p.drawArc(baseRect, 180 * 16, 180 * 16);
+    p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
+    p.drawArc(baseRect, 0, 180 * 16);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawTorus(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    // Outer ring silhouette.
+    p.drawEllipse(QPointF(12, 12), 9.0, 5.5);
+    // Inner hole.
+    p.drawEllipse(QPointF(12, 12), 3.6, 2.0);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawExtrude(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // Sketch profile at the bottom.
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(QRectF(6, 16, 10, 5));
+    // Ghosted extruded prism rising above the profile.
+    p.setPen(QPen(kSecondary, 1.0, Qt::DashLine, Qt::RoundCap));
+    p.drawRect(QRectF(6, 6, 10, 5));
+    p.drawLine(QPointF(6, 16), QPointF(6, 11));
+    p.drawLine(QPointF(16, 16), QPointF(16, 11));
+    // Pull-up arrow.
+    p.setPen(accentPen(2.0));
+    p.drawLine(QPointF(20, 18), QPointF(20, 5));
+    drawArrowhead(p, QPointF(20, 5), -M_PI / 2.0, 3.5, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawRevolve(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // Rotation axis (dashed).
+    p.setPen(QPen(kSecondary, 1.1, Qt::DashLine, Qt::RoundCap));
+    p.drawLine(QPointF(6, 3), QPointF(6, 21));
+    // Profile beside the axis.
+    p.setPen(primaryPen(1.8));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(QRectF(9, 8, 6, 10));
+    // Sweep arrow curving around the top to imply revolution.
+    p.setPen(accentPen(1.8));
+    QPainterPath sweep;
+    sweep.moveTo(6, 6);
+    sweep.cubicTo(14, 3, 21, 5, 20, 10);
+    p.drawPath(sweep);
+    drawArrowhead(p, QPointF(20, 10), M_PI * 0.62, 3.5, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+// Shared drawing for the three boolean icons. @p regionPath is the exact
+// result region (union / difference / intersection) to fill in translucent
+// accent; both operand circles are always outlined so the operation reads
+// against its inputs.
+static void drawBoolean(QPainter& p, const QPainterPath& regionPath, bool dashSecond) {
+    const QPointF c1(9.5, 12), c2(15.5, 12);
+    const qreal rr = 6.0;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(74, 144, 217, 90));
+    p.drawPath(regionPath);
+    p.setBrush(Qt::NoBrush);
+    p.setPen(primaryPen(1.6));
+    p.drawEllipse(c1, rr, rr);
+    p.setPen(dashSecond ? QPen(kSecondary, 1.2, Qt::DashLine, Qt::RoundCap) : primaryPen(1.6));
+    p.drawEllipse(c2, rr, rr);
+}
+
+// Build the two operand circle paths used by the boolean icons.
+static void booleanOperands(QPainterPath& a, QPainterPath& b) {
+    a.addEllipse(QPointF(9.5, 12), 6.0, 6.0);
+    b.addEllipse(QPointF(15.5, 12), 6.0, 6.0);
+}
+
+QIcon IconGenerator::drawBooleanUnion(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    QPainterPath a, b;
+    booleanOperands(a, b);
+    drawBoolean(p, a.united(b), false);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawBooleanSubtract(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    QPainterPath a, b;
+    booleanOperands(a, b);
+    // Keep the first operand minus the second; show the second as "removed".
+    drawBoolean(p, a.subtracted(b), true);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawBooleanIntersect(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    QPainterPath a, b;
+    booleanOperands(a, b);
+    drawBoolean(p, a.intersected(b), false);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawFillet3d(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    drawIsoCube(p, primaryPen(1.6));
+    // Round the near top edge (A-B) and highlight it as the filleted edge.
+    p.setPen(accentPen(2.2));
+    p.setBrush(Qt::NoBrush);
+    QPainterPath round;
+    round.moveTo(8, 6);
+    round.cubicTo(12, 3, 16, 5, 18, 9);
+    p.drawPath(round);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawChamfer3d(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    drawIsoCube(p, primaryPen(1.6));
+    // Bevel the near top vertex (A) with a straight cut and highlight it.
+    p.setPen(accentPen(2.2));
+    p.drawLine(QPointF(8, 6), QPointF(16, 6));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
