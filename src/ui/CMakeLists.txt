@@ -59,6 +59,7 @@ add_library(hz_ui STATIC
     src/ViewportWidget.cpp
     src/ViewportInputHandler.cpp
     src/ViewportRenderer.cpp
+    src/ViewCube.cpp
     src/ToolManager.cpp
     src/LineTool.cpp
     src/CircleTool.cpp

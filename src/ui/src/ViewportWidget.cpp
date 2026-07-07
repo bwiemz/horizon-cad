@@ -223,7 +223,51 @@ void ViewportWidget::paintGL() {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
+    // A left-click on the orientation gizmo snaps the view instead of drawing.
+    if (event->button() == Qt::LeftButton) {
+        const ViewCube::Region region =
+            m_viewportRenderer.viewCube().hitTest(event->position().toPoint());
+        if (region != ViewCube::Region::None) {
+            applyViewCubeRegion(region);
+            update();
+            return;
+        }
+    }
     m_inputHandler.handleMousePress(event, this);
+}
+
+void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
+    using Region = ViewCube::Region;
+    double dist = (m_camera.eye() - m_camera.target()).length();
+    if (dist < 1e-10) dist = 10.0;
+    const math::Vec3 t = m_camera.target();
+    const math::Vec3 zUp(0.0, 0.0, 1.0);
+    switch (region) {
+        case Region::Front:
+            m_camera.setFrontView();
+            break;
+        case Region::Top:
+            m_camera.setTopView();
+            break;
+        case Region::Right:
+            m_camera.setRightView();
+            break;
+        case Region::Iso:
+            m_camera.setIsometricView();
+            break;
+        // Back / Bottom / Left have no camera preset; mirror the preset math.
+        case Region::Back:
+            m_camera.lookAt(t + math::Vec3(0.0, dist, 0.0), t, zUp);
+            break;
+        case Region::Bottom:
+            m_camera.lookAt(t + math::Vec3(0.0, 0.0, -dist), t, math::Vec3(0.0, 1.0, 0.0));
+            break;
+        case Region::Left:
+            m_camera.lookAt(t + math::Vec3(-dist, 0.0, 0.0), t, zUp);
+            break;
+        case Region::None:
+            break;
+    }
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {

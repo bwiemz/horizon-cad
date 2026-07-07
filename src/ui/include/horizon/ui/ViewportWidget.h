@@ -133,6 +133,9 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
+    /// Snap the camera to the standard view requested by a view-cube click.
+    void applyViewCubeRegion(ViewCube::Region region);
+
     // Camera
     render::Camera m_camera;
 

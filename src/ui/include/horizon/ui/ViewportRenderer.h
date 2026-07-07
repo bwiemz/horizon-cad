@@ -7,6 +7,7 @@
 
 #include "horizon/constraint/SketchSolver.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/ui/ViewCube.h"
 
 class QOpenGLExtraFunctions;
 class QImage;
@@ -63,6 +64,9 @@ public:
     /// Access current DOF analysis.
     const cstr::DOFAnalysis& dofAnalysis() const { return m_dofAnalysis; }
 
+    /// Access the orientation gizmo (for click hit-testing from the widget).
+    ViewCube& viewCube() { return m_viewCube; }
+
 private:
     /// Text data collected during renderEntities() for overlay.
     struct DimTextInfo {
@@ -95,6 +99,9 @@ private:
     // DOF visualization
     cstr::DOFAnalysis m_dofAnalysis;
     bool m_dofDirty = true;
+
+    // Top-right orientation gizmo, drawn in the text-overlay QImage.
+    ViewCube m_viewCube;
 
     // Text overlay GL resources (renders to QImage, uploads as texture)
     unsigned int m_textOverlayTex = 0;
