@@ -1,6 +1,9 @@
 #include "horizon/ui/FeatureTreePanel.h"
 
 #include <QHeaderView>
+#include <QLabel>
+#include <QPushButton>
+#include <QStackedWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -12,19 +15,50 @@ namespace hz::ui {
 FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tree"), parent) {
     setObjectName("FeatureTreePanel");
 
-    auto* container = new QWidget(this);
-    auto* layout = new QVBoxLayout(container);
-    layout->setContentsMargins(0, 0, 0, 0);
+    m_stack = new QStackedWidget(this);
 
-    m_treeWidget = new QTreeWidget(container);
+    // -- Page 0: the feature tree --------------------------------------------
+    m_treeWidget = new QTreeWidget(m_stack);
     m_treeWidget->setHeaderLabels({tr("Feature"), tr("Status")});
     m_treeWidget->setRootIsDecorated(false);
     m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     m_treeWidget->setDragDropMode(QAbstractItemView::InternalMove);
     m_treeWidget->header()->setStretchLastSection(true);
+    m_stack->addWidget(m_treeWidget);
 
-    layout->addWidget(m_treeWidget);
-    setWidget(container);
+    // -- Page 1: empty state -------------------------------------------------
+    auto* empty = new QWidget(m_stack);
+    auto* emptyLayout = new QVBoxLayout(empty);
+    emptyLayout->setContentsMargins(20, 28, 20, 20);
+    emptyLayout->setSpacing(8);
+    emptyLayout->addStretch(1);
+
+    auto* title = new QLabel(tr("No features yet"), empty);
+    title->setObjectName("emptyStateTitle");
+    title->setAlignment(Qt::AlignHCenter);
+    emptyLayout->addWidget(title);
+
+    auto* hint =
+        new QLabel(tr("Start a sketch or create a primitive to\nbegin building your part."), empty);
+    hint->setObjectName("emptyStateHint");
+    hint->setAlignment(Qt::AlignHCenter);
+    hint->setWordWrap(true);
+    emptyLayout->addWidget(hint);
+    emptyLayout->addSpacing(8);
+
+    auto* boxBtn = new QPushButton(tr("Create Box"), empty);
+    connect(boxBtn, &QPushButton::clicked, this, &FeatureTreePanel::createBoxRequested);
+    emptyLayout->addWidget(boxBtn);
+
+    auto* openBtn = new QPushButton(tr("Open File…"), empty);
+    connect(openBtn, &QPushButton::clicked, this, &FeatureTreePanel::openFileRequested);
+    emptyLayout->addWidget(openBtn);
+
+    emptyLayout->addStretch(2);
+    m_stack->addWidget(empty);
+
+    m_stack->setCurrentWidget(empty);  // start empty until features exist
+    setWidget(m_stack);
 
     connect(m_treeWidget, &QTreeWidget::itemDoubleClicked, this,
             &FeatureTreePanel::onItemDoubleClicked);
@@ -42,6 +76,7 @@ void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
     m_treeWidget->clear();
 
     const int count = static_cast<int>(tree.featureCount());
+    m_stack->setCurrentIndex(count > 0 ? 0 : 1);  // tree vs empty state
     for (int i = 0; i < count; ++i) {
         const auto* feat = tree.feature(static_cast<size_t>(i));
         auto* item = new QTreeWidgetItem(m_treeWidget);

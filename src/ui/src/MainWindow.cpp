@@ -148,6 +148,10 @@ MainWindow::MainWindow(QWidget* parent)
             &MainWindow::onFeatureReordered);
     connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged, this,
             &MainWindow::onRollbackChanged);
+    connect(m_featureTreePanel, &FeatureTreePanel::createBoxRequested, this,
+            &MainWindow::onPrimitiveBox);
+    connect(m_featureTreePanel, &FeatureTreePanel::openFileRequested, this,
+            &MainWindow::onOpenFile);
 
     // Build UI chrome.
     createMenus();

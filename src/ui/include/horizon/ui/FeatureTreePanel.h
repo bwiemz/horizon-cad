@@ -5,6 +5,7 @@
 
 class QTreeWidget;
 class QTreeWidgetItem;
+class QStackedWidget;
 
 namespace hz::doc {
 class FeatureTree;
@@ -42,10 +43,15 @@ signals:
     void featureReordered(int fromIndex, int toIndex);
     void rollbackChanged(int newIndex);
 
+    /// Emitted by the empty-state action buttons so the owner can start work.
+    void createBoxRequested();
+    void openFileRequested();
+
 private slots:
     void onItemDoubleClicked(QTreeWidgetItem* item, int column);
 
 private:
+    QStackedWidget* m_stack = nullptr;  ///< page 0 = tree, page 1 = empty state
     QTreeWidget* m_treeWidget = nullptr;
     int m_rollbackIndex = -1;
 };

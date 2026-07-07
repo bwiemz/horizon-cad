@@ -419,3 +419,14 @@ QCheckBox::indicator:hover {
 QFormLayout QLabel {
     color: #a0a0a0;
 }
+
+/* ---- Empty-state placeholders (Feature Tree / Properties) ---- */
+#emptyStateTitle {
+    color: #d0d0d0;
+    font-size: 14px;
+    font-weight: bold;
+}
+#emptyStateHint {
+    color: #808080;
+    font-size: 11px;
+}

@@ -148,7 +148,9 @@ void ViewportWidget::initializeGL() {
 
     m_renderer = std::make_unique<render::GLRenderer>();
     m_renderer->initialize(gl);
-    m_renderer->setBackgroundColor(0.18f, 0.18f, 0.20f);
+    // Deep canvas — darker than the panel chrome so the viewport reads as the
+    // focal surface (panels #2d–#32, data surfaces #1e, viewport ~#1c1d21).
+    m_renderer->setBackgroundColor(0.11f, 0.115f, 0.13f);
 
     // Set up GL resources for text overlay (QImage -> texture -> quad).
     m_viewportRenderer.initTextOverlayGL(gl);
@@ -169,8 +171,8 @@ void ViewportWidget::paintGL() {
     // Recompute DOF analysis every frame (small matrix -- fast enough for real-time).
     m_viewportRenderer.recomputeDOF(m_document);
 
-    // Clear with background color.
-    gl->glClearColor(0.18f, 0.18f, 0.20f, 1.0f);
+    // Clear with background color (kept in sync with setBackgroundColor above).
+    gl->glClearColor(0.11f, 0.115f, 0.13f, 1.0f);
     gl->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     gl->glEnable(GL_DEPTH_TEST);

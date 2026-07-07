@@ -106,7 +106,7 @@ private:
     void destroyDynamicBuffers(QOpenGLExtraFunctions* gl);
     void uploadDynamic(QOpenGLExtraFunctions* gl, const void* data, size_t sizeBytes);
 
-    float m_bgColor[3] = {0.18f, 0.20f, 0.22f};
+    float m_bgColor[3] = {0.11f, 0.115f, 0.13f};
     int m_viewportWidth = 1;
     int m_viewportHeight = 1;
     bool m_initialized = false;
