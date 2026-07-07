@@ -278,12 +278,19 @@ jobs:
           # their existing findings are burned down).  Do not add a check to
           # the exclusion list to get a PR green — fix the finding instead.
           #
-          # Tidy only files that have a real compile command in
-          # compile_commands.json, so optional modules disabled in this
-          # configuration (e.g. scripting) are not parsed with a guessed
-          # command and reported as spurious "file not found" errors.
+          # Tidy only real source files that have a compile command in
+          # compile_commands.json. Two exclusions:
+          #  - optional modules disabled in this configuration (e.g. scripting)
+          #    are simply absent from compile_commands.json, so they are never
+          #    parsed with a guessed command.
+          #  - generated/autogen artifacts under build/ (FlatBuffers headers,
+          #    Qt MOC/RCC .cpp) are listed in compile_commands.json but only
+          #    materialize during the full app/ui build, which this job does
+          #    not run — analyzing them yields "file not found". Drop anything
+          #    under build/ (real sources never live there).
           set -o pipefail
           jq -r '.[].file' build/linux-debug/compile_commands.json \
+            | grep -vE '/build/' \
             | grep -E '/src/.*\.cpp$' | sort -u > tidy-files.txt
           echo "Analyzing $(wc -l < tidy-files.txt) source files with clang-tidy"
           xargs clang-tidy-15 \

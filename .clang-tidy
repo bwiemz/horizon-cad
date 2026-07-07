@@ -26,7 +26,10 @@ Checks: >
 
 WarningsAsErrors: ''
 
-HeaderFilterRegex: 'src/.*'
+# Match real source headers (src/<module>/include|src/...) but NOT generated
+# artifacts under build/ (FlatBuffers headers, Qt autogen), whose paths also
+# contain 'src/'. Generated code must not be linted.
+HeaderFilterRegex: 'src/[a-z0-9_]+/(include|src)/.*'
 
 CheckOptions:
   - key: modernize-use-auto.MinTypeNameLength
