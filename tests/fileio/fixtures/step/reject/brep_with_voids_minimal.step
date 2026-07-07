@@ -1,0 +1,29 @@
+ISO-10303-21;
+HEADER;
+/* Hand-authored fixture: a solid expressed as BREP_WITH_VOIDS (a B-Rep with
+   an internal cavity shell).  Horizon's STEP importer does not map
+   BREP_WITH_VOIDS yet — this is a documented limitation, and the importer
+   must reject the file with a clear error instead of silently importing
+   partial or broken geometry. */
+FILE_DESCRIPTION(('cavity fixture'),'2;1');
+FILE_NAME('brep_with_voids.step','2026-07-06T12:00:00',('Horizon fixtures'),(''),
+  'none','none','none');
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 3 1 4 }'));
+ENDSEC;
+DATA;
+#1=CLOSED_SHELL('',(#20));
+#2=CLOSED_SHELL('',(#21));
+#3=ORIENTED_CLOSED_SHELL('',*,#2,.F.);
+#4=BREP_WITH_VOIDS('hollow part',#1,(#3));
+#20=ADVANCED_FACE('',(#22),#24,.T.);
+#21=ADVANCED_FACE('',(#23),#24,.T.);
+#22=FACE_OUTER_BOUND('',#25,.T.);
+#23=FACE_OUTER_BOUND('',#25,.T.);
+#24=PLANE('',#26);
+#25=EDGE_LOOP('',());
+#26=AXIS2_PLACEMENT_3D('',#27,#28,#29);
+#27=CARTESIAN_POINT('',(0.,0.,0.));
+#28=DIRECTION('',(0.,0.,1.));
+#29=DIRECTION('',(1.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;

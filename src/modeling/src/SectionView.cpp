@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/geometry/MeshData.h"
 #include "horizon/modeling/SolidTessellator.h"
-#include "horizon/render/SceneGraph.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
@@ -142,7 +142,7 @@ DrawingView SectionGenerator::sectionView(const topo::Solid& solid, const Vec3& 
     const auto dist = [&](const Vec3& p) { return (p - planePoint).dot(n); };
 
     // -- Cut profile: intersect every tessellation triangle with the plane --
-    const render::MeshData mesh = SolidTessellator::tessellate(solid);
+    const geo::MeshData mesh = SolidTessellator::tessellate(solid);
     std::vector<std::pair<Vec2, Vec2>> cutSegments;
     for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
         Vec3 pts[3];

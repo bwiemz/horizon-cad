@@ -267,11 +267,15 @@ jobs:
 
       - name: Run clang-tidy
         run: |
+          # Enforced gate: every bugprone-*/performance-* warning FAILS the
+          # build except the known-dirty backlog below (advisory-only until
+          # their existing findings are burned down).  Do not add a check to
+          # the exclusion list to get a PR green — fix the finding instead.
+          set -o pipefail
           find src -name '*.cpp' | \
             xargs clang-tidy-15 \
               -p build/linux-debug \
               --checks='-*,bugprone-*,performance-*' \
-              --warnings-as-errors='' \
+              --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
               2>&1 | tee clang-tidy-output.txt
-          # Report but don't fail the build (advisory for now)
-          echo "::notice::clang-tidy analysis complete. Review output above."
+          echo "::notice::clang-tidy gate passed (excluded-check warnings above are the advisory backlog)."

@@ -163,7 +163,7 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         }
         instance.resolvedPart = part;
         if (part->solid()) {
-            instance.cachedMesh = std::make_shared<render::MeshData>(
+            instance.cachedMesh = std::make_shared<geo::MeshData>(
                 model::SolidTessellator::tessellate(*part->solid()));
         }
         instance.state = ComponentState::Resolved;
@@ -183,7 +183,7 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     // If the part happens to be open already with a built solid, reuse it.
     if (auto open = findByPath(fullPath); open && open->solid()) {
         instance.cachedMesh =
-            std::make_shared<render::MeshData>(model::SolidTessellator::tessellate(*open->solid()));
+            std::make_shared<geo::MeshData>(model::SolidTessellator::tessellate(*open->solid()));
         instance.state = ComponentState::Lightweight;
         return true;
     }
@@ -203,7 +203,7 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         if (m_partLoader(fullPath, temp)) {
             temp.rebuildModel();
             if (temp.solid()) {
-                instance.cachedMesh = std::make_shared<render::MeshData>(
+                instance.cachedMesh = std::make_shared<geo::MeshData>(
                     model::SolidTessellator::tessellate(*temp.solid()));
                 instance.state = ComponentState::Lightweight;
                 return true;

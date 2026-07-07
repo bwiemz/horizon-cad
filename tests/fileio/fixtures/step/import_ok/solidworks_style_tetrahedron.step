@@ -1,0 +1,90 @@
+ISO-10303-21;
+HEADER;
+/* Hand-authored fixture mimicking SolidWorks-style STEP output: AP203
+   CONFIG_CONTROL_DESIGN schema string, entities in reverse definition order
+   (forward references throughout), spaces around '=', argument lists wrapped
+   across lines, lowercase exponents, and comments inside the DATA section.
+   Same tetrahedron geometry as freecad_style_tetrahedron.step. */
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('tetrahedron-sw.step','2026-07-06T12:00:00',(''),(''),
+  'SwSTEP 2.0','SolidWorks 2024','');
+FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));
+ENDSEC;
+DATA;
+/* solid first — importers must resolve forward references */
+#570 = MANIFOLD_SOLID_BREP('tetrahedron',#569);
+#569 = CLOSED_SHELL('',(#544,#552,#560,
+    #568));
+#568 = ADVANCED_FACE('',(#565),#567,
+    .T.);
+#567 = PLANE('',#566);
+#566 = AXIS2_PLACEMENT_3D('',#502,#510,#511);
+#565 = FACE_OUTER_BOUND('',#564,.T.);
+#564 = EDGE_LOOP('',(#561,#562,
+    #563));
+#563 = ORIENTED_EDGE('',*,*,#535,.F.);
+#562 = ORIENTED_EDGE('',*,*,#536,.T.);
+#561 = ORIENTED_EDGE('',*,*,#534,.T.);
+#560 = ADVANCED_FACE('',(#557),#559,.T.);
+#559 = PLANE('',#558);
+#558 = AXIS2_PLACEMENT_3D('',#501,#508,#509);
+#557 = FACE_OUTER_BOUND('',#556,.T.);
+#556 = EDGE_LOOP('',(#553,#554,#555));
+#555 = ORIENTED_EDGE('',*,*,#532,.F.);
+#554 = ORIENTED_EDGE('',*,*,#536,.F.);
+#553 = ORIENTED_EDGE('',*,*,#533,.T.);
+#552 = ADVANCED_FACE('',(#549),#551,.T.);
+#551 = PLANE('',#550);
+#550 = AXIS2_PLACEMENT_3D('',#501,#507,#506);
+#549 = FACE_OUTER_BOUND('',#548,.T.);
+#548 = EDGE_LOOP('',(#545,#546,#547));
+#547 = ORIENTED_EDGE('',*,*,#533,.F.);
+#546 = ORIENTED_EDGE('',*,*,#535,.T.);
+#545 = ORIENTED_EDGE('',*,*,#531,.T.);
+#544 = ADVANCED_FACE('',(#541),#543,.T.);
+#543 = PLANE('',#542);
+#542 = AXIS2_PLACEMENT_3D('',#501,#505,#506);
+#541 = FACE_OUTER_BOUND('',#540,.T.);
+#540 = EDGE_LOOP('',(#537,#538,#539));
+#539 = ORIENTED_EDGE('',*,*,#531,.F.);
+#538 = ORIENTED_EDGE('',*,*,#534,.F.);
+#537 = ORIENTED_EDGE('',*,*,#532,.T.);
+/* edge curves */
+#536 = EDGE_CURVE('',#517,#518,#530,.T.);
+#535 = EDGE_CURVE('',#516,#518,#528,.T.);
+#534 = EDGE_CURVE('',#516,#517,#526,.T.);
+#533 = EDGE_CURVE('',#515,#518,#524,.T.);
+#532 = EDGE_CURVE('',#515,#517,#522,.T.);
+#531 = EDGE_CURVE('',#515,#516,#520,.T.);
+#530 = LINE('',#503,#529);
+#529 = VECTOR('',#514,1.);
+#528 = LINE('',#502,#527);
+#527 = VECTOR('',#513,1.);
+#526 = LINE('',#502,#525);
+#525 = VECTOR('',#511,1.);
+#524 = LINE('',#501,#523);
+#523 = VECTOR('',#512,1.);
+#522 = LINE('',#501,#521);
+#521 = VECTOR('',#509,1.);
+#520 = LINE('',#501,#519);
+#519 = VECTOR('',#506,1.);
+#518 = VERTEX_POINT('',#504);
+#517 = VERTEX_POINT('',#503);
+#516 = VERTEX_POINT('',#502);
+#515 = VERTEX_POINT('',#501);
+#514 = DIRECTION('',(0.,-7.071067811865475e-1,7.071067811865475e-1));
+#513 = DIRECTION('',(-7.071067811865475e-1,0.,7.071067811865475e-1));
+#512 = DIRECTION('',(0.,0.,1.));
+#511 = DIRECTION('',(-7.071067811865475e-1,7.071067811865475e-1,0.));
+#510 = DIRECTION('',(5.773502691896258e-1,5.773502691896258e-1,5.773502691896258e-1));
+#509 = DIRECTION('',(0.,1.,0.));
+#508 = DIRECTION('',(-1.,0.,0.));
+#507 = DIRECTION('',(0.,-1.,0.));
+#506 = DIRECTION('',(1.,0.,0.));
+#505 = DIRECTION('',(0.,0.,-1.));
+#504 = CARTESIAN_POINT('',(0.,0.,10.));
+#503 = CARTESIAN_POINT('',(0.,10.,0.));
+#502 = CARTESIAN_POINT('',(10.,0.,0.));
+#501 = CARTESIAN_POINT('',(0.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;

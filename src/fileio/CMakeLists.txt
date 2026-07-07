@@ -46,6 +46,7 @@ target_link_libraries(hz_fileio
         Horizon::Constraint
         Horizon::Document
         Horizon::Modeling
+        Horizon::Render
         nlohmann_json::nlohmann_json
     PRIVATE
         flatbuffers::flatbuffers

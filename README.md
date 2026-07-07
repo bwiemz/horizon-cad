@@ -133,6 +133,47 @@ src/
 tests/           One suite per module + cross-module integration tests (~900 tests)
 ```
 
+## Feature Maturity
+
+"Phase done" in the roadmap below means an **honest core slice** exists —
+implemented, tested, and documented — not that the area is
+production-hardened. This table is the truthful per-module picture. Ratings:
+
+- **stable** — exercised broadly by the app and test suite; APIs settled;
+  suitable as a foundation for new work.
+- **experimental** — a working core with known, documented gaps; expect
+  edge-case failures and API movement.
+- **prototype** — demonstrates the workflow end to end; known defects or
+  major missing pieces are called out in tests/headers; do not rely on its
+  output without checking it.
+
+| Module | Maturity | Notes |
+|--------|----------|-------|
+| math | stable | Closed-form-validated linear algebra, R*-tree, expressions |
+| drafting (2D) | stable | The original core of the application |
+| document / undo | stable | Feature tree + multi-document are newer but well-tested |
+| constraint | stable | Newton-Raphson + LM solver, exercised by sketch tests |
+| geometry (NURBS) | stable | Curves/surfaces/tessellation; Coons patches experimental |
+| topology (B-Rep) | stable | Caveat: validators are combinatorial only — they check twin/Euler structure, not that twin geometry coincides or faces avoid self-intersection |
+| modeling — Booleans | experimental | BSP-CSG with face splitting, exact fragment classification, coplanar handling, manifold sewing; volumes closed-form-tested. Curved faces participate as their inscribed loop polyhedra (analytic SSI is future work) |
+| modeling — extrude/revolve/primitives/patterns | stable | Exact volumes verified |
+| modeling — fillet/chamfer | prototype | Known defect (pinned in `test_AdversarialModels`): output is combinatorially valid but volume integration is inconsistent; rebuild on `SolidSewer` planned |
+| modeling — loft/sweep/shell/draft | experimental | Core paths tested; complex inputs unverified |
+| modeling — sheet metal | experimental | Validated against analytic bend formulas |
+| fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary, backward compatible v1-v9 |
+| fileio — DXF | stable | Entity subset documented |
+| fileio — STEP AP242 | experimental | Core B-Rep subset with documented limitations (untrimmed analytic carriers, no BREP_WITH_VOIDS, no assembly structure — all pinned by fixture tests in `tests/fileio/fixtures/step/`) |
+| fileio — glTF/STL/drawings | experimental | Export-only slices |
+| render — OpenGL path | stable | The shipping viewport |
+| render — Vulkan / GPU tessellation / path tracer | experimental | Staged bring-up, opt-in |
+| simulation (FEA) | prototype | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench |
+| pdm / sync / collaboration | experimental | Deliberately conservative: append-only, hash-verified, pessimistic locks, no merges |
+| kinematics | prototype | Serial chains only |
+| cam | prototype | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet |
+| plugin registry | experimental | Fail-closed validation without code execution; the execution bridge is future work |
+| scripting (Python) | experimental | Optional embedded CPython |
+| ui / app | stable | Qt ribbon shell, i18n catalogs |
+
 ## Roadmap
 
 Horizon is under active development. Completed and planned work:
@@ -207,11 +248,13 @@ Horizon is under active development. Completed and planned work:
 | 79 | Done | Era 4 — Plugin system (registry slice): `hz::plugin` manifest discovery/validation with zero code execution — `plugin.json` schema (name/semver/entry/permissions), fail-closed explicit permission model per roadmap §7.15 sandboxing (unknown permission = invalid manifest), entry-script containment (relative-only; absolute/drive-relative/root-relative/`..`/symlink escapes rejected via canonicalization), duplicate rejection, disabled-by-default enablement, minAppVersion gating; Python-free so CI always tests it — the hz::scripting execution bridge + marketplace staged |
 | 80 | Done | Era 4 — 1.0 release prep: full roadmap swept to Done, [CHANGELOG.md](CHANGELOG.md) authored era-by-era, ~900 automated regression tests green across Windows/Ubuntu/AddressSanitizer CI, honest per-phase scope + documented deviations (OpenCAMLib, Embree, STEPcode) in the [findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md); installers/marketplace/published-benchmarks are post-1.0 productization, not code slices |
 
-All 80 roadmap phases plus the 61b sheet-metal insert are now delivered as
-honest core slices. Deferred-by-design items (Phase 73 CFD, and the
-productization tail of Phase 80 — signed installers, the hosted plugin
-marketplace, SolidWorks/FreeCAD benchmark publication) are called out in the
-per-phase notes and remain future work beyond the code kernel.
+All 80 roadmap phases plus the 61b sheet-metal insert have delivered their
+core slices — see [Feature Maturity](#feature-maturity) above for what that
+does and does not mean per module; Horizon is not a production-ready 1.0 CAD
+system. Deferred-by-design items (Phase 73 CFD, and the productization tail
+of Phase 80 — signed installers, the hosted plugin marketplace,
+SolidWorks/FreeCAD benchmark publication) are called out in the per-phase
+notes and remain future work beyond the code kernel.
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

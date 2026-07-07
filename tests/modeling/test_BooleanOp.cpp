@@ -6,12 +6,22 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 
 using hz::math::Vec3;
 using hz::model::BooleanOp;
 using hz::model::BooleanType;
+using hz::model::MassPropertiesCalculator;
 using hz::model::PrimitiveFactory;
+
+namespace {
+
+double volumeOf(const hz::topo::Solid& solid) {
+    return MassPropertiesCalculator::compute(solid).volume;
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Helper: offset all vertices AND surface control points of a solid by a
@@ -240,4 +250,220 @@ TEST(BooleanOpTest, RandomOverlapProducesValidTopology) {
         }
     }
     EXPECT_GT(produced, 0) << "No Boolean produced a result — the guard exercised nothing";
+}
+
+// ===========================================================================
+// Volume-exact Boolean semantics (BSP CSG rework).
+//
+// These pin the *geometry* of the results, not just their existence: for
+// axis-aligned boxes every expected volume is known in closed form.  Face
+// splitting must be happening for any of these to hold — the old whole-face
+// classification produced open, over- or under-covered shells whose volumes
+// were meaningless.
+// ===========================================================================
+
+TEST(BooleanOpVolume, UnionOfOverlappingBoxesIsExact) {
+    // A: (0..10)³, B: (5..15, 0..10, 0..10).  Overlap = 500.
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(10, 10, 10);
+    offsetSolid(*boxB, Vec3(5, 0, 0));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Union);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), 1500.0, 1e-6);
+    EXPECT_TRUE(result->checkManifold()) << result->validationReport();
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+}
+
+TEST(BooleanOpVolume, SubtractOfOverlappingBoxesIsExact) {
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(10, 10, 10);
+    offsetSolid(*boxB, Vec3(5, 0, 0));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), 500.0, 1e-6);
+    EXPECT_TRUE(result->checkManifold()) << result->validationReport();
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+}
+
+TEST(BooleanOpVolume, IntersectOfOverlappingBoxesIsExact) {
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(10, 10, 10);
+    offsetSolid(*boxB, Vec3(5, 0, 0));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Intersect);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), 500.0, 1e-6);
+    EXPECT_TRUE(result->checkManifold()) << result->validationReport();
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+}
+
+TEST(BooleanOpVolume, CornerOverlapAllThreeTypes) {
+    // Generic (no coplanar faces) corner overlap: B at (7,7,7); overlap = 27.
+    auto mk = [] { return PrimitiveFactory::makeBox(10, 10, 10); };
+
+    auto a1 = mk();
+    auto b1 = mk();
+    offsetSolid(*b1, Vec3(7, 7, 7));
+    auto uni = BooleanOp::execute(*a1, *b1, BooleanType::Union);
+    ASSERT_NE(uni, nullptr);
+    EXPECT_NEAR(volumeOf(*uni), 1973.0, 1e-6);
+    EXPECT_TRUE(uni->isValid()) << uni->validationReport();
+
+    auto a2 = mk();
+    auto b2 = mk();
+    offsetSolid(*b2, Vec3(7, 7, 7));
+    auto sub = BooleanOp::execute(*a2, *b2, BooleanType::Subtract);
+    ASSERT_NE(sub, nullptr);
+    EXPECT_NEAR(volumeOf(*sub), 973.0, 1e-6);
+    EXPECT_TRUE(sub->isValid()) << sub->validationReport();
+
+    auto a3 = mk();
+    auto b3 = mk();
+    offsetSolid(*b3, Vec3(7, 7, 7));
+    auto inter = BooleanOp::execute(*a3, *b3, BooleanType::Intersect);
+    ASSERT_NE(inter, nullptr);
+    EXPECT_NEAR(volumeOf(*inter), 27.0, 1e-6);
+    EXPECT_TRUE(inter->isValid()) << inter->validationReport();
+}
+
+TEST(BooleanOpVolume, ThroughHoleSubtractIsManifoldWithExactVolume) {
+    // B pierces A completely: a genus-1 result.  Volume 1000 - 4*4*10 = 840.
+    // checkEulerFormula() has no genus term, so only manifoldness is asserted.
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(4, 4, 20);
+    offsetSolid(*boxB, Vec3(3, 3, -5));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), 840.0, 1e-6);
+    EXPECT_TRUE(result->checkManifold()) << result->validationReport();
+}
+
+TEST(BooleanOpVolume, ContainedSubtractCreatesCavity) {
+    // B strictly inside A: subtract yields a hollow solid with two shells.
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(4, 4, 4);
+    offsetSolid(*boxB, Vec3(3, 3, 3));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), 1000.0 - 64.0, 1e-6);
+    EXPECT_EQ(result->shellCount(), 2u);
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+}
+
+TEST(BooleanOpVolume, ContainedUnionAndIntersect) {
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(4, 4, 4);
+    offsetSolid(*boxB, Vec3(3, 3, 3));
+
+    auto uni = BooleanOp::execute(*boxA, *boxB, BooleanType::Union);
+    ASSERT_NE(uni, nullptr);
+    EXPECT_NEAR(volumeOf(*uni), 1000.0, 1e-6);
+
+    auto boxA2 = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB2 = PrimitiveFactory::makeBox(4, 4, 4);
+    offsetSolid(*boxB2, Vec3(3, 3, 3));
+
+    auto inter = BooleanOp::execute(*boxA2, *boxB2, BooleanType::Intersect);
+    ASSERT_NE(inter, nullptr);
+    EXPECT_NEAR(volumeOf(*inter), 64.0, 1e-6);
+    EXPECT_TRUE(inter->isValid()) << inter->validationReport();
+}
+
+TEST(BooleanOpVolume, IdenticalSolids) {
+    auto mk = [] { return PrimitiveFactory::makeBox(10, 10, 10); };
+
+    auto a1 = mk();
+    auto b1 = mk();
+    auto uni = BooleanOp::execute(*a1, *b1, BooleanType::Union);
+    ASSERT_NE(uni, nullptr);
+    EXPECT_NEAR(volumeOf(*uni), 1000.0, 1e-6);
+
+    auto a2 = mk();
+    auto b2 = mk();
+    auto inter = BooleanOp::execute(*a2, *b2, BooleanType::Intersect);
+    ASSERT_NE(inter, nullptr);
+    EXPECT_NEAR(volumeOf(*inter), 1000.0, 1e-6);
+
+    // A − A is empty; the contract for an empty result is nullptr.
+    auto a3 = mk();
+    auto b3 = mk();
+    auto sub = BooleanOp::execute(*a3, *b3, BooleanType::Subtract);
+    EXPECT_EQ(sub, nullptr);
+}
+
+TEST(BooleanOpVolume, DisjointFastPathsAreExact) {
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(10, 10, 10);
+    offsetSolid(*boxB, Vec3(100, 0, 0));
+
+    auto uni = BooleanOp::execute(*boxA, *boxB, BooleanType::Union);
+    ASSERT_NE(uni, nullptr);
+    EXPECT_NEAR(volumeOf(*uni), 2000.0, 1e-6);
+    EXPECT_EQ(uni->shellCount(), 2u);
+    EXPECT_TRUE(uni->isValid()) << uni->validationReport();
+
+    auto sub = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(sub, nullptr);
+    EXPECT_NEAR(volumeOf(*sub), 1000.0, 1e-6);
+    EXPECT_TRUE(sub->isValid()) << sub->validationReport();
+}
+
+TEST(BooleanOpVolume, ChainedBooleansStayConsistent) {
+    // Results must be valid *inputs* — FeatureTree::executeMulti folds
+    // multi-body Booleans left to right.
+    // Step 1: L-shape = (0..10)³ ∪ (10..20, 0..10, 0..5)... use overlap to
+    // avoid the exact-touch case: B = (8..18, 0..10, 0..5).
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(10, 10, 5);
+    offsetSolid(*boxB, Vec3(8, 0, 0));
+
+    auto lShape = BooleanOp::execute(*boxA, *boxB, BooleanType::Union);
+    ASSERT_NE(lShape, nullptr);
+    // 1000 + 500 - overlap(2*10*5=100) = 1400.
+    EXPECT_NEAR(volumeOf(*lShape), 1400.0, 1e-6);
+
+    // Step 2: drill a square through-pocket into the L's thick arm.
+    auto drill = PrimitiveFactory::makeBox(2, 2, 30);
+    offsetSolid(*drill, Vec3(4, 4, -10));
+
+    auto drilled = BooleanOp::execute(*lShape, *drill, BooleanType::Subtract);
+    ASSERT_NE(drilled, nullptr);
+    // Drill removes 2*2*10 = 40 from the 10-tall arm.
+    EXPECT_NEAR(volumeOf(*drilled), 1360.0, 1e-6);
+    EXPECT_TRUE(drilled->checkManifold()) << drilled->validationReport();
+
+    // Step 3: intersect with a slab to keep the bottom half.
+    auto slab = PrimitiveFactory::makeBox(50, 50, 2.5);
+    offsetSolid(*slab, Vec3(-10, -10, 0));
+
+    auto sliced = BooleanOp::execute(*drilled, *slab, BooleanType::Intersect);
+    ASSERT_NE(sliced, nullptr);
+    // Bottom 2.5 of the L: (10*10 + 8*10... actually full footprint):
+    // footprint area = 10*10 + 8*10 = 180, minus drill 2*2 → 176; × 2.5 = 440.
+    EXPECT_NEAR(volumeOf(*sliced), 440.0, 1e-6);
+    EXPECT_TRUE(sliced->checkManifold()) << sliced->validationReport();
+}
+
+TEST(BooleanOpVolume, SubtractFragmentsKeepProvenance) {
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = PrimitiveFactory::makeBox(4, 4, 20);
+    offsetSolid(*boxB, Vec3(3, 3, -5));
+
+    auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(result, nullptr);
+
+    // Every face must carry a valid provenance ID, and both source solids
+    // must be represented (A's outer skin and B's flipped hole walls).
+    size_t total = 0;
+    size_t valid = 0;
+    for (const auto& face : result->faces()) {
+        ++total;
+        if (face.topoId.isValid()) ++valid;
+    }
+    EXPECT_EQ(valid, total);
+    EXPECT_GT(total, 6u);
 }
