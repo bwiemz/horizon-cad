@@ -27,6 +27,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Shell.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
 using hz::draft::DraftEntity;
@@ -43,6 +44,7 @@ using hz::model::MassPropertiesCalculator;
 using hz::model::Pattern;
 using hz::model::PrimitiveFactory;
 using hz::model::Shell;
+using hz::topo::GeometryValidator;
 
 namespace {
 
@@ -322,4 +324,72 @@ TEST(AdversarialModels, LongBooleanChainStaysManifold) {
         current = std::move(next);
     }
     EXPECT_GT(volume, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Geometric validity of the modeling pipeline.
+//
+// Manifold + Euler are combinatorial: they never look at a coordinate, so a
+// solid can pass both while its loops are self-intersecting, non-planar, or
+// spanning positions its twin half-edges disagree about.  GeometryValidator
+// closes that gap; these cases assert the pipeline's real output clears it.
+// ---------------------------------------------------------------------------
+
+TEST(AdversarialModels, BooleanPipelineOutputIsGeometricallyValid) {
+    auto plate = PrimitiveFactory::makeBox(60, 40, 10);
+    ASSERT_NE(plate, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*plate))
+        << GeometryValidator::report(*plate);
+
+    // Drill a 3x2 hole pattern, then pocket, then boss — the same chain the
+    // volume tests above walk, checked for geometric (not just structural)
+    // integrity at every step.
+    std::unique_ptr<hz::topo::Solid> current = std::move(plate);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            auto drill = PrimitiveFactory::makeBox(4, 4, 30);
+            offsetSolid(*drill, Vec3(10 + i * 16.0, 10 + j * 16.0, -10));
+            auto next = BooleanOp::execute(*current, *drill, BooleanType::Subtract);
+            ASSERT_NE(next, nullptr) << "hole " << i << "," << j;
+            EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*next))
+                << "hole " << i << "," << j << "\n"
+                << GeometryValidator::report(*next);
+            current = std::move(next);
+        }
+    }
+}
+
+TEST(AdversarialModels, ExtrudeAndShellOutputIsGeometricallyValid) {
+    std::vector<std::shared_ptr<DraftEntity>> profile;
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(40, 0)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(40, 0), Vec2(40, 15)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(40, 15), Vec2(15, 15)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(15, 15), Vec2(15, 40)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(15, 40), Vec2(0, 40)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 40), Vec2(0, 0)));
+
+    SketchPlane plane;
+    auto bracket = Extrude::execute(profile, plane, Vec3(0, 0, 1), 12.0, "bracket");
+    ASSERT_NE(bracket, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*bracket))
+        << GeometryValidator::report(*bracket);
+
+    auto box = PrimitiveFactory::makeBox(40, 30, 20);
+    ASSERT_NE(box, nullptr);
+    hz::topo::TopologyID topFace;
+    for (const auto& f : box->faces()) {
+        auto verts = hz::topo::faceVertices(&f);
+        bool allTop = !verts.empty();
+        for (const auto* v : verts) allTop = allTop && v->point.z > 19.9;
+        if (allTop) {
+            topFace = f.topoId;
+            break;
+        }
+    }
+    ASSERT_TRUE(topFace.isValid());
+
+    auto cup = Shell::execute(std::move(box), 2.0, {topFace});
+    ASSERT_NE(cup.solid, nullptr) << cup.message;
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*cup.solid))
+        << GeometryValidator::report(*cup.solid);
 }

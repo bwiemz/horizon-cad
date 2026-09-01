@@ -30,7 +30,14 @@ public:
     /// @param bottomRadius  Radius at z=0.
     /// @param topRadius     Radius at z=height (0 for a sharp cone).
     /// @param height        Height along Z.
-    /// Uses box-like topology (8V, 12E, 6F) with conical NURBS patches.
+    ///
+    /// A frustum (both radii non-zero) uses box-like topology (8V, 12E, 6F)
+    /// with conical NURBS patches.  When one radius is zero the ring on that
+    /// end collapses to a point, so a sharp cone is built with apex topology
+    /// instead — a base quad plus four triangles (5V, 8E, 5F) — rather than a
+    /// ring of zero-length edges around a zero-area cap.
+    ///
+    /// Returns nullptr when both radii or the height are zero.
     static std::unique_ptr<topo::Solid> makeCone(double bottomRadius, double topRadius,
                                                  double height);
 
