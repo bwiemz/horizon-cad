@@ -18,9 +18,24 @@ struct ChamferResult {
 
 /// Creates a new solid with planar chamfer faces replacing selected edges.
 ///
-/// The operation rebuilds the solid topology from scratch using Euler operators,
-/// inserting planar NURBS chamfer faces at the specified edges.  Currently
-/// supports chamfering straight edges of box-like (all-planar-face) solids.
+/// A chamfer is a local edit of the boundary polygons: each vertex the
+/// selected edges touch is replaced by its offset point(s) on the neighbouring
+/// faces, and one quad is added per chamfered edge.  The rewritten polygon
+/// soup is reconstructed by `SolidSewer` — the same welding, T-junction and
+/// twin-pairing pipeline `BooleanOp` uses — so the result's loops are
+/// geometrically consistent and its volume integrates exactly.  Offsets slide
+/// along the neighbouring faces, so every original face keeps its own carrier
+/// and TopologyID; only its boundary changes.
+///
+/// The operation refuses to return a solid that fails `checkManifold()` or
+/// `GeometryValidator`, reporting the diagnostic in `errorMessage` instead.
+///
+/// Limitations:
+///  - straight edges of planar-faced solids (the offset directions come from
+///    the adjacent faces' normals at their parameter midpoints);
+///  - **no vertex blends** — two selected edges sharing a vertex are rejected,
+///    since the corner where three chamfer faces would meet is not generated;
+///  - inner face loops (holes) are not carried through the rewrite.
 class ChamferOp {
 public:
     /// Chamfer the specified edges with equal distance on both adjacent faces.

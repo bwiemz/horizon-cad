@@ -9,6 +9,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -793,6 +794,17 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
         f->surface = std::make_shared<geo::NurbsSurface>(
             geo::NurbsSurface::makePlane(origin, uDir, vDir, uSize, vSize));
+    }
+
+    // Same output contract as ChamferOp: a fillet that produced structurally
+    // sound but geometrically inconsistent loops is refused, not returned.
+    // Curved carriers (the blend patches themselves) are exempt from the
+    // planarity check by construction, so this gates the planar remainder.
+    const auto issues = topo::GeometryValidator::check(*solid);
+    if (!issues.ok()) {
+        result.errorMessage =
+            "Fillet produced invalid geometry:\n" + topo::GeometryValidator::report(*solid);
+        return result;
     }
 
     result.solid = std::move(solid);

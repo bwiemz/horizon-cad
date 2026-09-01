@@ -133,17 +133,18 @@ TEST(AdversarialModels, NestedPocketsWithBoss) {
 }
 
 // ---------------------------------------------------------------------------
-// KNOWN DEFECT, pinned: ChamferOp emits combinatorially valid topology
-// (manifold + Euler both pass) whose loop *geometry* is inconsistent — the
-// mass-properties integrator reports 3200 for a 20³ box with two 2mm edge
-// chamfers (true value: 7920).  The structural validators cannot catch this
-// because they never compare twin half-edge endpoint positions.
+// ChamferOp: geometry and topology now agree.
 //
-// When ChamferOp/FilletOp are rebuilt on SolidSewer (the way BooleanOp was),
-// flip the volume expectation below to EXPECT_NEAR(..., 7920.0, 1e-6).
+// This case used to pin a known defect — ChamferOp emitted combinatorially
+// valid topology (manifold + Euler both passed) whose loop *geometry* was
+// inconsistent, so the mass-properties integrator reported 3200 for a 20mm
+// box with two 2mm edge chamfers instead of 7920.  Rebuilding the
+// reconstruction on SolidSewer fixed it; the expectation is now the exact
+// closed-form volume, and the drilled follow-up checks a real number rather
+// than merely not crashing.
 // ---------------------------------------------------------------------------
 
-TEST(AdversarialModels, ChamferGeometryDefectIsDocumented) {
+TEST(AdversarialModels, ChamferedBoxHasExactVolume) {
     auto box = PrimitiveFactory::makeBox(20, 20, 20);
     ASSERT_NE(box, nullptr);
 
@@ -163,21 +164,20 @@ TEST(AdversarialModels, ChamferGeometryDefectIsDocumented) {
     ASSERT_NE(chamfered.solid, nullptr) << chamfered.errorMessage;
     EXPECT_EQ(chamfered.solid->faceCount(), 8u);
     EXPECT_TRUE(chamfered.solid->checkManifold());
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*chamfered.solid))
+        << GeometryValidator::report(*chamfered.solid);
 
-    // The defect: structurally valid, geometrically undercounted volume.
-    const double chamferedVolume = volumeOf(*chamfered.solid);
-    EXPECT_LT(chamferedVolume, 7920.0 - 1.0)
-        << "ChamferOp volume became consistent — strengthen this test to "
-           "EXPECT_NEAR(volume, 7920.0, 1e-6) and re-enable drill volume checks";
+    // Each chamfer removes a triangular prism of section (1/2)(2)(2) run 20.
+    EXPECT_NEAR(volumeOf(*chamfered.solid), 8000.0 - 2.0 * 0.5 * 2.0 * 2.0 * 20.0, 1e-6);
 
-    // Robustness smoke: even with geometrically inconsistent input, the
-    // Boolean must not crash and must keep its manifold-output contract.
+    // The chamfered solid is a first-class Boolean operand: drill a 2x2 hole
+    // clear through it, away from the chamfered corners.
     auto drill = PrimitiveFactory::makeBox(2, 2, 40);
     offsetSolid(*drill, Vec3(9, 9, -10));
     auto drilled = BooleanOp::execute(*chamfered.solid, *drill, BooleanType::Subtract);
-    if (drilled != nullptr) {
-        EXPECT_TRUE(drilled->checkManifold()) << drilled->validationReport();
-    }
+    ASSERT_NE(drilled, nullptr);
+    EXPECT_TRUE(drilled->checkManifold()) << drilled->validationReport();
+    EXPECT_NEAR(volumeOf(*drilled), 7920.0 - 2.0 * 2.0 * 20.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
