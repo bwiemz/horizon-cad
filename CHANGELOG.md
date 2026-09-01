@@ -9,6 +9,55 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Geometric validation & the chamfer rebuild (Phases 81–83)
+
+Post-1.0 kernel work, continuing from the review response below. Where kernel
+hardening fixed what the Booleans *did*, this pass fixes what the kernel could
+not *see*.
+
+- **Geometric B-Rep validation (81).** `Solid::isValid()` walks twin/next/prev
+  linkage and counts entities — it never reads a coordinate, so a solid can
+  pass every structural check while its loops are self-intersecting,
+  non-planar, or spanning positions its twin half-edges disagree about. The
+  new `hz::topo::GeometryValidator` checks vertex-chain consistency
+  (`he->next->origin == he->twin->origin`), twin positional coincidence,
+  degenerate edges and faces, loop planarity against the face's own carrier
+  (curved carriers are skipped rather than guessed at), loop
+  self-intersection, and closed-shell area-vector balance — with advisory,
+  non-failing reports for edge curves that miss their vertices and for
+  distinct vertices at the same position.
+- **Sharp cones were degenerate (81).** `makeCone` built box topology from two
+  4-point rings; with `topRadius = 0` that ring collapses to a point, giving
+  four zero-length edges around a zero-area cap. The Cone command asks for
+  exactly that shape, so every cone inserted from the UI passed Euler and
+  manifold while being geometric nonsense. Sharp cones now build apex topology
+  (5V/8E/5F) with the analytic conical carrier; a cone with both radii or zero
+  height is refused rather than returning a degenerate solid.
+- **ChamferOp rebuilt on `SolidSewer` (82).** This closes the defect pinned in
+  `test_AdversarialModels`: a 20mm box with two 2mm edge chamfers integrated
+  to 3200 instead of 7920. Two things were wrong — loop construction pushed
+  the original vertex back into the loop at corners the chamfer had already
+  replaced, and reconstruction replayed the soup through Euler operators with
+  a convergence loop that terminated on valid linkage that was not the linkage
+  the polygons described. Loops are now vertex-driven and the soup is sewn by
+  the same pipeline `BooleanOp` uses, so original faces keep their carriers
+  and TopologyIDs. FilletOp needed no rebuild — its Phase-61 strict half-edge
+  assembly already produced consistent loops — and both ops now refuse
+  geometrically invalid output instead of returning it.
+- **Chamfer vertex blends (83).** Two or three selected edges meeting at a
+  corner used to be refused outright. The material a chamfer removes is the
+  half-space beyond its chamfer plane, so a corner is just that corner clipped
+  by the planes of every chamfer meeting there — blends fall out of the
+  single-chamfer code path, with no invented corner patch, which is the
+  standard planar-chamfer result. Validated against inclusion–exclusion
+  volumes of the union of cutting prisms; chamfering all twelve edges of a
+  cube yields the chamfered cube (18 faces, 32 vertices) at its exact volume.
+
+Remaining known limits in this area are documented in the headers: chamfers
+are for straight edges of planar-faced solids with orthogonal, convex corners
+(oblique corners are refused by the geometric gate, not silently mis-built),
+and inner face loops are not carried through the chamfer rewrite.
+
 ## Unreleased — Kernel hardening (post-1.0 review response)
 
 Response to the external senior review: fix the Boolean/kernel reality gap

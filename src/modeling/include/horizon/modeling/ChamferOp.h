@@ -18,23 +18,35 @@ struct ChamferResult {
 
 /// Creates a new solid with planar chamfer faces replacing selected edges.
 ///
-/// A chamfer is a local edit of the boundary polygons: each vertex the
-/// selected edges touch is replaced by its offset point(s) on the neighbouring
-/// faces, and one quad is added per chamfered edge.  The rewritten polygon
-/// soup is reconstructed by `SolidSewer` — the same welding, T-junction and
-/// twin-pairing pipeline `BooleanOp` uses — so the result's loops are
-/// geometrically consistent and its volume integrates exactly.  Offsets slide
-/// along the neighbouring faces, so every original face keeps its own carrier
-/// and TopologyID; only its boundary changes.
+/// A chamfer is a local edit of the boundary polygons.  The material a chamfer
+/// removes is the half-space on the far side of its chamfer plane, so a
+/// touched corner simply becomes that corner clipped by the planes of every
+/// chamfer meeting there, and one face is added per chamfered edge.  The
+/// rewritten polygon soup is reconstructed by `SolidSewer` — the same welding,
+/// T-junction and twin-pairing pipeline `BooleanOp` uses — so the result's
+/// loops are geometrically consistent and its volume integrates exactly.
+/// Chamfers cut a face's corners inside its own plane, so every original face
+/// keeps its carrier and TopologyID; only its boundary changes.
+///
+/// **Vertex blends** (two or three selected edges meeting at a corner) fall
+/// out of the same clipping: the chamfer planes cut each other and no separate
+/// corner patch is invented, which is the standard planar-chamfer result — for
+/// three equal chamfers at a box corner the three planes meet at a single
+/// point and each chamfer face becomes a pentagon.  Chamfering all twelve
+/// edges of a cube yields the chamfered cube (18 faces, 32 vertices) at its
+/// exact volume.
 ///
 /// The operation refuses to return a solid that fails `checkManifold()` or
 /// `GeometryValidator`, reporting the diagnostic in `errorMessage` instead.
 ///
 /// Limitations:
-///  - straight edges of planar-faced solids (the offset directions come from
-///    the adjacent faces' normals at their parameter midpoints);
-///  - **no vertex blends** — two selected edges sharing a vertex are rejected,
-///    since the corner where three chamfer faces would meet is not generated;
+///  - straight edges of planar-faced solids, with orthogonal corners: the
+///    offset directions come from the adjacent faces' normals at their
+///    parameter midpoints, so an oblique corner's offsets do not land on the
+///    third face's plane.  Such input is refused by the geometric gate rather
+///    than silently mis-built;
+///  - convex corners: the corner wedge the clip runs on assumes the loop turns
+///    one way at the vertex;
 ///  - inner face loops (holes) are not carried through the rewrite.
 class ChamferOp {
 public:
