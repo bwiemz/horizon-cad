@@ -104,12 +104,22 @@ TEST(FeatureTreeTest, AddAndReplayRevolve) {
     FeatureTree tree;
     auto sketch = makeOffsetRectSketch();
 
+    // A full revolution of a profile clear of the axis is a torus: manifold
+    // and closed, but genus 1, which the genus-0 Euler check rejects.
     tree.addFeature(std::make_unique<RevolveFeature>(sketch, Vec3::Zero, Vec3::UnitY, kTwoPi));
 
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
-    EXPECT_TRUE(solid->checkEulerFormula());
-    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_TRUE(solid->checkManifold());
+    EXPECT_FALSE(solid->checkEulerFormula());
+
+    // A partial revolution is capped at both ends and so is a genus-0 solid.
+    FeatureTree partial;
+    partial.addFeature(
+        std::make_unique<RevolveFeature>(sketch, Vec3::Zero, Vec3::UnitY, kTwoPi * 0.25));
+    auto quarter = partial.build();
+    ASSERT_NE(quarter, nullptr);
+    EXPECT_TRUE(quarter->isValid()) << quarter->validationReport();
 }
 
 // ---------------------------------------------------------------------------

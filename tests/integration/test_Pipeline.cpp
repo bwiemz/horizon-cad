@@ -225,19 +225,29 @@ TEST(PipelineTest, ExtrudeHasNURBSSurfaces) {
 TEST(PipelineTest, RevolveRectangle) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_rect");
+    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_rect", 32);
     ASSERT_NE(solid, nullptr);
-    EXPECT_EQ(solid->faceCount(), 6u);
-    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    // One band of four quads per angular step.
+    EXPECT_EQ(solid->faceCount(), 128u);
+    EXPECT_TRUE(solid->checkManifold());
 }
 
 TEST(PipelineTest, RevolveHasValidEuler) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    auto solid = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_euler");
-    ASSERT_NE(solid, nullptr);
-    EXPECT_TRUE(solid->checkEulerFormula());
-    EXPECT_TRUE(solid->checkManifold());
+    // A full revolution clear of the axis is a torus: manifold, but genus 1,
+    // which the genus-0 Euler check rejects.  A partial revolution is capped
+    // at both ends and so is genus 0.
+    auto full = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_euler");
+    ASSERT_NE(full, nullptr);
+    EXPECT_TRUE(full->checkManifold());
+    EXPECT_FALSE(full->checkEulerFormula());
+
+    auto half = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi * 0.5, "rev_half");
+    ASSERT_NE(half, nullptr);
+    EXPECT_TRUE(half->checkManifold());
+    EXPECT_TRUE(half->checkEulerFormula());
+    EXPECT_TRUE(half->isValid()) << half->validationReport();
 }
 
 TEST(PipelineTest, RevolveInvalidProfileFails) {

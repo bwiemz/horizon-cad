@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–86)
+## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–87)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
@@ -141,6 +141,40 @@ them, and checking why turned up defects rather than missing features.
   the spherical patch matches the arcs it joins instead of spanning them
   flat. Volume converges quadratically — inside 0.001% at 16 chords — and
   `analyticSurface` now survives a later operation, which it did not before.
+- **Revolve enclosed zero volume (87).** The builder handled exactly one
+  input: a four-vertex profile turned a full 360°. For it, it rotated the four
+  profile corners to 0° and 180° and built an eight-vertex box from the two
+  quads — which are mirror images of each other through the axis, so the box
+  is inside-out against itself and encloses nothing. It passed every check the
+  suite made (Euler, manifold, `isValid()`, a NURBS surface on all six faces),
+  because no test asked for a volume. A torus surface was pasted on all six
+  faces, including the two that were the profile itself. Every other input
+  returned `nullptr`: any partial angle, any profile that was not a
+  quadrilateral. The UI's Revolve command offers 1–360°, so 359 of its 360
+  settings silently produced nothing.
+
+  Revolve is now a swept ring stack sewn by `SolidSewer`, the same pipeline as
+  the Phase 84 primitives: any closed profile, any angle in (0, 2π], angular
+  resolution tunable per call and derivable from a chord-sag budget with
+  `Revolve::segmentsForTolerance()`. Partial turns are capped at both ends
+  (genus 0); a full turn clear of the axis closes on itself as a genus-1
+  torus, which is manifold but which the genus-free Euler check rejects — the
+  same documented caveat as `makeTorus`. Profile vertices sitting *on* the
+  axis do not move, so their bands collapse to triangles and a profile
+  touching the axis sweeps a proper cone. A profile crossing the axis, or one
+  whose plane the axis does not lie in, is refused rather than swept through
+  itself — one test on the radial vectors catches both.
+
+  Volume converges quadratically to the Pappus value: −9.97% at 8 steps,
+  −2.55% at 16, −0.64% at 32, −0.16% at 64, −0.04% at 128, and a partial turn
+  carries the same relative error as a full one at equal angular resolution.
+  Every band is *exactly* planar — rotating two points about a shared axis
+  leaves all four corners on the plane whose normal combines the angular
+  bisector with the axis — so unlike the fillet blends, no face here needs an
+  approximate carrier. Only the ideals go on the side: the cylinder or cone
+  each curved band approximates on `Face::analyticSurface`, the circle each
+  profile vertex traces on `Edge::analyticCurve`. A band sweeping a flat
+  annulus records neither, because its planar carrier is already exact.
 
 ## Unreleased — Kernel hardening (post-1.0 review response)
 
