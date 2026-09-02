@@ -32,8 +32,13 @@ const topo::Face* MateGeometry::findFace(const topo::Solid& solid, const topo::T
 }
 
 std::optional<MateFrame> MateGeometry::frameForFace(const topo::Face& face) {
-    if (!face.surface) return std::nullopt;
-    const auto& surface = *face.surface;
+    // Prefer the ideal surface the face approximates over its carrier.
+    // Curved primitives are faceted, so a lateral facet's carrier is a plane
+    // and would yield a planar mate frame; the analytic surface is what lets
+    // one pick on that facet still resolve the cylinder it belongs to.
+    const auto* carrier = face.analyticSurface ? face.analyticSurface.get() : face.surface.get();
+    if (carrier == nullptr) return std::nullopt;
+    const auto& surface = *carrier;
 
     const double u0 = surface.uMin(), u1 = surface.uMax();
     const double v0 = surface.vMin(), v1 = surface.vMax();

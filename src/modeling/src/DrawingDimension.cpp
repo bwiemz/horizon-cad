@@ -88,10 +88,13 @@ bool DrawingDimensioner::measureRadius(const topo::Solid& solid, const topo::Top
                                        double& outRadius) {
     if (!edgeId.isValid()) return false;
 
+    // Prefer the ideal curve the edge approximates over its own geometry: a
+    // faceted rim's edges are chords, and the arc they stand in for is what
+    // carries the radius a radial dimension is asking for.
     const geo::NurbsCurve* curve = nullptr;
     for (const topo::Edge& e : solid.edges()) {
         if (!(e.topoId == edgeId)) continue;
-        curve = e.curve.get();
+        curve = e.analyticCurve ? e.analyticCurve.get() : e.curve.get();
         break;
     }
     if (curve == nullptr) return false;

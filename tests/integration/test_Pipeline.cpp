@@ -28,6 +28,7 @@
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -589,9 +590,11 @@ TEST(PipelineTest, PrimitiveConeValid) {
 TEST(PipelineTest, PrimitiveTorusValid) {
     auto torus = PrimitiveFactory::makeTorus(5.0, 1.5);
     ASSERT_NE(torus, nullptr);
-    EXPECT_TRUE(torus->checkEulerFormula());
     EXPECT_TRUE(torus->checkManifold());
-    EXPECT_TRUE(torus->isValid()) << torus->validationReport();
+    // Genus 1: V - E + F is 0, so the genus-free Euler check rejects it.
+    EXPECT_FALSE(torus->checkEulerFormula());
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*torus))
+        << hz::topo::GeometryValidator::report(*torus);
 }
 
 // ===========================================================================

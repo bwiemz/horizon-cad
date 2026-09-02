@@ -345,19 +345,33 @@ TEST(FeatureTreeTest, PrimitiveAllKindsBuildValidSolids) {
         const char* name;
     };
     std::vector<Case> cases;
+    // The torus is genus 1, so its Euler characteristic is 0 rather than 2 and
+    // Solid::checkEulerFormula() — which carries no genus term — rejects it.
+    // Every primitive is still required to be manifold.
+    struct Expect {
+        bool genusZero;
+    };
+    std::vector<Expect> expects;
     cases.push_back({PrimitiveFeature::makeCylinder(5.0, 10.0), "Cylinder"});
+    expects.push_back({true});
     cases.push_back({PrimitiveFeature::makeSphere(4.0), "Sphere"});
+    expects.push_back({true});
     cases.push_back({PrimitiveFeature::makeCone(4.0, 2.0, 6.0), "Cone"});
+    expects.push_back({true});
     cases.push_back({PrimitiveFeature::makeTorus(8.0, 2.0), "Torus"});
-    for (auto& c : cases) {
+    expects.push_back({false});
+
+    for (size_t i = 0; i < cases.size(); ++i) {
+        auto& c = cases[i];
         const std::string expected = c.name;
         FeatureTree tree;
         EXPECT_EQ(c.feat->name(), expected);
         tree.addFeature(std::move(c.feat));
         auto solid = tree.build();
         ASSERT_NE(solid, nullptr) << expected;
-        EXPECT_TRUE(solid->isValid()) << expected;
-        EXPECT_TRUE(solid->checkEulerFormula()) << expected;
+        EXPECT_TRUE(solid->checkManifold()) << expected;
+        EXPECT_EQ(solid->checkEulerFormula(), expects[i].genusZero) << expected;
+        EXPECT_EQ(solid->isValid(), expects[i].genusZero) << expected;
     }
 }
 
