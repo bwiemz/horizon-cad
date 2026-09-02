@@ -78,9 +78,16 @@ struct ChamferEdgeInfo {
 
 /// Sutherland–Hodgman clip of a planar polygon against a half-space.
 /// Works directly in 3D — the polygon stays in its own plane, so no
-/// projection is needed.  Vertices within @p eps of the plane count as kept,
-/// which is what makes a cut that lands exactly on an existing vertex produce
-/// that vertex rather than a near-duplicate pair.
+/// projection is needed.
+///
+/// Intersections are **snapped to the segment endpoint they land on**.  A cut
+/// passing through an existing vertex recomputes that vertex as
+/// `cur + (nxt - cur) * t` with t at one end of its range, where cancellation
+/// leaves the result a fraction of a micron away.  That gap is enough to
+/// matter: the pair is then too far apart to deduplicate and too close to be a
+/// sane polygon edge, so it survives into a loop whose segments read as
+/// crossing.  Snapping removes the drift at its source, which keeps
+/// deduplication exact rather than tolerance-dependent.
 static std::vector<Vec3> clipToHalfSpace(const std::vector<Vec3>& poly, const Vec3& planePoint,
                                          const Vec3& planeNormal, double eps) {
     std::vector<Vec3> out;
@@ -88,6 +95,20 @@ static std::vector<Vec3> clipToHalfSpace(const std::vector<Vec3>& poly, const Ve
     if (n < 3) {
         return out;
     }
+    // Vertex identity is scale-relative, not absolute.  The sewer welds at an
+    // absolute tolerance while the geometric validator judges a loop
+    // degenerate relative to its own extent, so on a loop several units across
+    // a segment can be long enough to survive sewing and short enough to read
+    // as degenerate afterwards.  Deduplicating against the loop's extent keeps
+    // both consistent, and it is the tolerance the incoming points are
+    // actually built to: an offset shared by two edges is only equal to within
+    // the rounding of two independent constructions.
+    double scale = 0.0;
+    for (const auto& p : poly) {
+        scale = std::max(scale, std::max(std::abs(p.x), std::max(std::abs(p.y), std::abs(p.z))));
+    }
+    const double vertexEps = eps * std::max(1.0, scale);
+
     out.reserve(n + 2);
     for (size_t i = 0; i < n; ++i) {
         const Vec3& cur = poly[i];
@@ -101,10 +122,23 @@ static std::vector<Vec3> clipToHalfSpace(const std::vector<Vec3>& poly, const Ve
             out.push_back(cur);
         }
         if (inCur != inNxt) {
+            // A segment nearly parallel to the plane makes `t` ill-conditioned:
+            // the denominator is the difference of two nearly equal signed
+            // distances, so the "intersection" lands microns from an endpoint
+            // rather than on it.  When the two endpoints are within tolerance
+            // of the same side, the segment lies in the plane and the endpoint
+            // already kept represents the crossing; computing a point there
+            // manufactures the near-duplicate instead of finding one.
             const double denom = dCur - dNxt;
-            if (std::abs(denom) > 1e-30) {
+            if (std::abs(denom) > eps) {
                 const double t = dCur / denom;
-                out.push_back(cur + (nxt - cur) * t);
+                Vec3 hit = cur + (nxt - cur) * t;
+                if (hit.distanceTo(cur) <= vertexEps) {
+                    hit = cur;
+                } else if (hit.distanceTo(nxt) <= vertexEps) {
+                    hit = nxt;
+                }
+                out.push_back(hit);
             }
         }
     }
@@ -113,11 +147,11 @@ static std::vector<Vec3> clipToHalfSpace(const std::vector<Vec3>& poly, const Ve
     std::vector<Vec3> deduped;
     deduped.reserve(out.size());
     for (const auto& p : out) {
-        if (deduped.empty() || p.distanceTo(deduped.back()) > eps) {
+        if (deduped.empty() || p.distanceTo(deduped.back()) > vertexEps) {
             deduped.push_back(p);
         }
     }
-    while (deduped.size() > 1 && deduped.front().distanceTo(deduped.back()) <= eps) {
+    while (deduped.size() > 1 && deduped.front().distanceTo(deduped.back()) <= vertexEps) {
         deduped.pop_back();
     }
     return deduped;
@@ -243,28 +277,38 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
         chamferEdges.push_back(info);
     }
 
-    // Validate distances against face dimensions.
+    // Capacity: an offset cannot travel further into a face than the face
+    // itself extends.
+    //
+    // The previous check capped the distance at half the shortest edge of the
+    // adjacent face.  That is a proxy for "do not overrun the neighbouring
+    // geometry" which happens to hold for a box and is meaningless once faces
+    // are faceted: on a 32-sided cylinder the shortest edge is the facet
+    // chord (0.98 for r = 5), so it refused every chamfer over 0.49 even
+    // though the geometry is exact well past 2.  It was also wrong for boxes,
+    // rejecting a 6mm chamfer on a 10mm box that builds correctly.
+    //
+    // What actually bounds the offset is how far the face reaches in the
+    // offset direction.  Past that the offset edge has left the face
+    // entirely, which no amount of downstream repair can rescue.  This is a
+    // necessary condition only — it never rejects a distance that would have
+    // worked — and the geometric gate after sewing is what actually
+    // guarantees the result.
     for (const auto& ce : chamferEdges) {
-        auto vertsA = faceVertices(ce.faceA);
-        auto vertsB = faceVertices(ce.faceB);
-
-        auto minEdgeLen = [](const std::vector<Vertex*>& verts) -> double {
-            double minLen = 1e30;
-            for (size_t i = 0; i < verts.size(); ++i) {
-                size_t j = (i + 1) % verts.size();
-                double len = verts[i]->point.distanceTo(verts[j]->point);
-                if (len < minLen) {
-                    minLen = len;
-                }
+        const Vec3 onEdge = ce.v1->point;
+        auto reachOf = [&onEdge](const Face* face, const Vec3& dir) {
+            double reach = 0.0;
+            for (const auto* v : faceVertices(face)) {
+                reach = std::max(reach, (v->point - onEdge).dot(dir));
             }
-            return minLen;
+            return reach;
         };
-
-        double minA = minEdgeLen(vertsA);
-        double minB = minEdgeLen(vertsB);
-        if (distA > minA * 0.5 + 1e-9 || distB > minB * 0.5 + 1e-9) {
+        const double reachA = reachOf(ce.faceA, ce.offsetA);
+        const double reachB = reachOf(ce.faceB, ce.offsetB);
+        if (distA > reachA + 1e-9 || distB > reachB + 1e-9) {
             result.errorMessage =
-                "Chamfer distance too large for edge: " + ce.originalEdge->topoId.tag();
+                "Chamfer distance exceeds the width of a face adjacent to edge: " +
+                ce.originalEdge->topoId.tag();
             return result;
         }
     }
@@ -284,7 +328,13 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
         maxOffset = std::max({maxOffset, ce.v1->point.distanceTo(ce.v1_offsetA),
                               ce.v1->point.distanceTo(ce.v1_offsetB)});
     }
-    const double clipEps = 1e-9 * std::max(1.0, maxOffset);
+    // Deduplicate clipped loops at the tolerance the sewer welds at, not a
+    // tighter one.  A pair of points closer than the weld tolerance but
+    // further apart than the clip's own epsilon survives into the loop and
+    // then collapses during sewing, leaving a zero-length segment that reads
+    // downstream as a degenerate — and, once two of them meet, a
+    // self-intersecting — boundary.
+    const double clipEps = SolidSewer::kDefaultWeldTol;
 
     // -----------------------------------------------------------------------
     // Rewrite every original face loop, then sew.

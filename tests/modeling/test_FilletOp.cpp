@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "horizon/drafting/DraftLine.h"
@@ -9,6 +10,7 @@
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
@@ -511,4 +513,59 @@ TEST(FilletOpTest, AllVariantsAreGeometricallyValid) {
         EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*r.solid))
             << GeometryValidator::report(*r.solid);
     }
+}
+
+// ---------------------------------------------------------------------------
+// KNOWN DEFECT, pinned: a fillet's boundary is the chord, not the arc.
+//
+// FilletOp emits one face per blend and binds it the correct rational
+// quadratic surface — degree 2 in V with three control points, a genuine
+// cylindrical patch.  Its *loop*, though, is a flat quad joining the two
+// tangent lines directly.  Since every loop-based path in the kernel (mass
+// properties, Booleans, classification, export) evaluates a solid from its
+// face loops, all of them see a chamfer while the renderer, which follows the
+// bound surface, draws a round fillet.
+//
+// The error is not marginal.  Filleting one edge of a 10mm cube at r should
+// remove r^2(1 - pi/4)L; the chord removes (1/2)r^2 L instead — 2.33 times too
+// much material, at every radius.
+//
+// This is the same defect class as the faceted-primitive work in Phase 84: an
+// analytic surface pasted onto a coarse loop, so display and computation
+// disagree.  The fix is the same shape too — facet the blend to a tolerance
+// and record the true cylinder in Face::analyticSurface.  When that lands,
+// flip the expectation below to the arc formula.
+// ---------------------------------------------------------------------------
+
+TEST(FilletOpTest, BlendBoundaryIsTheChordNotTheArc) {
+    const double side = 10.0;
+    for (double r : {0.5, 1.0, 3.0}) {
+        SCOPED_TRACE(r);
+        auto box = PrimitiveFactory::makeBox(side, side, side);
+        ASSERT_NE(box, nullptr);
+        auto result = FilletOp::execute(*box, {box->edges().front().topoId}, r, "f");
+        ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+
+        const double chord = side * side * side - 0.5 * r * r * side;
+        const double arc = side * side * side - r * r * (1.0 - M_PI_4) * side;
+        const double got = hz::model::MassPropertiesCalculator::compute(*result.solid).volume;
+
+        EXPECT_NEAR(got, chord, 1e-9) << "the blend integrates as a flat chamfer";
+        EXPECT_GT(arc - got, 0.0) << "and so removes more than a true fillet would";
+    }
+
+    // The blend face is a single quad, and it does carry the right surface —
+    // which is exactly why the two disagree.
+    auto box = PrimitiveFactory::makeBox(side, side, side);
+    auto result = FilletOp::execute(*box, {box->edges().front().topoId}, 2.0, "f");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    const hz::topo::Face* blend = nullptr;
+    for (const auto& f : result.solid->faces()) {
+        if (f.topoId.tag().find("fillet") != std::string::npos) blend = &f;
+    }
+    ASSERT_NE(blend, nullptr);
+    EXPECT_EQ(hz::topo::faceVertices(blend).size(), 4u) << "one flat quad, not an arc chain";
+    ASSERT_NE(blend->surface, nullptr);
+    EXPECT_EQ(blend->surface->degreeV(), 2) << "carrying a true quadratic arc patch";
+    EXPECT_EQ(blend->surface->controlPointCountV(), 3);
 }

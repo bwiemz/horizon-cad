@@ -40,6 +40,15 @@ namespace hz::model {
 /// (not the current Boolean pipeline) should split them first.
 class SolidSewer {
 public:
+    /// Distance below which two input points are the same vertex.
+    ///
+    /// Callers that build loops by clipping or intersecting must treat this
+    /// as the definition of vertex identity: emitting two points closer than
+    /// this leaves a loop that claims more vertices than it sews to, and the
+    /// collapsed segment reads downstream as a degenerate or self-intersecting
+    /// boundary.  Deduplicate at this tolerance, not a tighter one.
+    static constexpr double kDefaultWeldTol = 1e-7;
+
     struct InputFace {
         std::vector<math::Vec3> points;              ///< Planar loop, outward wound.
         topo::TopologyID topoId;                     ///< Assigned to the created face.
@@ -49,7 +58,7 @@ public:
     /// Sew the faces into a Solid.  Returns nullptr when no non-degenerate
     /// face survives.  @p weldTol is the vertex coincidence distance.
     static std::unique_ptr<topo::Solid> sew(const std::vector<InputFace>& faces,
-                                            double weldTol = 1e-7);
+                                            double weldTol = kDefaultWeldTol);
 };
 
 }  // namespace hz::model
