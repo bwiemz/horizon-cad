@@ -118,13 +118,87 @@ TEST(PrimitiveFactoryTest, CylinderEulerFormula) {
     auto solid = PrimitiveFactory::makeCylinder(1.0, 5.0);
     ASSERT_NE(solid, nullptr);
 
-    EXPECT_EQ(solid->vertexCount(), 8u);
-    EXPECT_EQ(solid->edgeCount(), 12u);
-    EXPECT_EQ(solid->faceCount(), 6u);
+    // An n-sided prism: two n-gon caps and n lateral quads.
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    EXPECT_EQ(solid->vertexCount(), 2 * n);
+    EXPECT_EQ(solid->edgeCount(), 3 * n);
+    EXPECT_EQ(solid->faceCount(), n + 2);
     EXPECT_EQ(solid->shellCount(), 1u);
     EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->checkManifold());
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+}
+
+TEST(PrimitiveFactoryTest, CylinderVolumeConvergesToTheAnalyticValue) {
+    // Faceting inscribes the cylinder, so the volume approaches pi*r^2*h from
+    // below.  The n-gon cap area is exact: (n/2) r^2 sin(2pi/n).
+    const double r = 5.0;
+    const double h = 10.0;
+    double previousError = 1e30;
+    for (int n : {8, 32, 128}) {
+        auto solid = PrimitiveFactory::makeCylinder(r, h, n);
+        ASSERT_NE(solid, nullptr) << "n=" << n;
+        const double got = MassPropertiesCalculator::compute(*solid).volume;
+        const double prism = 0.5 * n * r * r * std::sin(2.0 * M_PI / n) * h;
+        EXPECT_NEAR(got, prism, 1e-9) << "n=" << n;
+
+        const double error = M_PI * r * r * h - got;
+        EXPECT_GT(error, 0.0) << "inscribed volume must stay under the analytic one";
+        EXPECT_LT(error, previousError) << "refining must reduce the error";
+        previousError = error;
+    }
+    // The default resolution is good to a tenth of a percent.
+    auto solid = PrimitiveFactory::makeCylinder(r, h);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, M_PI * r * r * h,
+                0.01 * M_PI * r * r * h);
+}
+
+TEST(PrimitiveFactoryTest, CylinderRemembersTheSurfaceAndRimItFacets) {
+    auto solid = PrimitiveFactory::makeCylinder(5.0, 10.0);
+    ASSERT_NE(solid, nullptr);
+
+    // Lateral facets are planar (that is their carrier) but record the
+    // cylinder they approximate, so one pick still resolves the cylinder.
+    int lateral = 0;
+    for (const auto& f : solid->faces()) {
+        if (f.topoId.tag().find("side") == std::string::npos) continue;
+        ++lateral;
+        EXPECT_NE(f.surface, nullptr);
+        ASSERT_NE(f.analyticSurface, nullptr) << f.topoId.tag();
+    }
+    EXPECT_EQ(lateral, PrimitiveFactory::kDefaultSegments);
+
+    // Rim edges are chords that remember their arc.
+    int rim = 0;
+    for (const auto& e : solid->edges()) {
+        if (e.analyticCurve != nullptr) ++rim;
+    }
+    EXPECT_EQ(rim, 2 * PrimitiveFactory::kDefaultSegments);
+}
+
+TEST(PrimitiveFactoryTest, SegmentsForToleranceInvertsTheChordSag) {
+    // Sag of an n-gon chord on a circle of radius r is r*(1 - cos(pi/n)).
+    for (double tol : {1.0, 0.1, 0.01, 0.001}) {
+        const int n = PrimitiveFactory::segmentsForTolerance(5.0, tol);
+        const double sag = 5.0 * (1.0 - std::cos(M_PI / n));
+        EXPECT_LE(sag, tol) << "tol=" << tol << " n=" << n;
+        EXPECT_GE(n, 3);
+    }
+    // Finer tolerance never asks for fewer facets.
+    EXPECT_GE(PrimitiveFactory::segmentsForTolerance(5.0, 0.001),
+              PrimitiveFactory::segmentsForTolerance(5.0, 0.1));
+    // Degenerate inputs fall back to the default rather than diverging.
+    EXPECT_EQ(PrimitiveFactory::segmentsForTolerance(0.0, 0.1), PrimitiveFactory::kDefaultSegments);
+    EXPECT_EQ(PrimitiveFactory::segmentsForTolerance(5.0, 0.0), PrimitiveFactory::kDefaultSegments);
+}
+
+TEST(PrimitiveFactoryTest, DegenerateCurvedPrimitivesAreRefused) {
+    EXPECT_EQ(PrimitiveFactory::makeCylinder(0.0, 5.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCylinder(1.0, 0.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCylinder(1.0, 5.0, 2), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeSphere(0.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeTorus(1.0, 2.0), nullptr) << "tube thicker than the ring";
+    EXPECT_EQ(PrimitiveFactory::makeTorus(3.0, 0.0), nullptr);
 }
 
 TEST(PrimitiveFactoryTest, CylinderHasGeometry) {
@@ -147,13 +221,33 @@ TEST(PrimitiveFactoryTest, SphereEulerFormula) {
     auto solid = PrimitiveFactory::makeSphere(2.0);
     ASSERT_NE(solid, nullptr);
 
-    EXPECT_EQ(solid->vertexCount(), 8u);
-    EXPECT_EQ(solid->edgeCount(), 12u);
-    EXPECT_EQ(solid->faceCount(), 6u);
+    // A UV-sphere: n facets around, m bands pole to pole, poles as single
+    // vertices.  V = 2 + n(m-1), E = nm + n(m-1), F = nm.
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    const size_t m = n / 2;
+    EXPECT_EQ(solid->vertexCount(), 2 + n * (m - 1));
+    EXPECT_EQ(solid->edgeCount(), n * m + n * (m - 1));
+    EXPECT_EQ(solid->faceCount(), n * m);
     EXPECT_EQ(solid->shellCount(), 1u);
     EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->checkManifold());
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+}
+
+TEST(PrimitiveFactoryTest, SphereVolumeConvergesToTheAnalyticValue) {
+    const double r = 5.0;
+    const double exact = 4.0 / 3.0 * M_PI * r * r * r;
+    double previousError = 1e30;
+    for (int n : {8, 32, 64}) {
+        auto solid = PrimitiveFactory::makeSphere(r, n);
+        ASSERT_NE(solid, nullptr) << "n=" << n;
+        EXPECT_TRUE(solid->checkManifold()) << "n=" << n;
+        const double error = exact - MassPropertiesCalculator::compute(*solid).volume;
+        EXPECT_GT(error, 0.0) << "n=" << n << ": inscribed volume must stay under the analytic one";
+        EXPECT_LT(error, previousError) << "n=" << n << ": refining must reduce the error";
+        previousError = error;
+    }
+    EXPECT_LT(previousError, 0.01 * exact) << "64 facets should be within a percent";
 }
 
 // ---------------------------------------------------------------------------
@@ -174,38 +268,47 @@ TEST(PrimitiveFactoryTest, SharpConeUsesApexTopology) {
     auto solid = PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
     ASSERT_NE(solid, nullptr);
 
-    // Apex topology: 4 base vertices + apex, 4 base edges + 4 lateral, 1 base
-    // quad + 4 triangles.  Euler: 5 - 8 + 5 = 2.
-    EXPECT_EQ(solid->vertexCount(), 5u);
-    EXPECT_EQ(solid->edgeCount(), 8u);
-    EXPECT_EQ(solid->faceCount(), 5u);
+    // Apex topology: an n-gon base plus n triangles meeting at a point, not a
+    // ring of zero-length edges around a zero-area cap.
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    EXPECT_EQ(solid->vertexCount(), n + 1);
+    EXPECT_EQ(solid->edgeCount(), 2 * n);
+    EXPECT_EQ(solid->faceCount(), n + 1);
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
     EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
         << GeometryValidator::report(*solid);
 }
 
-TEST(PrimitiveFactoryTest, SharpConeVolumeMatchesThePyramidItTessellatesTo) {
-    // Four points on the base circle inscribe a square of area 2r^2, so the
-    // faceted cone is a pyramid of volume (1/3) * 2r^2 * h.
-    auto solid = PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
+TEST(PrimitiveFactoryTest, SharpConeVolumeMatchesThePyramidItFacetsTo) {
+    // The base is the inscribed n-gon, so the solid is exactly the pyramid
+    // over it: (1/3) * (n/2) r^2 sin(2pi/n) * h.
+    const double r = 5.0;
+    const double h = 10.0;
+    const int n = PrimitiveFactory::kDefaultSegments;
+    auto solid = PrimitiveFactory::makeCone(r, 0.0, h, n);
     ASSERT_NE(solid, nullptr);
-    const auto props = MassPropertiesCalculator::compute(*solid);
-    ASSERT_TRUE(props.valid);
-    EXPECT_NEAR(props.volume, 2.0 * 25.0 * 10.0 / 3.0, 1e-9);
+    const double base = 0.5 * n * r * r * std::sin(2.0 * M_PI / n);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, base * h / 3.0, 1e-9);
+
+    // And it converges to the true cone.
+    auto fine = PrimitiveFactory::makeCone(r, 0.0, h, 256);
+    ASSERT_NE(fine, nullptr);
+    const double exact = M_PI * r * r * h / 3.0;
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*fine).volume, exact, 0.001 * exact);
 }
 
 TEST(PrimitiveFactoryTest, InvertedSharpConeUsesApexTopology) {
     auto solid = PrimitiveFactory::makeCone(0.0, 5.0, 10.0);
     ASSERT_NE(solid, nullptr);
-    EXPECT_EQ(solid->vertexCount(), 5u);
-    EXPECT_EQ(solid->faceCount(), 5u);
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    EXPECT_EQ(solid->vertexCount(), n + 1);
+    EXPECT_EQ(solid->faceCount(), n + 1);
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
     EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
         << GeometryValidator::report(*solid);
 
-    const auto props = MassPropertiesCalculator::compute(*solid);
-    ASSERT_TRUE(props.valid);
-    EXPECT_NEAR(props.volume, 2.0 * 25.0 * 10.0 / 3.0, 1e-9);
+    const double base = 0.5 * n * 25.0 * std::sin(2.0 * M_PI / static_cast<double>(n));
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, base * 10.0 / 3.0, 1e-9);
 }
 
 TEST(PrimitiveFactoryTest, FullyDegenerateConeIsRefused) {
@@ -242,30 +345,71 @@ TEST(PrimitiveFactoryTest, ConeEulerFormula) {
     auto solid = PrimitiveFactory::makeCone(2.0, 1.0, 5.0);
     ASSERT_NE(solid, nullptr);
 
-    EXPECT_EQ(solid->vertexCount(), 8u);
-    EXPECT_EQ(solid->edgeCount(), 12u);
-    EXPECT_EQ(solid->faceCount(), 6u);
+    // A frustum is a prism between two n-gon caps.
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    EXPECT_EQ(solid->vertexCount(), 2 * n);
+    EXPECT_EQ(solid->edgeCount(), 3 * n);
+    EXPECT_EQ(solid->faceCount(), n + 2);
     EXPECT_EQ(solid->shellCount(), 1u);
     EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->checkManifold());
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
 }
 
+TEST(PrimitiveFactoryTest, FrustumVolumeConvergesToTheAnalyticValue) {
+    const double rb = 2.0;
+    const double rt = 1.0;
+    const double h = 5.0;
+    const double exact = M_PI * h / 3.0 * (rb * rb + rb * rt + rt * rt);
+    auto solid = PrimitiveFactory::makeCone(rb, rt, h, 128);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, exact, 0.001 * exact);
+}
+
 // ---------------------------------------------------------------------------
 // Torus tests
 // ---------------------------------------------------------------------------
 
-TEST(PrimitiveFactoryTest, TorusEulerFormula) {
+TEST(PrimitiveFactoryTest, TorusIsAManifoldGenusOneShell) {
     auto solid = PrimitiveFactory::makeTorus(3.0, 1.0);
     ASSERT_NE(solid, nullptr);
 
-    EXPECT_EQ(solid->vertexCount(), 8u);
-    EXPECT_EQ(solid->edgeCount(), 12u);
-    EXPECT_EQ(solid->faceCount(), 6u);
+    // A quad grid wrapped both ways: V = E/2 = F = n*m.
+    const auto n = static_cast<size_t>(PrimitiveFactory::kDefaultSegments);
+    const size_t m = n / 2;
+    EXPECT_EQ(solid->vertexCount(), n * m);
+    EXPECT_EQ(solid->edgeCount(), 2 * n * m);
+    EXPECT_EQ(solid->faceCount(), n * m);
     EXPECT_EQ(solid->shellCount(), 1u);
-    EXPECT_TRUE(solid->checkEulerFormula());
     EXPECT_TRUE(solid->checkManifold());
-    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+
+    // A torus has genus 1, so its Euler characteristic is 0, not 2.
+    // Solid::checkEulerFormula() carries no genus term and therefore reports
+    // false here — that is the check's documented limit, not a defect in the
+    // solid, which the geometric validator confirms is sound.
+    EXPECT_FALSE(solid->checkEulerFormula())
+        << "the genus-0 Euler check is expected to reject a torus";
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+}
+
+TEST(PrimitiveFactoryTest, TorusVolumeConvergesToTheAnalyticValue) {
+    const double major = 10.0;
+    const double minor = 3.0;
+    const double exact = 2.0 * M_PI * M_PI * major * minor * minor;
+
+    // The old box-topology torus enclosed no volume at all; faceting gives a
+    // real solid whose volume converges.
+    double previousError = 1e30;
+    for (int n : {16, 64, 128}) {
+        auto solid = PrimitiveFactory::makeTorus(major, minor, n);
+        ASSERT_NE(solid, nullptr) << "n=" << n;
+        const double error = exact - MassPropertiesCalculator::compute(*solid).volume;
+        EXPECT_GT(error, 0.0) << "n=" << n;
+        EXPECT_LT(error, previousError) << "n=" << n;
+        previousError = error;
+    }
+    EXPECT_LT(previousError, 0.01 * exact);
 }
 
 // ---------------------------------------------------------------------------

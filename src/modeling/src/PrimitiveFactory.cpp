@@ -1,8 +1,12 @@
 #include "horizon/modeling/PrimitiveFactory.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <deque>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -408,85 +412,180 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeBox(double width, double heig
 }
 
 // ---------------------------------------------------------------------------
-// makeCylinder
+// Faceted curved primitives
+//
+// Every downstream path in the kernel — Boolean classification, interference,
+// mass properties, drawing projection, export — evaluates a solid from its
+// face loops.  A curved NURBS surface bound to a coarse loop is therefore
+// decoration: it makes the display disagree with every computation.  The old
+// builders leaned on that, wrapping box topology (8V/12E/6F) in cylindrical or
+// spherical patches, so a cylinder was a square prism to everything but the
+// renderer (volume 500 instead of 785) and a sphere was a cube (192 instead of
+// 524).  It also made the renderer emit each shared surface once per face —
+// a sphere drew six full spheres, 480k triangles for a shape that needs 2k.
+//
+// Curved primitives are now faceted at construction and their facets carry
+// planar patches that match them.  The B-Rep is exactly what the rest of the
+// kernel treats it as, and volumes converge to the analytic value from below.
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, double height) {
-    auto solid = std::make_unique<topo::Solid>();
+namespace {
 
-    const double r = radius;
-    const double h = height;
+/// Points of a circle of @p radius at height @p z, counter-clockwise seen
+/// from +Z, starting on the +X axis.
+std::vector<Vec3> ringPoints(double radius, double z, int segments) {
+    std::vector<Vec3> ring;
+    ring.reserve(static_cast<size_t>(segments));
+    for (int i = 0; i < segments; ++i) {
+        const double a = 2.0 * math::kPi * static_cast<double>(i) / static_cast<double>(segments);
+        ring.push_back(Vec3(radius * std::cos(a), radius * std::sin(a), z));
+    }
+    return ring;
+}
 
-    // Use box topology with cylinder-appropriate vertex positions.
-    // Place 4 points around the circle at z=0 and z=h.
-    // Angles: 0, 90, 180, 270 degrees.
-    const Vec3 pts[8] = {
-        {r, 0, 0}, {0, r, 0}, {-r, 0, 0}, {0, -r, 0},  // bottom circle
-        {r, 0, h}, {0, r, h}, {-r, 0, h}, {0, -r, h},  // top circle
-    };
-
-    BoxBuild bb = buildBoxTopology(*solid, pts);
-
-    // -- TopologyIDs ---
-    bb.bottom->topoId = TopologyID::make("cylinder", "bottom");
-    bb.top->topoId = TopologyID::make("cylinder", "top");
-    bb.front->topoId = TopologyID::make("cylinder", "side0");
-    bb.right->topoId = TopologyID::make("cylinder", "side1");
-    bb.back->topoId = TopologyID::make("cylinder", "side2");
-    bb.left->topoId = TopologyID::make("cylinder", "side3");
-
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make("cylinder", "edge" + std::to_string(idx));
-            ++idx;
+/// Signed volume of a closed polygon soup (divergence theorem, fan per face).
+double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
+    double vol6 = 0.0;
+    for (const auto& f : faces) {
+        for (size_t i = 1; i + 1 < f.points.size(); ++i) {
+            vol6 += f.points[0].dot(f.points[i].cross(f.points[i + 1]));
         }
     }
+    return vol6 / 6.0;
+}
 
-    // -- Edge curves (linear for vertical edges, arc segments for circle edges) ---
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-        assignEdgeCurve(&e);
+/// Normalize a closed soup to outward winding, which is what SolidSewer
+/// documents as its input contract.  Building each face's loop by hand and
+/// reasoning about its handedness is where winding bugs come from; deriving it
+/// once from the enclosed volume cannot get it wrong.
+void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
+    if (soupSignedVolume(faces) >= 0.0) {
+        return;
     }
-    // Rim edges carry true circular arcs (Phase 61): both endpoints sit on a
-    // cap circle, so replace the chord with the quarter arc between them.
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
+    for (auto& f : faces) {
+        std::reverse(f.points.begin(), f.points.end());
+    }
+}
+
+/// A quad, dropping to a triangle where one edge is degenerate (the ring
+/// beside a cone apex or a sphere pole).
+void addQuad(std::vector<SolidSewer::InputFace>& faces, const Vec3& a, const Vec3& b, const Vec3& c,
+             const Vec3& d, const TopologyID& id) {
+    std::vector<Vec3> loop;
+    for (const Vec3& p : {a, b, c, d}) {
+        if (loop.empty() || p.distanceTo(loop.back()) > 1e-12) {
+            loop.push_back(p);
+        }
+    }
+    while (loop.size() > 1 && loop.front().distanceTo(loop.back()) <= 1e-12) {
+        loop.pop_back();
+    }
+    if (loop.size() < 3) {
+        return;
+    }
+    SolidSewer::InputFace f;
+    f.points = std::move(loop);
+    f.topoId = id;
+    faces.push_back(std::move(f));
+}
+
+/// Record on each face the ideal surface its facets approximate, and on each
+/// rim edge the arc its chord replaces.  These are not carriers (see
+/// topo::Face::analyticSurface) — they are what feature recognition needs to
+/// answer "this facet belongs to a cylinder of radius r" from a single pick,
+/// which faceting would otherwise throw away.
+void tagAnalyticSurface(topo::Solid& solid, const std::string& facePrefix,
+                        const std::shared_ptr<geo::NurbsSurface>& surface) {
+    if (surface == nullptr) {
+        return;
+    }
+    for (auto& f : const_cast<std::deque<Face>&>(solid.faces())) {
+        if (f.topoId.tag().find(facePrefix) != std::string::npos) {
+            f.analyticSurface = surface;
+        }
+    }
+}
+
+/// Tag every edge whose two endpoints lie on the circle of @p radius about
+/// @p axisPoint in the plane z = @p z with the arc it chords.
+void tagRimArcs(topo::Solid& solid, double radius, double z) {
+    for (auto& e : const_cast<std::deque<Edge>&>(solid.edges())) {
         if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
-        const Vec3& a = e.halfEdge->origin->point;
-        const Vec3& b = e.halfEdge->twin->origin->point;
-        const bool sameCap =
-            std::abs(a.z - b.z) < 1e-9 && (std::abs(a.z) < 1e-9 || std::abs(a.z - h) < 1e-9);
-        const bool onCircle =
-            std::abs(std::hypot(a.x, a.y) - r) < 1e-9 && std::abs(std::hypot(b.x, b.y) - r) < 1e-9;
-        if (!sameCap || !onCircle) continue;
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.z - z) > 1e-9 || std::abs(b.z - z) > 1e-9) continue;
+        if (std::abs(std::hypot(a.x, a.y) - radius) > 1e-9) continue;
+        if (std::abs(std::hypot(b.x, b.y) - radius) > 1e-9) continue;
 
         double a0 = std::atan2(a.y, a.x);
         double a1 = std::atan2(b.y, b.x);
-        // makeArc sweeps counterclockwise from a0 to a1; pick the short way
-        // (the edge itself is directionless — a reversed curve is fine).
         double sweep = a1 - a0;
         while (sweep <= 0.0) sweep += 2.0 * math::kPi;
         if (sweep > math::kPi) std::swap(a0, a1);
-        e.curve = std::make_shared<geo::NurbsCurve>(
-            geo::NurbsCurve::makeArc(Vec3(0, 0, a.z), r, a0, a1, Vec3(0, 0, 1)));
+        e.analyticCurve = std::make_shared<geo::NurbsCurve>(
+            geo::NurbsCurve::makeArc(Vec3(0, 0, z), radius, a0, a1, Vec3(0, 0, 1)));
+    }
+}
+
+}  // namespace
+
+int PrimitiveFactory::segmentsForTolerance(double radius, double tolerance) {
+    if (!(radius > 0.0) || !(tolerance > 0.0)) {
+        return kDefaultSegments;
+    }
+    const double ratio = 1.0 - tolerance / radius;
+    if (ratio <= -1.0) {
+        return 3;  // Tolerance exceeds the diameter: any polygon will do.
+    }
+    const double n = math::kPi / std::acos(std::min(1.0, ratio));
+    return std::clamp(static_cast<int>(std::ceil(n)), 3, 4096);
+}
+
+// ---------------------------------------------------------------------------
+// makeCylinder
+// ---------------------------------------------------------------------------
+
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, double height,
+                                                            int segments) {
+    if (!(radius > 0.0) || !(height > 0.0) || segments < 3) {
+        return nullptr;
     }
 
-    // -- Surfaces ---
-    // Bottom cap: planar circle at z=0.
-    bb.bottom->surface = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makePlane(Vec3(-r, -r, 0), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * r, 2 * r));
+    const auto bottom = ringPoints(radius, 0.0, segments);
+    const auto top = ringPoints(radius, height, segments);
 
-    // Top cap: planar circle at z=h.
-    bb.top->surface = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makePlane(Vec3(-r, -r, h), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * r, 2 * r));
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(static_cast<size_t>(segments) + 2);
 
-    // Lateral faces: cylindrical surface.
-    auto cylSurf = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makeCylinder(Vec3(0, 0, 0), Vec3(0, 0, 1), r, h));
-    bb.front->surface = cylSurf;
-    bb.right->surface = cylSurf;
-    bb.back->surface = cylSurf;
-    bb.left->surface = cylSurf;
+    // The lateral quads traverse the bottom ring counter-clockwise (seen from
+    // +Z), so the bottom cap must traverse it the other way for the shared
+    // edges to pair into twins.  The top ring is already opposed.
+    SolidSewer::InputFace cap;
+    cap.points.assign(bottom.rbegin(), bottom.rend());
+    cap.topoId = TopologyID::make("cylinder", "bottom");
+    faces.push_back(std::move(cap));
 
+    SolidSewer::InputFace lid;
+    lid.points = top;
+    lid.topoId = TopologyID::make("cylinder", "top");
+    faces.push_back(std::move(lid));
+
+    for (int i = 0; i < segments; ++i) {
+        const int j = (i + 1) % segments;
+        addQuad(faces, bottom[static_cast<size_t>(i)], bottom[static_cast<size_t>(j)],
+                top[static_cast<size_t>(j)], top[static_cast<size_t>(i)],
+                TopologyID::make("cylinder", "side" + std::to_string(i)));
+    }
+
+    orientOutward(faces);
+    auto solid = SolidSewer::sew(faces);
+    if (solid != nullptr) {
+        tagAnalyticSurface(*solid, "cylinder/side",
+                           std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCylinder(
+                               Vec3(0, 0, 0), Vec3(0, 0, 1), radius, height)));
+        tagRimArcs(*solid, radius, 0.0);
+        tagRimArcs(*solid, radius, height);
+    }
     return solid;
 }
 
@@ -494,52 +593,51 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, doubl
 // makeSphere
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius) {
-    auto solid = std::make_unique<topo::Solid>();
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int segments, int stacks) {
+    if (stacks <= 0) {
+        stacks = std::max(2, segments / 2);
+    }
+    if (!(radius > 0.0) || segments < 3 || stacks < 2) {
+        return nullptr;
+    }
 
-    const double r = radius;
-
-    // Use box-sphere approach: box topology with vertices on the sphere.
-    // 8 vertices at the corners of a cube inscribed in the sphere.
-    const double c = r / std::sqrt(3.0);  // coordinate magnitude for cube corner on sphere
-    const Vec3 pts[8] = {
-        {-c, -c, -c}, {c, -c, -c}, {c, c, -c}, {-c, c, -c},  // bottom
-        {-c, -c, c},  {c, -c, c},  {c, c, c},  {-c, c, c},   // top
-    };
-
-    BoxBuild bb = buildBoxTopology(*solid, pts);
-
-    // -- TopologyIDs ---
-    bb.bottom->topoId = TopologyID::make("sphere", "bottom");
-    bb.top->topoId = TopologyID::make("sphere", "top");
-    bb.front->topoId = TopologyID::make("sphere", "front");
-    bb.right->topoId = TopologyID::make("sphere", "right");
-    bb.back->topoId = TopologyID::make("sphere", "back");
-    bb.left->topoId = TopologyID::make("sphere", "left");
-
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make("sphere", "edge" + std::to_string(idx));
-            ++idx;
+    // Rings of constant polar angle; the poles are single vertices, so the
+    // bands beside them collapse to triangle fans (addQuad drops the
+    // degenerate edge).
+    std::vector<std::vector<Vec3>> rings;
+    rings.reserve(static_cast<size_t>(stacks) + 1);
+    for (int j = 0; j <= stacks; ++j) {
+        const double phi = math::kPi * static_cast<double>(j) / static_cast<double>(stacks);
+        const double z = radius * std::cos(phi);
+        const double r = radius * std::sin(phi);
+        if (j == 0 || j == stacks) {
+            rings.push_back(std::vector<Vec3>(static_cast<size_t>(segments), Vec3(0, 0, z)));
+        } else {
+            rings.push_back(ringPoints(r, z, segments));
         }
     }
 
-    // -- Edge curves ---
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-        assignEdgeCurve(&e);
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(static_cast<size_t>(segments) * static_cast<size_t>(stacks));
+    for (int j = 0; j < stacks; ++j) {
+        const auto& lower = rings[static_cast<size_t>(j) + 1];
+        const auto& upper = rings[static_cast<size_t>(j)];
+        for (int i = 0; i < segments; ++i) {
+            const int k = (i + 1) % segments;
+            addQuad(
+                faces, lower[static_cast<size_t>(i)], lower[static_cast<size_t>(k)],
+                upper[static_cast<size_t>(k)], upper[static_cast<size_t>(i)],
+                TopologyID::make("sphere", "band" + std::to_string(j) + "_" + std::to_string(i)));
+        }
     }
 
-    // -- Surfaces: spherical NURBS ---
-    auto sphereSurf =
-        std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeSphere(Vec3(0, 0, 0), r));
-    bb.bottom->surface = sphereSurf;
-    bb.top->surface = sphereSurf;
-    bb.front->surface = sphereSurf;
-    bb.right->surface = sphereSurf;
-    bb.back->surface = sphereSurf;
-    bb.left->surface = sphereSurf;
-
+    orientOutward(faces);
+    auto solid = SolidSewer::sew(faces);
+    if (solid != nullptr) {
+        tagAnalyticSurface(*solid, "sphere/band",
+                           std::make_shared<geo::NurbsSurface>(
+                               geo::NurbsSurface::makeSphere(Vec3(0, 0, 0), radius)));
+    }
     return solid;
 }
 
@@ -547,137 +645,66 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius) {
 // makeCone
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Helper: a cone with one radius collapsed to a point.
-//
-// The frustum path builds box topology from two 4-point rings.  When a ring
-// has zero radius its four points coincide, which yields four zero-length
-// edges and a zero-area cap face — a solid that passes the combinatorial
-// validators but is geometric nonsense (and is exactly what the "Cone"
-// command produced, since it asks for topRadius = 0).  A true cone needs
-// apex topology instead: one base quad plus four triangles.
-// ---------------------------------------------------------------------------
-
-static std::unique_ptr<topo::Solid> buildApexCone(double baseRadius, double baseZ, double apexZ,
-                                                  bool apexAbove) {
-    const double r = baseRadius;
-    const double h = std::abs(apexZ - baseZ);
-
-    // The base ring, wound counter-clockwise seen from +Z.
-    const Vec3 ring[4] = {{r, 0, baseZ}, {0, r, baseZ}, {-r, 0, baseZ}, {0, -r, baseZ}};
-    const Vec3 apex(0, 0, apexZ);
-
-    std::vector<SolidSewer::InputFace> faces;
-    faces.reserve(5);
-
-    // Base cap: outward is away from the apex.
-    SolidSewer::InputFace base;
-    if (apexAbove) {
-        base.points = {ring[3], ring[2], ring[1], ring[0]};  // outward −Z
-    } else {
-        base.points = {ring[0], ring[1], ring[2], ring[3]};  // outward +Z
-    }
-    base.topoId = TopologyID::make("cone", "bottom");
-    base.surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
-        Vec3(-r, -r, baseZ), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * r, 2 * r));
-    faces.push_back(std::move(base));
-
-    // The lateral facets share the analytic conical carrier, matching the
-    // frustum path's convention of binding the exact surface to the
-    // four-sided tessellation of the ring.
-    const double halfAngle = std::atan2(r, h);
-    auto coneSurf = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
-        apex, apexAbove ? Vec3(0, 0, -1) : Vec3(0, 0, 1), halfAngle, h));
-
-    for (int i = 0; i < 4; ++i) {
-        SolidSewer::InputFace side;
-        const Vec3& a = ring[i];
-        const Vec3& b = ring[(i + 1) % 4];
-        // Wind so the facet normal points away from the axis.
-        side.points = apexAbove ? std::vector<Vec3>{a, b, apex} : std::vector<Vec3>{b, a, apex};
-        side.topoId = TopologyID::make("cone", "side" + std::to_string(i));
-        side.surface = coneSurf;
-        faces.push_back(std::move(side));
-    }
-
-    return SolidSewer::sew(faces);
-}
-
 std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
-                                                        double height) {
-    auto solid = std::make_unique<topo::Solid>();
-
-    const double rb = bottomRadius;
-    const double rt = topRadius;
-    const double h = height;
-
-    // A true cone (one radius collapsed) needs apex topology, not a ring.
+                                                        double height, int segments) {
     constexpr double kRingEps = 1e-12;
-    if (rb <= kRingEps && rt <= kRingEps) {
+    if (bottomRadius <= kRingEps && topRadius <= kRingEps) {
         return nullptr;  // Both ends degenerate: no solid to build.
     }
-    if (h <= kRingEps) {
-        return nullptr;  // Zero height.
-    }
-    if (rt <= kRingEps) {
-        return buildApexCone(rb, 0.0, h, /*apexAbove=*/true);
-    }
-    if (rb <= kRingEps) {
-        return buildApexCone(rt, h, 0.0, /*apexAbove=*/false);
+    if (height <= kRingEps || segments < 3) {
+        return nullptr;
     }
 
-    // 4 points on the bottom circle, 4 on the top circle.
-    const Vec3 pts[8] = {
-        {rb, 0, 0}, {0, rb, 0}, {-rb, 0, 0}, {0, -rb, 0},  // bottom
-        {rt, 0, h}, {0, rt, h}, {-rt, 0, h}, {0, -rt, h},  // top
-    };
+    // A zero radius collapses its ring to a point, so that end is an apex
+    // rather than a cap: n triangles instead of a cap plus n quads.
+    const bool sharpTop = topRadius <= kRingEps;
+    const bool sharpBottom = bottomRadius <= kRingEps;
 
-    BoxBuild bb = buildBoxTopology(*solid, pts);
+    const auto bottom = sharpBottom
+                            ? std::vector<Vec3>(static_cast<size_t>(segments), Vec3(0, 0, 0))
+                            : ringPoints(bottomRadius, 0.0, segments);
+    const auto top = sharpTop ? std::vector<Vec3>(static_cast<size_t>(segments), Vec3(0, 0, height))
+                              : ringPoints(topRadius, height, segments);
 
-    // -- TopologyIDs ---
-    bb.bottom->topoId = TopologyID::make("cone", "bottom");
-    bb.top->topoId = TopologyID::make("cone", "top");
-    bb.front->topoId = TopologyID::make("cone", "side0");
-    bb.right->topoId = TopologyID::make("cone", "side1");
-    bb.back->topoId = TopologyID::make("cone", "side2");
-    bb.left->topoId = TopologyID::make("cone", "side3");
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(static_cast<size_t>(segments) + 2);
 
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make("cone", "edge" + std::to_string(idx));
-            ++idx;
-        }
+    if (!sharpBottom) {
+        // Opposed to the lateral quads' traversal of the same ring; see
+        // makeCylinder.
+        SolidSewer::InputFace cap;
+        cap.points.assign(bottom.rbegin(), bottom.rend());
+        cap.topoId = TopologyID::make("cone", "bottom");
+        faces.push_back(std::move(cap));
+    }
+    if (!sharpTop) {
+        SolidSewer::InputFace lid;
+        lid.points = top;
+        lid.topoId = TopologyID::make("cone", "top");
+        faces.push_back(std::move(lid));
     }
 
-    // -- Edge curves ---
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-        assignEdgeCurve(&e);
+    for (int i = 0; i < segments; ++i) {
+        const int j = (i + 1) % segments;
+        addQuad(faces, bottom[static_cast<size_t>(i)], bottom[static_cast<size_t>(j)],
+                top[static_cast<size_t>(j)], top[static_cast<size_t>(i)],
+                TopologyID::make("cone", "side" + std::to_string(i)));
     }
 
-    // -- Surfaces ---
-    // Caps: planar.
-    bb.bottom->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
-        Vec3(-rb, -rb, 0), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rb, 2 * rb));
-    bb.top->surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
-        Vec3(-rt, -rt, h), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * rt, 2 * rt));
-
-    // Lateral faces: conical surface.
-    // Compute half-angle from the geometry: tan(halfAngle) = bottomRadius / height.
-    // The cone factory takes apex, axis, halfAngle, height (from apex).
-    // For a frustum this is approximate — we use the bottom radius cone.
-    // Both radii are non-zero here (the apex cases returned above), so the
-    // frustum's carrier is the cone through the bottom ring.
-    {
-        const double halfAngle = std::atan2(rb, h);
-        auto coneSurf = std::make_shared<geo::NurbsSurface>(
-            geo::NurbsSurface::makeCone(Vec3(0, 0, h), Vec3(0, 0, -1), halfAngle, h));
-        bb.front->surface = coneSurf;
-        bb.right->surface = coneSurf;
-        bb.back->surface = coneSurf;
-        bb.left->surface = coneSurf;
+    orientOutward(faces);
+    auto solid = SolidSewer::sew(faces);
+    if (solid != nullptr) {
+        // The carrier cone runs from whichever end is (or would be) the apex.
+        const double apexZ = sharpTop ? height : 0.0;
+        const Vec3 apexDir = sharpTop ? Vec3(0, 0, -1) : Vec3(0, 0, 1);
+        const double baseR = sharpTop ? bottomRadius : topRadius;
+        const double halfAngle = std::atan2(baseR, height);
+        tagAnalyticSurface(*solid, "cone/side",
+                           std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
+                               Vec3(0, 0, apexZ), apexDir, halfAngle, height)));
+        if (!sharpBottom) tagRimArcs(*solid, bottomRadius, 0.0);
+        if (!sharpTop) tagRimArcs(*solid, topRadius, height);
     }
-
     return solid;
 }
 
@@ -685,56 +712,57 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
 // makeTorus
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, double minorRadius) {
-    auto solid = std::make_unique<topo::Solid>();
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, double minorRadius,
+                                                         int segments, int tubeSegments) {
+    if (tubeSegments <= 0) {
+        tubeSegments = std::max(3, segments / 2);
+    }
+    if (!(minorRadius > 0.0) || !(majorRadius > minorRadius) || segments < 3 || tubeSegments < 3) {
+        return nullptr;
+    }
 
-    const double R = majorRadius;
-    const double r = minorRadius;
+    // Grid of tube cross-sections around the major circle.  Unlike the other
+    // primitives this shell has genus 1, so V - E + F is 0 rather than 2 and
+    // Solid::checkEulerFormula() — which carries no genus term — reports
+    // false.  checkManifold() and the geometric validator both hold.
+    std::vector<std::vector<Vec3>> rings;
+    rings.reserve(static_cast<size_t>(segments));
+    for (int i = 0; i < segments; ++i) {
+        const double theta =
+            2.0 * math::kPi * static_cast<double>(i) / static_cast<double>(segments);
+        const Vec3 outward(std::cos(theta), std::sin(theta), 0.0);
+        std::vector<Vec3> ring;
+        ring.reserve(static_cast<size_t>(tubeSegments));
+        for (int j = 0; j < tubeSegments; ++j) {
+            const double psi =
+                2.0 * math::kPi * static_cast<double>(j) / static_cast<double>(tubeSegments);
+            ring.push_back(outward * (majorRadius + minorRadius * std::cos(psi)) +
+                           Vec3(0, 0, minorRadius * std::sin(psi)));
+        }
+        rings.push_back(std::move(ring));
+    }
 
-    // 4 points on the outer ring and 4 on the inner ring.
-    // Outer ring: at distance R+r from center.
-    // Inner ring: at distance R-r from center.
-    const double outer = R + r;
-    const double inner = R - r;
-
-    const Vec3 pts[8] = {
-        {outer, 0, 0}, {0, outer, 0}, {-outer, 0, 0}, {0, -outer, 0},  // outer ring (z=0)
-        {inner, 0, 0}, {0, inner, 0}, {-inner, 0, 0}, {0, -inner, 0},  // inner ring (z=0)
-    };
-
-    BoxBuild bb = buildBoxTopology(*solid, pts);
-
-    // -- TopologyIDs ---
-    bb.bottom->topoId = TopologyID::make("torus", "outer");
-    bb.top->topoId = TopologyID::make("torus", "inner");
-    bb.front->topoId = TopologyID::make("torus", "side0");
-    bb.right->topoId = TopologyID::make("torus", "side1");
-    bb.back->topoId = TopologyID::make("torus", "side2");
-    bb.left->topoId = TopologyID::make("torus", "side3");
-
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make("torus", "edge" + std::to_string(idx));
-            ++idx;
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(static_cast<size_t>(segments) * static_cast<size_t>(tubeSegments));
+    for (int i = 0; i < segments; ++i) {
+        const auto& a = rings[static_cast<size_t>(i)];
+        const auto& b = rings[static_cast<size_t>((i + 1) % segments)];
+        for (int j = 0; j < tubeSegments; ++j) {
+            const int k = (j + 1) % tubeSegments;
+            addQuad(
+                faces, a[static_cast<size_t>(j)], b[static_cast<size_t>(j)],
+                b[static_cast<size_t>(k)], a[static_cast<size_t>(k)],
+                TopologyID::make("torus", "patch" + std::to_string(i) + "_" + std::to_string(j)));
         }
     }
 
-    // -- Edge curves ---
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-        assignEdgeCurve(&e);
+    orientOutward(faces);
+    auto solid = SolidSewer::sew(faces);
+    if (solid != nullptr) {
+        tagAnalyticSurface(*solid, "torus/patch",
+                           std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeTorus(
+                               Vec3(0, 0, 0), Vec3(0, 0, 1), majorRadius, minorRadius)));
     }
-
-    // -- Surfaces: toroidal NURBS ---
-    auto torusSurf = std::make_shared<geo::NurbsSurface>(
-        geo::NurbsSurface::makeTorus(Vec3(0, 0, 0), Vec3(0, 0, 1), R, r));
-    bb.bottom->surface = torusSurf;
-    bb.top->surface = torusSurf;
-    bb.front->surface = torusSurf;
-    bb.right->surface = torusSurf;
-    bb.back->surface = torusSurf;
-    bb.left->surface = torusSurf;
-
     return solid;
 }
 

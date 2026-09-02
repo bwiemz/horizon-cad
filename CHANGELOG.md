@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Geometric validation & the chamfer rebuild (Phases 81–83)
+## Unreleased — Geometric validation, the chamfer rebuild, faceted primitives (Phases 81–84)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
@@ -57,6 +57,51 @@ Remaining known limits in this area are documented in the headers: chamfers
 are for straight edges of planar-faced solids with orthogonal, convex corners
 (oblique corners are refused by the geometric gate, not silently mis-built),
 and inner face loops are not carried through the chamfer rewrite.
+
+### Faceted curved primitives (84)
+
+The kernel evaluates a solid from its face loops everywhere that matters —
+Boolean classification, interference, mass properties, drawing projection,
+export. The curved primitives leaned on that being invisible: `makeCylinder`
+built box topology (8V/12E/6F) and bound a cylindrical NURBS patch to its four
+lateral faces, so the solid *was* a square prism to every computation and only
+the renderer disagreed. A cylinder's volume came out 500 against π·r²·h = 785,
+a sphere's 192 against 524, and a torus — genus 0 with eight vertices —
+enclosed no volume at all. Subtracting one cylinder from another gave 320
+where the answer is 503.
+
+- **Curved primitives are now faceted at construction**, built on `SolidSewer`
+  from a polygon soup with a tunable `segments` count;
+  `PrimitiveFactory::segmentsForTolerance()` inverts a chord-sag budget when
+  you want to pick it from a tolerance instead. Facets carry planar patches
+  that match their loops, so the B-Rep is exactly what the rest of the kernel
+  treats it as. Volumes converge from below — at the default 32 segments a
+  cylinder is within 0.65% and at 128 within 0.04% — and Booleans on curved
+  solids work: boring a cylinder yields a real tube, correct to the facet
+  error rather than 36% light. The torus is now a genuine genus-1 shell.
+- **Facets remember what they approximate.** `topo::Face::analyticSurface` and
+  `topo::Edge::analyticCurve` record the ideal geometry a facet stands in for,
+  distinct from the carrier that actually bounds it. That is what keeps a
+  cylindrical mate frame and a radial dimension resolvable from a single pick
+  on one facet; binding the cylinder to a planar quad instead would put
+  display and computation straight back out of step.
+- **A rendering defect fell out of the same diagnosis.** `SolidTessellator`
+  emits a face's whole *untrimmed* carrier whenever that carrier is curved, so
+  faces sharing a surface each re-emitted all of it: a sphere drew six
+  overlapping spheres at 480,000 triangles, and the resulting mesh enclosed
+  three times the solid's volume. Faceted primitives take the loop path, so
+  each face is emitted once — 960 triangles for that sphere, 124 for a
+  cylinder — and the display mesh and the mass-properties integrator now
+  agree. Both bounds are pinned by tests.
+
+Two consequences are deliberate and pinned rather than papered over. A torus
+is genus 1, so `V - E + F` is 0 and `Solid::checkEulerFormula()` — which has
+no genus term — rejects it; `checkManifold()` and the geometric validator both
+pass, and the tests assert exactly that. And a faceted cylinder exports to
+STEP as planar B-spline faces rather than a rational cylindrical surface: the
+written file is exactly the model in memory. Emitting analytic faces would
+mean un-faceting on export, which is a separate feature, not a property of the
+round trip.
 
 ## Unreleased — Kernel hardening (post-1.0 review response)
 

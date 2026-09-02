@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cctype>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -114,21 +115,56 @@ TEST(StepFormat, BoxRoundTrip) {
     expectSameMassProperties(*box, imported);
 }
 
-TEST(StepFormat, CylinderRoundTripPreservesRationalGeometry) {
+TEST(StepFormat, CylinderRoundTripIsExactForTheFacetedSolid) {
     auto cyl = PrimitiveFactory::makeCylinder(4.0, 12.0);
     ASSERT_NE(cyl, nullptr);
 
+    // Curved primitives are faceted, so a cylinder's faces are planar patches
+    // and the export carries no rational surface.  That is not a loss: the
+    // written model is exactly the model in memory.  Exporting the analytic
+    // surface a facet records (topo::Face::analyticSurface) would mean writing
+    // a cylindrical carrier under a planar quad loop — geometry the file
+    // itself would contradict.  Emitting analytic faces is a separate feature
+    // (un-faceting on export), not a property of the round trip.
     const std::string text = StepFormat::toString(refs(*cyl));
-    // The lateral surface is rational — the complex-instance form must appear.
-    EXPECT_NE(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
+    EXPECT_EQ(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
+    EXPECT_NE(text.find("B_SPLINE_SURFACE_WITH_KNOTS"), std::string::npos);
 
     auto solids = StepFormat::fromString(text);
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
 
     const auto& imported = *solids[0];
     EXPECT_EQ(imported.faceCount(), cyl->faceCount());
+    EXPECT_EQ(imported.vertexCount(), cyl->vertexCount());
+    EXPECT_EQ(imported.edgeCount(), cyl->edgeCount());
     EXPECT_TRUE(imported.isValid()) << imported.validationReport();
     expectSameMassProperties(*cyl, imported);
+}
+
+TEST(StepFormat, RationalGeometrySurvivesTheRoundTrip) {
+    // A rational carrier still round-trips through the complex-instance form;
+    // a revolve keeps one, since Revolve binds the swept surface directly.
+    auto cyl = PrimitiveFactory::makeCylinder(4.0, 12.0);
+    ASSERT_NE(cyl, nullptr);
+    ASSERT_FALSE(cyl->faces().empty());
+
+    // Bind the cylinder each lateral facet records as its analytic surface and
+    // check the writer emits it in rational form.
+    const hz::geo::NurbsSurface* analytic = nullptr;
+    for (const auto& f : cyl->faces()) {
+        if (f.analyticSurface) {
+            analytic = f.analyticSurface.get();
+            break;
+        }
+    }
+    ASSERT_NE(analytic, nullptr) << "lateral facets must record the cylinder they facet";
+
+    auto probe = PrimitiveFactory::makeBox(1.0, 1.0, 1.0);
+    ASSERT_NE(probe, nullptr);
+    const_cast<std::deque<hz::topo::Face>&>(probe->faces()).front().surface =
+        std::make_shared<hz::geo::NurbsSurface>(*analytic);
+    const std::string text = StepFormat::toString(refs(*probe));
+    EXPECT_NE(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
 }
 
 TEST(StepFormat, SphereRoundTrip) {
