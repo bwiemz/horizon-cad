@@ -194,3 +194,34 @@ TEST(BinaryFormatTest, BinaryAndJsonLoadsAgree) {
     EXPECT_EQ(fromBinary.featureTree().featureCount(), fromJson.featureTree().featureCount());
     EXPECT_EQ(fromBinary.sketches().size(), fromJson.sketches().size());
 }
+
+// ---------------------------------------------------------------------------
+// The binary container carries the same JSON envelope, so the faceting
+// resolution added in Phase 88 rides along with it.
+// ---------------------------------------------------------------------------
+
+TEST(BinaryFormatTest, FacetingResolutionSurvivesTheBinaryContainer) {
+    hz::doc::Document original;
+    original.setType(hz::doc::DocumentType::Part);
+    auto sphere = hz::doc::PrimitiveFeature::makeSphere(4.0);
+    ASSERT_TRUE(sphere->setParameter("segments", 40.0));
+    original.featureTree().addFeature(std::move(sphere));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "hz_test_binary_segments.hzb").string();
+    ASSERT_TRUE(hz::io::BinaryFormat::save(path, original));
+
+    hz::doc::Document loaded;
+    ASSERT_TRUE(hz::io::BinaryFormat::load(path, loaded));
+    const auto* prim =
+        dynamic_cast<const hz::doc::PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_EQ(prim->segments(), 40);
+
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}

@@ -7,7 +7,10 @@
 
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
+#include "horizon/modeling/Revolve.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -121,6 +124,11 @@ public:
     bool createsNewBody() const override { return true; }
     const math::Vec3& axisDir() const { return m_axisDir; }
     double angle() const { return m_angle; }
+
+    /// Angular steps per full turn, the "segments" parameter.  This is the
+    /// accuracy knob: a revolve is faceted, so its volume converges to the
+    /// exact value from below as this rises.
+    int segments() const { return m_segments; }
     void restoreFeatureID(const std::string& id) override;
 
 private:
@@ -128,6 +136,7 @@ private:
     math::Vec3 m_axisPoint;
     math::Vec3 m_axisDir;
     double m_angle;
+    int m_segments = model::Revolve::kDefaultSegments;
     std::string m_featureID;
 
     static int s_nextID;
@@ -243,9 +252,15 @@ public:
     double radius() const { return m_radius; }
     const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
 
+    /// Chords across each blend arc, the "arcSegments" parameter.  A blend is
+    /// faceted across its arc, so this is what decides how much material the
+    /// fillet actually removes relative to the exact one.
+    int arcSegments() const { return m_arcSegments; }
+
 private:
     std::vector<topo::TopologyID> m_edgeIds;
     double m_radius;
+    int m_arcSegments = model::FilletOp::kDefaultArcSegments;
     std::string m_featureID;
 
     static int s_nextID;
@@ -377,6 +392,15 @@ public:
     double p1() const { return m_p1; }  ///< Box:height Cyl:height Cone:topR Torus:minR
     double p2() const { return m_p2; }  ///< Box:depth Cone:height
 
+    /// Facets around the axis, the "segments" parameter.  Curved primitives
+    /// are tessellated at construction, so this is the accuracy knob: their
+    /// volumes converge to the analytic value from below as it rises.  A box
+    /// has no such knob and does not report the parameter.
+    int segments() const { return m_segments; }
+
+    /// Whether this kind is faceted, and so has a "segments" parameter.
+    bool isFaceted() const { return m_kind != Kind::Box; }
+
 private:
     PrimitiveFeature() = default;
 
@@ -384,6 +408,7 @@ private:
     double m_p0 = 1.0;
     double m_p1 = 1.0;
     double m_p2 = 1.0;
+    int m_segments = model::PrimitiveFactory::kDefaultSegments;
     std::string m_featureID;
 
     static int s_nextID;

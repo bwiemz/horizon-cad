@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–87)
+## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
@@ -175,6 +175,27 @@ them, and checking why turned up defects rather than missing features.
   each curved band approximates on `Face::analyticSurface`, the circle each
   profile vertex traces on `Edge::analyticCurve`. A band sweeping a flat
   annulus records neither, because its planar carrier is already exact.
+- **Faceting resolution was unreachable from the document (88).** Phases 84–87
+  made resolution the knob that decides how close a faceted solid's volume
+  gets to the exact one — a cylinder at 32 segments is 0.64% under, at 128
+  it is 0.04% — and then left it as a kernel call argument.
+  `PrimitiveFeature`, `RevolveFeature` and `FilletFeature` each hard-coded the
+  default, so no model could ask for a tighter one, no parameter edit could
+  change it, and every reopened file replayed at whatever the build-time
+  default happened to be. Accuracy was, in effect, a compile-time constant.
+
+  The count is now a parameter of the feature that owns it: `segments` on
+  curved primitives and on revolves, `arcSegments` on fillets, reported by
+  `parameters()` and validated by `setParameter()` (three steps is the fewest
+  that bounds a volume; one chord is the degenerate blend that removes a
+  chamfer's worth of material). That is the path the UI's parameter editor and
+  the save format already went through, so it became editable and persistent
+  in one move rather than two. A box is exact, so it reports no resolution and
+  refuses one.
+
+  It is written into the JSON envelope and rides the FlatBuffers container
+  with it. Files written before the field existed simply lack the key and load
+  at the feature's default, which is what they were built with.
 
 ## Unreleased — Kernel hardening (post-1.0 review response)
 
