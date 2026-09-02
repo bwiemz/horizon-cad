@@ -7,6 +7,8 @@
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/Constants.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -582,4 +584,110 @@ TEST(FeatureTreeTest, BuildIgnoresBooleanFeature) {
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
     EXPECT_EQ(solid->faceCount(), 6u);  // Boolean is a no-op in single-solid build
+}
+
+// ---------------------------------------------------------------------------
+// Faceting resolution as a feature parameter (Phase 88)
+//
+// Phases 84-87 made resolution the knob that decides how close a faceted
+// solid's volume gets to the exact one. These tests pin that the knob is
+// reachable through the generic parametric interface — which is what the UI
+// editor and the save format both go through — and that turning it actually
+// moves the geometry.
+// ---------------------------------------------------------------------------
+
+static double volumeOf(const hz::topo::Solid& solid) {
+    return hz::model::MassPropertiesCalculator::compute(solid).volume;
+}
+
+TEST(FeatureTreeTest, CurvedPrimitivesReportSegmentsAndABoxDoesNot) {
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    const auto cylParams = cylinder->parameters();
+    ASSERT_TRUE(cylParams.count("segments"));
+    EXPECT_EQ(static_cast<int>(cylParams.at("segments")), cylinder->segments());
+
+    // A box is exact, so it has no resolution to report and refuses one.
+    auto box = PrimitiveFeature::makeBox(1.0, 2.0, 3.0);
+    EXPECT_EQ(box->parameters().count("segments"), 0u);
+    EXPECT_FALSE(box->setParameter("segments", 64.0));
+}
+
+TEST(FeatureTreeTest, RaisingPrimitiveSegmentsMovesVolumeTowardTheAnalyticValue) {
+    const double exact = hz::math::kPi * 25.0 * 10.0;
+
+    auto coarse = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(coarse->setParameter("segments", 16.0));
+    auto fine = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(fine->setParameter("segments", 128.0));
+
+    auto coarseSolid = coarse->execute(nullptr);
+    auto fineSolid = fine->execute(nullptr);
+    ASSERT_NE(coarseSolid, nullptr);
+    ASSERT_NE(fineSolid, nullptr);
+
+    const double coarseError = exact - volumeOf(*coarseSolid);
+    const double fineError = exact - volumeOf(*fineSolid);
+    EXPECT_GT(coarseError, 0.0) << "an inscribed prism can only undershoot";
+    EXPECT_GT(fineError, 0.0);
+    EXPECT_LT(fineError, coarseError * 0.05);
+}
+
+TEST(FeatureTreeTest, PrimitiveSegmentsBelowThreeAreRefused) {
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    const int before = cylinder->segments();
+    EXPECT_FALSE(cylinder->setParameter("segments", 2.0));
+    EXPECT_FALSE(cylinder->setParameter("segments", 0.0));
+    EXPECT_EQ(cylinder->segments(), before) << "a refused edit must not change the feature";
+}
+
+TEST(FeatureTreeTest, RevolveSegmentsAreAParameterAndChangeTheSolid) {
+    auto sketch = makeOffsetRectSketch();
+    RevolveFeature feature(sketch, Vec3::Zero, Vec3::UnitY, kTwoPi * 0.5);
+
+    const auto params = feature.parameters();
+    ASSERT_TRUE(params.count("segments"));
+    ASSERT_TRUE(params.count("angle"));
+
+    auto coarse = feature.execute(nullptr);
+    ASSERT_NE(coarse, nullptr);
+    ASSERT_TRUE(feature.setParameter("segments", 128.0));
+    auto fine = feature.execute(nullptr);
+    ASSERT_NE(fine, nullptr);
+
+    EXPECT_GT(fine->faceCount(), coarse->faceCount());
+    // Pappus for the half turn of the 5x5 rectangle centred at radius 7.5.
+    const double exact = kTwoPi * 0.5 * 7.5 * 25.0;
+    EXPECT_LT(exact - volumeOf(*fine), exact - volumeOf(*coarse));
+
+    EXPECT_FALSE(feature.setParameter("segments", 2.0));
+}
+
+TEST(FeatureTreeTest, FilletArcSegmentsAreAParameterAndChangeTheMaterialRemoved) {
+    FeatureTree tree;
+    tree.addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    auto box = tree.build();
+    ASSERT_NE(box, nullptr);
+    const auto edgeId = box->edges().front().topoId;
+
+    auto blendedVolume = [&](int arcSegments) {
+        FilletFeature feature(std::vector<hz::topo::TopologyID>{edgeId}, 1.0);
+        EXPECT_TRUE(feature.setParameter("arcSegments", static_cast<double>(arcSegments)));
+        auto input = tree.build();
+        auto out = feature.execute(std::move(input));
+        return out ? volumeOf(*out) : 0.0;
+    };
+
+    // One chord is the degenerate blend: it removes a chamfer's worth of
+    // material. More chords converge on the exact fillet from below.
+    const double exact = 1000.0 - (1.0 - hz::math::kPi / 4.0) * 10.0;
+    const double chord = blendedVolume(1);
+    const double faceted = blendedVolume(16);
+    ASSERT_GT(chord, 0.0);
+    ASSERT_GT(faceted, 0.0);
+    EXPECT_LT(chord, faceted) << "the chord blend cuts away more than the arc does";
+    EXPECT_NEAR(faceted, exact, 0.05);
+
+    FilletFeature feature(std::vector<hz::topo::TopologyID>{edgeId}, 1.0);
+    ASSERT_TRUE(feature.parameters().count("arcSegments"));
+    EXPECT_FALSE(feature.setParameter("arcSegments", 0.0));
 }

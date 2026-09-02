@@ -471,6 +471,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["angle"] = rev->angle();
             fObj["axisPoint"] = {rev->axisPoint().x, rev->axisPoint().y, rev->axisPoint().z};
             fObj["axisDir"] = {rev->axisDir().x, rev->axisDir().y, rev->axisDir().z};
+            fObj["segments"] = rev->segments();
             if (rev->sketch()) fObj["sketchId"] = rev->sketch()->id();
         } else if (const auto* loft = dynamic_cast<const doc::LoftFeature*>(feat)) {
             fObj["type"] = "loft";
@@ -498,6 +499,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         } else if (const auto* fillet = dynamic_cast<const doc::FilletFeature*>(feat)) {
             fObj["type"] = "fillet";
             fObj["radius"] = fillet->radius();
+            fObj["arcSegments"] = fillet->arcSegments();
             json edges = json::array();
             for (const auto& id : fillet->edgeIds()) edges.push_back(id.tag());
             fObj["edges"] = edges;
@@ -566,6 +568,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["p0"] = prim->p0();
             fObj["p1"] = prim->p1();
             fObj["p2"] = prim->p2();
+            if (prim->isFaceted()) fObj["segments"] = prim->segments();
         }
 
         featureTreeArray.push_back(fObj);
@@ -1196,6 +1199,11 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                         }
                     }
                     auto feat = std::make_unique<doc::FilletFeature>(std::move(edges), radius);
+                    // Absent in files written before the resolution was a
+                    // feature property; the feature's own default stands in.
+                    if (fObj.contains("arcSegments")) {
+                        feat->setParameter("arcSegments", fObj["arcSegments"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;
@@ -1294,6 +1302,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     } else {
                         feat = doc::PrimitiveFeature::makeBox(p0, p1, p2);
                     }
+                    if (fObj.contains("segments")) {
+                        feat->setParameter("segments", fObj["segments"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;
@@ -1340,6 +1351,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     }
                     auto feat =
                         std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
+                    if (fObj.contains("segments")) {
+                        feat->setParameter("segments", fObj["segments"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 }

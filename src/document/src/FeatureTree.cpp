@@ -101,12 +101,18 @@ std::string RevolveFeature::name() const {
 }
 
 std::map<std::string, double> RevolveFeature::parameters() const {
-    return {{"angle", m_angle}};
+    return {{"angle", m_angle}, {"segments", static_cast<double>(m_segments)}};
 }
 
 bool RevolveFeature::setParameter(const std::string& name, double value) {
     if (name == "angle" && value > 0.0) {
         m_angle = value;
+        return true;
+    }
+    // A revolve is faceted, so the step count decides how close its volume
+    // gets to the exact one.  Three steps is the fewest that bounds a volume.
+    if (name == "segments" && value >= 3.0) {
+        m_segments = static_cast<int>(value);
         return true;
     }
     return false;
@@ -125,7 +131,7 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
 std::unique_ptr<topo::Solid> RevolveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID);
+                                   m_angle, m_featureID, m_segments);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,7 +354,7 @@ void FilletFeature::restoreFeatureID(const std::string& id) {
 }
 
 std::map<std::string, double> FilletFeature::parameters() const {
-    return {{"radius", m_radius}};
+    return {{"radius", m_radius}, {"arcSegments", static_cast<double>(m_arcSegments)}};
 }
 
 bool FilletFeature::setParameter(const std::string& name, double value) {
@@ -356,12 +362,19 @@ bool FilletFeature::setParameter(const std::string& name, double value) {
         m_radius = value;
         return true;
     }
+    // Blends are faceted across the arc; one chord is the degenerate case that
+    // removes a chamfer's worth of material rather than a fillet's.
+    if (name == "arcSegments" && value >= 1.0) {
+        m_arcSegments = static_cast<int>(value);
+        return true;
+    }
     return false;
 }
 
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
     if (!inputSolid) return nullptr;
-    auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID);
+    auto result =
+        model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID, m_arcSegments);
     return result.solid ? std::move(result.solid) : nullptr;
 }
 
@@ -639,22 +652,41 @@ void PrimitiveFeature::restoreFeatureID(const std::string& id) {
 }
 
 std::map<std::string, double> PrimitiveFeature::parameters() const {
+    std::map<std::string, double> params;
     switch (m_kind) {
         case Kind::Box:
-            return {{"width", m_p0}, {"height", m_p1}, {"depth", m_p2}};
+            params = {{"width", m_p0}, {"height", m_p1}, {"depth", m_p2}};
+            break;
         case Kind::Cylinder:
-            return {{"radius", m_p0}, {"height", m_p1}};
+            params = {{"radius", m_p0}, {"height", m_p1}};
+            break;
         case Kind::Sphere:
-            return {{"radius", m_p0}};
+            params = {{"radius", m_p0}};
+            break;
         case Kind::Cone:
-            return {{"bottomRadius", m_p0}, {"topRadius", m_p1}, {"height", m_p2}};
+            params = {{"bottomRadius", m_p0}, {"topRadius", m_p1}, {"height", m_p2}};
+            break;
         case Kind::Torus:
-            return {{"majorRadius", m_p0}, {"minorRadius", m_p1}};
+            params = {{"majorRadius", m_p0}, {"minorRadius", m_p1}};
+            break;
     }
-    return {};
+    // A box is exact; the curved kinds are tessellated at construction, so the
+    // facet count is a real parameter of the shape rather than a display
+    // setting.  Only they report it.
+    if (isFaceted()) {
+        params["segments"] = static_cast<double>(m_segments);
+    }
+    return params;
 }
 
 bool PrimitiveFeature::setParameter(const std::string& name, double value) {
+    if (name == "segments") {
+        if (!isFaceted() || value < 3.0) {
+            return false;
+        }
+        m_segments = static_cast<int>(value);
+        return true;
+    }
     switch (m_kind) {
         case Kind::Box:
             if (name == "width") return (m_p0 = value, true);
@@ -687,13 +719,13 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(
         case Kind::Box:
             return model::PrimitiveFactory::makeBox(m_p0, m_p1, m_p2);
         case Kind::Cylinder:
-            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1);
+            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1, m_segments);
         case Kind::Sphere:
-            return model::PrimitiveFactory::makeSphere(m_p0);
+            return model::PrimitiveFactory::makeSphere(m_p0, m_segments);
         case Kind::Cone:
-            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2);
+            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2, m_segments);
         case Kind::Torus:
-            return model::PrimitiveFactory::makeTorus(m_p0, m_p1);
+            return model::PrimitiveFactory::makeTorus(m_p0, m_p1, m_segments);
     }
     return nullptr;
 }

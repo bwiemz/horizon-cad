@@ -646,3 +646,125 @@ TEST(PartFormatTest, BooleanFeatureRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// Faceting resolution survives a round trip (Phase 88)
+//
+// The resolution decides how close a faceted solid's volume is to the exact
+// one, so losing it on reload silently changes the part. Files written before
+// it was a feature property carry no such field and must still load.
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, PrimitiveSegmentsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("segments", 96.0));
+    original.featureTree().addFeature(std::move(cylinder));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_primitive_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* prim = dynamic_cast<const PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_EQ(prim->segments(), 96);
+
+    // The reloaded feature must rebuild the same solid, not the default one.
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, RevolveSegmentsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = std::make_shared<Sketch>();
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(5, 0), Vec2(10, 0)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(10, 0), Vec2(10, 5)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(10, 5), Vec2(5, 5)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(5, 5), Vec2(5, 0)));
+    original.addSketch(sketch);
+    auto revolve = std::make_unique<RevolveFeature>(sketch, Vec3::Zero, Vec3::UnitY, 3.14159265);
+    ASSERT_TRUE(revolve->setParameter("segments", 48.0));
+    original.featureTree().addFeature(std::move(revolve));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_revolve_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* rev = dynamic_cast<const RevolveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(rev, nullptr);
+    EXPECT_EQ(rev->segments(), 48);
+
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, FilletArcSegmentsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(PrimitiveFeature::makeBox(10.0, 10.0, 10.0));
+    ASSERT_TRUE(original.rebuildModel());
+    const auto edgeId = original.solid()->edges().front().topoId;
+
+    auto fillet = std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{edgeId}, 1.0);
+    ASSERT_TRUE(fillet->setParameter("arcSegments", 24.0));
+    original.featureTree().addFeature(std::move(fillet));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_fillet_arcsegments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* reloaded = dynamic_cast<const FilletFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(reloaded, nullptr);
+    EXPECT_EQ(reloaded->arcSegments(), 24);
+
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, FilesWithoutResolutionFieldsLoadAtTheFeatureDefaults) {
+    // A part envelope as written before the resolution became a property: the
+    // primitive and fillet entries carry no "segments"/"arcSegments" key.
+    const std::string legacy = R"({
+      "version": 16,
+      "type": "hzpart",
+      "entities": [],
+      "sketches": [],
+      "featureTree": [
+        {"type": "primitive", "primitiveKind": "cylinder", "p0": 5.0, "p1": 10.0, "p2": 1.0,
+         "featureId": "primitive_1"}
+      ]
+    })";
+
+    std::string path = tempPath("hz_test_legacy_resolution.hzpart");
+    {
+        std::ofstream out(path);
+        out << legacy;
+    }
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+    const auto* prim = dynamic_cast<const PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_EQ(prim->segments(), hz::model::PrimitiveFactory::kDefaultSegments);
+    EXPECT_TRUE(loaded.rebuildModel());
+
+    std::remove(path.c_str());
+}
