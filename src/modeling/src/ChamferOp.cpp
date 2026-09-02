@@ -5,10 +5,11 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <vector>
 
-#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
-#include "horizon/topology/EulerOps.h"
+#include "horizon/modeling/SolidSewer.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -48,34 +49,6 @@ static Vec3 faceNormal(const Face* face) {
     return Vec3(0, 0, 1);
 }
 
-static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
-}
-
-static void assignEdgeCurve(Edge* edge) {
-    assert(edge->halfEdge != nullptr);
-    HalfEdge* he = edge->halfEdge;
-    const Vec3& a = he->origin->point;
-    const Vec3& b = he->twin->origin->point;
-    edge->curve = makeLineCurve(a, b);
-}
-
-static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* /*prevOrigin*/ = nullptr) {
-    if (face->outerLoop == nullptr || face->outerLoop->halfEdge == nullptr) {
-        return nullptr;
-    }
-    HalfEdge* start = face->outerLoop->halfEdge;
-    HalfEdge* cur = start;
-    do {
-        if (cur->origin == origin) {
-            return cur;
-        }
-        cur = cur->next;
-    } while (cur != start);
-    return nullptr;
-}
-
 // ---------------------------------------------------------------------------
 // Chamfer geometry for a single edge
 // ---------------------------------------------------------------------------
@@ -95,7 +68,60 @@ struct ChamferEdgeInfo {
     Vec3 v1_offsetB;
     Vec3 v2_offsetA;
     Vec3 v2_offsetB;
+
+    // The chamfer plane as a half-space: material is kept where
+    // dot(p - planePoint, planeNormal) >= 0, so the chamfered edge itself is
+    // on the discarded side.  Corner geometry falls out of intersecting these.
+    Vec3 planePoint;
+    Vec3 planeNormal;
 };
+
+/// Sutherland–Hodgman clip of a planar polygon against a half-space.
+/// Works directly in 3D — the polygon stays in its own plane, so no
+/// projection is needed.  Vertices within @p eps of the plane count as kept,
+/// which is what makes a cut that lands exactly on an existing vertex produce
+/// that vertex rather than a near-duplicate pair.
+static std::vector<Vec3> clipToHalfSpace(const std::vector<Vec3>& poly, const Vec3& planePoint,
+                                         const Vec3& planeNormal, double eps) {
+    std::vector<Vec3> out;
+    const size_t n = poly.size();
+    if (n < 3) {
+        return out;
+    }
+    out.reserve(n + 2);
+    for (size_t i = 0; i < n; ++i) {
+        const Vec3& cur = poly[i];
+        const Vec3& nxt = poly[(i + 1) % n];
+        const double dCur = (cur - planePoint).dot(planeNormal);
+        const double dNxt = (nxt - planePoint).dot(planeNormal);
+        const bool inCur = dCur >= -eps;
+        const bool inNxt = dNxt >= -eps;
+
+        if (inCur) {
+            out.push_back(cur);
+        }
+        if (inCur != inNxt) {
+            const double denom = dCur - dNxt;
+            if (std::abs(denom) > 1e-30) {
+                const double t = dCur / denom;
+                out.push_back(cur + (nxt - cur) * t);
+            }
+        }
+    }
+
+    // Drop points the clip duplicated (a cut through an existing vertex).
+    std::vector<Vec3> deduped;
+    deduped.reserve(out.size());
+    for (const auto& p : out) {
+        if (deduped.empty() || p.distanceTo(deduped.back()) > eps) {
+            deduped.push_back(p);
+        }
+    }
+    while (deduped.size() > 1 && deduped.front().distanceTo(deduped.back()) <= eps) {
+        deduped.pop_back();
+    }
+    return deduped;
+}
 
 static bool computeChamferGeometry(const Edge* edge, double distA, double distB,
                                    ChamferEdgeInfo& info) {
@@ -166,6 +192,19 @@ static bool computeChamferGeometry(const Edge* edge, double distA, double distB,
     info.v2_offsetA = info.v2->point + candidateA * distA;
     info.v2_offsetB = info.v2->point + candidateB * distB;
 
+    // The chamfer plane, oriented so the edge being cut away is outside it.
+    Vec3 normal = (info.v1_offsetB - info.v1_offsetA).cross(info.v2_offsetA - info.v1_offsetA);
+    const double nLen = normal.length();
+    if (nLen < 1e-12) {
+        return false;  // Offsets collapse onto the edge line.
+    }
+    normal = normal * (1.0 / nLen);
+    if ((info.v1->point - info.v1_offsetA).dot(normal) > 0.0) {
+        normal = normal * (-1.0);
+    }
+    info.planePoint = info.v1_offsetA;
+    info.planeNormal = normal;
+
     return true;
 }
 
@@ -204,17 +243,6 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
         chamferEdges.push_back(info);
     }
 
-    // Check for vertex blends.
-    std::set<uint32_t> usedVertices;
-    for (const auto& ce : chamferEdges) {
-        if (usedVertices.count(ce.v1->id) || usedVertices.count(ce.v2->id)) {
-            result.errorMessage = "Vertex blend not supported: two selected edges share a vertex";
-            return result;
-        }
-        usedVertices.insert(ce.v1->id);
-        usedVertices.insert(ce.v2->id);
-    }
-
     // Validate distances against face dimensions.
     for (const auto& ce : chamferEdges) {
         auto vertsA = faceVertices(ce.faceA);
@@ -241,285 +269,178 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
         }
     }
 
-    // Map from original edge id to chamfer info index.
-    std::map<uint32_t, size_t> edgeToChamfer;
+    // Every vertex touched by a chamfer, mapped to the chamfers meeting there.
+    // Two selected edges sharing a vertex is a *vertex blend*: the chamfer
+    // planes cut each other, and the corner is whatever their intersection
+    // leaves.  That is handled uniformly below rather than refused.
+    std::map<uint32_t, std::vector<size_t>> vertexChamfers;
     for (size_t i = 0; i < chamferEdges.size(); ++i) {
-        edgeToChamfer[chamferEdges[i].originalEdge->id] = i;
+        vertexChamfers[chamferEdges[i].v1->id].push_back(i);
+        vertexChamfers[chamferEdges[i].v2->id].push_back(i);
     }
 
-    // Build face data.
-    struct NewFaceData {
-        std::vector<Vec3> vertices;
-        TopologyID topoId;
-        bool isOriginal = true;
-    };
+    double maxOffset = 0.0;
+    for (const auto& ce : chamferEdges) {
+        maxOffset = std::max({maxOffset, ce.v1->point.distanceTo(ce.v1_offsetA),
+                              ce.v1->point.distanceTo(ce.v1_offsetB)});
+    }
+    const double clipEps = 1e-9 * std::max(1.0, maxOffset);
 
-    std::vector<NewFaceData> newFaces;
+    // -----------------------------------------------------------------------
+    // Rewrite every original face loop, then sew.
+    //
+    // A chamfer is a local edit of the boundary polygons: the material a
+    // chamfer removes is the half-space on the far side of its chamfer plane,
+    // so what a corner becomes is just that corner clipped by the planes of
+    // every chamfer meeting there.  Doing it by clipping — rather than by
+    // pasting precomputed offset points into the loop — is what makes vertex
+    // blends work: where two or three chamfers meet, their planes cut each
+    // other and the corner points fall out of the same code path that
+    // produces the single-chamfer offsets.
+    //
+    // The clip runs on a *wedge*: the corner's two loop directions extended
+    // far enough that every cut lands well inside it.  Output points near the
+    // apex are the new corner chain, in loop order; points out at the far
+    // edge are the wedge's own boundary and are dropped.  Working on a local
+    // wedge rather than the whole face keeps a chamfer plane — which is
+    // unbounded — from slicing a distant part of a non-convex face.
+    //
+    // Reconstruction is a SolidSewer sew of the rewritten soup, the same
+    // welding / T-junction / twin-pairing pipeline BooleanOp uses.
+    // -----------------------------------------------------------------------
+
+    std::vector<SolidSewer::InputFace> sewFaces;
+    sewFaces.reserve(inputSolid.faceCount() + chamferEdges.size());
 
     for (const auto& face : inputSolid.faces()) {
-        NewFaceData fd;
+        if (face.outerLoop == nullptr || face.outerLoop->halfEdge == nullptr) {
+            continue;
+        }
+        SolidSewer::InputFace fd;
         fd.topoId = face.topoId;
-        fd.isOriginal = true;
+        // Chamfers cut a face's corners inside its own plane, so every
+        // original face keeps its carrier — only its boundary changes.
+        fd.surface = face.surface;
 
         HalfEdge* start = face.outerLoop->halfEdge;
         HalfEdge* cur = start;
         do {
-            Edge* edge = cur->edge;
-            auto fitIt = edgeToChamfer.find(edge->id);
+            Vertex* v = cur->origin;
+            auto it = vertexChamfers.find(v->id);
+            if (it == vertexChamfers.end()) {
+                fd.points.push_back(v->point);
+                cur = cur->next;
+                continue;
+            }
 
-            if (fitIt != edgeToChamfer.end()) {
-                const auto& ce = chamferEdges[fitIt->second];
-                bool forward = (cur->origin == ce.v1);
-                bool isFaceA = (cur->face == ce.faceA);
+            // The corner wedge, listed in loop order: in from the previous
+            // vertex, through v, out toward the next.
+            const Vec3 prevP = cur->prev->origin->point;
+            const Vec3 nextP = cur->next->origin->point;
+            Vec3 dirIn = prevP - v->point;
+            Vec3 dirOut = nextP - v->point;
+            const double lenIn = dirIn.length();
+            const double lenOut = dirOut.length();
+            if (lenIn < 1e-12 || lenOut < 1e-12) {
+                fd.points.push_back(v->point);
+                cur = cur->next;
+                continue;
+            }
+            const double reach = 64.0 * maxOffset;
+            dirIn = dirIn * (reach / lenIn);
+            dirOut = dirOut * (reach / lenOut);
 
-                if (forward) {
-                    if (isFaceA) {
-                        fd.vertices.push_back(ce.v1_offsetA);
-                        fd.vertices.push_back(ce.v2_offsetA);
-                    } else {
-                        fd.vertices.push_back(ce.v1_offsetB);
-                        fd.vertices.push_back(ce.v2_offsetB);
-                    }
-                } else {
-                    if (isFaceA) {
-                        fd.vertices.push_back(ce.v2_offsetA);
-                        fd.vertices.push_back(ce.v1_offsetA);
-                    } else {
-                        fd.vertices.push_back(ce.v2_offsetB);
-                        fd.vertices.push_back(ce.v1_offsetB);
-                    }
+            std::vector<Vec3> wedge = {v->point + dirIn, v->point, v->point + dirOut};
+            for (size_t ci : it->second) {
+                wedge = clipToHalfSpace(wedge, chamferEdges[ci].planePoint,
+                                        chamferEdges[ci].planeNormal, clipEps);
+                if (wedge.size() < 3) {
+                    break;
                 }
-            } else {
-                fd.vertices.push_back(cur->origin->point);
+            }
+
+            // Keep the points near the apex; the rest are the wedge's own
+            // far boundary, which stands in for the untouched face beyond
+            // this corner.
+            const double nearRadius = reach * 0.5;
+            bool emitted = false;
+            for (const auto& p : wedge) {
+                if (p.distanceTo(v->point) <= nearRadius) {
+                    fd.points.push_back(p);
+                    emitted = true;
+                }
+            }
+            if (!emitted) {
+                // Over-chamfered past this corner: nothing of it survives.
+                // Leave the vertex out; the geometric gate below reports the
+                // damage rather than this loop guessing at a repair.
             }
             cur = cur->next;
         } while (cur != start);
 
-        newFaces.push_back(std::move(fd));
+        if (fd.points.size() >= 3) {
+            sewFaces.push_back(std::move(fd));
+        }
     }
 
-    // Add chamfer faces.
+    // One face per chamfered edge: the quad between the two offset lines,
+    // clipped by the chamfers it meets at either end.  With no blend the clip
+    // is a no-op and the face stays a quad; with a blend it becomes the
+    // pentagon (or triangle) the intersecting planes leave.
     for (size_t i = 0; i < chamferEdges.size(); ++i) {
         const auto& ce = chamferEdges[i];
-        NewFaceData fd;
-        fd.isOriginal = false;
+        SolidSewer::InputFace fd;
         fd.topoId = TopologyID::make(featureID, "chamfer").child(ce.originalEdge->topoId.tag(), 0);
+        fd.points = {ce.v1_offsetA, ce.v2_offsetA, ce.v2_offsetB, ce.v1_offsetB};
 
-        // The chamfer face is a quad: v1_offsetA → v2_offsetA → v2_offsetB → v1_offsetB.
-        fd.vertices.push_back(ce.v1_offsetA);
-        fd.vertices.push_back(ce.v2_offsetA);
-        fd.vertices.push_back(ce.v2_offsetB);
-        fd.vertices.push_back(ce.v1_offsetB);
-
-        newFaces.push_back(std::move(fd));
-    }
-
-    // Collect unique vertex positions.
-    std::vector<Vec3> uniquePositions;
-    std::map<size_t, std::vector<int>> faceVertexIndices;
-
-    auto findOrAddVertex = [&](const Vec3& pos) -> int {
-        for (size_t i = 0; i < uniquePositions.size(); ++i) {
-            if (pos.distanceTo(uniquePositions[i]) < 1e-9) {
-                return static_cast<int>(i);
+        for (const uint32_t vid : {ce.v1->id, ce.v2->id}) {
+            for (size_t other : vertexChamfers[vid]) {
+                if (other == i) {
+                    continue;
+                }
+                fd.points = clipToHalfSpace(fd.points, chamferEdges[other].planePoint,
+                                            chamferEdges[other].planeNormal, clipEps);
             }
         }
-        uniquePositions.push_back(pos);
-        return static_cast<int>(uniquePositions.size() - 1);
-    };
-
-    for (size_t fi = 0; fi < newFaces.size(); ++fi) {
-        std::vector<int> indices;
-        for (const auto& pos : newFaces[fi].vertices) {
-            indices.push_back(findOrAddVertex(pos));
+        if (fd.points.size() < 3) {
+            result.errorMessage = "Chamfer face vanished under an adjacent chamfer for edge: " +
+                                  ce.originalEdge->topoId.tag();
+            return result;
         }
-        faceVertexIndices[fi] = std::move(indices);
+
+        Vec3 areaVec(0, 0, 0);
+        for (size_t k = 0; k < fd.points.size(); ++k) {
+            areaVec = areaVec + fd.points[k].cross(fd.points[(k + 1) % fd.points.size()]);
+        }
+        // Match the input's loop-winding sense rather than assuming one: the
+        // chamfer face sits between faceA and faceB, so its loop normal must
+        // point the same way theirs do.  Deriving the reference from the loops
+        // (not the bound surfaces, whose normals need not agree with the
+        // winding) makes this correct for either convention.
+        const Vec3 reference = GeometryValidator::loopAreaVector(*ce.faceA) +
+                               GeometryValidator::loopAreaVector(*ce.faceB);
+        if (areaVec.dot(reference) < 0.0) {
+            std::reverse(fd.points.begin(), fd.points.end());
+        }
+        sewFaces.push_back(std::move(fd));
     }
 
-    // Build topology with Euler operators.
-    auto solid = std::make_unique<Solid>();
-
-    int numVerts = static_cast<int>(uniquePositions.size());
-    int numFaces = static_cast<int>(newFaces.size());
-    if (numVerts < 4 || numFaces < 4) {
-        result.errorMessage = "Degenerate solid after chamfer";
+    auto solid = SolidSewer::sew(sewFaces);
+    if (solid == nullptr) {
+        result.errorMessage = "Chamfer produced no sewable geometry";
         return result;
     }
-
-    std::vector<Vertex*> verts(numVerts, nullptr);
-
-    auto [v0, fOuter, shell] = euler::makeVertexFaceSolid(*solid, uniquePositions[0]);
-    verts[0] = v0;
-
-    for (int i = 1; i < numVerts; ++i) {
-        HalfEdge* heAt = findHE(fOuter, verts[i - 1]);
-        auto [edge, newV] = euler::makeEdgeVertex(*solid, heAt, fOuter, uniquePositions[i]);
-        verts[i] = newV;
+    if (!solid->checkManifold()) {
+        result.errorMessage = "Chamfer produced non-manifold topology";
+        return result;
     }
-
-    std::set<std::pair<int, int>> existingEdges;
-    for (int i = 0; i + 1 < numVerts; ++i) {
-        existingEdges.insert({i, i + 1});
-        existingEdges.insert({i + 1, i});
-    }
-
-    // Close chain: connect last vertex to first.
-    {
-        int last = numVerts - 1;
-        HalfEdge* heA = findHE(fOuter, verts[last]);
-        HalfEdge* heB = findHE(fOuter, verts[0]);
-        if (heA && heB) {
-            euler::makeEdgeFace(*solid, heA, heB);
-            existingEdges.insert({last, 0});
-            existingEdges.insert({0, last});
-        }
-    }
-
-    // Systematically close faces using MEF with iterative convergence.
-    bool progress = true;
-    int maxIter = numFaces * numVerts;
-    while (progress && maxIter-- > 0) {
-        progress = false;
-        for (size_t fi = 0; fi + 1 < newFaces.size(); ++fi) {
-            const auto& indices = faceVertexIndices[fi];
-            int n = static_cast<int>(indices.size());
-
-            for (int ei = 0; ei < n; ++ei) {
-                int a = indices[ei];
-                int b = indices[(ei + 1) % n];
-                if (existingEdges.count({a, b})) continue;
-
-                Face* targetFace = nullptr;
-                for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
-                    auto fv = faceVertices(&f);
-                    bool hasA = false, hasB = false;
-                    for (auto* fvv : fv) {
-                        if (fvv == verts[a]) hasA = true;
-                        if (fvv == verts[b]) hasB = true;
-                    }
-                    if (hasA && hasB) {
-                        targetFace = &f;
-                        break;
-                    }
-                }
-                if (!targetFace) continue;
-
-                HalfEdge* heA = findHE(targetFace, verts[a]);
-                HalfEdge* heB = findHE(targetFace, verts[b]);
-                if (heA && heB) {
-                    euler::makeEdgeFace(*solid, heA, heB);
-                    existingEdges.insert({a, b});
-                    existingEdges.insert({b, a});
-                    progress = true;
-                }
-            }
-        }
-    }
-
-    // Assign TopologyIDs to faces using vertex-set containment matching.
-    std::set<size_t> assignedNewFaces;
-    for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
-        auto fv = faceVertices(&f);
-        std::vector<Vec3> fvPositions;
-        fvPositions.reserve(fv.size());
-        for (auto* v : fv) {
-            fvPositions.push_back(v->point);
-        }
-        auto containsPoint = [&](const Vec3& p) -> bool {
-            for (const auto& q : fvPositions) {
-                if (p.distanceTo(q) < 1e-6) return true;
-            }
-            return false;
-        };
-
-        double bestDist = 1e30;
-        size_t bestFi = newFaces.size();
-        for (size_t fi = 0; fi < newFaces.size(); ++fi) {
-            if (assignedNewFaces.count(fi)) continue;
-            const auto& nfVerts = newFaces[fi].vertices;
-            bool allFound = true;
-            for (const auto& p : nfVerts) {
-                if (!containsPoint(p)) {
-                    allFound = false;
-                    break;
-                }
-            }
-            if (allFound) {
-                Vec3 centroid(0, 0, 0);
-                for (auto* v : fv) centroid = centroid + v->point;
-                if (!fv.empty()) centroid = centroid * (1.0 / static_cast<double>(fv.size()));
-                Vec3 nfCentroid(0, 0, 0);
-                for (const auto& p : nfVerts) nfCentroid = nfCentroid + p;
-                if (!nfVerts.empty())
-                    nfCentroid = nfCentroid * (1.0 / static_cast<double>(nfVerts.size()));
-                double d = centroid.distanceTo(nfCentroid);
-                if (d < bestDist) {
-                    bestDist = d;
-                    bestFi = fi;
-                }
-            }
-        }
-        if (bestFi < newFaces.size()) {
-            f.topoId = newFaces[bestFi].topoId;
-            assignedNewFaces.insert(bestFi);
-        }
-    }
-
-    // Any face still without a topoId gets a generic derived ID.
-    {
-        int unassigned = 0;
-        for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
-            if (!f.topoId.isValid()) {
-                f.topoId = TopologyID::make(featureID, "face" + std::to_string(unassigned));
-                ++unassigned;
-            }
-        }
-    }
-
-    // Assign edge TopologyIDs.
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
-            ++idx;
-        }
-    }
-
-    // Assign edge curves.
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-        assignEdgeCurve(&e);
-    }
-
-    // Bind NURBS surfaces — ALL planar for chamfer.
-    for (auto& f : const_cast<std::deque<Face>&>(solid->faces())) {
-        auto fv = faceVertices(&f);
-        if (fv.size() < 3) {
-            continue;
-        }
-
-        Vec3 origin = fv[0]->point;
-        Vec3 u = fv[1]->point - fv[0]->point;
-        Vec3 v_dir(0, 0, 0);
-        for (size_t i = 2; i < fv.size(); ++i) {
-            v_dir = fv[i]->point - fv[0]->point;
-            Vec3 cross = u.cross(v_dir);
-            if (cross.length() > 1e-9) {
-                break;
-            }
-        }
-        double uSize = u.length();
-        double vSize = v_dir.length();
-        if (uSize < 1e-12) {
-            uSize = 1.0;
-        }
-        if (vSize < 1e-12) {
-            vSize = 1.0;
-        }
-        Vec3 uDir = u * (1.0 / uSize);
-        Vec3 vDir = v_dir * (1.0 / vSize);
-
-        f.surface = std::make_shared<geo::NurbsSurface>(
-            geo::NurbsSurface::makePlane(origin, uDir, vDir, uSize, vSize));
+    // The whole point of the rebuild: refuse to hand back a solid whose loops
+    // are geometrically inconsistent, however well-formed its linkage is.
+    const auto issues = GeometryValidator::check(*solid);
+    if (!issues.ok()) {
+        result.errorMessage =
+            "Chamfer produced invalid geometry:\n" + GeometryValidator::report(*solid);
+        return result;
     }
 
     result.solid = std::move(solid);

@@ -154,10 +154,10 @@ production-hardened. This table is the truthful per-module picture. Ratings:
 | document / undo | stable | Feature tree + multi-document are newer but well-tested |
 | constraint | stable | Newton-Raphson + LM solver, exercised by sketch tests |
 | geometry (NURBS) | stable | Curves/surfaces/tessellation; Coons patches experimental |
-| topology (B-Rep) | stable | Caveat: validators are combinatorial only — they check twin/Euler structure, not that twin geometry coincides or faces avoid self-intersection |
+| topology (B-Rep) | stable | `Solid::isValid()` is combinatorial (twin/Euler structure); `GeometryValidator` adds the geometric checks — vertex-chain and twin coincidence, degenerate edges/faces, loop planarity against the face's own carrier, self-intersecting loops, shell closure |
 | modeling — Booleans | experimental | BSP-CSG with face splitting, exact fragment classification, coplanar handling, manifold sewing; volumes closed-form-tested. Curved faces participate as their inscribed loop polyhedra (analytic SSI is future work) |
 | modeling — extrude/revolve/primitives/patterns | stable | Exact volumes verified |
-| modeling — fillet/chamfer | prototype | Known defect (pinned in `test_AdversarialModels`): output is combinatorially valid but volume integration is inconsistent; rebuild on `SolidSewer` planned |
+| modeling — fillet/chamfer | experimental | Chamfer rebuilt on `SolidSewer` (Phase 82): volumes are closed-form-exact, including vertex blends where two or three chamfers meet at a corner (Phase 83). Both ops refuse geometrically invalid output. Straight edges of planar-faced solids with orthogonal, convex corners; oblique corners are refused, not mis-built |
 | modeling — loft/sweep/shell/draft | experimental | Core paths tested; complex inputs unverified |
 | modeling — sheet metal | experimental | Validated against analytic bend formulas |
 | fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary, backward compatible v1-v9 |
@@ -255,6 +255,17 @@ system. Deferred-by-design items (Phase 73 CFD, and the productization tail
 of Phase 80 — signed installers, the hosted plugin marketplace,
 SolidWorks/FreeCAD benchmark publication) are called out in the per-phase
 notes and remain future work beyond the code kernel.
+
+### Post-1.0 kernel work
+
+With the roadmap's 80 phases delivered, work continues against the gaps the
+Feature Maturity table names rather than a fixed phase list. Landed so far:
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 81 | Done | Geometric B-Rep validation: `hz::topo::GeometryValidator` closes the "structural checks never read a coordinate" gap — vertex-chain (`he->next->origin == he->twin->origin`) and twin positional coincidence, degenerate edges/faces, loop planarity against the face's own carrier (curved carriers skipped, not guessed at), self-intersecting loops, closed-shell area-vector balance, plus advisory edge-curve and coincident-vertex reports. Pointed at the kernel it immediately found the sharp-cone primitive to be degenerate — `makeCone(r, 0, h)`, which is what the Cone command asks for, collapsed a 4-point ring to a point — now built with apex topology (5V/8E/5F) |
+| 82 | Done | ChamferOp rebuilt on `SolidSewer`: fixes the pinned known defect (a 20mm box with two 2mm chamfers integrated to 3200 instead of 7920) — loop construction is now vertex-driven instead of dropping replaced corners back into the loop, and reconstruction uses the same sewing pipeline as `BooleanOp` instead of an Euler-operator convergence loop that terminated on linkage the polygons never described. Original faces keep their carriers and TopologyIDs. Both ChamferOp and FilletOp now refuse geometrically invalid output |
+| 83 | Done | Chamfer vertex blends: two or three selected edges meeting at a corner. A corner is clipped by the planes of every chamfer meeting there, so blends fall out of the single-chamfer code path with no invented corner patch — the standard planar-chamfer result. Validated against inclusion–exclusion volumes for the union of the cutting prisms; chamfering all twelve edges of a cube yields the chamfered cube (18F/32V) at its exact volume |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

@@ -27,6 +27,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Shell.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
 using hz::draft::DraftEntity;
@@ -43,6 +44,7 @@ using hz::model::MassPropertiesCalculator;
 using hz::model::Pattern;
 using hz::model::PrimitiveFactory;
 using hz::model::Shell;
+using hz::topo::GeometryValidator;
 
 namespace {
 
@@ -131,17 +133,18 @@ TEST(AdversarialModels, NestedPocketsWithBoss) {
 }
 
 // ---------------------------------------------------------------------------
-// KNOWN DEFECT, pinned: ChamferOp emits combinatorially valid topology
-// (manifold + Euler both pass) whose loop *geometry* is inconsistent — the
-// mass-properties integrator reports 3200 for a 20³ box with two 2mm edge
-// chamfers (true value: 7920).  The structural validators cannot catch this
-// because they never compare twin half-edge endpoint positions.
+// ChamferOp: geometry and topology now agree.
 //
-// When ChamferOp/FilletOp are rebuilt on SolidSewer (the way BooleanOp was),
-// flip the volume expectation below to EXPECT_NEAR(..., 7920.0, 1e-6).
+// This case used to pin a known defect — ChamferOp emitted combinatorially
+// valid topology (manifold + Euler both passed) whose loop *geometry* was
+// inconsistent, so the mass-properties integrator reported 3200 for a 20mm
+// box with two 2mm edge chamfers instead of 7920.  Rebuilding the
+// reconstruction on SolidSewer fixed it; the expectation is now the exact
+// closed-form volume, and the drilled follow-up checks a real number rather
+// than merely not crashing.
 // ---------------------------------------------------------------------------
 
-TEST(AdversarialModels, ChamferGeometryDefectIsDocumented) {
+TEST(AdversarialModels, ChamferedBoxHasExactVolume) {
     auto box = PrimitiveFactory::makeBox(20, 20, 20);
     ASSERT_NE(box, nullptr);
 
@@ -161,21 +164,20 @@ TEST(AdversarialModels, ChamferGeometryDefectIsDocumented) {
     ASSERT_NE(chamfered.solid, nullptr) << chamfered.errorMessage;
     EXPECT_EQ(chamfered.solid->faceCount(), 8u);
     EXPECT_TRUE(chamfered.solid->checkManifold());
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*chamfered.solid))
+        << GeometryValidator::report(*chamfered.solid);
 
-    // The defect: structurally valid, geometrically undercounted volume.
-    const double chamferedVolume = volumeOf(*chamfered.solid);
-    EXPECT_LT(chamferedVolume, 7920.0 - 1.0)
-        << "ChamferOp volume became consistent — strengthen this test to "
-           "EXPECT_NEAR(volume, 7920.0, 1e-6) and re-enable drill volume checks";
+    // Each chamfer removes a triangular prism of section (1/2)(2)(2) run 20.
+    EXPECT_NEAR(volumeOf(*chamfered.solid), 8000.0 - 2.0 * 0.5 * 2.0 * 2.0 * 20.0, 1e-6);
 
-    // Robustness smoke: even with geometrically inconsistent input, the
-    // Boolean must not crash and must keep its manifold-output contract.
+    // The chamfered solid is a first-class Boolean operand: drill a 2x2 hole
+    // clear through it, away from the chamfered corners.
     auto drill = PrimitiveFactory::makeBox(2, 2, 40);
     offsetSolid(*drill, Vec3(9, 9, -10));
     auto drilled = BooleanOp::execute(*chamfered.solid, *drill, BooleanType::Subtract);
-    if (drilled != nullptr) {
-        EXPECT_TRUE(drilled->checkManifold()) << drilled->validationReport();
-    }
+    ASSERT_NE(drilled, nullptr);
+    EXPECT_TRUE(drilled->checkManifold()) << drilled->validationReport();
+    EXPECT_NEAR(volumeOf(*drilled), 7920.0 - 2.0 * 2.0 * 20.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -322,4 +324,72 @@ TEST(AdversarialModels, LongBooleanChainStaysManifold) {
         current = std::move(next);
     }
     EXPECT_GT(volume, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Geometric validity of the modeling pipeline.
+//
+// Manifold + Euler are combinatorial: they never look at a coordinate, so a
+// solid can pass both while its loops are self-intersecting, non-planar, or
+// spanning positions its twin half-edges disagree about.  GeometryValidator
+// closes that gap; these cases assert the pipeline's real output clears it.
+// ---------------------------------------------------------------------------
+
+TEST(AdversarialModels, BooleanPipelineOutputIsGeometricallyValid) {
+    auto plate = PrimitiveFactory::makeBox(60, 40, 10);
+    ASSERT_NE(plate, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*plate))
+        << GeometryValidator::report(*plate);
+
+    // Drill a 3x2 hole pattern, then pocket, then boss — the same chain the
+    // volume tests above walk, checked for geometric (not just structural)
+    // integrity at every step.
+    std::unique_ptr<hz::topo::Solid> current = std::move(plate);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            auto drill = PrimitiveFactory::makeBox(4, 4, 30);
+            offsetSolid(*drill, Vec3(10 + i * 16.0, 10 + j * 16.0, -10));
+            auto next = BooleanOp::execute(*current, *drill, BooleanType::Subtract);
+            ASSERT_NE(next, nullptr) << "hole " << i << "," << j;
+            EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*next))
+                << "hole " << i << "," << j << "\n"
+                << GeometryValidator::report(*next);
+            current = std::move(next);
+        }
+    }
+}
+
+TEST(AdversarialModels, ExtrudeAndShellOutputIsGeometricallyValid) {
+    std::vector<std::shared_ptr<DraftEntity>> profile;
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(40, 0)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(40, 0), Vec2(40, 15)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(40, 15), Vec2(15, 15)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(15, 15), Vec2(15, 40)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(15, 40), Vec2(0, 40)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 40), Vec2(0, 0)));
+
+    SketchPlane plane;
+    auto bracket = Extrude::execute(profile, plane, Vec3(0, 0, 1), 12.0, "bracket");
+    ASSERT_NE(bracket, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*bracket))
+        << GeometryValidator::report(*bracket);
+
+    auto box = PrimitiveFactory::makeBox(40, 30, 20);
+    ASSERT_NE(box, nullptr);
+    hz::topo::TopologyID topFace;
+    for (const auto& f : box->faces()) {
+        auto verts = hz::topo::faceVertices(&f);
+        bool allTop = !verts.empty();
+        for (const auto* v : verts) allTop = allTop && v->point.z > 19.9;
+        if (allTop) {
+            topFace = f.topoId;
+            break;
+        }
+    }
+    ASSERT_TRUE(topFace.isValid());
+
+    auto cup = Shell::execute(std::move(box), 2.0, {topFace});
+    ASSERT_NE(cup.solid, nullptr) << cup.message;
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*cup.solid))
+        << GeometryValidator::report(*cup.solid);
 }

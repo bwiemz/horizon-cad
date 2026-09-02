@@ -7,6 +7,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/EulerOps.h"
 #include "horizon/topology/Queries.h"
 
@@ -546,6 +547,62 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius) {
 // makeCone
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Helper: a cone with one radius collapsed to a point.
+//
+// The frustum path builds box topology from two 4-point rings.  When a ring
+// has zero radius its four points coincide, which yields four zero-length
+// edges and a zero-area cap face — a solid that passes the combinatorial
+// validators but is geometric nonsense (and is exactly what the "Cone"
+// command produced, since it asks for topRadius = 0).  A true cone needs
+// apex topology instead: one base quad plus four triangles.
+// ---------------------------------------------------------------------------
+
+static std::unique_ptr<topo::Solid> buildApexCone(double baseRadius, double baseZ, double apexZ,
+                                                  bool apexAbove) {
+    const double r = baseRadius;
+    const double h = std::abs(apexZ - baseZ);
+
+    // The base ring, wound counter-clockwise seen from +Z.
+    const Vec3 ring[4] = {{r, 0, baseZ}, {0, r, baseZ}, {-r, 0, baseZ}, {0, -r, baseZ}};
+    const Vec3 apex(0, 0, apexZ);
+
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(5);
+
+    // Base cap: outward is away from the apex.
+    SolidSewer::InputFace base;
+    if (apexAbove) {
+        base.points = {ring[3], ring[2], ring[1], ring[0]};  // outward −Z
+    } else {
+        base.points = {ring[0], ring[1], ring[2], ring[3]};  // outward +Z
+    }
+    base.topoId = TopologyID::make("cone", "bottom");
+    base.surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makePlane(
+        Vec3(-r, -r, baseZ), Vec3(1, 0, 0), Vec3(0, 1, 0), 2 * r, 2 * r));
+    faces.push_back(std::move(base));
+
+    // The lateral facets share the analytic conical carrier, matching the
+    // frustum path's convention of binding the exact surface to the
+    // four-sided tessellation of the ring.
+    const double halfAngle = std::atan2(r, h);
+    auto coneSurf = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
+        apex, apexAbove ? Vec3(0, 0, -1) : Vec3(0, 0, 1), halfAngle, h));
+
+    for (int i = 0; i < 4; ++i) {
+        SolidSewer::InputFace side;
+        const Vec3& a = ring[i];
+        const Vec3& b = ring[(i + 1) % 4];
+        // Wind so the facet normal points away from the axis.
+        side.points = apexAbove ? std::vector<Vec3>{a, b, apex} : std::vector<Vec3>{b, a, apex};
+        side.topoId = TopologyID::make("cone", "side" + std::to_string(i));
+        side.surface = coneSurf;
+        faces.push_back(std::move(side));
+    }
+
+    return SolidSewer::sew(faces);
+}
+
 std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
                                                         double height) {
     auto solid = std::make_unique<topo::Solid>();
@@ -553,6 +610,21 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
     const double rb = bottomRadius;
     const double rt = topRadius;
     const double h = height;
+
+    // A true cone (one radius collapsed) needs apex topology, not a ring.
+    constexpr double kRingEps = 1e-12;
+    if (rb <= kRingEps && rt <= kRingEps) {
+        return nullptr;  // Both ends degenerate: no solid to build.
+    }
+    if (h <= kRingEps) {
+        return nullptr;  // Zero height.
+    }
+    if (rt <= kRingEps) {
+        return buildApexCone(rb, 0.0, h, /*apexAbove=*/true);
+    }
+    if (rb <= kRingEps) {
+        return buildApexCone(rt, h, 0.0, /*apexAbove=*/false);
+    }
 
     // 4 points on the bottom circle, 4 on the top circle.
     const Vec3 pts[8] = {
@@ -594,19 +666,12 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
     // Compute half-angle from the geometry: tan(halfAngle) = bottomRadius / height.
     // The cone factory takes apex, axis, halfAngle, height (from apex).
     // For a frustum this is approximate — we use the bottom radius cone.
-    if (rb > 1e-12) {
-        double halfAngle = std::atan2(rb, h);
+    // Both radii are non-zero here (the apex cases returned above), so the
+    // frustum's carrier is the cone through the bottom ring.
+    {
+        const double halfAngle = std::atan2(rb, h);
         auto coneSurf = std::make_shared<geo::NurbsSurface>(
             geo::NurbsSurface::makeCone(Vec3(0, 0, h), Vec3(0, 0, -1), halfAngle, h));
-        bb.front->surface = coneSurf;
-        bb.right->surface = coneSurf;
-        bb.back->surface = coneSurf;
-        bb.left->surface = coneSurf;
-    } else {
-        // Degenerate: inverted cone with apex at bottom.
-        double halfAngle = std::atan2(rt, h);
-        auto coneSurf = std::make_shared<geo::NurbsSurface>(
-            geo::NurbsSurface::makeCone(Vec3(0, 0, 0), Vec3(0, 0, 1), halfAngle, h));
         bb.front->surface = coneSurf;
         bb.right->surface = coneSurf;
         bb.back->surface = coneSurf;

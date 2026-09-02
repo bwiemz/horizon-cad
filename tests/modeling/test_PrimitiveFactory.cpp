@@ -2,10 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -155,6 +159,84 @@ TEST(PrimitiveFactoryTest, SphereEulerFormula) {
 // ---------------------------------------------------------------------------
 // Cone tests
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Sharp cone (topRadius == 0): apex topology, not a collapsed ring.
+//
+// The frustum path builds box topology from two 4-point rings.  With a zero
+// radius that ring degenerates to a single point, producing four zero-length
+// edges and a zero-area cap — a solid that passes Euler and manifold checks
+// while being geometric nonsense.  The "Cone" command asks for exactly that
+// shape, so the sharp case gets its own construction.
+// ---------------------------------------------------------------------------
+
+TEST(PrimitiveFactoryTest, SharpConeUsesApexTopology) {
+    auto solid = PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
+    ASSERT_NE(solid, nullptr);
+
+    // Apex topology: 4 base vertices + apex, 4 base edges + 4 lateral, 1 base
+    // quad + 4 triangles.  Euler: 5 - 8 + 5 = 2.
+    EXPECT_EQ(solid->vertexCount(), 5u);
+    EXPECT_EQ(solid->edgeCount(), 8u);
+    EXPECT_EQ(solid->faceCount(), 5u);
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+}
+
+TEST(PrimitiveFactoryTest, SharpConeVolumeMatchesThePyramidItTessellatesTo) {
+    // Four points on the base circle inscribe a square of area 2r^2, so the
+    // faceted cone is a pyramid of volume (1/3) * 2r^2 * h.
+    auto solid = PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
+    ASSERT_NE(solid, nullptr);
+    const auto props = MassPropertiesCalculator::compute(*solid);
+    ASSERT_TRUE(props.valid);
+    EXPECT_NEAR(props.volume, 2.0 * 25.0 * 10.0 / 3.0, 1e-9);
+}
+
+TEST(PrimitiveFactoryTest, InvertedSharpConeUsesApexTopology) {
+    auto solid = PrimitiveFactory::makeCone(0.0, 5.0, 10.0);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->vertexCount(), 5u);
+    EXPECT_EQ(solid->faceCount(), 5u);
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+
+    const auto props = MassPropertiesCalculator::compute(*solid);
+    ASSERT_TRUE(props.valid);
+    EXPECT_NEAR(props.volume, 2.0 * 25.0 * 10.0 / 3.0, 1e-9);
+}
+
+TEST(PrimitiveFactoryTest, FullyDegenerateConeIsRefused) {
+    EXPECT_EQ(PrimitiveFactory::makeCone(0.0, 0.0, 10.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(5.0, 2.0, 0.0), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Every primitive must be geometrically valid, not merely combinatorially so.
+// ---------------------------------------------------------------------------
+
+TEST(PrimitiveFactoryTest, AllPrimitivesAreGeometricallyValid) {
+    struct Case {
+        const char* name;
+        std::unique_ptr<Solid> solid;
+    };
+    std::vector<Case> cases;
+    cases.push_back({"box", PrimitiveFactory::makeBox(2, 3, 4)});
+    cases.push_back({"cylinder", PrimitiveFactory::makeCylinder(2, 5)});
+    cases.push_back({"sphere", PrimitiveFactory::makeSphere(3)});
+    cases.push_back({"frustum", PrimitiveFactory::makeCone(2, 1, 5)});
+    cases.push_back({"sharp cone", PrimitiveFactory::makeCone(2, 0, 5)});
+    cases.push_back({"torus", PrimitiveFactory::makeTorus(5, 2)});
+
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.name);
+        ASSERT_NE(c.solid, nullptr);
+        EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*c.solid))
+            << GeometryValidator::report(*c.solid);
+    }
+}
 
 TEST(PrimitiveFactoryTest, ConeEulerFormula) {
     auto solid = PrimitiveFactory::makeCone(2.0, 1.0, 5.0);

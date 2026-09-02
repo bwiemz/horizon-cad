@@ -13,6 +13,13 @@ namespace hz::topo {
 /// Owns all topological entities via pool-based allocation (std::deque —
 /// push_back never invalidates existing pointers).  Provides validation
 /// helpers including the Euler–Poincaré formula and manifold checks.
+///
+/// The validation here is **combinatorial only**: it inspects twin/next/prev
+/// linkage and entity counts and never reads a coordinate.  A solid can
+/// therefore pass `isValid()` while its loops are self-intersecting,
+/// non-planar, or degenerate.  Geometric validation lives in
+/// `GeometryValidator` (GeometryValidator.h); construction code should gate
+/// on both.
 class Solid {
 public:
     Solid();
@@ -40,7 +47,8 @@ public:
 
     // -- Validation ----------------------------------------------------------
 
-    /// True if the data structure passes all structural checks.
+    /// True if the data structure passes all structural checks.  Structural
+    /// only — see the class note and `GeometryValidator`.
     bool isValid() const;
 
     /// Euler–Poincaré: V - E + F = 2(S - H) where H = total inner-loop count.

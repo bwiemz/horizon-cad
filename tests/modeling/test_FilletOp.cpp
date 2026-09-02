@@ -10,6 +10,7 @@
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -466,4 +467,48 @@ TEST(FilletOpTest, RadiusTooLargeReturnsError) {
     std::vector<TopologyID> edgeIds = {edges.front().topoId};
     auto result = FilletOp::execute(*box, edgeIds, 100.0, "fillet_1");
     EXPECT_FALSE(result.errorMessage.empty());
+}
+
+// ---------------------------------------------------------------------------
+// Geometric validity across the fillet variants.
+//
+// FilletOp assembles its own half-edge structure from a polygon soup (the
+// Phase-61 rewrite), so unlike the old ChamferOp its loops are consistent.
+// These cases assert that across the shapes the suite above produces, using
+// the geometric validator rather than the combinatorial one.
+// ---------------------------------------------------------------------------
+
+TEST(FilletOpTest, AllVariantsAreGeometricallyValid) {
+    using hz::topo::GeometryValidator;
+
+    {
+        SCOPED_TRACE("constant radius, one edge");
+        auto box = PrimitiveFactory::makeBox(10, 10, 10);
+        ASSERT_NE(box, nullptr);
+        auto r = FilletOp::execute(*box, {box->edges().front().topoId}, 2.0, "f");
+        ASSERT_NE(r.solid, nullptr) << r.errorMessage;
+        EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*r.solid))
+            << GeometryValidator::report(*r.solid);
+    }
+    {
+        SCOPED_TRACE("variable radius");
+        auto box = PrimitiveFactory::makeBox(10, 10, 10);
+        ASSERT_NE(box, nullptr);
+        std::vector<RadiusStop> stops = {{0.0, 1.0}, {0.5, 2.0}, {1.0, 1.0}};
+        auto r = FilletOp::executeVariable(*box, {box->edges().front().topoId}, stops, "fv");
+        ASSERT_NE(r.solid, nullptr) << r.errorMessage;
+        EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*r.solid))
+            << GeometryValidator::report(*r.solid);
+    }
+    {
+        SCOPED_TRACE("three-edge corner blend");
+        auto box = PrimitiveFactory::makeBox(10, 10, 10);
+        ASSERT_NE(box, nullptr);
+        const auto ids = edgesAtCorner(*box, Vec3(0, 0, 0));
+        ASSERT_EQ(ids.size(), 3u);
+        auto r = FilletOp::execute(*box, ids, 2.0, "fc");
+        ASSERT_NE(r.solid, nullptr) << r.errorMessage;
+        EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*r.solid))
+            << GeometryValidator::report(*r.solid);
+    }
 }
