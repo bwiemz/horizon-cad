@@ -2033,7 +2033,9 @@ void MainWindow::onRevolveSketch() {
     auto probe = model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir,
                                          angle, "probe");
     if (!probe) {
-        statusBar()->showMessage(tr("Revolve failed: profile is not a closed loop"));
+        statusBar()->showMessage(
+            tr("Revolve failed: the profile must be a closed loop lying to one side of the "
+               "axis, in a plane the axis passes through"));
         return;
     }
 

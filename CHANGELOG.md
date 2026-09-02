@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Geometric validation, the chamfer rebuild, faceted primitives (Phases 81–84)
+## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–87)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
@@ -102,6 +102,79 @@ STEP as planar B-spline faces rather than a rational cylindrical surface: the
 written file is exactly the model in memory. Emitting analytic faces would
 mean un-faceting on export, which is a separate feature, not a property of the
 round trip.
+
+### Blends that work on faceted geometry (85–86)
+
+Faceting the primitives exposed that neither blend operation could act on
+them, and checking why turned up defects rather than missing features.
+
+- **Chamfer capacity measured the wrong thing.** It capped the distance at
+  half the shortest edge of the adjacent face — a proxy that holds for a box
+  and means nothing once faces are faceted. On a 32-sided cylinder the
+  shortest edge is the facet chord, so every chamfer over 0.49 was refused
+  where the geometry is exact past 4.9; it also rejected a 6mm chamfer on a
+  10mm cube that builds correctly. Capacity is now how far the face reaches
+  along the offset direction — a necessary condition that never rejects a
+  distance that would have worked, with the geometric gate doing the real
+  guaranteeing. A cylinder rim now chamfers to the exact truncated cone it
+  removes, at any distance up to the cap's inradius: ten times the old range,
+  bounded by geometry rather than a heuristic.
+- **Vertex identity was inconsistent across the pipeline.** The clip
+  deduplicated at 1e-9 × scale, the sewer welds at an absolute 1e-7, and the
+  geometric validator judges a loop degenerate relative to its own extent. A
+  1.075e-7 segment therefore sewed as legal and validated as degenerate, which
+  is what the "self-intersecting loops" refusals actually were. Clipping now
+  deduplicates against the loop's extent so all three agree; intersections are
+  snapped to the endpoint they land on, since a cut through an existing vertex
+  recomputes it with cancellation; and a segment nearly parallel to the clip
+  plane no longer has an intersection computed at all, the denominator there
+  being the difference of two nearly equal distances. `SolidSewer`'s weld
+  tolerance is a named constant so the two cannot drift apart again.
+- **A fillet's boundary was the chord, not the arc.** The blend was one flat
+  quad joining the two tangent lines, carrying the correct rational-quadratic
+  arc surface — the Phase 84 disease in a second place. Every loop-based path
+  integrated a chamfer while the renderer drew a fillet: `(1/2)r²L` removed
+  instead of `r²(1 − π/4)L`, 2.33 times too much, at every radius. Blends are
+  faceted across the arc now, sampled by spherical interpolation between the
+  two tangent radii so the points are exact on the arc, with the arc patch
+  kept on `Face::analyticSurface`. Corner blends follow the same samples, so
+  the spherical patch matches the arcs it joins instead of spanning them
+  flat. Volume converges quadratically — inside 0.001% at 16 chords — and
+  `analyticSurface` now survives a later operation, which it did not before.
+- **Revolve enclosed zero volume (87).** The builder handled exactly one
+  input: a four-vertex profile turned a full 360°. For it, it rotated the four
+  profile corners to 0° and 180° and built an eight-vertex box from the two
+  quads — which are mirror images of each other through the axis, so the box
+  is inside-out against itself and encloses nothing. It passed every check the
+  suite made (Euler, manifold, `isValid()`, a NURBS surface on all six faces),
+  because no test asked for a volume. A torus surface was pasted on all six
+  faces, including the two that were the profile itself. Every other input
+  returned `nullptr`: any partial angle, any profile that was not a
+  quadrilateral. The UI's Revolve command offers 1–360°, so 359 of its 360
+  settings silently produced nothing.
+
+  Revolve is now a swept ring stack sewn by `SolidSewer`, the same pipeline as
+  the Phase 84 primitives: any closed profile, any angle in (0, 2π], angular
+  resolution tunable per call and derivable from a chord-sag budget with
+  `Revolve::segmentsForTolerance()`. Partial turns are capped at both ends
+  (genus 0); a full turn clear of the axis closes on itself as a genus-1
+  torus, which is manifold but which the genus-free Euler check rejects — the
+  same documented caveat as `makeTorus`. Profile vertices sitting *on* the
+  axis do not move, so their bands collapse to triangles and a profile
+  touching the axis sweeps a proper cone. A profile crossing the axis, or one
+  whose plane the axis does not lie in, is refused rather than swept through
+  itself — one test on the radial vectors catches both.
+
+  Volume converges quadratically to the Pappus value: −9.97% at 8 steps,
+  −2.55% at 16, −0.64% at 32, −0.16% at 64, −0.04% at 128, and a partial turn
+  carries the same relative error as a full one at equal angular resolution.
+  Every band is *exactly* planar — rotating two points about a shared axis
+  leaves all four corners on the plane whose normal combines the angular
+  bisector with the axis — so unlike the fillet blends, no face here needs an
+  approximate carrier. Only the ideals go on the side: the cylinder or cone
+  each curved band approximates on `Face::analyticSurface`, the circle each
+  profile vertex traces on `Edge::analyticCurve`. A band sweeping a flat
+  annulus records neither, because its planar carrier is already exact.
 
 ## Unreleased — Kernel hardening (post-1.0 review response)
 

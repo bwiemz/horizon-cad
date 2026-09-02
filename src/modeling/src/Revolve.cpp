@@ -1,15 +1,16 @@
 #include "horizon/modeling/Revolve.h"
 
-#include <cassert>
+#include <algorithm>
 #include <cmath>
+#include <deque>
 
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftLine.h"
+#include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/ProfileValidator.h"
-#include "horizon/topology/EulerOps.h"
+#include "horizon/modeling/SolidSewer.h"
+#include "horizon/topology/TopologyID.h"
 
 namespace hz::model {
 
@@ -17,284 +18,319 @@ using namespace hz::topo;
 using hz::math::Vec2;
 using hz::math::Vec3;
 
-// ---------------------------------------------------------------------------
-// Helpers (same pattern as Extrude.cpp / PrimitiveFactory.cpp)
-// ---------------------------------------------------------------------------
+namespace {
 
-static HalfEdge* findHE(Face* face, Vertex* origin, Vertex* prevOrigin = nullptr) {
-    if (face->outerLoop == nullptr || face->outerLoop->halfEdge == nullptr) {
-        return nullptr;
-    }
-    HalfEdge* start = face->outerLoop->halfEdge;
-    HalfEdge* cur = start;
-    HalfEdge* fallback = nullptr;
-    do {
-        if (cur->origin == origin) {
-            if (prevOrigin == nullptr) return cur;
-            if (cur->prev->origin == prevOrigin) return cur;
-            fallback = cur;
-        }
-        cur = cur->next;
-    } while (cur != start);
-    return fallback;
-}
+/// Tolerance on the profile-lies-in-a-half-plane test, relative to the
+/// profile's own size so it means the same thing at any modelling scale.
+constexpr double kPlanarityTol = 1e-9;
 
-static std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
-    return std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{a, b}, std::vector<double>{1.0, 1.0},
-                                             std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
-}
-
-static void assignEdgeCurve(Edge* edge) {
-    assert(edge->halfEdge != nullptr);
-    HalfEdge* he = edge->halfEdge;
-    edge->curve = makeLineCurve(he->origin->point, he->twin->origin->point);
-}
-
-// ---------------------------------------------------------------------------
-// Rotate a point around an axis by a given angle (Rodrigues' rotation formula).
-// ---------------------------------------------------------------------------
-
-static Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint, const Vec3& axisDir,
-                             double angle) {
+/// Rotate @p point around the axis through @p axisPoint along @p axisDir
+/// (normalized) by @p angle radians.  Rodrigues' rotation formula.
+Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint, const Vec3& axisDir, double angle) {
     const Vec3 p = point - axisPoint;
-    const Vec3 k = axisDir;  // must be normalized
     const double cosA = std::cos(angle);
     const double sinA = std::sin(angle);
-    // Rodrigues: p*cos(a) + (k x p)*sin(a) + k*(k.p)*(1-cos(a))
-    const Vec3 rotated = p * cosA + k.cross(p) * sinA + k * (k.dot(p) * (1.0 - cosA));
-    return rotated + axisPoint;
+    return axisPoint + p * cosA + axisDir.cross(p) * sinA +
+           axisDir * (axisDir.dot(p) * (1.0 - cosA));
 }
 
-// ---------------------------------------------------------------------------
-// Extract 2D vertices from a closed profile (same as Extrude.cpp).
-// ---------------------------------------------------------------------------
-
-static std::vector<Vec2> extractVertices2D(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges, double tolerance) {
-    std::vector<Vec2> verts;
-    for (const auto& ent : orderedEdges) {
-        Vec2 s, e;
-        if (auto* line = dynamic_cast<draft::DraftLine*>(ent.get())) {
-            s = line->start();
-            e = line->end();
-        } else if (auto* arc = dynamic_cast<draft::DraftArc*>(ent.get())) {
-            s = arc->startPoint();
-            e = arc->endPoint();
-        } else {
-            continue;
-        }
-
-        if (verts.empty()) {
-            verts.push_back(s);
-        } else {
-            const double ds = (verts.back() - s).length();
-            const double de = (verts.back() - e).length();
-            if (de < ds) {
-                std::swap(s, e);
-            }
-        }
-        verts.push_back(e);
-    }
-
-    if (verts.size() >= 2) {
-        if ((verts.back() - verts.front()).length() <= tolerance) {
-            verts.pop_back();
+/// Signed volume of a closed polygon soup (divergence theorem, fan per face).
+double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
+    double vol6 = 0.0;
+    for (const auto& f : faces) {
+        for (size_t i = 1; i + 1 < f.points.size(); ++i) {
+            vol6 += f.points[0].dot(f.points[i].cross(f.points[i + 1]));
         }
     }
-
-    return verts;
+    return vol6 / 6.0;
 }
 
-// ---------------------------------------------------------------------------
-// Box-topology builder (reused from Extrude.cpp for 8V/12E/6F).
-// ---------------------------------------------------------------------------
+/// Normalize a closed soup to outward winding, which is SolidSewer's input
+/// contract.  Deriving the handedness from the enclosed volume beats reasoning
+/// about each loop by hand, which is where winding bugs come from.
+void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
+    if (soupSignedVolume(faces) >= 0.0) {
+        return;
+    }
+    for (auto& f : faces) {
+        std::reverse(f.points.begin(), f.points.end());
+    }
+}
 
-struct BoxBuild {
-    Vertex* v[8] = {};
-    Face* bottom = nullptr;
-    Face* top = nullptr;
-    Face* front = nullptr;
-    Face* right = nullptr;
-    Face* back = nullptr;
-    Face* left = nullptr;
+/// A quad, dropping to a triangle where one side is degenerate — which is
+/// what a profile vertex sitting on the axis produces, since rotating it
+/// leaves it where it was.
+void addQuad(std::vector<SolidSewer::InputFace>& faces, const Vec3& a, const Vec3& b, const Vec3& c,
+             const Vec3& d, const TopologyID& id) {
+    std::vector<Vec3> loop;
+    for (const Vec3& p : {a, b, c, d}) {
+        if (loop.empty() || p.distanceTo(loop.back()) > SolidSewer::kDefaultWeldTol) {
+            loop.push_back(p);
+        }
+    }
+    while (loop.size() > 1 && loop.front().distanceTo(loop.back()) <= SolidSewer::kDefaultWeldTol) {
+        loop.pop_back();
+    }
+    if (loop.size() < 3) {
+        return;
+    }
+    SolidSewer::InputFace f;
+    f.points = std::move(loop);
+    f.topoId = id;
+    faces.push_back(std::move(f));
+}
+
+/// The profile expressed in the half-plane it must lie in: radius from the
+/// axis and signed distance along it.
+struct Cylindrical {
+    double radius = 0.0;
+    double height = 0.0;
 };
 
-static BoxBuild buildBoxTopology(Solid& solid, const Vec3 pts[8]) {
-    BoxBuild b;
+/// The exact surface swept by the profile edge from @p a to @p b.
+///
+/// Only the bands that are curved get one.  A profile edge parallel to the
+/// axis sweeps a cylinder and one oblique to it sweeps a cone, and in both
+/// cases the band's planar carrier is an approximation worth recording the
+/// ideal for.  A profile edge perpendicular to the axis sweeps a flat annulus,
+/// whose carrier plane is already exact — only its rims are approximated, and
+/// those are recorded as edge curves instead.
+std::shared_ptr<geo::NurbsSurface> sweptSurface(const Cylindrical& a, const Cylindrical& b,
+                                                const Vec3& axisPoint, const Vec3& axisDir,
+                                                double tol) {
+    const double dr = b.radius - a.radius;
+    const double dh = b.height - a.height;
 
-    auto [v0, fOuter, shell] = euler::makeVertexFaceSolid(solid, pts[0]);
-    b.v[0] = v0;
+    if (std::abs(dh) <= tol) {
+        return nullptr;  // Flat annulus: the planar carrier is exact.
+    }
+    if (std::abs(dr) <= tol) {
+        const double h0 = std::min(a.height, b.height);
+        return std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCylinder(
+            axisPoint + axisDir * h0, axisDir, a.radius, std::abs(dh)));
+    }
 
-    auto [e01, v1] = euler::makeEdgeVertex(solid, nullptr, fOuter, pts[1]);
-    b.v[1] = v1;
+    // Oblique: a cone whose apex is where the profile edge's line meets the
+    // axis.  Measure the half angle and height at whichever end is wider.
+    const double t = a.radius / (a.radius - b.radius);
+    const double apexH = a.height + t * dh;
+    const Cylindrical& far = (a.radius > b.radius) ? a : b;
+    const double height = far.height - apexH;
+    if (std::abs(height) <= tol) {
+        return nullptr;
+    }
+    const Vec3 coneAxis = (height > 0.0) ? axisDir : axisDir * -1.0;
+    const double halfAngle = std::atan2(far.radius, std::abs(height));
+    return std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
+        axisPoint + axisDir * apexH, coneAxis, halfAngle, std::abs(height)));
+}
 
-    HalfEdge* heAtV1 = findHE(fOuter, v1);
-    auto [e12, v2] = euler::makeEdgeVertex(solid, heAtV1, fOuter, pts[2]);
-    b.v[2] = v2;
+/// Record on every face whose full tag ("source/role") starts with
+/// @p facePrefix the ideal surface its planar facets approximate.
+void tagAnalyticSurface(topo::Solid& solid, const std::string& facePrefix,
+                        const std::shared_ptr<geo::NurbsSurface>& surface) {
+    if (surface == nullptr) {
+        return;
+    }
+    for (auto& f : const_cast<std::deque<Face>&>(solid.faces())) {
+        if (f.topoId.tag().rfind(facePrefix, 0) == 0) {
+            f.analyticSurface = surface;
+        }
+    }
+}
 
-    HalfEdge* heAtV2 = findHE(fOuter, v2);
-    auto [e23, v3] = euler::makeEdgeVertex(solid, heAtV2, fOuter, pts[3]);
-    b.v[3] = v3;
+/// Record on every rim edge — one whose two ends share an axial height and a
+/// radius, so it is a chord of the circle a profile vertex traced — the arc it
+/// approximates.
+void tagRimArcs(topo::Solid& solid, const Vec3& axisPoint, const Vec3& axisDir, double tol) {
+    for (auto& e : const_cast<std::deque<Edge>&>(solid.edges())) {
+        if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr) {
+            continue;
+        }
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
 
-    HalfEdge* heV3_fOuter = findHE(fOuter, v3);
-    HalfEdge* heV0_fOuter = findHE(fOuter, v0);
-    auto [e30, fBottom] = euler::makeEdgeFace(solid, heV3_fOuter, heV0_fOuter);
-    b.bottom = fOuter;
-    Face* fRemaining = fBottom;
+        const double ha = (a - axisPoint).dot(axisDir);
+        const double hb = (b - axisPoint).dot(axisDir);
+        if (std::abs(ha - hb) > tol) {
+            continue;
+        }
+        const Vec3 ca = axisPoint + axisDir * ha;
+        const double ra = (a - ca).length();
+        const double rb = (b - ca).length();
+        if (ra <= tol || std::abs(ra - rb) > tol) {
+            continue;
+        }
+        e.analyticCurve =
+            std::make_shared<geo::NurbsCurve>(geo::NurbsCurve::makeCircle(ca, ra, axisDir));
+    }
+}
 
-    HalfEdge* heV0_fRem = findHE(fRemaining, v0);
-    auto [e04, v4] = euler::makeEdgeVertex(solid, heV0_fRem, fRemaining, pts[4]);
-    b.v[4] = v4;
+}  // namespace
 
-    HalfEdge* heV1_fRem = findHE(fRemaining, v1);
-    auto [e15, v5] = euler::makeEdgeVertex(solid, heV1_fRem, fRemaining, pts[5]);
-    b.v[5] = v5;
+// ---------------------------------------------------------------------------
+// segmentsForTolerance
+// ---------------------------------------------------------------------------
 
-    HalfEdge* heV4_fRem = findHE(fRemaining, v4);
-    HalfEdge* heV5_fRem = findHE(fRemaining, v5);
-    auto [e45_front, fFront] = euler::makeEdgeFace(solid, heV4_fRem, heV5_fRem);
-    b.front = fRemaining;
-    fRemaining = fFront;
-
-    HalfEdge* heV2_fRem = findHE(fRemaining, v2);
-    auto [e26, v6] = euler::makeEdgeVertex(solid, heV2_fRem, fRemaining, pts[6]);
-    b.v[6] = v6;
-
-    HalfEdge* heV5_fRem2 = findHE(fRemaining, v5);
-    HalfEdge* heV6_fRem = findHE(fRemaining, v6);
-    auto [e56_right, fRight] = euler::makeEdgeFace(solid, heV5_fRem2, heV6_fRem);
-    b.right = fRemaining;
-    fRemaining = fRight;
-
-    HalfEdge* heV3_fRem = findHE(fRemaining, v3);
-    auto [e37, v7] = euler::makeEdgeVertex(solid, heV3_fRem, fRemaining, pts[7]);
-    b.v[7] = v7;
-
-    HalfEdge* heV6_fRem2 = findHE(fRemaining, v6);
-    HalfEdge* heV7_fRem = findHE(fRemaining, v7);
-    auto [e67_back, fBack] = euler::makeEdgeFace(solid, heV6_fRem2, heV7_fRem);
-    b.back = fRemaining;
-    fRemaining = fBack;
-
-    HalfEdge* heV7_fRem2 = findHE(fRemaining, v7);
-    HalfEdge* heV4_fRem2 = findHE(fRemaining, v4);
-    auto [e74_left, fLeft] = euler::makeEdgeFace(solid, heV7_fRem2, heV4_fRem2);
-    b.left = fRemaining;
-    b.top = fLeft;
-
-    return b;
+int Revolve::segmentsForTolerance(double radius, double tolerance) {
+    if (!(radius > 0.0) || !(tolerance > 0.0)) {
+        return kDefaultSegments;
+    }
+    const double ratio = 1.0 - tolerance / radius;
+    if (ratio <= -1.0) {
+        return 3;  // Tolerance exceeds the diameter: any polygon will do.
+    }
+    const double n = math::kPi / std::acos(std::min(1.0, ratio));
+    return std::clamp(static_cast<int>(std::ceil(n)), 3, 4096);
 }
 
 // ---------------------------------------------------------------------------
-// Revolve::execute
+// execute
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID) {
-    // -----------------------------------------------------------------------
-    // 1. Validate profile
-    // -----------------------------------------------------------------------
+    const std::string& featureID, int segments) {
+    if (segments < 3 || !(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
+        return nullptr;
+    }
+    if (axisDirection.length() <= 0.0) {
+        return nullptr;
+    }
+    const Vec3 axisDir = axisDirection.normalized();
+
     auto validation = ProfileValidator::validate(profile);
     if (!validation.isClosed) {
         return nullptr;
     }
-
-    const Vec3 axisDir = axisDirection.normalized();
-    constexpr double kTwoPi = 2.0 * 3.14159265358979323846;
-    const bool fullRevolution = (std::abs(angle - kTwoPi) < 1e-6);
-
-    // -----------------------------------------------------------------------
-    // 2. Extract 2D profile vertices and transform to 3D
-    // -----------------------------------------------------------------------
-    std::vector<Vec2> verts2D = extractVertices2D(validation.orderedEdges, 1e-6);
+    const std::vector<Vec2> verts2D =
+        ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
     const size_t N = verts2D.size();
     if (N < 3) {
         return nullptr;
     }
 
-    // Transform vertices to 3D world coordinates.
-    std::vector<Vec3> profilePts3D(N);
+    std::vector<Vec3> profilePts(N);
     for (size_t i = 0; i < N; ++i) {
-        profilePts3D[i] = plane.localToWorld(verts2D[i]);
+        profilePts[i] = plane.localToWorld(verts2D[i]);
     }
 
     // -----------------------------------------------------------------------
-    // 3. Full 360-degree revolve of a rectangle profile -> torus-like solid
-    //    Using box topology (8V, 12E, 6F) — same as PrimitiveFactory::makeTorus.
-    //
-    //    The 4 profile corners are rotated by 0 and 180 degrees to produce
-    //    8 vertices (two quads at opposite sides of the revolution).
+    // The profile must lie in a half-plane bounded by the axis.  A profile
+    // that crosses the axis sweeps through itself, and one whose plane the
+    // axis does not lie in sweeps a self-intersecting shell; both are caught
+    // by requiring every radial vector to point the same way.
     // -----------------------------------------------------------------------
-    if (fullRevolution && N == 4) {
-        const double halfAngle = kTwoPi / 2.0;  // 180 degrees
-
-        // Bottom quad: profile corners at angle=0 (they already are in world space).
-        // Top quad: profile corners rotated 180 degrees around axis.
-        Vec3 pts[8];
-        for (size_t i = 0; i < 4; ++i) {
-            pts[i] = profilePts3D[i];
-            pts[i + 4] = rotateAroundAxis(profilePts3D[i], axisPoint, axisDir, halfAngle);
+    std::vector<Vec3> radial(N);
+    double maxRadius = 0.0;
+    size_t widest = 0;
+    for (size_t i = 0; i < N; ++i) {
+        const Vec3 rel = profilePts[i] - axisPoint;
+        radial[i] = rel - axisDir * rel.dot(axisDir);
+        if (radial[i].length() > maxRadius) {
+            maxRadius = radial[i].length();
+            widest = i;
         }
+    }
+    if (maxRadius <= 0.0) {
+        return nullptr;  // The whole profile lies on the axis.
+    }
+    const double tol = kPlanarityTol * maxRadius;
+    const Vec3 refDir = radial[widest].normalized();
 
-        auto solid = std::make_unique<topo::Solid>();
-        BoxBuild bb = buildBoxTopology(*solid, pts);
-
-        // TopologyIDs
-        bb.bottom->topoId = TopologyID::make(featureID, "lateral_0");
-        bb.top->topoId = TopologyID::make(featureID, "lateral_3");
-        bb.front->topoId = TopologyID::make(featureID, "lateral_1");
-        bb.right->topoId = TopologyID::make(featureID, "inner");
-        bb.back->topoId = TopologyID::make(featureID, "lateral_2");
-        bb.left->topoId = TopologyID::make(featureID, "outer");
-
-        {
-            int idx = 0;
-            for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-                e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
-                ++idx;
-            }
+    std::vector<Cylindrical> cyl(N);
+    for (size_t i = 0; i < N; ++i) {
+        const double r = radial[i].dot(refDir);
+        if (r < -tol || (radial[i] - refDir * r).length() > tol) {
+            return nullptr;  // Crosses the axis, or the axis is off the plane.
         }
+        cyl[i].radius = std::max(0.0, r);
+        cyl[i].height = (profilePts[i] - axisPoint).dot(axisDir);
+    }
 
-        // Edge curves
+    // -----------------------------------------------------------------------
+    // Sweep the profile through the angle, at the same angular resolution a
+    // full turn would use.
+    // -----------------------------------------------------------------------
+    const bool fullTurn = std::abs(angle - 2.0 * math::kPi) <= 1e-9;
+    const int steps = fullTurn
+                          ? segments
+                          : std::max(1, static_cast<int>(std::ceil(static_cast<double>(segments) *
+                                                                   angle / (2.0 * math::kPi))));
+    const size_t ringCount = fullTurn ? static_cast<size_t>(steps) : static_cast<size_t>(steps) + 1;
+
+    std::vector<std::vector<Vec3>> rings(ringCount);
+    for (size_t k = 0; k < ringCount; ++k) {
+        const double a = angle * static_cast<double>(k) / static_cast<double>(steps);
+        rings[k].reserve(N);
+        for (size_t i = 0; i < N; ++i) {
+            rings[k].push_back(rotateAroundAxis(profilePts[i], axisPoint, axisDir, a));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Bands.  Every one of these quads is exactly planar: rotating two points
+    // about a common axis keeps all four on the plane whose normal combines
+    // the angular bisector with the axis, so the faces the sewer builds carry
+    // the surface their loops really lie on.
+    // -----------------------------------------------------------------------
+    std::vector<SolidSewer::InputFace> faces;
+    faces.reserve(ringCount * N + 2);
+
+    for (size_t k = 0; k < ringCount; ++k) {
+        const size_t kNext = (k + 1) % ringCount;
+        if (!fullTurn && kNext == 0) {
+            break;
+        }
+        for (size_t i = 0; i < N; ++i) {
+            const size_t j = (i + 1) % N;
+            addQuad(faces, rings[k][i], rings[k][j], rings[kNext][j], rings[kNext][i],
+                    TopologyID::make(featureID,
+                                     "revolved_" + std::to_string(i) + "_" + std::to_string(k)));
+        }
+    }
+
+    // A partial turn is capped at both ends.  The bands traverse each ring in
+    // profile order, so the starting cap must traverse it the other way for
+    // the shared edges to pair into twins; the ending ring is already opposed.
+    if (!fullTurn) {
+        SolidSewer::InputFace start;
+        start.points.assign(rings.front().rbegin(), rings.front().rend());
+        start.topoId = TopologyID::make(featureID, "cap_start");
+        faces.push_back(std::move(start));
+
+        SolidSewer::InputFace end;
+        end.points = rings.back();
+        end.topoId = TopologyID::make(featureID, "cap_end");
+        faces.push_back(std::move(end));
+    }
+
+    orientOutward(faces);
+    auto solid = SolidSewer::sew(faces);
+    if (solid == nullptr) {
+        return nullptr;
+    }
+
+    // -----------------------------------------------------------------------
+    // Geometry: the ideal each band of facets approximates.
+    // -----------------------------------------------------------------------
+    for (size_t i = 0; i < N; ++i) {
+        const size_t j = (i + 1) % N;
+        tagAnalyticSurface(*solid, featureID + "/revolved_" + std::to_string(i) + "_",
+                           sweptSurface(cyl[i], cyl[j], axisPoint, axisDir, tol));
+    }
+    tagRimArcs(*solid, axisPoint, axisDir, tol);
+
+    {
+        int idx = 0;
         for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            assignEdgeCurve(&e);
+            e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
+            ++idx;
         }
-
-        // Compute the major radius (distance from axis to profile centroid).
-        Vec3 centroid(0, 0, 0);
-        for (size_t i = 0; i < 4; ++i) {
-            centroid = centroid + profilePts3D[i];
-        }
-        centroid = centroid * 0.25;
-        // Project centroid onto axis to find closest point.
-        const Vec3 centroidToAxis = centroid - axisPoint;
-        const Vec3 axisProjection = axisPoint + axisDir * centroidToAxis.dot(axisDir);
-        const double majorRadius = (centroid - axisProjection).length();
-
-        // Minor radius: half the profile diagonal (approximation for
-        // rectangular cross-section).
-        const double minorRadius = (profilePts3D[0] - profilePts3D[2]).length() * 0.5;
-
-        // Toroidal surface for all faces.
-        auto torusSurf = std::make_shared<geo::NurbsSurface>(
-            geo::NurbsSurface::makeTorus(axisProjection, axisDir, majorRadius, minorRadius));
-
-        bb.bottom->surface = torusSurf;
-        bb.top->surface = torusSurf;
-        bb.front->surface = torusSurf;
-        bb.right->surface = torusSurf;
-        bb.back->surface = torusSurf;
-        bb.left->surface = torusSurf;
-
-        return solid;
     }
 
-    // -----------------------------------------------------------------------
-    // 4. Unsupported profile shape or partial revolve — not yet implemented.
-    // -----------------------------------------------------------------------
-    return nullptr;
+    return solid;
 }
 
 }  // namespace hz::model

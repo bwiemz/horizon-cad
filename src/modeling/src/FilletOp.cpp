@@ -213,6 +213,58 @@ static std::shared_ptr<geo::NurbsSurface> makeArcLoft(const FilletEdgeInfo& info
                                                std::move(knotsU), std::move(knotsV), 1, 2);
 }
 
+/// Points along a stop's blend arc, from the faceA tangent to the faceB
+/// tangent, as @p segments chords.
+///
+/// The blend used to be emitted as a single quad joining the two tangent
+/// lines.  It carried the correct rational-quadratic arc surface, but its
+/// *loop* was the chord — and since every loop-based path in the kernel
+/// evaluates a solid from its face loops, mass properties, Booleans,
+/// classification and export all saw a chamfer where the renderer drew a
+/// fillet.  A 10mm cube filleted at r lost (1/2)r^2 L instead of
+/// r^2(1 - pi/4)L: 2.33 times too much material, at every radius.
+///
+/// Sampling the arc makes the boundary agree with the surface.  The points
+/// are exact on the arc — spherical interpolation between the two tangent
+/// radii, not a subdivision of the chord — so the blend inscribes the true
+/// fillet and converges to it as the count rises.
+static std::vector<Vec3> arcSamples(const FilletStop& s, int segments) {
+    std::vector<Vec3> pts;
+    pts.reserve(static_cast<size_t>(segments) + 1);
+
+    const Vec3 a = s.posA - s.arcCenter;
+    const Vec3 b = s.posB - s.arcCenter;
+    const double la = a.length();
+    const double lb = b.length();
+    if (segments < 2 || la < 1e-12 || lb < 1e-12) {
+        pts.push_back(s.posA);
+        pts.push_back(s.posB);
+        return pts;
+    }
+
+    const Vec3 ua = a * (1.0 / la);
+    const Vec3 ub = b * (1.0 / lb);
+    const double cosTheta = std::clamp(ua.dot(ub), -1.0, 1.0);
+    const double theta = std::acos(cosTheta);
+    const double sinTheta = std::sin(theta);
+    if (sinTheta < 1e-12) {
+        pts.push_back(s.posA);
+        pts.push_back(s.posB);
+        return pts;
+    }
+
+    for (int i = 0; i <= segments; ++i) {
+        const double t = static_cast<double>(i) / static_cast<double>(segments);
+        const Vec3 dir =
+            (ua * std::sin((1.0 - t) * theta) + ub * std::sin(t * theta)) * (1.0 / sinTheta);
+        pts.push_back(s.arcCenter + dir * s.r);
+    }
+    // Pin the ends exactly: the corner-blend cycle matches them by position.
+    pts.front() = s.posA;
+    pts.back() = s.posB;
+    return pts;
+}
+
 // ---------------------------------------------------------------------------
 // Corner blends (Phase 61): three filleted edges meeting at a vertex
 // ---------------------------------------------------------------------------
@@ -335,7 +387,7 @@ static bool buildCornerBlend(std::vector<FilletEdgeInfo>& filletEdges,
 // ---------------------------------------------------------------------------
 
 static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeInfo>& filletEdges,
-                                const std::string& featureID) {
+                                const std::string& featureID, int arcSegments) {
     FilletResult result;
 
     // -- Shared-vertex analysis: three edges → corner blend, two → refuse --
@@ -362,22 +414,26 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     }
 
     // -- Validate radius against face dimensions --
+    // Capacity: the blend cannot retract a face further than the face reaches.
+    //
+    // This used to cap the radius at half the shortest edge of either adjacent
+    // face — the same proxy ChamferOp carried, with the same problem.  It
+    // holds for a box and collapses once faces are faceted: on a 32-sided
+    // cylinder the shortest edge is the facet chord, so any radius over half
+    // of that was refused regardless of how much room the face had.  The real
+    // bound is how far the face reaches along the offset direction, and the
+    // geometric gate on the result is what guarantees correctness past this
+    // necessary condition.
     for (const auto& fe : filletEdges) {
-        auto minEdgeLen = [](const std::vector<Vertex*>& verts) -> double {
-            double minLen = 1e30;
-            for (size_t i = 0; i < verts.size(); ++i) {
-                size_t j = (i + 1) % verts.size();
-                double len = verts[i]->point.distanceTo(verts[j]->point);
-                if (len < minLen) {
-                    minLen = len;
-                }
+        const Vec3 onEdge = fe.v1->point;
+        auto reachOf = [&onEdge](const Face* face, const Vec3& dir) {
+            double reach = 0.0;
+            for (const auto* v : faceVertices(face)) {
+                reach = std::max(reach, (v->point - onEdge).dot(dir));
             }
-            return minLen;
+            return reach;
         };
-
-        double minA = minEdgeLen(faceVertices(fe.faceA));
-        double minB = minEdgeLen(faceVertices(fe.faceB));
-        double limit = std::min(minA, minB) * 0.5;
+        const double limit = std::min(reachOf(fe.faceA, fe.offsetA), reachOf(fe.faceB, fe.offsetB));
         if (fe.maxRadius() > limit + 1e-9) {
             result.errorMessage =
                 "Fillet radius too large for edge: " + fe.originalEdge->topoId.tag();
@@ -429,7 +485,10 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         std::vector<Vec3> vertices;
         TopologyID topoId;
         bool isOriginal = true;
-        std::shared_ptr<geo::NurbsSurface> surface;  ///< Prebuilt (fillet/blend faces).
+        std::shared_ptr<geo::NurbsSurface> surface;  ///< Prebuilt (blend faces).
+        /// The ideal surface a faceted band approximates; see
+        /// topo::Face::analyticSurface.  Not the carrier.
+        std::shared_ptr<geo::NurbsSurface> analyticSurface;
     };
 
     std::vector<NewFaceData> newFaces;
@@ -448,6 +507,11 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         fd.topoId = face.topoId;
         fd.isOriginal = true;
         fd.surface = face.surface;
+        // Carry the ideal geometry a face records with it: a blend band from
+        // an earlier operation is still an approximation of its arc, and
+        // dropping that on the next operation would lose the design intent
+        // feature recognition depends on.
+        fd.analyticSurface = face.analyticSurface;
 
         HalfEdge* start = face.outerLoop->halfEdge;
         HalfEdge* cur = start;
@@ -508,8 +572,17 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
                             "Unsupported fillet-end configuration at vertex (non box-like corner)";
                         return result;
                     }
-                    fd.vertices.push_back(tangentOn(fe, v, arrivingFace));
-                    fd.vertices.push_back(tangentOn(fe, v, leavingFace));
+                    // The end face carries the whole arc, not just its chord:
+                    // the blend is faceted across the arc, so anything less
+                    // leaves the two boundaries disagreeing and the shell open.
+                    const FilletStop& end = (fe.v1 == v) ? fe.front() : fe.back();
+                    auto chain = arcSamples(end, arcSegments);  // posA .. posB
+                    if (arrivingFace == fe.faceB) {
+                        std::reverse(chain.begin(), chain.end());
+                    }
+                    for (const auto& p : chain) {
+                        fd.vertices.push_back(p);
+                    }
                     cur = cur->next;
                     continue;
                 }
@@ -528,16 +601,26 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     for (size_t i = 0; i < filletEdges.size(); ++i) {
         const auto& fe = filletEdges[i];
         for (size_t s = 0; s + 1 < fe.stops.size(); ++s) {
-            NewFaceData fd;
-            fd.isOriginal = false;
-            fd.topoId = TopologyID::make(featureID, "fillet")
-                            .child(fe.originalEdge->topoId.tag(), static_cast<int>(s));
-            fd.vertices.push_back(fe.stops[s + 1].posA);
-            fd.vertices.push_back(fe.stops[s].posA);
-            fd.vertices.push_back(fe.stops[s].posB);
-            fd.vertices.push_back(fe.stops[s + 1].posB);
-            fd.surface = makeArcLoft(fe, fe.stops[s], fe.stops[s + 1]);
-            newFaces.push_back(std::move(fd));
+            const auto lo = arcSamples(fe.stops[s], arcSegments);
+            const auto hi = arcSamples(fe.stops[s + 1], arcSegments);
+            const size_t bands = std::min(lo.size(), hi.size()) - 1;
+            // The whole-arc surface stays available as the ideal geometry each
+            // band approximates; the bands themselves carry planar carriers,
+            // synthesized below, that match their loops.
+            auto analytic = makeArcLoft(fe, fe.stops[s], fe.stops[s + 1]);
+            for (size_t j = 0; j < bands; ++j) {
+                NewFaceData fd;
+                fd.isOriginal = false;
+                fd.topoId =
+                    TopologyID::make(featureID, "fillet")
+                        .child(fe.originalEdge->topoId.tag(), static_cast<int>(s * bands + j));
+                fd.vertices.push_back(hi[j]);
+                fd.vertices.push_back(lo[j]);
+                fd.vertices.push_back(lo[j + 1]);
+                fd.vertices.push_back(hi[j + 1]);
+                fd.analyticSurface = analytic;
+                newFaces.push_back(std::move(fd));
+            }
         }
     }
 
@@ -558,23 +641,29 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         // Quad loop [A_next, A_end, B_end, B_next] contains A_end → B_end at
         // the corner end when the corner is at the front (v1) stop, and
         // B_end → A_end when at the back (v2) stop.
+        // Each end arc is now a chain of samples, not one segment, so the
+        // corner loop follows those samples too — otherwise the sphere patch
+        // would be a flat triangle spanning three arcs that are no longer
+        // straight, and its boundary would not match the blends it joins.
         std::map<int, int> arcNext;
+        std::map<int, std::vector<Vec3>> arcInterior;
         bool arcsOk = true;
         for (size_t k : b.edgeIndices) {
             const auto& fe = filletEdges[k];
             const bool atFront = (fe.v1 == b.vertex);
             const FilletStop& end = atFront ? fe.front() : fe.back();
-            const int a = keyOf(end.posA);
-            const int c = keyOf(end.posB);
+            auto chain = arcSamples(end, arcSegments);
+            if (!atFront) {
+                std::reverse(chain.begin(), chain.end());  // quad traverses B_end → A_end
+            }
+            const int a = keyOf(chain.front());
+            const int c = keyOf(chain.back());
             if (a < 0 || c < 0) {
                 arcsOk = false;
                 break;
             }
-            if (atFront) {
-                arcNext[a] = c;  // quad traverses A_end → B_end
-            } else {
-                arcNext[c] = a;  // quad traverses B_end → A_end
-            }
+            arcNext[a] = c;
+            arcInterior[a] = std::vector<Vec3>(chain.begin() + 1, chain.end() - 1);
         }
         if (!arcsOk || arcNext.size() != 3) {
             result.errorMessage = "Vertex blend arcs do not form a corner cycle";
@@ -601,9 +690,17 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         NewFaceData fd;
         fd.isOriginal = false;
         fd.topoId = TopologyID::make(featureID, "blend").child("corner", static_cast<int>(bi));
-        for (auto it = cycle.rbegin(); it != cycle.rend(); ++it) {
-            fd.vertices.push_back(b.cornerPoints[static_cast<size_t>(*it)]);
+        // Reverse the cycle for the sphere loop, carrying each chain's
+        // interior samples with it.
+        std::vector<Vec3> forward;
+        for (int key : cycle) {
+            forward.push_back(b.cornerPoints[static_cast<size_t>(key)]);
+            const auto it = arcInterior.find(key);
+            if (it != arcInterior.end()) {
+                forward.insert(forward.end(), it->second.begin(), it->second.end());
+            }
         }
+        fd.vertices.assign(forward.rbegin(), forward.rend());
         fd.surface = std::make_shared<geo::NurbsSurface>(
             geo::NurbsSurface::makeSphere(b.sphereCenter, b.radius));
         newFaces.push_back(std::move(fd));
@@ -745,6 +842,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     // -- Bind NURBS surfaces (faces map 1:1 to the emitted loops) --
     for (size_t fi = 0; fi < builtFaces.size(); ++fi) {
         Face* f = builtFaces[fi];
+        f->analyticSurface = newFaces[fi].analyticSurface;
         if (newFaces[fi].surface != nullptr) {
             f->surface = newFaces[fi].surface;
             continue;
@@ -816,7 +914,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 // ---------------------------------------------------------------------------
 
 FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
-                               double radius, const std::string& featureID) {
+                               double radius, const std::string& featureID, int arcSegments) {
     FilletResult result;
 
     if (radius <= 0.0) {
@@ -848,12 +946,12 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
         filletEdges.push_back(std::move(info));
     }
 
-    return executeCore(inputSolid, filletEdges, featureID);
+    return executeCore(inputSolid, filletEdges, featureID, arcSegments);
 }
 
 FilletResult FilletOp::executeVariable(const Solid& inputSolid, const TopologyID& edgeId,
                                        const std::vector<RadiusStop>& stops,
-                                       const std::string& featureID) {
+                                       const std::string& featureID, int arcSegments) {
     FilletResult result;
 
     if (stops.size() < 2) {
@@ -892,7 +990,7 @@ FilletResult FilletOp::executeVariable(const Solid& inputSolid, const TopologyID
 
     std::vector<FilletEdgeInfo> filletEdges;
     filletEdges.push_back(std::move(info));
-    return executeCore(inputSolid, filletEdges, featureID);
+    return executeCore(inputSolid, filletEdges, featureID, arcSegments);
 }
 
 }  // namespace hz::model

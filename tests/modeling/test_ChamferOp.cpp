@@ -5,12 +5,14 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 
+using hz::math::kPi;
 using hz::model::ChamferOp;
 using hz::model::ChamferResult;
 using hz::model::MassPropertiesCalculator;
@@ -347,8 +349,124 @@ TEST(ChamferOpTest, InvalidInputsAreRefused) {
 
     EXPECT_EQ(ChamferOp::executeEqual(*box, edgeIds, 0.0, "c").solid, nullptr);
     EXPECT_EQ(ChamferOp::executeEqual(*box, {}, 1.0, "c").solid, nullptr);
-    // Half the shortest adjacent edge is the cap; 10 is far past it.
-    EXPECT_EQ(ChamferOp::executeEqual(*box, edgeIds, 10.0, "c").solid, nullptr);
+    // The cap is the width of the adjacent face, so a 10mm offset on a 10mm
+    // box is the extreme case that still builds (it bisects the cube); past
+    // that the offset edge has left the face.
+    EXPECT_NE(ChamferOp::executeEqual(*box, edgeIds, 10.0, "c").solid, nullptr);
+    EXPECT_EQ(ChamferOp::executeEqual(*box, edgeIds, 10.5, "c").solid, nullptr);
     EXPECT_EQ(ChamferOp::executeEqual(*box, {TopologyID::make("nope", "edge")}, 1.0, "c").solid,
               nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Chamfering faceted geometry.
+//
+// Curved primitives are faceted (Phase 84), so "chamfer the rim of a boss" is
+// a chain of facet edges meeting two-at-a-vertex — the vertex-blend case.
+// Two things used to make that impossible:
+//
+//  * the capacity check capped the distance at half the shortest edge of the
+//    adjacent face, which on a 32-sided cylinder is the facet chord (0.98 at
+//    r = 5), refusing anything over 0.49; and
+//  * the clip deduplicated at a tighter tolerance than the sewer welds at, so
+//    near-coincident points survived into loops as sub-tolerance segments that
+//    read downstream as self-intersecting.
+//
+// The removed material is a truncated cone over the facet cap, which has a
+// closed form: for an n-gon cap of circumradius R the area is
+// k*R^2 with k = (n/2) sin(2pi/n), and the frustum between R and the shrunken
+// R' takes the usual (h/3)(A + sqrt(AA') + A') form.  Because both areas share
+// k, that reduces to the expression below.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<TopologyID> topRimEdges(const hz::topo::Solid& solid, double z) {
+    std::vector<TopologyID> rim;
+    for (const auto& e : solid.edges()) {
+        if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
+        const auto& a = e.halfEdge->origin->point;
+        const auto& b = e.halfEdge->twin->origin->point;
+        if (a.z > z - 1e-6 && b.z > z - 1e-6) rim.push_back(e.topoId);
+    }
+    return rim;
+}
+
+/// Material a rim chamfer of distance d removes from an n-faceted cylinder.
+double rimChamferWedge(double r, double d, int n) {
+    const double k = 0.5 * n * std::sin(2.0 * kPi / n);
+    const double apothemRatio = std::cos(kPi / n);
+    const double rIn = r - d / apothemRatio;
+    return d * (k * r * r) - (d / 3.0) * (k * (r * r + r * rIn + rIn * rIn));
+}
+
+}  // namespace
+
+TEST(ChamferOpTest, CylinderRimChamferMatchesTheTruncatedConeItRemoves) {
+    const double r = 5.0;
+    const double h = 10.0;
+    const int n = PrimitiveFactory::kDefaultSegments;
+
+    for (double d : {0.1, 0.5, 1.0, 2.0, 4.0}) {
+        SCOPED_TRACE(d);
+        auto cyl = PrimitiveFactory::makeCylinder(r, h, n);
+        ASSERT_NE(cyl, nullptr);
+        const double before = MassPropertiesCalculator::compute(*cyl).volume;
+
+        const auto rim = topRimEdges(*cyl, h);
+        ASSERT_EQ(rim.size(), static_cast<size_t>(n));
+
+        auto result = ChamferOp::executeEqual(*cyl, rim, d, "rim");
+        ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+        EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+            << hz::topo::GeometryValidator::report(*result.solid);
+
+        // Two faces per facet plus the two caps: the cap survives, each lateral
+        // facet survives, and each facet edge gains a chamfer face.
+        EXPECT_EQ(result.solid->faceCount(), static_cast<size_t>(2 * n + 2));
+
+        const double removed = before - MassPropertiesCalculator::compute(*result.solid).volume;
+        EXPECT_NEAR(removed, rimChamferWedge(r, d, n), 1e-6);
+    }
+}
+
+TEST(ChamferOpTest, RimChamferReachesTheGeometricLimitNotAnEdgeLengthProxy) {
+    // The cap's inradius is what actually bounds a rim chamfer: past it the
+    // cap has nothing left.  The old proxy stopped at half a facet chord,
+    // roughly a tenth of that.
+    const double r = 5.0;
+    const int n = PrimitiveFactory::kDefaultSegments;
+    const double capInradius = r * std::cos(kPi / n);
+    EXPECT_GT(capInradius, 4.9);
+
+    auto atDistance = [&](double d) {
+        auto cyl = PrimitiveFactory::makeCylinder(r, 10.0, n);
+        return ChamferOp::executeEqual(*cyl, topRimEdges(*cyl, 10.0), d, "rim").solid != nullptr;
+    };
+
+    EXPECT_TRUE(atDistance(0.49)) << "the old proxy's ceiling";
+    EXPECT_TRUE(atDistance(2.0)) << "four times the old ceiling";
+    EXPECT_TRUE(atDistance(capInradius - 0.08)) << "up against the real limit";
+    EXPECT_FALSE(atDistance(capInradius + 0.5)) << "past the cap, refused";
+}
+
+TEST(ChamferOpTest, CapacityIsTheFaceWidthNotHalfItsShortestEdge) {
+    // A 10mm chamfer on a 10mm cube bisects it — the extreme case that still
+    // builds.  The old check refused anything over 5.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    ASSERT_NE(box, nullptr);
+    const auto edgeIds = std::vector<TopologyID>{box->edges().front().topoId};
+
+    for (double d : {6.0, 9.9}) {
+        SCOPED_TRACE(d);
+        auto result = ChamferOp::executeEqual(*box, edgeIds, d, "c");
+        ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+        EXPECT_NEAR(MassPropertiesCalculator::compute(*result.solid).volume,
+                    1000.0 - 0.5 * d * d * 10.0, 1e-9);
+        EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid));
+    }
+
+    auto past = ChamferOp::executeEqual(*box, edgeIds, 10.5, "c");
+    EXPECT_EQ(past.solid, nullptr);
+    EXPECT_NE(past.errorMessage.find("exceeds the width"), std::string::npos) << past.errorMessage;
 }
