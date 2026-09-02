@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Geometric validation, the chamfer rebuild, faceted primitives (Phases 81–84)
+## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–86)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
@@ -102,6 +102,45 @@ STEP as planar B-spline faces rather than a rational cylindrical surface: the
 written file is exactly the model in memory. Emitting analytic faces would
 mean un-faceting on export, which is a separate feature, not a property of the
 round trip.
+
+### Blends that work on faceted geometry (85–86)
+
+Faceting the primitives exposed that neither blend operation could act on
+them, and checking why turned up defects rather than missing features.
+
+- **Chamfer capacity measured the wrong thing.** It capped the distance at
+  half the shortest edge of the adjacent face — a proxy that holds for a box
+  and means nothing once faces are faceted. On a 32-sided cylinder the
+  shortest edge is the facet chord, so every chamfer over 0.49 was refused
+  where the geometry is exact past 4.9; it also rejected a 6mm chamfer on a
+  10mm cube that builds correctly. Capacity is now how far the face reaches
+  along the offset direction — a necessary condition that never rejects a
+  distance that would have worked, with the geometric gate doing the real
+  guaranteeing. A cylinder rim now chamfers to the exact truncated cone it
+  removes, at any distance up to the cap's inradius: ten times the old range,
+  bounded by geometry rather than a heuristic.
+- **Vertex identity was inconsistent across the pipeline.** The clip
+  deduplicated at 1e-9 × scale, the sewer welds at an absolute 1e-7, and the
+  geometric validator judges a loop degenerate relative to its own extent. A
+  1.075e-7 segment therefore sewed as legal and validated as degenerate, which
+  is what the "self-intersecting loops" refusals actually were. Clipping now
+  deduplicates against the loop's extent so all three agree; intersections are
+  snapped to the endpoint they land on, since a cut through an existing vertex
+  recomputes it with cancellation; and a segment nearly parallel to the clip
+  plane no longer has an intersection computed at all, the denominator there
+  being the difference of two nearly equal distances. `SolidSewer`'s weld
+  tolerance is a named constant so the two cannot drift apart again.
+- **A fillet's boundary was the chord, not the arc.** The blend was one flat
+  quad joining the two tangent lines, carrying the correct rational-quadratic
+  arc surface — the Phase 84 disease in a second place. Every loop-based path
+  integrated a chamfer while the renderer drew a fillet: `(1/2)r²L` removed
+  instead of `r²(1 − π/4)L`, 2.33 times too much, at every radius. Blends are
+  faceted across the arc now, sampled by spherical interpolation between the
+  two tangent radii so the points are exact on the arc, with the arc patch
+  kept on `Face::analyticSurface`. Corner blends follow the same samples, so
+  the spherical patch matches the arcs it joins instead of spanning them
+  flat. Volume converges quadratically — inside 0.001% at 16 chords — and
+  `analyticSurface` now survives a later operation, which it did not before.
 
 ## Unreleased — Kernel hardening (post-1.0 review response)
 

@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
@@ -16,6 +17,7 @@
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
+using hz::math::kPi;
 using hz::math::Vec3;
 using hz::model::FilletOp;
 using hz::model::FilletResult;
@@ -231,9 +233,10 @@ TEST(FilletOpTest, VariableRadiusFilletProducesValidSolid) {
     EXPECT_TRUE(result.solid->checkEulerFormula());
     EXPECT_TRUE(result.solid->checkManifold());
 
-    // The fillet surface is a ruled loft between two quarter arcs.  A quarter
-    // arc of radius r spans a chord of r·√2, so the two ends of the loft must
-    // measure the two stop radii.
+    // The radius really varies along the edge.  The blend is faceted across
+    // its arc, so the span to measure is the arc a band records rather than
+    // the band itself: a quarter arc of radius r spans a chord of r·√2, and
+    // the loft's two ends must measure the two stop radii.
     const hz::topo::Face* filletFace = nullptr;
     for (const auto& f : result.solid->faces()) {
         if (f.topoId.tag().find("/fillet/") != std::string::npos) {
@@ -242,8 +245,8 @@ TEST(FilletOpTest, VariableRadiusFilletProducesValidSolid) {
         }
     }
     ASSERT_NE(filletFace, nullptr);
-    ASSERT_NE(filletFace->surface, nullptr);
-    const auto& s = *filletFace->surface;
+    ASSERT_NE(filletFace->analyticSurface, nullptr);
+    const auto& s = *filletFace->analyticSurface;
     const double chord0 = s.evaluate(s.uMin(), s.vMin()).distanceTo(s.evaluate(s.uMin(), s.vMax()));
     const double chord1 = s.evaluate(s.uMax(), s.vMin()).distanceTo(s.evaluate(s.uMax(), s.vMax()));
     const double kSqrt2 = 1.4142135623730951;
@@ -261,12 +264,12 @@ TEST(FilletOpTest, MultiStopVariableRadiusMakesOneFacePerSegment) {
     ASSERT_NE(result.solid, nullptr);
     EXPECT_TRUE(result.solid->checkEulerFormula());
 
-    // Two radius segments → two fillet faces.
+    // Two radius segments, each faceted across its blend arc.
     int filletFaces = 0;
     for (const auto& f : result.solid->faces()) {
         if (f.topoId.tag().find("/fillet/") != std::string::npos) ++filletFaces;
     }
-    EXPECT_EQ(filletFaces, 2);
+    EXPECT_EQ(filletFaces, 2 * FilletOp::kDefaultArcSegments);
 }
 
 TEST(FilletOpTest, VariableRadiusValidatesStops) {
@@ -304,8 +307,9 @@ TEST(FilletOpTest, ThreeEdgeCornerBlendProducesSphericalPatch) {
     EXPECT_TRUE(result.solid->checkEulerFormula());
     EXPECT_TRUE(result.solid->checkManifold());
 
-    // 6 original + 3 fillet + 1 spherical blend face.
-    EXPECT_EQ(result.solid->faceCount(), 10u);
+    // 6 original + 3 faceted fillets + 1 spherical blend face.
+    const auto n = static_cast<size_t>(FilletOp::kDefaultArcSegments);
+    EXPECT_EQ(result.solid->faceCount(), 6 + 3 * n + 1);
 
     // Exactly one face carries the blend TopologyID, with a spherical surface
     // centered one radius along each edge from the original corner.
@@ -319,13 +323,14 @@ TEST(FilletOpTest, ThreeEdgeCornerBlendProducesSphericalPatch) {
         const Vec3 onSurface = f.surface->evaluate(midU, midV);
         EXPECT_NEAR(onSurface.distanceTo(Vec3(2.0, 2.0, 2.0)), 2.0, 1e-6);
 
-        // The blend face's three corners are the pairwise-shared tangent
-        // points of the trimmed fillets.
+        // The blend spans the three trimmed fillet ends.  Those ends are arcs
+        // now, so the patch follows them: one chain of samples per arc, every
+        // sample on the blend sphere.
         auto fv = hz::topo::faceVertices(&f);
-        ASSERT_EQ(fv.size(), 3u);
+        EXPECT_EQ(fv.size(), 3 * n);
         for (const auto* v : fv) {
             EXPECT_NEAR(v->point.distanceTo(Vec3(2.0, 2.0, 2.0)), 2.0, 1e-9)
-                << "corner point not on the blend sphere";
+                << "blend boundary point not on the blend sphere";
         }
     }
     EXPECT_EQ(blendFaces, 1);
@@ -434,18 +439,32 @@ TEST(FilletOpTest, SequentialFilletsKeepCurvedFaces) {
     ASSERT_NE(step2.solid, nullptr) << step2.errorMessage;
     EXPECT_TRUE(step2.solid->checkEulerFormula());
 
-    // The first fillet's face still curves: its normal swings ~90° across V.
-    bool foundCurved = false;
+    // The first fillet still curves, and survives the second operation.  Its
+    // bands are planar by construction — that is what makes the boundary agree
+    // with the volume — so the curvature shows up two ways: consecutive band
+    // normals swing across the arc, and each band still records the true arc
+    // patch it approximates.
+    std::vector<Vec3> bandNormals;
     for (const auto& f : step2.solid->faces()) {
         if (f.topoId.tag().find("f1/fillet/") == std::string::npos) continue;
         ASSERT_NE(f.surface, nullptr);
         const double uMid = (f.surface->uMin() + f.surface->uMax()) / 2.0;
-        const Vec3 n0 = f.surface->normal(uMid, f.surface->vMin() + 1e-6);
-        const Vec3 n1 = f.surface->normal(uMid, f.surface->vMax() - 1e-6);
-        EXPECT_LT(n0.dot(n1), 0.5) << "fillet face was flattened to a plane";
-        foundCurved = true;
+        const double vMid = (f.surface->vMin() + f.surface->vMax()) / 2.0;
+        bandNormals.push_back(f.surface->normal(uMid, vMid).normalized());
+
+        ASSERT_NE(f.analyticSurface, nullptr) << "band lost the arc it approximates";
+        const double au = (f.analyticSurface->uMin() + f.analyticSurface->uMax()) / 2.0;
+        const Vec3 a0 = f.analyticSurface->normal(au, f.analyticSurface->vMin() + 1e-6);
+        const Vec3 a1 = f.analyticSurface->normal(au, f.analyticSurface->vMax() - 1e-6);
+        EXPECT_LT(a0.dot(a1), 0.5) << "the recorded arc patch is flat";
     }
-    EXPECT_TRUE(foundCurved);
+    ASSERT_GE(bandNormals.size(), 2u) << "the blend should survive as several bands";
+
+    double widest = 1.0;
+    for (const auto& a : bandNormals) {
+        for (const auto& b : bandNormals) widest = std::min(widest, std::abs(a.dot(b)));
+    }
+    EXPECT_LT(widest, 0.5) << "the band chain does not turn — the blend was flattened";
 }
 
 // ---------------------------------------------------------------------------
@@ -516,56 +535,73 @@ TEST(FilletOpTest, AllVariantsAreGeometricallyValid) {
 }
 
 // ---------------------------------------------------------------------------
-// KNOWN DEFECT, pinned: a fillet's boundary is the chord, not the arc.
+// A fillet's boundary follows the arc.
 //
-// FilletOp emits one face per blend and binds it the correct rational
-// quadratic surface — degree 2 in V with three control points, a genuine
-// cylindrical patch.  Its *loop*, though, is a flat quad joining the two
-// tangent lines directly.  Since every loop-based path in the kernel (mass
-// properties, Booleans, classification, export) evaluates a solid from its
-// face loops, all of them see a chamfer while the renderer, which follows the
-// bound surface, draws a round fillet.
+// The blend used to be one flat quad joining the two tangent lines.  It
+// carried the correct rational quadratic surface, but its *loop* was the
+// chord, and since every loop-based path in the kernel evaluates a solid from
+// its face loops, mass properties, Booleans, classification and export all saw
+// a chamfer while the renderer drew a fillet: (1/2)r^2 L removed instead of
+// r^2(1 - pi/4)L, 2.33 times too much, at every radius.
 //
-// The error is not marginal.  Filleting one edge of a 10mm cube at r should
-// remove r^2(1 - pi/4)L; the chord removes (1/2)r^2 L instead — 2.33 times too
-// much material, at every radius.
-//
-// This is the same defect class as the faceted-primitive work in Phase 84: an
-// analytic surface pasted onto a coarse loop, so display and computation
-// disagree.  The fix is the same shape too — facet the blend to a tolerance
-// and record the true cylinder in Face::analyticSurface.  When that lands,
-// flip the expectation below to the arc formula.
+// The blend is faceted across the arc now.  The facets inscribe the true
+// fillet, so the volume approaches the exact value from below and the error
+// falls quadratically in the chord count — asserted as a property rather than
+// pinned to one number.
 // ---------------------------------------------------------------------------
 
-TEST(FilletOpTest, BlendBoundaryIsTheChordNotTheArc) {
+TEST(FilletOpTest, BlendVolumeConvergesToTheExactFillet) {
     const double side = 10.0;
-    for (double r : {0.5, 1.0, 3.0}) {
+    for (double r : {1.0, 3.0}) {
         SCOPED_TRACE(r);
-        auto box = PrimitiveFactory::makeBox(side, side, side);
-        ASSERT_NE(box, nullptr);
-        auto result = FilletOp::execute(*box, {box->edges().front().topoId}, r, "f");
-        ASSERT_NE(result.solid, nullptr) << result.errorMessage;
-
+        const double exact = side * side * side - r * r * (1.0 - kPi / 4.0) * side;
         const double chord = side * side * side - 0.5 * r * r * side;
-        const double arc = side * side * side - r * r * (1.0 - M_PI_4) * side;
-        const double got = hz::model::MassPropertiesCalculator::compute(*result.solid).volume;
 
-        EXPECT_NEAR(got, chord, 1e-9) << "the blend integrates as a flat chamfer";
-        EXPECT_GT(arc - got, 0.0) << "and so removes more than a true fillet would";
+        double previousError = 1e30;
+        for (int n : {2, 4, 8, 16}) {
+            auto box = PrimitiveFactory::makeBox(side, side, side);
+            ASSERT_NE(box, nullptr);
+            auto result = FilletOp::execute(*box, {box->edges().front().topoId}, r, "f", n);
+            ASSERT_NE(result.solid, nullptr) << "n=" << n << ": " << result.errorMessage;
+            EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+                << hz::topo::GeometryValidator::report(*result.solid);
+
+            const double got = hz::model::MassPropertiesCalculator::compute(*result.solid).volume;
+            const double error = exact - got;
+            EXPECT_GT(error, 0.0) << "n=" << n << ": an inscribed blend removes a little too much";
+            EXPECT_LT(error, previousError) << "n=" << n << ": refining must reduce the error";
+            EXPECT_GT(got, chord) << "n=" << n << ": and every refinement beats the old chord";
+            previousError = error;
+        }
+        EXPECT_LT(previousError, 0.001 * exact) << "16 chords lands within a tenth of a percent";
     }
+}
 
-    // The blend face is a single quad, and it does carry the right surface —
-    // which is exactly why the two disagree.
-    auto box = PrimitiveFactory::makeBox(side, side, side);
+TEST(FilletOpTest, BlendBandsAreFlatAndRecordTheArcTheyApproximate) {
+    // The carrier of a band is the plane its loop lies in — that agreement is
+    // the whole point — and the arc it stands in for is kept beside it.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    ASSERT_NE(box, nullptr);
     auto result = FilletOp::execute(*box, {box->edges().front().topoId}, 2.0, "f");
     ASSERT_NE(result.solid, nullptr) << result.errorMessage;
-    const hz::topo::Face* blend = nullptr;
+
+    int bands = 0;
     for (const auto& f : result.solid->faces()) {
-        if (f.topoId.tag().find("fillet") != std::string::npos) blend = &f;
+        if (f.topoId.tag().find("/fillet/") == std::string::npos) continue;
+        ++bands;
+        EXPECT_EQ(hz::topo::faceVertices(&f).size(), 4u) << "each band is a quad across the arc";
+        ASSERT_NE(f.surface, nullptr);
+        ASSERT_NE(f.analyticSurface, nullptr);
+        EXPECT_EQ(f.analyticSurface->degreeV(), 2) << "the recorded patch is a true arc";
+        EXPECT_EQ(f.analyticSurface->controlPointCountV(), 3);
+
+        // Every band vertex sits on the fillet's axis circle of radius 2.
+        for (const auto* v : hz::topo::faceVertices(&f)) {
+            const double dy = v->point.y - 2.0;
+            const double dz = v->point.z - 2.0;
+            EXPECT_NEAR(std::sqrt(dy * dy + dz * dz), 2.0, 1e-9)
+                << "band boundary left the fillet arc";
+        }
     }
-    ASSERT_NE(blend, nullptr);
-    EXPECT_EQ(hz::topo::faceVertices(blend).size(), 4u) << "one flat quad, not an arc chain";
-    ASSERT_NE(blend->surface, nullptr);
-    EXPECT_EQ(blend->surface->degreeV(), 2) << "carrying a true quadratic arc patch";
-    EXPECT_EQ(blend->surface->controlPointCountV(), 3);
+    EXPECT_EQ(bands, FilletOp::kDefaultArcSegments);
 }

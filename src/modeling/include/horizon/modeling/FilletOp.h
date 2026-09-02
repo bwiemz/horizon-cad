@@ -37,24 +37,40 @@ struct RadiusStop {
 /// without the third remain unsupported and are refused.
 class FilletOp {
 public:
+    /// Chords across a blend arc.
+    ///
+    /// A blend used to be a single quad joining the two tangent lines: it
+    /// carried the right arc surface but its *loop* was the chord, so every
+    /// loop-based path in the kernel integrated a chamfer while the renderer
+    /// drew a fillet — 2.33x too much material removed, at every radius.
+    /// Blends are faceted across the arc instead, and the arc surface is kept
+    /// on `topo::Face::analyticSurface` as the ideal the facets approximate.
+    ///
+    /// Eight chords across a quarter-circle hold the volume within about a
+    /// tenth of a percent of the exact fillet, and the error falls as 1/n^2.
+    static constexpr int kDefaultArcSegments = 8;
+
     /// Fillet the specified edges with a constant radius.
-    /// @param inputSolid  The source solid (not modified).
-    /// @param edgeIds     TopologyIDs of edges to fillet.
-    /// @param radius      Fillet radius (must be positive).
-    /// @param featureID   Name used as the source in derived TopologyIDs.
+    /// @param inputSolid   The source solid (not modified).
+    /// @param edgeIds      TopologyIDs of edges to fillet.
+    /// @param radius       Fillet radius (must be positive).
+    /// @param featureID    Name used as the source in derived TopologyIDs.
+    /// @param arcSegments  Chords across each blend arc (>= 1).
     /// @return A new solid with fillet faces, or an error message.
     static FilletResult execute(const topo::Solid& inputSolid,
                                 const std::vector<topo::TopologyID>& edgeIds, double radius,
-                                const std::string& featureID);
+                                const std::string& featureID,
+                                int arcSegments = kDefaultArcSegments);
 
     /// Fillet one edge with a radius that varies along it (Phase 61).
     /// @param stops  Radius table covering t = 0 and t = 1 in increasing
     ///               order; radii interpolate linearly between stops and each
-    ///               segment becomes its own ruled fillet face.
+    ///               segment becomes its own band of ruled fillet faces.
     static FilletResult executeVariable(const topo::Solid& inputSolid,
                                         const topo::TopologyID& edgeId,
                                         const std::vector<RadiusStop>& stops,
-                                        const std::string& featureID);
+                                        const std::string& featureID,
+                                        int arcSegments = kDefaultArcSegments);
 };
 
 }  // namespace hz::model
