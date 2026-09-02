@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/GeometryValidator.h"
@@ -16,6 +17,9 @@
 
 using namespace hz::model;
 using namespace hz::topo;
+// MSVC's <cmath> only defines M_PI under _USE_MATH_DEFINES, so the kernel
+// carries its own constant and every module uses it.
+using hz::math::kPi;
 using hz::math::Vec3;
 
 // ---------------------------------------------------------------------------
@@ -139,18 +143,18 @@ TEST(PrimitiveFactoryTest, CylinderVolumeConvergesToTheAnalyticValue) {
         auto solid = PrimitiveFactory::makeCylinder(r, h, n);
         ASSERT_NE(solid, nullptr) << "n=" << n;
         const double got = MassPropertiesCalculator::compute(*solid).volume;
-        const double prism = 0.5 * n * r * r * std::sin(2.0 * M_PI / n) * h;
+        const double prism = 0.5 * n * r * r * std::sin(2.0 * kPi / n) * h;
         EXPECT_NEAR(got, prism, 1e-9) << "n=" << n;
 
-        const double error = M_PI * r * r * h - got;
+        const double error = kPi * r * r * h - got;
         EXPECT_GT(error, 0.0) << "inscribed volume must stay under the analytic one";
         EXPECT_LT(error, previousError) << "refining must reduce the error";
         previousError = error;
     }
     // The default resolution is good to a tenth of a percent.
     auto solid = PrimitiveFactory::makeCylinder(r, h);
-    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, M_PI * r * r * h,
-                0.01 * M_PI * r * r * h);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, kPi * r * r * h,
+                0.01 * kPi * r * r * h);
 }
 
 TEST(PrimitiveFactoryTest, CylinderRemembersTheSurfaceAndRimItFacets) {
@@ -180,7 +184,7 @@ TEST(PrimitiveFactoryTest, SegmentsForToleranceInvertsTheChordSag) {
     // Sag of an n-gon chord on a circle of radius r is r*(1 - cos(pi/n)).
     for (double tol : {1.0, 0.1, 0.01, 0.001}) {
         const int n = PrimitiveFactory::segmentsForTolerance(5.0, tol);
-        const double sag = 5.0 * (1.0 - std::cos(M_PI / n));
+        const double sag = 5.0 * (1.0 - std::cos(kPi / n));
         EXPECT_LE(sag, tol) << "tol=" << tol << " n=" << n;
         EXPECT_GE(n, 3);
     }
@@ -236,7 +240,7 @@ TEST(PrimitiveFactoryTest, SphereEulerFormula) {
 
 TEST(PrimitiveFactoryTest, SphereVolumeConvergesToTheAnalyticValue) {
     const double r = 5.0;
-    const double exact = 4.0 / 3.0 * M_PI * r * r * r;
+    const double exact = 4.0 / 3.0 * kPi * r * r * r;
     double previousError = 1e30;
     for (int n : {8, 32, 64}) {
         auto solid = PrimitiveFactory::makeSphere(r, n);
@@ -287,13 +291,13 @@ TEST(PrimitiveFactoryTest, SharpConeVolumeMatchesThePyramidItFacetsTo) {
     const int n = PrimitiveFactory::kDefaultSegments;
     auto solid = PrimitiveFactory::makeCone(r, 0.0, h, n);
     ASSERT_NE(solid, nullptr);
-    const double base = 0.5 * n * r * r * std::sin(2.0 * M_PI / n);
+    const double base = 0.5 * n * r * r * std::sin(2.0 * kPi / n);
     EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, base * h / 3.0, 1e-9);
 
     // And it converges to the true cone.
     auto fine = PrimitiveFactory::makeCone(r, 0.0, h, 256);
     ASSERT_NE(fine, nullptr);
-    const double exact = M_PI * r * r * h / 3.0;
+    const double exact = kPi * r * r * h / 3.0;
     EXPECT_NEAR(MassPropertiesCalculator::compute(*fine).volume, exact, 0.001 * exact);
 }
 
@@ -307,7 +311,7 @@ TEST(PrimitiveFactoryTest, InvertedSharpConeUsesApexTopology) {
     EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
         << GeometryValidator::report(*solid);
 
-    const double base = 0.5 * n * 25.0 * std::sin(2.0 * M_PI / static_cast<double>(n));
+    const double base = 0.5 * n * 25.0 * std::sin(2.0 * kPi / static_cast<double>(n));
     EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, base * 10.0 / 3.0, 1e-9);
 }
 
@@ -360,7 +364,7 @@ TEST(PrimitiveFactoryTest, FrustumVolumeConvergesToTheAnalyticValue) {
     const double rb = 2.0;
     const double rt = 1.0;
     const double h = 5.0;
-    const double exact = M_PI * h / 3.0 * (rb * rb + rb * rt + rt * rt);
+    const double exact = kPi * h / 3.0 * (rb * rb + rb * rt + rt * rt);
     auto solid = PrimitiveFactory::makeCone(rb, rt, h, 128);
     ASSERT_NE(solid, nullptr);
     EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, exact, 0.001 * exact);
@@ -396,7 +400,7 @@ TEST(PrimitiveFactoryTest, TorusIsAManifoldGenusOneShell) {
 TEST(PrimitiveFactoryTest, TorusVolumeConvergesToTheAnalyticValue) {
     const double major = 10.0;
     const double minor = 3.0;
-    const double exact = 2.0 * M_PI * M_PI * major * minor * minor;
+    const double exact = 2.0 * kPi * kPi * major * minor * minor;
 
     // The old box-topology torus enclosed no volume at all; faceting gives a
     // real solid whose volume converges.
