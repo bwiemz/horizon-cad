@@ -605,3 +605,26 @@ TEST(FilletOpTest, BlendBandsAreFlatAndRecordTheArcTheyApproximate) {
     }
     EXPECT_EQ(bands, FilletOp::kDefaultArcSegments);
 }
+
+// ---------------------------------------------------------------------------
+// arcSegmentsForTolerance (Phase 90)
+// ---------------------------------------------------------------------------
+
+TEST(FilletOpTest, ArcSegmentsForToleranceMeetsTheSagBudget) {
+    int previous = 0;
+    for (double tolerance : {0.1, 0.01, 0.001, 0.0001}) {
+        const int n = FilletOp::arcSegmentsForTolerance(2.0, tolerance);
+        EXPECT_GE(n, previous) << "a tighter budget never needs fewer chords";
+        previous = n;
+        // Each of n chords spans a quarter turn / n and must sag within budget,
+        // and one chord fewer must not.
+        const auto sag = [](int chords) { return 2.0 * (1.0 - std::cos(kPi / 4.0 / chords)); };
+        EXPECT_LE(sag(n), tolerance * 1.0000001) << "tolerance = " << tolerance;
+        if (n > 1) EXPECT_GT(sag(n - 1), tolerance) << "tolerance = " << tolerance;
+    }
+    // A budget wider than the whole quarter arc's sag needs a single chord.
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 5.0), 1);
+    // Nonsense input falls back to the default.
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(0.0, 0.1), FilletOp::kDefaultArcSegments);
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 0.0), FilletOp::kDefaultArcSegments);
+}

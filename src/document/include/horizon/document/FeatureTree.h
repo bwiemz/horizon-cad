@@ -129,7 +129,15 @@ public:
     /// Angular steps per full turn, the "segments" parameter.  This is the
     /// accuracy knob: a revolve is faceted, so its volume converges to the
     /// exact value from below as this rises.
-    int segments() const { return m_segments; }
+    /// With a chord tolerance set, this is the count derived from it for the
+    /// profile's widest radius.
+    int segments() const;
+    /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
+    /// facet count is derived from it and the governing radius on every
+    /// rebuild, so accuracy is a distance that holds at any size rather than a
+    /// count whose error grows with the radius.  0 means the count is used as
+    /// given.  Setting the count explicitly returns to count mode.
+    double chordTolerance() const { return m_chordTolerance; }
     void restoreFeatureID(const std::string& id) override;
 
 private:
@@ -138,6 +146,7 @@ private:
     math::Vec3 m_axisDir;
     double m_angle;
     int m_segments = model::Revolve::kDefaultSegments;
+    double m_chordTolerance = 0.0;
     std::string m_featureID;
 
     static int s_nextID;
@@ -183,12 +192,21 @@ public:
 
     /// Steps per full turn used to sample arcs in the path, the "segments"
     /// parameter.  A straight path is exact and ignores it.
+    /// With a chord tolerance set, each arc is instead sampled at the count
+    /// its own radius needs.
     int segments() const { return m_segments; }
+    /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
+    /// facet count is derived from it and the governing radius on every
+    /// rebuild, so accuracy is a distance that holds at any size rather than a
+    /// count whose error grows with the radius.  0 means the count is used as
+    /// given.  Setting the count explicitly returns to count mode.
+    double chordTolerance() const { return m_chordTolerance; }
 
 private:
     std::shared_ptr<Sketch> m_profile;
     std::shared_ptr<Sketch> m_path;
     int m_segments = model::Sweep::kDefaultArcSegments;
+    double m_chordTolerance = 0.0;
     std::string m_featureID;
 
     static int s_nextID;
@@ -263,12 +281,21 @@ public:
     /// Chords across each blend arc, the "arcSegments" parameter.  A blend is
     /// faceted across its arc, so this is what decides how much material the
     /// fillet actually removes relative to the exact one.
-    int arcSegments() const { return m_arcSegments; }
+    /// With a chord tolerance set, this is the count derived from it for the
+    /// fillet radius.
+    int arcSegments() const;
+    /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
+    /// chord count is derived from it and the governing radius on every
+    /// rebuild, so accuracy is a distance that holds at any size rather than a
+    /// count whose error grows with the radius.  0 means the count is used as
+    /// given.  Setting the count explicitly returns to count mode.
+    double chordTolerance() const { return m_chordTolerance; }
 
 private:
     std::vector<topo::TopologyID> m_edgeIds;
     double m_radius;
     int m_arcSegments = model::FilletOp::kDefaultArcSegments;
+    double m_chordTolerance = 0.0;
     std::string m_featureID;
 
     static int s_nextID;
@@ -403,8 +430,15 @@ public:
     /// Facets around the axis, the "segments" parameter.  Curved primitives
     /// are tessellated at construction, so this is the accuracy knob: their
     /// volumes converge to the analytic value from below as it rises.  A box
-    /// has no such knob and does not report the parameter.
-    int segments() const { return m_segments; }
+    /// has no such knob and does not report the parameter.  With a chord
+    /// tolerance set, this is the count derived from it for the widest radius.
+    int segments() const;
+    /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
+    /// facet count is derived from it and the governing radius on every
+    /// rebuild, so accuracy is a distance that holds at any size rather than a
+    /// count whose error grows with the radius.  0 means the count is used as
+    /// given.  Setting the count explicitly returns to count mode.
+    double chordTolerance() const { return m_chordTolerance; }
 
     /// Whether this kind is faceted, and so has a "segments" parameter.
     bool isFaceted() const { return m_kind != Kind::Box; }
@@ -417,6 +451,7 @@ private:
     double m_p1 = 1.0;
     double m_p2 = 1.0;
     int m_segments = model::PrimitiveFactory::kDefaultSegments;
+    double m_chordTolerance = 0.0;
     std::string m_featureID;
 
     static int s_nextID;

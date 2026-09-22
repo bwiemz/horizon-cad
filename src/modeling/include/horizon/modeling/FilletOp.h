@@ -50,6 +50,12 @@ public:
     /// tenth of a percent of the exact fillet, and the error falls as 1/n^2.
     static constexpr int kDefaultArcSegments = 8;
 
+    /// Chords across a blend arc needed to keep the chord sagitta of a fillet
+    /// of @p radius within @p tolerance.  Blends span the quarter circle the
+    /// orthogonal corners this op supports produce.  Returns
+    /// kDefaultArcSegments for a non-positive radius or tolerance.
+    static int arcSegmentsForTolerance(double radius, double tolerance);
+
     /// Fillet the specified edges with a constant radius.
     /// @param inputSolid   The source solid (not modified).
     /// @param edgeIds      TopologyIDs of edges to fillet.

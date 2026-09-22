@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–90)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -40,6 +40,22 @@ Continues against the "Not yet addressed" list in the
   Path arcs are sampled at `segments` steps per turn — a `SweepFeature`
   parameter, editable and persisted like the Phase 88 resolutions — so a bent
   sweep converges to area × arc length from below.
+- **Accuracy is a distance, not a count (90).** Phase 88 made the facet count
+  a feature property, but a count is the wrong unit: a fixed n sags
+  r(1 − cos(π/n)), so the default 32 facets are within 0.024 on a radius-5
+  cylinder and 0.48 on a radius-100 one. `segmentsForTolerance()` existed on
+  `PrimitiveFactory` and `Revolve` and nothing outside the tests called it.
+  Curved primitives, revolves, sweeps and fillets now take a `chordTolerance`
+  parameter: when positive, the count is re-derived from it and the governing
+  radius on every rebuild — the widest circle of a cone or torus, the profile
+  vertex farthest from a revolve's axis, each path arc's own radius, and the
+  fillet radius over the quarter arc its blend spans (new
+  `FilletOp::arcSegmentsForTolerance()`). A radius edit therefore keeps the
+  accuracy rather than the count. Setting the count explicitly returns to
+  count mode; 0 turns the tolerance off; the tolerance is persisted and
+  reloads as a tolerance, not as the count it produced. The feature parameter
+  dialog's 0.001 floor would have silently switched a tolerance of 0 on for
+  anyone clicking through it, so that field now accepts 0.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

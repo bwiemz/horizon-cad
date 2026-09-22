@@ -2215,9 +2215,12 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
 
     for (auto& [paramName, paramValue] : params) {
         bool ok = false;
+        // A chord tolerance of 0 means "use the facet count"; a 0.001 floor
+        // would silently switch it on for anyone clicking through the dialog.
+        const double minValue = paramName == "chordTolerance" ? 0.0 : 0.001;
         double newValue = QInputDialog::getDouble(
             this, tr("Edit %1").arg(QString::fromStdString(feat->name())),
-            QString::fromStdString(paramName) + ":", paramValue, 0.001, 1e6, 3, &ok);
+            QString::fromStdString(paramName) + ":", paramValue, minValue, 1e6, 4, &ok);
         if (ok && newValue != paramValue) {
             feat->setParameter(paramName, newValue);
             changed = true;

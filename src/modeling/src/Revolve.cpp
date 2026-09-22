@@ -185,6 +185,29 @@ int Revolve::segmentsForTolerance(double radius, double tolerance) {
 }
 
 // ---------------------------------------------------------------------------
+// profileRadius
+// ---------------------------------------------------------------------------
+
+double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+                              const draft::SketchPlane& plane, const Vec3& axisPoint,
+                              const Vec3& axisDirection) {
+    if (axisDirection.length() <= 0.0) {
+        return 0.0;
+    }
+    const Vec3 axisDir = axisDirection.normalized();
+    auto validation = ProfileValidator::validate(profile);
+    if (!validation.isClosed) {
+        return 0.0;
+    }
+    double maxRadius = 0.0;
+    for (const auto& v : ringstack::extractProfileVertices(validation.orderedEdges, 1e-6)) {
+        const Vec3 rel = plane.localToWorld(v) - axisPoint;
+        maxRadius = std::max(maxRadius, (rel - axisDir * rel.dot(axisDir)).length());
+    }
+    return maxRadius;
+}
+
+// ---------------------------------------------------------------------------
 // execute
 // ---------------------------------------------------------------------------
 

@@ -289,3 +289,22 @@ TEST(RevolveTest, SegmentsForToleranceTightensAsToleranceFalls) {
         EXPECT_LE(sagitta, tolerance * 1.0000001) << "tolerance = " << tolerance;
     }
 }
+
+// ---------------------------------------------------------------------------
+// profileRadius (Phase 90)
+// ---------------------------------------------------------------------------
+
+TEST(RevolveTest, ProfileRadiusIsTheWidestVertexFromTheAxis) {
+    std::vector<std::shared_ptr<DraftEntity>> rect;
+    rect.push_back(std::make_shared<DraftLine>(Vec2(5, 0), Vec2(10, 0)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(10, 0), Vec2(10, 5)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(10, 5), Vec2(5, 5)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(5, 5), Vec2(5, 0)));
+    const SketchPlane xy;
+    EXPECT_NEAR(Revolve::profileRadius(rect, xy, Vec3::Zero, Vec3::UnitY), 10.0, 1e-12);
+    // About an axis parallel to Y through x = 2.
+    EXPECT_NEAR(Revolve::profileRadius(rect, xy, Vec3(2, 0, 0), Vec3::UnitY), 8.0, 1e-12);
+    // An open profile has no radius.
+    rect.pop_back();
+    EXPECT_EQ(Revolve::profileRadius(rect, xy, Vec3::Zero, Vec3::UnitY), 0.0);
+}

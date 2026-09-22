@@ -913,6 +913,17 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 // Public entry points
 // ---------------------------------------------------------------------------
 
+int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
+    if (!(radius > 0.0) || !(tolerance > 0.0)) {
+        return kDefaultArcSegments;
+    }
+    // A chord spanning angle a on a circle of radius r sags r(1 - cos(a/2)).
+    const double ratio = std::max(-1.0, 1.0 - tolerance / radius);
+    const double maxChordAngle = 2.0 * std::acos(ratio);
+    const double n = (0.5 * math::kPi) / maxChordAngle;
+    return std::clamp(static_cast<int>(std::ceil(n - 1e-9)), 1, 1024);
+}
+
 FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
                                double radius, const std::string& featureID, int arcSegments) {
     FilletResult result;

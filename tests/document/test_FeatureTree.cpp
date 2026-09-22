@@ -740,3 +740,114 @@ TEST(FeatureTreeTest, FilletArcSegmentsAreAParameterAndChangeTheMaterialRemoved)
     ASSERT_TRUE(feature.parameters().count("arcSegments"));
     EXPECT_FALSE(feature.setParameter("arcSegments", 0.0));
 }
+
+// ---------------------------------------------------------------------------
+// Chord tolerance (Phase 90): accuracy as a distance, not a count.  A fixed
+// facet count sags r(1 - cos(pi/n)), so the same count is ten times less
+// accurate on a cylinder ten times the size.
+// ---------------------------------------------------------------------------
+
+static double sagitta(double radius, int segmentsPerTurn) {
+    return radius * (1.0 - std::cos(hz::math::kPi / segmentsPerTurn));
+}
+
+TEST(FeatureTreeTest, ChordToleranceHoldsAtEveryRadius) {
+    const double tolerance = 0.01;
+    int previous = 0;
+    for (double radius : {1.0, 10.0, 100.0}) {
+        auto cylinder = PrimitiveFeature::makeCylinder(radius, 5.0);
+        // The fixed default count's error grows with the radius...
+        const double fixedSag = sagitta(radius, cylinder->segments());
+        ASSERT_TRUE(cylinder->setParameter("chordTolerance", tolerance));
+        EXPECT_DOUBLE_EQ(cylinder->chordTolerance(), tolerance);
+        // ...the tolerance's does not.
+        const int n = cylinder->segments();
+        EXPECT_LE(sagitta(radius, n), tolerance * 1.0000001) << "radius " << radius;
+        EXPECT_GT(n, previous) << "a wider circle needs more facets for the same sag";
+        previous = n;
+        if (radius >= 10.0) EXPECT_GT(fixedSag, tolerance);
+
+        auto solid = cylinder->execute(nullptr);
+        ASSERT_NE(solid, nullptr);
+        EXPECT_EQ(solid->faceCount(), static_cast<size_t>(n + 2));
+    }
+}
+
+TEST(FeatureTreeTest, ChordToleranceFollowsARadiusEdit) {
+    auto sphere = PrimitiveFeature::makeSphere(2.0);
+    ASSERT_TRUE(sphere->setParameter("chordTolerance", 0.01));
+    const int small = sphere->segments();
+    ASSERT_TRUE(sphere->setParameter("radius", 20.0));
+    EXPECT_GT(sphere->segments(), small) << "the count is re-derived on every rebuild";
+    EXPECT_EQ(sphere->parameters().at("segments"), static_cast<double>(sphere->segments()));
+
+    // The governing radius is the widest circle: the outer rim of a torus.
+    auto torus = PrimitiveFeature::makeTorus(10.0, 3.0);
+    ASSERT_TRUE(torus->setParameter("chordTolerance", 0.01));
+    EXPECT_EQ(torus->segments(), hz::model::PrimitiveFactory::segmentsForTolerance(13.0, 0.01));
+}
+
+TEST(FeatureTreeTest, SettingTheCountLeavesToleranceMode) {
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.001));
+    ASSERT_TRUE(cylinder->setParameter("segments", 12.0));
+    EXPECT_EQ(cylinder->chordTolerance(), 0.0);
+    EXPECT_EQ(cylinder->segments(), 12);
+
+    // Zero switches tolerance mode off explicitly; negative and NaN are refused.
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.001));
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.0));
+    EXPECT_EQ(cylinder->segments(), 12);
+    EXPECT_FALSE(cylinder->setParameter("chordTolerance", -1.0));
+    EXPECT_FALSE(cylinder->setParameter("chordTolerance", std::nan("")));
+
+    // A box is exact: there is nothing for a tolerance to govern.
+    auto box = PrimitiveFeature::makeBox(1.0, 2.0, 3.0);
+    EXPECT_EQ(box->parameters().count("chordTolerance"), 0u);
+    EXPECT_FALSE(box->setParameter("chordTolerance", 0.01));
+}
+
+TEST(FeatureTreeTest, RevolveChordToleranceUsesTheWidestProfileRadius) {
+    auto sketch = makeOffsetRectSketch();  // spans radius 5..10 about Y
+    RevolveFeature feature(sketch, Vec3::Zero, Vec3::UnitY, hz::math::kTwoPi);
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.005));
+    const int n = feature.segments();
+    EXPECT_EQ(n, hz::model::Revolve::segmentsForTolerance(10.0, 0.005));
+    EXPECT_LE(sagitta(10.0, n), 0.005 * 1.0000001);
+    auto solid = feature.execute(nullptr);
+    ASSERT_NE(solid, nullptr);
+
+    // A tighter budget is a closer solid, from below.
+    const double exact = hz::math::kTwoPi * 7.5 * 25.0;
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.0005));
+    auto finer = feature.execute(nullptr);
+    ASSERT_NE(finer, nullptr);
+    const double coarseErr = exact - hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    const double fineErr = exact - hz::model::MassPropertiesCalculator::compute(*finer).volume;
+    EXPECT_GT(fineErr, 0.0);
+    EXPECT_LT(fineErr, coarseErr);
+}
+
+TEST(FeatureTreeTest, FilletChordToleranceDerivesTheArcSegments) {
+    FilletFeature feature(std::vector<hz::topo::TopologyID>{}, 2.0);
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.001));
+    EXPECT_EQ(feature.arcSegments(), hz::model::FilletOp::arcSegmentsForTolerance(2.0, 0.001));
+    // Doubling the radius at the same budget needs more chords.
+    const int before = feature.arcSegments();
+    ASSERT_TRUE(feature.setParameter("radius", 8.0));
+    EXPECT_GT(feature.arcSegments(), before);
+    ASSERT_TRUE(feature.setParameter("arcSegments", 3.0));
+    EXPECT_EQ(feature.chordTolerance(), 0.0);
+    EXPECT_EQ(feature.arcSegments(), 3);
+}
+
+TEST(FeatureTreeTest, SweepChordToleranceSamplesEachArcAtItsOwnRadius) {
+    auto profile = makeSquareSketchOnPlane(2.0, 0.0);
+    SweepFeature feature(profile, makeBentPathSketch());  // one arc, radius 10
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.001));
+    auto solid = feature.execute(nullptr);
+    ASSERT_NE(solid, nullptr);
+    const int perTurn = hz::model::PrimitiveFactory::segmentsForTolerance(10.0, 0.001);
+    const int steps = static_cast<int>(std::ceil(perTurn / 4.0 - 1e-9));
+    EXPECT_EQ(solid->faceCount(), static_cast<size_t>(4 * (1 + steps) + 2));
+}

@@ -44,6 +44,13 @@ public:
     /// circle of @p radius within @p tolerance.
     static int segmentsForTolerance(double radius, double tolerance);
 
+    /// The largest distance from the axis of any profile vertex: the radius
+    /// whose chord sag governs the revolve's accuracy.  Returns 0 when the
+    /// profile is not a closed loop.
+    static double profileRadius(const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+                                const draft::SketchPlane& plane, const math::Vec3& axisPoint,
+                                const math::Vec3& axisDirection);
+
     /// Revolve a closed 2D profile around an axis.
     ///
     /// @param profile       Draft entities forming a closed loop on the sketch plane.

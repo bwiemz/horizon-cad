@@ -771,6 +771,35 @@ TEST(PartFormatTest, FilletArcSegmentsRoundTrip) {
     std::remove(path.c_str());
 }
 
+TEST(PartFormatTest, ChordToleranceRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto cylinder = PrimitiveFeature::makeCylinder(20.0, 5.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.002));
+    original.featureTree().addFeature(std::move(cylinder));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_chord_tolerance.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    auto* prim = dynamic_cast<PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_DOUBLE_EQ(prim->chordTolerance(), 0.002);
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    // It reloads as a tolerance, not as the count it happened to produce: a
+    // radius edit after reload still re-derives the count.
+    const int before = prim->segments();
+    ASSERT_TRUE(prim->setParameter("radius", 40.0));
+    EXPECT_GT(prim->segments(), before);
+
+    std::remove(path.c_str());
+}
+
 TEST(PartFormatTest, FilesWithoutResolutionFieldsLoadAtTheFeatureDefaults) {
     // A part envelope as written before the resolution became a property: the
     // primitive and fillet entries carry no "segments"/"arcSegments" key.
