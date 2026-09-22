@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–90)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–91)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -56,6 +56,19 @@ Continues against the "Not yet addressed" list in the
   reloads as a tolerance, not as the count it produced. The feature parameter
   dialog's 0.001 floor would have silently switched a tolerance of 0 on for
   anyone clicking through it, so that field now accepts 0.
+- **Rational NURBS surfaces were evaluated off their surface (91).**
+  `NurbsSurface::evaluate` runs De Boor in two passes — each row in V, then
+  across the rows in U — and gave the second pass unit weights. That discards
+  the U-direction rationality, so every point of a cylinder, sphere, torus or
+  cone *between* knots sat off the surface: up to 0.30 on a radius-5 cylinder,
+  0.18 on a radius-3 sphere, 0.42 on a torus (about 6% of the radius), while
+  every knot value was exact. The geometry tests had tolerated this in
+  comments ("the two-pass evaluation loses some rational precision", "~5%")
+  with tolerances of 0.2–0.5. The second pass now carries each row's weight
+  sum Σⱼ Nⱼ(v)·wᵢⱼ, which makes it the exact tensor-product rational surface;
+  those tests assert 1e-12, including off-knot samples on all four quadrics
+  and the weighted-surface centre against the closed-form homogeneous value.
+  Mate frames were unaffected only because they happen to sample at knots.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

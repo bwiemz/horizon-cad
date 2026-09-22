@@ -212,10 +212,18 @@ TEST(NurbsSurfaceTest, WeightedEvaluation) {
     auto centerWeighted = srfWeighted.evaluate(0.5, 0.5);
 
     // The weighted surface center should be pulled closer to z=10.
-    // Note: The two-pass evaluation approach loses some rational precision, so
-    // the pull is not as strong as a full homogeneous evaluation would give.
     EXPECT_GT(centerWeighted.z, centerUniform.z);
-    EXPECT_GT(centerWeighted.z, 3.5);
+
+    // And exactly as far as the homogeneous tensor product says.  At u = v =
+    // 0.5 every quadratic basis function of a single-span clamped knot vector
+    // is (1/4, 1/2, 1/4), and only the centre control point has z != 0:
+    //     z = (1/2 * 1/2 * 10 * 10) / sum_ij B_i B_j w_ij
+    const double B[3] = {0.25, 0.5, 0.25};
+    double denom = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) denom += B[i] * B[j] * wtsWeighted[i][j];
+    }
+    EXPECT_NEAR(centerWeighted.z, 0.25 * 10.0 * 10.0 / denom, 1e-12);
 }
 
 // ===========================================================================
@@ -596,7 +604,7 @@ TEST(NurbsSurfaceTest, CylindricalSurface) {
             Vec3 pt = srf.evaluate(u, v);
             // Distance from Z axis = sqrt(x^2 + y^2).
             double distFromAxis = std::sqrt(pt.x * pt.x + pt.y * pt.y);
-            EXPECT_NEAR(distFromAxis, radius, 0.5)
+            EXPECT_NEAR(distFromAxis, radius, 1e-12)
                 << "u=" << u << " v=" << v << " pt=(" << pt.x << "," << pt.y << "," << pt.z << ")";
 
             // Height should be in [0, height].
@@ -614,9 +622,9 @@ TEST(NurbsSurfaceTest, SphericalSurface) {
     Vec3 center{1.0, 2.0, 3.0};
     auto srf = NurbsSurface::makeSphere(center, radius);
 
-    // Sample many points and check distance from center.
-    // Note: The two-pass De Boor evaluation with product weights introduces small
-    // rational approximation error (~5%), so we use tolerance 0.2 here.
+    // Sample many points and check distance from center.  The two-pass
+    // evaluation used to drop the U-direction weights, putting points up to
+    // 6% of the radius off the sphere; it is now exact to rounding.
     for (int i = 0; i <= 10; ++i) {
         double u = srf.uMin() + (srf.uMax() - srf.uMin()) * static_cast<double>(i) / 10.0;
         for (int j = 0; j <= 10; ++j) {
@@ -624,8 +632,8 @@ TEST(NurbsSurfaceTest, SphericalSurface) {
 
             Vec3 pt = srf.evaluate(u, v);
             double dist = pt.distanceTo(center);
-            EXPECT_NEAR(dist, radius, 0.2) << "u=" << u << " v=" << v << " pt=(" << pt.x << ","
-                                           << pt.y << "," << pt.z << ") dist=" << dist;
+            EXPECT_NEAR(dist, radius, 1e-12) << "u=" << u << " v=" << v << " pt=(" << pt.x << ","
+                                             << pt.y << "," << pt.z << ") dist=" << dist;
         }
     }
 }
@@ -642,8 +650,8 @@ TEST(NurbsSurfaceTest, ToroidalSurface) {
     // The point should be at distance majorR + minorR from the Z axis, z=0.
     Vec3 outerPt = srf.evaluate(srf.uMin(), srf.vMin());
     double distFromAxis = std::sqrt(outerPt.x * outerPt.x + outerPt.y * outerPt.y);
-    EXPECT_NEAR(distFromAxis, majorR + minorR, 0.5);
-    EXPECT_NEAR(outerPt.z, 0.0, 0.5);
+    EXPECT_NEAR(distFromAxis, majorR + minorR, 1e-12);
+    EXPECT_NEAR(outerPt.z, 0.0, 1e-12);
 
     // Sample several points: each should be at distance minorR from the
     // circle of radius majorR in the XY plane.
@@ -654,10 +662,9 @@ TEST(NurbsSurfaceTest, ToroidalSurface) {
 
             Vec3 pt = srf.evaluate(u, v);
 
-            // Distance from axis should be between majorR-minorR and majorR+minorR.
+            // Every point is minorR from the circle of radius majorR in XY.
             double axialDist = std::sqrt(pt.x * pt.x + pt.y * pt.y);
-            EXPECT_GE(axialDist, majorR - minorR - 0.5);
-            EXPECT_LE(axialDist, majorR + minorR + 0.5);
+            EXPECT_NEAR(std::hypot(axialDist - majorR, pt.z), minorR, 1e-12);
         }
     }
 }
@@ -674,15 +681,46 @@ TEST(NurbsSurfaceTest, ConicalSurface) {
 
     // At v=0 (apex): all points collapse to apex (0,0,0).
     Vec3 apexPt = srf.evaluate(srf.uMin(), srf.vMin());
-    EXPECT_NEAR(apexPt.distanceTo({0, 0, 0}), 0.0, 0.5);
+    EXPECT_NEAR(apexPt.distanceTo({0, 0, 0}), 0.0, 1e-12);
 
     // At v=1 (base): points should be at radius baseRadius from the Z axis at z=height.
     for (int i = 0; i <= 8; ++i) {
         double u = srf.uMin() + (srf.uMax() - srf.uMin()) * static_cast<double>(i) / 8.0;
         Vec3 pt = srf.evaluate(u, srf.vMax());
         double distFromAxis = std::sqrt(pt.x * pt.x + pt.y * pt.y);
-        EXPECT_NEAR(distFromAxis, baseRadius, 0.5)
+        EXPECT_NEAR(distFromAxis, baseRadius, 1e-12)
             << "u=" << u << " pt=(" << pt.x << "," << pt.y << "," << pt.z << ")";
-        EXPECT_NEAR(pt.z, height, 0.5);
+        EXPECT_NEAR(pt.z, height, 1e-12);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rational surfaces are exact between knots, not only at them.  The two-pass
+// evaluation used to pass unit weights to its second pass, so off-knot points
+// of a cylinder, sphere, torus or cone sat up to ~6% of the radius off the
+// surface (0.30 on a radius-5 cylinder) while every knot value was exact.
+// ---------------------------------------------------------------------------
+TEST(NurbsSurfaceTest, RationalSurfacesAreExactBetweenKnots) {
+    const auto cyl = NurbsSurface::makeCylinder({0, 0, 0}, {0, 0, 1}, 5.0, 10.0);
+    const auto sph = NurbsSurface::makeSphere({0, 0, 0}, 3.0);
+    const auto tor = NurbsSurface::makeTorus({0, 0, 0}, {0, 0, 1}, 5.0, 2.0);
+    const auto con = NurbsSurface::makeCone({0, 0, 0}, {0, 0, 1}, kPi / 6.0, 10.0);
+    const int n = 97;  // prime, so samples land between knots
+    for (int i = 0; i <= n; ++i) {
+        for (int j = 0; j <= n; ++j) {
+            const double s = static_cast<double>(i) / n;
+            const double t = static_cast<double>(j) / n;
+            auto at = [&](const NurbsSurface& f) {
+                return f.evaluate(f.uMin() + (f.uMax() - f.uMin()) * s,
+                                  f.vMin() + (f.vMax() - f.vMin()) * t);
+            };
+            const Vec3 c = at(cyl);
+            EXPECT_NEAR(std::hypot(c.x, c.y), 5.0, 1e-12);
+            EXPECT_NEAR(at(sph).length(), 3.0, 1e-12);
+            const Vec3 q = at(tor);
+            EXPECT_NEAR(std::hypot(std::hypot(q.x, q.y) - 5.0, q.z), 2.0, 1e-12);
+            const Vec3 k = at(con);
+            EXPECT_NEAR(std::hypot(k.x, k.y), k.z * std::tan(kPi / 6.0), 1e-12);
+        }
     }
 }
