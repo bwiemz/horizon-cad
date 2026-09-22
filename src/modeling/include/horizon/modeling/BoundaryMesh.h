@@ -22,6 +22,8 @@ struct BoundaryPolygon {
     std::vector<math::Vec3> points;              ///< Ordered loop (no closing duplicate).
     topo::TopologyID topoId;                     ///< Provenance: source face's topology ID.
     std::shared_ptr<geo::NurbsSurface> surface;  ///< Source face surface (may be null).
+    /// Source face's ideal surface (topo::Face::analyticSurface; may be null).
+    std::shared_ptr<geo::NurbsSurface> analyticSurface;
 };
 
 /// Faithful boundary evaluation of a B-Rep solid from its face loops.

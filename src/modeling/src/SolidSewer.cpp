@@ -75,6 +75,7 @@ struct IndexedFace {
     std::vector<size_t> loop;
     topo::TopologyID topoId;
     std::shared_ptr<geo::NurbsSurface> surface;
+    std::shared_ptr<geo::NurbsSurface> analyticSurface;
 };
 
 /// Remove consecutive duplicate indices (and a duplicated closing vertex).
@@ -252,6 +253,7 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         dedupeLoop(f.loop);
         f.topoId = face.topoId;
         f.surface = face.surface;
+        f.analyticSurface = face.analyticSurface;
         if (f.loop.size() >= 3) indexed.push_back(std::move(f));
     }
     const std::vector<Vec3>& pts = welder.points();
@@ -323,6 +325,7 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         // Surface: reuse the provided patch, else synthesize the planar
         // bounding-rectangle patch used throughout the kernel.
         fb.face->surface = f.surface ? f.surface : synthesizePlanarPatch(f.loop, pts);
+        fb.face->analyticSurface = f.analyticSurface;
 
         built.push_back(std::move(fb));
     }

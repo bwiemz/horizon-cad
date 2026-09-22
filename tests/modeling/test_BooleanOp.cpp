@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <random>
 #include <set>
 
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 
 using hz::math::Vec3;
@@ -466,4 +469,44 @@ TEST(BooleanOpVolume, SubtractFragmentsKeepProvenance) {
     }
     EXPECT_EQ(valid, total);
     EXPECT_GT(total, 6u);
+}
+
+// ---------------------------------------------------------------------------
+// Ideal geometry survives a Boolean (Phase 93).  Fragments are sewn with fresh
+// planar carriers, which is right, but the faces used to lose the ideal they
+// approximate — so the bore of a bored cylinder no longer resolved to a
+// cylinder, and a concentric mate on it was impossible.
+// ---------------------------------------------------------------------------
+
+TEST(BooleanOpTest, BoreKeepsItsCylinder) {
+    auto outer = PrimitiveFactory::makeCylinder(5.0, 10.0);
+    auto bore = PrimitiveFactory::makeCylinder(2.0, 10.0);
+    // The two primitives share face TopologyIDs ("cylinder/side0", ...), so
+    // provenance must be looked up per operand or the bore would be handed
+    // the outer cylinder's ideal.
+    auto result = BooleanOp::execute(*outer, *bore, hz::model::BooleanType::Subtract);
+    ASSERT_NE(result, nullptr);
+
+    int boreFaces = 0;
+    int outerFaces = 0;
+    for (const auto& f : result->faces()) {
+        if (!f.analyticSurface) continue;
+        auto frame = hz::model::MateGeometry::frameForFace(f);
+        ASSERT_TRUE(frame.has_value());
+        ASSERT_EQ(frame->kind, hz::model::MateFrameKind::Cylindrical);
+        EXPECT_NEAR(std::abs(frame->direction.z), 1.0, 1e-9);
+        if (std::abs(frame->radius - 2.0) < 1e-6) ++boreFaces;
+        if (std::abs(frame->radius - 5.0) < 1e-6) ++outerFaces;
+    }
+    EXPECT_GE(boreFaces, hz::model::PrimitiveFactory::kDefaultSegments);
+    EXPECT_GE(outerFaces, hz::model::PrimitiveFactory::kDefaultSegments);
+
+    // Rim chords keep the circle they approximate, including the bore's.
+    int boreRims = 0;
+    for (const auto& e : result->edges()) {
+        if (!e.analyticCurve) continue;
+        const Vec3 c = e.analyticCurve->evaluate(e.analyticCurve->tMin());
+        if (std::abs(std::hypot(c.x, c.y) - 2.0) < 1e-9) ++boreRims;
+    }
+    EXPECT_GE(boreRims, 2 * hz::model::PrimitiveFactory::kDefaultSegments);
 }

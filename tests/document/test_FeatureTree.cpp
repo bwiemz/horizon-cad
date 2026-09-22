@@ -328,8 +328,27 @@ TEST(FeatureTreeTest, CircularPatternFeature) {
 
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
-    EXPECT_EQ(solid->shellCount(), 6u);
+    // The unit square has its corner on the axis and spans 90 degrees, so its
+    // copies 60 degrees apart overlap: they merge into one body (Phase 93)
+    // instead of six interpenetrating shells that counted shared material
+    // several times over.
+    EXPECT_EQ(solid->shellCount(), 1u);
+    EXPECT_TRUE(solid->checkManifold());
+    const double volume = hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    EXPECT_GT(volume, 1.0);
+    EXPECT_LT(volume, 6.0 - 1e-6) << "overlaps are counted once";
     EXPECT_EQ(tree.feature(1)->name(), "CircularPattern");
+}
+
+TEST(FeatureTreeTest, CircularPatternOfSeparateInstancesKeepsSeparateBodies) {
+    FeatureTree tree;
+    // x in [5, 10], y in [0, 5]: a quarter turn apart, the copies never meet.
+    tree.addFeature(std::make_unique<ExtrudeFeature>(makeOffsetRectSketch(), Vec3(0, 0, 1), 1.0));
+    tree.addFeature(PatternFeature::makeCircular(Vec3(0, 0, 0), Vec3(0, 0, 1), kTwoPi / 4.0, 4));
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 4u);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*solid).volume, 100.0, 1e-9);
 }
 
 // ---------------------------------------------------------------------------

@@ -12,10 +12,14 @@ namespace hz::model {
 /// Linear and circular geometry patterns.
 ///
 /// Geometry-pattern strategy (the roadmap default): the source solid's B-Rep
-/// is deep-cloned once per instance with a rigid transform and all instances
-/// coexist in one result solid as separate bodies (shells). Non-overlapping
-/// instances — the common pattern case (bosses, spaced features) — need no
-/// Boolean. Overlapping-instance merge is deferred.
+/// is deep-cloned once per instance with a rigid transform, carrying each
+/// face's and edge's ideal geometry (analyticSurface / analyticCurve) moved
+/// with it. Instances that stay apart — the common pattern case (bosses,
+/// spaced features) — coexist in one result solid as separate bodies
+/// (shells) with no Boolean. Instances whose bounds touch or overlap are
+/// merged with BooleanOp::Union, so shared material is counted once; if a
+/// merge fails the pattern is refused (nullptr) rather than returned as
+/// interpenetrating shells.
 ///
 /// Pattern TopologyIDs follow genealogy: instance 0 keeps the source IDs; each
 /// copy k gets `sourceId.child("pattern", k)`.

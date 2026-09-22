@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–92)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–93)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -94,6 +94,26 @@ Continues against the "Not yet addressed" list in the
   its profile. Documents that extrude a circle rebuild as the faceted cylinder
   on open, which changes their edge numbering: a fillet or chamfer that
   referenced one of the old square's edges by TopologyID no longer finds it.
+- **Patterns stacked overlapping instances; Booleans and patterns dropped
+  the ideals (93).** A pattern cloned every instance into its own shell
+  whatever the spacing — the header called the merge "deferred" — so three
+  10mm boxes 5 apart integrated to 3000 against the 2000 they occupy, and the
+  six copies of a unit square patterned about its own corner were six
+  interpenetrating shells that a document test asserted as correct. Every
+  structural and geometric check passed. Instances whose bounds touch or
+  overlap are now merged with `BooleanOp::Union` (a merge that fails refuses
+  the pattern instead of returning interpenetrating shells); instances that
+  stay apart remain separate bodies with no Boolean.
+
+  Separately, the ideal geometry Phases 84–92 record was lost by the next
+  operation. The pattern clone copied carriers but not `analyticSurface` or
+  `analyticCurve`, and Boolean fragments were sewn without them, so a bored
+  cylinder's bore — or any instance of a patterned boss — no longer resolved
+  to a cylinder for a concentric mate or radial dimension. Pattern now moves
+  the ideals with each instance; `BoundaryMesh` and `SolidSewer` carry
+  `analyticSurface`, Boolean fragments recover it from their source face
+  (looked up per operand, since two primitives of one kind share face IDs),
+  and result edges lying along a source edge inherit its ideal curve.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

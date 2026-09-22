@@ -25,13 +25,14 @@ enum class BooleanType { Union, Subtract, Intersect };
 /// - Genus-0 results additionally satisfy checkEulerFormula().  Through-hole
 ///   (genus ≥ 1) results are manifold but report Euler-invalid because the
 ///   topology module's Euler check has no genus term.
-/// - Curved faces participate via their loop polygons (the MassProperties
-///   convention), so a prism-topology cylinder acts as its inscribed square
-///   prism.  Analytic surface–surface intersection is future work.  Solids
-///   built on coarse box topology whose face loops are near-coplanar — the
-///   revolve/torus primitives, whose eight ring corners are all coplanar —
-///   enclose ~zero loop volume, so Booleans against them degenerate (remove
-///   nothing / return empty); they are not currently supported operands.
+/// - Curved geometry participates as its facets (the MassProperties
+///   convention): curved primitives, revolves and arc profiles are faceted at
+///   construction, so results are correct to the operands' facet error.
+///   Analytic surface–surface intersection is future work.
+/// - Each result face keeps its source face's ideal surface
+///   (topo::Face::analyticSurface, looked up per operand by TopologyID) and
+///   each result edge lying along a source edge keeps that edge's ideal curve,
+///   so a bore still resolves to its cylinder for mates and dimensions.
 /// - Face holes (inner loops) on the input solids are not honored: only the
 ///   outer loop of each face is taken.  Extrude/primitive/prior-Boolean
 ///   inputs never carry inner loops, so this affects only externally

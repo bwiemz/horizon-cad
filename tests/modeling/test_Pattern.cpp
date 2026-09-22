@@ -4,8 +4,11 @@
 #include <numbers>
 #include <set>
 
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -125,4 +128,81 @@ TEST(PatternTest, CountOneReturnsSingleBody) {
 
     // Invalid count.
     EXPECT_EQ(Pattern::linear(*box, Vec3(1, 0, 0), 5.0, 0), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Overlapping instances (Phase 93).  Instances used to coexist as separate
+// shells whatever their spacing, so three 10mm boxes 5 apart integrated to
+// 3000 against the 2000 they actually occupy, with faces buried inside the
+// part — and every structural and geometric check passed.
+// ---------------------------------------------------------------------------
+
+static double volumeOf(const hz::topo::Solid& solid) {
+    return MassPropertiesCalculator::compute(solid).volume;
+}
+
+TEST(PatternTest, OverlappingInstancesAreMerged) {
+    auto box = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto pattern = Pattern::linear(*box, Vec3(1, 0, 0), 5.0, 3);
+    ASSERT_NE(pattern, nullptr);
+    EXPECT_EQ(pattern->shellCount(), 1u);
+    EXPECT_NEAR(volumeOf(*pattern), 2000.0, 1e-6);
+    EXPECT_TRUE(pattern->checkManifold());
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*pattern))
+        << hz::topo::GeometryValidator::report(*pattern);
+}
+
+TEST(PatternTest, TouchingInstancesBecomeOneBody) {
+    auto box = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto pattern = Pattern::linear(*box, Vec3(1, 0, 0), 10.0, 3);
+    ASSERT_NE(pattern, nullptr);
+    EXPECT_EQ(pattern->shellCount(), 1u) << "a shared face is not a boundary of the part";
+    EXPECT_NEAR(volumeOf(*pattern), 3000.0, 1e-6);
+    EXPECT_TRUE(pattern->checkManifold());
+}
+
+TEST(PatternTest, OnlyInstancesThatMeetAreMerged) {
+    // Five instances, suppress the middle one: two touching pairs 30 apart.
+    auto box = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto pattern = Pattern::linear(*box, Vec3(1, 0, 0), 8.0, 5, {2});
+    ASSERT_NE(pattern, nullptr);
+    EXPECT_EQ(pattern->shellCount(), 2u);
+    EXPECT_NEAR(volumeOf(*pattern), 2.0 * 1800.0, 1e-6);
+}
+
+TEST(PatternTest, CoincidentCircularInstancesCountOnce) {
+    // A cylinder on the pattern axis maps onto itself at every step.
+    auto cyl = PrimitiveFactory::makeCylinder(1.0, 2.0);
+    const double single = volumeOf(*cyl);
+    auto pattern = Pattern::circular(*cyl, Vec3(0, 0, 0), Vec3(0, 0, 1), std::numbers::pi / 2.0, 4);
+    ASSERT_NE(pattern, nullptr);
+    EXPECT_NEAR(volumeOf(*pattern), single, 1e-6);
+}
+
+TEST(PatternTest, InstancesKeepTheIdealTheyApproximate) {
+    // Each instance of a faceted boss must still resolve to its own cylinder
+    // from a single pick, so the ideal is carried and moved with the facets.
+    auto cyl = PrimitiveFactory::makeCylinder(2.0, 5.0);
+    auto pattern = Pattern::linear(*cyl, Vec3(1, 0, 0), 10.0, 3);
+    ASSERT_NE(pattern, nullptr);
+    ASSERT_EQ(pattern->shellCount(), 3u);
+    std::set<long> axesSeen;
+    for (const auto& f : pattern->faces()) {
+        if (f.topoId.tag().find("side") == std::string::npos) continue;
+        ASSERT_NE(f.analyticSurface, nullptr) << f.topoId.tag();
+        auto frame = MateGeometry::frameForFace(f);
+        ASSERT_TRUE(frame.has_value());
+        EXPECT_EQ(frame->kind, MateFrameKind::Cylindrical);
+        EXPECT_NEAR(frame->radius, 2.0, 1e-6);
+        // The axis passes through x = 0, 10 or 20.
+        const double x = frame->origin.x;
+        EXPECT_NEAR(x, std::round(x / 10.0) * 10.0, 1e-6);
+        axesSeen.insert(std::lround(x / 10.0));
+    }
+    EXPECT_EQ(axesSeen.size(), 3u);
+    for (const auto& e : pattern->edges()) {
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.z - b.z) < 1e-12) EXPECT_NE(e.analyticCurve, nullptr) << "rim chord";
+    }
 }
