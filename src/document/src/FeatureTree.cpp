@@ -1,11 +1,15 @@
 #include "horizon/document/FeatureTree.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
@@ -21,6 +25,14 @@
 namespace hz::doc {
 
 namespace {
+
+// Accept a chord-sag budget: a non-negative finite distance, where 0 switches
+// the feature back to its explicit facet count.
+bool setChordTolerance(double& target, double value) {
+    if (!(value >= 0.0) || !std::isfinite(value)) return false;
+    target = value;
+    return true;
+}
 
 // Keep the per-class ID counter ahead of restored IDs so future features
 // never collide with loaded ones (mirrors the Sketch ID counter fix).
@@ -53,13 +65,39 @@ std::string ExtrudeFeature::name() const {
 }
 
 std::map<std::string, double> ExtrudeFeature::parameters() const {
-    return {{"distance", m_distance}};
+    std::map<std::string, double> params = {{"distance", m_distance}};
+    if (hasCurvedProfile()) {
+        params["segments"] = static_cast<double>(m_segments);
+        params["chordTolerance"] = m_chordTolerance;
+    }
+    return params;
 }
 
 bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     if (name == "distance" && value > 0.0) {
         m_distance = value;
         return true;
+    }
+    // Profile arcs are faceted, so these decide how close the extrusion gets
+    // to the exact solid.  A polygon profile is exact and has neither.
+    if (name == "segments" && value >= 3.0 && hasCurvedProfile()) {
+        m_segments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
+        return true;
+    }
+    if (name == "chordTolerance" && hasCurvedProfile()) {
+        return setChordTolerance(m_chordTolerance, value);
+    }
+    return false;
+}
+
+bool ExtrudeFeature::hasCurvedProfile() const {
+    if (!m_sketch) return false;
+    for (const auto& ent : m_sketch->entities()) {
+        if (dynamic_cast<const draft::DraftArc*>(ent.get()) ||
+            dynamic_cast<const draft::DraftCircle*>(ent.get())) {
+            return true;
+        }
     }
     return false;
 }
@@ -79,7 +117,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
     // For now, extrude always creates a new solid from the sketch.
     // Boolean combination with inputSolid comes in a future phase.
     return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
-                                   m_featureID);
+                                   m_featureID, m_segments, m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +139,9 @@ std::string RevolveFeature::name() const {
 }
 
 std::map<std::string, double> RevolveFeature::parameters() const {
-    return {{"angle", m_angle}, {"segments", static_cast<double>(m_segments)}};
+    return {{"angle", m_angle},
+            {"segments", static_cast<double>(segments())},
+            {"chordTolerance", m_chordTolerance}};
 }
 
 bool RevolveFeature::setParameter(const std::string& name, double value) {
@@ -113,9 +153,20 @@ bool RevolveFeature::setParameter(const std::string& name, double value) {
     // gets to the exact one.  Three steps is the fewest that bounds a volume.
     if (name == "segments" && value >= 3.0) {
         m_segments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
         return true;
     }
+    if (name == "chordTolerance") return setChordTolerance(m_chordTolerance, value);
     return false;
+}
+
+int RevolveFeature::segments() const {
+    if (m_chordTolerance > 0.0 && m_sketch) {
+        const double radius = model::Revolve::profileRadius(m_sketch->entities(), m_sketch->plane(),
+                                                            m_axisPoint, m_axisDir);
+        if (radius > 0.0) return model::Revolve::segmentsForTolerance(radius, m_chordTolerance);
+    }
+    return m_segments;
 }
 
 std::string RevolveFeature::featureID() const {
@@ -131,7 +182,7 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
 std::unique_ptr<topo::Solid> RevolveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID, m_segments);
+                                   m_angle, m_featureID, segments(), m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +248,30 @@ namespace {
 
 // Extract an open polyline of 3D path points from a path sketch: chain the
 // endpoints of its line/arc entities, or expand a single polyline entity.
-std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
+// Points along arc @p arc from its start to its end, excluding the start,
+// at @p segmentsPerTurn steps per full turn (at least one step).
+std::vector<math::Vec2> sampleArc(const draft::DraftArc& arc, int segmentsPerTurn) {
+    const double sweep = arc.sweepAngle();
+    const int steps =
+        std::max(1, static_cast<int>(std::ceil(sweep / math::kTwoPi * segmentsPerTurn - 1e-9)));
+    std::vector<math::Vec2> pts;
+    pts.reserve(static_cast<size_t>(steps));
+    for (int i = 1; i <= steps; ++i) {
+        // Land the last sample on the stored end point exactly, so it welds
+        // with whatever entity follows the arc.
+        if (i == steps) {
+            pts.push_back(arc.endPoint());
+            break;
+        }
+        const double a = arc.startAngle() + sweep * static_cast<double>(i) / steps;
+        pts.emplace_back(arc.center().x + arc.radius() * std::cos(a),
+                         arc.center().y + arc.radius() * std::sin(a));
+    }
+    return pts;
+}
+
+std::vector<math::Vec3> extractPathPoints(const Sketch& sketch, int arcSegmentsPerTurn,
+                                          double chordTolerance) {
     const auto& plane = sketch.plane();
     std::vector<math::Vec2> pts2D;
 
@@ -207,12 +281,21 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
             continue;
         }
         math::Vec2 s, e;
+        std::vector<math::Vec2> interior;  // points after s, ending at e
         if (auto* line = dynamic_cast<const draft::DraftLine*>(ent.get())) {
             s = line->start();
             e = line->end();
+            interior.push_back(e);
         } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(ent.get())) {
+            // An arc is followed along its curve, not across its chord.
             s = arc->startPoint();
             e = arc->endPoint();
+            // With a tolerance each arc gets the count its own radius needs.
+            const int perTurn =
+                chordTolerance > 0.0
+                    ? model::PrimitiveFactory::segmentsForTolerance(arc->radius(), chordTolerance)
+                    : arcSegmentsPerTurn;
+            interior = sampleArc(*arc, perTurn);
         } else {
             continue;
         }
@@ -221,9 +304,14 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
         } else {
             const double ds = (pts2D.back() - s).length();
             const double de = (pts2D.back() - e).length();
-            if (de < ds) std::swap(s, e);
+            if (de < ds) {
+                // Traversed end to start: walk the samples backwards.
+                interior.pop_back();
+                std::reverse(interior.begin(), interior.end());
+                interior.push_back(s);
+            }
         }
-        pts2D.push_back(e);
+        pts2D.insert(pts2D.end(), interior.begin(), interior.end());
     }
 
     std::vector<math::Vec3> pts3D;
@@ -234,12 +322,29 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
 
 }  // namespace
 
+std::map<std::string, double> SweepFeature::parameters() const {
+    return {{"segments", static_cast<double>(m_segments)}, {"chordTolerance", m_chordTolerance}};
+}
+
+bool SweepFeature::setParameter(const std::string& name, double value) {
+    // Arcs in the path are swept as mitered chords, so this decides how close
+    // a curved sweep gets to the exact one.  Three steps per turn is the
+    // fewest that still turns a full circle.
+    if (name == "segments" && value >= 3.0) {
+        m_segments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
+        return true;
+    }
+    if (name == "chordTolerance") return setChordTolerance(m_chordTolerance, value);
+    return false;
+}
+
 std::unique_ptr<topo::Solid> SweepFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     if (!m_profile || !m_path) return nullptr;
-    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path);
-    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
-                                 m_featureID);
+    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments, m_chordTolerance);
+    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints, m_featureID,
+                                 m_segments, m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +459,9 @@ void FilletFeature::restoreFeatureID(const std::string& id) {
 }
 
 std::map<std::string, double> FilletFeature::parameters() const {
-    return {{"radius", m_radius}, {"arcSegments", static_cast<double>(m_arcSegments)}};
+    return {{"radius", m_radius},
+            {"arcSegments", static_cast<double>(arcSegments())},
+            {"chordTolerance", m_chordTolerance}};
 }
 
 bool FilletFeature::setParameter(const std::string& name, double value) {
@@ -366,15 +473,23 @@ bool FilletFeature::setParameter(const std::string& name, double value) {
     // removes a chamfer's worth of material rather than a fillet's.
     if (name == "arcSegments" && value >= 1.0) {
         m_arcSegments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
         return true;
     }
+    if (name == "chordTolerance") return setChordTolerance(m_chordTolerance, value);
     return false;
+}
+
+int FilletFeature::arcSegments() const {
+    return m_chordTolerance > 0.0
+               ? model::FilletOp::arcSegmentsForTolerance(m_radius, m_chordTolerance)
+               : m_arcSegments;
 }
 
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
     if (!inputSolid) return nullptr;
     auto result =
-        model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID, m_arcSegments);
+        model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID, arcSegments());
     return result.solid ? std::move(result.solid) : nullptr;
 }
 
@@ -674,7 +789,8 @@ std::map<std::string, double> PrimitiveFeature::parameters() const {
     // facet count is a real parameter of the shape rather than a display
     // setting.  Only they report it.
     if (isFaceted()) {
-        params["segments"] = static_cast<double>(m_segments);
+        params["segments"] = static_cast<double>(segments());
+        params["chordTolerance"] = m_chordTolerance;
     }
     return params;
 }
@@ -685,7 +801,11 @@ bool PrimitiveFeature::setParameter(const std::string& name, double value) {
             return false;
         }
         m_segments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
         return true;
+    }
+    if (name == "chordTolerance") {
+        return isFaceted() && setChordTolerance(m_chordTolerance, value);
     }
     switch (m_kind) {
         case Kind::Box:
@@ -713,19 +833,29 @@ bool PrimitiveFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
+int PrimitiveFeature::segments() const {
+    if (!(m_chordTolerance > 0.0)) return m_segments;
+    // The widest circle the facets approximate carries the largest sag.
+    double radius = m_p0;
+    if (m_kind == Kind::Cone) radius = std::max(m_p0, m_p1);
+    if (m_kind == Kind::Torus) radius = m_p0 + m_p1;
+    return model::PrimitiveFactory::segmentsForTolerance(radius, m_chordTolerance);
+}
+
 std::unique_ptr<topo::Solid> PrimitiveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+    const int n = segments();
     switch (m_kind) {
         case Kind::Box:
             return model::PrimitiveFactory::makeBox(m_p0, m_p1, m_p2);
         case Kind::Cylinder:
-            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1, m_segments);
+            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1, n);
         case Kind::Sphere:
-            return model::PrimitiveFactory::makeSphere(m_p0, m_segments);
+            return model::PrimitiveFactory::makeSphere(m_p0, n);
         case Kind::Cone:
-            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2, m_segments);
+            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2, n);
         case Kind::Torus:
-            return model::PrimitiveFactory::makeTorus(m_p0, m_p1, m_segments);
+            return model::PrimitiveFactory::makeTorus(m_p0, m_p1, n);
     }
     return nullptr;
 }

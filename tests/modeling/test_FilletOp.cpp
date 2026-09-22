@@ -187,36 +187,194 @@ TEST(FilletOpTest, FilletSmoothNormals) {
 }
 
 // ---------------------------------------------------------------------------
-// Vertex-blend (two edges sharing a vertex) should be refused in Era 1
+// Mitered chains (Phase 94).  Two selected edges meeting at a vertex whose
+// third edge is unselected used to be refused ("exactly three are required"),
+// which made the rim of a faceted cylinder — every vertex of it such a
+// vertex — impossible to fillet.  The blends now meet on the plane bisecting
+// the turn, and each band stays planar.
 // ---------------------------------------------------------------------------
 
-TEST(FilletOpTest, VertexBlendRefused) {
-    auto box = PrimitiveFactory::makeBox(10, 10, 10);
-    auto& edges = box->edges();
+namespace {
 
-    // Find two edges sharing a vertex
-    std::vector<TopologyID> edgeIds;
-    if (edges.size() >= 2) {
-        edgeIds.push_back(edges[0].topoId);
-        for (size_t i = 1; i < edges.size(); ++i) {
-            const auto* e0 = &edges[0];
-            const auto* ei = &edges[i];
-            if (!e0->halfEdge || !ei->halfEdge) continue;
-            auto* v0a = e0->halfEdge->origin;
-            auto* v0b = e0->halfEdge->twin ? e0->halfEdge->twin->origin : nullptr;
-            auto* via = ei->halfEdge->origin;
-            auto* vib = ei->halfEdge->twin ? ei->halfEdge->twin->origin : nullptr;
-            if (via == v0a || via == v0b || vib == v0a || vib == v0b) {
-                edgeIds.push_back(edges[i].topoId);
-                break;
-            }
+/// Area and inset of the material one blend cross-section removes: the
+/// polygon from the corner through the tangent points and arc samples.  By
+/// symmetry its centroid sits the same distance c inside both faces.
+struct RemovedSection {
+    double area = 0.0;
+    double inset = 0.0;
+};
+
+RemovedSection removedSection(double r, int arcSegments) {
+    // Corner at the origin; u runs into faceA, w into faceB; the rolling-ball
+    // centre is at (r, r).  Samples interpolate the radius direction from
+    // (0, -1) (towards faceA's tangent point) to (-1, 0).
+    std::vector<std::pair<double, double>> poly = {{0.0, 0.0}};
+    for (int k = 0; k <= arcSegments; ++k) {
+        const double a = -kPi / 2.0 - (kPi / 2.0) * k / arcSegments;
+        poly.emplace_back(r + r * std::cos(a), r + r * std::sin(a));
+    }
+    double area2 = 0.0, cu = 0.0;
+    for (size_t k = 0; k < poly.size(); ++k) {
+        const auto& [x0, y0] = poly[k];
+        const auto& [x1, y1] = poly[(k + 1) % poly.size()];
+        const double cross = x0 * y1 - x1 * y0;
+        area2 += cross;
+        cu += (x0 + x1) * cross;
+    }
+    RemovedSection out;
+    out.area = std::abs(area2) / 2.0;
+    out.inset = cu / (3.0 * area2);
+    return out;
+}
+
+double volumeOf(const hz::topo::Solid& solid) {
+    return hz::model::MassPropertiesCalculator::compute(solid).volume;
+}
+
+/// Edges with both ends on the plane z = @p z.
+std::vector<TopologyID> edgesAtHeight(const hz::topo::Solid& solid, double z) {
+    std::vector<TopologyID> ids;
+    for (const auto& e : solid.edges()) {
+        if (std::abs(e.halfEdge->origin->point.z - z) < 1e-9 &&
+            std::abs(e.halfEdge->twin->origin->point.z - z) < 1e-9) {
+            ids.push_back(e.topoId);
         }
     }
+    return ids;
+}
 
-    if (edgeIds.size() == 2) {
-        auto result = FilletOp::execute(*box, edgeIds, 1.0, "fillet_1");
-        EXPECT_FALSE(result.errorMessage.empty()) << "Should refuse vertex blend";
+}  // namespace
+
+TEST(FilletOpTest, TwoEdgesAtACornerAreMitered) {
+    // Two top edges of a 10mm cube meeting at (10, 10, 10); the vertical edge
+    // there stays sharp.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    std::vector<TopologyID> ids;
+    for (const auto& e : box->edges()) {
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        const bool top = std::abs(a.z - 10) < 1e-9 && std::abs(b.z - 10) < 1e-9;
+        const bool atCorner =
+            (a - Vec3(10, 10, 10)).length() < 1e-9 || (b - Vec3(10, 10, 10)).length() < 1e-9;
+        if (top && atCorner) ids.push_back(e.topoId);
     }
+    ASSERT_EQ(ids.size(), 2u);
+
+    const int n = 8;
+    auto result = FilletOp::execute(*box, ids, 1.0, "f", n);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    ASSERT_NE(result.solid, nullptr);
+    EXPECT_TRUE(result.solid->isValid()) << result.solid->validationReport();
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+
+    // Each blend is a constant-section prism from its free end to the miter
+    // plane, which cuts its centroid line c short of the corner.
+    const auto sec = removedSection(1.0, n);
+    const double removed = sec.area * 2.0 * (10.0 - sec.inset);
+    EXPECT_NEAR(volumeOf(*result.solid), 1000.0 - removed, 1e-9);
+}
+
+TEST(FilletOpTest, SquareRimIsAClosedMiteredChain) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto ids = edgesAtHeight(*box, 10.0);
+    ASSERT_EQ(ids.size(), 4u);
+    const int n = 8;
+    auto result = FilletOp::execute(*box, ids, 1.5, "f", n);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    EXPECT_TRUE(result.solid->checkEulerFormula());
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    const auto sec = removedSection(1.5, n);
+    // The centroid path is the top square inset by c on every side.
+    EXPECT_NEAR(volumeOf(*result.solid), 1000.0 - sec.area * 4.0 * (10.0 - 2.0 * sec.inset), 1e-9);
+}
+
+TEST(FilletOpTest, CylinderRimFillets) {
+    // The open item Phases 85-86 left: a faceted cylinder's rim is a closed
+    // chain of 32 chords, and every vertex of it has two of them.
+    const int N = 32;
+    const double R = 5.0, h = 10.0, r = 1.0;
+    auto cyl = PrimitiveFactory::makeCylinder(R, h, N);
+    const auto ids = edgesAtHeight(*cyl, h);
+    ASSERT_EQ(ids.size(), static_cast<size_t>(N));
+
+    const int n = 8;
+    auto result = FilletOp::execute(*cyl, ids, r, "f", n);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    ASSERT_NE(result.solid, nullptr);
+    EXPECT_TRUE(result.solid->checkEulerFormula());
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+
+    // Exact for the faceted geometry: the prism, less the removed section
+    // swept along the rim polygon inset by c (apothem a - c).
+    const auto sec = removedSection(r, n);
+    const double apothem = R * std::cos(kPi / N);
+    const double prism = 0.5 * N * R * R * std::sin(2.0 * kPi / N) * h;
+    const double path = 2.0 * N * (apothem - sec.inset) * std::tan(kPi / N);
+    EXPECT_NEAR(volumeOf(*result.solid), prism - sec.area * path, 1e-8);
+
+    // Every blend band keeps the arc surface it approximates.
+    int blendFaces = 0;
+    for (const auto& f : result.solid->faces()) {
+        if (f.topoId.tag().rfind("f/fillet", 0) == 0) {
+            ++blendFaces;
+            EXPECT_NE(f.analyticSurface, nullptr);
+        }
+    }
+    EXPECT_EQ(blendFaces, N * n);
+}
+
+TEST(FilletOpTest, MiterTighterThanTheRadiusIsRefused) {
+    // An 8-sided rim of radius 2 cannot take a radius-1.9 blend: the inside of
+    // each blend would have to run backwards between its two miter planes.
+    auto cyl = PrimitiveFactory::makeCylinder(2.0, 10.0, 8);
+    auto result = FilletOp::execute(*cyl, edgesAtHeight(*cyl, 10.0), 1.9, "f");
+    EXPECT_FALSE(result.errorMessage.empty());
+    EXPECT_EQ(result.solid, nullptr);
+}
+
+TEST(FilletOpTest, MiterWorksInWhicheverFaceTheEdgesShare) {
+    // A top edge and the vertical edge below its end share the side face, and
+    // the vertex's third edge (the other top edge) joins their other faces:
+    // the same miter, turned in the side face instead of the cap.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    std::vector<TopologyID> ids;
+    for (const auto& e : box->edges()) {
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        const bool touches =
+            (a - Vec3(10, 10, 10)).length() < 1e-9 || (b - Vec3(10, 10, 10)).length() < 1e-9;
+        if (!touches) continue;
+        const bool vertical = std::abs(a.z - b.z) > 1e-9;
+        const bool alongX = std::abs(a.y - b.y) < 1e-9 && std::abs(a.z - b.z) < 1e-9;
+        if (vertical || alongX) ids.push_back(e.topoId);
+    }
+    ASSERT_EQ(ids.size(), 2u);
+    const int n = 8;
+    auto result = FilletOp::execute(*box, ids, 1.0, "f", n);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    const auto sec = removedSection(1.0, n);
+    EXPECT_NEAR(volumeOf(*result.solid), 1000.0 - sec.area * 2.0 * (10.0 - sec.inset), 1e-9);
+}
+
+TEST(FilletOpTest, OpenChainMitersInsideAndEndsSquare) {
+    // Three of the four top edges: two inner miters, two free ends that are
+    // cut square by the end faces exactly as a single fillet's are.
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto top = edgesAtHeight(*box, 10.0);
+    ASSERT_EQ(top.size(), 4u);
+    const int n = 8;
+    auto result = FilletOp::execute(*box, {top[0], top[1], top[2]}, 1.0, "f", n);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    // Centroid lines: 10 - c on each end edge, 10 - 2c on the middle one.
+    const auto sec = removedSection(1.0, n);
+    EXPECT_NEAR(volumeOf(*result.solid), 1000.0 - sec.area * (30.0 - 4.0 * sec.inset), 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -604,4 +762,27 @@ TEST(FilletOpTest, BlendBandsAreFlatAndRecordTheArcTheyApproximate) {
         }
     }
     EXPECT_EQ(bands, FilletOp::kDefaultArcSegments);
+}
+
+// ---------------------------------------------------------------------------
+// arcSegmentsForTolerance (Phase 90)
+// ---------------------------------------------------------------------------
+
+TEST(FilletOpTest, ArcSegmentsForToleranceMeetsTheSagBudget) {
+    int previous = 0;
+    for (double tolerance : {0.1, 0.01, 0.001, 0.0001}) {
+        const int n = FilletOp::arcSegmentsForTolerance(2.0, tolerance);
+        EXPECT_GE(n, previous) << "a tighter budget never needs fewer chords";
+        previous = n;
+        // Each of n chords spans a quarter turn / n and must sag within budget,
+        // and one chord fewer must not.
+        const auto sag = [](int chords) { return 2.0 * (1.0 - std::cos(kPi / 4.0 / chords)); };
+        EXPECT_LE(sag(n), tolerance * 1.0000001) << "tolerance = " << tolerance;
+        if (n > 1) EXPECT_GT(sag(n - 1), tolerance) << "tolerance = " << tolerance;
+    }
+    // A budget wider than the whole quarter arc's sag needs a single chord.
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 5.0), 1);
+    // Nonsense input falls back to the default.
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(0.0, 0.1), FilletOp::kDefaultArcSegments);
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 0.0), FilletOp::kDefaultArcSegments);
 }

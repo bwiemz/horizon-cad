@@ -7,11 +7,14 @@
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
+#include "horizon/modeling/BooleanOp.h"
 
 namespace hz::model {
 
+using hz::math::BoundingBox;
 using hz::math::Mat4;
 using hz::math::Quaternion;
 using hz::math::Vec3;
@@ -67,6 +70,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Edge* ne = dst.allocEdge();
         ne->topoId = instanceId(e.topoId, instanceIndex);
         if (e.curve) ne->curve = transformCurve(*e.curve, xform);
+        if (e.analyticCurve) ne->analyticCurve = transformCurve(*e.analyticCurve, xform);
         emap[&e] = ne;
     }
 
@@ -96,6 +100,9 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Face* nf = dst.allocFace();
         nf->topoId = instanceId(f.topoId, instanceIndex);
         if (f.surface) nf->surface = transformSurface(*f.surface, xform);
+        // Each instance of a faceted boss must still resolve to its own
+        // cylinder, so the ideal is carried and moved with the facets.
+        if (f.analyticSurface) nf->analyticSurface = transformSurface(*f.analyticSurface, xform);
         fmap[&f] = nf;
         visitWire(f.outerLoop);
         for (const Wire* inner : f.innerLoops) visitWire(inner);
@@ -137,13 +144,72 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
     }
 }
 
+BoundingBox boundsOf(const Solid& solid) {
+    BoundingBox box;
+    for (const auto& v : solid.vertices()) box.expand(v.point);
+    return box;
+}
+
+int findRoot(std::vector<int>& parent, int i) {
+    while (parent[static_cast<size_t>(i)] != i) {
+        parent[static_cast<size_t>(i)] =
+            parent[static_cast<size_t>(parent[static_cast<size_t>(i)])];
+        i = parent[static_cast<size_t>(i)];
+    }
+    return i;
+}
+
 std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector<Mat4>& transforms,
                                           const std::vector<int>& suppressed) {
-    auto result = std::make_unique<Solid>();
     std::unordered_set<int> skip(suppressed.begin(), suppressed.end());
+
+    // Each instance as its own solid, so overlapping ones can be merged.
+    std::vector<std::unique_ptr<Solid>> instances;
+    std::vector<BoundingBox> bounds;
     for (size_t k = 0; k < transforms.size(); ++k) {
         if (skip.count(static_cast<int>(k))) continue;
-        cloneInto(*result, source, transforms[k], static_cast<int>(k));
+        auto inst = std::make_unique<Solid>();
+        cloneInto(*inst, source, transforms[k], static_cast<int>(k));
+        bounds.push_back(boundsOf(*inst));
+        instances.push_back(std::move(inst));
+    }
+
+    // Group instances whose bounds touch or overlap.  Instances that meet
+    // must become one body: left as separate shells they would count shared
+    // material once per instance and present faces inside the part.
+    const size_t n = instances.size();
+    std::vector<int> parent(n);
+    for (size_t i = 0; i < n; ++i) parent[i] = static_cast<int>(i);
+    for (size_t i = 0; i < n; ++i) {
+        const Vec3 span = bounds[i].max() - bounds[i].min();
+        const double pad = 1e-9 * std::max(1.0, span.length());
+        BoundingBox grown(bounds[i].min() - Vec3(pad, pad, pad),
+                          bounds[i].max() + Vec3(pad, pad, pad));
+        for (size_t j = i + 1; j < n; ++j) {
+            if (grown.intersects(bounds[j])) {
+                parent[static_cast<size_t>(findRoot(parent, static_cast<int>(i)))] =
+                    findRoot(parent, static_cast<int>(j));
+            }
+        }
+    }
+
+    // Union each group in instance order.  A group the Boolean cannot merge
+    // is refused rather than returned as overlapping shells.
+    std::vector<std::unique_ptr<Solid>> bodies(n);
+    for (size_t i = 0; i < n; ++i) {
+        const auto root = static_cast<size_t>(findRoot(parent, static_cast<int>(i)));
+        if (!bodies[root]) {
+            bodies[root] = std::move(instances[i]);
+            continue;
+        }
+        auto merged = BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union);
+        if (!merged) return nullptr;
+        bodies[root] = std::move(merged);
+    }
+
+    auto result = std::make_unique<Solid>();
+    for (const auto& body : bodies) {
+        if (body) cloneInto(*result, *body, Mat4::identity(), 0);
     }
     return result;
 }
@@ -161,6 +227,12 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
         transforms.push_back(Mat4::translation(dir * (spacing * k)));
     }
     return buildPattern(source, transforms, suppressed);
+}
+
+std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {
+    auto out = std::make_unique<Solid>();
+    cloneInto(*out, source, xform, 0);
+    return out;
 }
 
 std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const Vec3& axisPoint,

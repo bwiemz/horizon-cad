@@ -5,6 +5,8 @@
 
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -217,6 +219,54 @@ TEST(FeatureTreeTest, SweepFeatureBuilds) {
     EXPECT_EQ(f->name(), "Sweep");
 }
 
+// A path with a quarter arc in it: straight up 10, then bending over a quarter
+// circle of radius 10.  The arc is entered from its end point, so its samples
+// are walked backwards.
+static std::shared_ptr<Sketch> makeBentPathSketch() {
+    // Normal -Y with X across gives a local Y axis of +Z.
+    auto path = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, -1, 0), Vec3(1, 0, 0)));
+    path->addEntity(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    path->addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(10, 10), 10.0, hz::math::kPi * 0.5,
+                                                          hz::math::kPi));
+    return path;
+}
+
+TEST(FeatureTreeTest, SweepFollowsAnArcInThePath) {
+    auto profile = makeSquareSketchOnPlane(2.0, 0.0);
+    SweepFeature feature(profile, makeBentPathSketch());
+    ASSERT_TRUE(feature.parameters().count("segments"));
+    EXPECT_EQ(feature.segments(), hz::model::Sweep::kDefaultArcSegments);
+
+    // The arc used to be swept across its chord in one straight segment.  It
+    // is now a chain of mitered chords at `segments` steps per turn, so the
+    // volume is exactly area x (polyline length) and approaches area x (arc
+    // length) from below.
+    auto sweptVolume = [&](int segments) {
+        EXPECT_TRUE(feature.setParameter("segments", static_cast<double>(segments)));
+        auto solid = feature.execute(nullptr);
+        EXPECT_NE(solid, nullptr);
+        if (!solid) return 0.0;
+        const int steps = static_cast<int>(std::ceil(segments / 4.0 - 1e-9));
+        const double chainLength =
+            10.0 + steps * 2.0 * 10.0 * std::sin(hz::math::kPi / 4.0 / steps);
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*solid).volume, 4.0 * chainLength,
+                    1e-8);
+        EXPECT_EQ(solid->faceCount(), static_cast<size_t>(4 * (1 + steps) + 2));
+        return hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    };
+
+    const double exact = 4.0 * (10.0 + hz::math::kPi * 5.0);
+    const double coarse = sweptVolume(16);
+    const double fine = sweptVolume(128);
+    EXPECT_LT(coarse, fine);
+    EXPECT_LT(fine, exact) << "a chord chain is shorter than its arc";
+    EXPECT_LT((exact - fine) / exact, 1e-4);
+
+    EXPECT_FALSE(feature.setParameter("segments", 2.0));
+    EXPECT_EQ(feature.segments(), 128) << "a refused edit must not change the feature";
+}
+
 // ---------------------------------------------------------------------------
 // DraftAndShellFeaturesChain
 // ---------------------------------------------------------------------------
@@ -278,8 +328,27 @@ TEST(FeatureTreeTest, CircularPatternFeature) {
 
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
-    EXPECT_EQ(solid->shellCount(), 6u);
+    // The unit square has its corner on the axis and spans 90 degrees, so its
+    // copies 60 degrees apart overlap: they merge into one body (Phase 93)
+    // instead of six interpenetrating shells that counted shared material
+    // several times over.
+    EXPECT_EQ(solid->shellCount(), 1u);
+    EXPECT_TRUE(solid->checkManifold());
+    const double volume = hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    EXPECT_GT(volume, 1.0);
+    EXPECT_LT(volume, 6.0 - 1e-6) << "overlaps are counted once";
     EXPECT_EQ(tree.feature(1)->name(), "CircularPattern");
+}
+
+TEST(FeatureTreeTest, CircularPatternOfSeparateInstancesKeepsSeparateBodies) {
+    FeatureTree tree;
+    // x in [5, 10], y in [0, 5]: a quarter turn apart, the copies never meet.
+    tree.addFeature(std::make_unique<ExtrudeFeature>(makeOffsetRectSketch(), Vec3(0, 0, 1), 1.0));
+    tree.addFeature(PatternFeature::makeCircular(Vec3(0, 0, 0), Vec3(0, 0, 1), kTwoPi / 4.0, 4));
+    auto solid = tree.build();
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->shellCount(), 4u);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*solid).volume, 100.0, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -690,4 +759,144 @@ TEST(FeatureTreeTest, FilletArcSegmentsAreAParameterAndChangeTheMaterialRemoved)
     FilletFeature feature(std::vector<hz::topo::TopologyID>{edgeId}, 1.0);
     ASSERT_TRUE(feature.parameters().count("arcSegments"));
     EXPECT_FALSE(feature.setParameter("arcSegments", 0.0));
+}
+
+// ---------------------------------------------------------------------------
+// Chord tolerance (Phase 90): accuracy as a distance, not a count.  A fixed
+// facet count sags r(1 - cos(pi/n)), so the same count is ten times less
+// accurate on a cylinder ten times the size.
+// ---------------------------------------------------------------------------
+
+static double sagitta(double radius, int segmentsPerTurn) {
+    return radius * (1.0 - std::cos(hz::math::kPi / segmentsPerTurn));
+}
+
+TEST(FeatureTreeTest, ChordToleranceHoldsAtEveryRadius) {
+    const double tolerance = 0.01;
+    int previous = 0;
+    for (double radius : {1.0, 10.0, 100.0}) {
+        auto cylinder = PrimitiveFeature::makeCylinder(radius, 5.0);
+        // The fixed default count's error grows with the radius...
+        const double fixedSag = sagitta(radius, cylinder->segments());
+        ASSERT_TRUE(cylinder->setParameter("chordTolerance", tolerance));
+        EXPECT_DOUBLE_EQ(cylinder->chordTolerance(), tolerance);
+        // ...the tolerance's does not.
+        const int n = cylinder->segments();
+        EXPECT_LE(sagitta(radius, n), tolerance * 1.0000001) << "radius " << radius;
+        EXPECT_GT(n, previous) << "a wider circle needs more facets for the same sag";
+        previous = n;
+        if (radius >= 10.0) EXPECT_GT(fixedSag, tolerance);
+
+        auto solid = cylinder->execute(nullptr);
+        ASSERT_NE(solid, nullptr);
+        EXPECT_EQ(solid->faceCount(), static_cast<size_t>(n + 2));
+    }
+}
+
+TEST(FeatureTreeTest, ChordToleranceFollowsARadiusEdit) {
+    auto sphere = PrimitiveFeature::makeSphere(2.0);
+    ASSERT_TRUE(sphere->setParameter("chordTolerance", 0.01));
+    const int small = sphere->segments();
+    ASSERT_TRUE(sphere->setParameter("radius", 20.0));
+    EXPECT_GT(sphere->segments(), small) << "the count is re-derived on every rebuild";
+    EXPECT_EQ(sphere->parameters().at("segments"), static_cast<double>(sphere->segments()));
+
+    // The governing radius is the widest circle: the outer rim of a torus.
+    auto torus = PrimitiveFeature::makeTorus(10.0, 3.0);
+    ASSERT_TRUE(torus->setParameter("chordTolerance", 0.01));
+    EXPECT_EQ(torus->segments(), hz::model::PrimitiveFactory::segmentsForTolerance(13.0, 0.01));
+}
+
+TEST(FeatureTreeTest, SettingTheCountLeavesToleranceMode) {
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.001));
+    ASSERT_TRUE(cylinder->setParameter("segments", 12.0));
+    EXPECT_EQ(cylinder->chordTolerance(), 0.0);
+    EXPECT_EQ(cylinder->segments(), 12);
+
+    // Zero switches tolerance mode off explicitly; negative and NaN are refused.
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.001));
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.0));
+    EXPECT_EQ(cylinder->segments(), 12);
+    EXPECT_FALSE(cylinder->setParameter("chordTolerance", -1.0));
+    EXPECT_FALSE(cylinder->setParameter("chordTolerance", std::nan("")));
+
+    // A box is exact: there is nothing for a tolerance to govern.
+    auto box = PrimitiveFeature::makeBox(1.0, 2.0, 3.0);
+    EXPECT_EQ(box->parameters().count("chordTolerance"), 0u);
+    EXPECT_FALSE(box->setParameter("chordTolerance", 0.01));
+}
+
+TEST(FeatureTreeTest, RevolveChordToleranceUsesTheWidestProfileRadius) {
+    auto sketch = makeOffsetRectSketch();  // spans radius 5..10 about Y
+    RevolveFeature feature(sketch, Vec3::Zero, Vec3::UnitY, hz::math::kTwoPi);
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.005));
+    const int n = feature.segments();
+    EXPECT_EQ(n, hz::model::Revolve::segmentsForTolerance(10.0, 0.005));
+    EXPECT_LE(sagitta(10.0, n), 0.005 * 1.0000001);
+    auto solid = feature.execute(nullptr);
+    ASSERT_NE(solid, nullptr);
+
+    // A tighter budget is a closer solid, from below.
+    const double exact = hz::math::kTwoPi * 7.5 * 25.0;
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.0005));
+    auto finer = feature.execute(nullptr);
+    ASSERT_NE(finer, nullptr);
+    const double coarseErr = exact - hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    const double fineErr = exact - hz::model::MassPropertiesCalculator::compute(*finer).volume;
+    EXPECT_GT(fineErr, 0.0);
+    EXPECT_LT(fineErr, coarseErr);
+}
+
+TEST(FeatureTreeTest, FilletChordToleranceDerivesTheArcSegments) {
+    FilletFeature feature(std::vector<hz::topo::TopologyID>{}, 2.0);
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.001));
+    EXPECT_EQ(feature.arcSegments(), hz::model::FilletOp::arcSegmentsForTolerance(2.0, 0.001));
+    // Doubling the radius at the same budget needs more chords.
+    const int before = feature.arcSegments();
+    ASSERT_TRUE(feature.setParameter("radius", 8.0));
+    EXPECT_GT(feature.arcSegments(), before);
+    ASSERT_TRUE(feature.setParameter("arcSegments", 3.0));
+    EXPECT_EQ(feature.chordTolerance(), 0.0);
+    EXPECT_EQ(feature.arcSegments(), 3);
+}
+
+TEST(FeatureTreeTest, SweepChordToleranceSamplesEachArcAtItsOwnRadius) {
+    auto profile = makeSquareSketchOnPlane(2.0, 0.0);
+    SweepFeature feature(profile, makeBentPathSketch());  // one arc, radius 10
+    ASSERT_TRUE(feature.setParameter("chordTolerance", 0.001));
+    auto solid = feature.execute(nullptr);
+    ASSERT_NE(solid, nullptr);
+    const int perTurn = hz::model::PrimitiveFactory::segmentsForTolerance(10.0, 0.001);
+    const int steps = static_cast<int>(std::ceil(perTurn / 4.0 - 1e-9));
+    EXPECT_EQ(solid->faceCount(), static_cast<size_t>(4 * (1 + steps) + 2));
+}
+
+// ---------------------------------------------------------------------------
+// Extrude resolution (Phase 92): reported only when there is an arc to facet.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, ExtrudeResolutionIsAParameterOfCurvedProfilesOnly) {
+    auto rect = makeOffsetRectSketch();
+    ExtrudeFeature square(rect, Vec3::UnitZ, 5.0);
+    EXPECT_EQ(square.parameters().count("segments"), 0u);
+    EXPECT_FALSE(square.setParameter("segments", 64.0)) << "a polygon extrudes exactly";
+    EXPECT_FALSE(square.setParameter("chordTolerance", 0.01));
+
+    auto disc = std::make_shared<Sketch>();
+    disc->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), 5.0));
+    ExtrudeFeature cylinder(disc, Vec3::UnitZ, 10.0);
+    ASSERT_TRUE(cylinder.parameters().count("segments"));
+    ASSERT_TRUE(cylinder.parameters().count("chordTolerance"));
+
+    const double exact = hz::math::kPi * 25.0 * 10.0;
+    auto coarse = cylinder.execute(nullptr);
+    ASSERT_TRUE(cylinder.setParameter("segments", 128.0));
+    auto fine = cylinder.execute(nullptr);
+    ASSERT_NE(coarse, nullptr);
+    ASSERT_NE(fine, nullptr);
+    const double coarseErr = exact - hz::model::MassPropertiesCalculator::compute(*coarse).volume;
+    const double fineErr = exact - hz::model::MassPropertiesCalculator::compute(*fine).volume;
+    EXPECT_GT(fineErr, 0.0);
+    EXPECT_LT(fineErr, coarseErr * 0.1);
 }

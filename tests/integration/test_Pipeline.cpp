@@ -150,7 +150,8 @@ TEST(PipelineTest, ExtrudeCircle) {
     SketchPlane plane;
     auto solid = Extrude::execute(profile, plane, Vec3::UnitZ, 10.0, "ext_cir");
     ASSERT_NE(solid, nullptr);
-    EXPECT_EQ(solid->faceCount(), 6u);
+    // A faceted cylinder: two caps and one lateral face per chord.
+    EXPECT_EQ(solid->faceCount(), static_cast<size_t>(Extrude::kDefaultSegments + 2));
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
 }
 

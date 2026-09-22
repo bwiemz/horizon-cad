@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -288,4 +289,51 @@ TEST(RevolveTest, SegmentsForToleranceTightensAsToleranceFalls) {
         const double sagitta = 10.0 * (1.0 - std::cos(kPi / static_cast<double>(segments)));
         EXPECT_LE(sagitta, tolerance * 1.0000001) << "tolerance = " << tolerance;
     }
+}
+
+// ---------------------------------------------------------------------------
+// profileRadius (Phase 90)
+// ---------------------------------------------------------------------------
+
+TEST(RevolveTest, ProfileRadiusIsTheWidestVertexFromTheAxis) {
+    std::vector<std::shared_ptr<DraftEntity>> rect;
+    rect.push_back(std::make_shared<DraftLine>(Vec2(5, 0), Vec2(10, 0)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(10, 0), Vec2(10, 5)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(10, 5), Vec2(5, 5)));
+    rect.push_back(std::make_shared<DraftLine>(Vec2(5, 5), Vec2(5, 0)));
+    const SketchPlane xy;
+    EXPECT_NEAR(Revolve::profileRadius(rect, xy, Vec3::Zero, Vec3::UnitY), 10.0, 1e-12);
+    // About an axis parallel to Y through x = 2.
+    EXPECT_NEAR(Revolve::profileRadius(rect, xy, Vec3(2, 0, 0), Vec3::UnitY), 8.0, 1e-12);
+    // An open profile has no radius.
+    rect.pop_back();
+    EXPECT_EQ(Revolve::profileRadius(rect, xy, Vec3::Zero, Vec3::UnitY), 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Profile arcs (Phase 92): followed along the arc, not across its chord.
+// ---------------------------------------------------------------------------
+
+TEST(RevolveTest, SemicircleRevolvesToASphere) {
+    // A half disc of radius 4 against the Y axis: the diameter lies on the
+    // axis and the arc bulges into +X.  With the arc chorded, this was a
+    // triangle-less degenerate — its only off-axis edge was the diameter.
+    std::vector<std::shared_ptr<DraftEntity>> halfDisc = {
+        std::make_shared<DraftLine>(Vec2(0, 4), Vec2(0, -4)),
+        std::make_shared<DraftArc>(Vec2(0, 0), 4.0, -kPi / 2, kPi / 2),
+    };
+    const double exact = 4.0 / 3.0 * kPi * 64.0;
+    double previousError = exact;
+    for (int segments : {16, 32, 64}) {
+        auto solid = Revolve::execute(halfDisc, SketchPlane(), Vec3::Zero, Vec3::UnitY, 2.0 * kPi,
+                                      "sphere", segments);
+        ASSERT_NE(solid, nullptr) << "segments = " << segments;
+        EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+            << GeometryValidator::report(*solid);
+        const double error = exact - MassPropertiesCalculator::compute(*solid).volume;
+        EXPECT_GT(error, 0.0);
+        EXPECT_LT(error, previousError * 0.3);
+        previousError = error;
+    }
+    EXPECT_LT(previousError / exact, 0.01);
 }

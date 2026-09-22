@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/math/Mat4.h"
 
 using namespace hz::doc;
@@ -173,4 +175,64 @@ TEST(AssemblyDocumentTest, MateManagement) {
 
     asmDoc.clear();
     EXPECT_TRUE(asmDoc.mates().empty());
+}
+
+// ---------------------------------------------------------------------------
+// Interference (Phase 96).  The checker existed in the modeling layer (Phase
+// 48) and nothing in the document or the UI called it.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::shared_ptr<Document> boxPart(double w, double h, double d) {
+    auto part = std::make_shared<Document>();
+    part->setType(DocumentType::Part);
+    part->featureTree().addFeature(PrimitiveFeature::makeBox(w, h, d));
+    part->rebuildModel();
+    return part;
+}
+
+uint64_t place(AssemblyDocument& asmDoc, const std::shared_ptr<Document>& part,
+               const hz::math::Vec3& at) {
+    ComponentInstance c;
+    c.resolvedPart = part;
+    c.state = ComponentState::Resolved;
+    c.transform = hz::math::Mat4::translation(at);
+    return asmDoc.addComponent(c);
+}
+
+}  // namespace
+
+TEST(AssemblyDocumentTest, FindInterferenceMeasuresPlacedComponents) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    const uint64_t a = place(asmDoc, block, hz::math::Vec3(0, 0, 0));
+    const uint64_t b = place(asmDoc, block, hz::math::Vec3(8, 0, 0));   // 2 into a
+    const uint64_t c = place(asmDoc, block, hz::math::Vec3(18, 0, 0));  // touches b
+    (void)c;
+
+    const auto report = asmDoc.findInterference();
+    EXPECT_TRUE(report.unchecked.empty());
+    ASSERT_EQ(report.pairs.size(), 1u) << "face contact is not interference";
+    const auto& pair = report.pairs.front();
+    EXPECT_TRUE((pair.componentA == a && pair.componentB == b) ||
+                (pair.componentA == b && pair.componentB == a));
+    EXPECT_TRUE(pair.volumeResolved);
+    EXPECT_NEAR(pair.volume, 200.0, 1e-9);
+}
+
+TEST(AssemblyDocumentTest, FindInterferenceSkipsSuppressedAndListsUnresolved) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    place(asmDoc, block, hz::math::Vec3(0, 0, 0));
+    const uint64_t hidden = place(asmDoc, block, hz::math::Vec3(5, 0, 0));
+    asmDoc.component(hidden)->suppressed = true;
+
+    ComponentInstance lightweight;  // no resolved part
+    const uint64_t light = asmDoc.addComponent(lightweight);
+
+    const auto report = asmDoc.findInterference();
+    EXPECT_TRUE(report.pairs.empty()) << "a suppressed component takes no part";
+    ASSERT_EQ(report.unchecked.size(), 1u);
+    EXPECT_EQ(report.unchecked.front(), light);
 }

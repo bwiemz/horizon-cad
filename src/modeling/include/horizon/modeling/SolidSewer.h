@@ -53,6 +53,8 @@ public:
         std::vector<math::Vec3> points;              ///< Planar loop, outward wound.
         topo::TopologyID topoId;                     ///< Assigned to the created face.
         std::shared_ptr<geo::NurbsSurface> surface;  ///< Used if set; else synthesized.
+        /// Copied to the created face's topo::Face::analyticSurface.
+        std::shared_ptr<geo::NurbsSurface> analyticSurface;
     };
 
     /// Sew the faces into a Solid.  Returns nullptr when no non-degenerate

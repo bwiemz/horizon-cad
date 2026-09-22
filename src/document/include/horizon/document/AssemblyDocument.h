@@ -59,6 +59,22 @@ struct Mate {
     double value = 0.0;  ///< Distance (length) or Angle (radians).
 };
 
+/// Two placed components that share material.
+struct ComponentInterference {
+    uint64_t componentA = 0;
+    uint64_t componentB = 0;
+    double volume = 0.0;          ///< Shared material, in model units cubed.
+    bool volumeResolved = false;  ///< False if the overlap could not be measured.
+};
+
+/// Result of an assembly interference check.
+struct InterferenceReport {
+    std::vector<ComponentInterference> pairs;
+    /// Unsuppressed components that could not take part because their part
+    /// is not resolved (or has no solid): the check says nothing about them.
+    std::vector<uint64_t> unchecked;
+};
+
 /// Assembly document: component instances plus the mates that position them.
 ///
 /// This class provides the structural container plus file-path and dirty
@@ -100,6 +116,16 @@ public:
 
     /// Remove all components and mates and reset bookkeeping.
     void clear();
+
+    // --- Analysis ---
+
+    /// Which placed components share material, and how much.  Each resolved,
+    /// unsuppressed component's solid is placed by its transform and the set
+    /// is run through model::InterferenceChecker.  Components that only touch
+    /// (mated faces, tangent cylinders) do not interfere.  Components whose
+    /// part is not resolved are listed in @c unchecked rather than silently
+    /// passed — resolve them first for a complete answer.
+    InterferenceReport findInterference() const;
 
     // --- Dirty tracking ---
 

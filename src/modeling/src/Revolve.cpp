@@ -34,29 +34,6 @@ Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint, const Vec3& axis
            axisDir * (axisDir.dot(p) * (1.0 - cosA));
 }
 
-/// Signed volume of a closed polygon soup (divergence theorem, fan per face).
-double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
-    double vol6 = 0.0;
-    for (const auto& f : faces) {
-        for (size_t i = 1; i + 1 < f.points.size(); ++i) {
-            vol6 += f.points[0].dot(f.points[i].cross(f.points[i + 1]));
-        }
-    }
-    return vol6 / 6.0;
-}
-
-/// Normalize a closed soup to outward winding, which is SolidSewer's input
-/// contract.  Deriving the handedness from the enclosed volume beats reasoning
-/// about each loop by hand, which is where winding bugs come from.
-void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
-    if (soupSignedVolume(faces) >= 0.0) {
-        return;
-    }
-    for (auto& f : faces) {
-        std::reverse(f.points.begin(), f.points.end());
-    }
-}
-
 /// A quad, dropping to a triangle where one side is degenerate — which is
 /// what a profile vertex sitting on the axis produces, since rotating it
 /// leaves it where it was.
@@ -185,13 +162,36 @@ int Revolve::segmentsForTolerance(double radius, double tolerance) {
 }
 
 // ---------------------------------------------------------------------------
+// profileRadius
+// ---------------------------------------------------------------------------
+
+double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+                              const draft::SketchPlane& plane, const Vec3& axisPoint,
+                              const Vec3& axisDirection) {
+    if (axisDirection.length() <= 0.0) {
+        return 0.0;
+    }
+    const Vec3 axisDir = axisDirection.normalized();
+    auto validation = ProfileValidator::validate(profile);
+    if (!validation.isClosed) {
+        return 0.0;
+    }
+    double maxRadius = 0.0;
+    for (const auto& v : ringstack::extractProfileVertices(validation.orderedEdges, 1e-6)) {
+        const Vec3 rel = plane.localToWorld(v) - axisPoint;
+        maxRadius = std::max(maxRadius, (rel - axisDir * rel.dot(axisDir)).length());
+    }
+    return maxRadius;
+}
+
+// ---------------------------------------------------------------------------
 // execute
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID, int segments) {
+    const std::string& featureID, int segments, double chordTolerance) {
     if (segments < 3 || !(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
         return nullptr;
     }
@@ -204,8 +204,9 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     if (!validation.isClosed) {
         return nullptr;
     }
-    const std::vector<Vec2> verts2D =
-        ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
+    const ringstack::SampledProfile sampled = ringstack::sampleProfile(
+        validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
+    const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
         return nullptr;
@@ -306,7 +307,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
         faces.push_back(std::move(end));
     }
 
-    orientOutward(faces);
+    ringstack::orientOutward(faces);
     auto solid = SolidSewer::sew(faces);
     if (solid == nullptr) {
         return nullptr;
@@ -317,6 +318,9 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     // -----------------------------------------------------------------------
     for (size_t i = 0; i < N; ++i) {
         const size_t j = (i + 1) % N;
+        // A chord of a profile arc sweeps a cone, but what it approximates is
+        // the torus-like surface of the arc, so there is no cone to record.
+        if (sampled.edgeArc[i] >= 0) continue;
         tagAnalyticSurface(*solid, featureID + "/revolved_" + std::to_string(i) + "_",
                            sweptSurface(cyl[i], cyl[j], axisPoint, axisDir, tol));
     }

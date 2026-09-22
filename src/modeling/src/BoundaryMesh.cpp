@@ -197,6 +197,7 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
         for (const auto* v : verts) poly.points.push_back(v->point);
         poly.topoId = face.topoId;
         poly.surface = face.surface;
+        poly.analyticSurface = face.analyticSurface;
         polygons.push_back(std::move(poly));
     }
 

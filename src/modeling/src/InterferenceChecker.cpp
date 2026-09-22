@@ -9,6 +9,7 @@
 #include "horizon/math/RTree.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/modeling/MassProperties.h"
 
 namespace hz::model {
 
@@ -78,8 +79,17 @@ std::vector<InterferencePair> InterferenceChecker::check(
             if (!tested.insert({key.first, key.second}).second) continue;  // dedup
             // Narrow phase.
             if (solidsInterfere(*solids[key.first], *solids[key.second])) {
-                pairs.push_back(
-                    {key.first, key.second, overlapBox(bounds[key.first], bounds[key.second])});
+                InterferencePair pair;
+                pair.indexA = key.first;
+                pair.indexB = key.second;
+                pair.overlapBounds = overlapBox(bounds[key.first], bounds[key.second]);
+                auto shared = BooleanOp::execute(*solids[key.first], *solids[key.second],
+                                                 BooleanType::Intersect);
+                if (shared) {
+                    pair.volume = MassPropertiesCalculator::compute(*shared).volume;
+                    pair.volumeResolved = true;
+                }
+                pairs.push_back(pair);
             }
         }
     }

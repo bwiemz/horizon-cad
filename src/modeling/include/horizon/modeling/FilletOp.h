@@ -33,8 +33,17 @@ struct RadiusStop {
 /// Vertex blends (Phase 61): when exactly THREE selected edges meet at a
 /// common vertex with equal radii, the corner is blended with a spherical
 /// patch — each fillet is trimmed back by one radius and a sphere-octant face
-/// is stitched across the three trimmed ends.  Two edges sharing a vertex
-/// without the third remain unsupported and are refused.
+/// is stitched across the three trimmed ends.
+///
+/// Mitered chains (Phase 94): when exactly TWO selected edges meet at a
+/// three-edge vertex, share one face, and the unselected third edge joins
+/// their other faces — every vertex of a polygonal rim, including a faceted
+/// cylinder's — the two blends meet on the plane bisecting the turn in the
+/// shared face.  Each blend's end section is carried along its edge onto that
+/// plane, so the bands stay planar and the removed volume is exactly the
+/// blend cross-section times the length of its centroid path.  A turn too
+/// tight for the radius (a blend that would run backwards between its miter
+/// planes) is refused.
 class FilletOp {
 public:
     /// Chords across a blend arc.
@@ -49,6 +58,12 @@ public:
     /// Eight chords across a quarter-circle hold the volume within about a
     /// tenth of a percent of the exact fillet, and the error falls as 1/n^2.
     static constexpr int kDefaultArcSegments = 8;
+
+    /// Chords across a blend arc needed to keep the chord sagitta of a fillet
+    /// of @p radius within @p tolerance.  Blends span the quarter circle the
+    /// orthogonal corners this op supports produce.  Returns
+    /// kDefaultArcSegments for a non-positive radius or tolerance.
+    static int arcSegmentsForTolerance(double radius, double tolerance);
 
     /// Fillet the specified edges with a constant radius.
     /// @param inputSolid   The source solid (not modified).

@@ -119,16 +119,32 @@ double NurbsSurface::vMax() const {
 math::Vec3 NurbsSurface::evaluate(double u, double v) const {
     const int numU = controlPointCountU();
 
-    // Pass 1: For each row (U index), evaluate the V-direction NURBS curve at v.
+    // Pass 1: for each row (U index), evaluate the V-direction curve at v.
+    // A rational row curve returns the projected point
+    //     C_i = sum_j N_j(v) w_ij P_ij / W_i,  W_i = sum_j N_j(v) w_ij,
+    // so the second pass must carry W_i as the row's weight: then
+    //     sum_i N_i(u) W_i C_i / sum_i N_i(u) W_i
+    // is exactly the tensor-product rational surface.  Passing unit weights
+    // instead drops the U-direction rationality, which put every point of a
+    // cylinder, sphere or torus off its surface by up to a few percent.
     std::vector<math::Vec3> tempPts(numU);
     std::vector<double> tempWeights(numU, 1.0);
 
+    const int numV = controlPointCountV();
+    const std::vector<double> unitWeights(static_cast<size_t>(numV), 1.0);
     for (int i = 0; i < numU; ++i) {
         NurbsCurve rowCurve(m_controlPoints[i], m_weights[i], m_knotsV, m_degreeV);
         tempPts[i] = rowCurve.evaluate(v);
+
+        // W_i is the plain B-spline of the row's weights, evaluated at v.
+        std::vector<math::Vec3> weightPts;
+        weightPts.reserve(static_cast<size_t>(numV));
+        for (double w : m_weights[i]) weightPts.emplace_back(w, 0.0, 0.0);
+        NurbsCurve weightCurve(std::move(weightPts), unitWeights, m_knotsV, m_degreeV);
+        tempWeights[i] = weightCurve.evaluate(v).x;
     }
 
-    // Pass 2: Evaluate the U-direction NURBS curve using the temporary points.
+    // Pass 2: evaluate the U-direction rational curve through the row points.
     NurbsCurve uCurve(tempPts, tempWeights, m_knotsU, m_degreeU);
     return uCurve.evaluate(u);
 }

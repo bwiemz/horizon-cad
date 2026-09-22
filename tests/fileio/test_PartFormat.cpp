@@ -9,6 +9,8 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -710,6 +712,64 @@ TEST(PartFormatTest, RevolveSegmentsRoundTrip) {
     std::remove(path.c_str());
 }
 
+TEST(PartFormatTest, SweepSegmentsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto profile = squareOnPlane(2.0, 0.0);
+    auto pathSketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, -1, 0), Vec3(1, 0, 0)));
+    pathSketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    pathSketch->addEntity(
+        std::make_shared<hz::draft::DraftArc>(Vec2(10, 10), 10.0, 3.14159265 * 0.5, 3.14159265));
+    original.addSketch(profile);
+    original.addSketch(pathSketch);
+    auto sweep = std::make_unique<SweepFeature>(profile, pathSketch);
+    ASSERT_TRUE(sweep->setParameter("segments", 64.0));
+    original.featureTree().addFeature(std::move(sweep));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_sweep_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* reloaded = dynamic_cast<const SweepFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(reloaded, nullptr);
+    EXPECT_EQ(reloaded->segments(), 64);
+
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, ExtrudeResolutionRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto disc = std::make_shared<Sketch>();
+    disc->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), 5.0));
+    original.addSketch(disc);
+    auto extrude = std::make_unique<ExtrudeFeature>(disc, Vec3(0, 0, 1), 10.0);
+    ASSERT_TRUE(extrude->setParameter("segments", 72.0));
+    original.featureTree().addFeature(std::move(extrude));
+    ASSERT_TRUE(original.rebuildModel());
+    EXPECT_EQ(original.solid()->faceCount(), 74u);
+
+    std::string path = tempPath("hz_test_extrude_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* ext = dynamic_cast<const ExtrudeFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(ext, nullptr);
+    EXPECT_EQ(ext->segments(), 72);
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), 74u);
+
+    std::remove(path.c_str());
+}
+
 TEST(PartFormatTest, FilletArcSegmentsRoundTrip) {
     Document original;
     original.setType(DocumentType::Part);
@@ -734,6 +794,35 @@ TEST(PartFormatTest, FilletArcSegmentsRoundTrip) {
 
     ASSERT_TRUE(loaded.rebuildModel());
     EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, ChordToleranceRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto cylinder = PrimitiveFeature::makeCylinder(20.0, 5.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.002));
+    original.featureTree().addFeature(std::move(cylinder));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_chord_tolerance.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    auto* prim = dynamic_cast<PrimitiveFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(prim, nullptr);
+    EXPECT_DOUBLE_EQ(prim->chordTolerance(), 0.002);
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    // It reloads as a tolerance, not as the count it happened to produce: a
+    // radius edit after reload still re-derives the count.
+    const int before = prim->segments();
+    ASSERT_TRUE(prim->setParameter("radius", 40.0));
+    EXPECT_GT(prim->segments(), before);
 
     std::remove(path.c_str());
 }

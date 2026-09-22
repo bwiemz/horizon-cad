@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <deque>
 #include <memory>
 
@@ -115,4 +116,45 @@ TEST(InterferenceCheckerTest, SolidBoundsFitBox) {
     EXPECT_NEAR(b.max().x, 3.0, 1e-9);
     EXPECT_NEAR(b.max().y, 5.0, 1e-9);
     EXPECT_NEAR(b.max().z, 7.0, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
+// Interference volume (Phase 96): how much two solids share, not just whether.
+// ---------------------------------------------------------------------------
+
+TEST(InterferenceCheckerTest, ReportsTheSharedVolume) {
+    auto a = PrimitiveFactory::makeBox(4, 4, 4);
+    auto b = PrimitiveFactory::makeBox(4, 4, 4);
+    translate(*b, Vec3(2, 2, 2));  // shares [2,4]^3
+    auto pairs = InterferenceChecker::check({a.get(), b.get()});
+    ASSERT_EQ(pairs.size(), 1u);
+    EXPECT_TRUE(pairs[0].volumeResolved);
+    EXPECT_NEAR(pairs[0].volume, 8.0, 1e-9);
+}
+
+TEST(InterferenceCheckerTest, ContainedSolidSharesAllOfItself) {
+    auto big = PrimitiveFactory::makeBox(10, 10, 10);
+    auto small = PrimitiveFactory::makeBox(2, 3, 4);
+    translate(*small, Vec3(1, 1, 1));
+    auto pairs = InterferenceChecker::check({big.get(), small.get()});
+    ASSERT_EQ(pairs.size(), 1u);
+    EXPECT_NEAR(pairs[0].volume, 24.0, 1e-9);
+}
+
+TEST(InterferenceCheckerTest, PinThroughAPlateSharesItsCrossSection) {
+    // A faceted pin through a 2-thick plate shares its polygon section x 2.
+    auto plate = PrimitiveFactory::makeBox(20, 20, 2);
+    auto pin = PrimitiveFactory::makeCylinder(1.5, 10, 32);
+    translate(*pin, Vec3(10, 10, -4));
+    auto pairs = InterferenceChecker::check({plate.get(), pin.get()});
+    ASSERT_EQ(pairs.size(), 1u);
+    const double section = 0.5 * 32 * 1.5 * 1.5 * std::sin(2.0 * 3.14159265358979323846 / 32);
+    EXPECT_NEAR(pairs[0].volume, section * 2.0, 1e-9);
+}
+
+TEST(InterferenceCheckerTest, FaceContactIsNotInterference) {
+    auto a = PrimitiveFactory::makeBox(4, 4, 4);
+    auto b = PrimitiveFactory::makeBox(4, 4, 4);
+    translate(*b, Vec3(4, 0, 0));
+    EXPECT_TRUE(InterferenceChecker::check({a.get(), b.get()}).empty());
 }

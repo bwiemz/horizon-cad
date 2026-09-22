@@ -9,6 +9,155 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
+
+Continues against the "Not yet addressed" list in the
+[post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
+
+- **Sweep collapsed on any turning path (89).** `Sweep` carried the profile
+  along the path by translation only, which the header described as a
+  fidelity limit — "the profile keeps its orientation". For a turning path it
+  was a correctness defect: an XY-plane square swept up and then along +X was
+  translated edge-on for the second leg, so that leg was a zero-thickness
+  sheet. The L-shaped sweep integrated to 40 against 72, with two degenerate
+  faces the geometric validator reports and the topology-only test never
+  asked about. Separately, `SweepFeature` reduced every arc in a path sketch
+  to its chord, so a bent path was swept as one straight segment.
+
+  The profile is now carried by a rotation-minimizing frame: at every interior
+  path point the section is the cut of the incoming prism by the miter plane
+  bisecting the turn, which makes the cross-section perpendicular to each
+  segment the profile turned by the smallest rotation between consecutive
+  directions, and the far cap the profile's plane carried through the same
+  turns. Every lateral face is exactly planar (its corners lie on two lines
+  parallel to the segment), and with the profile's centroid on the path the
+  volume is *exactly* normal-section area × path length — which the tests
+  assert on a path turning in three planes. A path that doubles back, a
+  profile whose plane contains the sweep direction, a turn tight enough that
+  the inside of the profile would travel backwards, and any result the
+  geometric validator rejects are refused instead of returned.
+
+  Path arcs are sampled at `segments` steps per turn — a `SweepFeature`
+  parameter, editable and persisted like the Phase 88 resolutions — so a bent
+  sweep converges to area × arc length from below.
+- **Accuracy is a distance, not a count (90).** Phase 88 made the facet count
+  a feature property, but a count is the wrong unit: a fixed n sags
+  r(1 − cos(π/n)), so the default 32 facets are within 0.024 on a radius-5
+  cylinder and 0.48 on a radius-100 one. `segmentsForTolerance()` existed on
+  `PrimitiveFactory` and `Revolve` and nothing outside the tests called it.
+  Curved primitives, revolves, sweeps and fillets now take a `chordTolerance`
+  parameter: when positive, the count is re-derived from it and the governing
+  radius on every rebuild — the widest circle of a cone or torus, the profile
+  vertex farthest from a revolve's axis, each path arc's own radius, and the
+  fillet radius over the quarter arc its blend spans (new
+  `FilletOp::arcSegmentsForTolerance()`). A radius edit therefore keeps the
+  accuracy rather than the count. Setting the count explicitly returns to
+  count mode; 0 turns the tolerance off; the tolerance is persisted and
+  reloads as a tolerance, not as the count it produced. The feature parameter
+  dialog's 0.001 floor would have silently switched a tolerance of 0 on for
+  anyone clicking through it, so that field now accepts 0.
+- **Rational NURBS surfaces were evaluated off their surface (91).**
+  `NurbsSurface::evaluate` runs De Boor in two passes — each row in V, then
+  across the rows in U — and gave the second pass unit weights. That discards
+  the U-direction rationality, so every point of a cylinder, sphere, torus or
+  cone *between* knots sat off the surface: up to 0.30 on a radius-5 cylinder,
+  0.18 on a radius-3 sphere, 0.42 on a torus (about 6% of the radius), while
+  every knot value was exact. The geometry tests had tolerated this in
+  comments ("the two-pass evaluation loses some rational precision", "~5%")
+  with tolerances of 0.2–0.5. The second pass now carries each row's weight
+  sum Σⱼ Nⱼ(v)·wᵢⱼ, which makes it the exact tensor-product rational surface;
+  those tests assert 1e-12, including off-knot samples on all four quadrics
+  and the weighted-surface centre against the closed-form homogeneous value.
+  Mate frames were unaffected only because they happen to sample at knots.
+- **Extrude turned circles into squares (92).** Phase 84 found the curved
+  primitives were box topology wearing a curved surface. Extrude, the most
+  used feature in the product, had the same disease and was not in that
+  sweep: a circle profile was extruded through box topology from four points
+  on the circle, with a cylinder surface pasted onto the four flat sides, so a
+  radius-5 disc extruded 10 integrated to **500 against 785**. Every arc in a
+  line/arc profile was taken as its chord — a slot's round ends vanished (80
+  against 111.4). Profile extraction was shared, so Revolve, Sweep and Loft
+  chorded arcs the same way, and a circle section made Loft return nothing.
+
+  Profiles are now faceted by one shared sampler: arcs are followed along
+  their curve and a circle becomes an N-gon, at `segments` chords per turn or
+  at the count each arc's own radius needs under `chordTolerance`, recording
+  which chords came from which arc. The extrusion is an exact inscribed prism
+  (the tests assert the N-gon volume to 1e-9) that converges to the exact
+  solid from below. The lateral facets of an arc record their cylinder on
+  `Face::analyticSurface` (for extrusions along the sketch normal) and every
+  arc chord its circle on `Edge::analyticCurve`, so mates and radial
+  dimensions still resolve from a single pick. A half disc now revolves to a
+  sphere, two circles loft to the inscribed frustum, and a circle sweeps a
+  pipe. `ExtrudeFeature` gains `segments` and `chordTolerance`, reported only
+  when the profile has an arc or circle; Sweep's `segments` now also facets
+  its profile. Documents that extrude a circle rebuild as the faceted cylinder
+  on open, which changes their edge numbering: a fillet or chamfer that
+  referenced one of the old square's edges by TopologyID no longer finds it.
+- **Patterns stacked overlapping instances; Booleans and patterns dropped
+  the ideals (93).** A pattern cloned every instance into its own shell
+  whatever the spacing — the header called the merge "deferred" — so three
+  10mm boxes 5 apart integrated to 3000 against the 2000 they occupy, and the
+  six copies of a unit square patterned about its own corner were six
+  interpenetrating shells that a document test asserted as correct. Every
+  structural and geometric check passed. Instances whose bounds touch or
+  overlap are now merged with `BooleanOp::Union` (a merge that fails refuses
+  the pattern instead of returning interpenetrating shells); instances that
+  stay apart remain separate bodies with no Boolean.
+
+  Separately, the ideal geometry Phases 84–92 record was lost by the next
+  operation. The pattern clone copied carriers but not `analyticSurface` or
+  `analyticCurve`, and Boolean fragments were sewn without them, so a bored
+  cylinder's bore — or any instance of a patterned boss — no longer resolved
+  to a cylinder for a concentric mate or radial dimension. Pattern now moves
+  the ideals with each instance; `BoundaryMesh` and `SolidSewer` carry
+  `analyticSurface`, Boolean fragments recover it from their source face
+  (looked up per operand, since two primitives of one kind share face IDs),
+  and result edges lying along a source edge inherit its ideal curve.
+- **Filleting a cylinder rim (94).** The open item Phases 85–86 left: a
+  faceted cylinder's rim is a closed chain of chords, every vertex of which
+  has two of them, and FilletOp refused any vertex with two selected edges
+  ("exactly three are required for a corner blend"). So did two adjacent top
+  edges of a box. Where two selected edges meet at a three-edge vertex, share
+  one face, and the unselected third edge joins their other faces, the blends
+  now meet on the plane bisecting the turn in the shared face: each blend's
+  end section is carried along its edge onto that plane, the construction
+  Phase 89 used for sweeps. The bands stay planar, the cap receives the inset
+  polygon and the side edge is shortened by one radius, and no patch is
+  needed. The removed material is exactly the blend cross-section times the
+  length of its centroid path, which the tests assert to 1e-9 for a corner
+  pair, an open chain, a square rim, a miter turned in a side face, and a
+  32-chord cylinder rim. A turn too tight for the radius is refused.
+- **Twisted lofts integrated the wrong solid (95).** A loft between a square
+  and the same square turned 0.6 rad has lateral bands whose four corners are
+  not coplanar. Such a loop encloses no well-defined volume, so each path in
+  the kernel picked its own: mass properties and Booleans fanned it along one
+  diagonal and got **180.8**, while the renderer drew the ruled patch, which
+  encloses **150.7** — 20% apart. A level with any non-planar band is now cut
+  along its rulings into strips, each non-planar strip into two triangles
+  with the diagonal alternating from strip to strip. Every facet is flat, so
+  the display and the computation see the same solid; and because the volume
+  a bilinear patch bounds is exactly the mean of its two triangulations,
+  alternating diagonals make the faceted volume equal the ruled loft's
+  exactly — asserted to 1e-9 against Simpson's rule, which is exact for the
+  quadratic section area. `twistSegments` (default 8, rounded up to even)
+  only sets how closely the facets follow the curved patch, which each facet
+  records on `analyticSurface`. Planar bands stay single quads, so aligned
+  and similar sections build exactly as before.
+- **Interference checking was unreachable (96).** `InterferenceChecker`
+  (Phase 48) had no caller outside its tests: no assembly API, no command.
+  It also reported only *whether* two solids clash — its header deferred the
+  volume because the intersection Boolean was "not yet robust enough", which
+  predates the kernel hardening. Each interfering pair now carries the
+  volume of material the two share, from the Boolean intersection (flagged
+  if that cannot be resolved); `AssemblyDocument::findInterference()` places
+  every resolved, unsuppressed component by its transform and reports
+  interfering pairs by component id, listing unresolved components as
+  unchecked rather than passing them silently; and assemblies gain a
+  **Check Interference** command. Mated faces and tangent cylinders touch
+  without interfering. `Pattern::transformed()` exposes the placement copy,
+  which moves carriers and ideals with the solid.
+
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel

@@ -466,12 +466,15 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["distance"] = ext->distance();
             fObj["direction"] = {ext->direction().x, ext->direction().y, ext->direction().z};
             if (ext->sketch()) fObj["sketchId"] = ext->sketch()->id();
+            if (ext->hasCurvedProfile()) fObj["segments"] = ext->segments();
+            if (ext->chordTolerance() > 0.0) fObj["chordTolerance"] = ext->chordTolerance();
         } else if (const auto* rev = dynamic_cast<const doc::RevolveFeature*>(feat)) {
             fObj["type"] = "revolve";
             fObj["angle"] = rev->angle();
             fObj["axisPoint"] = {rev->axisPoint().x, rev->axisPoint().y, rev->axisPoint().z};
             fObj["axisDir"] = {rev->axisDir().x, rev->axisDir().y, rev->axisDir().z};
             fObj["segments"] = rev->segments();
+            if (rev->chordTolerance() > 0.0) fObj["chordTolerance"] = rev->chordTolerance();
             if (rev->sketch()) fObj["sketchId"] = rev->sketch()->id();
         } else if (const auto* loft = dynamic_cast<const doc::LoftFeature*>(feat)) {
             fObj["type"] = "loft";
@@ -484,6 +487,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["type"] = "sweep";
             if (sweep->profile()) fObj["sketchId"] = sweep->profile()->id();
             if (sweep->path()) fObj["pathSketchId"] = sweep->path()->id();
+            fObj["segments"] = sweep->segments();
+            if (sweep->chordTolerance() > 0.0) fObj["chordTolerance"] = sweep->chordTolerance();
         } else if (const auto* draft = dynamic_cast<const doc::DraftFeature*>(feat)) {
             fObj["type"] = "draft";
             fObj["pullDir"] = {draft->pullDir().x, draft->pullDir().y, draft->pullDir().z};
@@ -500,6 +505,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["type"] = "fillet";
             fObj["radius"] = fillet->radius();
             fObj["arcSegments"] = fillet->arcSegments();
+            if (fillet->chordTolerance() > 0.0) fObj["chordTolerance"] = fillet->chordTolerance();
             json edges = json::array();
             for (const auto& id : fillet->edgeIds()) edges.push_back(id.tag());
             fObj["edges"] = edges;
@@ -569,6 +575,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["p1"] = prim->p1();
             fObj["p2"] = prim->p2();
             if (prim->isFaceted()) fObj["segments"] = prim->segments();
+            if (prim->chordTolerance() > 0.0) fObj["chordTolerance"] = prim->chordTolerance();
         }
 
         featureTreeArray.push_back(fObj);
@@ -1150,6 +1157,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                     : nullptr;
                     if (profile && path) {
                         auto feat = std::make_unique<doc::SweepFeature>(profile, path);
+                        if (fObj.contains("segments")) {
+                            feat->setParameter("segments", fObj["segments"].get<double>());
+                        }
+                        // After the count: setting the count clears the tolerance.
+                        if (fObj.contains("chordTolerance")) {
+                            feat->setParameter("chordTolerance",
+                                               fObj["chordTolerance"].get<double>());
+                        }
                         feat->restoreFeatureID(persistedId);
                         doc.featureTree().addFeature(std::move(feat));
                     }
@@ -1203,6 +1218,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     // feature property; the feature's own default stands in.
                     if (fObj.contains("arcSegments")) {
                         feat->setParameter("arcSegments", fObj["arcSegments"].get<double>());
+                    }
+                    // After the count: setting the count clears the tolerance.
+                    if (fObj.contains("chordTolerance")) {
+                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
@@ -1305,6 +1324,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     if (fObj.contains("segments")) {
                         feat->setParameter("segments", fObj["segments"].get<double>());
                     }
+                    // After the count: setting the count clears the tolerance.
+                    if (fObj.contains("chordTolerance")) {
+                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                     continue;
@@ -1333,6 +1356,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                                fObj["direction"][2].get<double>());
                     }
                     auto feat = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
+                    if (fObj.contains("segments")) {
+                        feat->setParameter("segments", fObj["segments"].get<double>());
+                    }
+                    if (fObj.contains("chordTolerance")) {
+                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 } else if (ftype == "revolve") {
@@ -1353,6 +1382,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                         std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
                     if (fObj.contains("segments")) {
                         feat->setParameter("segments", fObj["segments"].get<double>());
+                    }
+                    // After the count: setting the count clears the tolerance.
+                    if (fObj.contains("chordTolerance")) {
+                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
