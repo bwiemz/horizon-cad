@@ -9,6 +9,38 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–)
+
+Continues against the "Not yet addressed" list in the
+[post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
+
+- **Sweep collapsed on any turning path (89).** `Sweep` carried the profile
+  along the path by translation only, which the header described as a
+  fidelity limit — "the profile keeps its orientation". For a turning path it
+  was a correctness defect: an XY-plane square swept up and then along +X was
+  translated edge-on for the second leg, so that leg was a zero-thickness
+  sheet. The L-shaped sweep integrated to 40 against 72, with two degenerate
+  faces the geometric validator reports and the topology-only test never
+  asked about. Separately, `SweepFeature` reduced every arc in a path sketch
+  to its chord, so a bent path was swept as one straight segment.
+
+  The profile is now carried by a rotation-minimizing frame: at every interior
+  path point the section is the cut of the incoming prism by the miter plane
+  bisecting the turn, which makes the cross-section perpendicular to each
+  segment the profile turned by the smallest rotation between consecutive
+  directions, and the far cap the profile's plane carried through the same
+  turns. Every lateral face is exactly planar (its corners lie on two lines
+  parallel to the segment), and with the profile's centroid on the path the
+  volume is *exactly* normal-section area × path length — which the tests
+  assert on a path turning in three planes. A path that doubles back, a
+  profile whose plane contains the sweep direction, a turn tight enough that
+  the inside of the profile would travel backwards, and any result the
+  geometric validator rejects are refused instead of returned.
+
+  Path arcs are sampled at `segments` steps per turn — a `SweepFeature`
+  parameter, editable and persisted like the Phase 88 resolutions — so a bent
+  sweep converges to area × arc length from below.
+
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 
 Post-1.0 kernel work, continuing from the review response below. Where kernel

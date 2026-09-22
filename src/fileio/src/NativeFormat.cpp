@@ -484,6 +484,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["type"] = "sweep";
             if (sweep->profile()) fObj["sketchId"] = sweep->profile()->id();
             if (sweep->path()) fObj["pathSketchId"] = sweep->path()->id();
+            fObj["segments"] = sweep->segments();
         } else if (const auto* draft = dynamic_cast<const doc::DraftFeature*>(feat)) {
             fObj["type"] = "draft";
             fObj["pullDir"] = {draft->pullDir().x, draft->pullDir().y, draft->pullDir().z};
@@ -1150,6 +1151,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                     : nullptr;
                     if (profile && path) {
                         auto feat = std::make_unique<doc::SweepFeature>(profile, path);
+                        if (fObj.contains("segments")) {
+                            feat->setParameter("segments", fObj["segments"].get<double>());
+                        }
                         feat->restoreFeatureID(persistedId);
                         doc.featureTree().addFeature(std::move(feat));
                     }

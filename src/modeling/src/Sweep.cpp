@@ -5,6 +5,7 @@
 
 #include "RingStack.h"
 #include "horizon/modeling/ProfileValidator.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/TopologyID.h"
 
 namespace hz::model {
@@ -27,6 +28,17 @@ Vec3 newellNormal(const std::vector<Vec3>& ring) {
     }
     return n;
 }
+
+// Rotate v by the smallest rotation taking unit vector a onto unit vector b
+// (about a x b).  Requires a . b > -1.
+Vec3 minimalRotation(const Vec3& a, const Vec3& b, const Vec3& v) {
+    const Vec3 k = a.cross(b);
+    const double c = a.dot(b);
+    return v + k.cross(v) + k.cross(k.cross(v)) * (1.0 / (1.0 + c));
+}
+
+// Directions closer to parallel than this are treated as parallel.
+constexpr double kParallelTol = 1e-9;
 
 }  // namespace
 
@@ -63,21 +75,71 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // Wind so the profile normal points along the initial sweep direction, so
     // the leading cap faces outward.
     const Vec3 sweepDir = (path[1] - path[0]).normalized();
-    if (newellNormal(profileRing).dot(sweepDir) < 0.0) {
+    Vec3 profileNormal = newellNormal(profileRing);
+    if (profileNormal.length() < 1e-12) return nullptr;
+    profileNormal = profileNormal.normalized();
+    if (profileNormal.dot(sweepDir) < 0.0) {
         std::reverse(profileRing.begin(), profileRing.end());
+        profileNormal = profileNormal * -1.0;
     }
 
     // -----------------------------------------------------------------------
-    // 3. Translation transport: one ring per path point.
+    // 3. Mitered transport.
+    //
+    // Each path segment k sweeps a prism along its direction d_k, cut at both
+    // ends by a plane: at an interior path point the miter plane (normal
+    // d_{k-1} + d_k, bisecting the turn), at the far end the profile's own
+    // plane carried along by the same turns.  Ring k+1 is ring k projected
+    // along d_k onto the next cutting plane, so each lateral band is exactly
+    // planar (its four corners lie on two lines parallel to d_k) and the
+    // cross-section perpendicular to each segment is the profile rotated by
+    // the minimal rotation between consecutive directions — the discrete
+    // rotation-minimizing frame.  With the profile's centroid on the path the
+    // volume is exactly area × path length.
     // -----------------------------------------------------------------------
+    const size_t S = path.size() - 1;
+    std::vector<Vec3> dirs;
+    dirs.reserve(S);
+    for (size_t k = 0; k < S; ++k) dirs.push_back((path[k + 1] - path[k]).normalized());
+
+    // A profile containing the sweep direction sweeps no volume.
+    if (std::abs(profileNormal.dot(sweepDir)) < kParallelTol) return nullptr;
+
+    double scale = 0.0;
+    for (const auto& p : profileRing) scale = std::max(scale, (p - path.front()).length());
+    for (const auto& p : path) scale = std::max(scale, (p - path.front()).length());
+    const double lengthTol = 1e-9 * std::max(scale, 1.0);
+
     std::vector<std::vector<Vec3>> rings;
-    rings.reserve(path.size());
-    for (const auto& p : path) {
-        const Vec3 delta = p - path.front();
-        std::vector<Vec3> ring;
-        ring.reserve(N);
-        for (const auto& base : profileRing) ring.push_back(base + delta);
-        rings.push_back(std::move(ring));
+    rings.reserve(S + 1);
+    rings.push_back(profileRing);
+    Vec3 endNormal = profileNormal;
+    for (size_t k = 0; k < S; ++k) {
+        Vec3 cutNormal;
+        if (k + 1 < S) {
+            const Vec3 bisector = dirs[k] + dirs[k + 1];
+            // A path that doubles back on itself has no miter plane.
+            if (bisector.length() < kParallelTol) return nullptr;
+            cutNormal = bisector.normalized();
+            endNormal = minimalRotation(dirs[k], dirs[k + 1], endNormal);
+        } else {
+            cutNormal = endNormal;
+        }
+
+        const double denom = dirs[k].dot(cutNormal);
+        if (denom < kParallelTol) return nullptr;
+
+        std::vector<Vec3> next;
+        next.reserve(N);
+        for (const auto& p : rings[k]) {
+            const double t = (path[k + 1] - p).dot(cutNormal) / denom;
+            // Every point must advance along the segment; one that does not
+            // means the profile reaches past the inside of the turn and the
+            // band folds through itself.
+            if (t <= lengthTol) return nullptr;
+            next.push_back(p + dirs[k] * t);
+        }
+        rings.push_back(std::move(next));
     }
 
     // -----------------------------------------------------------------------
@@ -111,9 +173,8 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // -----------------------------------------------------------------------
     ringstack::assignEdgeCurves(*solid);
 
-    build.bottomFace->surface = ringstack::makeCapSurface(rings.front(), sweepDir * -1.0);
-    const Vec3 endDir = (path.back() - path[path.size() - 2]).normalized();
-    build.topFace->surface = ringstack::makeCapSurface(rings.back(), endDir);
+    build.bottomFace->surface = ringstack::makeCapSurface(rings.front(), profileNormal * -1.0);
+    build.topFace->surface = ringstack::makeCapSurface(rings.back(), endNormal);
 
     for (size_t L = 0; L < build.lateralFaces.size(); ++L) {
         const auto& lower = rings[L];
@@ -124,6 +185,11 @@ std::unique_ptr<topo::Solid> Sweep::execute(
                 ringstack::makeBilinearPatch(lower[i], lower[j], upper[i], upper[j]);
         }
     }
+
+    // A path that crosses itself, or turns tightly enough elsewhere, can still
+    // sew into a shell whose loops are not what the rings describe.  Refuse it
+    // rather than return it.
+    if (!GeometryValidator::check(*solid).ok()) return nullptr;
 
     return solid;
 }

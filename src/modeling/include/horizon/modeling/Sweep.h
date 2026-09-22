@@ -13,12 +13,28 @@ namespace hz::model {
 
 /// Creates a 3D solid by sweeping a closed profile along a 3D path.
 ///
-/// Era-2 scope (matches the roadmap): translation transport — the profile
-/// keeps its orientation as it moves along the path. Frenet-frame rotation
-/// and twist are deferred with guide-curve support. The path is a polyline
-/// (2+ points); each segment produces a ring in the swept solid.
+/// The path is a polyline (2+ points); each segment produces one level of
+/// lateral faces.  The profile is carried along it by a rotation-minimizing
+/// frame: at each interior path point the section is the cut of the incoming
+/// prism by the miter plane bisecting the turn, so the cross-section
+/// perpendicular to every segment is the profile turned by the smallest
+/// rotation between consecutive segment directions, and the far cap is the
+/// profile's plane carried through the same turns.  Every lateral face is
+/// exactly planar, and with the profile's centroid on the path the volume is
+/// exactly (profile area normal to the path) x (path length).
+///
+/// Refused (nullptr): a path that doubles back on itself, a profile whose
+/// plane contains the initial sweep direction, a turn tight enough that the
+/// profile reaches past its inside (the band would fold through itself), and
+/// any result the geometric validator rejects.  Twist and guide curves are
+/// not supported.
 class Sweep {
 public:
+    /// Steps per full turn used to sample a circular arc in a path.  A path
+    /// arc is swept as a chain of mitered segments, so like a revolve the
+    /// volume converges to the exact one from below as this rises.
+    static constexpr int kDefaultArcSegments = 32;
+
     /// Sweep a profile along a polyline path.
     ///
     /// @param profile     Closed 2D profile on @p plane.

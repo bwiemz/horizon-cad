@@ -9,6 +9,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -703,6 +704,38 @@ TEST(PartFormatTest, RevolveSegmentsRoundTrip) {
     const auto* rev = dynamic_cast<const RevolveFeature*>(loaded.featureTree().feature(0));
     ASSERT_NE(rev, nullptr);
     EXPECT_EQ(rev->segments(), 48);
+
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, SweepSegmentsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto profile = squareOnPlane(2.0, 0.0);
+    auto pathSketch = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, -1, 0), Vec3(1, 0, 0)));
+    pathSketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    pathSketch->addEntity(
+        std::make_shared<hz::draft::DraftArc>(Vec2(10, 10), 10.0, 3.14159265 * 0.5, 3.14159265));
+    original.addSketch(profile);
+    original.addSketch(pathSketch);
+    auto sweep = std::make_unique<SweepFeature>(profile, pathSketch);
+    ASSERT_TRUE(sweep->setParameter("segments", 64.0));
+    original.featureTree().addFeature(std::move(sweep));
+    ASSERT_TRUE(original.rebuildModel());
+    const size_t originalFaces = original.solid()->faceCount();
+
+    std::string path = tempPath("hz_test_sweep_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* reloaded = dynamic_cast<const SweepFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(reloaded, nullptr);
+    EXPECT_EQ(reloaded->segments(), 64);
 
     ASSERT_TRUE(loaded.rebuildModel());
     EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);

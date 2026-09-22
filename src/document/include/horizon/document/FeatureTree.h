@@ -11,6 +11,7 @@
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/Sweep.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -172,15 +173,22 @@ public:
     std::string name() const override;
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
 
     const std::shared_ptr<Sketch>& profile() const { return m_profile; }
     bool createsNewBody() const override { return true; }
     const std::shared_ptr<Sketch>& path() const { return m_path; }
 
+    /// Steps per full turn used to sample arcs in the path, the "segments"
+    /// parameter.  A straight path is exact and ignores it.
+    int segments() const { return m_segments; }
+
 private:
     std::shared_ptr<Sketch> m_profile;
     std::shared_ptr<Sketch> m_path;
+    int m_segments = model::Sweep::kDefaultArcSegments;
     std::string m_featureID;
 
     static int s_nextID;

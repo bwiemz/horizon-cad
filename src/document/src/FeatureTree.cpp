@@ -1,11 +1,14 @@
 #include "horizon/document/FeatureTree.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
@@ -197,7 +200,29 @@ namespace {
 
 // Extract an open polyline of 3D path points from a path sketch: chain the
 // endpoints of its line/arc entities, or expand a single polyline entity.
-std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
+// Points along arc @p arc from its start to its end, excluding the start,
+// at @p segmentsPerTurn steps per full turn (at least one step).
+std::vector<math::Vec2> sampleArc(const draft::DraftArc& arc, int segmentsPerTurn) {
+    const double sweep = arc.sweepAngle();
+    const int steps =
+        std::max(1, static_cast<int>(std::ceil(sweep / math::kTwoPi * segmentsPerTurn - 1e-9)));
+    std::vector<math::Vec2> pts;
+    pts.reserve(static_cast<size_t>(steps));
+    for (int i = 1; i <= steps; ++i) {
+        // Land the last sample on the stored end point exactly, so it welds
+        // with whatever entity follows the arc.
+        if (i == steps) {
+            pts.push_back(arc.endPoint());
+            break;
+        }
+        const double a = arc.startAngle() + sweep * static_cast<double>(i) / steps;
+        pts.emplace_back(arc.center().x + arc.radius() * std::cos(a),
+                         arc.center().y + arc.radius() * std::sin(a));
+    }
+    return pts;
+}
+
+std::vector<math::Vec3> extractPathPoints(const Sketch& sketch, int arcSegmentsPerTurn) {
     const auto& plane = sketch.plane();
     std::vector<math::Vec2> pts2D;
 
@@ -207,12 +232,16 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
             continue;
         }
         math::Vec2 s, e;
+        std::vector<math::Vec2> interior;  // points after s, ending at e
         if (auto* line = dynamic_cast<const draft::DraftLine*>(ent.get())) {
             s = line->start();
             e = line->end();
+            interior.push_back(e);
         } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(ent.get())) {
+            // An arc is followed along its curve, not across its chord.
             s = arc->startPoint();
             e = arc->endPoint();
+            interior = sampleArc(*arc, arcSegmentsPerTurn);
         } else {
             continue;
         }
@@ -221,9 +250,14 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
         } else {
             const double ds = (pts2D.back() - s).length();
             const double de = (pts2D.back() - e).length();
-            if (de < ds) std::swap(s, e);
+            if (de < ds) {
+                // Traversed end to start: walk the samples backwards.
+                interior.pop_back();
+                std::reverse(interior.begin(), interior.end());
+                interior.push_back(s);
+            }
         }
-        pts2D.push_back(e);
+        pts2D.insert(pts2D.end(), interior.begin(), interior.end());
     }
 
     std::vector<math::Vec3> pts3D;
@@ -234,10 +268,25 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch) {
 
 }  // namespace
 
+std::map<std::string, double> SweepFeature::parameters() const {
+    return {{"segments", static_cast<double>(m_segments)}};
+}
+
+bool SweepFeature::setParameter(const std::string& name, double value) {
+    // Arcs in the path are swept as mitered chords, so this decides how close
+    // a curved sweep gets to the exact one.  Three steps per turn is the
+    // fewest that still turns a full circle.
+    if (name == "segments" && value >= 3.0) {
+        m_segments = static_cast<int>(value);
+        return true;
+    }
+    return false;
+}
+
 std::unique_ptr<topo::Solid> SweepFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     if (!m_profile || !m_path) return nullptr;
-    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path);
+    std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments);
     return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
                                  m_featureID);
 }

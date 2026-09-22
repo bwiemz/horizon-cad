@@ -5,6 +5,7 @@
 
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -215,6 +216,54 @@ TEST(FeatureTreeTest, SweepFeatureBuilds) {
     const Feature* f = tree.feature(0);
     ASSERT_NE(f, nullptr);
     EXPECT_EQ(f->name(), "Sweep");
+}
+
+// A path with a quarter arc in it: straight up 10, then bending over a quarter
+// circle of radius 10.  The arc is entered from its end point, so its samples
+// are walked backwards.
+static std::shared_ptr<Sketch> makeBentPathSketch() {
+    // Normal -Y with X across gives a local Y axis of +Z.
+    auto path = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 0), Vec3(0, -1, 0), Vec3(1, 0, 0)));
+    path->addEntity(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    path->addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(10, 10), 10.0, hz::math::kPi * 0.5,
+                                                          hz::math::kPi));
+    return path;
+}
+
+TEST(FeatureTreeTest, SweepFollowsAnArcInThePath) {
+    auto profile = makeSquareSketchOnPlane(2.0, 0.0);
+    SweepFeature feature(profile, makeBentPathSketch());
+    ASSERT_TRUE(feature.parameters().count("segments"));
+    EXPECT_EQ(feature.segments(), hz::model::Sweep::kDefaultArcSegments);
+
+    // The arc used to be swept across its chord in one straight segment.  It
+    // is now a chain of mitered chords at `segments` steps per turn, so the
+    // volume is exactly area x (polyline length) and approaches area x (arc
+    // length) from below.
+    auto sweptVolume = [&](int segments) {
+        EXPECT_TRUE(feature.setParameter("segments", static_cast<double>(segments)));
+        auto solid = feature.execute(nullptr);
+        EXPECT_NE(solid, nullptr);
+        if (!solid) return 0.0;
+        const int steps = static_cast<int>(std::ceil(segments / 4.0 - 1e-9));
+        const double chainLength =
+            10.0 + steps * 2.0 * 10.0 * std::sin(hz::math::kPi / 4.0 / steps);
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*solid).volume, 4.0 * chainLength,
+                    1e-8);
+        EXPECT_EQ(solid->faceCount(), static_cast<size_t>(4 * (1 + steps) + 2));
+        return hz::model::MassPropertiesCalculator::compute(*solid).volume;
+    };
+
+    const double exact = 4.0 * (10.0 + hz::math::kPi * 5.0);
+    const double coarse = sweptVolume(16);
+    const double fine = sweptVolume(128);
+    EXPECT_LT(coarse, fine);
+    EXPECT_LT(fine, exact) << "a chord chain is shorter than its arc";
+    EXPECT_LT((exact - fine) / exact, 1e-4);
+
+    EXPECT_FALSE(feature.setParameter("segments", 2.0));
+    EXPECT_EQ(feature.segments(), 128) << "a refused edit must not change the feature";
 }
 
 // ---------------------------------------------------------------------------
