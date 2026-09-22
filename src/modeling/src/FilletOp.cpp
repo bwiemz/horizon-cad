@@ -110,6 +110,14 @@ struct FilletEdgeInfo {
 
     std::vector<FilletStop> stops;  ///< ≥ 2, increasing t; ends define topology.
 
+    /// A mitered end (Phase 94): the blend's end section lies on the plane
+    /// through that end's vertex with this normal instead of perpendicular to
+    /// the edge, so it meets the next blend of a chain.
+    bool miterFront = false;
+    bool miterBack = false;
+    Vec3 miterFrontNormal;
+    Vec3 miterBackNormal;
+
     double maxRadius() const {
         double r = 0.0;
         for (const auto& s : stops) r = std::max(r, s.r);
@@ -265,6 +273,24 @@ static std::vector<Vec3> arcSamples(const FilletStop& s, int segments) {
     return pts;
 }
 
+/// The blend-arc samples of every stop of @p fe, from the faceA tangent to
+/// the faceB tangent.  At a mitered end each sample is carried along the edge
+/// onto the miter plane: the cut of a constant cross-section prism by the
+/// plane bisecting the turn, exactly as a mitered sweep joins two segments.
+/// Every band between consecutive samples therefore stays planar.
+static std::vector<std::vector<Vec3>> stopSamples(const FilletEdgeInfo& fe, int segments) {
+    std::vector<std::vector<Vec3>> out;
+    out.reserve(fe.stops.size());
+    for (const auto& stop : fe.stops) out.push_back(arcSamples(stop, segments));
+    auto project = [&fe](std::vector<Vec3>& samples, const Vec3& through, const Vec3& normal) {
+        const double denom = fe.edgeDir.dot(normal);
+        for (auto& p : samples) p = p + fe.edgeDir * ((through - p).dot(normal) / denom);
+    };
+    if (fe.miterFront) project(out.front(), fe.v1->point, fe.miterFrontNormal);
+    if (fe.miterBack) project(out.back(), fe.v2->point, fe.miterBackNormal);
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // Corner blends (Phase 61): three filleted edges meeting at a vertex
 // ---------------------------------------------------------------------------
@@ -383,6 +409,90 @@ static bool buildCornerBlend(std::vector<FilletEdgeInfo>& filletEdges,
 }
 
 // ---------------------------------------------------------------------------
+// Mitered chains (Phase 94): two filleted edges meeting at a vertex
+// ---------------------------------------------------------------------------
+
+/// Two fillets meeting at a vertex whose third edge is not filleted — the
+/// rim of a faceted cylinder, or any polygonal edge loop around a face — are
+/// joined by a miter rather than a corner patch.  The two edges share one
+/// face (the cap) and their other faces meet along the third edge, which is
+/// perpendicular to the cap because both dihedrals are right angles.  Each
+/// blend's end section is carried onto the plane that bisects the turn in the
+/// cap and contains that third edge; the faceB tangent lines of both blends
+/// meet on the third edge one radius from the cap, and the faceA tangent
+/// lines meet on the bisector, so the two blends share their end section and
+/// no patch is needed.
+static bool buildMiter(std::vector<FilletEdgeInfo>& filletEdges, const std::vector<size_t>& indices,
+                       const Vertex* v, std::string& error) {
+    auto& a = filletEdges[indices[0]];
+    auto& b = filletEdges[indices[1]];
+    if (std::abs(radiusAtVertex(a, v) - radiusAtVertex(b, v)) > 1e-9) {
+        error = "Mitered fillet chain requires equal radii where two edges meet";
+        return false;
+    }
+
+    // Exactly one shared face, and a vertex with exactly one other edge,
+    // joining the two fillets' other faces.
+    const Face* shared = nullptr;
+    int sharedCount = 0;
+    for (const Face* fa : {a.faceA, a.faceB}) {
+        for (const Face* fb : {b.faceA, b.faceB}) {
+            if (fa == fb) {
+                shared = fa;
+                ++sharedCount;
+            }
+        }
+    }
+    if (sharedCount != 1) {
+        error = "Two filleted edges meeting at a vertex must share exactly one face";
+        return false;
+    }
+    const Face* otherA = (a.faceA == shared) ? a.faceB : a.faceA;
+    const Face* otherB = (b.faceA == shared) ? b.faceB : b.faceA;
+
+    int degree = 0;
+    const Edge* third = nullptr;
+    const HalfEdge* start = v->halfEdge;
+    const HalfEdge* he = start;
+    do {
+        ++degree;
+        if (he->edge != a.originalEdge && he->edge != b.originalEdge) third = he->edge;
+        he = he->twin->next;
+    } while (he != start && degree <= 8);
+    if (degree != 3 || third == nullptr) {
+        error = "Mitered fillet chain requires a vertex with exactly three edges";
+        return false;
+    }
+    const Face* thirdL = third->halfEdge->face;
+    const Face* thirdR = third->halfEdge->twin->face;
+    if (!((thirdL == otherA && thirdR == otherB) || (thirdL == otherB && thirdR == otherA))) {
+        error = "Mitered fillet chain: the unfilleted edge must join the two side faces";
+        return false;
+    }
+
+    // Miter plane: normal along the bisector of the turn, arriving along a
+    // and leaving along b.
+    const Vec3 arriving = dirFromVertex(a, v) * -1.0;
+    const Vec3 leaving = dirFromVertex(b, v);
+    const Vec3 bisector = arriving + leaving;
+    if (bisector.length() < 1e-9) {
+        error = "Mitered fillet chain: the edges double back on each other";
+        return false;
+    }
+    const Vec3 normal = bisector.normalized();
+    for (auto* fe : {&a, &b}) {
+        if (fe->v1 == v) {
+            fe->miterFront = true;
+            fe->miterFrontNormal = normal;
+        } else {
+            fe->miterBack = true;
+            fe->miterBackNormal = normal;
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Core execution over prepared fillet edges
 // ---------------------------------------------------------------------------
 
@@ -390,15 +500,23 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
                                 const std::string& featureID, int arcSegments) {
     FilletResult result;
 
-    // -- Shared-vertex analysis: three edges → corner blend, two → refuse --
+    // -- Shared-vertex analysis: three edges → corner blend, two → miter --
     std::map<const Vertex*, std::vector<size_t>> vertexEdges;
     for (size_t i = 0; i < filletEdges.size(); ++i) {
         vertexEdges[filletEdges[i].v1].push_back(i);
         vertexEdges[filletEdges[i].v2].push_back(i);
     }
     std::vector<CornerBlend> blends;
+    std::set<const Vertex*> miters;
     for (const auto& [v, indices] : vertexEdges) {
         if (indices.size() == 1) continue;
+        if (indices.size() == 2) {
+            if (!buildMiter(filletEdges, indices, v, result.errorMessage)) {
+                return result;
+            }
+            miters.insert(v);
+            continue;
+        }
         if (indices.size() == 3) {
             CornerBlend blend;
             if (!buildCornerBlend(filletEdges, indices, v, blend, result.errorMessage)) {
@@ -409,8 +527,27 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         }
         result.errorMessage =
             "Vertex blend not supported: " + std::to_string(indices.size()) +
-            " selected edges share a vertex (exactly three are required for a corner blend)";
+            " selected edges share a vertex (two form a mitered chain, three a corner blend)";
         return result;
+    }
+
+    // Every blend's arc samples, carried onto its miter planes.  A miter must
+    // not fold: each sample has to travel forward along its edge from one
+    // end section to the other, or the blend passes through itself (a turn
+    // too tight for the radius).
+    std::vector<std::vector<std::vector<Vec3>>> samples;
+    samples.reserve(filletEdges.size());
+    for (const auto& fe : filletEdges) {
+        samples.push_back(stopSamples(fe, arcSegments));
+        const auto& first = samples.back().front();
+        const auto& last = samples.back().back();
+        for (size_t k = 0; k < first.size() && k < last.size(); ++k) {
+            if ((last[k] - first[k]).dot(fe.edgeDir) <= 1e-9 * fe.edgeLen) {
+                result.errorMessage = "Fillet radius too large for the turn at a chained edge: " +
+                                      fe.originalEdge->topoId.tag();
+                return result;
+            }
+        }
     }
 
     // -- Validate radius against face dimensions --
@@ -462,7 +599,8 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     for (size_t i = 0; i < filletEdges.size(); ++i) {
         const auto& fe = filletEdges[i];
         auto isBlendedAt = [&](const Vertex* v) {
-            return std::any_of(blends.begin(), blends.end(),
+            return miters.count(v) != 0 ||
+                   std::any_of(blends.begin(), blends.end(),
                                [v](const CornerBlend& b) { return b.vertex == v; });
         };
         if (!isBlendedAt(fe.v1)) {
@@ -521,21 +659,33 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
             if (fitIt != edgeToFillet.end()) {
                 const auto& fe = filletEdges[fitIt->second];
+                const auto& feSamples = samples[fitIt->second];
                 const bool forward = (cur->origin == fe.v1);
                 const bool isFaceA = (cur->face == fe.faceA);
 
-                // Emit the tangent chain for this side, in traversal order.
+                // Emit the tangent chain for this side, in traversal order:
+                // the first (faceA) or last (faceB) sample of each stop, which
+                // at a mitered end is the tangent point on the miter plane.
+                auto tangent = [isFaceA](const std::vector<Vec3>& arc) {
+                    return isFaceA ? arc.front() : arc.back();
+                };
                 if (forward) {
-                    for (const auto& s : fe.stops) {
-                        fd.vertices.push_back(isFaceA ? s.posA : s.posB);
-                    }
+                    for (const auto& arc : feSamples) fd.vertices.push_back(tangent(arc));
                 } else {
-                    for (auto it = fe.stops.rbegin(); it != fe.stops.rend(); ++it) {
-                        fd.vertices.push_back(isFaceA ? it->posA : it->posB);
+                    for (auto it = feSamples.rbegin(); it != feSamples.rend(); ++it) {
+                        fd.vertices.push_back(tangent(*it));
                     }
                 }
             } else {
                 const Vertex* v = cur->origin;
+
+                // A mitered vertex vanishes on every face around it: the cap
+                // and both side faces each receive it through a blend's
+                // tangent chain, which ends on the miter plane.
+                if (miters.count(v) != 0) {
+                    cur = cur->next;
+                    continue;
+                }
 
                 // Corner-blend vertices vanish — the adjacent chains meet.
                 bool blended = false;
@@ -601,8 +751,8 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     for (size_t i = 0; i < filletEdges.size(); ++i) {
         const auto& fe = filletEdges[i];
         for (size_t s = 0; s + 1 < fe.stops.size(); ++s) {
-            const auto lo = arcSamples(fe.stops[s], arcSegments);
-            const auto hi = arcSamples(fe.stops[s + 1], arcSegments);
+            const auto& lo = samples[i][s];
+            const auto& hi = samples[i][s + 1];
             const size_t bands = std::min(lo.size(), hi.size()) - 1;
             // The whole-arc surface stays available as the ideal geometry each
             // band approximates; the bands themselves carry planar carriers,

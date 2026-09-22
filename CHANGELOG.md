@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–93)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–94)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -114,6 +114,20 @@ Continues against the "Not yet addressed" list in the
   `analyticSurface`, Boolean fragments recover it from their source face
   (looked up per operand, since two primitives of one kind share face IDs),
   and result edges lying along a source edge inherit its ideal curve.
+- **Filleting a cylinder rim (94).** The open item Phases 85–86 left: a
+  faceted cylinder's rim is a closed chain of chords, every vertex of which
+  has two of them, and FilletOp refused any vertex with two selected edges
+  ("exactly three are required for a corner blend"). So did two adjacent top
+  edges of a box. Where two selected edges meet at a three-edge vertex, share
+  one face, and the unselected third edge joins their other faces, the blends
+  now meet on the plane bisecting the turn in the shared face: each blend's
+  end section is carried along its edge onto that plane, the construction
+  Phase 89 used for sweeps. The bands stay planar, the cap receives the inset
+  polygon and the side edge is shortened by one radius, and no patch is
+  needed. The removed material is exactly the blend cross-section times the
+  length of its centroid path, which the tests assert to 1e-9 for a corner
+  pair, an open chain, a square rim, a miter turned in a side face, and a
+  32-chord cylinder rim. A turn too tight for the radius is refused.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 
