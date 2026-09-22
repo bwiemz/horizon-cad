@@ -34,29 +34,6 @@ Vec3 rotateAroundAxis(const Vec3& point, const Vec3& axisPoint, const Vec3& axis
            axisDir * (axisDir.dot(p) * (1.0 - cosA));
 }
 
-/// Signed volume of a closed polygon soup (divergence theorem, fan per face).
-double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
-    double vol6 = 0.0;
-    for (const auto& f : faces) {
-        for (size_t i = 1; i + 1 < f.points.size(); ++i) {
-            vol6 += f.points[0].dot(f.points[i].cross(f.points[i + 1]));
-        }
-    }
-    return vol6 / 6.0;
-}
-
-/// Normalize a closed soup to outward winding, which is SolidSewer's input
-/// contract.  Deriving the handedness from the enclosed volume beats reasoning
-/// about each loop by hand, which is where winding bugs come from.
-void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
-    if (soupSignedVolume(faces) >= 0.0) {
-        return;
-    }
-    for (auto& f : faces) {
-        std::reverse(f.points.begin(), f.points.end());
-    }
-}
-
 /// A quad, dropping to a triangle where one side is degenerate — which is
 /// what a profile vertex sitting on the axis produces, since rotating it
 /// leaves it where it was.
@@ -330,7 +307,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
         faces.push_back(std::move(end));
     }
 
-    orientOutward(faces);
+    ringstack::orientOutward(faces);
     auto solid = SolidSewer::sew(faces);
     if (solid == nullptr) {
         return nullptr;

@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–94)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–95)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -128,6 +128,22 @@ Continues against the "Not yet addressed" list in the
   length of its centroid path, which the tests assert to 1e-9 for a corner
   pair, an open chain, a square rim, a miter turned in a side face, and a
   32-chord cylinder rim. A turn too tight for the radius is refused.
+- **Twisted lofts integrated the wrong solid (95).** A loft between a square
+  and the same square turned 0.6 rad has lateral bands whose four corners are
+  not coplanar. Such a loop encloses no well-defined volume, so each path in
+  the kernel picked its own: mass properties and Booleans fanned it along one
+  diagonal and got **180.8**, while the renderer drew the ruled patch, which
+  encloses **150.7** — 20% apart. A level with any non-planar band is now cut
+  along its rulings into strips, each non-planar strip into two triangles
+  with the diagonal alternating from strip to strip. Every facet is flat, so
+  the display and the computation see the same solid; and because the volume
+  a bilinear patch bounds is exactly the mean of its two triangulations,
+  alternating diagonals make the faceted volume equal the ruled loft's
+  exactly — asserted to 1e-9 against Simpson's rule, which is exact for the
+  quadratic section area. `twistSegments` (default 8, rounded up to even)
+  only sets how closely the facets follow the curved patch, which each facet
+  records on `analyticSurface`. Planar bands stay single quads, so aligned
+  and similar sections build exactly as before.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

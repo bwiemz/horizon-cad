@@ -17,6 +17,7 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model::ringstack {
@@ -35,6 +36,10 @@ struct RingStackBuild {
 /// have the same vertex count. Returns an empty build (null faces) on bad
 /// input.
 RingStackBuild build(topo::Solid& solid, const std::vector<std::vector<math::Vec3>>& rings);
+
+/// Normalize a closed polygon soup to outward winding, SolidSewer's input
+/// contract, by the sign of the volume it encloses.
+void orientOutward(std::vector<SolidSewer::InputFace>& faces);
 
 /// Assign a degree-1 line curve to every edge of the solid.
 void assignEdgeCurves(topo::Solid& solid);
