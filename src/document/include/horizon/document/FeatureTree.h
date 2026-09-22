@@ -7,6 +7,7 @@
 
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
@@ -99,10 +100,22 @@ public:
     double distance() const { return m_distance; }
     void restoreFeatureID(const std::string& id) override;
 
+    /// Chords per full turn of the profile's arcs and circles, the "segments"
+    /// parameter.  Reported only when the profile has any: a polygon extrudes
+    /// exactly.
+    int segments() const { return m_segments; }
+    /// Chord-sag budget, the "chordTolerance" parameter: when positive each
+    /// arc is faceted at the count its own radius needs.  0 uses the count.
+    double chordTolerance() const { return m_chordTolerance; }
+    /// Whether the profile has an arc or circle, and so a resolution.
+    bool hasCurvedProfile() const;
+
 private:
     std::shared_ptr<Sketch> m_sketch;
     math::Vec3 m_direction;
     double m_distance;
+    int m_segments = model::Extrude::kDefaultSegments;
+    double m_chordTolerance = 0.0;
     std::string m_featureID;
 
     static int s_nextID;
@@ -192,8 +205,8 @@ public:
 
     /// Steps per full turn used to sample arcs in the path, the "segments"
     /// parameter.  A straight path is exact and ignores it.
-    /// With a chord tolerance set, each arc is instead sampled at the count
-    /// its own radius needs.
+    /// Also used for arcs in the profile.  With a chord tolerance set, each
+    /// arc is instead sampled at the count its own radius needs.
     int segments() const { return m_segments; }
     /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
     /// facet count is derived from it and the governing radius on every

@@ -6,6 +6,7 @@
 
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/math/Constants.h"
@@ -64,13 +65,39 @@ std::string ExtrudeFeature::name() const {
 }
 
 std::map<std::string, double> ExtrudeFeature::parameters() const {
-    return {{"distance", m_distance}};
+    std::map<std::string, double> params = {{"distance", m_distance}};
+    if (hasCurvedProfile()) {
+        params["segments"] = static_cast<double>(m_segments);
+        params["chordTolerance"] = m_chordTolerance;
+    }
+    return params;
 }
 
 bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     if (name == "distance" && value > 0.0) {
         m_distance = value;
         return true;
+    }
+    // Profile arcs are faceted, so these decide how close the extrusion gets
+    // to the exact solid.  A polygon profile is exact and has neither.
+    if (name == "segments" && value >= 3.0 && hasCurvedProfile()) {
+        m_segments = static_cast<int>(value);
+        m_chordTolerance = 0.0;
+        return true;
+    }
+    if (name == "chordTolerance" && hasCurvedProfile()) {
+        return setChordTolerance(m_chordTolerance, value);
+    }
+    return false;
+}
+
+bool ExtrudeFeature::hasCurvedProfile() const {
+    if (!m_sketch) return false;
+    for (const auto& ent : m_sketch->entities()) {
+        if (dynamic_cast<const draft::DraftArc*>(ent.get()) ||
+            dynamic_cast<const draft::DraftCircle*>(ent.get())) {
+            return true;
+        }
     }
     return false;
 }
@@ -90,7 +117,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
     // For now, extrude always creates a new solid from the sketch.
     // Boolean combination with inputSolid comes in a future phase.
     return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
-                                   m_featureID);
+                                   m_featureID, m_segments, m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +182,7 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
 std::unique_ptr<topo::Solid> RevolveFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID, segments());
+                                   m_angle, m_featureID, segments(), m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,8 +343,8 @@ std::unique_ptr<topo::Solid> SweepFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
     if (!m_profile || !m_path) return nullptr;
     std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments, m_chordTolerance);
-    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
-                                 m_featureID);
+    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints, m_featureID,
+                                 m_segments, m_chordTolerance);
 }
 
 // ---------------------------------------------------------------------------

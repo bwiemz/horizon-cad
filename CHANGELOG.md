@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–91)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–92)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -69,6 +69,31 @@ Continues against the "Not yet addressed" list in the
   those tests assert 1e-12, including off-knot samples on all four quadrics
   and the weighted-surface centre against the closed-form homogeneous value.
   Mate frames were unaffected only because they happen to sample at knots.
+- **Extrude turned circles into squares (92).** Phase 84 found the curved
+  primitives were box topology wearing a curved surface. Extrude, the most
+  used feature in the product, had the same disease and was not in that
+  sweep: a circle profile was extruded through box topology from four points
+  on the circle, with a cylinder surface pasted onto the four flat sides, so a
+  radius-5 disc extruded 10 integrated to **500 against 785**. Every arc in a
+  line/arc profile was taken as its chord — a slot's round ends vanished (80
+  against 111.4). Profile extraction was shared, so Revolve, Sweep and Loft
+  chorded arcs the same way, and a circle section made Loft return nothing.
+
+  Profiles are now faceted by one shared sampler: arcs are followed along
+  their curve and a circle becomes an N-gon, at `segments` chords per turn or
+  at the count each arc's own radius needs under `chordTolerance`, recording
+  which chords came from which arc. The extrusion is an exact inscribed prism
+  (the tests assert the N-gon volume to 1e-9) that converges to the exact
+  solid from below. The lateral facets of an arc record their cylinder on
+  `Face::analyticSurface` (for extrusions along the sketch normal) and every
+  arc chord its circle on `Edge::analyticCurve`, so mates and radial
+  dimensions still resolve from a single pick. A half disc now revolves to a
+  sphere, two circles loft to the inscribed frustum, and a circle sweeps a
+  pipe. `ExtrudeFeature` gains `segments` and `chordTolerance`, reported only
+  when the profile has an arc or circle; Sweep's `segments` now also facets
+  its profile. Documents that extrude a circle rebuild as the faceted cylinder
+  on open, which changes their edge numbering: a fillet or chamfer that
+  referenced one of the old square's edges by TopologyID no longer finds it.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

@@ -59,13 +59,17 @@ public:
     /// @param axisDirection Direction of the revolution axis (will be normalized).
     /// @param angle         Revolution angle in radians, in (0, 2*pi].
     /// @param featureID     Base name for TopologyID generation (e.g. "revolve_1").
-    /// @param segments      Angular steps for a full turn (>= 3).
+    /// @param segments      Angular steps for a full turn (>= 3); also the
+    ///                      chords per turn used to facet profile arcs.
+    /// @param chordTolerance When positive, profile arcs are instead faceted at
+    ///                      the count their own radius needs to keep every
+    ///                      chord within it.
     /// @return The revolved solid, or nullptr if the profile or angle is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
-        int segments = kDefaultSegments);
+        int segments = kDefaultSegments, double chordTolerance = 0.0);
 };
 
 }  // namespace hz::model

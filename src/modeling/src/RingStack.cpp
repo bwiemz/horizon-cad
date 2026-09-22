@@ -1,11 +1,15 @@
 #include "RingStack.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/math/Constants.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/EulerOps.h"
 
 namespace hz::model::ringstack {
@@ -153,35 +157,94 @@ std::shared_ptr<geo::NurbsSurface> makeCapSurface(const std::vector<Vec3>& ring,
         geo::NurbsSurface::makePlane(origin, u, v, uMax - uMin, vMax - vMin));
 }
 
-std::vector<Vec2> extractProfileVertices(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges, double tolerance) {
-    std::vector<Vec2> verts;
+int ProfileResolution::stepsFor(double radius, double sweep) const {
+    const int perTurn = chordTolerance > 0.0
+                            ? PrimitiveFactory::segmentsForTolerance(radius, chordTolerance)
+                            : segmentsPerTurn;
+    const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(perTurn, 3));
+    return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
+}
+
+SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges,
+                             double tolerance, const ProfileResolution& resolution) {
+    SampledProfile out;
+
+    // A lone circle is its own closed loop.
+    if (orderedEdges.size() == 1) {
+        if (auto* circle = dynamic_cast<draft::DraftCircle*>(orderedEdges[0].get())) {
+            if (!(circle->radius() > 0.0)) return out;
+            const int n = std::max(3, resolution.stepsFor(circle->radius(), math::kTwoPi));
+            out.arcs.push_back({circle->center(), circle->radius()});
+            for (int k = 0; k < n; ++k) {
+                const double a = math::kTwoPi * static_cast<double>(k) / n;
+                out.vertices.emplace_back(circle->center().x + circle->radius() * std::cos(a),
+                                          circle->center().y + circle->radius() * std::sin(a));
+                out.edgeArc.push_back(0);
+            }
+            return out;
+        }
+    }
+
     for (const auto& ent : orderedEdges) {
         Vec2 s, e;
+        std::vector<Vec2> run;  // points after s, ending at e
+        int arcIndex = -1;
         if (auto* line = dynamic_cast<draft::DraftLine*>(ent.get())) {
             s = line->start();
             e = line->end();
+            run.push_back(e);
         } else if (auto* arc = dynamic_cast<draft::DraftArc*>(ent.get())) {
             s = arc->startPoint();
             e = arc->endPoint();
+            const double sweep = arc->sweepAngle();
+            const int steps = resolution.stepsFor(arc->radius(), sweep);
+            for (int k = 1; k < steps; ++k) {
+                const double a = arc->startAngle() + sweep * static_cast<double>(k) / steps;
+                run.emplace_back(arc->center().x + arc->radius() * std::cos(a),
+                                 arc->center().y + arc->radius() * std::sin(a));
+            }
+            // End on the stored end point exactly, so it welds with its neighbour.
+            run.push_back(e);
+            arcIndex = static_cast<int>(out.arcs.size());
+            out.arcs.push_back({arc->center(), arc->radius()});
         } else {
             continue;
         }
-        if (verts.empty()) {
-            verts.push_back(s);
+
+        if (out.vertices.empty()) {
+            out.vertices.push_back(s);
         } else {
             // Orient this edge to continue the chain.
-            const double ds = (verts.back() - s).length();
-            const double de = (verts.back() - e).length();
-            if (de < ds) std::swap(s, e);
+            const double ds = (out.vertices.back() - s).length();
+            const double de = (out.vertices.back() - e).length();
+            if (de < ds) {
+                run.pop_back();
+                std::reverse(run.begin(), run.end());
+                run.push_back(s);
+            }
         }
-        verts.push_back(e);
+        for (const auto& p : run) {
+            out.vertices.push_back(p);
+            out.edgeArc.push_back(arcIndex);
+        }
     }
 
-    if (verts.size() >= 2 && (verts.back() - verts.front()).length() <= tolerance) {
-        verts.pop_back();
+    // One provenance entry was pushed per point after the first, so
+    // edgeArc[i] describes the chord vertices[i] -> vertices[i+1].  Dropping
+    // the closing vertex (== first) makes the last chord wrap to vertex 0.
+    if (out.vertices.size() >= 2 &&
+        (out.vertices.back() - out.vertices.front()).length() <= tolerance) {
+        out.vertices.pop_back();
+    } else {
+        // An open chain: the implicit closing edge is straight.
+        out.edgeArc.push_back(-1);
     }
-    return verts;
+    return out;
+}
+
+std::vector<Vec2> extractProfileVertices(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges, double tolerance) {
+    return sampleProfile(orderedEdges, tolerance).vertices;
 }
 
 }  // namespace hz::model::ringstack

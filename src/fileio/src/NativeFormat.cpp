@@ -466,6 +466,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["distance"] = ext->distance();
             fObj["direction"] = {ext->direction().x, ext->direction().y, ext->direction().z};
             if (ext->sketch()) fObj["sketchId"] = ext->sketch()->id();
+            if (ext->hasCurvedProfile()) fObj["segments"] = ext->segments();
+            if (ext->chordTolerance() > 0.0) fObj["chordTolerance"] = ext->chordTolerance();
         } else if (const auto* rev = dynamic_cast<const doc::RevolveFeature*>(feat)) {
             fObj["type"] = "revolve";
             fObj["angle"] = rev->angle();
@@ -1354,6 +1356,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                                fObj["direction"][2].get<double>());
                     }
                     auto feat = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
+                    if (fObj.contains("segments")) {
+                        feat->setParameter("segments", fObj["segments"].get<double>());
+                    }
+                    if (fObj.contains("chordTolerance")) {
+                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                    }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 } else if (ftype == "revolve") {

@@ -6,6 +6,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -850,4 +851,33 @@ TEST(FeatureTreeTest, SweepChordToleranceSamplesEachArcAtItsOwnRadius) {
     const int perTurn = hz::model::PrimitiveFactory::segmentsForTolerance(10.0, 0.001);
     const int steps = static_cast<int>(std::ceil(perTurn / 4.0 - 1e-9));
     EXPECT_EQ(solid->faceCount(), static_cast<size_t>(4 * (1 + steps) + 2));
+}
+
+// ---------------------------------------------------------------------------
+// Extrude resolution (Phase 92): reported only when there is an arc to facet.
+// ---------------------------------------------------------------------------
+
+TEST(FeatureTreeTest, ExtrudeResolutionIsAParameterOfCurvedProfilesOnly) {
+    auto rect = makeOffsetRectSketch();
+    ExtrudeFeature square(rect, Vec3::UnitZ, 5.0);
+    EXPECT_EQ(square.parameters().count("segments"), 0u);
+    EXPECT_FALSE(square.setParameter("segments", 64.0)) << "a polygon extrudes exactly";
+    EXPECT_FALSE(square.setParameter("chordTolerance", 0.01));
+
+    auto disc = std::make_shared<Sketch>();
+    disc->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), 5.0));
+    ExtrudeFeature cylinder(disc, Vec3::UnitZ, 10.0);
+    ASSERT_TRUE(cylinder.parameters().count("segments"));
+    ASSERT_TRUE(cylinder.parameters().count("chordTolerance"));
+
+    const double exact = hz::math::kPi * 25.0 * 10.0;
+    auto coarse = cylinder.execute(nullptr);
+    ASSERT_TRUE(cylinder.setParameter("segments", 128.0));
+    auto fine = cylinder.execute(nullptr);
+    ASSERT_NE(coarse, nullptr);
+    ASSERT_NE(fine, nullptr);
+    const double coarseErr = exact - hz::model::MassPropertiesCalculator::compute(*coarse).volume;
+    const double fineErr = exact - hz::model::MassPropertiesCalculator::compute(*fine).volume;
+    EXPECT_GT(fineErr, 0.0);
+    EXPECT_LT(fineErr, coarseErr * 0.1);
 }

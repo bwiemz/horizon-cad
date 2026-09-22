@@ -48,9 +48,39 @@ std::shared_ptr<geo::NurbsSurface> makeBilinearPatch(const math::Vec3& p00, cons
 std::shared_ptr<geo::NurbsSurface> makeCapSurface(const std::vector<math::Vec3>& ring,
                                                   const math::Vec3& normal);
 
-/// Extract chain-ordered 2D vertices from an ordered closed profile
-/// (lines/arcs). The closing vertex (== first) is dropped. Returns empty on
-/// unsupported geometry.
+/// How finely the arcs and circles of a profile are faceted.
+struct ProfileResolution {
+    int segmentsPerTurn = 32;  ///< chords per full turn of any arc
+    /// When positive, each arc's count is instead derived from its own radius
+    /// so that no chord sags more than this.
+    double chordTolerance = 0.0;
+
+    /// Chords across an arc of @p radius sweeping @p sweep radians (>= 1).
+    int stepsFor(double radius, double sweep) const;
+};
+
+/// A circle some of a sampled profile's chords approximate.
+struct ProfileArc {
+    math::Vec2 center;
+    double radius = 0.0;
+};
+
+/// A closed profile as a polygon, with each chord's provenance.
+struct SampledProfile {
+    std::vector<math::Vec2> vertices;  ///< chain order; closing vertex not repeated
+    /// edgeArc[i] indexes `arcs` for the chord vertices[i] -> vertices[i+1]
+    /// when it approximates an arc or circle, and is -1 for a straight edge.
+    std::vector<int> edgeArc;
+    std::vector<ProfileArc> arcs;
+};
+
+/// Facet an ordered closed profile of lines, arcs, or a single circle.  Arcs
+/// are followed along their curve, not across their chord.  Returns an empty
+/// profile on unsupported geometry.
+SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges,
+                             double tolerance, const ProfileResolution& resolution = {});
+
+/// The vertices of sampleProfile() at the default resolution.
 std::vector<math::Vec2> extractProfileVertices(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges, double tolerance);
 

@@ -45,7 +45,7 @@ constexpr double kParallelTol = 1e-9;
 std::unique_ptr<topo::Solid> Sweep::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const std::vector<math::Vec3>& pathPoints,
-    const std::string& featureID) {
+    const std::string& featureID, int profileSegments, double chordTolerance) {
     // -----------------------------------------------------------------------
     // 1. Validate the path (>= 2 distinct points, no zero-length segments).
     // -----------------------------------------------------------------------
@@ -64,7 +64,11 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     auto validation = ProfileValidator::validate(profile);
     if (!validation.isClosed) return nullptr;
 
-    std::vector<Vec2> verts2D = ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
+    if (profileSegments < 3) return nullptr;
+    const std::vector<Vec2> verts2D =
+        ringstack::sampleProfile(validation.orderedEdges, 1e-6,
+                                 ringstack::ProfileResolution{profileSegments, chordTolerance})
+            .vertices;
     const size_t N = verts2D.size();
     if (N < 3) return nullptr;
 

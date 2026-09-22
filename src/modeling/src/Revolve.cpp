@@ -214,7 +214,7 @@ double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEnti
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID, int segments) {
+    const std::string& featureID, int segments, double chordTolerance) {
     if (segments < 3 || !(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
         return nullptr;
     }
@@ -227,8 +227,9 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     if (!validation.isClosed) {
         return nullptr;
     }
-    const std::vector<Vec2> verts2D =
-        ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
+    const ringstack::SampledProfile sampled = ringstack::sampleProfile(
+        validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
+    const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
         return nullptr;
@@ -340,6 +341,9 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     // -----------------------------------------------------------------------
     for (size_t i = 0; i < N; ++i) {
         const size_t j = (i + 1) % N;
+        // A chord of a profile arc sweeps a cone, but what it approximates is
+        // the torus-like surface of the arc, so there is no cone to record.
+        if (sampled.edgeArc[i] >= 0) continue;
         tagAnalyticSurface(*solid, featureID + "/revolved_" + std::to_string(i) + "_",
                            sweptSurface(cyl[i], cyl[j], axisPoint, axisDir, tol));
     }

@@ -41,11 +41,14 @@ public:
     /// @param plane       The profile's sketch plane.
     /// @param pathPoints  Polyline path in world space (>= 2 distinct points).
     /// @param featureID   Base name for TopologyID generation (e.g. "sweep_1").
+    /// @param profileSegments  Chords per full turn of profile arcs (>= 3).
+    /// @param chordTolerance   When positive, overrides @p profileSegments per arc.
     /// @return The swept solid, or nullptr if the input is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const std::vector<math::Vec3>& pathPoints,
-        const std::string& featureID);
+        const std::string& featureID, int profileSegments = kDefaultArcSegments,
+        double chordTolerance = 0.0);
 };
 
 }  // namespace hz::model

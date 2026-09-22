@@ -3,9 +3,7 @@
 #include <cassert>
 #include <cmath>
 
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftLine.h"
+#include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/ProfileValidator.h"
@@ -48,54 +46,6 @@ static void assignEdgeCurve(Edge* edge) {
     assert(edge->halfEdge != nullptr);
     HalfEdge* he = edge->halfEdge;
     edge->curve = makeLineCurve(he->origin->point, he->twin->origin->point);
-}
-
-// ---------------------------------------------------------------------------
-// Extract 2D vertices from a closed profile (lines/arcs chain).
-// Returns the unique vertices in chain order (the closing point == first point
-// is NOT duplicated).
-// ---------------------------------------------------------------------------
-
-static std::vector<Vec2> extractVertices2D(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges, double tolerance) {
-    std::vector<Vec2> verts;
-    for (const auto& ent : orderedEdges) {
-        Vec2 s, e;
-        if (auto* line = dynamic_cast<draft::DraftLine*>(ent.get())) {
-            s = line->start();
-            e = line->end();
-        } else if (auto* arc = dynamic_cast<draft::DraftArc*>(ent.get())) {
-            s = arc->startPoint();
-            e = arc->endPoint();
-        } else {
-            continue;
-        }
-
-        // If chain is empty or the start of this edge doesn't match the last vertex
-        // added, add the start point. Otherwise the chain is continuing from the last
-        // vertex and we only need to add the end.
-        if (verts.empty()) {
-            verts.push_back(s);
-        } else {
-            // Check whether this edge is reversed relative to the chain.
-            const double ds = (verts.back() - s).length();
-            const double de = (verts.back() - e).length();
-            if (de < ds) {
-                // Entity is reversed — swap s and e.
-                std::swap(s, e);
-            }
-        }
-        verts.push_back(e);
-    }
-
-    // Remove the duplicate closing vertex (last == first within tolerance).
-    if (verts.size() >= 2) {
-        if ((verts.back() - verts.front()).length() <= tolerance) {
-            verts.pop_back();
-        }
-    }
-
-    return verts;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,13 +205,69 @@ static PrismBuild buildPrismTopology(Solid& solid, const std::vector<Vec3>& bott
 }
 
 // ---------------------------------------------------------------------------
+// Record on the facets of each profile arc the ideal geometry they
+// approximate: the cylinder on the lateral faces (only for an extrusion along
+// the sketch normal — an oblique one sweeps an elliptic cylinder), and the
+// arc's circle on each chord of both caps.
+// ---------------------------------------------------------------------------
+
+static void tagArcIdeals(const ringstack::SampledProfile& sampled, const draft::SketchPlane& plane,
+                         const Vec3& offset, const std::vector<Face*>& laterals,
+                         const std::vector<Vertex*>& bottomVerts,
+                         const std::vector<Vertex*>& topVerts) {
+    if (sampled.arcs.empty()) return;
+    const double height = offset.length();
+    const Vec3 axis = offset.normalized();
+    const bool alongNormal = axis.cross(plane.normal()).length() < 1e-9;
+
+    std::vector<std::shared_ptr<geo::NurbsSurface>> cylinders(sampled.arcs.size());
+    std::vector<std::shared_ptr<geo::NurbsCurve>> bottomCircles(sampled.arcs.size());
+    std::vector<std::shared_ptr<geo::NurbsCurve>> topCircles(sampled.arcs.size());
+    for (size_t a = 0; a < sampled.arcs.size(); ++a) {
+        const Vec3 center = plane.localToWorld(sampled.arcs[a].center);
+        const double r = sampled.arcs[a].radius;
+        if (alongNormal) {
+            cylinders[a] = std::make_shared<geo::NurbsSurface>(
+                geo::NurbsSurface::makeCylinder(center, axis, r, height));
+        }
+        bottomCircles[a] = std::make_shared<geo::NurbsCurve>(
+            geo::NurbsCurve::makeCircle(center, r, plane.normal()));
+        topCircles[a] = std::make_shared<geo::NurbsCurve>(
+            geo::NurbsCurve::makeCircle(center + offset, r, plane.normal()));
+    }
+
+    const size_t N = laterals.size();
+    for (size_t i = 0; i < N; ++i) {
+        const int a = sampled.edgeArc[i];
+        if (a < 0) continue;
+        const size_t j = (i + 1) % N;
+        Face* face = laterals[i];
+        face->analyticSurface = cylinders[static_cast<size_t>(a)];
+
+        HalfEdge* start = face->outerLoop->halfEdge;
+        HalfEdge* he = start;
+        do {
+            const Vertex* p = he->origin;
+            const Vertex* q = he->twin->origin;
+            const bool bottom = (p == bottomVerts[i] && q == bottomVerts[j]) ||
+                                (p == bottomVerts[j] && q == bottomVerts[i]);
+            const bool top =
+                (p == topVerts[i] && q == topVerts[j]) || (p == topVerts[j] && q == topVerts[i]);
+            if (bottom) he->edge->analyticCurve = bottomCircles[static_cast<size_t>(a)];
+            if (top) he->edge->analyticCurve = topCircles[static_cast<size_t>(a)];
+            he = he->next;
+        } while (he != start);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Extrude::execute
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<topo::Solid> Extrude::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& direction, double distance,
-    const std::string& featureID) {
+    const std::string& featureID, int segments, double chordTolerance) {
     // -----------------------------------------------------------------------
     // 1. Validate profile
     // -----------------------------------------------------------------------
@@ -273,68 +279,15 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     const Vec3 offset = direction * distance;
 
     // -----------------------------------------------------------------------
-    // 2. Circle profile → cylinder
+    // 2. Facet the profile.  Arcs and circles are followed along their curve;
+    //    a circle used to become four points and so a square prism.
     // -----------------------------------------------------------------------
-    if (validation.orderedEdges.size() == 1) {
-        auto* circle = dynamic_cast<draft::DraftCircle*>(validation.orderedEdges[0].get());
-        if (circle != nullptr) {
-            const double r = circle->radius();
-            const Vec3 center3D = plane.localToWorld(circle->center());
-            const Vec3 topCenter = center3D + offset;
-
-            // Use box topology with 4 points around circle at bottom and top.
-            const Vec3 xA = plane.xAxis();
-            const Vec3 yA = plane.yAxis();
-
-            const Vec3 pts[8] = {
-                center3D + xA * r,  center3D + yA * r,  center3D - xA * r,  center3D - yA * r,
-                topCenter + xA * r, topCenter + yA * r, topCenter - xA * r, topCenter - yA * r,
-            };
-
-            auto solid = std::make_unique<topo::Solid>();
-            BoxBuild bb = buildBoxTopology(*solid, pts);
-
-            // TopologyIDs
-            bb.bottom->topoId = TopologyID::make(featureID, "cap_bottom");
-            bb.top->topoId = TopologyID::make(featureID, "cap_top");
-            bb.front->topoId = TopologyID::make(featureID, "lateral_0");
-            bb.right->topoId = TopologyID::make(featureID, "lateral_1");
-            bb.back->topoId = TopologyID::make(featureID, "lateral_2");
-            bb.left->topoId = TopologyID::make(featureID, "lateral_3");
-
-            {
-                int idx = 0;
-                for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-                    e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
-                    ++idx;
-                }
-            }
-
-            for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-                assignEdgeCurve(&e);
-            }
-
-            // Surfaces — planar caps, cylindrical lateral
-            bb.bottom->surface = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makePlane(center3D - xA * r - yA * r, xA, yA, 2 * r, 2 * r));
-            bb.top->surface = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makePlane(topCenter - xA * r - yA * r, xA, yA, 2 * r, 2 * r));
-
-            auto cylSurf = std::make_shared<geo::NurbsSurface>(
-                geo::NurbsSurface::makeCylinder(center3D, direction.normalized(), r, distance));
-            bb.front->surface = cylSurf;
-            bb.right->surface = cylSurf;
-            bb.back->surface = cylSurf;
-            bb.left->surface = cylSurf;
-
-            return solid;
-        }
+    if (segments < 3) {
+        return nullptr;
     }
-
-    // -----------------------------------------------------------------------
-    // 3. Line/arc profile → prism extrude
-    // -----------------------------------------------------------------------
-    std::vector<Vec2> verts2D = extractVertices2D(validation.orderedEdges, 1e-6);
+    const ringstack::SampledProfile sampled = ringstack::sampleProfile(
+        validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
+    const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
         return nullptr;
@@ -351,7 +304,7 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     // -----------------------------------------------------------------------
     // 3a. Rectangle (N==4) → box topology (reuse proven buildBoxTopology)
     // -----------------------------------------------------------------------
-    if (N == 4) {
+    if (N == 4 && sampled.arcs.empty()) {
         const Vec3 pts[8] = {
             bottomPts[0], bottomPts[1], bottomPts[2], bottomPts[3],
             topPts[0],    topPts[1],    topPts[2],    topPts[3],
@@ -485,6 +438,7 @@ std::unique_ptr<topo::Solid> Extrude::execute(
                 bottomPts[i], uDir.normalized(), vDir, uDir.length(), distance));
     }
 
+    tagArcIdeals(sampled, plane, offset, pb.lateralFaces, pb.bottomVerts, pb.topVerts);
     return solid;
 }
 

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -226,4 +227,20 @@ TEST(SweepTest, RepeatedPathPointsCollapse) {
     // Duplicate collapsed → 3 distinct points → 2 levels: V=12.
     EXPECT_EQ(solid->vertexCount(), 12u);
     EXPECT_TRUE(solid->checkManifold());
+}
+
+// ---------------------------------------------------------------------------
+// Circular profile (Phase 92): a pipe.
+// ---------------------------------------------------------------------------
+
+TEST(SweepTest, CircularProfileSweepsAFacetedPipe) {
+    std::vector<std::shared_ptr<DraftEntity>> circle = {
+        std::make_shared<DraftCircle>(Vec2(0, 0), 1.0)};
+    std::vector<Vec3> path = {Vec3(0, 0, 0), Vec3(0, 0, 10), Vec3(8, 0, 10)};
+    auto solid = Sweep::execute(circle, xyPlane(), path, "pipe", 24);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+    const double area = 0.5 * 24 * std::sin(2.0 * hz::math::kPi / 24);
+    EXPECT_NEAR(volumeOf(*solid), area * 18.0, 1e-9);
 }

@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/Loft.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -140,4 +145,33 @@ TEST(LoftTest, InvalidInputsRejected) {
 
     // Empty.
     EXPECT_EQ(Loft::execute({}, "loft_empty"), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Circle sections (Phase 92).  Profile extraction used to skip a DraftCircle
+// entirely, so lofting two circles returned nothing; it is now faceted like
+// every other profile, and a loft between two coaxial circles is the inscribed
+// frustum.
+// ---------------------------------------------------------------------------
+
+TEST(LoftTest, CircleToCircleIsTheInscribedFrustum) {
+    std::vector<LoftSection> sections(2);
+    sections[0].profile = {std::make_shared<DraftCircle>(Vec2(0, 0), 4.0)};
+    sections[0].plane = SketchPlane(Vec3(0, 0, 0), Vec3(0, 0, 1), Vec3(1, 0, 0));
+    sections[1].profile = {std::make_shared<DraftCircle>(Vec2(0, 0), 2.0)};
+    sections[1].plane = SketchPlane(Vec3(0, 0, 6), Vec3(0, 0, 1), Vec3(1, 0, 0));
+
+    auto solid = Loft::execute(sections, "loft_c");
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+
+    // Two similar regular 32-gons of area A = (n/2) r^2 sin(2pi/n):
+    // V = h/3 (A1 + A2 + sqrt(A1 A2)).
+    const double n = 32.0;
+    const double k = 0.5 * n * std::sin(2.0 * hz::math::kPi / n);
+    const double a1 = k * 16.0;
+    const double a2 = k * 4.0;
+    const double exact = 6.0 / 3.0 * (a1 + a2 + std::sqrt(a1 * a2));
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, exact, 1e-9);
 }

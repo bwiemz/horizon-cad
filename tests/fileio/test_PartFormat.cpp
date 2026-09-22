@@ -10,6 +10,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -739,6 +740,32 @@ TEST(PartFormatTest, SweepSegmentsRoundTrip) {
 
     ASSERT_TRUE(loaded.rebuildModel());
     EXPECT_EQ(loaded.solid()->faceCount(), originalFaces);
+
+    std::remove(path.c_str());
+}
+
+TEST(PartFormatTest, ExtrudeResolutionRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto disc = std::make_shared<Sketch>();
+    disc->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), 5.0));
+    original.addSketch(disc);
+    auto extrude = std::make_unique<ExtrudeFeature>(disc, Vec3(0, 0, 1), 10.0);
+    ASSERT_TRUE(extrude->setParameter("segments", 72.0));
+    original.featureTree().addFeature(std::move(extrude));
+    ASSERT_TRUE(original.rebuildModel());
+    EXPECT_EQ(original.solid()->faceCount(), 74u);
+
+    std::string path = tempPath("hz_test_extrude_segments.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    const auto* ext = dynamic_cast<const ExtrudeFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(ext, nullptr);
+    EXPECT_EQ(ext->segments(), 72);
+    ASSERT_TRUE(loaded.rebuildModel());
+    EXPECT_EQ(loaded.solid()->faceCount(), 74u);
 
     std::remove(path.c_str());
 }
