@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–95)
+## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 
 Continues against the "Not yet addressed" list in the
 [post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
@@ -144,6 +144,19 @@ Continues against the "Not yet addressed" list in the
   only sets how closely the facets follow the curved patch, which each facet
   records on `analyticSurface`. Planar bands stay single quads, so aligned
   and similar sections build exactly as before.
+- **Interference checking was unreachable (96).** `InterferenceChecker`
+  (Phase 48) had no caller outside its tests: no assembly API, no command.
+  It also reported only *whether* two solids clash — its header deferred the
+  volume because the intersection Boolean was "not yet robust enough", which
+  predates the kernel hardening. Each interfering pair now carries the
+  volume of material the two share, from the Boolean intersection (flagged
+  if that cannot be resolved); `AssemblyDocument::findInterference()` places
+  every resolved, unsuppressed component by its transform and reports
+  interfering pairs by component id, listing unresolved components as
+  unchecked rather than passing them silently; and assemblies gain a
+  **Check Interference** command. Mated faces and tangent cylinders touch
+  without interfering. `Pattern::transformed()` exposes the placement copy,
+  which moves carriers and ideals with the solid.
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 

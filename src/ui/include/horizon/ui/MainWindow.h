@@ -40,6 +40,7 @@ private slots:
     void onSaveFileAs();
     void onInsertComponent();
     void onAddMate();
+    void onCheckInterference();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 

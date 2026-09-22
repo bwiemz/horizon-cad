@@ -2,7 +2,40 @@
 
 #include <algorithm>
 
+#include "horizon/document/Document.h"
+#include "horizon/modeling/InterferenceChecker.h"
+#include "horizon/modeling/Pattern.h"
+
 namespace hz::doc {
+
+InterferenceReport AssemblyDocument::findInterference() const {
+    InterferenceReport report;
+    std::vector<std::unique_ptr<topo::Solid>> placed;
+    std::vector<uint64_t> ids;
+    for (const auto& comp : m_components) {
+        if (comp.suppressed) continue;
+        const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
+        if (solid == nullptr) {
+            report.unchecked.push_back(comp.id);
+            continue;
+        }
+        placed.push_back(model::Pattern::transformed(*solid, comp.transform));
+        ids.push_back(comp.id);
+    }
+
+    std::vector<const topo::Solid*> solids;
+    solids.reserve(placed.size());
+    for (const auto& s : placed) solids.push_back(s.get());
+    for (const auto& pair : model::InterferenceChecker::check(solids)) {
+        ComponentInterference ci;
+        ci.componentA = ids[pair.indexA];
+        ci.componentB = ids[pair.indexB];
+        ci.volume = pair.volume;
+        ci.volumeResolved = pair.volumeResolved;
+        report.pairs.push_back(ci);
+    }
+    return report;
+}
 
 uint64_t AssemblyDocument::addComponent(ComponentInstance instance) {
     if (instance.id == 0) {

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/topology/Solid.h"
 
@@ -34,6 +35,12 @@ public:
 
     /// Circular pattern: @p count instances rotated @p angleStepRad apart
     /// about the axis through @p axisPoint along @p axisDir.
+    /// A deep copy of @p source moved by the rigid transform @p xform, with
+    /// every carrier and ideal moved with it and every TopologyID kept.  This
+    /// is how a component is placed in an assembly's world space.
+    static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
+                                                    const math::Mat4& xform);
+
     static std::unique_ptr<topo::Solid> circular(const topo::Solid& source,
                                                  const math::Vec3& axisPoint,
                                                  const math::Vec3& axisDir, double angleStepRad,

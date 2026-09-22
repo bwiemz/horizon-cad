@@ -227,6 +227,7 @@ void MainWindow::createMenus() {
 
     fileMenu->addAction(tr("&Insert Component..."), this, &MainWindow::onInsertComponent);
     fileMenu->addAction(tr("Add &Mate..."), this, &MainWindow::onAddMate);
+    fileMenu->addAction(tr("Check &Interference"), this, &MainWindow::onCheckInterference);
 
     fileMenu->addSeparator();
 
@@ -1068,6 +1069,55 @@ bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
             .arg(QString::fromStdString(result.message.empty() ? "did not converge"
                                                                : result.message)));
     return false;
+}
+
+void MainWindow::onCheckInterference() {
+    if (!m_assembly) {
+        statusBar()->showMessage(
+            tr("Check Interference is only available in an assembly document"));
+        return;
+    }
+
+    // Interference is measured on the B-Rep, so every component is resolved.
+    const std::string asmDir =
+        m_assembly->filePath().empty()
+            ? std::string()
+            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
+    for (auto& comp : m_assembly->components()) {
+        if (!comp.suppressed && !comp.resolvedPart) {
+            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
+        }
+    }
+
+    const auto report = m_assembly->findInterference();
+    auto nameOf = [this](uint64_t id) {
+        const auto* comp = m_assembly->component(id);
+        const std::string name = comp && !comp->name.empty() ? comp->name : "component";
+        return QString("%1 (#%2)").arg(QString::fromStdString(name)).arg(id);
+    };
+
+    QStringList lines;
+    for (const auto& pair : report.pairs) {
+        const QString amount = pair.volumeResolved
+                                   ? tr("%1 cubic units shared").arg(pair.volume, 0, 'g', 6)
+                                   : tr("overlap could not be measured");
+        lines << tr("%1 and %2: %3").arg(nameOf(pair.componentA), nameOf(pair.componentB), amount);
+    }
+    for (uint64_t id : report.unchecked) {
+        lines << tr("%1 was not checked: its part could not be resolved").arg(nameOf(id));
+    }
+
+    if (report.pairs.empty()) {
+        statusBar()->showMessage(report.unchecked.empty()
+                                     ? tr("No interference found")
+                                     : tr("No interference among the resolved components"));
+    } else {
+        statusBar()->showMessage(
+            tr("%n interfering pair(s)", "", static_cast<int>(report.pairs.size())));
+    }
+    if (!lines.isEmpty()) {
+        QMessageBox::information(this, tr("Interference"), lines.join('\n'));
+    }
 }
 
 void MainWindow::onAddMate() {

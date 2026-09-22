@@ -229,6 +229,12 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     return buildPattern(source, transforms, suppressed);
 }
 
+std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {
+    auto out = std::make_unique<Solid>();
+    cloneInto(*out, source, xform, 0);
+    return out;
+}
+
 std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const Vec3& axisPoint,
                                                const Vec3& axisDir, double angleStepRad, int count,
                                                const std::vector<int>& suppressed) {
