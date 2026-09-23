@@ -778,7 +778,9 @@ TEST(FilletOpTest, ArcSegmentsForToleranceMeetsTheSagBudget) {
         // and one chord fewer must not.
         const auto sag = [](int chords) { return 2.0 * (1.0 - std::cos(kPi / 4.0 / chords)); };
         EXPECT_LE(sag(n), tolerance * 1.0000001) << "tolerance = " << tolerance;
-        if (n > 1) EXPECT_GT(sag(n - 1), tolerance) << "tolerance = " << tolerance;
+        if (n > 1) {
+            EXPECT_GT(sag(n - 1), tolerance) << "tolerance = " << tolerance;
+        }
     }
     // A budget wider than the whole quarter arc's sag needs a single chord.
     EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 5.0), 1);

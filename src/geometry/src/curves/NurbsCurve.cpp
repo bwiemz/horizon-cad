@@ -283,7 +283,6 @@ NurbsCurve NurbsCurve::insertKnot(double t) const {
 
 NurbsCurve NurbsCurve::elevateDegree() const {
     const int p = m_degree;
-    const int n = static_cast<int>(m_controlPoints.size());
 
     // Step 1: Decompose into Bezier segments by inserting knots to full
     // multiplicity at each interior knot.

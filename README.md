@@ -52,7 +52,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 
 ### Document System
 - Full undo/redo with composite command support
-- Native JSON file format (`.hcad` v12) with backward-compatible versioning
+- Native JSON file format (`.hcad`/`.hzpart`, format v16) with backward-compatible versioning
 - DXF import/export (LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT)
 - New, Open, Save, Save As workflow
 
@@ -87,21 +87,42 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 
 ## Building
 
-**Prerequisites:** A C++20 compiler (MSVC, GCC, or Clang), CMake 3.28+, vcpkg
+**Prerequisites:** A C++20 compiler (MSVC, GCC, or Clang), CMake 3.28+, Ninja
+(Linux), and vcpkg with `VCPKG_ROOT` set.
+
+**Windows (Visual Studio 2022):**
 
 ```bash
-# Configure
 cmake --preset debug
-
-# Build
 cmake --build build/debug --config Debug
-
-# Run tests (~900 tests)
-ctest --test-dir build/debug -C Debug
-
-# Run
+ctest --test-dir build/debug -C Debug            # ~1030 tests
 ./build/debug/src/app/Debug/horizon.exe
 ```
+
+**Linux:**
+
+```bash
+# vcpkg builds every dependency, including Qt (slow the first time; needs
+# autoconf, autoconf-archive, automake and libtool for Qt's dependencies).
+cmake --preset linux-debug
+
+# ...or use an installed Qt 6 (e.g. the qt6-base / qt6-base-dev package) and
+# let vcpkg provide only the small libraries.
+cmake --preset linux-system-qt
+
+cmake --build build/linux-system-qt
+QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-system-qt
+./build/linux-system-qt/src/app/horizon
+```
+
+**Build options:**
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `HZ_BUILD_TESTS` | `ON` | Build the Google Test suites |
+| `HZ_WARNINGS_AS_ERRORS` | `OFF` | `-Werror` / `/WX` (CI turns it on for Linux) |
+| `HZ_ENABLE_SANITIZERS` | `OFF` | AddressSanitizer + UndefinedBehaviorSanitizer (GCC/Clang) |
+| `HZ_ENABLE_SCRIPTING` | `ON` | Embedded Python, when Python 3 and pybind11 are found |
 
 ## Architecture
 
@@ -130,14 +151,15 @@ src/
   scripting/     Embedded CPython (pybind11) `horizon` module (optional feature)
   ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs, i18n
   app/           Application entry point, dark theme, resources, locale loading
-tests/           One suite per module + cross-module integration tests (~900 tests)
+tests/           One suite per module + cross-module integration tests (~1030 tests)
 ```
 
 ## Feature Maturity
 
 "Phase done" in the roadmap below means an **honest core slice** exists —
 implemented, tested, and documented — not that the area is
-production-hardened. This table is the truthful per-module picture. Ratings:
+production-hardened. This table is the truthful per-module picture. "Library-only" means the module is built and tested but not linked into
+the application, so users cannot reach it yet. Ratings:
 
 - **stable** — exercised broadly by the app and test suite; APIs settled;
   suitable as a foundation for new work.
@@ -162,17 +184,17 @@ production-hardened. This table is the truthful per-module picture. Ratings:
 | modeling — sheet metal | experimental | Validated against analytic bend formulas |
 | fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary, backward compatible v1-v9. Feature faceting resolution round-trips; files written before it existed load at the feature defaults |
 | fileio — DXF | stable | Entity subset documented |
-| fileio — STEP AP242 | experimental | Core B-Rep subset with documented limitations (untrimmed analytic carriers, no BREP_WITH_VOIDS, no assembly structure — all pinned by fixture tests in `tests/fileio/fixtures/step/`) |
-| fileio — glTF/STL/drawings | experimental | Export-only slices |
+| fileio — STEP AP242 | experimental, library-only | Core B-Rep subset with documented limitations (untrimmed analytic carriers, no BREP_WITH_VOIDS, no assembly structure — all pinned by fixture tests in `tests/fileio/fixtures/step/`). Not yet reachable from the application (Phase 107) |
+| fileio — glTF/STL/drawings | experimental, library-only | Export-only slices, not yet reachable from the application (Phase 107) |
 | render — OpenGL path | stable | The shipping viewport |
 | render — Vulkan / GPU tessellation / path tracer | experimental | Staged bring-up, opt-in |
-| simulation (FEA) | prototype | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench |
-| pdm / sync / collaboration | experimental | Deliberately conservative: append-only, hash-verified, pessimistic locks, no merges |
-| kinematics | prototype | Serial chains only |
-| cam | prototype | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet |
-| plugin registry | experimental | Fail-closed validation without code execution; the execution bridge is future work |
-| scripting (Python) | experimental | Optional embedded CPython |
-| ui / app | stable | Qt ribbon shell, i18n catalogs |
+| simulation (FEA) | prototype, library-only | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench. Meshes a solid's bounding box, so only boxes are analysed correctly |
+| pdm / sync / collaboration | experimental, library-only | Deliberately conservative: append-only, hash-verified, pessimistic locks, no merges. Lock acquisition is not yet atomic across processes (Phase 119) |
+| kinematics | prototype, library-only | Serial chains only |
+| cam | prototype, library-only | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet. Not safe to run on a machine (Phase 121) |
+| plugin registry | experimental, library-only | Fail-closed validation without code execution; the execution bridge is future work |
+| scripting (Python) | experimental, library-only | Optional embedded CPython; not sandboxed |
+| ui / app | experimental | Qt ribbon shell, i18n catalogs, 2D drafting tools with full undo. The 3D ribbon's primitive, Boolean, fillet and chamfer commands are still fixed demos outside the document (Phase 104), a part rebuilds a single body (Phase 102), and the UI has no automated tests yet (Phase 112) |
 
 ## Roadmap
 
@@ -279,6 +301,16 @@ Feature Maturity table names rather than a fixed phase list. Landed so far:
 | 94 | Done | Mitered fillet chains: two selected edges meeting at a vertex were refused, so a faceted cylinder's rim — 32 chords, two at every vertex — could not be filleted, nor two adjacent top edges of a box. Where two edges share one face and the unselected third edge joins their other faces, the blends now meet on the plane bisecting the turn (Phase 89's sweep miter): bands stay planar, the removed volume is exactly cross-section × centroid-path length (asserted to 1e-9 for corner pairs, open chains, a square rim and a cylinder rim), and a turn too tight for the radius is refused |
 | 95 | Done | Twisted lofts: a band between a square and the same square turned has non-coplanar corners, so its loop encloses no well-defined volume — mass properties fanned it one way (180.8 at 0.6 rad) while the renderer drew the ruled patch (150.7). Non-planar levels are now cut along their rulings into strips and triangulated on alternating diagonals: every facet is flat, display and computation agree, and since a bilinear patch bounds exactly the mean of its two triangulations, the faceted volume equals the ruled loft's exactly (asserted to 1e-9) |
 | 96 | Done | Interference checking reachable and quantified: the Phase 48 checker had no caller outside its tests and reported only whether two solids clash. Pairs now carry the shared volume (Boolean intersection); `AssemblyDocument::findInterference()` places each resolved, unsuppressed component and reports clashing pairs by component, listing unresolved ones as unchecked; assemblies gain a Check Interference command. Face contact is not interference |
+
+### Production-readiness track
+
+The kernel is broad; the product around it is not yet safe to trust with real
+work. The [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md)
+sets out six milestones from Phase 97 on, starting with data safety.
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 97 | Done | Build integrity: compiler warnings and sanitizers had been defined in `cmake/` but never applied to a target, so the build ran with no warning flags and the CI "AddressSanitizer" job was an uninstrumented Debug build. Both now apply to every first-party target (warnings as errors on Linux CI, UBSan fatal), and the suite is clean under ASan + UBSan + LeakSanitizer. Adds a `linux-system-qt` preset, an LF line-ending policy and consistent clang-tidy flags |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

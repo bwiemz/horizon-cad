@@ -1,0 +1,12 @@
+# The repository stores LF, and working trees use LF on every platform.
+# Letting Windows checkouts convert to CRLF made a tree copied from Windows to
+# Linux show every file as modified. MSVC, Qt Creator and VS Code all read LF.
+* text=auto eol=lf
+
+# Binary assets (none are tracked yet; listed so the first one is not mangled).
+*.png binary
+*.ico binary
+*.jpg binary
+*.icns binary
+*.qm binary
+*.pdf binary

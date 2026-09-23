@@ -90,7 +90,7 @@ std::vector<math::Vec2> DraftSpline::evaluate(int segmentsPerSpan) const {
     }
 
     // Ensure weight vector is the right size (treat missing weights as 1.0).
-    auto w = [this, n](size_t i) -> double { return (i < m_weights.size()) ? m_weights[i] : 1.0; };
+    auto w = [this](size_t i) -> double { return (i < m_weights.size()) ? m_weights[i] : 1.0; };
 
     const bool rational = hasNonUniformWeights();
     std::vector<math::Vec2> pts;

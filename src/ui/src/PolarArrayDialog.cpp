@@ -41,7 +41,7 @@ PolarArrayDialog::PolarArrayDialog(QWidget* parent) : QDialog(parent) {
     m_fillFullCircle = new QCheckBox(tr("Fill 360\u00b0"), this);
     m_fillFullCircle->setChecked(true);
     m_totalAngle->setEnabled(false);
-    connect(m_fillFullCircle, &QCheckBox::stateChanged, this,
+    connect(m_fillFullCircle, &QCheckBox::checkStateChanged, this,
             &PolarArrayDialog::onFillFullCircleChanged);
     form->addRow(m_fillFullCircle);
 
@@ -53,7 +53,7 @@ PolarArrayDialog::PolarArrayDialog(QWidget* parent) : QDialog(parent) {
     layout->addWidget(buttons);
 }
 
-void PolarArrayDialog::onFillFullCircleChanged(int state) {
+void PolarArrayDialog::onFillFullCircleChanged(Qt::CheckState state) {
     if (state == Qt::Checked) {
         m_totalAngle->setValue(360.0);
         m_totalAngle->setEnabled(false);

@@ -19,7 +19,7 @@ struct Edge;
 struct Face;
 struct Wire;
 struct Shell;
-struct Solid;
+class Solid;
 
 /// A vertex in the B-Rep — stores a 3D position and one outgoing half-edge.
 struct Vertex {
@@ -93,8 +93,7 @@ struct Face {
 struct Shell {
     uint32_t id = 0;
     std::vector<Face*> faces;
-    class Solid* solid =
-        nullptr;  ///< Owning solid (use class to avoid ambiguity with struct forward decl).
+    Solid* solid = nullptr;  ///< Owning solid.
 };
 
 }  // namespace hz::topo

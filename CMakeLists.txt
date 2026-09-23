@@ -12,6 +12,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# The project uses no C++20 modules. Scanning for them costs build time and, on
+# CMake >= 3.28 with GCC >= 14, adds -fmodule-mapper/-fdeps-format flags to
+# compile_commands.json that clang-tidy cannot parse.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 # Options
 option(HZ_BUILD_TESTS "Build unit and integration tests" ON)
 option(HZ_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
@@ -22,10 +27,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 include(HorizonVersion)
 include(CompilerWarnings)
-
-if(HZ_ENABLE_SANITIZERS)
-    include(Sanitizers)
-endif()
+include(Sanitizers)
 
 # Find packages (provided by vcpkg)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGLWidgets)
@@ -62,6 +64,30 @@ if(HZ_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Warnings and sanitizers apply to every first-party target. They are applied
+# here, once every subdirectory has declared its targets, so a new module or
+# test binary is covered without having to opt in.
+function(hz_collect_targets out dir)
+    get_property(targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+    foreach(sub IN LISTS subdirs)
+        hz_collect_targets(sub_targets "${sub}")
+        list(APPEND targets ${sub_targets})
+    endforeach()
+    set(${out} ${targets} PARENT_SCOPE)
+endfunction()
+
+hz_collect_targets(_hz_targets "${CMAKE_CURRENT_SOURCE_DIR}")
+foreach(_hz_target IN LISTS _hz_targets)
+    get_target_property(_hz_type ${_hz_target} TYPE)
+    if(_hz_type MATCHES "^(STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|OBJECT_LIBRARY|EXECUTABLE)$")
+        hz_set_warnings(${_hz_target})
+        if(HZ_ENABLE_SANITIZERS)
+            hz_enable_sanitizers(${_hz_target})
+        endif()
+    endif()
+endforeach()
 
 # Installer
 include(CPack)

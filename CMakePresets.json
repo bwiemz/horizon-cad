@@ -76,6 +76,15 @@
         "CMAKE_BUILD_TYPE": "Release",
         "HZ_BUILD_TESTS": "OFF"
       }
+    },
+    {
+      "name": "linux-system-qt",
+      "displayName": "Linux debug against an installed Qt 6",
+      "description": "vcpkg provides everything except Qt, which comes from the system (e.g. qt6-base). Avoids building Qt from source.",
+      "inherits": "linux-debug",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -98,6 +107,10 @@
       "configurePreset": "linux-release"
     },
     {
+      "name": "linux-system-qt",
+      "configurePreset": "linux-system-qt"
+    },
+    {
       "name": "ci-windows",
       "configurePreset": "ci-windows"
     }
@@ -114,6 +127,13 @@
     {
       "name": "linux-debug",
       "configurePreset": "linux-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-system-qt",
+      "configurePreset": "linux-system-qt",
       "output": {
         "outputOnFailure": true
       }

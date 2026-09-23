@@ -631,12 +631,6 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
     std::vector<NewFaceData> newFaces;
 
-    // The tangent point of fillet fe at endpoint v on original face F.
-    auto tangentOn = [&](const FilletEdgeInfo& fe, const Vertex* v, const Face* f) -> Vec3 {
-        const FilletStop& end = (fe.v1 == v) ? fe.front() : fe.back();
-        return (f == fe.faceA) ? end.posA : end.posB;
-    };
-
     // Process each original face. Its surface carrier travels with it —
     // curved faces (including fillet patches from a previous FilletOp call)
     // must not be re-bound as planes.

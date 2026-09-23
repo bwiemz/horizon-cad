@@ -142,13 +142,11 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftAngularDimension::arrowheadL
     double a2 = normalizeAngle(endAngle());
     double sweep = a2 - a1;
     if (sweep < 0.0) sweep += math::kTwoPi;
-    bool flipped = false;
     if (sweep > math::kPi) {
         double tmp = a1;
         a1 = a2;
         a2 = tmp;
         sweep = math::kTwoPi - sweep;
-        flipped = true;
     }
 
     // Arrow at arc start: tangent direction (perpendicular to radial, CCW).
