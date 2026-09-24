@@ -30,7 +30,7 @@ static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, doub
 }
 
 static double computeSelectionCentroidDist(const math::Vec2& basePoint, ViewportWidget* viewport) {
-    auto& doc = viewport->document()->draftDocument();
+    auto& doc = viewport->document()->activeDrawing();
     auto& sel = viewport->selectionManager();
     math::Vec2 sum{0.0, 0.0};
     int count = 0;
@@ -55,7 +55,7 @@ bool ScaleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     if (m_state == State::SelectBasePoint) {
         auto& sel = m_viewport->selectionManager();
@@ -150,7 +150,7 @@ bool ScaleTool::keyPressEvent(QKeyEvent* event) {
                         return true;
                     }
 
-                    auto& doc = m_viewport->document()->draftDocument();
+                    auto& doc = m_viewport->document()->activeDrawing();
                     auto& sel = m_viewport->selectionManager();
                     const auto& layerMgr = m_viewport->document()->layerManager();
                     std::vector<uint64_t> idVec;
@@ -206,7 +206,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ScaleTool::getPreviewLines() cons
     double factor = mouseDist / m_referenceDist;
     if (factor < 1e-6) return result;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     for (const auto& entity : doc.entities()) {
         if (!sel.isSelected(entity->id())) continue;

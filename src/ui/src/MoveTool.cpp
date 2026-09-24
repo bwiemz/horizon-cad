@@ -25,7 +25,7 @@ bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     if (ids.empty()) return false;
 
     // Check if click is on a selected entity.
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double tolerance = m_viewport->pickTolerance(10.0);
 
     bool hitSelected = false;
@@ -66,7 +66,7 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
     math::Vec2 delta{snappedPos.x - m_dragCurrent.x, snappedPos.y - m_dragCurrent.y};
 
     // Translate selected entities in real-time (skip locked/hidden layers).
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     const auto& layerMgr = m_viewport->document()->layerManager();
     for (const auto& entity : doc.entities()) {
@@ -91,7 +91,7 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
 
     // Undo the real-time translation, then push a command for the total delta.
     math::Vec2 neg{-m_totalDelta.x, -m_totalDelta.y};
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
@@ -111,7 +111,7 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
             if (!lp2 || !lp2->visible || lp2->locked) continue;
             idVec.push_back(entity->id());
         }
-        auto& cstrSys = m_viewport->document()->constraintSystem();
+        auto& cstrSys = m_viewport->document()->activeConstraints();
         auto& pReg = m_viewport->document()->parameterRegistry();
         auto varResolver = [&pReg](const std::string& n) { return pReg.get(n); };
         auto cmd = std::make_unique<doc::MoveEntityCommand>(doc, idVec, m_totalDelta, cstrSys,
@@ -136,7 +136,7 @@ void MoveTool::cancel() {
     if (m_dragging && m_viewport && m_viewport->document()) {
         // Undo the real-time translation (skip locked/hidden layers).
         math::Vec2 neg{-m_totalDelta.x, -m_totalDelta.y};
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         auto& sel = m_viewport->selectionManager();
         const auto& layerMgr = m_viewport->document()->layerManager();
         for (const auto& entity : doc.entities()) {

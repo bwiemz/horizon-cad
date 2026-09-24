@@ -47,7 +47,7 @@ bool CircleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
                 auto circle = std::make_shared<draft::DraftCircle>(m_center, radius);
                 circle->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
-                    m_viewport->document()->draftDocument(), circle);
+                    m_viewport->document()->activeDrawing(), circle);
                 m_viewport->document()->undoStack().push(std::move(cmd));
             }
             m_state = State::WaitingForCenter;

@@ -228,7 +228,7 @@ bool ExtendTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double tolerance = m_viewport->pickTolerance(10.0);
 
     // Find the entity under the cursor (skip hidden/locked layers).

@@ -503,7 +503,12 @@ std::string AddLayerCommand::description() const {
 
 RemoveLayerCommand::RemoveLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
                                        const std::string& layerName)
-    : m_mgr(mgr), m_doc(doc), m_name(layerName) {}
+    : RemoveLayerCommand(mgr, std::vector<draft::DraftDocument*>{&doc}, layerName) {}
+
+RemoveLayerCommand::RemoveLayerCommand(draft::LayerManager& mgr,
+                                       std::vector<draft::DraftDocument*> drawings,
+                                       const std::string& layerName)
+    : m_mgr(mgr), m_drawings(std::move(drawings)), m_name(layerName) {}
 
 void RemoveLayerCommand::execute() {
     if (m_name == "0") return;  // Never remove the default layer.
@@ -512,12 +517,20 @@ void RemoveLayerCommand::execute() {
     const auto* lp = m_mgr.getLayer(m_name);
     if (lp) m_savedProps = *lp;
 
-    // Move entities on this layer to "0".
+    // Move entities on this layer to "0", in every drawing and its blocks.
     m_movedEntities.clear();
-    for (const auto& e : m_doc.entities()) {
-        if (e->layer() == m_name) {
-            m_movedEntities.emplace_back(e->id(), e->layer());
-            e->setLayer("0");
+    const auto move = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
+        if (entity && entity->layer() == m_name) {
+            m_movedEntities.push_back(entity);
+            entity->setLayer("0");
+        }
+    };
+    for (draft::DraftDocument* drawing : m_drawings) {
+        for (const auto& e : drawing->entities()) move(e);
+        for (const auto& name : drawing->blockTable().blockNames()) {
+            if (const auto block = drawing->blockTable().findBlock(name)) {
+                for (const auto& e : block->entities) move(e);
+            }
         }
     }
 
@@ -540,11 +553,7 @@ void RemoveLayerCommand::undo() {
     }
 
     // Restore entity layers.
-    for (const auto& [id, oldLayer] : m_movedEntities) {
-        if (const auto e = m_doc.sharedEntity(id)) {
-            e->setLayer(oldLayer);
-        }
-    }
+    for (const auto& entity : m_movedEntities) entity->setLayer(m_name);
 }
 
 std::string RemoveLayerCommand::description() const {
@@ -599,7 +608,13 @@ std::string ChangeDimensionStyleCommand::description() const {
 
 RenameLayerCommand::RenameLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
                                        std::string from, std::string to)
-    : m_mgr(mgr), m_doc(doc), m_from(std::move(from)), m_to(std::move(to)) {}
+    : RenameLayerCommand(mgr, std::vector<draft::DraftDocument*>{&doc}, std::move(from),
+                         std::move(to)) {}
+
+RenameLayerCommand::RenameLayerCommand(draft::LayerManager& mgr,
+                                       std::vector<draft::DraftDocument*> drawings,
+                                       std::string from, std::string to)
+    : m_mgr(mgr), m_drawings(std::move(drawings)), m_from(std::move(from)), m_to(std::move(to)) {}
 
 void RenameLayerCommand::execute() {
     m_applied = m_mgr.renameLayer(m_from, m_to);
@@ -611,10 +626,12 @@ void RenameLayerCommand::execute() {
             m_moved.push_back(entity);
         }
     };
-    for (const auto& entity : m_doc.entities()) carry(entity);
-    for (const auto& name : m_doc.blockTable().blockNames()) {
-        if (const auto block = m_doc.blockTable().findBlock(name)) {
-            for (const auto& entity : block->entities) carry(entity);
+    for (draft::DraftDocument* drawing : m_drawings) {
+        for (const auto& entity : drawing->entities()) carry(entity);
+        for (const auto& name : drawing->blockTable().blockNames()) {
+            if (const auto block = drawing->blockTable().findBlock(name)) {
+                for (const auto& entity : block->entities) carry(entity);
+            }
         }
     }
 }

@@ -40,7 +40,7 @@ void PolylineEditTool::deactivate() {
 void PolylineEditTool::cancel() {
     if (m_dragging && m_beforeClone && m_viewport && m_viewport->document()) {
         // Restore entity state in-place from before-clone.
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         if (const auto entity = doc.sharedEntity(m_editEntityId)) {
             auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get());
             auto* beforePoly = dynamic_cast<const draft::DraftPolyline*>(m_beforeClone.get());
@@ -74,13 +74,13 @@ void PolylineEditTool::finishEditing() {
 // carries a fixed "Grip Edit" label, so it is not recorded yet.
 void PolylineEditTool::pushSnapshot(const std::string& /*desc*/) {
     if (!m_viewport || !m_viewport->document() || !m_beforeClone) return;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     // Find current state of the entity.
     for (const auto& entity : doc.entities()) {
         if (entity->id() == m_editEntityId) {
             auto afterClone = entity->clone();
-            auto& cstrSys = m_viewport->document()->constraintSystem();
+            auto& cstrSys = m_viewport->document()->activeConstraints();
             auto cmd = std::make_unique<doc::GripMoveCommand>(doc, m_editEntityId, m_beforeClone,
                                                               afterClone, cstrSys);
             m_viewport->document()->undoStack().push(std::move(cmd));
@@ -92,7 +92,7 @@ void PolylineEditTool::pushSnapshot(const std::string& /*desc*/) {
 
 int PolylineEditTool::findNearestVertex(const math::Vec2& worldPos, double tolerance) const {
     if (!m_viewport || !m_viewport->document()) return -1;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     for (const auto& entity : doc.entities()) {
         if (entity->id() != m_editEntityId) continue;
@@ -116,7 +116,7 @@ int PolylineEditTool::findNearestVertex(const math::Vec2& worldPos, double toler
 
 int PolylineEditTool::findNearestSegment(const math::Vec2& worldPos, math::Vec2& closestPt) const {
     if (!m_viewport || !m_viewport->document()) return -1;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     for (const auto& entity : doc.entities()) {
         if (entity->id() != m_editEntityId) continue;
@@ -158,7 +158,7 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double tolerance = m_viewport->pickTolerance(10.0);
     double gripTol = m_viewport->pickTolerance(8.0);
 
@@ -312,7 +312,7 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
             myPoly->setClosed(false);
             auto afterClone = myPoly->clone();
 
-            auto& cstrSys = m_viewport->document()->constraintSystem();
+            auto& cstrSys = m_viewport->document()->activeConstraints();
             auto composite = std::make_unique<doc::CompositeCommand>("Join polylines");
             composite->addCommand(std::make_unique<doc::GripMoveCommand>(
                 doc, m_editEntityId, m_beforeClone, afterClone, cstrSys));
@@ -334,7 +334,7 @@ bool PolylineEditTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& 
     m_currentPos = worldPos;
 
     if (m_dragging && m_editEntityId != 0 && m_viewport && m_viewport->document()) {
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         for (auto& entity : doc.entities()) {
             if (entity->id() != m_editEntityId) continue;
             auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get());
@@ -395,7 +395,7 @@ bool PolylineEditTool::keyPressEvent(QKeyEvent* event) {
         if (event->key() == Qt::Key_C) {
             // Toggle closed/open.
             if (!m_viewport || !m_viewport->document()) return true;
-            auto& doc = m_viewport->document()->draftDocument();
+            auto& doc = m_viewport->document()->activeDrawing();
             for (auto& entity : doc.entities()) {
                 if (entity->id() != m_editEntityId) continue;
                 auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get());
@@ -427,7 +427,7 @@ std::vector<std::pair<math::Vec2, double>> PolylineEditTool::getPreviewCircles()
     if (m_editEntityId == 0) return {};
     if (!m_viewport || !m_viewport->document()) return {};
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double pixelScale = m_viewport->pixelToWorldScale();
     double dotRadius = 4.0 * pixelScale;
 

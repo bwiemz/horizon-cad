@@ -36,7 +36,7 @@ bool MirrorTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     if (m_state == State::SelectFirstPoint) {
         auto& sel = m_viewport->selectionManager();
@@ -127,7 +127,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> MirrorTool::getPreviewLines() con
     if (m_axisP1.distanceTo(m_currentPos) < 1e-6) return result;
 
     // Preview mirrored entities as lines.
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     for (const auto& entity : doc.entities()) {
         if (!sel.isSelected(entity->id())) continue;

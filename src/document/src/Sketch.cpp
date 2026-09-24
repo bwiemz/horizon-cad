@@ -1,7 +1,6 @@
 #include "horizon/document/Sketch.h"
 
-#include <algorithm>
-#include <stdexcept>
+#include <utility>
 
 #include "horizon/constraint/ConstraintSystem.h"
 
@@ -55,25 +54,19 @@ void Sketch::setPlane(const draft::SketchPlane& plane) {
 
 void Sketch::addEntity(std::shared_ptr<draft::DraftEntity> entity) {
     if (!entity) return;
-    m_entities.push_back(entity);
-    m_spatialIndex.insert(entity);
+    m_drawing.addEntity(std::move(entity));
 }
 
 void Sketch::removeEntity(uint64_t entityId) {
-    m_spatialIndex.remove(entityId);
-    m_entities.erase(std::remove_if(m_entities.begin(), m_entities.end(),
-                                    [entityId](const std::shared_ptr<draft::DraftEntity>& e) {
-                                        return e && e->id() == entityId;
-                                    }),
-                     m_entities.end());
+    m_drawing.removeEntity(entityId);
 }
 
 const std::vector<std::shared_ptr<draft::DraftEntity>>& Sketch::entities() const {
-    return m_entities;
+    return m_drawing.entities();
 }
 
 std::vector<std::shared_ptr<draft::DraftEntity>>& Sketch::entities() {
-    return m_entities;
+    return m_drawing.entities();
 }
 
 cstr::ConstraintSystem& Sketch::constraintSystem() {
@@ -85,21 +78,20 @@ const cstr::ConstraintSystem& Sketch::constraintSystem() const {
 }
 
 const draft::SpatialIndex& Sketch::spatialIndex() const {
-    return m_spatialIndex;
+    return m_drawing.spatialIndex();
 }
 
 draft::SpatialIndex& Sketch::spatialIndex() {
-    return m_spatialIndex;
+    return m_drawing.spatialIndex();
 }
 
 void Sketch::rebuildSpatialIndex() {
-    m_spatialIndex.rebuild(m_entities);
+    m_drawing.rebuildSpatialIndex();
 }
 
 void Sketch::clear() {
-    m_entities.clear();
+    m_drawing.clear();
     m_constraints->clear();
-    m_spatialIndex.clear();
 }
 
 }  // namespace hz::doc

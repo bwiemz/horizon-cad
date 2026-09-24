@@ -6,11 +6,7 @@
 
 namespace hz::doc {
 
-Document::Document() : m_undoStack(std::make_unique<UndoStack>()) {
-    m_defaultSketch = std::make_shared<Sketch>();
-    m_defaultSketch->setName("Default Sketch");
-    m_sketches.push_back(m_defaultSketch);
-}
+Document::Document() : m_undoStack(std::make_unique<UndoStack>()) {}
 
 Document::~Document() = default;
 
@@ -66,10 +62,8 @@ void Document::clear() {
     m_dirty = false;
     m_filePath.clear();
 
+    m_editedSketch.reset();
     m_sketches.clear();
-    m_defaultSketch = std::make_shared<Sketch>();
-    m_defaultSketch->setName("Default Sketch");
-    m_sketches.push_back(m_defaultSketch);
 
     m_featureTree.clear();
     m_solid.reset();
@@ -102,9 +96,31 @@ std::shared_ptr<Sketch> Document::removeSketch(uint64_t sketchId) {
     if (it != m_sketches.end()) {
         auto sketch = *it;
         m_sketches.erase(it);
+        if (sketch == m_editedSketch) m_editedSketch.reset();
         return sketch;
     }
     return nullptr;
+}
+
+std::shared_ptr<Sketch> Document::findSketch(uint64_t sketchId) const {
+    for (const auto& sketch : m_sketches) {
+        if (sketch->id() == sketchId) return sketch;
+    }
+    return nullptr;
+}
+
+std::vector<draft::DraftDocument*> Document::drawings() {
+    std::vector<draft::DraftDocument*> all{&m_draftDoc};
+    for (const auto& sketch : m_sketches) all.push_back(&sketch->drawing());
+    return all;
+}
+
+void Document::editSketch(std::shared_ptr<Sketch> sketch) {
+    // Only a sketch of this document: another's would outlive nothing here.
+    if (sketch && std::find(m_sketches.begin(), m_sketches.end(), sketch) == m_sketches.end()) {
+        sketch.reset();
+    }
+    m_editedSketch = std::move(sketch);
 }
 
 UndoStack& Document::undoStack() {

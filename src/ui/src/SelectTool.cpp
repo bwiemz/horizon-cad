@@ -53,7 +53,7 @@ bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         if (handleConstraintDoubleClick(worldPos)) return true;
     }
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
 
     // --- Check for grip hit first (only when entities are selected) ---
@@ -106,7 +106,7 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
 
         m_gripCurrentPos = snappedPos;
 
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         std::shared_ptr<draft::DraftEntity> fresh = m_gripBeforeClone->clone();
         fresh->setId(m_gripEntityId);
         fresh->setLayer(m_gripBeforeClone->layer());
@@ -146,7 +146,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
 
     // --- Grip drag release ---
     if (m_draggingGrip) {
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
 
         std::shared_ptr<draft::DraftEntity> afterClone;
         if (const auto e = doc.sharedEntity(m_gripEntityId)) {
@@ -158,7 +158,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         }
 
         if (afterClone && m_gripBeforeClone) {
-            auto& cstrSys = m_viewport->document()->constraintSystem();
+            auto& cstrSys = m_viewport->document()->activeConstraints();
             auto& pReg = m_viewport->document()->parameterRegistry();
             auto varResolver = [&pReg](const std::string& n) { return pReg.get(n); };
             auto cmd = std::make_unique<doc::GripMoveCommand>(
@@ -179,7 +179,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         m_draggingBox = false;
         m_leftButtonDown = false;
 
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         auto& sel = m_viewport->selectionManager();
         const auto& layerMgr = m_viewport->document()->layerManager();
         bool shiftHeld = (event->modifiers() & Qt::ShiftModifier);
@@ -226,7 +226,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
     // --- Normal click selection (no drag occurred) ---
     m_leftButtonDown = false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
@@ -300,11 +300,11 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
         if (ids.empty()) return false;
 
         const auto& layerMgr = m_viewport->document()->layerManager();
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
 
         auto composite = std::make_unique<doc::CompositeCommand>("Delete");
 
-        auto& cstrSys = m_viewport->document()->constraintSystem();
+        auto& cstrSys = m_viewport->document()->activeConstraints();
         std::set<uint64_t> removedConstraints;
         for (uint64_t id : ids) {
             auto constrs = cstrSys.constraintsForEntity(id);
@@ -343,8 +343,8 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
 bool SelectTool::handleConstraintDoubleClick(const math::Vec2& worldPos) {
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& draftDoc = m_viewport->document()->draftDocument();
-    auto& cstrSys = m_viewport->document()->constraintSystem();
+    auto& draftDoc = m_viewport->document()->activeDrawing();
+    auto& cstrSys = m_viewport->document()->activeConstraints();
 
     double tolerance = m_viewport->pickTolerance(15.0);
 
@@ -376,8 +376,8 @@ bool SelectTool::handleConstraintDoubleClick(const math::Vec2& worldPos) {
 bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentValue, bool isAngle) {
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& cstrSys = m_viewport->document()->constraintSystem();
-    auto& draftDoc = m_viewport->document()->draftDocument();
+    auto& cstrSys = m_viewport->document()->activeConstraints();
+    auto& draftDoc = m_viewport->document()->activeDrawing();
 
     const double pi = std::numbers::pi;
 
@@ -434,7 +434,7 @@ void SelectTool::cancel() {
     }
 
     if (m_draggingGrip && m_gripBeforeClone && m_viewport && m_viewport->document()) {
-        auto& doc = m_viewport->document()->draftDocument();
+        auto& doc = m_viewport->document()->activeDrawing();
         std::shared_ptr<draft::DraftEntity> restored = m_gripBeforeClone->clone();
         restored->setId(m_gripEntityId);
         restored->setLayer(m_gripBeforeClone->layer());

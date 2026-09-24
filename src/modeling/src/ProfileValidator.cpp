@@ -11,8 +11,11 @@
 #include <vector>
 
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
@@ -52,6 +55,9 @@ static const char* kindOf(const draft::DraftEntity& entity) {
     if (dynamic_cast<const draft::DraftEllipse*>(&entity)) return "an ellipse";
     if (dynamic_cast<const draft::DraftSpline*>(&entity)) return "a spline";
     if (dynamic_cast<const draft::DraftText*>(&entity)) return "text";
+    if (dynamic_cast<const draft::DraftBlockRef*>(&entity)) {
+        return "a block reference (explode it first)";
+    }
     return "an entity of this kind";
 }
 
@@ -282,6 +288,199 @@ ProfileValidationResult ProfileValidator::validate(
         return result;
     }
     result.isClosed = true;
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// ProfileValidator::regions
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A note on the sketch rather than part of its shape.
+bool isAnnotation(const draft::DraftEntity& entity) {
+    return dynamic_cast<const draft::DraftText*>(&entity) != nullptr ||
+           dynamic_cast<const draft::DraftDimension*>(&entity) != nullptr ||  // leaders too
+           dynamic_cast<const draft::DraftHatch*>(&entity) != nullptr;
+}
+
+/// A closed loop found among the curves, with its outline for nesting.
+struct FoundLoop {
+    ProfileValidationResult loop;
+    std::vector<Vec2> polygon;
+    double area = 0.0;  ///< unsigned
+    int depth = 0;      ///< how many other loops it lies inside
+    int parent = -1;    ///< the smallest loop it lies inside
+};
+
+double polygonArea(const std::vector<Vec2>& poly) {
+    double twice = 0.0;
+    for (size_t i = 0; i < poly.size(); ++i) {
+        const Vec2& a = poly[i];
+        const Vec2& b = poly[(i + 1) % poly.size()];
+        twice += a.x * b.y - b.x * a.y;
+    }
+    return std::abs(twice) / 2.0;
+}
+
+/// Even-odd point in polygon.
+bool inside(const Vec2& p, const std::vector<Vec2>& poly) {
+    bool in = false;
+    for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const Vec2& a = poly[i];
+        const Vec2& b = poly[j];
+        if ((a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) {
+            in = !in;
+        }
+    }
+    return in;
+}
+
+/// A circle as a polygon, fine enough to nest and cross-check against.
+std::vector<Vec2> circlePolygon(const draft::DraftCircle& circle) {
+    constexpr int kSteps = 64;
+    std::vector<Vec2> points;
+    points.reserve(kSteps);
+    for (int k = 0; k < kSteps; ++k) {
+        const double a = 2.0 * 3.14159265358979323846 * static_cast<double>(k) / kSteps;
+        points.emplace_back(circle.center().x + circle.radius() * std::cos(a),
+                            circle.center().y + circle.radius() * std::sin(a));
+    }
+    return points;
+}
+
+/// Where two loops' outlines meet, if they do.
+std::optional<Vec2> loopsMeet(const std::vector<Vec2>& a, const std::vector<Vec2>& b,
+                              double tolerance) {
+    for (size_t i = 0; i < a.size(); ++i) {
+        for (size_t j = 0; j < b.size(); ++j) {
+            if (auto where = segmentsMeet(a[i], a[(i + 1) % a.size()], b[j], b[(j + 1) % b.size()],
+                                          tolerance)) {
+                return where;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+ProfileRegions ProfileValidator::regions(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& input, double tolerance) {
+    ProfileRegions result;
+    std::vector<std::shared_ptr<draft::DraftEntity>> shape;
+    for (const auto& entity : input) {
+        if (entity && !isAnnotation(*entity)) shape.push_back(entity);
+    }
+    if (shape.empty()) {
+        result.errorMessage = "the profile is empty";
+        return result;
+    }
+    const Curves curves = asCurves(shape);
+    const auto& all = curves.curves;
+
+    std::vector<FoundLoop> loops;
+    std::vector<bool> used(all.size(), false);
+    for (size_t i = 0; i < all.size(); ++i) {
+        if (used[i]) continue;
+        const auto* circle = dynamic_cast<const draft::DraftCircle*>(all[i].get());
+        if (circle != nullptr) {
+            used[i] = true;
+            FoundLoop found;
+            found.loop.isClosed = true;
+            found.loop.orderedEdges = {all[i]};
+            found.loop.edgeSources = {curves.sources[i]};
+            found.polygon = circlePolygon(*circle);
+            loops.push_back(std::move(found));
+            continue;
+        }
+        if (!getEndpoints(all[i]).valid) {
+            result.errorMessage =
+                std::string(kindOf(*all[i])) +
+                " cannot be used in a profile yet; profiles are made of lines, arcs, "
+                "rectangles, polylines and circles";
+            return result;
+        }
+        // Chain from this curve until the chain closes on itself.
+        FoundLoop found;
+        found.loop.orderedEdges.push_back(all[i]);
+        found.loop.edgeSources.push_back(curves.sources[i]);
+        used[i] = true;
+        const EndpointPair first = getEndpoints(all[i]);
+        const Vec2 chainStart = first.start;
+        Vec2 chainEnd = first.end;
+        while (!pointsMatch(chainEnd, chainStart, tolerance)) {
+            bool extended = false;
+            for (size_t k = 0; k < all.size() && !extended; ++k) {
+                if (used[k]) continue;
+                const EndpointPair ep = getEndpoints(all[k]);
+                if (!ep.valid) continue;
+                if (pointsMatch(chainEnd, ep.start, tolerance)) {
+                    chainEnd = ep.end;
+                } else if (pointsMatch(chainEnd, ep.end, tolerance)) {
+                    chainEnd = ep.start;
+                } else {
+                    continue;
+                }
+                found.loop.orderedEdges.push_back(all[k]);
+                found.loop.edgeSources.push_back(curves.sources[k]);
+                used[k] = true;
+                extended = true;
+            }
+            if (!extended) {
+                result.errorMessage =
+                    found.loop.orderedEdges.size() == 1 ||
+                            std::none_of(used.begin(), used.end(), [](bool u) { return !u; })
+                        ? "the profile is open: its ends at " + describePoint(chainStart) +
+                              " and " + describePoint(chainEnd) + " do not meet"
+                        : "the profile has a gap: nothing continues from " +
+                              describePoint(chainEnd);
+                return result;
+            }
+        }
+        found.loop.isClosed = true;
+        found.polygon = loopPolygon(found.loop.orderedEdges, chainStart, tolerance);
+        if (const auto where = selfCrossing(found.polygon, tolerance)) {
+            result.errorMessage = "the profile crosses itself at " + describePoint(*where);
+            return result;
+        }
+        loops.push_back(std::move(found));
+    }
+
+    // Loops may nest, but not cross or touch: that bounds no region cleanly.
+    for (size_t i = 0; i < loops.size(); ++i) {
+        loops[i].area = polygonArea(loops[i].polygon);
+        for (size_t j = i + 1; j < loops.size(); ++j) {
+            if (const auto where = loopsMeet(loops[i].polygon, loops[j].polygon, tolerance)) {
+                result.errorMessage = "two loops of the profile meet at " + describePoint(*where) +
+                                      "; loops must be apart, or one wholly inside another";
+                return result;
+            }
+        }
+    }
+    for (size_t i = 0; i < loops.size(); ++i) {
+        for (size_t j = 0; j < loops.size(); ++j) {
+            if (i == j || !inside(loops[i].polygon.front(), loops[j].polygon)) continue;
+            ++loops[i].depth;
+            if (loops[i].parent < 0 ||
+                loops[j].area < loops[static_cast<size_t>(loops[i].parent)].area) {
+                loops[i].parent = static_cast<int>(j);
+            }
+        }
+    }
+
+    // Even depth: a region's outer loop. Odd: a hole in the loop around it.
+    std::vector<int> regionOf(loops.size(), -1);
+    for (size_t i = 0; i < loops.size(); ++i) {
+        if (loops[i].depth % 2 != 0) continue;
+        regionOf[i] = static_cast<int>(result.regions.size());
+        result.regions.push_back({loops[i].loop, {}});
+    }
+    for (size_t i = 0; i < loops.size(); ++i) {
+        if (loops[i].depth % 2 == 0) continue;
+        const int region = regionOf[static_cast<size_t>(loops[i].parent)];
+        result.regions[static_cast<size_t>(region)].holes.push_back(loops[i].loop);
+    }
     return result;
 }
 

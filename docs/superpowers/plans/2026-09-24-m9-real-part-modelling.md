@@ -62,43 +62,102 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ## Phase 131: Sketches on planes
 
+### As built
+
 - **A sketch owns a drawing.** `doc::Sketch` holds a `draft::DraftDocument`
-  (entities, spatial index, block table, dimension style) in place of its
-  own entity vector and index.
+  (`drawing()`): its entities, index, blocks and dimension style, in the
+  plane's coordinates.
 - **The document has an active drawing.**
-  - `Document::activeDrawing()` is the sketch being edited, or the
-    top-level drawing.
-  - The window's editing code (tools, selection, property panel, clipboard)
-    uses it. File formats, plotting and export keep using
-    `draftDocument()`, the top level.
-  - Constraints follow the same way.
+  - `Document::editSketch(sketch)` / `editedSketch()`.
+  - `activeDrawing()` and `activeConstraints()` are the edited sketch's, or
+    the top level's.
+  - Every drawing tool, the selection, the property panel, the clipboard,
+    arrays, blocks, groups, the dimension style and the constraint colours
+    use them.
+  - DXF import and export, plotting and the whole-drawing profile keep the
+    top level.
+  - `removeSketch` stops editing the sketch it removes.
+  - `drawings()` lists the top level and every sketch. Renaming or
+    removing a layer carries what is on it in all of them, blocks included.
 - **Sketch mode:**
-  - Model ▸ New Sketch on XY / XZ / YZ / a datum plane / a planar face. The
-    face is chosen from a list until 132.
-  - Model ▸ Edit Sketch and Finish Sketch. While a sketch is edited, the
-    viewport looks along its normal and works in its coordinates, so every
-    drawing tool, snap and typed point works unchanged. The solids are
-    shown placed in the sketch's frame.
-  - Sketches appear in the feature tree above the features that use them.
-- **Profiles from the sketch:**
-  - Extrude and Revolve use the selected, or last edited, sketch. The
-    old whole-drawing path stays for drawings without sketches, and ignores
-    text, dimensions, hatches and hidden layers.
-  - `ProfileValidator` returns regions: an outer loop with any inner loops
-    (holes), from nested closed loops.
-  - Extrude and Revolve build a region with holes as the outer loop's solid
-    minus each hole's, through the exact Boolean pipeline. Persistent names
-    come from the Boolean's face pieces.
-- **Files:** sketches are saved with their constraints. The stale
-  `m_defaultSketch` after a load (it can point at a sketch no longer in the
-  list) is fixed.
-- **Tests:**
-  - an extrude of a plate with two holes, checked by volume;
-  - a revolve with a hole;
-  - a sketch on XZ and on a face;
-  - a note in the drawing no longer breaks Extrude;
-  - tools draw into the sketch and undo there;
-  - sketches round-trip with their constraints.
+  - Model ▸ New Sketch ▸ on the XY, XZ or YZ plane, on a face (a list of the
+    part's flat faces, through the face's middle, facing out), or on a
+    datum plane.
+  - Model ▸ Edit Sketch… and Finish Sketch.
+  - While a sketch is edited, the view works in the sketch's coordinates:
+    it looks straight down on its plane, and the solid is drawn placed in
+    that frame. So every tool, snap and typed point works unchanged.
+  - The camera is saved on entering and restored on leaving.
+  - Undoing the new sketch leaves it. Each tab keeps what it is editing.
+  - The feature tree panel lists the sketches above the features, with
+    what uses each and which is being edited. A double-click edits one,
+    and the one chosen is what Extrude and Revolve take.
+- **Profiles:**
+  - Extrude and Revolve take the sketch being edited (and finish it), else
+    the one chosen, else the drawing as shown (hidden layers left out).
+  - `ProfileValidator::regions()` finds every closed loop and nests them by
+    the even-odd rule: outer loops with holes, islands in holes as regions
+    of their own. Text, dimensions, leaders and hatches are passed over; a
+    block reference is named ("explode it first").
+  - Loops that cross or touch are refused, saying where.
+  - Extrude and Revolve build each region as its outer loop less its holes:
+    - the hole's cutter reaches past the ends, a tenth further for Extrude
+      and a twentieth of the angle for Revolve;
+    - through a full turn it is a cavity;
+    - the regions are joined through the exact Boolean;
+    - a single plain loop is built exactly as before, under the same names.
+  - Revolve turns about the sketch's own vertical or horizontal axis (it
+    was always world Y, which a sketch on XZ could not use).
+- **Files:**
+  - Sketches are saved with their constraints; they were lost.
+  - There is no default sketch any more. Every document had an empty
+    "Default Sketch", and `m_defaultSketch` went stale after a load. One in
+    an old file that nothing uses is dropped on reading.
+- **Found building it:** the face lists named each face by the way its loop
+  wound, and a box's loops wind inwards. "Facing (0, 0, 1)" was the bottom,
+  so Shell's list opened the wrong face of anything not symmetric, and a
+  sketch "on the top face" went on the bottom. Normals now face out of the
+  part (by the sign of its volume).
+
+### Tests
+
+29 new, 2 changed.
+- Profile regions:
+  - holes and islands;
+  - separate regions;
+  - notes passed over;
+  - refusals with where;
+  - a plate with two holes extruded (genus two, holes named);
+  - regions extruded together;
+  - a window revolved a quarter and a full turn.
+- Document:
+  - a sketch's own drawing;
+  - editing makes it active, and only this document's;
+  - layers renamed and removed across drawings.
+- Files:
+  - a sketch keeps its constraints;
+  - an old empty default sketch is dropped unless used or drawn on.
+- Window:
+  - a sketch on XZ drawn and extruded where it should be;
+  - a plate with a hole from a sketch, with a note on it;
+  - a note in the drawing no longer stops Extrude;
+  - a boss on a box's top face;
+  - undoing a new sketch leaves it;
+  - editing again from the list, with undo in the sketch;
+  - a revolve about the sketch's own axis.
+- Shell opens the face that faces up: it opened the bottom. This and the
+  face sketch fail with the old face normals.
+- Changed: the DXF-free kernel tests still pass through the new dispatch;
+  `SolidCommandsTest.ShellOpensTheChosenFace` gained the check above.
+
+### Not done
+
+- A sketch on a face does not follow the face when the part changes: its
+  plane is copied.
+- Sketch geometry cannot yet use the part's edges (projection).
+- The top-level drawing is not shown while a sketch is edited.
+- Sketches cannot be renamed or deleted from the list.
+- Loft and Sweep still take one loop.
 
 ## Phase 132: 3D picking
 

@@ -34,7 +34,7 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     // Get default text height from dimension style.
     double textHeight = 2.5;
     if (m_viewport && m_viewport->document()) {
-        textHeight = m_viewport->document()->draftDocument().dimensionStyle().textHeight;
+        textHeight = m_viewport->document()->activeDrawing().dimensionStyle().textHeight;
     }
 
     // Create and add the text entity.
@@ -42,7 +42,7 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
         auto txt = std::make_shared<draft::DraftText>(pos, text.toStdString(), textHeight);
         txt->setLayer(m_viewport->document()->layerManager().currentLayer());
         auto cmd =
-            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), txt);
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(), txt);
         m_viewport->document()->undoStack().push(std::move(cmd));
         m_viewport->update();
     }

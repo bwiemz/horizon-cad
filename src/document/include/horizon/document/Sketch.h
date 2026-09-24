@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/drafting/SpatialIndex.h"
@@ -18,8 +19,10 @@ class ConstraintSystem;
 
 namespace hz::doc {
 
-/// A Sketch owns a SketchPlane, an entity collection (in local 2D coordinates),
-/// a ConstraintSystem, and a SpatialIndex for fast spatial queries.
+/// A Sketch owns a SketchPlane, a drawing in the plane's local 2D coordinates
+/// (its entities, their spatial index, blocks and dimension style), and a
+/// ConstraintSystem. While a sketch is edited, the window's drawing tools work
+/// on its drawing (Document::activeDrawing()).
 class Sketch {
 public:
     Sketch();  // Default XY plane
@@ -41,7 +44,12 @@ public:
     const draft::SketchPlane& plane() const;
     void setPlane(const draft::SketchPlane& plane);
 
-    // Entity management — entities store local 2D coordinates.
+    /// The sketch's drawing, in the plane's local 2D coordinates.
+    draft::DraftDocument& drawing() { return m_drawing; }
+    const draft::DraftDocument& drawing() const { return m_drawing; }
+
+    // Entity management — entities store local 2D coordinates. These are the
+    // drawing's own (drawing()).
     void addEntity(std::shared_ptr<draft::DraftEntity> entity);
     void removeEntity(uint64_t entityId);
     const std::vector<std::shared_ptr<draft::DraftEntity>>& entities() const;
@@ -63,9 +71,8 @@ private:
     uint64_t m_id;
     std::string m_name;
     draft::SketchPlane m_plane;
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_entities;
+    draft::DraftDocument m_drawing;
     std::unique_ptr<cstr::ConstraintSystem> m_constraints;
-    draft::SpatialIndex m_spatialIndex;
 
     static math::IdCounter<uint64_t> s_nextId;
 };

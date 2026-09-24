@@ -114,7 +114,7 @@ void EllipseTool::finishEllipse() {
     ellipse->setLayer(m_viewport->document()->layerManager().currentLayer());
 
     auto cmd =
-        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), ellipse);
+        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(), ellipse);
     m_viewport->document()->undoStack().push(std::move(cmd));
 
     m_state = State::Center;

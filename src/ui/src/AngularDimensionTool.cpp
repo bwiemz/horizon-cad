@@ -43,7 +43,7 @@ bool AngularDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2&
     if (!m_viewport || !m_viewport->document()) return false;
 
     double tolerance = m_viewport->pickTolerance(10.0);
-    const auto& entities = m_viewport->document()->draftDocument().entities();
+    const auto& entities = m_viewport->document()->activeDrawing().entities();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
     if (m_state == State::WaitingForLine1 || m_state == State::WaitingForLine2) {
@@ -106,7 +106,7 @@ bool AngularDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2&
         dim->setLayer(m_viewport->document()->layerManager().currentLayer());
 
         auto cmd =
-            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), dim);
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(), dim);
         m_viewport->document()->undoStack().push(std::move(cmd));
 
         m_state = State::WaitingForLine1;
@@ -164,7 +164,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> AngularDimensionTool::getPreviewL
     draft::DraftAngularDimension previewDim(m_vertex, line1Pt, line2Pt, arcRadius);
     draft::DimensionStyle style;
     if (m_viewport && m_viewport->document()) {
-        style = m_viewport->document()->draftDocument().dimensionStyle();
+        style = m_viewport->document()->activeDrawing().dimensionStyle();
     }
 
     std::vector<std::pair<math::Vec2, math::Vec2>> lines;

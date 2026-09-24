@@ -42,7 +42,7 @@ bool InsertBlockTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worl
         auto ref = std::make_shared<draft::DraftBlockRef>(m_definition, pos, m_rotation, m_scale);
         ref->setLayer(m_viewport->document()->layerManager().currentLayer());
         auto cmd =
-            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), ref);
+            std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(), ref);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }
     return true;

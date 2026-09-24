@@ -34,7 +34,7 @@ bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/,
                                  math::Vec2& trimA_end, math::Vec2& trimB_start,
                                  math::Vec2& trimB_end) const {
     if (!m_viewport || !m_viewport->document()) return false;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     // Find the two lines.
     const draft::DraftLine* lineA = nullptr;
@@ -107,7 +107,7 @@ bool ChamferTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double tolerance = m_viewport->pickTolerance(10.0);
 
     if (m_state == State::SelectFirstLine) {
@@ -222,7 +222,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ChamferTool::getPreviewLines() co
     if (m_state != State::SelectSecondLine) return {};
     if (!m_viewport || !m_viewport->document()) return {};
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     double tolerance = m_viewport->pickTolerance(10.0);
 
     // Find line under cursor for preview.

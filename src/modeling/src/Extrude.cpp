@@ -8,6 +8,7 @@
 #include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/topology/EulerOps.h"
 
@@ -266,39 +267,25 @@ static void tagArcIdeals(const ringstack::SampledProfile& sampled, const draft::
 // Extrude::execute
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> Extrude::execute(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
-    const draft::SketchPlane& plane, const Vec3& direction, double distance,
-    const std::string& featureID, int segments, double chordTolerance, std::string* reason,
-    NamingScheme naming) {
+namespace {
+
+/// One closed loop, extruded: the solid execute() builds for a profile that
+/// is a single loop.
+std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validation,
+                                         const draft::SketchPlane& plane, const Vec3& direction,
+                                         double distance, const std::string& featureID,
+                                         int segments, double chordTolerance, std::string* reason,
+                                         NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
     };
-
-    // -----------------------------------------------------------------------
-    // 1. Validate profile
-    // -----------------------------------------------------------------------
-    auto validation = ProfileValidator::validate(profile);
-    if (!validation.isClosed) {
-        return fail(validation.errorMessage);
-    }
-    if (!(std::abs(distance) > 0.0) || !std::isfinite(distance)) {
-        return fail("the extrusion distance must be a non-zero number");
-    }
-    if (std::abs(direction.normalized().dot(plane.normal())) < 1e-9) {
-        return fail("the extrusion direction lies in the sketch plane, so it sweeps no volume");
-    }
-
     const Vec3 offset = direction * distance;
 
     // -----------------------------------------------------------------------
-    // 2. Facet the profile.  Arcs and circles are followed along their curve;
-    //    a circle used to become four points and so a square prism.
+    // Facet the profile.  Arcs and circles are followed along their curve;
+    // a circle used to become four points and so a square prism.
     // -----------------------------------------------------------------------
-    if (segments < 3) {
-        return fail("arcs need at least 3 segments per turn");
-    }
     const ringstack::SampledProfile sampled = ringstack::sampleProfile(
         validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
     const std::vector<Vec2>& verts2D = sampled.vertices;
@@ -465,6 +452,73 @@ std::unique_ptr<topo::Solid> Extrude::execute(
 
     tagArcIdeals(sampled, plane, offset, pb.lateralFaces, pb.bottomVerts, pb.topVerts);
     return solid;
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> Extrude::execute(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& direction, double distance,
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason,
+    NamingScheme naming) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (!found.ok()) return fail(found.errorMessage);
+    if (!(std::abs(distance) > 0.0) || !std::isfinite(distance)) {
+        return fail("the extrusion distance must be a non-zero number");
+    }
+    if (std::abs(direction.normalized().dot(plane.normal())) < 1e-9) {
+        return fail("the extrusion direction lies in the sketch plane, so it sweeps no volume");
+    }
+    if (segments < 3) {
+        return fail("arcs need at least 3 segments per turn");
+    }
+    if (found.isSingleLoop()) {
+        return extrudeLoop(found.regions.front().outer, plane, direction, distance, featureID,
+                           segments, chordTolerance, reason, naming);
+    }
+
+    // Holes and separate regions: each region's outer loop extruded, less
+    // each hole's; the regions joined. A hole is cut by its loop extruded a
+    // tenth further at both ends, so no face of the cutter lies in a cap.
+    // The cutters and the regions after the first are named apart from the
+    // first region, whose faces keep the names a single loop's would have.
+    const double margin = 0.1 * std::abs(distance);
+    const Vec3 grows = (direction * distance).normalized();
+    const draft::SketchPlane cutterPlane(plane.origin() - grows * margin, plane.normal(),
+                                         plane.xAxis());
+    const double cutterDistance = distance + std::copysign(2.0 * margin, distance);
+    std::unique_ptr<topo::Solid> result;
+    int holeCount = 0;
+    for (size_t r = 0; r < found.regions.size(); ++r) {
+        const ProfileRegion& region = found.regions[r];
+        const std::string regionID = r == 0 ? featureID : featureID + "~region" + std::to_string(r);
+        std::string why;
+        auto solid = extrudeLoop(region.outer, plane, direction, distance, regionID, segments,
+                                 chordTolerance, &why, naming);
+        if (!solid) return fail(why);
+        for (const auto& hole : region.holes) {
+            auto cutter = extrudeLoop(hole, cutterPlane, direction, cutterDistance,
+                                      featureID + "~hole" + std::to_string(holeCount++), segments,
+                                      chordTolerance, &why, naming);
+            if (!cutter) return fail("a hole in the profile: " + why);
+            auto cut = BooleanOp::execute(*solid, *cutter, BooleanType::Subtract, &why, naming);
+            if (!cut) return fail("a hole in the profile could not be cut: " + why);
+            solid = std::move(cut);
+        }
+        if (!result) {
+            result = std::move(solid);
+            continue;
+        }
+        auto joined = BooleanOp::execute(*result, *solid, BooleanType::Union, &why, naming);
+        if (!joined) return fail("the profile's regions could not be joined: " + why);
+        result = std::move(joined);
+    }
+    return result;
 }
 
 }  // namespace hz::model

@@ -17,6 +17,29 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 9 (Phases 131–135)
+
+- **Sketches on planes (131).**
+  - Model ▸ New Sketch makes a sketch on the XY, XZ or YZ plane, on a flat
+    face of the part, or on a datum plane. While you edit it, the view looks
+    straight at it and every drawing tool draws into it, in its own
+    coordinates. Model ▸ Finish Sketch, or Extrude or Revolve, ends it.
+  - The feature tree lists the sketches: double-click one to edit it again.
+    The one chosen there is what Extrude and Revolve use.
+  - A profile can have holes, and several separate regions. A plate with
+    holes extrudes in one step, and a revolve's section can have a window
+    in it.
+  - Text, dimensions and hatches in a sketch or drawing no longer stop
+    Extrude; they are notes, not part of the shape.
+  - Revolve turns about the sketch's own vertical or horizontal axis. It
+    was always the world's Y.
+  - Sketches are saved with their constraints; they were lost. Documents no
+    longer carry an empty "Default Sketch", and scripts see no sketches in a
+    new document (`sketch_count()` is 0, not 1).
+  - Renaming or removing a layer reaches entities in every sketch.
+  - Shell's face list named faces by their inside: "facing up" was the
+    bottom. It opened the wrong face of any part not the same both ways.
+
 ## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
 
 - **Drawings to PDF and SVG (127).**

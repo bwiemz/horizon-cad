@@ -59,7 +59,7 @@ bool LinearDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
             dim->setLayer(m_viewport->document()->layerManager().currentLayer());
 
             auto cmd = std::make_unique<doc::AddEntityCommand>(
-                m_viewport->document()->draftDocument(), dim);
+                m_viewport->document()->activeDrawing(), dim);
             m_viewport->document()->undoStack().push(std::move(cmd));
 
             // Reset for next dimension.
@@ -140,7 +140,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> LinearDimensionTool::getPreviewLi
         draft::DraftLinearDimension previewDim(m_point1, m_point2, m_currentPos, orientation);
         draft::DimensionStyle style;
         if (m_viewport && m_viewport->document()) {
-            style = m_viewport->document()->draftDocument().dimensionStyle();
+            style = m_viewport->document()->activeDrawing().dimensionStyle();
         }
 
         std::vector<std::pair<math::Vec2, math::Vec2>> lines;

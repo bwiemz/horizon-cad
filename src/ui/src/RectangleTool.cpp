@@ -46,7 +46,7 @@ bool RectangleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldP
                 auto rect = std::make_shared<draft::DraftRectangle>(m_firstCorner, snappedPos);
                 rect->setLayer(m_viewport->document()->layerManager().currentLayer());
                 auto cmd = std::make_unique<doc::AddEntityCommand>(
-                    m_viewport->document()->draftDocument(), rect);
+                    m_viewport->document()->activeDrawing(), rect);
                 m_viewport->document()->undoStack().push(std::move(cmd));
             }
             m_state = State::WaitingForFirstCorner;

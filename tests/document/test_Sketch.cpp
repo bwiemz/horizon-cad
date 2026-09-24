@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/Commands.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Vec2.h"
@@ -178,4 +183,78 @@ TEST(SketchTest, MultipleEntitiesAndSpatialQuery) {
     auto hits = sketch.spatialIndex().query(box1);
     ASSERT_EQ(hits.size(), 1u);
     EXPECT_EQ(hits[0], line1->id());
+}
+
+// -- Sketches edited in the window (Phase 131) --------------------------------
+
+// A sketch's entities live in a drawing of its own: the tools that edit a
+// drawing edit it just the same.
+TEST(SketchTest, ASketchHasADrawingOfItsOwn) {
+    Sketch sketch;
+    auto line = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(3, 0));
+    sketch.addEntity(line);
+    EXPECT_EQ(sketch.drawing().findEntity(line->id()), line.get());
+    EXPECT_EQ(sketch.drawing().entities().size(), 1u);
+    sketch.drawing().removeEntity(line->id());
+    EXPECT_TRUE(sketch.entities().empty());
+}
+
+// Editing a sketch makes its drawing and constraints the active ones; the
+// top level is untouched and comes back when editing stops.
+TEST(SketchTest, EditingASketchMakesItsDrawingActive) {
+    Document doc;
+    EXPECT_TRUE(doc.sketches().empty()) << "no default sketch any more";
+    EXPECT_EQ(&doc.activeDrawing(), &doc.draftDocument());
+
+    auto sketch = std::make_shared<Sketch>();
+    doc.addSketch(sketch);
+    doc.editSketch(sketch);
+    EXPECT_EQ(doc.editedSketch(), sketch);
+    EXPECT_EQ(&doc.activeDrawing(), &sketch->drawing());
+    EXPECT_EQ(&doc.activeConstraints(), &sketch->constraintSystem());
+    EXPECT_EQ(doc.drawings().size(), 2u);
+
+    doc.editSketch(nullptr);
+    EXPECT_EQ(&doc.activeDrawing(), &doc.draftDocument());
+    EXPECT_EQ(&doc.activeConstraints(), &doc.constraintSystem());
+
+    // Only a sketch of this document is edited; taking it out stops editing.
+    doc.editSketch(std::make_shared<Sketch>());
+    EXPECT_EQ(doc.editedSketch(), nullptr) << "another document's sketch";
+    doc.editSketch(sketch);
+    doc.removeSketch(sketch->id());
+    EXPECT_EQ(doc.editedSketch(), nullptr);
+    EXPECT_EQ(&doc.activeDrawing(), &doc.draftDocument());
+}
+
+// Layers are shared by every drawing: renaming or removing one carries what
+// is on it in the sketches too, and undo puts it back.
+TEST(SketchTest, LayerChangesReachEveryDrawing) {
+    Document doc;
+    LayerProperties walls;
+    walls.name = "Walls";
+    doc.layerManager().addLayer(walls);
+    auto sketch = std::make_shared<Sketch>();
+    doc.addSketch(sketch);
+    auto inSketch = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    inSketch->setLayer("Walls");
+    sketch->addEntity(inSketch);
+    auto onTop = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    onTop->setLayer("Walls");
+    doc.draftDocument().addEntity(onTop);
+
+    RenameLayerCommand rename(doc.layerManager(), doc.drawings(), "Walls", "Outside");
+    rename.execute();
+    EXPECT_EQ(inSketch->layer(), "Outside");
+    EXPECT_EQ(onTop->layer(), "Outside");
+    rename.undo();
+    EXPECT_EQ(inSketch->layer(), "Walls");
+
+    RemoveLayerCommand remove(doc.layerManager(), doc.drawings(), "Walls");
+    remove.execute();
+    EXPECT_EQ(inSketch->layer(), "0");
+    EXPECT_EQ(onTop->layer(), "0");
+    remove.undo();
+    EXPECT_EQ(inSketch->layer(), "Walls");
+    EXPECT_EQ(onTop->layer(), "Walls");
 }

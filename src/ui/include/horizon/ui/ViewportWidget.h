@@ -145,8 +145,11 @@ public:
     // ---- Active Sketch ----
 
     /// Set the active sketch for mouse-to-plane projection.
-    /// Passing a non-null sketch saves camera state and aligns the camera
-    /// to the sketch plane.  Passing nullptr restores the saved camera.
+    /// Show @p sketch being edited: the view then works in the sketch's own
+    /// coordinates (its plane is the view's XY, where the drawing tools draw)
+    /// and looks straight down on it; the camera is saved first. The window
+    /// places the solids in that frame. Passing nullptr restores the saved
+    /// camera. Either way the selection is cleared.
     void setActiveSketch(doc::Sketch* sketch);
 
     /// Returns the currently active sketch, or nullptr.
