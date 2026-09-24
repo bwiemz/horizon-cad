@@ -38,8 +38,9 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 - **G-code that could hurt a machine, and FEA that analysed the wrong shape
   (121).**
   - A program now starts from a known state, loads its tool, and starts the
-    spindle before it moves. Its first rapid climbs before it crosses, and so
-    does every rapid after it. It stops the spindle at the end.
+    spindle before it moves. Its first rapid climbs before it crosses. Every
+    later rapid climbs before it crosses, or crosses before it descends, so
+    none moves diagonally through the part. It stops the spindle at the end.
   - A program that could rapid through the cut, cut with the spindle
     stopped, or carries a feed of zero or a number that is not finite is
     refused, with the reason. So are toolpath parameters that would make one.
