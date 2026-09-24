@@ -267,11 +267,11 @@ void ViewportWidget::paintGL() {
     }
 
     // Render 3D scene graph nodes (solid primitives with PBR-lite, edge overlay).
-    if (!m_sceneGraph.nodes().empty()) {
-        // No picking pass here: nothing reads it. A pick renders one
-        // (renderPickingPass, then pickAtPixel) when it needs it.
-        m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
-    }
+    // Every frame, even with nothing to draw: renderNodes() also lets go of
+    // the meshes of nodes that left the scene, and an emptied scene (a part's
+    // tab switched for a drawing's) is when that matters most. No picking
+    // pass here: nothing reads it; a pick renders one when it needs it.
+    m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
 
     // Render tool preview (rubber-band).
     m_viewportRenderer.renderToolPreview(gl, *m_renderer, m_camera, m_activeTool);
