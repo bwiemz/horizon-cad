@@ -49,6 +49,9 @@ continues from a fresh audit after Phase 121.
     rebuilt the failing model on every redraw. The part now stays as it was
     before the failing feature, which is marked, and is rebuilt only when
     something changes.
+  - Saving a part while it was being rebuilt in the background wrote the
+    mesh of the part before the last change into the file, and assemblies
+    loading it lightweight showed that. Save now builds the part first.
   - The surface area of non-convex faces was too high: a U-shaped cap
     counted 116 instead of 52.
   - Every three-edge fillet corner carried a whole sphere, which STL and

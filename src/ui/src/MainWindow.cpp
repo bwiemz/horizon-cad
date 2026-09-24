@@ -1446,8 +1446,9 @@ bool MainWindow::saveActiveDocument() {
         ok = io::DxfFormat::save(path, *m_document, &error);
     } else {
         // Make sure parts carry a fresh tessellation cache for lightweight
-        // assembly loading.
-        if (!m_document->solid() && m_document->needsBuild()) m_document->rebuildModel();
+        // assembly loading. A solid may be there and still be out of date:
+        // while a rebuild runs on a worker, it is the part before the edit.
+        if (m_document->needsBuild()) m_document->rebuildModel();
         ok = io::NativeFormat::save(path, *m_document, &error);
     }
     if (ok) {
