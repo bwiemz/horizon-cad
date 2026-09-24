@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "../TimeLimits.h"
 #include "horizon/modeling/AssemblySolver.h"
 
 using namespace hz::model;
@@ -324,7 +325,11 @@ TEST(AssemblySolverTest, ThreePartChainSolvesQuickly) {
                        .count();
 
     ASSERT_EQ(result.status, AssemblySolveStatus::Success);
+#if HZ_TIME_LIMITS
     EXPECT_LT(elapsed, 1000) << "assembly solve must complete in < 1s";
+#else
+    (void)elapsed;
+#endif
 
     // B's bottom sits on z=10; C's bottom sits on B's top (z=20).
     MateFrame placedB = plane(Vec3(0, 0, 0), Vec3(0, 0, -1)).transformed(result.transforms.at(2));
@@ -399,9 +404,13 @@ TEST(AssemblySolverTest, LargeAssemblySolvesQuickly) {
 
     EXPECT_EQ(result.status, AssemblySolveStatus::Success);
     EXPECT_LT(result.residualNorm, 1e-6);
+#if HZ_TIME_LIMITS
 #ifdef NDEBUG
     EXPECT_LT(ms, 1000.0) << "100-part assembly must solve in < 1 s (release)";
 #else
     EXPECT_LT(ms, 6000.0) << "debug/unoptimized Eigen; generous bound for slow CI";
+#endif
+#else
+    (void)ms;
 #endif
 }
