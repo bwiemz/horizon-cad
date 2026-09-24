@@ -36,6 +36,27 @@ std::shared_ptr<draft::DraftEntity> Document::removeEntity(uint64_t id) {
     return found;
 }
 
+bool Document::isDirty() const {
+    return m_dirty || !m_undoStack->isClean();
+}
+
+void Document::setDirty(bool dirty) {
+    m_dirty = dirty;
+    if (!dirty)
+        m_undoStack->setClean();  // notifies through the undo stack
+    else if (m_onChange)
+        m_onChange();
+}
+
+void Document::setChangeCallback(std::function<void()> callback) {
+    m_onChange = std::move(callback);
+    if (m_onChange) {
+        m_undoStack->setChangeCallback([this] { m_onChange(); });
+    } else {
+        m_undoStack->setChangeCallback(nullptr);
+    }
+}
+
 void Document::clear() {
     m_draftDoc.clear();
     m_layerManager.clear();

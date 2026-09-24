@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include "horizon/document/Document.h"
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/topology/Solid.h"
 
@@ -18,15 +19,13 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
     root["part"] = spec.partPath;
     root["gap"] = spec.gap;
 
-    std::ofstream out(path);
-    if (!out) return false;
-    out << root.dump(2);
-    return static_cast<bool>(out);
+    return writeFileAtomically(pathFromUtf8(path),
+                               root.dump(2, ' ', false, json::error_handler_t::replace));
 }
 
 bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSpec,
                              model::Drawing& outDrawing) {
-    std::ifstream in(path);
+    std::ifstream in(pathFromUtf8(path));
     if (!in) return false;
 
     json root;

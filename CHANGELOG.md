@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness (Phase 97)
+## Unreleased — Production readiness (Phases 97–98)
 
 Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
 
@@ -44,6 +44,40 @@ Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-2
 - **Line endings.** A checkout copied from Windows to Linux showed all 559
   files as modified — CRLF in the working tree, LF in the index.
   `.gitattributes` now pins LF everywhere.
+- **Quitting lost unsaved work (98).** There was no `closeEvent`: File ▸ Exit
+  and the window's close button discarded every open document without a
+  word. And a drawing never became "modified" in the first place — the 2D
+  commands edit `DraftDocument`, which had no dirty flag, and
+  `Document::m_dirty` was only set by two methods the UI never calls, so the
+  tab-close prompt that did exist could not fire for 2D work.
+
+  The modified state now comes from the undo stack: it records which state was
+  last saved, so every command marks the document modified, undoing back to
+  the saved state clears the mark, and a push that discards the redo history
+  holding the saved state leaves it unreachable. Changes made outside the undo
+  stack (feature edits, until they become commands) still mark the document
+  explicitly. Quitting walks every modified tab and asks Save / Discard /
+  Cancel; closing a tab offers Save as well (it offered only Close and
+  Cancel); modified tabs show `*` and the title bar Qt's modified marker. A
+  new offscreen test binary drives the real `MainWindow` through each of these.
+- **Saves could destroy the file they replaced (98).** Every writer opened the
+  target with `std::ofstream`, truncating it, *then* serialized. `json::dump()`
+  throws on invalid UTF-8 — which DXF-imported text carries whenever its source
+  used a legacy code page — so saving such a drawing as `.hcad` left a 0-byte
+  file and threw out of the Qt event loop. `file.good()` was also checked
+  before `close()`, so a failed final flush (disk full) reported success. All
+  writers now build their output in memory and replace the target through
+  `io::writeFileAtomically`: temporary file in the same directory, flushed to
+  disk, renamed over the target, permissions kept, symlinks followed, and on
+  any failure the original untouched and the temporary removed. Invalid UTF-8
+  is written as U+FFFD instead of throwing.
+- **Non-ASCII paths on Windows (98).** Paths are UTF-8 strings throughout, but
+  `std::ifstream(std::string)` reads a narrow path in the Windows code page, so
+  a file under `C:\Users\José` could not be opened or saved. Readers and
+  writers now open paths as UTF-8, and the executable declares UTF-8 as its
+  active code page.
+- `~ViewportWidget` dereferenced the current GL context unconditionally and
+  crashed when the viewport had never been shown.
 
 ## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 

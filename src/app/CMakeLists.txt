@@ -11,6 +11,12 @@ target_link_libraries(horizon
         spdlog::spdlog
 )
 
+# UTF-8 as the process code page, so UTF-8 paths survive narrow Windows APIs.
+# MSVC's linker merges a .manifest source into the executable's manifest.
+if (MSVC)
+    target_sources(horizon PRIVATE horizon.manifest)
+endif()
+
 install(TARGETS horizon
     RUNTIME DESTINATION bin
 )

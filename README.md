@@ -311,6 +311,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 97 | Done | Build integrity: compiler warnings and sanitizers had been defined in `cmake/` but never applied to a target, so the build ran with no warning flags and the CI "AddressSanitizer" job was an uninstrumented Debug build. Both now apply to every first-party target (warnings as errors on Linux CI, UBSan fatal), and the suite is clean under ASan + UBSan + LeakSanitizer. Adds a `linux-system-qt` preset, an LF line-ending policy and consistent clang-tidy flags |
+| 98 | Done | Never lose work: quitting discarded every open document without a prompt, and 2D edits never marked a drawing modified at all. The modified state now follows the undo stack (undoing back to the saved state clears it); quitting and closing a tab ask Save / Discard / Cancel; modified tabs show `*`. Every writer replaces its file atomically (temporary + flush + rename) instead of truncating it first — a save that failed half-way, including on DXF text in a legacy code page, used to leave a 0-byte file. Paths are opened as UTF-8, so non-ASCII folders work on Windows. The first offscreen `MainWindow` tests drive all of it |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

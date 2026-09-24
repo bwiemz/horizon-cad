@@ -1,9 +1,10 @@
 #include "horizon/fileio/BomExport.h"
 
-#include <fstream>
+#include <sstream>
 #include <string>
 
 #include "horizon/document/BillOfMaterials.h"
+#include "horizon/fileio/AtomicFile.h"
 
 namespace hz::io {
 
@@ -27,16 +28,14 @@ std::string csvField(const std::string& value) {
 }  // namespace
 
 bool BomExport::toCsv(const std::string& path, const doc::BillOfMaterials& bom) {
-    std::ofstream out(path, std::ios::binary);
-    if (!out) return false;
-
+    std::ostringstream out;
     out << "Item,Part,Quantity,Path\r\n";
     for (const doc::BomLine& line : bom.lines) {
         out << line.item << ',' << csvField(line.partName) << ',' << line.quantity << ','
             << csvField(line.partPath) << "\r\n";
     }
 
-    return static_cast<bool>(out);
+    return writeFileAtomically(pathFromUtf8(path), out.str());
 }
 
 }  // namespace hz::io

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -18,7 +19,7 @@ namespace {
 constexpr uint32_t kBinaryVersion = 1;
 
 std::vector<uint8_t> readAllBytes(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(pathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open()) return {};
     const std::streamsize size = file.tellg();
     if (size <= 0) return {};
@@ -30,13 +31,8 @@ std::vector<uint8_t> readAllBytes(const std::string& filePath) {
 }
 
 bool writeAllBytes(const std::string& filePath, const uint8_t* data, size_t size) {
-    std::ofstream file(filePath, std::ios::binary);
-    if (!file.is_open()) return false;
-    file.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
-    // Close explicitly so buffered data is flushed while we can still observe
-    // the failure — the destructor swallows flush errors (e.g. disk full).
-    file.close();
-    return !file.fail();
+    return writeFileAtomically(pathFromUtf8(filePath),
+                               std::string_view(reinterpret_cast<const char*>(data), size));
 }
 
 /// Verify the buffer and return the root, or nullptr when invalid.
@@ -141,7 +137,7 @@ std::shared_ptr<geo::MeshData> BinaryFormat::loadPartMesh(const std::string& fil
 }
 
 bool BinaryFormat::isBinaryFile(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
     if (!file.is_open()) return false;
     char header[8] = {};
     file.read(header, sizeof(header));

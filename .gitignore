@@ -1,5 +1,7 @@
 # Build directories
 build/
+# Editor/linter symlink to a build's compile database
+compile_commands.json
 out/
 cmake-build-*/
 

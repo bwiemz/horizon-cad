@@ -78,7 +78,18 @@ every translation unit; clang-tidy with CI's check set reports nothing new.
    failures keep the tab open.
 5. **Indicators.** Window title uses `[*]` + `setWindowModified`; modified tabs
    show a trailing `*`. Tabs keep their base title so markers never
-   accumulate. The undo stack's change callback refreshes both.
+   accumulate. `Document::setChangeCallback` fires for undo-stack changes
+   *and* explicit `setDirty()` (tools such as ConstraintTool mark documents
+   directly), and refreshes both.
+6. **UTF-8 paths.** Paths travel as UTF-8 `std::string`; every reader and
+   writer opens them through `io::pathFromUtf8`, and the Windows executable
+   declares UTF-8 as its active code page in a manifest, so a file under
+   `C:\Users\José` can be opened and saved.
+7. **MainWindow tests.** A `QApplication`-based test binary on Qt's offscreen
+   platform (the first piece of the Phase 112 harness) drives the real window:
+   markers follow edits and undo, quit and tab close prompt, and Cancel /
+   Discard / Save do what they say. `~ViewportWidget` no longer dereferences a
+   null GL context when the widget was never shown.
 
 **Tests:** `tests/document/test_UndoStack.cpp` (new) — fresh stack clean;
 push dirty; undo back clean; redo dirty; clean point unreachable after
@@ -180,6 +191,8 @@ gating (no write when unchanged); cleanup on save.
 | Modified state from undo clean index | 98.1, 98.2 |
 | Close prompts across tabs; tab close offers Save | 98.4 |
 | `*` markers | 98.5 |
+| Non-ASCII paths open and save on Windows | 98.6 |
+| Prompts verified against the real window | 98.7 |
 | Atomic writes for every writer | 98.3 |
 | JSON serialized before open; invalid UTF-8 replaced | 98.3 |
 | Rotating file log | 99.1 |
