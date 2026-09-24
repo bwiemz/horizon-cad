@@ -408,6 +408,8 @@ TEST(ToolEditsTest, CreateBlockTakesItsBasePoint) {
     const auto refs = all<hz::draft::DraftBlockRef>(w);
     ASSERT_EQ(refs.size(), 1u);
     EXPECT_TRUE(near(refs[0]->insertPos(), Vec2(0, 0)));
+}
+
 // The ellipse's last point, typed, is the one it takes. It used the cursor's
 // last position, which a typed point never moves.
 TEST(ToolEditsTest, AnEllipseTakesItsTypedLastPoint) {
