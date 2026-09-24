@@ -5,6 +5,7 @@
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
+#include "horizon/fileio/ImportReport.h"
 
 namespace hz::io {
 
@@ -25,7 +26,11 @@ public:
     static bool save(const std::string& filePath, const doc::Document& doc,
                      std::string* error = nullptr);
 
-    static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr);
+    /// Load a document. With @p report, each malformed item the load had to
+    /// leave out (it skips them rather than refusing the whole file) is
+    /// recorded there, with why.
+    static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr,
+                     ImportReport* report = nullptr);
 
     /// Save an assembly document (.hzasm). Component part paths are stored
     /// relative to the assembly file when possible.
@@ -33,7 +38,7 @@ public:
                              std::string* error = nullptr);
 
     static bool loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc,
-                             std::string* error = nullptr);
+                             std::string* error = nullptr, ImportReport* report = nullptr);
 
     /// Read only the tessellation cache of a part file, without constructing
     /// a Document (lightweight component resolution). Returns nullptr when
@@ -49,7 +54,7 @@ public:
 
     /// Populate a Document from a JSON envelope string.
     static bool documentFromJson(const std::string& text, doc::Document& doc,
-                                 std::string* error = nullptr);
+                                 std::string* error = nullptr, ImportReport* report = nullptr);
 
     /// Serialize the assembly envelope. @p filePath anchors relative component
     /// paths (pass the eventual on-disk location; empty keeps paths as-is).
@@ -58,7 +63,8 @@ public:
 
     /// Populate an AssemblyDocument from a JSON envelope string.
     static bool assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
-                                 const std::string& filePath, std::string* error = nullptr);
+                                 const std::string& filePath, std::string* error = nullptr,
+                                 ImportReport* report = nullptr);
 };
 
 }  // namespace hz::io

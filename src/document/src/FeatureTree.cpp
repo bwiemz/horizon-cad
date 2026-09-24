@@ -21,6 +21,7 @@
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/Loft.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Revolve.h"
@@ -998,6 +999,35 @@ std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> 
     // construction features when building, so this is only reached if called
     // directly.
     return inputSolid;
+}
+
+// ---------------------------------------------------------------------------
+// ImportedBodyFeature
+// ---------------------------------------------------------------------------
+
+int ImportedBodyFeature::s_nextID = 1;
+
+ImportedBodyFeature::ImportedBodyFeature(std::shared_ptr<const topo::Solid> solid,
+                                         std::string source)
+    : m_solid(std::move(solid)),
+      m_source(std::move(source)),
+      m_featureID("imported_" + std::to_string(s_nextID++)) {}
+
+void ImportedBodyFeature::restoreFeatureID(const std::string& id) {
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "imported_");
+}
+
+std::unique_ptr<topo::Solid> ImportedBodyFeature::execute(
+    std::unique_ptr<topo::Solid> /*inputSolid*/, std::string* reason) const {
+    if (!m_solid) return failWith(reason, "the imported body is missing");
+    auto body = model::Pattern::transformed(*m_solid, math::Mat4::identity());
+    int index = 0;
+    for (auto& face : body->faces()) {
+        face.topoId = topo::TopologyID::make(m_featureID, "face:" + std::to_string(index++));
+    }
+    model::nameEdgesByFaces(*body);
+    return body;
 }
 
 // ---------------------------------------------------------------------------

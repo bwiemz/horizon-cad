@@ -9,6 +9,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
 
@@ -68,6 +69,12 @@ private slots:
     void onOpenFile();
     void onSaveFile();
     void onSaveFileAs();
+    void onImportStep();
+    void onImportDxf();
+    void onExportStep();
+    void onExportStl();
+    void onExportGltf();
+    void onExportDxf();
     void onInsertComponent();
     void onAddMate();
     void onCheckInterference();
@@ -205,6 +212,13 @@ private:
     void updateWindowTitle();
 
     bool isTabModified(const DocTab& tab) const;
+    /// Tell the user what reading `file` left out or changed, if anything —
+    /// before a save could drop it for good.
+    void showImportReport(const QString& file, const io::ImportReport& report);
+    /// The part's solid for an export, or null with a word in the status bar.
+    const topo::Solid* solidToExport(const QString& format);
+    /// Ask where to export; empty when cancelled.
+    QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
     /// Make the assembly edit just done (from `before`) one undo step on the
     /// active tab. `wasDirty` is the assembly's flag before the edit.
     void recordAssemblyEdit(doc::AssemblyState before, bool wasDirty, const QString& description);
@@ -272,6 +286,8 @@ private:
     doc::DocumentManager m_docManager;
     /// Why the document manager's last part/assembly load failed.
     std::string m_lastLoadError;
+    /// What the last native load left out (it skips malformed items).
+    io::ImportReport m_lastLoadReport;
     std::unique_ptr<RecoveryManager> m_recovery;
     QTimer* m_autosaveTimer = nullptr;
     quint64 m_nextRecoveryKey = 1;

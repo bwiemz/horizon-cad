@@ -12,6 +12,26 @@
 
 namespace hz::doc {
 
+// --- AddBlockDefinitionCommand ---
+
+AddBlockDefinitionCommand::AddBlockDefinitionCommand(draft::DraftDocument& doc,
+                                                     std::shared_ptr<draft::BlockDefinition> block)
+    : m_doc(doc), m_block(std::move(block)) {}
+
+void AddBlockDefinitionCommand::execute() {
+    // A block of the same name already here is kept, and not ours to remove.
+    m_added = m_block && m_doc.blockTable().addBlock(m_block);
+}
+
+void AddBlockDefinitionCommand::undo() {
+    if (m_added) m_doc.blockTable().removeBlock(m_block->name);
+    m_added = false;
+}
+
+std::string AddBlockDefinitionCommand::description() const {
+    return "Add Block";
+}
+
 // --- AddEntityCommand ---
 
 AddEntityCommand::AddEntityCommand(draft::DraftDocument& doc,

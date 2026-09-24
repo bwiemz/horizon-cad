@@ -536,6 +536,33 @@ private:
     static int s_nextID;
 };
 
+/// A body brought in from another file (a STEP import): fixed geometry, with
+/// no sketch or parameters behind it. It builds a body like any other and
+/// takes the usual body operation. Its faces are named by their order in the
+/// solid, which never changes, and its edges after their faces.
+class ImportedBodyFeature : public Feature {
+public:
+    /// @param source  Where it came from, for the user: "bracket.step".
+    ImportedBodyFeature(std::shared_ptr<const topo::Solid> solid, std::string source);
+
+    std::string name() const override { return "Imported"; }
+    std::string featureID() const override { return m_featureID; }
+    void restoreFeatureID(const std::string& id) override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
+    bool createsNewBody() const override { return true; }
+
+    const std::shared_ptr<const topo::Solid>& solid() const { return m_solid; }
+    const std::string& source() const { return m_source; }
+
+private:
+    std::shared_ptr<const topo::Solid> m_solid;
+    std::string m_source;
+    std::string m_featureID;
+
+    static int s_nextID;
+};
+
 /// Reference-geometry feature: a datum plane, axis, or point. Non-geometric —
 /// it lives in the feature tree as construction geometry that sketches and
 /// features reference, but does not alter the solid body.
