@@ -144,7 +144,6 @@ public:
 
     // ---- Active Sketch ----
 
-    /// Set the active sketch for mouse-to-plane projection.
     /// Show @p sketch being edited: the view then works in the sketch's own
     /// coordinates (its plane is the view's XY, where the drawing tools draw)
     /// and looks straight down on it; the camera is saved first. The window
@@ -170,6 +169,32 @@ public:
 
     /// Project a world-space 2D point to screen coordinates.
     QPointF worldToScreen(const math::Vec2& wp) const;
+    /// Project a world point to screen coordinates (Qt's, 0 at the top).
+    QPointF projectToScreen(const math::Vec3& world) const;
+
+    // ---- The part in 3D (Phase 132) ----
+
+    /// A face or an edge of a solid in the scene, by its persistent name.
+    struct ModelPick {
+        uint64_t owner = 0;  ///< the scene node's ownerId: a component's id, or 0
+        std::string tag;     ///< the face's or edge's TopologyID tag
+        bool edge = false;
+        bool operator==(const ModelPick&) const = default;
+    };
+    /// What is under the screen point @p at: an edge drawn within the pick
+    /// distance and not hidden, else the face the ray through it meets first.
+    /// Nothing while a sketch is edited: clicks there are the sketch's.
+    std::optional<ModelPick> pickModel(const QPointF& at) const;
+    /// The faces and edges chosen by clicking, in the order chosen.
+    const std::vector<ModelPick>& modelSelection() const { return m_modelSelection; }
+    /// A click on @p pick: with @p add (Shift), it is added, or taken out if
+    /// it was chosen; otherwise it alone is chosen. A click on nothing
+    /// without @p add clears the choice.
+    void chooseModel(const std::optional<ModelPick>& pick, bool add);
+    void clearModelSelection();
+    /// What the cursor is over, drawn highlighted.
+    void setModelHover(const std::optional<ModelPick>& pick);
+    const std::optional<ModelPick>& modelHover() const { return m_modelHover; }
 
 signals:
     /// Emitted when the mouse moves.  Carries the world-space position on the XY plane.
@@ -177,6 +202,9 @@ signals:
 
     /// Emitted when the selection changes.
     void selectionChanged();
+
+    /// Emitted when the faces and edges chosen in 3D change.
+    void modelSelectionChanged();
 
     /// Emitted when what is typed for the active tool changes, or is taken
     /// or refused: the prompt shows it.
@@ -242,6 +270,11 @@ private:
 
     // 3D scene graph
     render::SceneGraph m_sceneGraph;
+    std::vector<ModelPick> m_modelSelection;
+    std::optional<ModelPick> m_modelHover;
+
+    /// Draw the chosen and hovered faces and edges over the solids.
+    void drawModelHighlights(QOpenGLExtraFunctions* gl);
 
     // Active tool
     Tool* m_activeTool = nullptr;

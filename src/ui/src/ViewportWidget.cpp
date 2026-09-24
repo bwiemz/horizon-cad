@@ -12,6 +12,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "horizon/document/Document.h"
 #include "horizon/math/Constants.h"
@@ -19,6 +20,7 @@
 #include "horizon/math/Vec4.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
+#include "horizon/render/MeshPicker.h"
 #include "horizon/ui/Tool.h"
 
 namespace hz::ui {
@@ -69,6 +71,7 @@ void ViewportWidget::setDocument(doc::Document* doc) {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::setActiveTool(Tool* tool) {
+    setModelHover(std::nullopt);  // only the Select tool shows what a click would choose
     if (m_activeTool) {
         m_activeTool->deactivate();
     }
@@ -94,6 +97,8 @@ void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
 
     m_activeSketch = sketch;
     m_selectionManager.clearSelection();  // what was selected is in another drawing
+    m_modelHover.reset();
+    clearModelSelection();
 
     if (sketch) {
         // The view works in the sketch's own coordinates: its plane is the
@@ -242,6 +247,149 @@ QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
     return {sx, sy};
 }
 
+QPointF ViewportWidget::projectToScreen(const math::Vec3& world) const {
+    const math::Vec4 clip = m_camera.viewProjectionMatrix() * math::Vec4(world, 1.0);
+    if (std::abs(clip.w) < 1e-15) return {0.0, 0.0};
+    const math::Vec3 ndc = clip.perspectiveDivide();
+    return {(ndc.x + 1.0) * 0.5 * width(), (1.0 - ndc.y) * 0.5 * height()};
+}
+
+// ---------------------------------------------------------------------------
+// The part in 3D: picking and choosing its faces and edges
+// ---------------------------------------------------------------------------
+
+std::optional<ViewportWidget::ModelPick> ViewportWidget::pickModel(const QPointF& at) const {
+    if (m_activeSketch || width() <= 0 || height() <= 0) return std::nullopt;
+    // screenToRay expects Qt-style coordinates (0 = top).
+    const auto [origin, direction] = m_camera.screenToRay(at.x(), at.y(), width(), height());
+    const auto nodes = m_sceneGraph.collectVisibleMeshNodes();
+
+    // The face the ray meets first, over every solid shown.
+    const render::SceneNode* faceNode = nullptr;
+    std::optional<render::MeshHit> face;
+    for (const render::SceneNode* node : nodes) {
+        const auto hit =
+            render::MeshPicker::pickFace(node->mesh(), node->worldTransform(), origin, direction);
+        if (hit && (!face || hit->distance < face->distance)) {
+            face = hit;
+            faceNode = node;
+        }
+    }
+    // An edge near the cursor wins over the face under it: edges are thin,
+    // and are what a click that close means. Not one the face hides.
+    const double hiddenBeyond = face ? face->distance : std::numeric_limits<double>::infinity();
+    const render::SceneNode* edgeNode = nullptr;
+    std::optional<render::MeshHit> edge;
+    for (const render::SceneNode* node : nodes) {
+        const auto hit = render::MeshPicker::pickEdge(node->mesh(), node->worldTransform(),
+                                                      m_camera, at.x(), at.y(), width(), height(),
+                                                      kPickPixels * 0.6, hiddenBeyond);
+        if (hit && (!edge || hit->distance < edge->distance)) {
+            edge = hit;
+            edgeNode = node;
+        }
+    }
+    if (edge && edgeNode) {
+        const auto& edges = edgeNode->mesh().edges;
+        return ModelPick{edgeNode->ownerId(), edges[static_cast<size_t>(edge->edge)].tag, true};
+    }
+    if (face && faceNode && face->face >= 0) {
+        const auto& tags = faceNode->mesh().faceTags;
+        if (static_cast<size_t>(face->face) < tags.size()) {
+            return ModelPick{faceNode->ownerId(), tags[static_cast<size_t>(face->face)], false};
+        }
+    }
+    return std::nullopt;
+}
+
+void ViewportWidget::chooseModel(const std::optional<ModelPick>& pick, bool add) {
+    const auto before = m_modelSelection;
+    if (!pick) {
+        if (!add) m_modelSelection.clear();
+    } else if (!add) {
+        m_modelSelection = {*pick};
+    } else {
+        const auto it = std::find(m_modelSelection.begin(), m_modelSelection.end(), *pick);
+        if (it != m_modelSelection.end()) {
+            m_modelSelection.erase(it);
+        } else {
+            m_modelSelection.push_back(*pick);
+        }
+    }
+    if (m_modelSelection != before) {
+        update();
+        emit modelSelectionChanged();
+    }
+}
+
+void ViewportWidget::clearModelSelection() {
+    if (m_modelSelection.empty()) return;
+    m_modelSelection.clear();
+    update();
+    emit modelSelectionChanged();
+}
+
+void ViewportWidget::setModelHover(const std::optional<ModelPick>& pick) {
+    if (pick == m_modelHover) return;
+    m_modelHover = pick;
+    update();
+}
+
+void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
+    if (m_modelSelection.empty() && !m_modelHover) return;
+    const auto draw = [&](const ModelPick& pick, const math::Vec3& colour, float alpha) {
+        for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {
+            if (node->ownerId() != pick.owner) continue;
+            const render::MeshData& mesh = node->mesh();
+            const math::Mat4 model = node->worldTransform();
+            const auto world = [&model](float x, float y, float z) {
+                return model.transformPoint(math::Vec3(x, y, z));
+            };
+            if (pick.edge) {
+                std::vector<float> lines;
+                for (const auto& edge : mesh.edges) {
+                    if (edge.tag != pick.tag) continue;
+                    const auto& p = edge.points;
+                    for (size_t k = 0; k + 5 < p.size(); k += 3) {
+                        for (const size_t at : {k, k + 3}) {
+                            const math::Vec3 q = world(p[at], p[at + 1], p[at + 2]);
+                            lines.insert(lines.end(),
+                                         {static_cast<float>(q.x), static_cast<float>(q.y),
+                                          static_cast<float>(q.z), 0.0f});
+                        }
+                    }
+                }
+                // Over the part's own line for the edge, at the same depth: an
+                // equal depth must pass, or the highlight is hidden by it.
+                gl->glDepthFunc(GL_LEQUAL);
+                m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f);
+                gl->glDepthFunc(GL_LESS);
+                continue;
+            }
+            if (!mesh.hasFaces()) continue;
+            const auto face = std::find(mesh.faceTags.begin(), mesh.faceTags.end(), pick.tag);
+            if (face == mesh.faceTags.end()) continue;
+            const auto index = static_cast<uint32_t>(face - mesh.faceTags.begin());
+            std::vector<float> triangles;
+            for (size_t t = 0; t < mesh.triangleFaces.size(); ++t) {
+                if (mesh.triangleFaces[t] != index) continue;
+                for (size_t c = 0; c < 3; ++c) {
+                    const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
+                    if (v + 2 >= mesh.positions.size()) continue;
+                    const math::Vec3 q =
+                        world(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]);
+                    triangles.insert(triangles.end(),
+                                     {static_cast<float>(q.x), static_cast<float>(q.y),
+                                      static_cast<float>(q.z)});
+                }
+            }
+            m_renderer->drawTriangles(gl, m_camera, triangles, math::Vec4(colour, alpha));
+        }
+    };
+    for (const ModelPick& pick : m_modelSelection) draw(pick, math::Vec3(1.0, 0.55, 0.1), 0.45f);
+    if (m_modelHover) draw(*m_modelHover, math::Vec3(0.35, 0.75, 1.0), 0.3f);
+}
+
 // ---------------------------------------------------------------------------
 // OpenGL overrides
 // ---------------------------------------------------------------------------
@@ -359,6 +507,7 @@ void ViewportWidget::paintGL() {
     // tab switched for a drawing's) is when that matters most. No picking
     // pass here: nothing reads it; a pick renders one when it needs it.
     m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
+    drawModelHighlights(gl);
 
     // Render tool preview (rubber-band).
     m_viewportRenderer.renderToolPreview(gl, *m_renderer, m_camera, m_activeTool);

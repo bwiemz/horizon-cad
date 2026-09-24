@@ -57,6 +57,11 @@ public:
                     const std::vector<float>& circleVertices, const math::Vec3& color,
                     float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f);
 
+    /// Draw triangles (3 floats per vertex, world coordinates, 3 vertices
+    /// each), filled and blended: a highlight on a face of a solid.
+    void drawTriangles(QOpenGLExtraFunctions* gl, const Camera& camera,
+                       const std::vector<float>& xyz, const math::Vec4& color);
+
     /// Draw a filled, semi-transparent quad between two world-space corners.
     void drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera, const math::Vec2& corner1,
                         const math::Vec2& corner2, const math::Vec4& color);

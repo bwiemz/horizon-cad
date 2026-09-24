@@ -499,6 +499,10 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
         }
     };
 
+    // Faces a little further back than they are, so the part's edges, drawn
+    // on them, and highlights of them win the depth test.
+    gl->glEnable(GL_POLYGON_OFFSET_FILL);
+    gl->glPolygonOffset(1.0f, 1.0f);
     renderNodeList(opaqueNodes);
 
     if (!translucentNodes.empty()) {
@@ -510,10 +514,57 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
         gl->glDisable(GL_BLEND);
     }
 
+    gl->glDisable(GL_POLYGON_OFFSET_FILL);
     m_phongShader.release();
 
-    // Edge wireframe overlay.
-    renderEdgeOverlay(gl, visibleNodes, vp);
+    // The part's edges, where the mesh knows them; its triangles' edges for
+    // a mesh that does not (one read from a file's cache).
+    std::vector<SceneNode*> wireframe;
+    std::vector<float> edgeLines;
+    for (SceneNode* node : visibleNodes) {
+        const MeshData& mesh = node->mesh();
+        if (mesh.edges.empty()) {
+            wireframe.push_back(node);
+            continue;
+        }
+        const math::Mat4 model = node->worldTransform();
+        for (const auto& edge : mesh.edges) {
+            const auto& pts = edge.points;
+            for (size_t k = 0; k + 5 < pts.size(); k += 3) {
+                for (const size_t at : {k, k + 3}) {
+                    const math::Vec3 p =
+                        model.transformPoint(math::Vec3(pts[at], pts[at + 1], pts[at + 2]));
+                    edgeLines.insert(edgeLines.end(),
+                                     {static_cast<float>(p.x), static_cast<float>(p.y),
+                                      static_cast<float>(p.z), 0.0f});
+                }
+            }
+        }
+    }
+    renderEdgeOverlay(gl, wireframe, vp);
+    drawLines(gl, camera, edgeLines, math::Vec3(0.12, 0.12, 0.12), 1.2f);
+}
+
+void GLRenderer::drawTriangles(QOpenGLExtraFunctions* gl, const Camera& camera,
+                               const std::vector<float>& xyz, const math::Vec4& color) {
+    if (!m_initialized || xyz.size() < 9) return;
+    m_fillShader.bind();
+    m_fillShader.setUniform("uMVP", camera.projectionMatrix() * camera.viewMatrix());
+    m_fillShader.setUniform("uFillColor", color);
+    gl->glBindVertexArray(m_dynamicVAO);
+    uploadDynamic(gl, xyz.data(), xyz.size() * sizeof(float));
+    gl->glEnableVertexAttribArray(0);
+    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    gl->glEnable(GL_BLEND);
+    gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl->glDepthMask(GL_FALSE);
+    gl->glDepthFunc(GL_LEQUAL);  // on the face it highlights, not behind it
+    gl->glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(xyz.size() / 3));
+    gl->glDepthFunc(GL_LESS);
+    gl->glDepthMask(GL_TRUE);
+    gl->glDisable(GL_BLEND);
+    gl->glBindVertexArray(0);
+    m_fillShader.release();
 }
 
 void GLRenderer::renderGrid(QOpenGLExtraFunctions* gl, const Camera& camera) {

@@ -137,6 +137,11 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
         }
     }
 
+    // Over a solid, the face or edge under the cursor is shown, as what a
+    // click there would choose.
+    if (!(event->buttons() & Qt::LeftButton)) {
+        m_viewport->setModelHover(m_viewport->pickModel(event->position()));
+    }
     return false;
 }
 
@@ -281,6 +286,15 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         if (!shiftHeld) {
             sel.clearSelection();
         }
+    }
+
+    // A click on nothing in the drawing chooses the face or edge of a solid
+    // under it (Shift adds or takes one away), for the commands that work
+    // on faces and edges; a click on the drawing, or on nothing, clears it.
+    if (hitId == 0) {
+        m_viewport->chooseModel(m_viewport->pickModel(event->position()), shiftHeld);
+    } else if (!shiftHeld) {
+        m_viewport->clearModelSelection();
     }
 
     return true;
