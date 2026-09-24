@@ -208,7 +208,13 @@ ExclusiveCreate createFileExclusively(const fs::path& path, std::string_view dat
     const int fd = openExclusive(path);
     if (fd < 0) {
         const int err = errno;
-        if (err == EEXIST) return ExclusiveCreate::Exists;
+        // A file in the way gives EEXIST, but Windows reports a directory in
+        // the way as EACCES: whatever the error, anything already at the path
+        // means it is taken.
+        std::error_code ec;
+        const fs::file_type there = fs::symlink_status(path, ec).type();
+        const bool taken = there != fs::file_type::not_found && there != fs::file_type::none;
+        if (err == EEXIST || taken) return ExclusiveCreate::Exists;
         setError(error, describe("cannot create", path, err));
         return ExclusiveCreate::Failed;
     }
