@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Horizon CAD
+GenericName=Computer-Aided Design
+Comment=Parametric 2D drafting and 3D part modelling
+Exec=horizon %F
+Icon=io.github.bwiemz.HorizonCAD
+Terminal=false
+Categories=Graphics;Engineering;
+Keywords=CAD;drafting;3D;modelling;STEP;DXF;
+MimeType=application/x-horizon-drawing;application/x-horizon-part;application/x-horizon-assembly;image/vnd.dxf;
+StartupWMClass=horizon

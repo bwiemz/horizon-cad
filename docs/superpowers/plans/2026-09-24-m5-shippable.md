@@ -67,6 +67,43 @@ A release someone can install:
 - Linux AppImage via linuxdeploy.
 - Third-party notices.
 
+**As built.**
+- **Icon.** `packaging/icons/horizon-cad.svg` shows a part rising over the
+  horizon. `render.sh` renders it into PNGs from 16 to 512 px and a Windows
+  `.ico`, and the rendered files are committed, so a build needs no tools.
+  The icon is used as:
+  - the window icon (a Qt resource);
+  - the executable's icon on Windows (`horizon.rc`);
+  - the NSIS installer's icons;
+  - the Linux hicolor icons.
+- **Linux desktop integration** (`packaging/linux`), under the application
+  id `io.github.bwiemz.HorizonCAD`:
+  - a `.desktop` entry, valid under `desktop-file-validate`;
+  - AppStream metadata, valid under `appstreamcli validate-tree --no-net`,
+    configured with the version and a date that honours SOURCE_DATE_EPOCH;
+  - MIME types for `.hcad`, `.hzpart` and `.hzasm`.
+
+  `setDesktopFileName` ties the running window to the entry.
+- **Install rules** (`cmake/HorizonInstall.cmake`):
+  - LICENSE, `THIRD_PARTY_NOTICES.md`, the README and the CHANGELOG;
+  - the licence file of every library vcpkg built into the package, taken
+    from vcpkg's own records (build-only ports are left out);
+  - on Linux, the desktop files and icons;
+  - translations next to the executable, where `LocaleManager` looks;
+  - on Windows, the Qt runtime through `qt_generate_deploy_app_script`.
+- **`THIRD_PARTY_NOTICES.md`** lists each library, what it is used for and
+  its licence, and says how Qt's LGPL is met: Qt is linked dynamically in a
+  package.
+- **AppImage.** `packaging/linux/build-appimage.sh <build dir>` installs
+  into an AppDir and runs linuxdeploy with its Qt plugin. The release
+  workflow (117) provides linuxdeploy; it is not downloaded here.
+- **Test.** `PackagingInstallTree`, on Linux and macOS, installs into a
+  scratch prefix and checks the tree, validating the desktop entry when the
+  tool is there. Windows packaging is exercised by the release workflow.
+- **Not done:**
+  - WiX: NSIS stays the Windows installer.
+  - A macOS bundle.
+
 ## Phase 117: Release pipeline
 
 - A tag-triggered workflow producing Release artifacts with checksums.

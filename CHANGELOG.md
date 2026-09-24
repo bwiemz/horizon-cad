@@ -30,6 +30,16 @@ work, not "post-1.0".
     are now `CPackSettings.cmake`, included first.
   - The CHANGELOG's "1.0.0" is now 0.1.0, the version the code has always
     had.
+- **A package that installs like an application (116).**
+  - Horizon CAD has an icon: on the window, the executable, the installer
+    and the Linux desktop.
+  - On Linux it has a desktop entry, AppStream metadata and MIME types for
+    its files.
+  - A package now carries its translations, its licence, the third-party
+    notices and the licence text of every library in it; on Windows, the Qt
+    runtime too.
+  - A script builds an AppImage with linuxdeploy.
+  - A test installs the build and checks what a package would hold.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

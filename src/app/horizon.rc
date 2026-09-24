@@ -1,0 +1,2 @@
+// The executable's icon (Explorer, the taskbar, the installer's shortcuts).
+IDI_ICON1 ICON "../../packaging/icons/horizon-cad.ico"

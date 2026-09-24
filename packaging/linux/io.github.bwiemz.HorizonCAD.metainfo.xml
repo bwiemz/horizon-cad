@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bwiemz.HorizonCAD</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Horizon CAD</name>
+  <summary>Parametric 2D drafting and 3D part modelling</summary>
+  <description>
+    <p>
+      Horizon CAD is an open-source CAD application: 2D drafting with layers,
+      blocks, dimensions and constraints, and 3D parts built from a
+      parametric feature tree, with assemblies on top.
+    </p>
+    <p>
+      It reads and writes its own formats and DXF, imports and exports STEP,
+      and exports STL and glTF.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.bwiemz.HorizonCAD.desktop</launchable>
+  <url type="homepage">https://github.com/bwiemz/horizon-cad</url>
+  <url type="bugtracker">https://github.com/bwiemz/horizon-cad/issues</url>
+  <developer id="io.github.bwiemz">
+    <name>Horizon CAD Project</name>
+  </developer>
+  <provides>
+    <binary>horizon</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@PROJECT_VERSION@" date="@HZ_METAINFO_DATE@" type="development"/>
+  </releases>
+</component>

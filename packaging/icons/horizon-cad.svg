@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Horizon CAD: a part rising over the horizon. -->
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#1b2130"/>
+  <path d="M60 184 A68 68 0 0 1 196 184" fill="none" stroke="#f5a93b" stroke-width="12" stroke-linecap="round"/>
+  <path d="M34 184 H222" stroke="#4aa3ff" stroke-width="12" stroke-linecap="round"/>
+  <g fill="none" stroke="#eef3fb" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M128 50 L172 75 L172 125 L128 150 L84 125 L84 75 Z" fill="#1b2130"/>
+    <path d="M84 75 L128 100 L172 75 M128 100 L128 150"/>
+  </g>
+</svg>
