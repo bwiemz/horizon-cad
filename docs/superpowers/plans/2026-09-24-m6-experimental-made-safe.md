@@ -152,9 +152,15 @@ run code it should not, or give an answer that looks right and is not:
     ends, a C++ exception included. Its teardown uses the C API, which
     cannot throw. `eval()` now also reports a result that fails to convert,
     instead of throwing.
-- **Scripting is off by default** (`HZ_ENABLE_SCRIPTING=OFF`). The CI build
-  jobs turn it on, so it is still built and tested on Windows and Linux. The
-  release workflow (Phase 117) builds without it.
+- **Scripting is off by default** (`HZ_ENABLE_SCRIPTING=OFF`). CI turns it
+  on, so it is still built and tested:
+  - in the Windows and Linux build jobs;
+  - in the AddressSanitizer job, which it had never been part of. That is
+    the job that sees a script reach a destroyed document.
+
+  The release workflow of Phase 117 (#84) builds without it. The scripting
+  tests disable only LeakSanitizer, because the embedded interpreter is
+  never finalized; every other ASan check stays on.
 - **`PluginRegistry::prepareLoad(name, appVersion)`** is the one way to load
   a plugin. It checks, at load time:
   - that the plugin is registered, enabled and compatible;
@@ -179,7 +185,7 @@ run code it should not, or give an answer that looks right and is not:
     - an entry replaced by a link out of the plugin.
 - **Not done:**
   - Scripts and plugins are still not sandboxed, and plugin permissions are
-    still not enforced. Both are documented in SECURITY.md.
+    still not enforced. Phase 118's SECURITY.md (#84) says so.
   - Nothing in the application runs scripts or plugins yet.
   - `prepareLoad` narrows the gap between checking the entry and reading
     it to one step; it does not close it. That would need opening each path

@@ -8,6 +8,24 @@
 #include "horizon/scripting/ScriptContext.h"
 #include "horizon/scripting/ScriptEngine.h"
 
+// The embedded interpreter is never finalized (see ScriptEngine.cpp), so its
+// process-lifetime allocations are reported by LeakSanitizer at exit. Disable
+// *leak* detection for this binary while keeping every other AddressSanitizer
+// check (use after free, buffer overflow) active; the use-after-free tests
+// below depend on those. A harmless no-op outside GCC/Clang ASan builds.
+#if defined(__SANITIZE_ADDRESS__)
+#define HZ_ASAN_ACTIVE 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define HZ_ASAN_ACTIVE 1
+#endif
+#endif
+#ifdef HZ_ASAN_ACTIVE
+extern "C" const char* __lsan_default_options() {
+    return "detect_leaks=0";
+}
+#endif
+
 using hz::script::ScriptContext;
 using hz::script::ScriptEngine;
 
