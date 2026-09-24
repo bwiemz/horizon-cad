@@ -83,9 +83,10 @@ TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
     EXPECT_LT(ms, 100.0);
 #else
     // Debug builds on shared CI runners (especially MSVC with iterator
-    // debugging) run several times slower; the perf target only binds in
-    // Release.
-    EXPECT_LT(ms, 500.0);
+    // debugging) run several times slower, and CI runs four tests at once:
+    // this took 570 ms under ASan and on MSVC Debug. The perf target only
+    // binds in Release; here only a much worse regression fails.
+    EXPECT_LT(ms, 2000.0);
 #endif
 }
 
@@ -116,5 +117,9 @@ TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
     double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
     double avgMs = totalMs / 1000.0;
     std::cout << "[PERF] 10k entities, avg box query: " << avgMs << " ms" << std::endl;
+#ifdef NDEBUG
     EXPECT_LT(avgMs, 5.0) << "Box query too slow: " << avgMs << " ms average";
+#else
+    EXPECT_LT(avgMs, 20.0) << "Box query too slow: " << avgMs << " ms average";  // as the snap's
+#endif
 }
