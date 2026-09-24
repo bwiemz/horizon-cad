@@ -26,7 +26,7 @@ bool PasteTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     if (!m_clipboard || !m_clipboard->hasContent()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+    auto result = m_viewport->snap(worldPos);
     math::Vec2 placement = result.point;
     m_viewport->setLastSnapResult(result);
 
@@ -58,8 +58,7 @@ bool PasteTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
 bool PasteTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos) {
     m_currentPos = worldPos;
     if (m_viewport && m_viewport->document()) {
-        auto& doc = m_viewport->document()->draftDocument();
-        auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+        auto result = m_viewport->snap(worldPos);
         m_currentPos = result.point;
         m_viewport->setLastSnapResult(result);
     }

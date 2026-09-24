@@ -237,8 +237,7 @@ bool OffsetTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     if (m_state == State::SelectEntity) {
         // Hit-test to find entity under cursor (skip hidden/locked layers).

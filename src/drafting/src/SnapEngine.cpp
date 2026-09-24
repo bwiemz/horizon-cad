@@ -1,8 +1,10 @@
 #include "horizon/drafting/SnapEngine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
+#include "horizon/drafting/Intersection.h"
 #include "horizon/math/BoundingBox.h"
 
 namespace hz::draft {
@@ -27,79 +29,105 @@ math::Vec2 SnapEngine::snapToGrid(const math::Vec2& point) const {
     return math::Vec2(x, y);
 }
 
-SnapResult SnapEngine::snap(const math::Vec2& cursorWorld,
-                            const std::vector<std::shared_ptr<DraftEntity>>& entities) const {
+namespace {
+
+/// Which kind of snap wins a tie: the most specific.
+int rank(SnapType type) {
+    switch (type) {
+        case SnapType::Endpoint:
+            return 0;
+        case SnapType::Intersection:
+            return 1;
+        case SnapType::Midpoint:
+            return 2;
+        case SnapType::Center:
+            return 3;
+        case SnapType::Quadrant:
+            return 4;
+        default:
+            return 5;
+    }
+}
+
+}  // namespace
+
+SnapResult SnapEngine::snapAmong(const math::Vec2& cursorWorld,
+                                 const std::vector<const DraftEntity*>& near) const {
     SnapResult best;
     best.point = cursorWorld;
-    best.type = SnapType::None;
-    double bestDist = std::numeric_limits<double>::max();
+    double bestDist = m_snapTolerance;
+    const auto consider = [&](const math::Vec2& p, SnapType type) {
+        const double dist = cursorWorld.distanceTo(p);
+        if (dist >= m_snapTolerance) return;
+        const bool nearer = dist < bestDist - 1e-12;
+        const bool tie = dist <= bestDist + 1e-12;
+        if (best.type == SnapType::None || nearer || (tie && rank(type) < rank(best.type))) {
+            best.point = p;
+            best.type = type;
+            bestDist = dist;
+        }
+    };
 
-    // Check entity snap points (Endpoint, Midpoint, Center)
-    for (const auto& entity : entities) {
-        if (!entity) continue;
-        std::vector<math::Vec2> pts = entity->snapPoints();
-        for (const auto& pt : pts) {
-            double dist = cursorWorld.distanceTo(pt);
-            if (dist < m_snapTolerance && dist < bestDist) {
-                bestDist = dist;
-                best.point = pt;
-                best.type = SnapType::Endpoint;
+    // Only entities that pass within the tolerance can cross near the cursor.
+    std::vector<const DraftEntity*> touching;
+    for (const DraftEntity* entity : near) {
+        for (const auto& sp : entity->typedSnapPoints()) consider(sp.point, sp.type);
+        if (entity->hitTest(cursorWorld, m_snapTolerance)) touching.push_back(entity);
+    }
+    constexpr size_t kMaxTouching = 32;  // a bound on the pairs tried per cursor move
+    const size_t n = std::min(touching.size(), kMaxTouching);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = i + 1; j < n; ++j) {
+            for (const auto& p : intersect(*touching[i], *touching[j]).points) {
+                consider(p, SnapType::Intersection);
             }
         }
     }
+    if (best.type != SnapType::None) return best;
 
-    // Check grid snap
-    math::Vec2 gridPt = snapToGrid(cursorWorld);
-    double gridDist = cursorWorld.distanceTo(gridPt);
-    if (gridDist < m_snapTolerance && gridDist < bestDist) {
-        bestDist = gridDist;
+    // The grid only when no object snap is in reach.
+    const math::Vec2 gridPt = snapToGrid(cursorWorld);
+    if (cursorWorld.distanceTo(gridPt) < m_snapTolerance) {
         best.point = gridPt;
         best.type = SnapType::Grid;
     }
-
     return best;
 }
 
-SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& index,
-                            const std::vector<std::shared_ptr<DraftEntity>>& entities) const {
-    SnapResult best;
-    best.point = cursorWorld;
-    best.type = SnapType::None;
-    double bestDist = std::numeric_limits<double>::max();
+SnapResult SnapEngine::snap(const math::Vec2& cursorWorld,
+                            const std::vector<std::shared_ptr<DraftEntity>>& entities,
+                            const Filter& accept) const {
+    std::vector<const DraftEntity*> near;
+    near.reserve(entities.size());
+    for (const auto& entity : entities) {
+        if (entity && (!accept || accept(*entity))) near.push_back(entity.get());
+    }
+    return snapAmong(cursorWorld, near);
+}
 
-    // Build a search box around cursor at snap tolerance.
-    math::BoundingBox searchBox(
+SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& index,
+                            const std::vector<std::shared_ptr<DraftEntity>>& entities,
+                            const Filter& accept) const {
+    const math::BoundingBox searchBox(
         math::Vec3(cursorWorld.x - m_snapTolerance, cursorWorld.y - m_snapTolerance, -1e9),
         math::Vec3(cursorWorld.x + m_snapTolerance, cursorWorld.y + m_snapTolerance, 1e9));
+    std::vector<uint64_t> ids = index.query(searchBox);
+    if (ids.empty()) return snapAmong(cursorWorld, {});
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 
-    auto candidateIds = index.query(searchBox);
-
-    // Only check snap points of entities near cursor.
-    for (uint64_t id : candidateIds) {
-        for (const auto& entity : entities) {
-            if (entity->id() != id) continue;
-            std::vector<math::Vec2> pts = entity->snapPoints();
-            for (const auto& pt : pts) {
-                double dist = cursorWorld.distanceTo(pt);
-                if (dist < m_snapTolerance && dist < bestDist) {
-                    bestDist = dist;
-                    best.point = pt;
-                    best.type = SnapType::Endpoint;
-                }
-            }
-            break;
-        }
+    // Find the few candidates in the list, stopping once all are found: a
+    // snap runs on every mouse move, and the drawing may be large.
+    std::vector<const DraftEntity*> near;
+    near.reserve(ids.size());
+    size_t found = 0;
+    for (const auto& entity : entities) {
+        if (!entity || !std::binary_search(ids.begin(), ids.end(), entity->id())) continue;
+        ++found;
+        if (!accept || accept(*entity)) near.push_back(entity.get());
+        if (found == ids.size()) break;
     }
-
-    // Check grid snap.
-    math::Vec2 gridPt = snapToGrid(cursorWorld);
-    double gridDist = cursorWorld.distanceTo(gridPt);
-    if (gridDist < m_snapTolerance && gridDist < bestDist) {
-        best.point = gridPt;
-        best.type = SnapType::Grid;
-    }
-
-    return best;
+    return snapAmong(cursorWorld, near);
 }
 
 }  // namespace hz::draft

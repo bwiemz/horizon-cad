@@ -144,8 +144,7 @@ bool FilletTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     if (m_state == State::SelectFirstLine) {
         const auto& layerMgr = m_viewport->document()->layerManager();
@@ -199,19 +198,13 @@ bool FilletTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
 
                 auto newLineA = std::make_shared<draft::DraftLine>(trimA_start, trimA_end);
                 if (origA) {
-                    newLineA->setLayer(origA->layer());
-                    newLineA->setColor(origA->color());
-                    newLineA->setLineWidth(origA->lineWidth());
-                    newLineA->setLineType(origA->lineType());
+                    newLineA->copyStyleFrom(*origA);
                 }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineA));
 
                 auto newLineB = std::make_shared<draft::DraftLine>(trimB_start, trimB_end);
                 if (origB) {
-                    newLineB->setLayer(origB->layer());
-                    newLineB->setColor(origB->color());
-                    newLineB->setLineWidth(origB->lineWidth());
-                    newLineB->setLineType(origB->lineType());
+                    newLineB->copyStyleFrom(*origB);
                 }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLineB));
 
@@ -219,10 +212,9 @@ bool FilletTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
                 auto filletArc =
                     std::make_shared<draft::DraftArc>(arcCenter, arcRadius, arcStart, arcEnd);
                 if (origA) {
-                    filletArc->setLayer(origA->layer());
-                    filletArc->setColor(origA->color());
-                    filletArc->setLineWidth(origA->lineWidth());
-                    filletArc->setLineType(origA->lineType());
+                    filletArc->copyStyleFrom(*origA);
+                    // It joins a group only if both lines are in it.
+                    if (!origB || origB->groupId() != origA->groupId()) filletArc->setGroupId(0);
                 }
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(doc, filletArc));
 
@@ -296,8 +288,7 @@ std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
     if (!m_viewport || !m_viewport->document()) return {};
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     // Find line under cursor for preview.
     for (const auto& entity : doc.entities()) {

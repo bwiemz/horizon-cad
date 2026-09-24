@@ -75,6 +75,13 @@ std::vector<math::Vec2> DraftArc::snapPoints() const {
     return {startPoint(), endPoint(), m_center, midPoint()};
 }
 
+std::vector<SnapPoint> DraftArc::typedSnapPoints() const {
+    return {{startPoint(), SnapType::Endpoint},
+            {endPoint(), SnapType::Endpoint},
+            {midPoint(), SnapType::Midpoint},
+            {m_center, SnapType::Center}};
+}
+
 void DraftArc::translate(const math::Vec2& delta) {
     m_center += delta;
 }

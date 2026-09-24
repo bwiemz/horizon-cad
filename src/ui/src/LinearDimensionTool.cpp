@@ -29,9 +29,7 @@ bool LinearDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
     // Snap.
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
-        auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result =
-            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result = m_viewport->snap(worldPos);
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -75,9 +73,7 @@ bool LinearDimensionTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec
 
     math::Vec2 snapped = worldPos;
     if (m_viewport && m_viewport->document()) {
-        auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result =
-            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result = m_viewport->snap(worldPos);
         snapped = result.point;
         m_viewport->setLastSnapResult(result);
     }

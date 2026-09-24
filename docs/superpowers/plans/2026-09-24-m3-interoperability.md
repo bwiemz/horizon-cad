@@ -230,3 +230,41 @@ round-trip-exact real formatting.
 - Correct Midpoint and Center snap types, and an intersection snap.
 - Trim keeps line type and group.
 - Pick tolerances that do not depend on zoom.
+
+**As built.**
+- **Screen-pixel reach.**
+  - `ViewportWidget::snap(worldPos)` sets the snap tolerance to 10 screen
+    pixels at the current zoom. It used to be a fixed 0.5 world units: at
+    high zoom that reached thousands of pixels, and zoomed out it reached
+    under one.
+  - `ViewportWidget::pickTolerance(pixels)` replaces the 16 copies of
+    `std::max(10 px, 0.15)`, whose world floor made picks reach far past
+    the cursor when zoomed in.
+  - Every tool now snaps and picks through these two.
+- **Layers.** The viewport's snap passes a filter that leaves out entities
+  on hidden or locked layers. Trim's cutting edges skip them too. They used
+  to include every entity in the drawing.
+- **Snap kinds.**
+  - Entities offer `typedSnapPoints()`. A line's midpoint is a snap point:
+    it was none before.
+  - Arcs, circles, ellipses and rectangles report centres; circles and
+    ellipses report quadrants.
+  - A block's content keeps its kinds.
+  - Every snap used to be reported as "endpoint".
+  - The overlay has markers for the new kinds: a diamond for a quadrant, an
+    X for an intersection, and a plus for the grid, which used to have the
+    X.
+- **Intersection snap.** It is found among the entities that pass within
+  the reach of the cursor, at most 32 of them.
+- **Priority.** The nearest object snap wins, and on a tie the more
+  specific kind. The grid is used only when no object snap is in reach; a
+  nearer grid point used to beat an endpoint.
+- **Performance.** The spatial-index snap looked each candidate up by
+  scanning the whole entity list, a scan per candidate on every mouse move.
+  It now makes one pass.
+- **Keeping style.** `DraftEntity::copyStyleFrom` gives a piece the layer,
+  colour, width, line type and group of its source.
+  - Trim uses it; its pieces used to lose line type and group.
+  - Break, Extend, Chamfer and Fillet used to drop the group.
+  - A chamfer or fillet's joining piece joins a group only if both lines
+    are in it.

@@ -162,9 +162,8 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
-    double gripTol = std::max(8.0 * pixelScale, 0.12);
+    double tolerance = m_viewport->pickTolerance(10.0);
+    double gripTol = m_viewport->pickTolerance(8.0);
 
     // If no polyline selected yet, pick one.
     if (m_editEntityId == 0) {
@@ -343,8 +342,7 @@ bool PolylineEditTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& 
             if (!poly) break;
 
             // Snap.
-            auto result =
-                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result = m_viewport->snap(worldPos);
             math::Vec2 snappedPos = result.point;
 
             auto pts = poly->points();

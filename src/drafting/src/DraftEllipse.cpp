@@ -109,6 +109,15 @@ std::vector<math::Vec2> DraftEllipse::snapPoints() const {
     };
 }
 
+std::vector<SnapPoint> DraftEllipse::typedSnapPoints() const {
+    const auto points = snapPoints();
+    std::vector<SnapPoint> out;
+    out.reserve(points.size());
+    for (const auto& p : points) out.push_back({p, SnapType::Quadrant});
+    out.front().type = SnapType::Center;  // snapPoints() starts with the centre
+    return out;
+}
+
 void DraftEllipse::translate(const math::Vec2& delta) {
     m_center += delta;
 }

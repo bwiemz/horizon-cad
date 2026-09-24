@@ -60,12 +60,10 @@ bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     auto& doc = m_viewport->document()->draftDocument();
     auto& sel = m_viewport->selectionManager();
 
-    double pixelScale = m_viewport->pixelToWorldScale();
-
     // --- Check for grip hit first (only when entities are selected) ---
     auto selectedIds = sel.selectedIds();
     if (!selectedIds.empty()) {
-        double gripTol = std::max(8.0 * pixelScale, 0.12);
+        double gripTol = m_viewport->pickTolerance(8.0);
 
         for (uint64_t id : selectedIds) {
             for (const auto& e : doc.entities()) {
@@ -108,9 +106,7 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
         if (!m_viewport || !m_viewport->document()) return false;
 
         math::Vec2 snappedPos = worldPos;
-        auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result =
-            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result = m_viewport->snap(worldPos);
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
 
@@ -250,8 +246,7 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
     auto& sel = m_viewport->selectionManager();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
-    double pixelScale = m_viewport->pixelToWorldScale();
-    const double tolerance = std::max(10.0 * pixelScale, 0.15);
+    const double tolerance = m_viewport->pickTolerance(10.0);
 
     uint64_t hitId = 0;
     {
@@ -367,8 +362,7 @@ bool SelectTool::handleConstraintDoubleClick(const math::Vec2& worldPos) {
     auto& draftDoc = m_viewport->document()->draftDocument();
     auto& cstrSys = m_viewport->document()->constraintSystem();
 
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(15.0 * pixelScale, 0.3);
+    double tolerance = m_viewport->pickTolerance(15.0);
 
     for (const auto& constraint : cstrSys.constraints()) {
         if (!constraint->hasDimensionalValue()) continue;

@@ -83,10 +83,24 @@ void OverlayRenderer::renderSnapMarker(QOpenGLExtraFunctions* gl, const render::
             }
             break;
         }
-        case draft::SnapType::Grid: {
-            // X cross
+        case draft::SnapType::Quadrant: {
+            // Diamond
+            pushSeg(verts, cx, cy + s, cx + s, cy);
+            pushSeg(verts, cx + s, cy, cx, cy - s);
+            pushSeg(verts, cx, cy - s, cx - s, cy);
+            pushSeg(verts, cx - s, cy, cx, cy + s);
+            break;
+        }
+        case draft::SnapType::Intersection: {
+            // X cross, as CAD marks an intersection
             pushSeg(verts, cx - s, cy - s, cx + s, cy + s);
             pushSeg(verts, cx - s, cy + s, cx + s, cy - s);
+            break;
+        }
+        case draft::SnapType::Grid: {
+            // Plus: the grid's own lines
+            pushSeg(verts, cx - s, cy, cx + s, cy);
+            pushSeg(verts, cx, cy - s, cx, cy + s);
             break;
         }
         case draft::SnapType::None:

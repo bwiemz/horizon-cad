@@ -68,6 +68,19 @@ std::vector<math::Vec2> DraftPolyline::snapPoints() const {
     return result;
 }
 
+std::vector<SnapPoint> DraftPolyline::typedSnapPoints() const {
+    std::vector<SnapPoint> out;
+    out.reserve(m_points.size() * 2);
+    for (const auto& pt : m_points) out.push_back({pt, SnapType::Endpoint});
+    for (size_t i = 0; i + 1 < m_points.size(); ++i) {
+        out.push_back({(m_points[i] + m_points[i + 1]) * 0.5, SnapType::Midpoint});
+    }
+    if (m_closed && m_points.size() >= 2) {
+        out.push_back({(m_points.back() + m_points[0]) * 0.5, SnapType::Midpoint});
+    }
+    return out;
+}
+
 void DraftPolyline::translate(const math::Vec2& delta) {
     for (auto& pt : m_points) {
         pt += delta;

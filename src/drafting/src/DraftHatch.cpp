@@ -67,6 +67,17 @@ std::vector<math::Vec2> DraftHatch::snapPoints() const {
     return result;
 }
 
+std::vector<SnapPoint> DraftHatch::typedSnapPoints() const {
+    std::vector<SnapPoint> out;
+    out.reserve(m_boundary.size() * 2);
+    for (const auto& pt : m_boundary) out.push_back({pt, SnapType::Endpoint});
+    for (size_t i = 0; i < m_boundary.size(); ++i) {
+        out.push_back(
+            {(m_boundary[i] + m_boundary[(i + 1) % m_boundary.size()]) * 0.5, SnapType::Midpoint});
+    }
+    return out;
+}
+
 void DraftHatch::translate(const math::Vec2& delta) {
     for (auto& pt : m_boundary) {
         pt += delta;

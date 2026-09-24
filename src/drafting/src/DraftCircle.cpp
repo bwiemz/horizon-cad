@@ -30,6 +30,15 @@ std::vector<math::Vec2> DraftCircle::snapPoints() const {
     };
 }
 
+std::vector<SnapPoint> DraftCircle::typedSnapPoints() const {
+    const auto points = snapPoints();
+    std::vector<SnapPoint> out;
+    out.reserve(points.size());
+    for (const auto& p : points) out.push_back({p, SnapType::Quadrant});
+    out.front().type = SnapType::Center;  // snapPoints() starts with the centre
+    return out;
+}
+
 void DraftCircle::translate(const math::Vec2& delta) {
     m_center += delta;
 }

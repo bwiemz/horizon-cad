@@ -42,7 +42,7 @@ bool AngularDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2&
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    double tolerance = std::max(10.0 * m_viewport->pixelToWorldScale(), 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
     const auto& entities = m_viewport->document()->draftDocument().entities();
     const auto& layerMgr = m_viewport->document()->layerManager();
 

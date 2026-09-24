@@ -26,8 +26,7 @@ bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     // Check if click is on a selected entity.
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     bool hitSelected = false;
     const auto& layerMgr = m_viewport->document()->layerManager();
@@ -44,7 +43,7 @@ bool MoveTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     // Apply snapping.
     math::Vec2 snappedPos = worldPos;
-    auto result = m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+    auto result = m_viewport->snap(worldPos);
     snappedPos = result.point;
     m_viewport->setLastSnapResult(result);
 
@@ -60,9 +59,7 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
     if (!m_viewport || !m_viewport->document()) return false;
 
     math::Vec2 snappedPos = worldPos;
-    auto& draftDoc = m_viewport->document()->draftDocument();
-    auto result =
-        m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+    auto result = m_viewport->snap(worldPos);
     snappedPos = result.point;
     m_viewport->setLastSnapResult(result);
 

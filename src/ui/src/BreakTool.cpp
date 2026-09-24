@@ -18,12 +18,10 @@
 
 namespace hz::ui {
 
-// Helper: copy visual properties from source entity to target.
+// Helper: a piece keeps its source's layer, colour, line width, line type
+// and group.
 static void copyProps(const draft::DraftEntity* src, draft::DraftEntity* dst) {
-    dst->setLayer(src->layer());
-    dst->setColor(src->color());
-    dst->setLineWidth(src->lineWidth());
-    dst->setLineType(src->lineType());
+    dst->copyStyleFrom(*src);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,8 +176,7 @@ bool BreakTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     // Find the entity under the cursor (skip hidden/locked layers).
     const auto& layerMgr = m_viewport->document()->layerManager();

@@ -67,9 +67,7 @@ static void trimLine(const draft::DraftLine* line, const math::Vec2& clickPos,
         math::Vec2 segStart = line->start() + dir * params[i];
         math::Vec2 segEnd = line->start() + dir * params[i + 1];
         auto newLine = std::make_shared<draft::DraftLine>(segStart, segEnd);
-        newLine->setLayer(line->layer());
-        newLine->setColor(line->color());
-        newLine->setLineWidth(line->lineWidth());
+        newLine->copyStyleFrom(*line);
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, newLine));
     }
 }
@@ -125,9 +123,7 @@ static void trimCircle(const draft::DraftCircle* circle, const math::Vec2& click
         double sa = angles[i];
         double ea = angles[(i + 1) % n];
         auto arc = std::make_shared<draft::DraftArc>(circle->center(), circle->radius(), sa, ea);
-        arc->setLayer(circle->layer());
-        arc->setColor(circle->color());
-        arc->setLineWidth(circle->lineWidth());
+        arc->copyStyleFrom(*circle);
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, arc));
     }
 }
@@ -185,9 +181,7 @@ static void trimArc(const draft::DraftArc* arc, const math::Vec2& clickPos,
         double sa = math::normalizeAngle(arcStart + params[i] * arcSweep);
         double ea = math::normalizeAngle(arcStart + params[i + 1] * arcSweep);
         auto newArc = std::make_shared<draft::DraftArc>(arc->center(), arc->radius(), sa, ea);
-        newArc->setLayer(arc->layer());
-        newArc->setColor(arc->color());
-        newArc->setLineWidth(arc->lineWidth());
+        newArc->copyStyleFrom(*arc);
         composite.addCommand(std::make_unique<doc::AddEntityCommand>(doc, newArc));
     }
 }
@@ -201,8 +195,7 @@ bool TrimTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     if (!m_viewport || !m_viewport->document()) return false;
 
     auto& doc = m_viewport->document()->draftDocument();
-    double pixelScale = m_viewport->pixelToWorldScale();
-    double tolerance = std::max(10.0 * pixelScale, 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     // Find the entity under the cursor (skip hidden/locked layers).
     const auto& layerMgr = m_viewport->document()->layerManager();
@@ -221,6 +214,9 @@ bool TrimTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
     std::vector<math::Vec2> allIsects;
     for (const auto& other : doc.entities()) {
         if (other->id() == target->id()) continue;
+        // Only what is drawn, and not locked, cuts.
+        const auto* otherLayer = layerMgr.getLayer(other->layer());
+        if (!otherLayer || !otherLayer->visible || otherLayer->locked) continue;
         auto result = draft::intersect(*target, *other);
         allIsects.insert(allIsects.end(), result.points.begin(), result.points.end());
     }

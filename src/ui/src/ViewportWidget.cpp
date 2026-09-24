@@ -131,11 +131,28 @@ math::Vec2 ViewportWidget::worldPositionAtCursor(int screenX, int screenY) const
 }
 
 double ViewportWidget::pixelToWorldScale() const {
-    int cx = width() / 2;
-    int cy = height() / 2;
-    math::Vec2 p0 = worldPositionAtCursor(cx, cy);
-    math::Vec2 p1 = worldPositionAtCursor(cx + 1, cy);
-    return p0.distanceTo(p1);
+    // A viewport with no size yet (mid-layout, or never shown) projects to
+    // nothing: keep the last good scale, so snaps and picks still reach.
+    if (width() > 0 && height() > 0) {
+        const int cx = width() / 2;
+        const int cy = height() / 2;
+        const double scale =
+            worldPositionAtCursor(cx, cy).distanceTo(worldPositionAtCursor(cx + 1, cy));
+        if (std::isfinite(scale) && scale > 0.0) m_lastPixelScale = scale;
+    }
+    return m_lastPixelScale;
+}
+
+draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
+    if (m_document == nullptr) return {worldPos, draft::SnapType::None};
+    m_snapEngine.setSnapTolerance(kSnapPixels * pixelToWorldScale());
+    const auto& layers = m_document->layerManager();
+    const auto& drawing = m_document->draftDocument();
+    return m_snapEngine.snap(worldPos, drawing.spatialIndex(), drawing.entities(),
+                             [&layers](const draft::DraftEntity& entity) {
+                                 const auto* layer = layers.getLayer(entity.layer());
+                                 return layer != nullptr && layer->visible && !layer->locked;
+                             });
 }
 
 QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {

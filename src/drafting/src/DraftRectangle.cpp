@@ -61,6 +61,17 @@ std::vector<math::Vec2> DraftRectangle::snapPoints() const {
     };
 }
 
+std::vector<SnapPoint> DraftRectangle::typedSnapPoints() const {
+    const auto c = corners();
+    std::vector<SnapPoint> out;
+    out.reserve(9);
+    for (size_t i = 0; i < 4; ++i) out.push_back({c[i], SnapType::Endpoint});
+    for (size_t i = 0; i < 4; ++i)
+        out.push_back({(c[i] + c[(i + 1) % 4]) * 0.5, SnapType::Midpoint});
+    out.push_back({(m_corner1 + m_corner2) * 0.5, SnapType::Center});
+    return out;
+}
+
 void DraftRectangle::translate(const math::Vec2& delta) {
     m_corner1 += delta;
     m_corner2 += delta;

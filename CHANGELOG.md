@@ -11,6 +11,18 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
+- **2D snapping and picking depended on zoom, and ignored hidden layers (110).**
+  - Snapping reached a fixed 0.5 units: thousands of pixels when zoomed in,
+    under one pixel when zoomed out. Picking had a 0.15-unit floor with the
+    same effect. Both now reach 10 pixels on screen at any zoom.
+  - Hidden and locked layers were snapped to, and Trim cut at them. Both
+    now leave them alone.
+  - Every snap was called an endpoint, and a line's midpoint was no snap at
+    all. Snaps are now typed: endpoint, midpoint, centre, quadrant, and a
+    new intersection snap.
+  - An object snap in reach now beats the grid.
+  - Trim's pieces lost their line type and group; Break, Extend, Chamfer
+    and Fillet lost the group. All of these are kept now.
 - **STEP files came in at the wrong size, all-or-nothing, with holes filled
   in (109).**
   - The length unit was ignored, so a part in inches came in 25.4 times

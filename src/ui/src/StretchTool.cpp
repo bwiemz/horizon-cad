@@ -373,9 +373,7 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
 
         case State::WaitingBasePoint: {
             // Apply snapping for precise base point.
-            auto& doc = m_viewport->document()->draftDocument();
-            auto result =
-                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result = m_viewport->snap(worldPos);
             m_basePoint = result.point;
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
@@ -386,8 +384,7 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
         case State::Dragging: {
             // Finalize the stretch.
             auto& doc = m_viewport->document()->draftDocument();
-            auto result =
-                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result = m_viewport->snap(worldPos);
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
 
@@ -438,9 +435,7 @@ bool StretchTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& world
             return true;
 
         case State::Dragging: {
-            auto& doc = m_viewport->document()->draftDocument();
-            auto result =
-                m_viewport->snapEngine().snap(worldPos, doc.spatialIndex(), doc.entities());
+            auto result = m_viewport->snap(worldPos);
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
 
