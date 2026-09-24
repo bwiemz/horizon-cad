@@ -8,6 +8,7 @@ add_library(hz_render STATIC
     src/InstanceBatcher.cpp
     src/FrustumCuller.cpp
     src/SelectionManager.cpp
+    src/MeshPicker.cpp
     src/OpenGLBackend.cpp
     src/MaterialLibrary.cpp
     src/PathTracer.cpp

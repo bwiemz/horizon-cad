@@ -378,12 +378,30 @@ public:
         send(QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
     }
 
+    /// A click at a point on screen, in the viewport's coordinates: where a
+    /// 3D point lands (ViewportWidget::projectToScreen), say.
+    void clickAt(const QPointF& at, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        sendAt(QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton, modifiers);
+        sendAt(QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton, modifiers);
+    }
+
+    /// The cursor moved to a point on screen, no button held.
+    void moveAt(const QPointF& at) {
+        sendAt(QEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    }
+
     void key(Qt::Key key) {
         QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
         QCoreApplication::sendEvent(m_viewport, &press);
     }
 
 private:
+    void sendAt(QEvent::Type type, const QPointF& at, Qt::MouseButton button,
+                Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers) {
+        QMouseEvent event(type, at, m_viewport->mapToGlobal(at), button, buttons, modifiers);
+        QCoreApplication::sendEvent(m_viewport, &event);
+    }
+
     void send(QEvent::Type type, const hz::math::Vec2& world, Qt::MouseButton button,
               Qt::MouseButtons buttons) {
         const QPointF at = m_viewport->worldToScreen(world);

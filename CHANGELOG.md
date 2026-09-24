@@ -39,6 +39,15 @@ work, not "post-1.0".
   - Renaming or removing a layer reaches entities in every sketch.
   - Shell's face list named faces by their inside: "facing up" was the
     bottom. It opened the wrong face of any part not the same both ways.
+- **Picking in 3D (132).**
+  - Click a face or an edge of the part to choose it, and Shift-click to
+    add or take one away. What the cursor is over is highlighted as you
+    move.
+  - Fillet, Chamfer and Shell start with what you clicked. New Sketch on a
+    Face uses the face you clicked. Add Mate starts from faces clicked on
+    two components.
+  - The part now shows its own edges, not every triangle's, and a cylinder
+    no longer shows a line between every facet.
 
 ## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
 

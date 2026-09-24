@@ -55,6 +55,11 @@ public:
     // Unique ID for selection
     uint32_t id() const { return m_id; }
 
+    /// What the node shows, for the window to map a pick back to it: an
+    /// assembly component's id, or 0 for a part's own solid.
+    uint64_t ownerId() const { return m_ownerId; }
+    void setOwnerId(uint64_t id) { m_ownerId = id; }
+
     // Mesh data (optional)
     bool hasMesh() const { return m_mesh != nullptr; }
     const MeshData& mesh() const { return *m_mesh; }
@@ -77,6 +82,7 @@ private:
     math::Mat4 m_localTransform;
     bool m_visible = true;
     uint32_t m_id;
+    uint64_t m_ownerId = 0;
 
     std::unique_ptr<MeshData> m_mesh;
     Material m_material;

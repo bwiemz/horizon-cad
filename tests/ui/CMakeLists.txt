@@ -40,6 +40,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_TypedLength.cpp
         test_DimensionsAndText.cpp
         test_Sketches.cpp
+        test_Picking.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

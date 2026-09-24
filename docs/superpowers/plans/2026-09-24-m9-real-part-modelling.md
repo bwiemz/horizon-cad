@@ -166,27 +166,73 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ## Phase 132: 3D picking
 
-- **Tessellation keeps its topology.** `MeshData` gains per-triangle face
-  indices and a face table of `TopologyID`s. The tessellator records edge
-  polylines, sampled along their curves, with their ids.
-- **The edge overlay draws the model's edges,** not triangle wireframe.
-- **CPU ray picking** (`render::MeshPicker`):
-  - `Camera::screenToRay` (Qt-style y) is tested against each node's
-    bounds, then its triangles (Möller–Trumbore), giving the nearest face.
-  - Edges are hit by screen distance to their projected polylines, within
-    the pick tolerance.
-  - It works without GL, so the window tests drive it.
-- **Highlight:** the face or edge under the cursor, and the chosen ones,
-  drawn in the highlight colour.
-- **Choosing by clicking:** Fillet, Chamfer and Shell open a pick mode that
-  collects edges or faces by click (Shift adds, a second click removes)
-  and then asks for the size. The lists stay as a fallback. Add Mate picks
-  a face on each component. "New sketch on a face" takes the clicked face.
-- **Tests:**
-  - picker units: the nearest face through a box and a cylinder; the edge
-    nearest the cursor; a miss;
-  - through the window: a fillet by clicking two edges; a shell by
-    clicking the top face; a mate by clicking.
+### As built
+
+- **The mesh says what it shows.** `geo::MeshData` gains, for a mesh
+  tessellated from a solid:
+  - `triangleFaces`, an index per triangle into `faceTags`, the faces'
+    persistent names;
+  - `edges`, the part's edges as named polylines (curved ones sampled).
+    Seams between two facets of one curved surface are left out: the same
+    ideal surface, or two ideal surfaces bending by less than 30 degrees, as
+    a patterned cylinder's copies do. So are lines across one flat face.
+
+  Meshes read from a file's cache carry none of this, and are not picked.
+- **The part's edges are drawn,** not every triangle's. Faces are pushed back
+  a little (a fill polygon offset) so the edges and highlights on them show.
+  A mesh without edges keeps the triangle wireframe.
+- **`render::MeshPicker`** picks on the CPU, so the window's GL-less tests
+  pick as a user does:
+  - `pickFace`: the nearest triangle the ray through the cursor hits
+    (Möller–Trumbore), and its face.
+  - `pickEdge`: the edge drawn nearest the cursor, within the pick distance
+    on screen. An edge further along the ray than the face in front is
+    hidden, with a slack of a few pixels' width at that depth, since an
+    edge a pixel from the cursor sits a little behind the face beside it.
+- **In the viewport:**
+  - `pickModel` gives an edge near the cursor, else the face under it, as a
+    `ModelPick` (owner: a component's id, or 0 for the part; the tag; face
+    or edge). Nothing while a sketch is edited.
+  - The Select tool: a click on no drawing entity chooses what is under it,
+    Shift adds or takes away, and a click on nothing clears. Moving the
+    cursor highlights what a click would choose.
+  - The choice is drawn in orange and the hover in blue, faces filled and
+    edges thick. Rebuilding the model clears both.
+- **The commands take what was clicked:**
+  - Fillet and Chamfer check the clicked edges in their lists, and Shell the
+    clicked faces.
+  - New Sketch on a Face takes a clicked flat face without asking.
+  - Add Mate starts from faces clicked on two components: scene nodes
+    carry their component's id.
+
+### Tests
+
+14 new.
+- Picker:
+  - the nearest face, from above and below, and a miss;
+  - a moved mesh picked where it is;
+  - an edge near the cursor, too far, and hidden.
+- Tessellator:
+  - triangles name their faces, and a box has its twelve edges;
+  - a faceted cylinder shows its rims, not its seams.
+- Window, clicking at points on screen:
+  - clicks choose faces, with Shift to add and take away, and nothing
+    clears;
+  - near an edge a click takes it, but not a hidden one;
+  - the hover;
+  - Shell opens the clicked face;
+  - Fillet rounds two clicked edges;
+  - a sketch goes on the clicked face.
+
+### Not done
+
+- Picking tests every triangle of every solid on each mouse move. A large
+  model will want bounds per node, then a BVH.
+- Components shown from a file's cache are picked only once resolved: their
+  cached mesh names no faces. No window test drives Add Mate by clicking:
+  it needs saved part files, and is covered by the list path.
+- Dragging a box to choose faces, and choosing a whole loop or chain of
+  edges.
 
 ## Phase 133: The missing commands
 

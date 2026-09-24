@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -155,4 +156,34 @@ TEST(SolidTessellatorTest, TessellatedMeshEnclosesTheSolidsVolume) {
     const double meshVolume = std::abs(vol6) / 6.0;
     const double solidVolume = MassPropertiesCalculator::compute(*cyl).volume;
     EXPECT_NEAR(meshVolume, solidVolume, 1e-6 * solidVolume);
+}
+
+// -- What the mesh says of the solid (Phase 132) ------------------------------
+
+// Every triangle names its face, and the edges are the box's twelve.
+TEST(SolidTessellatorTest, TrianglesNameTheirFacesAndTheEdgesAreThePartsOwn) {
+    const auto box = hz::model::PrimitiveFactory::makeBox(2.0, 3.0, 4.0);
+    const auto mesh = hz::model::SolidTessellator::tessellate(*box, 0.1);
+    ASSERT_TRUE(mesh.hasFaces());
+    EXPECT_EQ(mesh.faceTags.size(), 6u);
+    EXPECT_NE(std::find(mesh.faceTags.begin(), mesh.faceTags.end(), "box/top"),
+              mesh.faceTags.end());
+    EXPECT_EQ(mesh.edges.size(), 12u);
+    for (const auto& edge : mesh.edges) {
+        EXPECT_EQ(edge.points.size(), 6u) << "a straight edge is a line";
+        EXPECT_FALSE(edge.tag.empty());
+    }
+}
+
+// A faceted cylinder shows its two rims, not a seam between every facet.
+TEST(SolidTessellatorTest, ACylindersFacetsDoNotShowAsEdges) {
+    const auto cylinder = hz::model::PrimitiveFactory::makeCylinder(1.0, 2.0, 16);
+    const auto mesh = hz::model::SolidTessellator::tessellate(*cylinder, 0.1);
+    ASSERT_FALSE(mesh.edges.empty());
+    for (const auto& edge : mesh.edges) {
+        const float z0 = edge.points[2];
+        const float z1 = edge.points[edge.points.size() - 1];
+        EXPECT_FLOAT_EQ(z0, z1) << edge.tag << " runs up the side: a seam between facets";
+    }
+    EXPECT_EQ(mesh.edges.size(), 32u) << "sixteen chords round each rim";
 }

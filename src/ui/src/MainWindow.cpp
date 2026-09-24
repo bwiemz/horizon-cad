@@ -19,6 +19,7 @@
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QListWidget>
 #include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
@@ -208,10 +209,28 @@ PickList facesOf(const topo::Solid& solid) {
     return list;
 }
 
+/// Check, in a list of @p picks, the part's own edges (@p edges) or faces
+/// chosen by clicking in the viewport, so a command offers what was clicked.
+void checkClicked(QListWidget* list, const PickList& picks,
+                  const std::vector<ViewportWidget::ModelPick>& clicked, bool edges) {
+    for (size_t row = 0; row < picks.ids.size(); ++row) {
+        const std::string& tag = picks.ids[row].tag();
+        const bool wasClicked =
+            std::any_of(clicked.begin(), clicked.end(), [&](const ViewportWidget::ModelPick& p) {
+                return p.owner == 0 && p.edge == edges && p.tag == tag;
+            });
+        if (!wasClicked) continue;
+        if (QListWidgetItem* item = list->item(static_cast<int>(row))) {
+            item->setCheckState(Qt::Checked);
+        }
+    }
+}
+
 /// A plane to sketch on, and how it is listed.
 struct PlaneChoice {
     QString text;
     draft::SketchPlane plane;
+    std::string tag;  ///< the face's persistent name
 };
 
 /// The part's flat faces as planes to sketch on: through the middle of the
@@ -251,7 +270,7 @@ std::vector<PlaneChoice> planarFacesOf(const topo::Solid& solid) {
             std::abs(normal.dot(math::Vec3::UnitX)) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
         out.push_back(
             {MainWindow::tr("facing %1 at %2").arg(formatPoint(normal), formatPoint(centre)),
-             draft::SketchPlane(centre, normal, across)});
+             draft::SketchPlane(centre, normal, across), face.topoId.tag()});
     }
     return out;
 }
@@ -1146,6 +1165,9 @@ void MainWindow::onTabCloseRequested(int index) {
 }
 
 void MainWindow::rebuildScene() {
+    // What was clicked may not be there any more: the model is built anew.
+    m_viewport->setModelHover(std::nullopt);
+    m_viewport->clearModelSelection();
     m_viewport->sceneGraph().clear();
 
     if (m_assembly) {
@@ -1163,6 +1185,7 @@ void MainWindow::rebuildScene() {
                 std::make_shared<render::SceneNode>(comp.name.empty() ? "Component" : comp.name);
             node->setMesh(std::make_unique<render::MeshData>(*comp.cachedMesh));
             node->setLocalTransform(comp.transform);
+            node->setOwnerId(comp.id);  // a click on it names the component
             node->setMaterial(render::Material{math::Vec3{0.62, 0.68, 0.75}, 0.15f, 0.5f, 32.0f});
             m_viewport->sceneGraph().addNode(node);
         }
@@ -2322,6 +2345,14 @@ void MainWindow::onAddMate() {
         statusBar()->showMessage(tr("Insert at least two components first"));
         return;
     }
+    // Faces clicked in the viewport, on two components: the mate's A and B.
+    std::vector<ViewportWidget::ModelPick> clickedFaces;
+    for (const auto& pick : m_viewport->modelSelection()) {
+        const bool another = std::none_of(
+            clickedFaces.begin(), clickedFaces.end(),
+            [&pick](const ViewportWidget::ModelPick& p) { return p.owner == pick.owner; });
+        if (!pick.edge && pick.owner != 0 && another) clickedFaces.push_back(pick);
+    }
 
     // Resolve parts so faces are available for picking.
     const std::string asmDir =
@@ -2384,6 +2415,16 @@ void MainWindow::onAddMate() {
             [&] { refreshFaces(compACombo, faceACombo); });
     connect(compBCombo, &QComboBox::currentIndexChanged, &dialog,
             [&] { refreshFaces(compBCombo, faceBCombo); });
+    const auto offer = [](QComboBox* compCombo, QComboBox* faceCombo,
+                          const ViewportWidget::ModelPick& pick) {
+        const int comp = compCombo->findData(QVariant::fromValue<qulonglong>(pick.owner));
+        if (comp < 0) return;
+        compCombo->setCurrentIndex(comp);  // refreshes the faces
+        const int face = faceCombo->findText(QString::fromStdString(pick.tag));
+        if (face >= 0) faceCombo->setCurrentIndex(face);
+    };
+    if (!clickedFaces.empty()) offer(compACombo, faceACombo, clickedFaces[0]);
+    if (clickedFaces.size() > 1) offer(compBCombo, faceBCombo, clickedFaces[1]);
 
     form->addRow(tr("Component A:"), compACombo);
     form->addRow(tr("Face A:"), faceACombo);
@@ -3357,6 +3398,19 @@ void MainWindow::onNewSketchOnFace() {
         statusBar()->showMessage(tr("The part has no flat face to sketch on"));
         return;
     }
+    // A face clicked in the viewport is the one: no need to ask.
+    for (const auto& pick : m_viewport->modelSelection()) {
+        if (pick.edge || pick.owner != 0) continue;
+        const auto clicked =
+            std::find_if(faces.begin(), faces.end(),
+                         [&pick](const PlaneChoice& f) { return f.tag == pick.tag; });
+        if (clicked != faces.end()) {
+            newSketchOn(clicked->plane, tr("a face"));
+            return;
+        }
+        statusBar()->showMessage(tr("The face clicked is not flat: a sketch needs a flat face"));
+        return;
+    }
     QStringList names;
     for (const auto& face : faces) names << face.text;
     FeatureForm form(this, tr("Sketch on a Face"));
@@ -3670,6 +3724,7 @@ void MainWindow::addEdgeFeature(bool fillet) {
     auto* size = form.number(QStringLiteral("size"), fillet ? tr("Radius:") : tr("Distance:"), 1.0,
                              0.001, 1e6);
     auto* list = form.checklist(QStringLiteral("edges"), tr("Edges:"), edges.items);
+    checkClicked(list, edges, m_viewport->modelSelection(), true);
     if (!form.exec()) return;
 
     std::vector<topo::TopologyID> chosen;
@@ -3699,6 +3754,7 @@ void MainWindow::onShell() {
     auto* thickness =
         form.number(QStringLiteral("thickness"), tr("Wall thickness:"), 1.0, 0.001, 1e6);
     auto* list = form.checklist(QStringLiteral("faces"), tr("Faces to open:"), faces.items);
+    checkClicked(list, faces, m_viewport->modelSelection(), false);
     if (!form.exec()) return;
 
     std::vector<topo::TopologyID> open;
