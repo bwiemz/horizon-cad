@@ -1,9 +1,11 @@
 #include "horizon/modeling/ProfileValidator.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <locale>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -95,6 +97,78 @@ static std::string describePoint(const Vec2& p) {
     return out.str();
 }
 
+/// The closed loop the ordered edges trace, from `start`, as a polygon: lines
+/// as themselves, arcs sampled finely enough to find a crossing.
+static std::vector<Vec2> loopPolygon(const std::vector<std::shared_ptr<draft::DraftEntity>>& edges,
+                                     Vec2 start, double tolerance) {
+    std::vector<Vec2> points;
+    Vec2 at = start;
+    for (const auto& edge : edges) {
+        const EndpointPair ep = getEndpoints(edge);
+        const bool forward = pointsMatch(at, ep.start, tolerance);
+        points.push_back(at);
+        if (const auto* arc = dynamic_cast<const draft::DraftArc*>(edge.get())) {
+            constexpr int kSteps = 32;
+            const double sweep = arc->sweepAngle();
+            for (int k = 1; k < kSteps; ++k) {
+                const double t = static_cast<double>(forward ? k : kSteps - k) / kSteps;
+                const double angle = arc->startAngle() + sweep * t;
+                points.emplace_back(arc->center().x + arc->radius() * std::cos(angle),
+                                    arc->center().y + arc->radius() * std::sin(angle));
+            }
+        }
+        at = forward ? ep.end : ep.start;
+    }
+    return points;
+}
+
+/// Where segments ab and cd meet (touching counts), if they do.
+static std::optional<Vec2> segmentsMeet(const Vec2& a, const Vec2& b, const Vec2& c, const Vec2& d,
+                                        double tolerance) {
+    const auto cross = [](const Vec2& u, const Vec2& v) { return u.x * v.y - u.y * v.x; };
+    const Vec2 r = b - a;
+    const Vec2 q = d - c;
+    const double denom = cross(r, q);
+    const double scale = std::max({r.length(), q.length(), 1e-300});
+    if (std::abs(denom) > tolerance * scale) {
+        const double t = cross(c - a, q) / denom;
+        const double u = cross(c - a, r) / denom;
+        const double slackT = tolerance / std::max(r.length(), 1e-300);
+        const double slackU = tolerance / std::max(q.length(), 1e-300);
+        if (t >= -slackT && t <= 1 + slackT && u >= -slackU && u <= 1 + slackU) {
+            return a + r * std::clamp(t, 0.0, 1.0);
+        }
+        return std::nullopt;
+    }
+    // Parallel: they meet only if collinear and overlapping.
+    if (std::abs(cross(c - a, r)) > tolerance * std::max(r.length(), 1e-300)) return std::nullopt;
+    const double len2 = r.x * r.x + r.y * r.y;
+    if (len2 <= 0.0) return std::nullopt;
+    const auto along = [&](const Vec2& p) { return ((p - a).x * r.x + (p - a).y * r.y) / len2; };
+    const double lo = std::max(0.0, std::min(along(c), along(d)));
+    const double hi = std::min(1.0, std::max(along(c), along(d)));
+    if (lo > hi + tolerance / std::sqrt(len2)) return std::nullopt;
+    return a + r * lo;
+}
+
+/// Where the loop crosses or touches itself, if it does: a figure-eight, or a
+/// boundary folded back onto itself, bounds no single region to extrude.
+static std::optional<Vec2> selfCrossing(const std::vector<Vec2>& loop, double tolerance) {
+    const size_t n = loop.size();
+    if (n < 4) return std::nullopt;
+    for (size_t i = 0; i < n; ++i) {
+        const Vec2& a = loop[i];
+        const Vec2& b = loop[(i + 1) % n];
+        for (size_t j = i + 2; j < n; ++j) {
+            if (i == 0 && j == n - 1) continue;  // the closing segment meets the first
+            const Vec2& c = loop[j];
+            const Vec2& d = loop[(j + 1) % n];
+            if (auto where = segmentsMeet(a, b, c, d, tolerance)) return where;
+        }
+    }
+    return std::nullopt;
+}
+
 // ---------------------------------------------------------------------------
 // ProfileValidator::validate
 // ---------------------------------------------------------------------------
@@ -178,13 +252,18 @@ ProfileValidationResult ProfileValidator::validate(
     }
 
     // Check closure: does chainEnd meet chainStart?
-    if (pointsMatch(chainEnd, chainStart, tolerance)) {
-        result.isClosed = true;
-    } else {
+    if (!pointsMatch(chainEnd, chainStart, tolerance)) {
         result.errorMessage = "the profile is open: its ends at " + describePoint(chainStart) +
                               " and " + describePoint(chainEnd) + " do not meet";
+        return result;
     }
 
+    if (const auto where =
+            selfCrossing(loopPolygon(result.orderedEdges, chainStart, tolerance), tolerance)) {
+        result.errorMessage = "the profile crosses itself at " + describePoint(*where);
+        return result;
+    }
+    result.isClosed = true;
     return result;
 }
 

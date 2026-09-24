@@ -111,14 +111,15 @@ TEST(FeatureTreeTest, AddAndReplayRevolve) {
     FeatureTree tree;
     auto sketch = makeOffsetRectSketch();
 
-    // A full revolution of a profile clear of the axis is a torus: manifold
-    // and closed, but genus 1, which the genus-0 Euler check rejects.
+    // A full revolution of a profile clear of the axis is a torus: manifold,
+    // closed, and genus 1.
     tree.addFeature(std::make_unique<RevolveFeature>(sketch, Vec3::Zero, Vec3::UnitY, kTwoPi));
 
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
     EXPECT_TRUE(solid->checkManifold());
-    EXPECT_FALSE(solid->checkEulerFormula());
+    EXPECT_TRUE(solid->checkEulerFormula());
+    EXPECT_EQ(solid->genus(), 1);
 
     // A partial revolution is capped at both ends and so is a genus-0 solid.
     FeatureTree partial;
@@ -429,21 +430,19 @@ TEST(FeatureTreeTest, PrimitiveAllKindsBuildValidSolids) {
         const char* name;
     };
     std::vector<Case> cases;
-    // The torus is genus 1, so its Euler characteristic is 0 rather than 2 and
-    // Solid::checkEulerFormula() — which carries no genus term — rejects it.
-    // Every primitive is still required to be manifold.
+    // Every primitive is a valid solid; the torus has one handle.
     struct Expect {
-        bool genusZero;
+        int genus;
     };
     std::vector<Expect> expects;
     cases.push_back({PrimitiveFeature::makeCylinder(5.0, 10.0), "Cylinder"});
-    expects.push_back({true});
+    expects.push_back({0});
     cases.push_back({PrimitiveFeature::makeSphere(4.0), "Sphere"});
-    expects.push_back({true});
+    expects.push_back({0});
     cases.push_back({PrimitiveFeature::makeCone(4.0, 2.0, 6.0), "Cone"});
-    expects.push_back({true});
+    expects.push_back({0});
     cases.push_back({PrimitiveFeature::makeTorus(8.0, 2.0), "Torus"});
-    expects.push_back({false});
+    expects.push_back({1});
 
     for (size_t i = 0; i < cases.size(); ++i) {
         auto& c = cases[i];
@@ -454,8 +453,9 @@ TEST(FeatureTreeTest, PrimitiveAllKindsBuildValidSolids) {
         auto solid = tree.build();
         ASSERT_NE(solid, nullptr) << expected;
         EXPECT_TRUE(solid->checkManifold()) << expected;
-        EXPECT_EQ(solid->checkEulerFormula(), expects[i].genusZero) << expected;
-        EXPECT_EQ(solid->isValid(), expects[i].genusZero) << expected;
+        EXPECT_TRUE(solid->checkEulerFormula()) << expected;
+        EXPECT_TRUE(solid->isValid()) << expected << solid->validationReport();
+        EXPECT_EQ(solid->genus(), expects[i].genus) << expected;
     }
 }
 

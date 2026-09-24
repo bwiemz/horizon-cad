@@ -51,8 +51,16 @@ public:
     /// only — see the class note and `GeometryValidator`.
     bool isValid() const;
 
-    /// Euler–Poincaré: V - E + F = 2(S - H) where H = total inner-loop count.
+    /// Euler–Poincaré: V − E + F − R = 2(S − G), with R the faces' inner
+    /// loops (rings) and G the genus (handles: a torus has one, a plate with
+    /// one hole through it has one). G is not stored, so this checks what the
+    /// formula can: the left side is even and at most 2S.
     bool checkEulerFormula() const;
+
+    /// The genus the counts imply, S − (V − E + F − R)/2 — the number of
+    /// through-holes, across all shells. Meaningful when `checkEulerFormula()`
+    /// holds.
+    int genus() const;
 
     /// Every edge has exactly two half-edges that are twins of each other, and
     /// every half-edge loop is properly closed.
@@ -62,6 +70,9 @@ public:
     std::string validationReport() const;
 
 private:
+    /// V − E + F − R.
+    int eulerCharacteristicLessRings() const;
+
     std::deque<Vertex> m_vertices;
     std::deque<HalfEdge> m_halfEdges;
     std::deque<Edge> m_edges;

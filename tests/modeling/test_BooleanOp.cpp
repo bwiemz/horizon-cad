@@ -333,7 +333,6 @@ TEST(BooleanOpVolume, CornerOverlapAllThreeTypes) {
 
 TEST(BooleanOpVolume, ThroughHoleSubtractIsManifoldWithExactVolume) {
     // B pierces A completely: a genus-1 result.  Volume 1000 - 4*4*10 = 840.
-    // checkEulerFormula() has no genus term, so only manifoldness is asserted.
     auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
     auto boxB = PrimitiveFactory::makeBox(4, 4, 20);
     offsetSolid(*boxB, Vec3(3, 3, -5));
@@ -341,7 +340,8 @@ TEST(BooleanOpVolume, ThroughHoleSubtractIsManifoldWithExactVolume) {
     auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
     ASSERT_NE(result, nullptr);
     EXPECT_NEAR(volumeOf(*result), 840.0, 1e-6);
-    EXPECT_TRUE(result->checkManifold()) << result->validationReport();
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+    EXPECT_EQ(result->genus(), 1) << "one hole through it";
 }
 
 TEST(BooleanOpVolume, ContainedSubtractCreatesCavity) {

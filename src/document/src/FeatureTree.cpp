@@ -2,15 +2,18 @@
 
 #include <algorithm>
 #include <cassert>
+#include <charconv>
 #include <cmath>
 #include <exception>
 #include <string>
+#include <system_error>
 
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
@@ -23,6 +26,7 @@
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/Shell.h"
 #include "horizon/modeling/Sweep.h"
+#include "horizon/topology/GeometryValidator.h"
 
 namespace hz::doc {
 
@@ -59,10 +63,10 @@ bool setChordTolerance(double& target, double value) {
 // never collide with loaded ones (mirrors the Sketch ID counter fix).
 void bumpCounter(int& counter, const std::string& id, const std::string& prefix) {
     if (id.rfind(prefix, 0) != 0) return;
-    try {
-        int n = std::stoi(id.substr(prefix.size()));
-        if (n >= counter) counter = n + 1;
-    } catch (...) {
+    int n = 0;
+    const char* digits = id.data() + prefix.size();
+    if (std::from_chars(digits, id.data() + id.size(), n).ec == std::errc() && n >= counter) {
+        counter = n + 1;
     }
 }
 
@@ -1067,6 +1071,46 @@ void FeatureTree::clear() {
 
 namespace {
 
+/// Why `solid` is not a valid solid, in the user's terms, or empty when it is.
+/// Both kinds of check: the combinatorial ones (every edge between exactly two
+/// faces, closed loops, counts Euler–Poincaré allows) and the geometric ones
+/// (flat faces flat, no boundary crossing itself, a closed skin; see
+/// GeometryValidator), at a tolerance that grows with the part.
+std::string solidProblem(const topo::Solid& solid) {
+    if (!solid.checkManifold()) {
+        return "its faces do not close up: an edge is not shared by exactly two faces";
+    }
+    if (!solid.checkEulerFormula()) {
+        return "it has vertex, edge and face counts no solid can have";
+    }
+    math::BoundingBox box;
+    for (const auto& v : solid.vertices()) box.expand(v.point);
+    const double size = box.isValid() ? (box.max() - box.min()).length() : 0.0;
+    const double tol = std::max(topo::GeometryValidator::kDefaultTol, 1e-9 * size);
+    const auto issues =
+        topo::GeometryValidator::check(solid, tol, topo::GeometryValidator::Scope::FailingOnly);
+    if (issues.selfIntersectingLoops > 0) return "a face's boundary crosses itself";
+    if (issues.nonPlanarLoops > 0) return "a flat face is not flat";
+    if (issues.openShells > 0) return "its skin is not closed";
+    if (issues.degenerateFaces > 0) return "a face has no area";
+    if (issues.degenerateEdges > 0) return "an edge has no length";
+    if (issues.vertexChainErrors > 0 || issues.twinCoincidenceErrors > 0) {
+        return "its edges do not meet where they should";
+    }
+    return {};
+}
+
+/// Pass `solid` on if it is a valid solid; otherwise fail with why. Every
+/// feature's result is held to this, so a malformed solid stops at the
+/// feature that made it instead of corrupting everything built on it.
+std::unique_ptr<topo::Solid> checked(std::unique_ptr<topo::Solid> solid, std::string* reason) {
+    if (!solid) return nullptr;
+    const std::string problem = solidProblem(*solid);
+    if (problem.empty()) return solid;
+    if (reason) *reason = "the result is not a valid solid: " + problem;
+    return nullptr;
+}
+
 /// Run a feature, turning an exception from the kernel (the NURBS constructors
 /// throw on invalid input, for one) into a failure with its reason, instead of
 /// letting it unwind into the caller — ultimately the Qt event loop, which
@@ -1075,7 +1119,7 @@ std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
                                               std::unique_ptr<topo::Solid> input,
                                               std::string* reason = nullptr) {
     try {
-        return feat.execute(std::move(input), reason);
+        return checked(feat.execute(std::move(input), reason), reason);
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -1124,7 +1168,7 @@ std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<to
         return nullptr;
     }
     if (!result && reason) *reason = booleanReason;
-    return result;
+    return checked(std::move(result), reason);
 }
 
 /// Whether a feature takes part in the build. Reference geometry (datums) has

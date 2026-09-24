@@ -104,11 +104,9 @@ void inheritEdgeIdeals(topo::Solid& result, const topo::Solid& a, const topo::So
 }
 
 /// Sew and enforce the public contract: any solid BooleanOp returns passes
-/// Solid::checkManifold().  checkManifold() (not checkEulerFormula()) is the
-/// right gate — the Euler check has no genus term, so a legitimate manifold
-/// through-hole result would fail it.  Applies to the CSG and disjoint fast
-/// paths alike, so a near-touching "disjoint" pair the weld could fuse into
-/// broken topology is rejected rather than returned.
+/// Solid::checkManifold().  Applies to the CSG and disjoint fast paths alike,
+/// so a near-touching "disjoint" pair the weld could fuse into broken
+/// topology is rejected rather than returned.
 std::unique_ptr<topo::Solid> sewChecked(const std::vector<SolidSewer::InputFace>& faces,
                                         double weldTol) {
     auto solid = SolidSewer::sew(faces, weldTol);

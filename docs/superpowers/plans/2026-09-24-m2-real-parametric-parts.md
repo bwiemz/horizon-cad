@@ -202,6 +202,21 @@ Euler–Poincaré with ring and genus terms (valid iff `V−E+F−R` is even and
 most `2S`); `GeometryValidator` gates every solid-producing op; profile
 validation rejects self-intersection and zero-length extrudes.
 
+**As built.**
+- **Euler–Poincaré.** `checkEulerFormula()` now checks `V − E + F − R = 2(S − G)`, and `genus()` reports G.
+  - The old form was `V − E + F = 2(S − R)`, with the rings on the wrong side and doubled. It rejected every torus and every part with a hole through it.
+  - Two of those rejections reached users: **STEP import refused them** ("failed validation"), and **FilletOp refused every such part**, since it gates its result on `isValid()`.
+  - The count is global, not per shell, because the Euler operators build intermediate states, such as a lone vertex on a face, that no loop walk reaches.
+- **One gate in the feature tree.** It is not a per-op change: every feature's result, and every Join / Cut / Intersect result, must pass the manifold, Euler and geometric checks. The tolerance scales with the part's size. Otherwise the feature fails with a reason in the user's terms, for example "the result is not a valid solid: a face's boundary crosses itself".
+  - No existing test produced a solid the gate refuses.
+  - The whole suite runs in the same 4 seconds as before.
+  - **Cost on large parts.** On a 10,000-box pattern, `GeometryValidator` took 4.3 s of a 5.4 s debug rebuild. Almost all of it went to sampling each face's surface normal at nine points. Two changes brought it to 0.23 s, so the rebuild now takes 1.3 s:
+    - A bilinear carrier is decided from its four control points instead.
+    - A `FailingOnly` scope skips the two report-only checks.
+  - The sampling had also called about one face in nine of that pattern "curved", so those faces were never checked for flatness. They are checked now.
+- **Profiles that cross or touch themselves are refused**, with the point named. Arcs are sampled for the test. Zero-length extrudes were already refused in Phase 103.
+- **Found, not fixed:** a fillet on a Boolean result fails with "non box-like corner". FilletOp supports only three-edge corners, and the sewn faces of a Boolean can meet in more. That belongs with persistent naming and rebuilding the fillet and chamfer ops on SolidSewer (see the kernel findings note).
+
 ## Phase 106 — Persistent naming, first cut
 
 Names derived from generating geometry (source profile segment + side) rather

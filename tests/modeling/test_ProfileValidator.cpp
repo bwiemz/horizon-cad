@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -147,4 +148,65 @@ TEST(ProfileValidatorTest, UnsupportedEntitiesAreNamed) {
     auto mixed = ProfileValidator::validate(circleAndLine);
     EXPECT_NE(mixed.errorMessage.find("a circle cannot be joined"), std::string::npos)
         << mixed.errorMessage;
+}
+
+// ---------------------------------------------------------------------------
+// A profile that crosses itself bounds no single region (Phase 105)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::shared_ptr<DraftEntity>> loop(const std::vector<Vec2>& points) {
+    std::vector<std::shared_ptr<DraftEntity>> profile;
+    for (size_t i = 0; i < points.size(); ++i) {
+        profile.push_back(std::make_shared<DraftLine>(points[i], points[(i + 1) % points.size()]));
+    }
+    return profile;
+}
+
+}  // namespace
+
+TEST(ProfileValidatorTest, ABowTieCrossesItself) {
+    auto result = ProfileValidator::validate(loop({{0, 0}, {10, 10}, {10, 0}, {0, 10}}));
+    EXPECT_FALSE(result.isClosed);
+    EXPECT_EQ(result.errorMessage, "the profile crosses itself at (5, 5)");
+}
+
+TEST(ProfileValidatorTest, ALoopThatTouchesItselfIsRefused) {
+    // Two squares meeting at the corner (1, 1), drawn as one loop through it.
+    auto result = ProfileValidator::validate(
+        loop({{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}, {1, 2}, {1, 1}, {0, 1}}));
+    EXPECT_FALSE(result.isClosed);
+    EXPECT_NE(result.errorMessage.find("crosses itself at (1, 1)"), std::string::npos)
+        << result.errorMessage;
+}
+
+TEST(ProfileValidatorTest, ConcaveShapesAndArcsAreNotCrossings) {
+    // An L: concave, but simple.
+    EXPECT_TRUE(ProfileValidator::validate(loop({{0, 0}, {4, 0}, {4, 1}, {1, 1}, {1, 3}, {0, 3}}))
+                    .isClosed);
+
+    // A slot: two lines joined by half-circles, listed out of order.
+    const double pi = std::acos(-1.0);
+    std::vector<std::shared_ptr<DraftEntity>> slot;
+    slot.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    slot.push_back(std::make_shared<DraftLine>(Vec2(10, 2), Vec2(0, 2)));
+    slot.push_back(std::make_shared<DraftArc>(Vec2(10, 1), 1.0, -pi / 2, pi / 2));
+    slot.push_back(std::make_shared<DraftArc>(Vec2(0, 1), 1.0, pi / 2, 3 * pi / 2));
+    const auto result = ProfileValidator::validate(slot);
+    EXPECT_TRUE(result.isClosed) << result.errorMessage;
+}
+
+TEST(ProfileValidatorTest, AnArcThatCutsAcrossTheProfileIsACrossing) {
+    // A square whose top is an arc bulging down through its bottom edge.
+    const double pi = std::acos(-1.0);
+    std::vector<std::shared_ptr<DraftEntity>> profile;
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(4, 0)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(4, 0), Vec2(4, 1)));
+    profile.push_back(std::make_shared<DraftLine>(Vec2(0, 1), Vec2(0, 0)));
+    // From (4, 1) round below to (0, 1): centre (2, 1), radius 2, through (2, -1).
+    profile.push_back(std::make_shared<DraftArc>(Vec2(2, 1), 2.0, pi, 2 * pi));
+    const auto result = ProfileValidator::validate(profile);
+    EXPECT_FALSE(result.isClosed);
+    EXPECT_NE(result.errorMessage.find("crosses itself"), std::string::npos) << result.errorMessage;
 }

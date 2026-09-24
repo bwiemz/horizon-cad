@@ -9,7 +9,28 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness, Milestone 2 (Phases 102–104)
+## Unreleased — Production readiness, Milestone 2 (Phases 102–105)
+
+- **Parts with a hole through them failed validation (105).** The
+  Euler–Poincaré check read `V − E + F = 2(S − R)`: the face-hole count was on
+  the wrong side, doubled, and the formula had no genus term. So every torus,
+  and every part with a hole through it, was "invalid". That was not just a
+  label:
+  - STEP import refused such parts.
+  - Fillet refused to round any edge on one.
+
+  The check is now `V − E + F − R = 2(S − G)`, and `Solid::genus()` reports
+  the number of through-holes.
+
+  Every feature's result is now held to the full set of solid checks: every
+  edge between two faces, counts Euler allows, flat faces flat, no boundary
+  crossing itself, and a closed skin. The same goes for every Join, Cut and
+  Intersect result. A malformed solid stops at the feature that made it, with
+  a reason ("the result is not a valid solid: …"), instead of corrupting the
+  features built on it.
+
+  A profile that crosses or touches itself, such as a figure-eight, is refused
+  with the point named. It bounds no single region.
 
 - **Most 3D ribbon commands were demos (104b).** Box, Cylinder, Sphere, Cone,
   Torus, Union, Subtract, Intersect, Fillet and Chamfer each dropped a fixed

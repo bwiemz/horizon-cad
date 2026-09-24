@@ -75,11 +75,17 @@ public:
     /// Default absolute tolerance for coincidence and planarity, in model units.
     static constexpr double kDefaultTol = 1e-7;
 
-    /// Run every check.  @p tol is an absolute distance tolerance; area and
-    /// self-intersection tests derive their thresholds from it.
-    static Issues check(const Solid& solid, double tol = kDefaultTol);
+    /// Which checks to run: all of them, or only those that can fail `ok()` —
+    /// what a gate needs, at a fraction of the cost on a large solid.
+    enum class Scope { Everything, FailingOnly };
 
-    /// Convenience: `check(solid, tol).ok()`.
+    /// Run the checks.  @p tol is an absolute distance tolerance; area and
+    /// self-intersection tests derive their thresholds from it.  With
+    /// `Scope::FailingOnly` the two report-only counters stay 0.
+    static Issues check(const Solid& solid, double tol = kDefaultTol,
+                        Scope scope = Scope::Everything);
+
+    /// Convenience: `check(solid, tol, Scope::FailingOnly).ok()`.
     static bool isGeometricallyValid(const Solid& solid, double tol = kDefaultTol);
 
     /// Human-readable listing of what `check()` found, in the style of

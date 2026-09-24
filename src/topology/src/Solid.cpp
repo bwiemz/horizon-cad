@@ -85,21 +85,27 @@ bool Solid::isValid() const {
     return checkEulerFormula() && checkManifold();
 }
 
+int Solid::eulerCharacteristicLessRings() const {
+    int rings = 0;
+    for (const auto& face : m_faces) rings += static_cast<int>(face.innerLoops.size());
+    return static_cast<int>(m_vertices.size()) - static_cast<int>(m_edges.size()) +
+           static_cast<int>(m_faces.size()) - rings;
+}
+
 bool Solid::checkEulerFormula() const {
-    // Euler–Poincaré for orientable 2-manifolds:
-    //   V - E + F = 2 * (S - H)
-    // where S = number of shells, H = total number of inner loops (holes in faces).
-    const auto V = static_cast<int>(m_vertices.size());
-    const auto E = static_cast<int>(m_edges.size());
-    const auto F = static_cast<int>(m_faces.size());
-    const auto S = static_cast<int>(m_shells.size());
+    // Euler–Poincaré for the boundary of a solid:
+    //   V − E + F − R = 2(S − G)
+    // with R the inner loops (rings) of faces and G the genus, the number of
+    // handles (through-holes). The genus is not stored, but it is never
+    // negative, so the left side must be even and at most 2S. (The check used
+    // to read V − E + F = 2(S − R): it rejected every torus and every face with
+    // a hole through the part — a plate with a hole among them.)
+    const int x = eulerCharacteristicLessRings();
+    return x % 2 == 0 && x <= 2 * static_cast<int>(m_shells.size());
+}
 
-    int H = 0;
-    for (const auto& face : m_faces) {
-        H += static_cast<int>(face.innerLoops.size());
-    }
-
-    return (V - E + F) == 2 * (S - H);
+int Solid::genus() const {
+    return static_cast<int>(m_shells.size()) - eulerCharacteristicLessRings() / 2;
 }
 
 bool Solid::checkManifold() const {
@@ -162,18 +168,15 @@ std::string Solid::validationReport() const {
         const auto E = static_cast<int>(m_edges.size());
         const auto F = static_cast<int>(m_faces.size());
         const auto S = static_cast<int>(m_shells.size());
-        int H = 0;
-        for (const auto& face : m_faces) {
-            H += static_cast<int>(face.innerLoops.size());
-        }
-        const int lhs = V - E + F;
-        const int rhs = 2 * (S - H);
-        if (lhs != rhs) {
-            out << "Euler formula FAIL: V(" << V << ") - E(" << E << ") + F(" << F << ") = " << lhs
-                << ", expected 2*(S(" << S << ") - H(" << H << ")) = " << rhs << "\n";
+        const int x = eulerCharacteristicLessRings();
+        const int R = V - E + F - x;
+        if (!checkEulerFormula()) {
+            out << "Euler formula FAIL: V(" << V << ") - E(" << E << ") + F(" << F << ") - R(" << R
+                << ") = " << x << ", which must be even and at most 2*S(" << S << ") = " << 2 * S
+                << "\n";
         } else {
-            out << "Euler formula OK: V=" << V << " E=" << E << " F=" << F << " S=" << S
-                << " H=" << H << "\n";
+            out << "Euler formula OK: V=" << V << " E=" << E << " F=" << F << " R=" << R
+                << " S=" << S << " genus=" << genus() << "\n";
         }
     }
 

@@ -64,10 +64,9 @@ TEST(RevolveTest, FullRevolutionIsAManifoldGenusOneShell) {
     EXPECT_TRUE(solid->checkManifold());
 
     // A rectangle clear of the axis sweeps a torus: genus 1, so its Euler
-    // characteristic is 0, not 2.  Solid::checkEulerFormula() carries no genus
-    // term and therefore rejects it — the same caveat as makeTorus.
-    EXPECT_FALSE(solid->checkEulerFormula())
-        << "the genus-0 Euler check is expected to reject a torus";
+    // characteristic is 0, not 2.
+    EXPECT_TRUE(solid->checkEulerFormula()) << solid->validationReport();
+    EXPECT_EQ(solid->genus(), 1);
 }
 
 TEST(RevolveTest, PartialRevolutionIsCappedAndGenusZero) {

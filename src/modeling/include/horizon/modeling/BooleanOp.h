@@ -23,9 +23,8 @@ enum class BooleanType { Union, Subtract, Intersect };
 /// - Any returned solid passes Solid::checkManifold() (enforced on every
 ///   path, including the disjoint fast paths); on hard degeneracies the
 ///   operation returns nullptr instead of emitting broken topology.
-/// - Genus-0 results additionally satisfy checkEulerFormula().  Through-hole
-///   (genus ≥ 1) results are manifold but report Euler-invalid because the
-///   topology module's Euler check has no genus term.
+/// - Results also satisfy checkEulerFormula(), through-hole (genus ≥ 1)
+///   results included.
 /// - Curved geometry participates as its facets (the MassProperties
 ///   convention): curved primitives, revolves and arc profiles are faceted at
 ///   construction, so results are correct to the operands' facet error.

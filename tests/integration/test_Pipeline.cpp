@@ -228,13 +228,13 @@ TEST(PipelineTest, RevolveRectangle) {
 TEST(PipelineTest, RevolveHasValidEuler) {
     auto profile = makeOffsetRectProfile(5.0, 10.0, 0.0, 5.0);
     SketchPlane plane;
-    // A full revolution clear of the axis is a torus: manifold, but genus 1,
-    // which the genus-0 Euler check rejects.  A partial revolution is capped
-    // at both ends and so is genus 0.
+    // A full revolution clear of the axis is a torus: genus 1.  A partial
+    // revolution is capped at both ends and so is genus 0.
     auto full = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi, "rev_euler");
     ASSERT_NE(full, nullptr);
     EXPECT_TRUE(full->checkManifold());
-    EXPECT_FALSE(full->checkEulerFormula());
+    EXPECT_TRUE(full->checkEulerFormula());
+    EXPECT_EQ(full->genus(), 1);
 
     auto half = Revolve::execute(profile, plane, Vec3::Zero, Vec3::UnitY, kTwoPi * 0.5, "rev_half");
     ASSERT_NE(half, nullptr);
@@ -594,8 +594,10 @@ TEST(PipelineTest, PrimitiveTorusValid) {
     auto torus = PrimitiveFactory::makeTorus(5.0, 1.5);
     ASSERT_NE(torus, nullptr);
     EXPECT_TRUE(torus->checkManifold());
-    // Genus 1: V - E + F is 0, so the genus-free Euler check rejects it.
-    EXPECT_FALSE(torus->checkEulerFormula());
+    // Genus 1: V - E + F is 0 = 2(S - G).
+    EXPECT_TRUE(torus->checkEulerFormula());
+    EXPECT_EQ(torus->genus(), 1);
+    EXPECT_TRUE(torus->isValid()) << torus->validationReport();
     EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*torus))
         << hz::topo::GeometryValidator::report(*torus);
 }
