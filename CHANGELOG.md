@@ -11,6 +11,21 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
+- **DXF text, colour and units came in wrong (108b).**
+  - MTEXT chunks were joined back to front. Its lines ran together into
+    one. Formatting codes such as `\pxi-3;` were left in the text.
+  - Centred and right-aligned TEXT came in at the wrong point.
+  - `%%d`, `%%c` and `\U+00B0` came in as they are written, not as °, ⌀
+    and the character.
+  - Only ten colours were known, so index 12 came in white; true colour
+    was ignored.
+  - Pre-2007 files in Windows-1252 or 1251 came in as broken UTF-8.
+  - A drawing in inches came in 25.4 times too small.
+
+  All of these are read correctly now. Saving writes true colour, escapes
+  text so it reads back, and declares millimetres. Formatting the drawing
+  cannot show, such as underline or a height change inside a text, is
+  reported.
 - **DXF geometry came in wrong in several common cases (108a).**
   - A polyline's arc segments (bulges) came in as straight lines.
   - Mirrored entities (an extrusion of (0, 0, −1)) came in unmirrored.

@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "DxfCodec.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftAngularDimension.h"
@@ -42,70 +43,25 @@
 
 namespace hz::io {
 
-// ===========================================================================
-// ACI Color Table (subset for first 10 + white/black mapping)
-// ===========================================================================
-
 namespace {
 
-struct AciEntry {
-    int r, g, b;
-};
-
-// Standard AutoCAD Color Index (first 10 colors + key entries)
-static const AciEntry kAciTable[] = {
-    {0, 0, 0},        // 0 = BYBLOCK (unused in our mapping)
-    {255, 0, 0},      // 1 = Red
-    {255, 255, 0},    // 2 = Yellow
-    {0, 255, 0},      // 3 = Green
-    {0, 255, 255},    // 4 = Cyan
-    {0, 0, 255},      // 5 = Blue
-    {255, 0, 255},    // 6 = Magenta
-    {255, 255, 255},  // 7 = White/Black (depends on background)
-    {128, 128, 128},  // 8 = Dark gray
-    {192, 192, 192},  // 9 = Light gray
-};
-static const int kAciTableSize = 10;
-
-int argbToAci(uint32_t argb) {
-    if (argb == 0x00000000) return 256;  // BYLAYER
-
-    int r = (argb >> 16) & 0xFF;
-    int g = (argb >> 8) & 0xFF;
-    int b = argb & 0xFF;
-
-    // Find closest ACI color (simple Euclidean distance).
-    int bestAci = 7;
-    int bestDist = 999999;
-    for (int i = 1; i < kAciTableSize; ++i) {
-        int dr = r - kAciTable[i].r;
-        int dg = g - kAciTable[i].g;
-        int db = b - kAciTable[i].b;
-        int dist = dr * dr + dg * dg + db * db;
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestAci = i;
-        }
-    }
-    return bestAci;
-}
-
-uint32_t aciToArgb(int aci) {
-    if (aci == 256 || aci == 0) return 0x00000000;  // BYLAYER / BYBLOCK
-    if (aci < 0) aci = -aci;                        // Negative = layer off, use absolute
-    if (aci < kAciTableSize) {
-        auto& e = kAciTable[aci];
-        return 0xFF000000u | (uint32_t(e.r) << 16) | (uint32_t(e.g) << 8) | uint32_t(e.b);
-    }
-    return 0xFFFFFFFF;  // Default white for unknown ACI
-}
+using dxf::aciToArgb;
+using dxf::argbToAci;
 
 // ===========================================================================
 // DXF Group Code Writer
 // ===========================================================================
 
 void writeGroup(std::ostream& out, int code, const std::string& value) {
-    out << "  " << code << "\n" << value << "\n";
+    // A line break inside a value would end it early and shift every group
+    // after it, so none is written. Text values encode theirs as ^J first.
+    if (value.find_first_of("\r\n") == std::string::npos) {
+        out << "  " << code << "\n" << value << "\n";
+        return;
+    }
+    std::string flat = value;
+    std::replace_if(flat.begin(), flat.end(), [](char c) { return c == '\r' || c == '\n'; }, ' ');
+    out << "  " << code << "\n" << flat << "\n";
 }
 
 void writeGroup(std::ostream& out, int code, int value) {
@@ -134,6 +90,8 @@ void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
     uint32_t c = entity.color();
     if (c != 0x00000000) {
         writeGroup(out, 62, argbToAci(c));
+        // A colour the index does not hold goes as a true colour too.
+        if (!dxf::isAciColor(c)) writeGroup(out, 420, static_cast<int>(c & 0xFFFFFFu));
     }
     if (entity.lineType() > 0) {
         writeGroup(
@@ -220,7 +178,7 @@ void writeText(std::ostream& out, const draft::DraftText& text) {
     writeGroup(out, 20, text.position().y);
     writeGroup(out, 30, 0.0);
     writeGroup(out, 40, text.textHeight());
-    writeGroup(out, 1, text.text());
+    writeGroup(out, 1, dxf::encodeText(text.text()));
     if (text.rotation() != 0.0) {
         writeGroup(out, 50, text.rotation() * math::kRadToDeg);
     }
@@ -423,7 +381,7 @@ void writeDimensionAsGeometry(std::ostream& out, const draft::DraftDimension& di
     writeGroup(out, 20, textPos.y);
     writeGroup(out, 30, 0.0);
     writeGroup(out, 40, style.textHeight);
-    writeGroup(out, 1, displayText);
+    writeGroup(out, 1, dxf::encodeText(displayText));
     writeGroup(out, 72, 1);  // Center-justified.
     writeGroup(out, 11, textPos.x);
     writeGroup(out, 21, textPos.y);
@@ -472,10 +430,12 @@ struct DxfError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-/// The input, and how many lines of it have been read (for error messages).
+/// The input, how many lines of it have been read (for error messages), and
+/// how its values become UTF-8.
 struct DxfStream {
     std::istream& in;
     long line = 0;
+    dxf::Decoder* decoder = nullptr;
 };
 
 void trim(std::string& s) {
@@ -510,6 +470,7 @@ bool readPair(DxfStream& in, DxfPair& pair) {
     std::string codeLine;
     std::string valueLine;
     if (!std::getline(in.in, codeLine)) return false;
+    if (in.line == 0 && codeLine.rfind("\xEF\xBB\xBF", 0) == 0) codeLine.erase(0, 3);  // a BOM
     ++in.line;
     trim(codeLine);
     if (!std::getline(in.in, valueLine)) {
@@ -518,7 +479,6 @@ bool readPair(DxfStream& in, DxfPair& pair) {
                        ")");
     }
     ++in.line;
-    trim(valueLine);
 
     int code = 0;
     const auto [ptr, ec] =
@@ -527,8 +487,16 @@ bool readPair(DxfStream& in, DxfPair& pair) {
         throw DxfError("line " + std::to_string(in.line - 1) + ": expected a group code, found \"" +
                        codeLine.substr(0, 40) + "\"");
     }
+    if (code == 1 || code == 3) {
+        // Text keeps its spaces; only the line ending goes.
+        while (!valueLine.empty() && (valueLine.back() == '\r' || valueLine.back() == '\n')) {
+            valueLine.pop_back();
+        }
+    } else {
+        trim(valueLine);
+    }
     pair.code = code;
-    pair.value = std::move(valueLine);
+    pair.value = in.decoder ? in.decoder->decode(std::move(valueLine)) : std::move(valueLine);
     return true;
 }
 
@@ -550,9 +518,15 @@ bool nextPair(DxfStream& in, DxfPair& pair) {
 // Helper: extract common properties from a group list.
 void applyCommonProps(std::shared_ptr<draft::DraftEntity>& entity,
                       const std::vector<DxfPair>& groups) {
+    bool trueColor = false;
     for (const auto& g : groups) {
         if (g.code == 8) entity->setLayer(g.value);
-        if (g.code == 62) entity->setColor(aciToArgb(toInt(g.value)));
+        if (g.code == 420) {
+            // A true colour: exact, and it wins over the index in 62.
+            entity->setColor(dxf::trueColorToArgb(toInt(g.value)));
+            trueColor = true;
+        }
+        if (g.code == 62 && !trueColor) entity->setColor(aciToArgb(toInt(g.value)));
         if (g.code == 6) entity->setLineType(static_cast<int>(draft::lineTypeFromDxfName(g.value)));
         if (g.code == 370) {
             int lw = toInt(g.value);
@@ -603,67 +577,6 @@ std::shared_ptr<draft::DraftEntity> parseArc(const std::vector<DxfPair>& groups)
     double ea = toDouble(findGroup(groups, 51)) * math::kDegToRad;
     if (r <= 0.0) return nullptr;
     return std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
-}
-
-std::shared_ptr<draft::DraftEntity> parseText(const std::vector<DxfPair>& groups) {
-    double x = toDouble(findGroup(groups, 10));
-    double y = toDouble(findGroup(groups, 20));
-    double height = toDouble(findGroup(groups, 40, "2.5"));
-    std::string content = findGroup(groups, 1);
-    double rotation = toDouble(findGroup(groups, 50, "0")) * math::kDegToRad;
-    int hJust = toInt(findGroup(groups, 72, "0"));
-
-    if (height <= 0.0) height = 2.5;
-    auto entity = std::make_shared<draft::DraftText>(math::Vec2(x, y), content, height);
-    entity->setRotation(rotation);
-
-    draft::TextAlignment align = draft::TextAlignment::Left;
-    if (hJust == 1)
-        align = draft::TextAlignment::Center;
-    else if (hJust == 2)
-        align = draft::TextAlignment::Right;
-    entity->setAlignment(align);
-
-    return entity;
-}
-
-std::shared_ptr<draft::DraftEntity> parseMText(const std::vector<DxfPair>& groups) {
-    double x = toDouble(findGroup(groups, 10));
-    double y = toDouble(findGroup(groups, 20));
-    double height = toDouble(findGroup(groups, 40, "2.5"));
-    std::string content = findGroup(groups, 1);
-    // Also check group 3 (additional text chunks).
-    for (const auto& g : groups) {
-        if (g.code == 3) content = g.value + content;
-    }
-    // Strip basic MTEXT formatting codes.
-    std::string plain;
-    for (size_t i = 0; i < content.size(); ++i) {
-        if (content[i] == '\\' && i + 1 < content.size()) {
-            char next = content[i + 1];
-            if (next == 'P' || next == 'p') {
-                plain += ' ';
-                i++;
-                continue;
-            }
-            // Skip formatting like \fArial|b0|i0|... until ';'
-            if (next == 'f' || next == 'F' || next == 'H' || next == 'W' || next == 'C' ||
-                next == 'T' || next == 'Q' || next == 'A') {
-                size_t end = content.find(';', i + 1);
-                if (end != std::string::npos) {
-                    i = end;
-                    continue;
-                }
-            }
-            i++;  // Skip backslash + next char.
-            continue;
-        }
-        if (content[i] == '{' || content[i] == '}') continue;
-        plain += content[i];
-    }
-
-    if (height <= 0.0) height = 2.5;
-    return std::make_shared<draft::DraftText>(math::Vec2(x, y), plain, height);
 }
 
 std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups) {
@@ -752,6 +665,9 @@ void parseLayerTable(DxfStream& in, doc::Document& doc) {
                         draft::LayerProperties props;
                         props.name = name;
                         props.color = aciToArgb(std::abs(aci));
+                        if (const std::string rgb = findGroup(groups, 420, ""); !rgb.empty()) {
+                            props.color = dxf::trueColorToArgb(toInt(rgb));
+                        }
                         props.visible = (aci >= 0) && !(flags & 1);
                         props.locked = (flags & 4) != 0;
                         props.lineWidth = (lw <= 0) ? 1.0 : lw / 100.0;
@@ -840,12 +756,141 @@ struct RawBlock {
     std::vector<RawEntity> entities;
 };
 
+/// The header variables an import uses.
+struct Header {
+    std::string codepage;  ///< $DWGCODEPAGE
+    int insunits = 0;      ///< $INSUNITS: 0 unitless, 1 inches, 4 millimetres...
+};
+
 struct Import {
+    explicit Import(doc::Document& d) : doc(d) {}
+
     doc::Document& doc;
     ImportNotes notes;
     std::map<std::string, RawBlock> blocks;
     std::vector<std::string> building;  ///< Blocks being built: a cycle guard.
+    dxf::Decoder decoder;
+    Header header;
+    std::vector<std::shared_ptr<draft::BlockDefinition>> built;  ///< Blocks this import made
+    Entities added;                      ///< and the drawing entities it made.
+    std::vector<std::string> converted;  ///< Changes that lose nothing (ImportReport::converted).
 };
+
+/// Report what a text's codes asked for that the drawing cannot show.
+void noteLosses(const dxf::TextLosses& losses, const std::string& type, Import& im) {
+    if (losses.styling) {
+        ++im.notes.approximated[{type, "underline, colour or size changes inside it not kept"}];
+    }
+    if (losses.stacked) ++im.notes.approximated[{type, "stacked fractions written inline"}];
+    if (losses.unreadable) {
+        ++im.notes.approximated[{type, "characters in a multibyte code page not read"}];
+    }
+}
+
+/// A TEXT entity. Left-aligned text on its baseline stands at its first
+/// point (10/20); any other alignment is at its second point (11/21), which
+/// is moved to the baseline this drawing's text stands on.
+std::shared_ptr<draft::DraftEntity> parseText(const std::vector<DxfPair>& groups, Import& im) {
+    double height = toDouble(findGroup(groups, 40, "2.5"));
+    if (height <= 0.0) height = 2.5;
+    double rotation = toDouble(findGroup(groups, 50, "0")) * math::kDegToRad;
+    const int horizontal = toInt(findGroup(groups, 72, "0"));
+    int vertical = toInt(findGroup(groups, 73, "0"));
+    const math::Vec2 first(toDouble(findGroup(groups, 10)), toDouble(findGroup(groups, 20)));
+    const bool hasSecond = !findGroup(groups, 11).empty();
+    const math::Vec2 second(toDouble(findGroup(groups, 11)), toDouble(findGroup(groups, 21)));
+
+    math::Vec2 anchor = first;
+    draft::TextAlignment align = draft::TextAlignment::Left;
+    if (horizontal == 3 || horizontal == 5) {
+        // Aligned or fit: stretched to run from the first point to the second.
+        if (hasSecond && (second - first).length() > 1e-12) {
+            rotation = std::atan2(second.y - first.y, second.x - first.x);
+        }
+        vertical = 0;
+        ++im.notes.approximated[{"TEXT", "fitted between two points, drawn at its own size"}];
+    } else {
+        if ((horizontal != 0 || vertical != 0) && hasSecond) anchor = second;
+        if (horizontal == 1 || horizontal == 4) align = draft::TextAlignment::Center;
+        if (horizontal == 2) align = draft::TextAlignment::Right;
+        if (horizontal == 4) vertical = 2;  // "Middle": centred both ways
+    }
+    // How far the anchor is above the baseline: bottom (the descenders),
+    // middle, or top (the capitals).
+    double above = 0.0;
+    if (vertical == 1) above = -0.25 * height;
+    if (vertical == 2) above = 0.5 * height;
+    if (vertical == 3) above = height;
+    anchor = anchor + math::Vec2(std::sin(rotation) * above, -std::cos(rotation) * above);
+
+    dxf::TextLosses losses;
+    auto text = std::make_shared<draft::DraftText>(
+        anchor, dxf::decodeText(findGroup(groups, 1), im.decoder, losses), height);
+    text->setRotation(rotation);
+    text->setAlignment(align);
+    noteLosses(losses, "TEXT", im);
+    return text;
+}
+
+/// An MTEXT entity, one text per line: its chunks (3) come before its last
+/// part (1), and \P breaks a line. Lines are laid out from the attachment
+/// point (71) as AutoCAD does: 5/3 of the height apart, times the spacing
+/// factor (44).
+Entities mtextEntities(const std::vector<DxfPair>& groups, Import& im) {
+    std::string content;
+    for (const auto& g : groups) {
+        if (g.code == 3) content += g.value;
+    }
+    content += findGroup(groups, 1);
+    dxf::TextLosses losses;
+    const std::vector<std::string> lines = dxf::decodeMText(content, im.decoder, losses);
+    noteLosses(losses, "MTEXT", im);
+
+    double height = toDouble(findGroup(groups, 40, "2.5"));
+    if (height <= 0.0) height = 2.5;
+    const math::Vec2 at(toDouble(findGroup(groups, 10)), toDouble(findGroup(groups, 20)));
+    // The x direction (11/21) when given; otherwise the angle (50), which
+    // AutoCAD writes in degrees whatever the reference says.
+    double rotation = toDouble(findGroup(groups, 50, "0")) * math::kDegToRad;
+    const math::Vec2 direction(toDouble(findGroup(groups, 11)), toDouble(findGroup(groups, 21)));
+    if (direction.length() > 1e-12) rotation = std::atan2(direction.y, direction.x);
+    int attach = toInt(findGroup(groups, 71, "1"));
+    if (attach < 1 || attach > 9) attach = 1;
+    double spacing = toDouble(findGroup(groups, 44, "1"));
+    if (spacing <= 0.0) spacing = 1.0;
+
+    const double pitch = height * 5.0 / 3.0 * spacing;
+    const double below = pitch * static_cast<double>(lines.size() - 1);
+    double baseline = -height;  // top: the first line hangs below the point
+    const int row = (attach - 1) / 3;
+    if (row == 1) baseline = (height + below) / 2.0 - height;
+    if (row == 2) baseline = below;  // bottom: the last line stands on it
+    const int column = (attach - 1) % 3;
+    const draft::TextAlignment align = column == 0   ? draft::TextAlignment::Left
+                                       : column == 1 ? draft::TextAlignment::Center
+                                                     : draft::TextAlignment::Right;
+    const double c = std::cos(rotation);
+    const double s = std::sin(rotation);
+
+    Entities out;
+    for (const auto& line : lines) {
+        if (line.find_first_not_of(' ') != std::string::npos) {
+            auto text = std::make_shared<draft::DraftText>(
+                at + math::Vec2(-s * baseline, c * baseline), line, height);
+            text->setRotation(rotation);
+            text->setAlignment(align);
+            out.push_back(std::move(text));
+        }
+        baseline -= pitch;
+    }
+    if (out.size() > 1) {
+        const uint64_t group = im.doc.draftDocument().nextGroupId();
+        for (auto& piece : out) piece->setGroupId(group);
+        ++im.notes
+              .approximated[{"MTEXT", "several lines, brought in as one text per line, grouped"}];
+    }
+    return out;
+}
 
 /// How an entity's object coordinate system (its extrusion direction, groups
 /// 210/220/230) sits against the drawing: the same, mirrored (extrusion
@@ -1145,12 +1190,13 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         if ((flags & (8 | 16 | 64)) != 0) return unread(" (a 3D polyline or mesh)");
         out = polylineEntities(vertices, (flags & 1) != 0, type, im);
     } else if (type == "TEXT") {
-        out.push_back(parseText(g));
+        out.push_back(parseText(g, im));
         if (ocs == Ocs::Mirrored) {
             ++im.notes.approximated[{type, "written mirrored, brought in unmirrored"}];
         }
     } else if (type == "MTEXT") {
-        out.push_back(parseMText(g));
+        out = mtextEntities(g, im);
+        if (out.empty()) return unread(" (it has no text)");
     } else if (type == "SPLINE") {
         out.push_back(parseSpline(g));
     } else if (type == "HATCH") {
@@ -1227,6 +1273,7 @@ std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Impo
     }
     im.building.pop_back();
     im.doc.draftDocument().blockTable().addBlock(def);
+    im.built.push_back(def);
     return def;
 }
 
@@ -1267,9 +1314,54 @@ void parseEntitiesSection(DxfStream& in, Import& im) {
     }
     const auto raws = readRawEntities(in, pair, "ENDSEC");
     for (size_t i = 0; i < raws.size();) {
-        for (auto& entity : readEntity(raws, i, im, false))
+        for (auto& entity : readEntity(raws, i, im, false)) {
             im.doc.draftDocument().addEntity(entity);
+            im.added.push_back(entity);
+        }
     }
+}
+
+/// The header variables the import uses: $DWGCODEPAGE, which from here on
+/// reads every value, and $INSUNITS.
+void parseHeaderSection(DxfStream& in, Import& im) {
+    DxfPair pair;
+    std::string variable;
+    while (nextPair(in, pair)) {
+        if (pair.code == 0 && pair.value == "ENDSEC") break;
+        if (pair.code == 9) {
+            variable = pair.value;
+            continue;
+        }
+        std::string value = pair.value;
+        trim(value);
+        if (variable == "$DWGCODEPAGE" && pair.code == 3) im.header.codepage = value;
+        if (variable == "$INSUNITS" && pair.code == 70) im.header.insunits = toInt(value);
+    }
+    if (!im.header.codepage.empty()) im.decoder.setCodepage(im.header.codepage);
+}
+
+/// A drawing in inches, feet or metres, scaled into millimetres. A block is
+/// scaled once, in its definition; an insert of it only moves.
+void convertUnits(Import& im) {
+    std::string unit;
+    const double mm = dxf::insunitsToMillimetres(im.header.insunits, &unit);
+    if (!(mm > 0.0) || mm == 1.0) return;
+    const auto scaleEntity = [mm](draft::DraftEntity& e) {
+        if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(&e)) {
+            ref->setInsertPos(ref->insertPos() * mm);
+        } else {
+            e.scale(math::Vec2(0, 0), mm);
+        }
+    };
+    for (const auto& def : im.built) {
+        def->basePoint = def->basePoint * mm;
+        for (const auto& e : def->entities) scaleEntity(*e);
+    }
+    for (const auto& e : im.added) scaleEntity(*e);
+    std::ostringstream factor;
+    factor << std::setprecision(10) << mm;
+    im.converted.push_back("drawn in " + unit + ", scaled by " + factor.str() +
+                           " into millimetres");
 }
 
 }  // anonymous namespace
@@ -1300,6 +1392,14 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
     writeGroup(out, 2, std::string("HEADER"));
     writeGroup(out, 9, std::string("$ACADVER"));
     writeGroup(out, 1, std::string("AC1027"));
+    // Text is UTF-8 from AC1021 on; the code page is still expected.
+    writeGroup(out, 9, std::string("$DWGCODEPAGE"));
+    writeGroup(out, 3, std::string("ANSI_1252"));
+    // The drawing's unit is the millimetre.
+    writeGroup(out, 9, std::string("$INSUNITS"));
+    writeGroup(out, 70, 4);
+    writeGroup(out, 9, std::string("$MEASUREMENT"));
+    writeGroup(out, 70, 1);
     writeGroup(out, 9, std::string("$INSBASE"));
     writeGroup(out, 10, 0.0);
     writeGroup(out, 20, 0.0);
@@ -1435,6 +1535,9 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         int aci = argbToAci(lp->color);
         if (!lp->visible) aci = -aci;
         writeGroup(out, 62, aci);
+        if (!dxf::isAciColor(lp->color)) {
+            writeGroup(out, 420, static_cast<int>(lp->color & 0xFFFFFFu));
+        }
         writeGroup(out, 6,
                    std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(lp->lineType))));
     }
@@ -1489,7 +1592,7 @@ namespace {
 /// The section loop behind DxfFormat::load. Returns false when the input has
 /// no SECTION at all.
 bool parseDxf(std::istream& input, Import& im) {
-    DxfStream in{input};
+    DxfStream in{input, 0, &im.decoder};
     DxfPair pair;
     bool foundSection = false;
 
@@ -1507,7 +1610,9 @@ bool parseDxf(std::istream& input, Import& im) {
             DxfPair namePair;
             nextPair(in, namePair);
             if (namePair.code == 2) {
-                if (namePair.value == "TABLES") {
+                if (namePair.value == "HEADER") {
+                    parseHeaderSection(in, im);
+                } else if (namePair.value == "TABLES") {
                     parseTablesSection(in, im.doc);
                 } else if (namePair.value == "BLOCKS") {
                     parseBlocksSection(in, im);
@@ -1520,6 +1625,7 @@ bool parseDxf(std::istream& input, Import& im) {
         }
     }
 
+    convertUnits(im);
     // Rebuild spatial index after loading all entities.
     im.doc.draftDocument().rebuildSpatialIndex();
 
@@ -1538,7 +1644,18 @@ bool failWith(std::string* error, std::string message) {
 /// parseDxf with every failure turned into a reason, and what it did not
 /// read counted into @p report.
 bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, ImportReport* report) {
-    Import im{doc, {}, {}, {}};
+    char head[18] = {};
+    in.read(head, sizeof head);
+    const bool binary = std::string_view(head, static_cast<size_t>(in.gcount())) ==
+                        std::string_view("AutoCAD Binary DXF");
+    in.clear();
+    in.seekg(0);
+    if (binary) {
+        return failWith(error,
+                        "this is a binary DXF file, which cannot be read; save it as a text "
+                        "(ASCII) DXF");
+    }
+    Import im(doc);
     try {
         if (!parseDxf(in, im)) return failWith(error, "this is not a DXF file (it has no SECTION)");
     } catch (const DxfError& e) {
@@ -1558,6 +1675,12 @@ bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, Impo
             report->approximated.push_back(std::to_string(count) + " " + key.first +
                                            entities(count) + ": " + key.second);
         }
+        if (const int n = im.decoder.undecodable(); n > 0) {
+            report->approximated.push_back(
+                std::to_string(n) + (n == 1 ? " character" : " characters") + " in code page " +
+                im.decoder.codepage() + " could not be read, shown as \xEF\xBF\xBD");
+        }
+        report->converted.insert(report->converted.end(), im.converted.begin(), im.converted.end());
     }
     return true;
 }

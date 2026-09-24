@@ -1325,7 +1325,16 @@ void MainWindow::onSaveFileAs() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::showImportReport(const QString& file, const io::ImportReport& report) {
-    if (report.empty()) return;
+    QStringList converted;
+    for (const auto& item : report.converted) converted << QString::fromStdString(item);
+    if (report.empty()) {
+        // Nothing was lost: a conversion is worth a line, not a warning.
+        if (!converted.isEmpty()) {
+            statusBar()->showMessage(
+                tr("\"%1\": %2").arg(file, converted.join(QStringLiteral("; "))), 15000);
+        }
+        return;
+    }
     QStringList lines;
     for (const auto& item : report.skipped) {
         lines << tr("Left out: %1").arg(QString::fromStdString(item));
@@ -1333,6 +1342,7 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     for (const auto& item : report.approximated) {
         lines << tr("Approximated: %1").arg(QString::fromStdString(item));
     }
+    for (const auto& item : converted) lines << tr("Converted: %1").arg(item);
     QMessageBox box(QMessageBox::Warning, tr("Not Everything Was Read"),
                     tr("\"%1\": %2").arg(file, QString::fromStdString(report.summary())),
                     QMessageBox::Ok, this);

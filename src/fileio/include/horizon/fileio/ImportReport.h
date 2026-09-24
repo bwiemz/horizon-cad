@@ -12,6 +12,9 @@ struct ImportReport {
     std::vector<std::string> skipped;
     /// Items brought in, but not exactly as they were.
     std::vector<std::string> approximated;
+    /// Changes made on the way in that lose nothing, such as a drawing in
+    /// inches scaled into millimetres. empty() and summary() leave these out.
+    std::vector<std::string> converted;
 
     bool empty() const { return skipped.empty() && approximated.empty(); }
 
