@@ -218,6 +218,10 @@ round-trip-exact real formatting.
     hole's wall (two arcs, four vertices) adds nearly nothing to the
     volume. This needs per-face surface integration.
   - BREP_WITH_VOIDS is still refused.
+  - Review notes, not defects: a hole that no bridge can reach without
+    crossing an edge is left out of the keyhole silently, and the crossing
+    test has no tolerance. Rightmost-first bridging makes both unlikely for
+    a simple face, and no input that triggers either has been found.
 
 ## Phase 110 — 2D correctness pass
 
