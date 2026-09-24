@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 
 #include "horizon/document/Document.h"
@@ -14,6 +15,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -856,4 +858,61 @@ TEST(PartFormatTest, FilesWithoutResolutionFieldsLoadAtTheFeatureDefaults) {
     EXPECT_TRUE(loaded.rebuildModel());
 
     std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Body operations (Phase 102)
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, BodyOperationsRoundTrip) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto plate = makeRectSketch(10.0, 10.0);
+    auto hole = std::make_shared<Sketch>();
+    hole->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0));
+    original.addSketch(plate);
+    original.addSketch(hole);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(plate, Vec3(0, 0, 1), 2.0));
+    auto cut = std::make_unique<ExtrudeFeature>(hole, Vec3(0, 0, 1), 2.0);
+    cut->setOperation(BodyOperation::Cut);
+    original.featureTree().addFeature(std::move(cut));
+    ASSERT_TRUE(original.rebuildModel()) << original.lastBuildMessage();
+
+    std::string path = tempPath("hz_test_body_operations.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    std::remove(path.c_str());
+
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+    EXPECT_EQ(loaded.featureTree().feature(0)->operation(), BodyOperation::NewBody);
+    EXPECT_EQ(loaded.featureTree().feature(1)->operation(), BodyOperation::Cut);
+    ASSERT_TRUE(loaded.rebuildModel()) << loaded.lastBuildMessage();
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*loaded.solid()).volume,
+                hz::model::MassPropertiesCalculator::compute(*original.solid()).volume, 1e-9)
+        << "the reloaded part still has its hole";
+}
+
+TEST(PartFormatTest, FilesWrittenBeforeBodyOperationsLoadAsSeparateBodies) {
+    // Before Phase 102 the rebuild kept only the last created body; loading
+    // such a file as New body shows every body it describes.
+    Document original;
+    original.setType(DocumentType::Part);
+    auto a = makeRectSketch(10.0, 10.0);
+    original.addSketch(a);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(a, Vec3(0, 0, 1), 1.0));
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(a, Vec3(0, 0, -1), 1.0));
+    for (size_t i = 0; i < 2; ++i) {
+        original.featureTree().feature(i)->setOperation(BodyOperation::Join);
+    }
+
+    nlohmann::json root = nlohmann::json::parse(NativeFormat::documentToJson(original, false));
+    for (auto& feature : root.at("featureTree")) feature.erase("bodyOperation");
+
+    Document loaded;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), loaded, &error)) << error;
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+    EXPECT_EQ(loaded.featureTree().feature(0)->operation(), BodyOperation::NewBody);
+    EXPECT_EQ(loaded.featureTree().feature(1)->operation(), BodyOperation::NewBody);
 }

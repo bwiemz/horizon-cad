@@ -229,6 +229,13 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     return buildPattern(source, transforms, suppressed);
 }
 
+std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
+    auto out = std::make_unique<Solid>();
+    cloneInto(*out, a, Mat4::identity(), 0);
+    cloneInto(*out, b, Mat4::identity(), 0);
+    return out;
+}
+
 std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {
     auto out = std::make_unique<Solid>();
     cloneInto(*out, source, xform, 0);

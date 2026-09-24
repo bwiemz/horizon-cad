@@ -9,6 +9,7 @@ add_executable(hz_document_tests
     test_BillOfMaterials.cpp
     test_ConfigurationTable.cpp
     test_UndoStack.cpp
+    test_BodyOperations.cpp
 )
 
 target_link_libraries(hz_document_tests

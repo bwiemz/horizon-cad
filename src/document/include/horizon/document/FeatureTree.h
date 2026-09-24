@@ -2,7 +2,9 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "horizon/math/Vec3.h"
@@ -28,6 +30,20 @@ class Sketch;
 inline constexpr int kMaxFacetSegments = 4096;  ///< steps per full turn; see segmentsForTolerance
 inline constexpr int kMaxArcSegments = 1024;    ///< chords across one fillet arc
 inline constexpr int kMaxPatternCount = 10000;  ///< instances in one pattern
+
+/// How a feature that builds solid geometry (`createsNewBody()`) combines it
+/// with the part built so far.
+enum class BodyOperation {
+    NewBody,    ///< Keep it as a separate body alongside the others.
+    Join,       ///< Union it with the part.
+    Cut,        ///< Subtract it from the part.
+    Intersect,  ///< Keep only the material both share.
+};
+
+/// The persisted spelling: "new", "join", "cut" or "intersect".
+const char* bodyOperationName(BodyOperation operation);
+/// Parse a persisted spelling; nullopt when it is not one of the four.
+std::optional<BodyOperation> bodyOperationFromName(std::string_view name);
 
 /// Abstract base class for parametric modeling features.
 ///
@@ -90,6 +106,15 @@ public:
         (void)value;
         return false;
     }
+
+    /// How the body this feature builds combines with the part so far.
+    /// Meaningful only when `createsNewBody()`; a new feature starts a
+    /// separate body.
+    BodyOperation operation() const { return m_operation; }
+    void setOperation(BodyOperation operation) { m_operation = operation; }
+
+private:
+    BodyOperation m_operation = BodyOperation::NewBody;
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.

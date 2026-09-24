@@ -199,6 +199,17 @@ private:
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
 
+    /// Ask for a body-creating feature's size (`value`) and how its body
+    /// combines with the part. False when cancelled.
+    bool askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
+                           double min, double max, int decimals, doc::BodyOperation& operation);
+    /// Add a body-creating feature at the end of the history and rebuild. If
+    /// that feature is the one that fails (a Cut that would leave nothing), it
+    /// is taken out again — with `wrapperSketch`, if one was created for it —
+    /// and false returned with the reason in the status bar.
+    bool addBodyFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                        const std::shared_ptr<doc::Sketch>& wrapperSketch);
+
     /// Route a document's change notifications to the markers and autosave.
     void watchDocument(const std::shared_ptr<doc::Document>& document);
     /// Drop the tab's snapshot once its document is saved or closed.

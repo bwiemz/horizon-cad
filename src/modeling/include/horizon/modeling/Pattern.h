@@ -38,6 +38,11 @@ public:
     /// A deep copy of @p source moved by the rigid transform @p xform, with
     /// every carrier and ideal moved with it and every TopologyID kept.  This
     /// is how a component is placed in an assembly's world space.
+    /// Both solids' shells in one solid, as separate bodies: no Boolean, so
+    /// shared material is not merged (use BooleanOp for that). Topology IDs
+    /// are kept.
+    static std::unique_ptr<topo::Solid> collect(const topo::Solid& a, const topo::Solid& b);
+
     static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
                                                     const math::Mat4& xform);
 

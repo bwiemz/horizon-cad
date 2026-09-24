@@ -175,6 +175,13 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
         result.message = "shell requires at least one face to remove (closed hollow deferred)";
         return result;
     }
+    // The cup is rebuilt from two caps of one body; anything else in the
+    // solid would be dropped without a word. A part holds several bodies
+    // after a New-body feature or a spaced pattern.
+    if (solid->shells().size() > 1) {
+        result.message = "the part has several bodies; shelling one of them is not supported yet";
+        return result;
+    }
 
     // Solid centroid for outward normal orientation.
     Vec3 solidCentroid = Vec3::Zero;

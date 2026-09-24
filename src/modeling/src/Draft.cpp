@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "RingStack.h"
@@ -47,21 +48,33 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
     const Vec3 pull = pullDirRaw.normalized();
     const double tanA = std::tan(angleRad);
 
-    // Solid centroid (for outward normal orientation).
-    Vec3 centroid = Vec3::Zero;
-    size_t vcount = 0;
-    for (const auto& v : solid->vertices()) {
-        centroid += v.point;
-        ++vcount;
+    // Each face is oriented against the centre of its own body. One centroid
+    // for the whole solid lies outside some bodies when there are several
+    // (a New-body feature, a spaced pattern) and would turn their faces
+    // inside out, drafting them the wrong way.
+    std::unordered_map<const Shell*, std::pair<Vec3, size_t>> sums;
+    for (const auto& face : solid->faces()) {
+        auto& [sum, count] = sums[face.shell];
+        for (const auto* v : faceVertices(&face)) {
+            sum += v->point;
+            ++count;
+        }
     }
-    if (vcount == 0) return nullptr;
-    centroid = centroid * (1.0 / static_cast<double>(vcount));
+    if (sums.empty()) return nullptr;
+    std::unordered_map<const Shell*, Vec3> centroids;
+    for (const auto& [shell, acc] : sums) {
+        if (acc.second > 0) centroids[shell] = acc.first * (1.0 / static_cast<double>(acc.second));
+    }
+    const auto centroidOf = [&](const Face& face) {
+        const auto it = centroids.find(face.shell);
+        return it != centroids.end() ? it->second : Vec3::Zero;
+    };
 
     // Collect each vertex's incident lateral-face horizontal normals.
     // A lateral face's normal is roughly perpendicular to the pull direction.
     std::unordered_map<const Vertex*, std::vector<Vec3>> lateralNormals;
     for (const auto& face : solid->faces()) {
-        Vec3 n = outwardFaceNormal(face, centroid);
+        Vec3 n = outwardFaceNormal(face, centroidOf(face));
         if (n.length() < 1e-9) continue;
         if (std::abs(n.dot(pull)) > 0.5) continue;  // cap face — skip
 
@@ -116,7 +129,7 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
             std::vector<Vec3> ring;
             ring.reserve(verts.size());
             for (const auto* vv : verts) ring.push_back(vv->point);
-            Vec3 n = outwardFaceNormal(face, centroid);
+            Vec3 n = outwardFaceNormal(face, centroidOf(face));
             face.surface = ringstack::makeCapSurface(ring, n);
         }
     }
