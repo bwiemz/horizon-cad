@@ -395,7 +395,11 @@ definitions choose directions and faces with. 135 is independent and last.
 - **Fit All frames solids.** It looked at the drawing's entities alone, so
   a part with no drawing was not framed. It now also takes every visible
   mesh, in world coordinates. View has the ribbon's Fit All (shortcut F)
-  rather than a second action.
+  rather than a second action. It fits the part across the view's narrower
+  side: a perspective view was fitted by its height alone, and an
+  orthographic one by the window's shape before the last resize
+  (`setOrthographic` now keeps the aspect), which drew circles as
+  ellipses.
 - **View:**
   - Orthographic, a check item. A resize had put every view back into
     perspective. `applyProjection` keeps the height and widens the view,
@@ -419,10 +423,12 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ### Tests
 
-5 new, in the window (`SeeingTest`):
+6 new, in the window (`SeeingTest`):
 - every modelling command is in the Model menu, and Extrude is one action
   with a shortcut;
 - Fit All frames a box it could not see;
+- Fit All frames it in a wide and a narrow window, in both projections,
+  keeping an orthographic view's shape;
 - orthographic survives a resize, as tall as before;
 - the display modes, and a section plane that keeps what is below it;
 - a 10 mm steel cube: 1000 mm³, 7.85 g, centred at (5, 5, 5).

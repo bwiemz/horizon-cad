@@ -11,9 +11,11 @@
 #include <cmath>
 #include <set>
 #include <string>
+#include <utility>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
+#include "horizon/math/Vec4.h"
 #include "horizon/render/Camera.h"
 #include "horizon/render/DisplayMode.h"
 #include "horizon/ui/MainWindow.h"
@@ -49,6 +51,17 @@ void box(MainWindow& w) {
 
 hz::ui::ViewportWidget& viewportOf(MainWindow& w) {
     return *w.findChild<hz::ui::ViewportWidget*>();
+}
+
+/// Whether every corner of the 10 mm box from the origin is in the view.
+bool boxInView(const hz::render::Camera& camera) {
+    for (int c = 0; c < 8; ++c) {
+        const hz::math::Vec4 clip =
+            camera.viewProjectionMatrix() *
+            hz::math::Vec4((c & 1) ? 10.0 : 0.0, (c & 2) ? 10.0 : 0.0, (c & 4) ? 10.0 : 0.0, 1.0);
+        if (clip.w <= 0.0 || std::abs(clip.x) > clip.w || std::abs(clip.y) > clip.w) return false;
+    }
+    return true;
 }
 
 /// Every action in a menu, submenus included, by object name.
@@ -111,6 +124,32 @@ TEST(SeeingTest, FitAllFramesTheSolid) {
     trigger(w, "action_fit-all");
     EXPECT_NEAR((camera.target() - Vec3(5, 5, 5)).length(), 0.0, 1e-6) << "at the box's middle";
     EXPECT_LT((camera.eye() - camera.target()).length(), 200.0) << "and close enough to see it";
+}
+
+// Fit All frames the part in a window wider than tall, and narrower, in
+// either projection; orthographic keeps the window's shape, so a circle stays
+// round. It sized an orthographic view by the window's shape before the last
+// resize, and a perspective one by its height alone.
+TEST(SeeingTest, FitAllFramesThePartInAWideOrANarrowView) {
+    MainWindow w;
+    box(w);
+    auto& view = viewportOf(w);
+    const std::pair<int, int> shapes[] = {{1200, 400}, {400, 1200}};
+    for (const bool ortho : {false, true}) {
+        view.setOrthographic(ortho);
+        for (const auto& shape : shapes) {
+            view.applyProjection(shape.first, shape.second);  // a resize
+            trigger(w, "action_fit-all");
+            const auto& camera = view.camera();
+            EXPECT_TRUE(boxInView(camera)) << (ortho ? "orthographic " : "perspective ")
+                                           << shape.first << " x " << shape.second;
+            if (ortho) {
+                EXPECT_NEAR(camera.orthoWidth() / camera.orthoHeight(),
+                            static_cast<double>(shape.first) / shape.second, 1e-9)
+                    << "the window's shape";
+            }
+        }
+    }
 }
 
 // Orthographic stays orthographic across a resize, which put every view back

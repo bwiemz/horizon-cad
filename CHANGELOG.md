@@ -73,7 +73,8 @@ work, not "post-1.0".
     Fillet, Chamfer, Shell and Mass Properties have Ctrl+Shift shortcuts
     (E, R, F, C, H, M). The 2D Fillet and Chamfer say "(2D)".
   - Fit All frames the part. It looked only at the drawing, so a solid with
-    no drawing was left out of view.
+    no drawing was left out of view. In a narrow window it no longer cuts
+    the part off at the sides.
   - View ▸ Orthographic, which stays orthographic when the window is
     resized, and Back, Bottom and Left views.
   - View ▸ Display: shaded, shaded with edges, or wireframe.

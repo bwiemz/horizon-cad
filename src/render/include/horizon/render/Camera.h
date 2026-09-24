@@ -46,6 +46,7 @@ public:
     const math::Vec3& up() const { return m_up; }
     ProjectionType projectionType() const { return m_projType; }
     double fieldOfView() const { return m_fov; }
+    double orthoWidth() const { return m_orthoWidth; }
     double orthoHeight() const { return m_orthoHeight; }
 
 private:
