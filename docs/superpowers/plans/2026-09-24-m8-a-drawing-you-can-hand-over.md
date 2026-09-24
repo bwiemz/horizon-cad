@@ -182,6 +182,13 @@ dimensions; multi-line text.
     reference under the same ID.
 - **The README's Features** now say what the product does, including Phase
   128's input and this phase's layers and blocks.
+- **Found in review:**
+  - Create Block put its reference on layer 0 whatever the current layer,
+    where every other way of making an entity, Insert Block among them,
+    uses the current layer. It now takes the current layer.
+  - The line-weight dialog's 0.1–10 range clamped what it showed of a
+    thinner weight (DXF's 0.05 mm), so OK changed a layer that was only
+    looked at. It now takes 0.01–25.
 
 ### Tests
 

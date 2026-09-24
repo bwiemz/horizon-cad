@@ -633,8 +633,12 @@ std::string SetCurrentLayerCommand::description() const {
 
 CreateBlockCommand::CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
                                        const std::vector<uint64_t>& entityIds,
-                                       std::optional<math::Vec2> basePoint)
-    : m_doc(doc), m_blockName(blockName), m_entityIds(entityIds), m_basePoint(basePoint) {}
+                                       std::optional<math::Vec2> basePoint, std::string layer)
+    : m_doc(doc),
+      m_blockName(blockName),
+      m_entityIds(entityIds),
+      m_basePoint(basePoint),
+      m_layer(std::move(layer)) {}
 
 void CreateBlockCommand::execute() {
     if (!m_definition) {
@@ -655,6 +659,7 @@ void CreateBlockCommand::execute() {
         m_definition->basePoint = m_basePoint.value_or(centre);
         const math::Vec2 at = m_definition->basePoint;
         m_blockRef = std::make_shared<draft::DraftBlockRef>(m_definition, at);
+        m_blockRef->setLayer(m_layer);
     }
     m_doc.blockTable().addBlock(m_definition);
     m_removed = m_doc.removeEntities(m_entityIds);

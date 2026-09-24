@@ -179,14 +179,17 @@ void LayerPanel::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
         viewport->document()->undoStack().push(std::move(cmd));
         refresh();
     } else if (column == 4) {
-        // The layer's line weight, which entities on it drawn ByLayer take.
+        // The layer's line weight, which entities on it drawn ByLayer take. The
+        // range holds every weight a file can bring (DXF's 0.05 mm among
+        // them): a narrower one would clamp what is shown, and OK would then
+        // change a layer that was only looked at.
         const auto* lp = viewport->document()->layerManager().getLayer(name);
         if (!lp) return;
         bool ok = false;
         const QString title = tr("Layer Line Weight");
         const QString label = tr("Line weight:");
         const double width =
-            QInputDialog::getDouble(this, title, label, lp->lineWidth, 0.1, 10.0, 2, &ok);
+            QInputDialog::getDouble(this, title, label, lp->lineWidth, 0.01, 25.0, 2, &ok);
         if (!ok) return;
         draft::LayerProperties newProps = *lp;
         newProps.lineWidth = width;
