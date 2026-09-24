@@ -536,7 +536,8 @@ public:
 
     /// The features it repeats, by featureID: none repeats the whole part.
     const std::vector<std::string>& targets() const { return m_targets; }
-    void setTargets(std::vector<std::string> targets) { m_targets = std::move(targets); }
+    /// Each feature is repeated once, however often it is listed.
+    void setTargets(std::vector<std::string> targets);
     /// Where instance @p k is moved to from instance 0.
     math::Mat4 instanceTransform(int k) const;
 
