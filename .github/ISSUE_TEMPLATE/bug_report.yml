@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: Steps, and a file if one is involved (attach it, or a smaller one that shows the same thing).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From Help ▸ About Horizon CAD, or `horizon --version` (include the revision).
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and graphics
+      description: For example "Windows 11, NVIDIA RTX 4070" or "Ubuntu 24.04, Mesa".
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >-
+        The end of the log, if it says anything relevant. It is
+        `%LOCALAPPDATA%/Horizon CAD Project/Horizon CAD/logs/horizon.log` on Windows and
+        `~/.local/share/Horizon CAD Project/Horizon CAD/logs/horizon.log` on Linux.
+      render: text

@@ -102,5 +102,6 @@ endforeach()
 # when it runs. They live in CPackSettings.cmake — a file named CPack.cmake in
 # this module path shadowed CMake's own CPack module, so include(CPack) read
 # the settings twice and the installer configuration was never written.
+include(cmake/HorizonInstall.cmake)
 include(cmake/CPackSettings.cmake)
 include(CPack)

@@ -1,0 +1,3 @@
+// The executable's icon (Explorer, the taskbar, the installer's shortcuts).
+// The path is filled in by CMake (src/app/CMakeLists.txt).
+IDI_ICON1 ICON "@HZ_APP_ICON@"

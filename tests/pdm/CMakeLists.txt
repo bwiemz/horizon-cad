@@ -3,6 +3,7 @@ add_executable(hz_pdm_tests
     test_SyncEngine.cpp
     test_SemanticDiff.cpp
     test_VaultManifest.cpp
+    test_Sha256.cpp
 )
 
 target_link_libraries(hz_pdm_tests

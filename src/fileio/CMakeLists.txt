@@ -11,8 +11,21 @@ add_custom_command(
 )
 add_custom_target(hz_fileio_fbs DEPENDS ${HZ_FBS_GENERATED_DIR}/hzbinary_generated.h)
 
-add_library(hz_fileio STATIC
+# Crash-safe file writing, a library of its own so that modules the formats
+# do not belong in (pdm) can use it without linking them.
+add_library(hz_atomic_file STATIC
     src/AtomicFile.cpp
+)
+
+target_include_directories(hz_atomic_file
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+add_library(Horizon::AtomicFile ALIAS hz_atomic_file)
+
+add_library(hz_fileio STATIC
     src/NativeFormat.cpp
     src/BinaryFormat.cpp
     src/StlExporter.cpp
@@ -42,6 +55,7 @@ add_dependencies(hz_fileio hz_fileio_fbs)
 
 target_link_libraries(hz_fileio
     PUBLIC
+        Horizon::AtomicFile
         Horizon::Math
         Horizon::Geometry
         Horizon::Topology

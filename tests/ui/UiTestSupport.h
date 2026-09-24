@@ -50,6 +50,7 @@ public:
 
     bool seen() const { return m_seen; }
     const QString& text() const { return m_text; }
+    const QString& informativeText() const { return m_informativeText; }
 
     /// Run the event loop until a dialog has been answered or `ms` elapse.
     void waitForDialog(int ms) {
@@ -68,6 +69,7 @@ private:
             m_timer.stop();
             m_seen = true;
             m_text = box->text();
+            m_informativeText = box->informativeText();
             button->click();
             return;
         }
@@ -81,6 +83,7 @@ private:
     QElapsedTimer m_clock;
     bool m_seen = false;
     QString m_text;
+    QString m_informativeText;
 };
 
 /// What to put in a feature form before accepting it, built up by chaining:

@@ -48,6 +48,13 @@
       }
     },
     {
+      "name": "ci-windows-release",
+      "inherits": "ci-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "linux-default",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {

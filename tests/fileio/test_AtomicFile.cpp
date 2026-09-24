@@ -17,6 +17,8 @@
 #endif
 
 namespace fs = std::filesystem;
+using hz::io::createFileExclusively;
+using hz::io::ExclusiveCreate;
 using hz::io::pathFromUtf8;
 using hz::io::writeFileAtomically;
 
@@ -228,4 +230,29 @@ TEST(AtomicFileTest, FailedNativeSaveKeepsThePreviousFile) {
 
     EXPECT_FALSE(saved);
     EXPECT_EQ(readAll(path), before) << "a failed save must not touch the saved file";
+}
+
+// The first create claims the path; later ones find it taken and leave it
+// alone. The vault's check-out locks rest on this.
+TEST(AtomicFileTest, ExclusiveCreateClaimsThePathOnce) {
+    ScratchDir dir;
+    const fs::path lock = dir.path() / "part.lock";
+    std::string error;
+    ASSERT_EQ(createFileExclusively(lock, "alice", &error), ExclusiveCreate::Created) << error;
+    EXPECT_EQ(readAll(lock), "alice");
+    EXPECT_EQ(createFileExclusively(lock, "bob", &error), ExclusiveCreate::Exists);
+    EXPECT_EQ(readAll(lock), "alice") << "the second create changed the file";
+
+    // Anything at the path counts as taken, a directory included.
+    fs::create_directories(dir.path() / "folder");
+    EXPECT_EQ(createFileExclusively(dir.path() / "folder", "x"), ExclusiveCreate::Exists);
+}
+
+TEST(AtomicFileTest, ExclusiveCreateInAMissingDirectoryFails) {
+    ScratchDir dir;
+    std::string error;
+    EXPECT_EQ(createFileExclusively(dir.path() / "missing" / "part.lock", "x", &error),
+              ExclusiveCreate::Failed);
+    EXPECT_NE(error.find("cannot create"), std::string::npos) << error;
+    EXPECT_EQ(entryCount(dir.path()), 0u);
 }

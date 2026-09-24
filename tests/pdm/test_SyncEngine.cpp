@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include "horizon/pdm/RevisionArchive.h"
 #include "horizon/pdm/SyncEngine.h"
@@ -52,6 +55,33 @@ protected:
         std::string out;
         archive.contentAt(index, out);
         return out;
+    }
+
+    static void writeText(const fs::path& file, const std::string& text) {
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        out << text;
+    }
+
+    /// An archive as a pre-Phase-119 build wrote it, with FNV-1a hashes.
+    static void writeLegacyArchive(const std::string& root, const std::string& docId,
+                                   const std::vector<std::string>& revs) {
+        const fs::path dir = fs::path(root) / (docId + ".hzarchive");
+        fs::create_directories(dir);
+        std::string manifest = "[";
+        for (size_t i = 0; i < revs.size(); ++i) {
+            writeText(dir / ("rev_" + std::to_string(i) + ".blob"), revs[i]);
+            std::uint64_t h = 1469598103934665603ULL;
+            for (unsigned char c : revs[i]) {
+                h ^= c;
+                h *= 1099511628211ULL;
+            }
+            char hash[17];
+            std::snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(h));
+            if (i > 0) manifest += ",";
+            manifest +=
+                R"({"index":)" + std::to_string(i) + R"(,"author":"old","hash":")" + hash + R"("})";
+        }
+        writeText(dir / "manifest.json", manifest + "]");
     }
 
     std::string m_local;
@@ -144,8 +174,7 @@ TEST_F(SyncEngineTest, DivergentHistoriesConflictAndStayUntouched) {
 TEST_F(SyncEngineTest, RemoteLockByOtherUserBlocksPush) {
     commitTo(m_local, "hub", "rev0");
 
-    const std::string manifestPath = (fs::path(m_remote) / "vault.manifest.json").string();
-    VaultManifest locks(manifestPath);
+    VaultManifest locks((fs::path(m_remote) / "locks").string());
     ASSERT_TRUE(locks.checkOut("hub", "alice"));
 
     FileSystemEndpoint remote(m_remote);
@@ -257,7 +286,8 @@ public:
             RevisionInfo info;
             info.author = "other-machine";
             info.message = "raced";
-            m_inner.pushRevision(docId, info, m_sneak);
+            info.contentHash = RevisionArchive::hashContent(m_sneak);
+            EXPECT_TRUE(m_inner.pushRevision(docId, info, m_sneak));
             m_raced = true;
             return count;  // the engine's snapshot predates the other push
         }
@@ -315,4 +345,128 @@ TEST_F(SyncEngineTest, SyncSurvivesOfflineEdits) {
     const SyncReport report = engine.sync();
     EXPECT_EQ(report.pushed, 2);
     EXPECT_EQ(countOf(m_remote, "arm"), 3);
+}
+
+// -- Integrity (Phase 119) ----------------------------------------------------
+
+// A local archive whose manifest cannot be trusted reads as empty. Fetching
+// into it would write over its history, so it is reported and left alone.
+TEST_F(SyncEngineTest, CorruptLocalArchiveIsLeftAlone) {
+    commitTo(m_local, "cam", "mine0");
+    commitTo(m_remote, "cam", "theirs0");
+    commitTo(m_remote, "cam", "theirs1");
+    const fs::path manifest = fs::path(m_local) / "cam.hzarchive" / "manifest.json";
+    writeText(manifest, "garbage");
+
+    FileSystemEndpoint remote(m_remote);
+    SyncEngine engine(m_local, remote);
+    const SyncReport report = engine.sync();
+
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cam");
+    EXPECT_EQ(report.fetched, 0);
+    std::ifstream in(fs::path(m_local) / "cam.hzarchive" / "rev_0.blob");
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(in), {}), "mine0");
+}
+
+// Likewise a remote archive that cannot be trusted is not pushed into.
+TEST_F(SyncEngineTest, CorruptRemoteArchiveIsLeftAlone) {
+    commitTo(m_remote, "cam", "theirs0");
+    commitTo(m_local, "cam", "mine0");
+    commitTo(m_local, "cam", "mine1");
+    writeText(fs::path(m_remote) / "cam.hzarchive" / "manifest.json", "[{\"index\":5}]");
+
+    FileSystemEndpoint remote(m_remote);
+    EXPECT_EQ(remote.revisionCount("cam"), -1);
+    SyncEngine engine(m_local, remote);
+    const SyncReport report = engine.sync();
+
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cam");
+    EXPECT_EQ(report.pushed, 0);
+    EXPECT_EQ(contentOf(m_remote, "cam", 0), "") << "the corrupt remote now reads as something";
+}
+
+// Content is verified before it is pushed: a local revision damaged on disk
+// does not reach the remote.
+TEST_F(SyncEngineTest, TamperedLocalRevisionIsNotPushed) {
+    commitTo(m_local, "link", "rev0");
+    commitTo(m_local, "link", "rev1");
+    writeText(fs::path(m_local) / "link.hzarchive" / "rev_1.blob", "bit rot");
+
+    FileSystemEndpoint remote(m_remote);
+    SyncEngine engine(m_local, remote);
+    const SyncReport report = engine.sync();
+
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:link");
+    EXPECT_EQ(report.pushed, 1);
+    EXPECT_EQ(countOf(m_remote, "link"), 1);
+}
+
+// A revision that rots after it was synced is caught on the next sync, on
+// either side, although the two manifests still agree about it.
+TEST_F(SyncEngineTest, RevisionsThatRotAfterSyncingAreCaught) {
+    commitTo(m_local, "cog", "rev0");
+    commitTo(m_local, "cog", "rev1");
+    FileSystemEndpoint remote(m_remote);
+    SyncEngine engine(m_local, remote);
+    ASSERT_EQ(engine.sync().pushed, 2);
+
+    writeText(fs::path(m_remote) / "cog.hzarchive" / "rev_0.blob", "rot");
+    SyncReport report = engine.sync();
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cog");
+
+    writeText(fs::path(m_remote) / "cog.hzarchive" / "rev_0.blob", "rev0");
+    writeText(fs::path(m_local) / "cog.hzarchive" / "rev_1.blob", "rot");
+    report = engine.sync();
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cog");
+
+    writeText(fs::path(m_local) / "cog.hzarchive" / "rev_1.blob", "rev1");
+    report = engine.sync();
+    EXPECT_TRUE(report.conflicts.empty());
+    EXPECT_TRUE(report.ok);
+}
+
+// The endpoint refuses content that does not match the hash it is pushed
+// with, and writes nothing.
+TEST_F(SyncEngineTest, EndpointRefusesContentNotMatchingItsHash) {
+    FileSystemEndpoint remote(m_remote);
+    RevisionInfo info;
+    info.author = "alice";
+    info.contentHash = RevisionArchive::hashContent("what was meant");
+    EXPECT_FALSE(remote.pushRevision("gear", info, "what arrived"));
+    EXPECT_EQ(countOf(m_remote, "gear"), 0);
+
+    EXPECT_TRUE(remote.pushRevision("gear", info, "what was meant"));
+    EXPECT_EQ(countOf(m_remote, "gear"), 1);
+}
+
+// A vault written before Phase 119 (FNV-1a hashes) syncs with one written
+// after (SHA-256): the same content is recognised across the two hashes, and
+// different content is still a divergence.
+TEST_F(SyncEngineTest, LegacyHashesSyncWithSha256Ones) {
+    writeLegacyArchive(m_local, "bolt", {"A", "B"});
+    commitTo(m_remote, "bolt", "A");
+
+    FileSystemEndpoint remote(m_remote);
+    SyncEngine engine(m_local, remote);
+    const SyncReport first = engine.sync();
+    EXPECT_TRUE(first.ok);
+    EXPECT_TRUE(first.conflicts.empty());
+    EXPECT_EQ(first.pushed, 1);
+    EXPECT_EQ(contentOf(m_remote, "bolt", 1), "B");
+
+    const SyncReport second = engine.sync();
+    EXPECT_TRUE(second.conflicts.empty());
+    EXPECT_EQ(second.pushed + second.fetched, 0);
+
+    writeLegacyArchive(m_local, "nut", {"A", "local"});
+    commitTo(m_remote, "nut", "A");
+    commitTo(m_remote, "nut", "remote");
+    const SyncReport diverged = engine.syncDocument("nut");
+    ASSERT_EQ(diverged.conflicts.size(), 1u);
+    EXPECT_EQ(diverged.conflicts[0], "nut");
 }

@@ -189,7 +189,7 @@ the application, so users cannot reach it yet. Ratings:
 | render — OpenGL path | stable | The shipping viewport |
 | render — Vulkan / GPU tessellation / path tracer | experimental | Staged bring-up, opt-in |
 | simulation (FEA) | prototype, library-only | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench. Meshes a solid's bounding box, so only boxes are analysed correctly |
-| pdm / sync / collaboration | experimental, library-only | Deliberately conservative: append-only, hash-verified, pessimistic locks, no merges. Lock acquisition is not yet atomic across processes (Phase 119) |
+| pdm / sync / collaboration | experimental, library-only | Deliberately conservative: append-only, pessimistic locks, no merges. A check-out is one exclusive file creation, so two users cannot both win it; content is verified against its SHA-256 on every read and push; an archive or lock that cannot be read fails closed instead of reading as empty or free |
 | kinematics | prototype, library-only | Serial chains only |
 | cam | prototype, library-only | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet. Not safe to run on a machine (Phase 121) |
 | plugin registry | experimental, library-only | Fail-closed validation without code execution; the execution bridge is future work |
@@ -332,6 +332,10 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
 | 114 | Done | Off-thread work: a model rebuild that would freeze the window runs on a worker, from a snapshot, with progress and cancel, applied only if the part has not changed; large STEP imports and interference checks run in the background; atomic ID counters. Milestone 4 complete |
 | 115 | Done | One version: set only in `project()`, generated into a header for the About box, `--version` and the log, and into the installer through CPack; the source revision is kept current on every build. The CPack settings file shadowed CMake's CPack module, so no installer configuration had ever been written. The CHANGELOG's "1.0.0" is 0.1.0 |
+| 116 | Done | Packaging: an application icon (window, executable, installer, Linux desktop); Linux desktop entry, AppStream metadata and MIME types (validated); install rules for translations, licences, third-party notices and every bundled library's licence text, and on Windows the Qt runtime; an AppImage script (linuxdeploy); a test of the install tree |
+| 117 | Done | Release pipeline: a tag `vX.Y.Z` builds, tests and packages Windows (NSIS) and Linux (AppImage, tarball) with SHA-256 checksums into a draft release; a Linux Release CI job with `-Werror`; the vcpkg binary cache works (it restored nothing, so Qt was rebuilt from source in every job); Dependabot for actions; [docs/RELEASING.md](docs/RELEASING.md) |
+| 118 | Done | Governance: a [security policy](SECURITY.md) (private reporting; scripts and plugins are not sandboxed), a [code of conduct](CODE_OF_CONDUCT.md), issue forms, a pull request template with the CI gates, and a current [CONTRIBUTING](docs/CONTRIBUTING.md). The licence is the GNU GPL v3 or later: `LICENSE` holds its full text (it held a fragment), and the README, the About box and the AppStream metadata say so. Milestone 5 complete |
+| 119 | Done | PDM integrity: a check-out is one exclusive file creation, so two users racing for a document cannot both get it (with the old lock file, both did); a damaged lock or archive fails closed, where an archive used to read as empty and its next commit overwrote the history; SHA-256 content hashes, verified on every read and push, with old FNV-1a archives still readable |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
@@ -340,8 +344,20 @@ with per-phase implementation plans under
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss changes before submitting a pull request.
+Contributions are welcome. Please open an issue to discuss a change before
+submitting a pull request, and see [CONTRIBUTING](docs/CONTRIBUTING.md) for
+how the code is laid out and what CI checks. Security problems go through the
+[security policy](SECURITY.md), not public issues. Everyone taking part
+follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT
+Horizon CAD is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. The full text is in [LICENSE](LICENSE).
+
+The libraries it is built on keep their own licences; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -17,6 +17,23 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
+
+- **The vault could give one document to two users, and lose a history
+  (119).**
+  - A check-out rewrote a shared lock file, so two users checking out at the
+    same moment were both given the lock. Each lock is now a file of its own,
+    created exclusively, and exactly one user wins.
+  - A lock file that could not be read made every document look free. A
+    revision archive that could not be read looked empty, and the next
+    commit wrote over its history. Both now fail closed: an unreadable lock
+    counts as held, and an unreadable archive refuses commits.
+  - Revisions are hashed with SHA-256, and content is checked against its
+    hash whenever it is read, pushed or fetched. Archives written with the
+    old FNV-1a hash still load, verify and sync.
+  - A second handle on an archive appends after the first's commit instead
+    of overwriting it.
+
 ## Unreleased — Production readiness, Milestone 5 (Phases 115–118)
 
 - **The version was not one number, and the installer was never configured
@@ -30,6 +47,37 @@ work, not "post-1.0".
     are now `CPackSettings.cmake`, included first.
   - The CHANGELOG's "1.0.0" is now 0.1.0, the version the code has always
     had.
+- **A package that installs like an application (116).**
+  - Horizon CAD has an icon: on the window, the executable, the installer
+    and the Linux desktop.
+  - On Linux it has a desktop entry, AppStream metadata and MIME types for
+    its files.
+  - A package now carries its translations, its licence, the third-party
+    notices and the licence text of every library in it; on Windows, the Qt
+    runtime too.
+  - A script builds an AppImage with linuxdeploy.
+  - A test installs the build and checks what a package would hold.
+- **A release pipeline, and CI that no longer rebuilds Qt every time
+  (117).**
+  - The vcpkg binary cache restored nothing. It now keeps built packages
+    between runs.
+  - CI adds a Linux Release build with `-Werror`. It turned up a GCC false
+    positive, now avoided.
+  - A tag `vX.Y.Z` builds, tests and packages Windows and Linux (installer,
+    AppImage and tarball), with SHA-256 checksums, into a draft release.
+  - Dependabot keeps the workflows' actions current.
+  - `docs/RELEASING.md` says how to cut a release.
+- **How to take part (118).**
+  - A security policy: vulnerabilities are reported privately, and the
+    policy says that scripts and plugins are not sandboxed.
+  - A code of conduct, the Contributor Covenant.
+  - Issue forms for bugs and feature requests, and a pull request template
+    with the CI gates as a checklist.
+  - CONTRIBUTING describes the current build, tool API and tests, and how to
+    pass every CI gate locally.
+  - The licence is the GNU GPL v3 or later. `LICENSE` held only a fragment
+    of it and now holds the full text; the README said MIT and now states
+    the GPL. The About box and the Linux desktop metadata say so too.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-horizon-drawing">
+    <comment>Horizon CAD drawing</comment>
+    <glob pattern="*.hcad"/>
+  </mime-type>
+  <mime-type type="application/x-horizon-part">
+    <comment>Horizon CAD part</comment>
+    <glob pattern="*.hzpart"/>
+  </mime-type>
+  <mime-type type="application/x-horizon-assembly">
+    <comment>Horizon CAD assembly</comment>
+    <glob pattern="*.hzasm"/>
+  </mime-type>
+</mime-info>

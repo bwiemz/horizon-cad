@@ -3,6 +3,7 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
 #include <QLocale>
 #include <QPalette>
 #include <QSettings>
@@ -81,6 +82,9 @@ static int run(int argc, char* argv[]) {
     app.setApplicationName("Horizon CAD");
     app.setOrganizationName("Horizon CAD Project");
     app.setApplicationVersion(QString::fromLatin1(hz::version::kString));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/horizon-cad.png")));
+    // Wayland and X11 match the window to its .desktop entry by this name.
+    app.setDesktopFileName(QStringLiteral("io.github.bwiemz.HorizonCAD"));
 
     // Logging comes first so everything after it — including Qt's own
     // warnings — lands in the log file.

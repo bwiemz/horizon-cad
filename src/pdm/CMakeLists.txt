@@ -3,6 +3,7 @@ add_library(hz_pdm STATIC
     src/SemanticDiff.cpp
     src/VaultManifest.cpp
     src/SyncEngine.cpp
+    src/Sha256.cpp
 )
 
 target_include_directories(hz_pdm
@@ -13,6 +14,7 @@ target_include_directories(hz_pdm
 
 target_link_libraries(hz_pdm
     PRIVATE
+        Horizon::AtomicFile
         nlohmann_json::nlohmann_json
 )
 
