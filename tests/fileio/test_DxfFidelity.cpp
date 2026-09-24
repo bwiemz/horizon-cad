@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -15,6 +16,8 @@
 #include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/BlockTable.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -352,6 +355,58 @@ TEST(DxfFidelityTest, NestedBlocksThatMultiplyAreCutAtTheBudget) {
     EXPECT_TRUE(contains(in.report.skipped, "the rest were left out"));
 }
 
+// A spline edge followed by more edges. The spline's fit data (97, written
+// even when it is 0) was left unread, which stopped the path there: the
+// lines after it were lost and the hatch dropped as damaged.
+TEST(DxfFidelityTest, AHatchSplineEdgeWithFitDataDoesNotEndItsPath) {
+    Loaded in(
+        dxf("0\nHATCH\n8\n0\n10\n0\n20\n0\n30\n0\n2\nSOLID\n70\n1\n71\n0\n91\n1\n"
+            "92\n1\n93\n3\n"
+            "72\n4\n94\n2\n73\n0\n74\n0\n95\n6\n96\n3\n"
+            "40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n"
+            "10\n0\n20\n0\n10\n10\n20\n0\n10\n10\n20\n10\n"
+            "97\n1\n11\n8\n21\n2\n12\n1\n22\n0\n13\n0\n23\n1\n"
+            "72\n1\n10\n10\n20\n10\n11\n0\n21\n10\n"
+            "72\n1\n10\n0\n20\n10\n11\n0\n21\n0\n"
+            "97\n0\n75\n1\n76\n1\n98\n0\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto hatches = in.all<hz::draft::DraftHatch>();
+    ASSERT_EQ(hatches.size(), 1u) << "the hatch is not dropped";
+    EXPECT_NEAR(std::abs(area(hatches[0]->boundary())), 100.0, 1e-9)
+        << "the spline's control polygon and both lines";
+}
+
+// A block already in the drawing, made only of inserts, ten to a level and
+// nine levels deep, over an empty block: a billion placements with nothing
+// placed. Only placed entities were counted, so none of it met the budget,
+// and importing a DXF that inserts it inside a block did not end.
+TEST(DxfFidelityTest, NestedInsertsWithNothingInThemAreCutAtTheBudget) {
+    const FlattenBudget budget(1000);
+    hz::doc::Document doc;
+    auto below = std::make_shared<hz::draft::BlockDefinition>();
+    below->name = "C0";
+    doc.draftDocument().blockTable().addBlock(below);
+    for (int level = 1; level <= 9; ++level) {
+        auto def = std::make_shared<hz::draft::BlockDefinition>();
+        def->name = "C" + std::to_string(level);
+        for (int k = 0; k < 10; ++k) {
+            def->entities.push_back(std::make_shared<hz::draft::DraftBlockRef>(below, Vec2(k, 0)));
+        }
+        doc.draftDocument().blockTable().addBlock(def);
+        below = def;
+    }
+    const std::string text = dxf("0\nINSERT\n8\n0\n2\nOUTER\n10\n0\n20\n0\n",
+                                 "0\nBLOCK\n8\n0\n2\nOUTER\n70\n0\n10\n0\n20\n0\n"
+                                 "0\nINSERT\n8\n0\n2\nC9\n10\n0\n20\n0\n0\nENDBLK\n8\n0\n");
+    ImportReport report;
+    std::string error;
+    const auto start = std::chrono::steady_clock::now();
+    ASSERT_TRUE(hz::io::DxfFormat::loadFromString(text, doc, &error, &report)) << error;
+    EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(),
+              10.0);
+    EXPECT_TRUE(contains(report.skipped, "the rest were left out"));
+}
+
 // DXF takes only 24 lineweights (hundredths of a millimetre). A width of 1.5
 // was written as 150; it is now the nearest, 158. A layer's width is written
 // too, and read back.
@@ -391,5 +446,39 @@ TEST(DxfFidelityTest, LineweightsAreOnesADxfReaderAccepts) {
     EXPECT_NEAR(back.layerManager().getLayer("0")->lineWidth, 1.0, 1e-12) << "the default";
     ASSERT_FALSE(back.draftDocument().entities().empty());
     EXPECT_NEAR(back.draftDocument().entities().front()->lineWidth(), 1.58, 1e-12);
+    std::filesystem::remove(path);
+}
+
+// A thin width was written as 0, the hairline weight, which reads back as no
+// width: ByLayer on an entity. It is written as the thinnest weight, 5. A
+// layer with no width reads as the default, and is written as the default.
+TEST(DxfFidelityTest, AThinWidthIsNotWrittenAsNoWidth) {
+    hz::doc::Document doc;
+    hz::draft::LayerProperties none;
+    none.name = "None";
+    none.lineWidth = 0.0;
+    doc.layerManager().addLayer(none);
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    line->setLineWidth(0.02);
+    doc.draftDocument().addEntity(line);
+
+    const auto path = std::filesystem::temp_directory_path() / "hz_dxf_thin_width.dxf";
+    std::string error;
+    ASSERT_TRUE(hz::io::DxfFormat::save(path.string(), doc, &error)) << error;
+    std::ifstream file(path);
+    std::vector<std::string> lines;
+    for (std::string l; std::getline(file, l);) lines.push_back(l);
+    for (size_t k = 0; k + 1 < lines.size(); k += 2) {
+        if (std::stoi(lines[k]) == 370) {
+            EXPECT_NE(std::stoi(lines[k + 1]), 0);
+        }
+    }
+
+    hz::doc::Document back;
+    ASSERT_TRUE(hz::io::DxfFormat::load(path.string(), back, &error)) << error;
+    ASSERT_FALSE(back.draftDocument().entities().empty());
+    EXPECT_NEAR(back.draftDocument().entities().front()->lineWidth(), 0.05, 1e-12) << "not ByLayer";
+    ASSERT_NE(back.layerManager().getLayer("None"), nullptr);
+    EXPECT_NEAR(back.layerManager().getLayer("None")->lineWidth, 1.0, 1e-12);
     std::filesystem::remove(path);
 }

@@ -223,30 +223,43 @@ without it.
     arcs;
   - an edge path's 93 edges, each by its 72 type: lines; circular and
     elliptic arcs, including clockwise ones, sampled every π/16; splines,
-    by their control polygon.
+    by their control polygon, with their fit data (97, then 11/21, 12/22,
+    13/23) read past.
 
   The hatch keeps the path the file marks as outer (else the largest). The
   report says "islands inside it left out" when there were more, and
   "curved boundary brought in as segments" when a curve was sampled.
-- **Flattening has a budget** of 2,000,000 placed entities per import. It is
-  `DxfFormat::setMaxFlattenedEntities`, for tests and embedding applications.
-  Past it, flattening stops, and the report lists what was left out.
-- **Lineweights:** `dxfLineweight` writes the nearest allowed value. Layers
-  write theirs: a default-width layer is written as -3 (default), which reads
-  back as the default.
+- **Flattening has a budget** of 2,000,000 placements per import. Every
+  placement counts, a block within a block as well as an entity: a block
+  already in the drawing can be made only of inserts, and walking it
+  multiplies as much. It is `DxfFormat::setMaxFlattenedEntities`, for tests
+  and embedding applications. Past it, flattening stops, and the report
+  lists what was left out.
+- **Lineweights:** `dxfLineweight` writes the nearest allowed value other
+  than 0. The hairline 0 reads back as no width, ByLayer on an entity, so a
+  thin width is written as 5. Layers write theirs: a default-width layer, or
+  one with no width, is written as -3 (default), which reads back as the
+  default.
 - **A duplicate native ID** gives the later entity a new one
-  (`DraftEntity::newId()`), and the report says so.
+  (`DraftEntity::newId()`), and the report says so. Every ID in the file is
+  reserved before the entities are read, so the new ID is not one that a
+  later entity holds.
 - **The other readers' output is proportional to their input.** The native
   format's counts are capped (Phase 100), and the STEP reader has no
   instancing. So the DXF flattening budget is the entity budget that was
   missing.
-- **Tests:** 5 new.
+- **Tests:** 9 new.
   - DXF:
     - a hatch with an island and a seed point;
     - an edge boundary with a half circle;
+    - a spline edge with fit data, followed by lines;
     - nested blocks cut at a budget of 1,000;
-    - every 370 written is valid, and the layer widths round-trip.
-  - Native: a duplicate ID.
+    - a billion nested inserts with nothing in them, cut at the same budget;
+    - every 370 written is valid, and the layer widths round-trip;
+    - a thin width is not written as no width.
+  - Native:
+    - a duplicate ID;
+    - a renumbered duplicate does not take a later entity's ID.
 
   Two new fuzz seeds cover every hatch path and edge type, and nested
   inserts.
