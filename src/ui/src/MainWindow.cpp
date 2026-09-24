@@ -87,6 +87,7 @@
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PropertyPanel.h"
 #include "horizon/ui/RadialDimensionTool.h"
+#include "horizon/ui/RecentFiles.h"
 #include "horizon/ui/RecoveryManager.h"
 #include "horizon/ui/RectArrayDialog.h"
 #include "horizon/ui/RectangleTool.h"
@@ -103,6 +104,12 @@
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
+
+namespace {
+/// saveState() layout version: bump it when docks or toolbars change, so an
+/// old saved layout is ignored instead of misplacing them.
+constexpr int kWindowStateVersion = 1;
+}  // namespace
 
 namespace {
 
@@ -253,10 +260,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_viewport->setDocument(m_document.get());
 
     // Dock panels (must exist before createMenus, which adds toggleViewAction).
+    // Each dock is named: restoreState() finds them by name.
     m_propertyPanel = new PropertyPanel(this, this);
+    m_propertyPanel->setObjectName(QStringLiteral("PropertyPanel"));
     addDockWidget(Qt::RightDockWidgetArea, m_propertyPanel);
 
     m_layerPanel = new LayerPanel(this, this);
+    m_layerPanel->setObjectName(QStringLiteral("LayerPanel"));
     addDockWidget(Qt::RightDockWidgetArea, m_layerPanel);
 
     tabifyDockWidget(m_propertyPanel, m_layerPanel);
@@ -307,6 +317,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Start with the Select tool active.
     onSelectTool();
+
+    restoreWindowLayout();
 }
 
 MainWindow::~MainWindow() = default;
@@ -358,6 +370,11 @@ void MainWindow::createMenus() {
 
     QAction* openAction = fileMenu->addAction(tr("&Open..."), this, &MainWindow::onOpenFile);
     openAction->setShortcut(QKeySequence::Open);
+
+    m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));
+    m_recentMenu->setObjectName(QStringLiteral("recentFilesMenu"));
+    connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildRecentMenu);
+    rebuildRecentMenu();
 
     QAction* saveAction = fileMenu->addAction(tr("&Save"), this, &MainWindow::onSaveFile);
     saveAction->setShortcut(QKeySequence::Save);
@@ -439,6 +456,7 @@ void MainWindow::createMenus() {
     viewMenu->addSeparator();
     viewMenu->addAction(tr("Fit &All"), this, &MainWindow::onFitAll);
     viewMenu->addSeparator();
+    viewMenu->addAction(m_featureTreePanel->toggleViewAction());
     viewMenu->addAction(m_propertyPanel->toggleViewAction());
     viewMenu->addAction(m_layerPanel->toggleViewAction());
 
@@ -534,15 +552,32 @@ void MainWindow::createRibbonBar() {
         return act;
     };
 
-    auto addAction = [](QToolBar* tb, const QString& iconName, const QString& tooltip,
-                        auto* receiver, auto slot, const QKeySequence& shortcut = {}) -> QAction* {
-        auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);
+    // A command the menus already have (the same shortcut) is the menu's own
+    // action, shown on the ribbon too: two actions with one shortcut make it
+    // ambiguous, and Qt then runs neither.
+    auto menuActionFor = [this](const QKeySequence& shortcut) -> QAction* {
+        if (shortcut.isEmpty()) return nullptr;
+        for (QAction* existing : menuBar()->findChildren<QAction*>()) {
+            if (existing->shortcut() == shortcut) return existing;
+        }
+        return nullptr;
+    };
+    auto addAction = [&menuActionFor](QToolBar* tb, const QString& iconName, const QString& tooltip,
+                                      auto* receiver, auto slot,
+                                      const QKeySequence& shortcut = {}) -> QAction* {
+        QAction* act = menuActionFor(shortcut);
+        if (act != nullptr) {
+            act->setIcon(IconGenerator::icon(iconName));
+            tb->addAction(act);
+        } else {
+            act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);
+            if (!shortcut.isEmpty()) act->setShortcut(shortcut);
+        }
         act->setObjectName(QStringLiteral("action_") + iconName);  // for tests and automation
         act->setToolTip(
             shortcut.isEmpty()
                 ? tooltip
                 : QString("%1 (%2)").arg(tooltip, shortcut.toString(QKeySequence::NativeText)));
-        if (!shortcut.isEmpty()) act->setShortcut(shortcut);
         return act;
     };
 
@@ -1096,6 +1131,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
             return;
         }
     }
+    saveWindowLayout();
     event->accept();
 }
 
@@ -1128,8 +1164,11 @@ void MainWindow::onOpenFile() {
            "Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;"
            "Horizon Assemblies (*.hzasm);;DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
+    openPath(fileName);
+}
 
-    std::string path = fileName.toStdString();
+bool MainWindow::openPath(const QString& fileName) {
+    const std::string path = fileName.toStdString();
 
     // If the file is already open, just focus its tab.
     for (size_t i = 0; i < m_tabs.size(); ++i) {
@@ -1141,7 +1180,8 @@ void MainWindow::onOpenFile() {
                                         ec) &&
             !ec) {
             m_tabBar->setCurrentIndex(static_cast<int>(i));
-            return;
+            RecentFiles::add(fileName);
+            return true;
         }
     }
 
@@ -1149,7 +1189,7 @@ void MainWindow::onOpenFile() {
         auto assembly = m_docManager.openAssembly(path);
         if (!assembly) {
             reportFileError(tr("Could not open"), path, m_lastLoadError);
-            return;
+            return false;
         }
         // The manager dedups by canonical path — an existing instance means
         // some tab already shows this assembly; focus it instead of adding
@@ -1157,7 +1197,8 @@ void MainWindow::onOpenFile() {
         for (size_t i = 0; i < m_tabs.size(); ++i) {
             if (m_tabs[i].assembly == assembly) {
                 m_tabBar->setCurrentIndex(static_cast<int>(i));
-                return;
+                RecentFiles::add(fileName);
+                return true;
             }
         }
         const io::ImportReport report = m_lastLoadReport;
@@ -1167,7 +1208,8 @@ void MainWindow::onOpenFile() {
         addDocumentTab(std::move(backing), std::move(assembly),
                        tabTitleForPath(path, tr("Assembly")));
         showImportReport(QFileInfo(fileName).fileName(), report);
-        return;
+        RecentFiles::add(fileName);
+        return true;
     }
 
     if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
@@ -1177,13 +1219,14 @@ void MainWindow::onOpenFile() {
         if (!io::DxfFormat::load(path, *document, &error, &report)) {
             m_docManager.closeDocument(document);
             reportFileError(tr("Could not open"), path, error);
-            return;
+            return false;
         }
         document->setFilePath(path);
         document->setDirty(false);
         addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Drawing")));
         showImportReport(QFileInfo(fileName).fileName(), report);
-        return;
+        RecentFiles::add(fileName);
+        return true;
     }
 
     // .hcad and .hzpart both load through NativeFormat (full document —
@@ -1191,18 +1234,68 @@ void MainWindow::onOpenFile() {
     auto document = m_docManager.openPart(path);
     if (!document) {
         reportFileError(tr("Could not open"), path, m_lastLoadError);
-        return;
+        return false;
     }
     // Dedup hit → the document is already shown in some tab; focus it.
     for (size_t i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs[i].document == document) {
             m_tabBar->setCurrentIndex(static_cast<int>(i));
-            return;
+            RecentFiles::add(fileName);
+            return true;
         }
     }
     const io::ImportReport report = m_lastLoadReport;
     addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Document")));
     showImportReport(QFileInfo(fileName).fileName(), report);
+    RecentFiles::add(fileName);
+    return true;
+}
+
+void MainWindow::openFiles(const QStringList& fileNames) {
+    for (const QString& fileName : fileNames) openPath(fileName);
+}
+
+void MainWindow::rebuildRecentMenu() {
+    m_recentMenu->clear();
+    const QStringList files = RecentFiles::list();
+    for (int i = 0; i < files.size(); ++i) {
+        const QString& file = files[i];
+        const QFileInfo info(file);
+        // &1 to &9 are mnemonics; the tenth has none.
+        const QString label =
+            i < 9 ? tr("&%1 %2").arg(i + 1).arg(info.fileName()) : info.fileName();
+        QAction* item = m_recentMenu->addAction(label);
+        item->setToolTip(QDir::toNativeSeparators(file));
+        item->setStatusTip(QDir::toNativeSeparators(file));
+        connect(item, &QAction::triggered, this, [this, file] {
+            if (!QFileInfo::exists(file)) {
+                RecentFiles::remove(file);
+                reportFileError(tr("Could not open"), file.toStdString(),
+                                "the file no longer exists; it has been taken off the list");
+                return;
+            }
+            openPath(file);
+        });
+    }
+    if (files.isEmpty()) {
+        m_recentMenu->addAction(tr("No Recent Files"))->setEnabled(false);
+        return;
+    }
+    m_recentMenu->addSeparator();
+    connect(m_recentMenu->addAction(tr("&Clear Recent Files")), &QAction::triggered, this,
+            [] { RecentFiles::clear(); });
+}
+
+void MainWindow::saveWindowLayout() const {
+    QSettings settings;
+    settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
+    settings.setValue(QStringLiteral("window/state"), saveState(kWindowStateVersion));
+}
+
+void MainWindow::restoreWindowLayout() {
+    const QSettings settings;
+    restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray());
+    restoreState(settings.value(QStringLiteral("window/state")).toByteArray(), kWindowStateVersion);
 }
 
 bool MainWindow::saveActiveDocument() {
@@ -1220,6 +1313,7 @@ bool MainWindow::saveActiveDocument() {
             m_document->setDirty(false);  // the undo stack's saved state
             m_docManager.noteSaved(m_assembly);
             forgetSnapshot(*tab);
+            RecentFiles::add(QString::fromStdString(m_assembly->filePath()));
             m_statusPrompt->setText(tr("Assembly saved."));
             updateWindowTitle();
             return true;
@@ -1249,6 +1343,7 @@ bool MainWindow::saveActiveDocument() {
         m_document->setDirty(false);
         m_docManager.noteSaved(m_document);
         forgetSnapshot(*tab);
+        RecentFiles::add(QString::fromStdString(path));
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
         return true;

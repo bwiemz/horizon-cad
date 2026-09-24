@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
 #include <QLocale>
@@ -100,10 +101,25 @@ static int run(int argc, char* argv[]) {
         spdlog::info("UI language: {}", uiLanguage.toStdString());
     }
 
+    // horizon [file...]: files named on the command line open in tabs.
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Horizon CAD"));
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument(QStringLiteral("files"),
+                                 QCoreApplication::translate("main", "Files to open."),
+                                 QStringLiteral("[files...]"));
+    parser.process(app);
+    const QStringList files = parser.positionalArguments();
+
     hz::ui::MainWindow window;
     window.show();
-    // Once the window is on screen: offer back what a crashed session left.
-    QTimer::singleShot(0, &window, &hz::ui::MainWindow::offerRecovery);
+    // Once the window is on screen: offer back what a crashed session left,
+    // then open what was asked for.
+    QTimer::singleShot(0, &window, [&window, files] {
+        window.offerRecovery();
+        window.openFiles(files);
+    });
     return app.exec();
 }
 

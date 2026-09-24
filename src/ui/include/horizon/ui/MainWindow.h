@@ -17,6 +17,7 @@ class QCloseEvent;
 class QTimer;
 class QLabel;
 class QTabBar;
+class QMenu;
 
 namespace hz::ui {
 
@@ -45,6 +46,14 @@ public:
 
     /// Autosave and crash recovery for this window's documents.
     const RecoveryManager& recovery() const { return *m_recovery; }
+
+    /// Open @p fileName (a drawing, part, assembly or DXF) in a tab of its
+    /// own, or show its tab if it is already open, and remember it in File ▸
+    /// Open Recent. Reports a failure to the user and returns false.
+    bool openPath(const QString& fileName);
+
+    /// Open each of @p fileNames, as from the command line.
+    void openFiles(const QStringList& fileNames);
 
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
@@ -202,6 +211,14 @@ private:
 
     DocTab* activeTab();
     bool saveActiveDocument();
+
+    /// File ▸ Open Recent, rebuilt each time it opens.
+    void rebuildRecentMenu();
+
+    /// The window's size and position and where its docks are, kept across
+    /// sessions.
+    void saveWindowLayout() const;
+    void restoreWindowLayout();
     std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
     bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
@@ -299,6 +316,7 @@ private:
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
+    QMenu* m_recentMenu = nullptr;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

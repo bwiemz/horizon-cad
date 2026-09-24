@@ -30,6 +30,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_ImportExport.cpp
         test_ViewportGraphics.cpp
         test_Drafting2D.cpp
+        test_AppEssentials.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

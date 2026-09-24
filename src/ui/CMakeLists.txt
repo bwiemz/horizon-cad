@@ -57,9 +57,11 @@ add_library(hz_ui STATIC
     include/horizon/ui/FeatureForm.h
     include/horizon/ui/LocaleManager.h
     include/horizon/ui/CommandPalette.h
+    include/horizon/ui/RecentFiles.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
+    src/RecentFiles.cpp
     src/MainWindow.cpp
     src/FeatureForm.cpp
     src/LocaleManager.cpp
