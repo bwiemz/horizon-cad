@@ -9,6 +9,7 @@
 #include <QStyleFactory>
 #include <QSurfaceFormat>
 #include <QSysInfo>
+#include <QTimer>
 
 #include "horizon/ui/Application.h"
 #include "horizon/ui/LocaleManager.h"
@@ -101,6 +102,8 @@ static int run(int argc, char* argv[]) {
 
     hz::ui::MainWindow window;
     window.show();
+    // Once the window is on screen: offer back what a crashed session left.
+    QTimer::singleShot(0, &window, &hz::ui::MainWindow::offerRecovery);
     return app.exec();
 }
 

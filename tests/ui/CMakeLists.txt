@@ -23,6 +23,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         window_tests_main.cpp
         test_Application.cpp
         test_MainWindowDocuments.cpp
+        test_Recovery.cpp
         test_ViewportGraphics.cpp
     )
     target_link_libraries(hz_ui_window_tests

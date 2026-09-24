@@ -5,6 +5,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/Application.h
     include/horizon/ui/Logging.h
     include/horizon/ui/MainWindow.h
+    include/horizon/ui/RecoveryManager.h
     include/horizon/ui/ViewportWidget.h
     include/horizon/ui/Tool.h
     include/horizon/ui/ToolManager.h
@@ -57,6 +58,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/CommandPalette.h
     src/Application.cpp
     src/Logging.cpp
+    src/RecoveryManager.cpp
     src/MainWindow.cpp
     src/LocaleManager.cpp
     src/CommandPalette.cpp

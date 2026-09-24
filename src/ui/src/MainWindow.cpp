@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QActionGroup>
 #include <QCloseEvent>
@@ -15,11 +16,15 @@
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabBar>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <filesystem>
@@ -76,6 +81,7 @@
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PropertyPanel.h"
 #include "horizon/ui/RadialDimensionTool.h"
+#include "horizon/ui/RecoveryManager.h"
 #include "horizon/ui/RectArrayDialog.h"
 #include "horizon/ui/RectangleTool.h"
 #include "horizon/ui/RibbonBar.h"
@@ -114,6 +120,17 @@ MainWindow::MainWindow(QWidget* parent)
         return io::NativeFormat::loadAssembly(path, doc, &m_lastLoadError);
     });
 
+    // Autosave snapshots go to a per-session directory; a crash leaves them
+    // for offerRecovery() on the next start.
+    m_recovery = std::make_unique<RecoveryManager>(
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/recovery");
+    m_autosaveTimer = new QTimer(this);
+    const int autosaveSeconds = QSettings().value("autosave/intervalSeconds", 120).toInt();
+    if (autosaveSeconds > 0) {
+        connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
+        m_autosaveTimer->start(autosaveSeconds * 1000);
+    }
+
     // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
     m_tabBar = new QTabBar(this);
@@ -135,8 +152,8 @@ MainWindow::MainWindow(QWidget* parent)
     // AFTER the panels exist (below) — addTab would otherwise fire
     // currentChanged into slots that touch not-yet-created widgets.
     m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
-    m_document->setChangeCallback([this] { refreshModifiedIndicators(); });
-    m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1")});
+    watchDocument(m_document);
+    m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1"), m_nextRecoveryKey++});
     m_tabBar->addTab(tr("Drawing 1"));
     m_viewport->setDocument(m_document.get());
 
@@ -659,10 +676,8 @@ QString MainWindow::tabTitleForPath(const std::string& path, const QString& fall
 int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                std::shared_ptr<doc::AssemblyDocument> assembly,
                                const QString& title) {
-    // Keep the modified markers current however the document changes: undo
-    // stack pushes, undo/redo, and explicit setDirty() from tools.
-    document->setChangeCallback([this] { refreshModifiedIndicators(); });
-    m_tabs.push_back(DocTab{std::move(document), std::move(assembly), title});
+    watchDocument(document);
+    m_tabs.push_back(DocTab{std::move(document), std::move(assembly), title, m_nextRecoveryKey++});
     int index = m_tabBar->addTab(title);
     m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
@@ -699,6 +714,7 @@ void MainWindow::onTabCloseRequested(int index) {
 
     DocTab tab = m_tabs[static_cast<size_t>(index)];
     tab.document->setChangeCallback(nullptr);
+    forgetSnapshot(tab);
 
     if (tab.assembly) {
         m_docManager.closeAssembly(tab.assembly);
@@ -788,7 +804,9 @@ bool MainWindow::isTabModified(const DocTab& tab) const {
 void MainWindow::refreshModifiedIndicators() {
     for (size_t i = 0; i < m_tabs.size(); ++i) {
         const DocTab& tab = m_tabs[i];
-        const QString text = isTabModified(tab) ? tab.title + QStringLiteral(" *") : tab.title;
+        QString text = tab.title;
+        if (tab.recovered) text += tr(" (recovered)");
+        if (isTabModified(tab)) text += QStringLiteral(" *");
         const int index = static_cast<int>(i);
         if (index < m_tabBar->count() && m_tabBar->tabText(index) != text) {
             m_tabBar->setTabText(index, text);
@@ -818,6 +836,113 @@ bool MainWindow::maybeSaveTab(int index) {
             return true;
         default:
             return false;
+    }
+}
+
+void MainWindow::watchDocument(const std::shared_ptr<doc::Document>& document) {
+    // Keep the modified markers current however the document changes: undo
+    // stack pushes, undo/redo, and explicit setDirty() from tools.
+    document->setChangeCallback([this, changed = document.get()] {
+        for (DocTab& tab : m_tabs) {
+            if (tab.document.get() == changed) tab.snapshotStale = true;
+        }
+        refreshModifiedIndicators();
+    });
+}
+
+void MainWindow::forgetSnapshot(DocTab& tab) {
+    m_recovery->remove(tab.recoveryKey);
+    tab.snapshotStale = true;
+    tab.recovered = false;  // saved (or closed): it is an ordinary document again
+}
+
+void MainWindow::autosave() {
+    for (DocTab& tab : m_tabs) {
+        if (!isTabModified(tab)) {
+            m_recovery->remove(tab.recoveryKey);
+            continue;
+        }
+        // An assembly's edits do not come through the document callback, so
+        // a modified assembly is simply written each time.
+        if (!tab.snapshotStale && !tab.assembly) continue;
+        const std::string& path =
+            tab.assembly ? tab.assembly->filePath() : tab.document->filePath();
+        const bool written = tab.assembly
+                                 ? m_recovery->snapshot(tab.recoveryKey, *tab.assembly, tab.title,
+                                                        QString::fromStdString(path))
+                                 : m_recovery->snapshot(tab.recoveryKey, *tab.document, tab.title,
+                                                        QString::fromStdString(path));
+        if (written) tab.snapshotStale = false;
+    }
+}
+
+void MainWindow::offerRecovery() {
+    const std::vector<RecoveryManager::Entry> orphans = m_recovery->claimOrphans();
+    if (orphans.empty()) return;
+
+    QString list;
+    for (const auto& entry : orphans) {
+        list += QStringLiteral("\n  \u2022 %1 (%2)")
+                    .arg(entry.title,
+                         QLocale().toString(entry.savedAt.toLocalTime(), QLocale::ShortFormat));
+    }
+    QMessageBox box(QMessageBox::Warning, tr("Recover Documents"),
+                    tr("Horizon CAD did not shut down properly. These documents had unsaved "
+                       "changes and can be recovered:%1")
+                        .arg(list),
+                    QMessageBox::Yes | QMessageBox::Discard | QMessageBox::Cancel, this);
+    box.button(QMessageBox::Yes)->setText(tr("Recover"));
+    box.button(QMessageBox::Cancel)->setText(tr("Later"));
+    box.setDefaultButton(QMessageBox::Yes);
+    box.setEscapeButton(QMessageBox::Cancel);
+    const int choice = box.exec();
+    if (choice == QMessageBox::Cancel) return;  // kept for the next start
+    if (choice == QMessageBox::Discard) {
+        m_recovery->discardClaimedOrphans();
+        return;
+    }
+
+    QStringList failed;
+    for (const auto& entry : orphans) {
+        const std::string snapshot = entry.snapshotPath.toStdString();
+        std::string error;
+        if (entry.type == QStringLiteral("hzasm")) {
+            auto assembly = m_docManager.newAssembly();
+            if (!io::NativeFormat::loadAssembly(snapshot, *assembly, &error)) {
+                m_docManager.closeAssembly(assembly);
+                failed << QStringLiteral("%1: %2").arg(entry.title, QString::fromStdString(error));
+                continue;
+            }
+            assembly->setFilePath(entry.originalPath.toStdString());
+            assembly->setDirty(true);
+            solveAssemblyMates(*assembly);
+            auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
+            addDocumentTab(std::move(backing), std::move(assembly), entry.title);
+            m_tabs.back().recovered = true;
+        } else {
+            auto document = m_docManager.newDocument(entry.type == QStringLiteral("hzpart")
+                                                         ? doc::DocumentType::Part
+                                                         : doc::DocumentType::Drawing);
+            if (!io::NativeFormat::load(snapshot, *document, &error)) {
+                m_docManager.closeDocument(document);
+                failed << QStringLiteral("%1: %2").arg(entry.title, QString::fromStdString(error));
+                continue;
+            }
+            // Saving writes back where the document came from; until then it
+            // is modified, and autosaved again under this session.
+            document->setFilePath(entry.originalPath.toStdString());
+            document->setDirty(true);
+            addDocumentTab(std::move(document), nullptr, entry.title);
+            m_tabs.back().recovered = true;
+        }
+    }
+    refreshModifiedIndicators();
+    m_recovery->discardClaimedOrphans();
+    if (!failed.isEmpty()) {
+        spdlog::error("Recovery failed for: {}", failed.join("; ").toStdString());
+        QMessageBox::warning(
+            this, tr("Recover Documents"),
+            tr("These documents could not be recovered:\n%1").arg(failed.join('\n')));
     }
 }
 
@@ -944,6 +1069,7 @@ bool MainWindow::saveActiveDocument() {
         if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly, &error)) {
             m_assembly->setDirty(false);
             m_docManager.noteSaved(m_assembly);
+            forgetSnapshot(*tab);
             m_statusPrompt->setText(tr("Assembly saved."));
             updateWindowTitle();
             return true;
@@ -972,6 +1098,7 @@ bool MainWindow::saveActiveDocument() {
     if (ok) {
         m_document->setDirty(false);
         m_docManager.noteSaved(m_document);
+        forgetSnapshot(*tab);
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
         return true;

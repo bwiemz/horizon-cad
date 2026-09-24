@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <QDir>
+#include <QStandardPaths>
+
 #include "horizon/ui/Application.h"
 
 int main(int argc, char** argv) {
@@ -12,6 +15,20 @@ int main(int argc, char** argv) {
     // The application the product runs under, so exception containment is
     // exercised too.
     hz::ui::Application app(argc, argv);
+
+    // Never touch the user's real data (autosave snapshots, settings), and
+    // give each test process its own directory: CTest runs them in parallel,
+    // and one test's "crashed session" must not be recovered by another.
+    QStandardPaths::setTestModeEnabled(true);
+    QCoreApplication::setOrganizationName(QStringLiteral("HorizonCadTests"));
+    QCoreApplication::setApplicationName(
+        QStringLiteral("hz_ui_window_tests-%1").arg(QCoreApplication::applicationPid()));
+
     ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    const int status = RUN_ALL_TESTS();
+    QDir data(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+    data.removeRecursively();
+    data.cdUp();
+    data.rmdir(data.absolutePath());  // the organization directory, once empty
+    return status;
 }

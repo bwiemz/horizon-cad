@@ -198,6 +198,20 @@ depth: `1+1+…+1` parses in a loop but builds a tree as deep as it is long.
 **Tests:** round trip through the store; stale-session detection; revision
 gating (no write when unchanged); cleanup on save.
 
+**As built.** Staleness is the document change callback rather than the undo
+revision (tools also mark documents with `setDirty(true)`); assemblies, which
+have no callback yet, are written on every tick while modified. A snapshot is
+written before its sidecar, and a snapshot without a sidecar is ignored.
+`QLockFile` with a stale time of 0 treats a lock as stale only when its
+process is gone — a session can run for days — and `claimOrphans()` keeps the
+orphans locked, so two instances starting together cannot both recover them.
+Recovered documents reopen modified, pointing at their original path, marked
+"(recovered)" until saved. The offer has a third answer, Later, which leaves
+the snapshots for the next start. The window tests run with
+`QStandardPaths::setTestModeEnabled` and a per-process application name, so no
+test touches real user data and parallel test processes cannot recover each
+other's simulated crashes.
+
 ## Requirement → task map
 
 | Roadmap requirement (Milestone 1) | Task |
