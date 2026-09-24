@@ -8,13 +8,16 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QProgressBar>
+#include <QTabBar>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <memory>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
@@ -133,4 +136,38 @@ TEST(RebuildJobTest, AStepImportOnAWorkerMakesThePart) {
     ASSERT_TRUE(waitFor([&] { return !w.backgroundWorkRunning(); }));
     EXPECT_EQ(w.activeDocument()->type(), hz::doc::DocumentType::Part);
     EXPECT_NEAR(volumeOf(*w.activeDocument()), 60.0, 1e-9);
+}
+
+TEST(RebuildJobTest, ACancelledRebuildIsDoneWhenTheTabIsShownAgain) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    for (QAction* a : w.findChildren<QAction*>()) {
+        if (a->text().remove(QLatin1Char('&')) == QStringLiteral("New Part")) a->trigger();
+    }
+    Document& part = *w.activeDocument();
+    ASSERT_EQ(part.type(), hz::doc::DocumentType::Part);
+    // A pattern first, slow enough that Cancel is seen before the build ends.
+    part.featureTree().addFeature(PrimitiveFeature::makeBox(2, 3, 4));
+    part.featureTree().addFeature(
+        hz::doc::PatternFeature::makeLinear(hz::math::Vec3(1, 0, 0), 5.0, 12));
+    part.undoStack().push(std::make_unique<hz::doc::AddFeatureCommand>(
+        part, PrimitiveFeature::makeBox(1, 1, 1), nullptr));
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+
+    // Undo, and cancel the rebuild it starts: the model stays behind its
+    // features. It used to stay so for good, even after the tab was shown again.
+    w.findChild<QAction*>(QStringLiteral("action_undo"))->trigger();
+    ASSERT_TRUE(w.rebuildRunning());
+    w.findChild<QToolButton*>(QStringLiteral("cancelRebuild"))->click();
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+    EXPECT_EQ(part.solid(), nullptr) << "nothing was built";
+
+    auto* tabs = w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    const int partTab = tabs->currentIndex();
+    w.findChild<QAction*>(QStringLiteral("action_new"))->trigger();  // another tab
+    tabs->setCurrentIndex(partTab);
+    EXPECT_TRUE(w.rebuildRunning()) << "showing the tab again catches the model up";
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_NEAR(volumeOf(part), 24.0 * 12, 1e-6);
 }

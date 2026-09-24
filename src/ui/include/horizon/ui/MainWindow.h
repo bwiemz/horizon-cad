@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <functional>
 #include <memory>
@@ -386,7 +387,7 @@ private:
     std::unique_ptr<RebuildJob> m_rebuildJob;
     std::shared_ptr<doc::Document> m_rebuildDocument;  ///< what the job builds; kept alive
     bool m_rebuildAgain = false;                       ///< the document changed while the job ran
-    qint64 m_rebuildStartedMs = 0;
+    QElapsedTimer m_rebuildClock;                      ///< since the job started (monotonic)
     QProgressBar* m_rebuildProgress = nullptr;
     QToolButton* m_rebuildCancel = nullptr;
     QTimer* m_rebuildPoll = nullptr;

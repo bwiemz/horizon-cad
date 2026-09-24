@@ -8,7 +8,6 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
-#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -3317,7 +3316,7 @@ void MainWindow::startRebuild() {
     }
     m_rebuildDocument = m_document;
     m_rebuildJob = std::make_unique<RebuildJob>(*m_document);
-    m_rebuildStartedMs = QDateTime::currentMSecsSinceEpoch();
+    m_rebuildClock.start();
     // Posted from the worker to this window's thread. The destructor waits
     // for the worker, and Qt drops what is still queued for a deleted object.
     m_rebuildJob->start([this] {
@@ -3366,19 +3365,24 @@ void MainWindow::onRebuildFinished() {
         const bool active = document == m_document;
         if (!cancelled && RebuildJob::stampOf(*document) == job->stamp()) {
             document->applyBuild(std::move(result));
-            tab->lastBuildMs = QDateTime::currentMSecsSinceEpoch() - m_rebuildStartedMs;
+            tab->lastBuildMs = m_rebuildClock.elapsed();
             tab->modelStale = false;
             if (active && !again) {
                 m_statusPrompt->setText(tr("Ready"));
                 showBuildResult();
             }
-        } else if (!active) {
-            tab->modelStale = true;  // rebuilt when its tab is shown again
-        } else if (!cancelled) {
-            again = true;  // it changed while the job ran: build what it is now
-        } else if (!again) {
-            statusBar()->showMessage(
-                tr("Rebuild cancelled: the model is as it was before the last change."), 10000);
+        } else {
+            // Not applied: the model is behind its features until a rebuild
+            // catches up — at once if it changed while this one ran, or when
+            // its tab is next shown (after a Cancel, too).
+            tab->modelStale = true;
+            if (active && !cancelled) {
+                again = true;
+            } else if (active && !again) {
+                m_statusPrompt->setText(tr("Ready"));
+                statusBar()->showMessage(
+                    tr("Rebuild cancelled: the model is as it was before the last change."), 10000);
+            }
         }
     }
     if (again) startRebuild();  // the active document, as it is now
