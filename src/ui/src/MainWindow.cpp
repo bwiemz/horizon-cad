@@ -3398,9 +3398,12 @@ void MainWindow::onNewSketchOnFace() {
         statusBar()->showMessage(tr("The part has no flat face to sketch on"));
         return;
     }
-    // A face clicked in the viewport is the one: no need to ask.
+    // A face clicked in the viewport is the one: no need to ask. The first
+    // flat one, if several were clicked.
+    bool clickedAFace = false;
     for (const auto& pick : m_viewport->modelSelection()) {
         if (pick.edge || pick.owner != 0) continue;
+        clickedAFace = true;
         const auto clicked =
             std::find_if(faces.begin(), faces.end(),
                          [&pick](const PlaneChoice& f) { return f.tag == pick.tag; });
@@ -3408,6 +3411,8 @@ void MainWindow::onNewSketchOnFace() {
             newSketchOn(clicked->plane, tr("a face"));
             return;
         }
+    }
+    if (clickedAFace) {
         statusBar()->showMessage(tr("The face clicked is not flat: a sketch needs a flat face"));
         return;
     }

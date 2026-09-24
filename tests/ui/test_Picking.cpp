@@ -147,6 +147,17 @@ TEST(PickingTest, TheCursorShowsWhatItIsOver) {
     EXPECT_TRUE(view.modelSelection().empty()) << "only shown, not chosen";
 }
 
+// The hover is the Select tool's: another tool does not keep showing it.
+TEST(PickingTest, AnotherToolDropsTheHover) {
+    MainWindow w;
+    ToolDriver drive(w);
+    boxInView(w, drive);
+    drive.moveAt(drive.viewport().projectToScreen(Vec3(10, 5, 5)));
+    ASSERT_TRUE(drive.viewport().modelHover().has_value());
+    trigger(w, "tool_line");
+    EXPECT_FALSE(drive.viewport().modelHover().has_value());
+}
+
 // Shell opens the face clicked: the list comes with it checked.
 TEST(PickingTest, ShellOpensTheClickedFace) {
     MainWindow w;

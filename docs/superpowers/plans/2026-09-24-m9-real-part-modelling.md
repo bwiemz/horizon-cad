@@ -204,10 +204,17 @@ definitions choose directions and faces with. 135 is independent and last.
   - New Sketch on a Face takes a clicked flat face without asking.
   - Add Mate starts from faces clicked on two components: scene nodes
     carry their component's id.
+- **Found in review:**
+  - A highlighted edge is drawn over the part's own line for it, at the same
+    depth, and the depth test (less-than) rejected it: only its fringe
+    showed. It is drawn with less-or-equal, as face highlights are.
+  - The hover stayed drawn after switching to another tool. Changing the tool
+    clears it.
+  - Sketch on a Face now takes the first flat face among those clicked.
 
 ### Tests
 
-14 new.
+15 new.
 - Picker:
   - the nearest face, from above and below, and a miss;
   - a moved mesh picked where it is;
@@ -219,7 +226,7 @@ definitions choose directions and faces with. 135 is independent and last.
   - clicks choose faces, with Shift to add and take away, and nothing
     clears;
   - near an edge a click takes it, but not a hidden one;
-  - the hover;
+  - the hover, and another tool dropping it;
   - Shell opens the clicked face;
   - Fillet rounds two clicked edges;
   - a sketch goes on the clicked face.

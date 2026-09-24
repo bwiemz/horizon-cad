@@ -71,6 +71,7 @@ void ViewportWidget::setDocument(doc::Document* doc) {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::setActiveTool(Tool* tool) {
+    setModelHover(std::nullopt);  // only the Select tool shows what a click would choose
     if (m_activeTool) {
         m_activeTool->deactivate();
     }
@@ -358,7 +359,11 @@ void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
                         }
                     }
                 }
+                // Over the part's own line for the edge, at the same depth: an
+                // equal depth must pass, or the highlight is hidden by it.
+                gl->glDepthFunc(GL_LEQUAL);
                 m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f);
+                gl->glDepthFunc(GL_LESS);
                 continue;
             }
             if (!mesh.hasFaces()) continue;
