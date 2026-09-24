@@ -185,6 +185,40 @@ can insert one defined after it.
 accepts them), per-solid partial import instead of all-or-nothing, and
 round-trip-exact real formatting.
 
+**As built.**
+- **Units.** Each solid is scaled into millimetres by the LENGTH_UNIT of
+  its shape representation's context: an SI unit of metres with any prefix,
+  or a conversion-based unit (an inch is `LENGTH_MEASURE(25.4)` of the
+  millimetre). The conversion goes in the report's `converted` list, and
+  the window shows it in the status bar. A unit that cannot be read is
+  taken as the millimetre and reported as approximated.
+- **Partial import.** One solid that cannot be rebuilt no longer refuses
+  the file. It goes in the report's `skipped` list as "solid N (#id): why",
+  and the others come in. A solid's topology names use its index in the
+  file, so they do not shift when an earlier solid fails.
+- **Faces with holes.** The reader already built their inner loops, and
+  Phase 105 validates them, but nothing downstream read them:
+  - mass properties counted a hole as solid;
+  - a face was drawn over its hole;
+  - a Boolean cut through it.
+
+  Now `BoundaryMesh::extractFacePolygons`, which the tessellator, the CSG
+  and interference all read, gives a face with holes as one keyhole
+  polygon, each hole bridged in from the outer loop. A hole's points
+  follow its curved edges, so a round hole bounded by two arcs is a hole,
+  not a line. The ear clipper no longer lets a bridge end block an ear.
+  Mass properties triangulates the same keyhole polygon.
+  - Tested with two hand-authored fixtures, a plate with a square hole and
+    one with a round hole: the volume, the area and the drawn faces are
+    right, the plate round-trips, and a Boolean cut into it is exact.
+- **Reals** already round-tripped exactly (`std::to_chars` since Phase 97;
+  pinned by `CoordinatesRoundTripExactly`).
+- **Not done:**
+  - Curved faces are still measured by their vertex polygons, so a round
+    hole's wall (two arcs, four vertices) adds nearly nothing to the
+    volume. This needs per-face surface integration.
+  - BREP_WITH_VOIDS is still refused.
+
 ## Phase 110 — 2D correctness pass
 
 - Snap tolerance in screen pixels.

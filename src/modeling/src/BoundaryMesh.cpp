@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstddef>
 
+#include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -76,7 +78,176 @@ bool pointInTri2(const P2& p, const P2& a, const P2& b, const P2& c, double eps)
     return !(hasNeg && hasPos);
 }
 
+bool samePoint(const P2& a, const P2& b) {
+    return a.x == b.x && a.y == b.y;
+}
+
+/// Whether segments ab and cd cross at a point inside both. Segments that
+/// only touch at an end, or run along each other, do not.
+bool segmentsCross(const P2& a, const P2& b, const P2& c, const P2& d) {
+    const double d1 = cross2(c, d, a);
+    const double d2 = cross2(c, d, b);
+    const double d3 = cross2(a, b, c);
+    const double d4 = cross2(a, b, d);
+    return ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) &&
+           ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0));
+}
+
+/// Twice the signed area of a 2D loop: positive when counterclockwise.
+double area2Of(const std::vector<P2>& loop) {
+    double area = 0.0;
+    for (size_t i = 0; i < loop.size(); ++i) {
+        const P2& a = loop[i];
+        const P2& b = loop[(i + 1) % loop.size()];
+        area += a.x * b.y - b.x * a.y;
+    }
+    return area;
+}
+
 }  // namespace
+
+std::vector<Vec3> BoundaryMesh::loopPoints(const topo::Wire& wire, bool alongCurves) {
+    std::vector<Vec3> pts;
+    const topo::HalfEdge* start = wire.halfEdge;
+    const topo::HalfEdge* cur = start;
+    if (cur == nullptr) return pts;
+    do {
+        if (cur->origin == nullptr) return {};
+        pts.push_back(cur->origin->point);
+        const topo::Edge* edge = cur->edge;
+        const geo::NurbsCurve* curve = edge ? edge->curve.get() : nullptr;
+        if (alongCurves && curve != nullptr && curve->degree() > 1) {
+            // Run along the curve the way the loop does: from the end nearer
+            // this half-edge's origin. A closed edge has both ends there, and
+            // its direction is settled by the caller's winding.
+            const Vec3& from = cur->origin->point;
+            const bool reversed = (curve->evaluate(curve->tMax()) - from).length() <
+                                  (curve->evaluate(curve->tMin()) - from).length();
+            constexpr int kSamples = 16;
+            for (int k = 1; k < kSamples; ++k) {
+                const double f = static_cast<double>(k) / kSamples;
+                const double t = reversed ? curve->tMax() + (curve->tMin() - curve->tMax()) * f
+                                          : curve->tMin() + (curve->tMax() - curve->tMin()) * f;
+                pts.push_back(curve->evaluate(t));
+            }
+        }
+        cur = cur->next;
+    } while (cur != nullptr && cur != start && pts.size() < 100000);
+    return pts;
+}
+
+std::vector<Vec3> BoundaryMesh::keyholePolygon(const std::vector<Vec3>& outer,
+                                               std::vector<std::vector<Vec3>> holes) {
+    const Basis2D basis = planeBasis(outer);
+    if (!basis.valid) return outer;
+    const auto project = [&basis](const Vec3& p) {
+        const Vec3 d = p - basis.origin;
+        return P2{d.dot(basis.u), d.dot(basis.v)};
+    };
+
+    // The polygon as it grows, in 3D and projected. The outer loop is
+    // counterclockwise in its own basis; each hole is wound the other way.
+    std::vector<Vec3> poly = outer;
+    std::vector<P2> poly2;
+    poly2.reserve(poly.size());
+    for (const Vec3& p : poly) poly2.push_back(project(p));
+
+    struct Hole {
+        std::vector<Vec3> pts;
+        std::vector<P2> pts2;
+    };
+    std::vector<Hole> pending;
+    for (auto& h : holes) {
+        if (h.size() < 3) continue;
+        Hole hole{std::move(h), {}};
+        for (const Vec3& p : hole.pts) hole.pts2.push_back(project(p));
+        if (area2Of(hole.pts2) > 0.0) {
+            std::reverse(hole.pts.begin(), hole.pts.end());
+            std::reverse(hole.pts2.begin(), hole.pts2.end());
+        }
+        pending.push_back(std::move(hole));
+    }
+    // Rightmost holes first, as in ear-cut hole elimination: a bridge to a
+    // hole further right never has to cross one still waiting.
+    const auto maxX = [](const Hole& h) {
+        double m = h.pts2.front().x;
+        for (const P2& p : h.pts2) m = std::max(m, p.x);
+        return m;
+    };
+    std::sort(pending.begin(), pending.end(),
+              [&maxX](const Hole& a, const Hole& b) { return maxX(a) > maxX(b); });
+
+    // Whether the bridge a-b crosses any edge of the polygon or of a hole.
+    const auto blocked = [&](const P2& a, const P2& b, size_t from) {
+        const auto crossesLoop = [&](const std::vector<P2>& loop) {
+            for (size_t i = 0; i < loop.size(); ++i) {
+                if (segmentsCross(a, b, loop[i], loop[(i + 1) % loop.size()])) return true;
+            }
+            return false;
+        };
+        if (crossesLoop(poly2)) return true;
+        for (size_t k = from; k < pending.size(); ++k) {
+            if (crossesLoop(pending[k].pts2)) return true;
+        }
+        return false;
+    };
+
+    for (size_t k = 0; k < pending.size(); ++k) {
+        const Hole& hole = pending[k];
+        // The hole's rightmost point, bridged to the nearest point of the
+        // polygon the bridge reaches without crossing anything.
+        size_t h = 0;
+        for (size_t i = 1; i < hole.pts2.size(); ++i) {
+            if (hole.pts2[i].x > hole.pts2[h].x) h = i;
+        }
+        const P2& hp = hole.pts2[h];
+        size_t best = poly2.size();
+        double bestDist = 0.0;
+        for (size_t i = 0; i < poly2.size(); ++i) {
+            const double dx = poly2[i].x - hp.x;
+            const double dy = poly2[i].y - hp.y;
+            const double dist = dx * dx + dy * dy;
+            if (best != poly2.size() && dist >= bestDist) continue;
+            if (blocked(hp, poly2[i], k)) continue;
+            // The bridge must leave the polygon's vertex into its inside:
+            // between the edges that meet there.
+            const size_t n = poly2.size();
+            const P2& prev = poly2[(i + n - 1) % n];
+            const P2& next = poly2[(i + 1) % n];
+            const bool convex = cross2(prev, poly2[i], next) >= 0.0;
+            const bool leftOfPrev = cross2(prev, poly2[i], hp) > 0.0;
+            const bool leftOfNext = cross2(poly2[i], next, hp) > 0.0;
+            if (convex ? !(leftOfPrev && leftOfNext) : !(leftOfPrev || leftOfNext)) continue;
+            best = i;
+            bestDist = dist;
+        }
+        if (best == poly2.size()) continue;  // unreachable: left out
+
+        // ..., p, h, h+1, ..., h-1, h, p, ...
+        std::vector<Vec3> spliced;
+        std::vector<P2> spliced2;
+        spliced.reserve(poly.size() + hole.pts.size() + 2);
+        spliced2.reserve(poly.size() + hole.pts.size() + 2);
+        for (size_t i = 0; i <= best; ++i) {
+            spliced.push_back(poly[i]);
+            spliced2.push_back(poly2[i]);
+        }
+        for (size_t j = 0; j <= hole.pts.size(); ++j) {
+            const size_t at = (h + j) % hole.pts.size();
+            spliced.push_back(hole.pts[at]);
+            spliced2.push_back(hole.pts2[at]);
+        }
+        spliced.push_back(poly[best]);
+        spliced2.push_back(poly2[best]);
+        for (size_t i = best + 1; i < poly.size(); ++i) {
+            spliced.push_back(poly[i]);
+            spliced2.push_back(poly2[i]);
+        }
+        poly = std::move(spliced);
+        poly2 = std::move(spliced2);
+    }
+    return poly;
+}
 
 std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vector<Vec3>& points) {
     std::vector<std::array<Vec3, 3>> tris;
@@ -150,7 +321,11 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
             for (size_t j = 0; j < m; ++j) {
                 const size_t iOther = idx[j];
                 if (iOther == iPrev || iOther == iCur || iOther == iNext) continue;
-                if (pointInTri2(pts2[iOther], a, b, c, areaEps)) {
+                // A point at one of the ear's corners — a keyhole polygon
+                // visits each bridge end twice — does not block it.
+                const P2& o = pts2[iOther];
+                if (samePoint(o, a) || samePoint(o, b) || samePoint(o, c)) continue;
+                if (pointInTri2(o, a, b, c, areaEps)) {
                     containsOther = true;
                     break;
                 }
@@ -195,6 +370,13 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
         BoundaryPolygon poly;
         poly.points.reserve(verts.size());
         for (const auto* v : verts) poly.points.push_back(v->point);
+        if (!face.innerLoops.empty()) {
+            std::vector<std::vector<Vec3>> holes;
+            for (const topo::Wire* inner : face.innerLoops) {
+                if (inner) holes.push_back(loopPoints(*inner, true));
+            }
+            poly.points = keyholePolygon(poly.points, std::move(holes));
+        }
         poly.topoId = face.topoId;
         poly.surface = face.surface;
         poly.analyticSurface = face.analyticSurface;
