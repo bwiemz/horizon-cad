@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
@@ -110,12 +111,15 @@ static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
 void DraftText::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
     m_position = mirrorPoint(m_position, axisP1, axisP2);
 
-    // Reflect rotation about the axis.
+    // Mirrored, but readable: it covers the place its mirror image does,
+    // reading the other way along the mirrored baseline (2a - rotation,
+    // turned half round) from its other end (the alignment flipped). The
+    // half turn was missing, so a text mirrored in an upright axis came out
+    // upside down, off to the wrong side of its point.
     math::Vec2 d = (axisP2 - axisP1).normalized();
     double axisAngle = std::atan2(d.y, d.x);
-    m_rotation = math::normalizeAngle(2.0 * axisAngle - m_rotation);
+    m_rotation = math::normalizeAngle(2.0 * axisAngle - m_rotation + math::kPi);
 
-    // Flip horizontal alignment.
     if (m_alignment == TextAlignment::Left)
         m_alignment = TextAlignment::Right;
     else if (m_alignment == TextAlignment::Right)
@@ -132,6 +136,8 @@ void DraftText::rotate(const math::Vec2& center, double angle) {
 void DraftText::scale(const math::Vec2& center, double factor) {
     m_position = center + (m_position - center) * factor;
     m_textHeight *= std::abs(factor);
+    // A negative factor is a half turn: the text reads the other way round.
+    if (factor < 0.0) m_rotation = math::normalizeAngle(m_rotation + math::kPi);
 }
 
 }  // namespace hz::draft

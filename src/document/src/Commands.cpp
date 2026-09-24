@@ -697,7 +697,9 @@ void ExplodeBlockCommand::execute() {
     m_explodedEntities.clear();
     for (const auto& defEnt : ref->definition()->entities) {
         auto worldEnt = defEnt->clone();
-        // Apply the block ref transform: scale, rotate, translate.
+        // Apply the block ref transform: mirror, scale, rotate, translate.
+        const math::Vec2& base = ref->definition()->basePoint;
+        if (ref->mirrored()) worldEnt->mirror(base, base + math::Vec2(0.0, 1.0));
         worldEnt->scale(ref->definition()->basePoint, ref->uniformScale());
         worldEnt->rotate(ref->definition()->basePoint, ref->rotation());
         worldEnt->translate(ref->insertPos() - ref->definition()->basePoint);

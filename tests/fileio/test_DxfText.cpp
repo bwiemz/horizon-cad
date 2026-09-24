@@ -23,6 +23,7 @@
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/Constants.h"
 
 using hz::draft::DraftText;
@@ -463,4 +464,53 @@ TEST(DxfTextTest, AByteOrderMarkIsSkipped) {
     Loaded in("\xEF\xBB\xBF" + dxf("0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n0\n"));
     ASSERT_TRUE(in.ok) << in.error;
     EXPECT_EQ(in.doc.draftDocument().entities().size(), 1u);
+}
+
+// A mirrored block reference, and one turned half round by a negative scale,
+// are saved and read back placing their content where they did: in the
+// native format (which kept no mirror) and in DXF (an INSERT with its x
+// scale negated, which was exploded on reading).
+TEST(DxfTextTest, MirroredBlockReferencesAreSavedAndReadBack) {
+    hz::doc::Document doc;
+    auto def = std::make_shared<hz::draft::BlockDefinition>();
+    def->name = "Flag";
+    def->basePoint = Vec2(1, 0);
+    def->entities.push_back(std::make_shared<hz::draft::DraftLine>(Vec2(1, 0), Vec2(1, 4)));
+    def->entities.push_back(std::make_shared<hz::draft::DraftLine>(Vec2(1, 4), Vec2(3, 3)));
+    doc.draftDocument().blockTable().addBlock(def);
+    auto mirrored = std::make_shared<hz::draft::DraftBlockRef>(def, Vec2(10, 0), 0.3, 2.0);
+    mirrored->mirror(Vec2(10, 0), Vec2(10, 1));
+    auto halfTurned = std::make_shared<hz::draft::DraftBlockRef>(def, Vec2(20, 0), 0.3, -2.0);
+    doc.draftDocument().addEntity(mirrored);
+    doc.draftDocument().addEntity(halfTurned);
+    const std::vector<const hz::draft::DraftBlockRef*> written = {mirrored.get(), halfTurned.get()};
+
+    const auto samePlacing = [&written](const hz::doc::Document& back, const char* how) {
+        std::vector<const hz::draft::DraftBlockRef*> refs;
+        for (const auto& e : back.draftDocument().entities()) {
+            if (const auto* r = dynamic_cast<const hz::draft::DraftBlockRef*>(e.get())) {
+                refs.push_back(r);
+            }
+        }
+        ASSERT_EQ(refs.size(), 2u) << how << ": still block references";
+        EXPECT_TRUE(refs[0]->mirrored()) << how;
+        for (size_t k = 0; k < 2; ++k) {
+            for (const Vec2& p : {Vec2(1, 0), Vec2(1, 4), Vec2(3, 3)}) {
+                EXPECT_TRUE(near(refs[k]->transformPoint(p), written[k]->transformPoint(p), 1e-6))
+                    << how << ", reference " << k;
+            }
+        }
+    };
+
+    hz::doc::Document native;
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(doc, false), native, &error))
+        << error;
+    samePlacing(native, "native");
+
+    Loaded dxfBack(saved(doc));
+    ASSERT_TRUE(dxfBack.ok) << dxfBack.error;
+    samePlacing(dxfBack.doc, "DXF");
+    EXPECT_TRUE(dxfBack.report.approximated.empty()) << "nothing exploded";
 }
