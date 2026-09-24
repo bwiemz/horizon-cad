@@ -42,11 +42,13 @@ public:
     /// @param featureID  Base name for TopologyID generation (e.g. "extrude_1").
     /// @param segments   Chords per full turn of profile arcs (>= 3).
     /// @param chordTolerance  When positive, overrides @p segments per arc.
+    /// @param reason     When given, receives why the extrusion failed.
     /// @return The extruded solid, or nullptr if the profile is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
-        const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0);
+        const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

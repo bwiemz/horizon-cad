@@ -2241,10 +2241,11 @@ void MainWindow::onExtrudeSketch() {
 
     // Validate the profile BEFORE mutating the document: a failed extrude
     // must not leave a wrapper sketch or a dead feature behind.
-    auto probe =
-        model::Extrude::execute(sketch->entities(), sketch->plane(), direction, distance, "probe");
+    std::string why;
+    auto probe = model::Extrude::execute(sketch->entities(), sketch->plane(), direction, distance,
+                                         "probe", model::Extrude::kDefaultSegments, 0.0, &why);
     if (!probe) {
-        statusBar()->showMessage(tr("Extrude failed: profile is not a closed loop"));
+        statusBar()->showMessage(tr("Extrude failed: %1").arg(QString::fromStdString(why)));
         return;
     }
 
@@ -2284,12 +2285,12 @@ void MainWindow::onRevolveSketch() {
     math::Vec3 axisPoint = math::Vec3::Zero;
     math::Vec3 axisDir = math::Vec3::UnitY;
 
-    auto probe = model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir,
-                                         angle, "probe");
+    std::string why;
+    auto probe =
+        model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir, angle,
+                                "probe", model::Revolve::kDefaultSegments, 0.0, &why);
     if (!probe) {
-        statusBar()->showMessage(
-            tr("Revolve failed: the profile must be a closed loop lying to one side of the "
-               "axis, in a plane the axis passes through"));
+        statusBar()->showMessage(tr("Revolve failed: %1").arg(QString::fromStdString(why)));
         return;
     }
 

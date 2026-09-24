@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <cmath>
+#include <string>
+#include <utility>
 
 #include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -267,13 +269,24 @@ static void tagArcIdeals(const ringstack::SampledProfile& sampled, const draft::
 std::unique_ptr<topo::Solid> Extrude::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& direction, double distance,
-    const std::string& featureID, int segments, double chordTolerance) {
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+
     // -----------------------------------------------------------------------
     // 1. Validate profile
     // -----------------------------------------------------------------------
     auto validation = ProfileValidator::validate(profile);
     if (!validation.isClosed) {
-        return nullptr;
+        return fail(validation.errorMessage);
+    }
+    if (!(std::abs(distance) > 0.0) || !std::isfinite(distance)) {
+        return fail("the extrusion distance must be a non-zero number");
+    }
+    if (std::abs(direction.normalized().dot(plane.normal())) < 1e-9) {
+        return fail("the extrusion direction lies in the sketch plane, so it sweeps no volume");
     }
 
     const Vec3 offset = direction * distance;
@@ -283,14 +296,14 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     //    a circle used to become four points and so a square prism.
     // -----------------------------------------------------------------------
     if (segments < 3) {
-        return nullptr;
+        return fail("arcs need at least 3 segments per turn");
     }
     const ringstack::SampledProfile sampled = ringstack::sampleProfile(
         validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
     const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
-        return nullptr;
+        return fail("the profile has fewer than three distinct points");
     }
 
     // Transform to 3D and compute top vertices.

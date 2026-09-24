@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <string>
+#include <utility>
 
 #include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -191,25 +193,30 @@ double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEnti
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID, int segments, double chordTolerance) {
-    if (segments < 3 || !(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
         return nullptr;
+    };
+    if (segments < 3) return fail("a revolve needs at least 3 steps per turn");
+    if (!(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
+        return fail("the revolve angle must be more than 0 and at most 360 degrees");
     }
     if (axisDirection.length() <= 0.0) {
-        return nullptr;
+        return fail("the revolve axis has no direction");
     }
     const Vec3 axisDir = axisDirection.normalized();
 
     auto validation = ProfileValidator::validate(profile);
     if (!validation.isClosed) {
-        return nullptr;
+        return fail(validation.errorMessage);
     }
     const ringstack::SampledProfile sampled = ringstack::sampleProfile(
         validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
     const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
-        return nullptr;
+        return fail("the profile has fewer than three distinct points");
     }
 
     std::vector<Vec3> profilePts(N);
@@ -235,7 +242,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
         }
     }
     if (maxRadius <= 0.0) {
-        return nullptr;  // The whole profile lies on the axis.
+        return fail("the whole profile lies on the axis");
     }
     const double tol = kPlanarityTol * maxRadius;
     const Vec3 refDir = radial[widest].normalized();
@@ -244,7 +251,9 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     for (size_t i = 0; i < N; ++i) {
         const double r = radial[i].dot(refDir);
         if (r < -tol || (radial[i] - refDir * r).length() > tol) {
-            return nullptr;  // Crosses the axis, or the axis is off the plane.
+            return fail(
+                "the profile must lie on one side of the axis, in a plane the axis passes "
+                "through");
         }
         cyl[i].radius = std::max(0.0, r);
         cyl[i].height = (profilePts[i] - axisPoint).dot(axisDir);
@@ -310,7 +319,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     ringstack::orientOutward(faces);
     auto solid = SolidSewer::sew(faces);
     if (solid == nullptr) {
-        return nullptr;
+        return fail("the revolved faces could not be joined into a closed solid");
     }
 
     // -----------------------------------------------------------------------

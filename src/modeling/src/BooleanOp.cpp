@@ -120,10 +120,23 @@ std::unique_ptr<topo::Solid> sewChecked(const std::vector<SolidSewer::InputFace>
 }  // namespace
 
 std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
-                                                const topo::Solid& solidB, BooleanType type) {
+                                                const topo::Solid& solidB, BooleanType type,
+                                                std::string* reason) {
+    const auto fail = [reason](const char* why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = why;
+        return nullptr;
+    };
+    // The one failure that is not about the operands' shape: the result would
+    // not sew into a closed, manifold solid.
+    const auto sewn = [&](std::unique_ptr<topo::Solid> result) {
+        if (!result) return fail("the result could not be joined into a valid solid");
+        inheritEdgeIdeals(*result, solidA, solidB);
+        return result;
+    };
+
     auto polysA = BoundaryMesh::extractFacePolygons(solidA);
     auto polysB = BoundaryMesh::extractFacePolygons(solidB);
-    if (polysA.empty() || polysB.empty()) return nullptr;
+    if (polysA.empty() || polysB.empty()) return fail("one of the bodies has no faces");
 
     // Disjoint solids never interact — resolve without splitting so the
     // original face loops (and their surfaces) survive verbatim.  Weld at the
@@ -136,23 +149,28 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
             case BooleanType::Union: {
                 appendAsInputFaces(polysA, faces);
                 appendAsInputFaces(polysB, faces);
-                auto result = sewChecked(faces, kSewerDefaultWeldTol);
-                if (result) inheritEdgeIdeals(*result, solidA, solidB);
-                return result;
+                return sewn(sewChecked(faces, kSewerDefaultWeldTol));
             }
             case BooleanType::Subtract: {
                 appendAsInputFaces(polysA, faces);
-                auto result = sewChecked(faces, kSewerDefaultWeldTol);
-                if (result) inheritEdgeIdeals(*result, solidA, solidB);
-                return result;
+                return sewn(sewChecked(faces, kSewerDefaultWeldTol));
             }
             case BooleanType::Intersect:
-                return nullptr;
+                return fail("the bodies do not overlap");
         }
     }
 
     auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type);
-    if (fragments.empty()) return nullptr;
+    if (fragments.empty()) {
+        switch (type) {
+            case BooleanType::Subtract:
+                return fail("the cut removes the whole body");
+            case BooleanType::Intersect:
+                return fail("the bodies do not overlap");
+            default:
+                return fail("the result is empty");
+        }
+    }
 
     const auto idealsA = idealsById(polysA);
     const auto idealsB = idealsById(polysB);
@@ -174,9 +192,7 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     // Weld at the CSG plane epsilon: fragments carry split points the BSP
     // treated as on-plane coincident, so healing must reach that far.
     // sewChecked enforces the checkManifold() contract for this path too.
-    auto result = sewChecked(faces, kCsgPlaneEps);
-    if (result) inheritEdgeIdeals(*result, solidA, solidB);
-    return result;
+    return sewn(sewChecked(faces, kCsgPlaneEps));
 }
 
 }  // namespace hz::model

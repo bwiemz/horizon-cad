@@ -66,8 +66,12 @@ public:
 
     /// Execute this feature.
     /// @param inputSolid  The solid produced by the previous feature (nullptr for the first).
+    /// @param reason      When given, receives why the feature failed — in the
+    ///                    user's terms, e.g. "the profile has a gap: nothing
+    ///                    continues from (3, 4)".
     /// @return The resulting solid, or nullptr on failure.
-    virtual std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const = 0;
+    virtual std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                 std::string* reason = nullptr) const = 0;
 
     /// True for non-geometric construction features (datum planes, axes,
     /// points). The feature tree skips these when building the solid, so they
@@ -124,7 +128,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
 
@@ -163,7 +168,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
 
@@ -207,7 +213,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     void restoreFeatureID(const std::string& id) override;
 
     bool createsNewBody() const override { return true; }
@@ -228,7 +235,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -267,7 +275,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -293,7 +302,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -317,7 +327,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -356,7 +367,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -385,7 +397,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -420,7 +433,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -463,7 +477,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     void restoreFeatureID(const std::string& id) override;
@@ -517,7 +532,8 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
-    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid) const override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
     bool isConstruction() const override { return true; }
     void restoreFeatureID(const std::string& id) override;
 

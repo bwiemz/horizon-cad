@@ -69,7 +69,8 @@ public:
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
-        int segments = kDefaultSegments, double chordTolerance = 0.0);
+        int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

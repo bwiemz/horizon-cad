@@ -69,6 +69,14 @@ Chamfer; the feature tree surfaces the reason instead of "Feature 'X' failed
 to execute", and the Extrude command stops guessing "profile is not a closed
 loop" for every failure.
 
+**As built.** An optional `std::string* reason` out-parameter rather than a
+new return type — the same contract the file readers took in Phase 99, and one
+that leaves every existing caller and test compiling. It is on
+`Feature::execute` (every feature fills it), `Extrude`, `Revolve` and
+`BooleanOp`; Loft, Sweep, Draft, Pattern and the primitives report a reason
+from their feature, since their kernel ops do not yet distinguish their
+failure modes. `ProfileValidator`'s messages now name coordinates.
+
 ## Phase 104 — Real 3D commands, undoable
 
 Primitive / Boolean / Fillet / Chamfer / Shell / Pattern / Loft / Sweep ribbon

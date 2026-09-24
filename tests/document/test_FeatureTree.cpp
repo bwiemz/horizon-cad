@@ -918,7 +918,8 @@ class ThrowingFeature : public Feature {
 public:
     std::string name() const override { return "Broken"; }
     std::string featureID() const override { return "broken_1"; }
-    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid>) const override {
+    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid>,
+                                             std::string* /*reason*/) const override {
         throw std::invalid_argument("degree must be at least 1");
     }
 };

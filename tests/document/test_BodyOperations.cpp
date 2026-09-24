@@ -125,7 +125,8 @@ TEST(BodyOperationsTest, ACutThatRemovesEverythingFailsWithAReason) {
     doc.featureTree().addFeature(extrude(rectangle(-1, -1, 11, 11), 12.0, BodyOperation::Cut));
     EXPECT_FALSE(doc.rebuildModel());
     EXPECT_EQ(doc.failedFeatureIndex(), 1);
-    EXPECT_NE(doc.lastBuildMessage().find("nothing"), std::string::npos) << doc.lastBuildMessage();
+    EXPECT_NE(doc.lastBuildMessage().find("removes the whole body"), std::string::npos)
+        << doc.lastBuildMessage();
 }
 
 TEST(BodyOperationsTest, EveryBuildPathAgrees) {
