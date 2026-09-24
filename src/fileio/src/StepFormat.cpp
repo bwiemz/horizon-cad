@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include <variant>
 
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
@@ -1282,13 +1283,12 @@ bool StepFormat::save(const std::string& filePath, const std::vector<const topo:
         g_lastError = "no solids to export";
         return false;
     }
-    std::ofstream file(filePath, std::ios::binary);
-    if (!file) {
-        g_lastError = "cannot open file for writing: " + filePath;
+    std::string error;
+    if (!writeFileAtomically(pathFromUtf8(filePath), toString(solids), &error)) {
+        g_lastError = error;
         return false;
     }
-    file << toString(solids);
-    return file.good();
+    return true;
 }
 
 std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::string& text) {
@@ -1348,7 +1348,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
 
 std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath) {
     g_lastError.clear();
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
     if (!file) {
         g_lastError = "cannot open file: " + filePath;
         return {};

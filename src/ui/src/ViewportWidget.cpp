@@ -28,9 +28,13 @@ ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
 }
 
 ViewportWidget::~ViewportWidget() {
-    // Make the context current before destroying GL resources.
+    // GL resources exist only if the widget was shown and initializeGL() ran;
+    // a viewport that never got a context (never shown, or context creation
+    // failed) has nothing to release and no context to make current.
     makeCurrent();
-    auto* gl = QOpenGLContext::currentContext()->extraFunctions();
+    QOpenGLContext* context = QOpenGLContext::currentContext();
+    if (!context) return;
+    auto* gl = context->extraFunctions();
     m_viewportRenderer.destroyGL(gl);
     if (m_renderer) {
         m_renderer->destroyPickingFBO(gl);

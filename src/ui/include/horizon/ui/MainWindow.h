@@ -10,6 +10,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
 
+class QCloseEvent;
 class QLabel;
 class QTabBar;
 
@@ -29,6 +30,15 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
+
+    /// The document shown in the active tab (the blank backing document for
+    /// an assembly tab).
+    doc::Document* activeDocument() const { return m_document.get(); }
+
+protected:
+    /// Offers to save every modified document; ignores the close if the user
+    /// cancels or a save fails.
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     void onCommandPalette();
@@ -139,6 +149,8 @@ private:
     struct DocTab {
         std::shared_ptr<doc::Document> document;
         std::shared_ptr<doc::AssemblyDocument> assembly;
+        /// Tab caption without the modified marker.
+        QString title;
     };
 
     void createMenus();
@@ -158,6 +170,13 @@ private:
     void rebuildScene();
     void refreshAllPanels();
     void updateWindowTitle();
+
+    bool isTabModified(const DocTab& tab) const;
+    /// Tab captions and the window title show which documents are modified.
+    void refreshModifiedIndicators();
+    /// If the tab's document is modified, focus it and ask Save / Discard /
+    /// Cancel. Returns false when the user cancels or the save fails.
+    bool maybeSaveTab(int index);
     QString tabTitleForPath(const std::string& path, const QString& fallback) const;
 
     ViewportWidget* m_viewport = nullptr;

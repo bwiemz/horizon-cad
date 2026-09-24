@@ -27,6 +27,7 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/drafting/LineType.h"
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 
@@ -938,8 +939,8 @@ void parseEntitiesSection(std::istream& in, doc::Document& doc) {
 // ===========================================================================
 
 bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
-    std::ofstream out(filePath);
-    if (!out.is_open()) return false;
+    // Build the whole file in memory, then replace the target atomically.
+    std::ostringstream out;
 
     g_handleCounter = 0x100;
 
@@ -1136,7 +1137,7 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
     // ---- EOF ----
     writeGroup(out, 0, std::string("EOF"));
 
-    return out.good();
+    return writeFileAtomically(pathFromUtf8(filePath), out.str());
 }
 
 // ===========================================================================
@@ -1144,7 +1145,7 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
 // ===========================================================================
 
 bool DxfFormat::load(const std::string& filePath, doc::Document& doc) {
-    std::ifstream in(filePath);
+    std::ifstream in(pathFromUtf8(filePath));
     if (!in.is_open()) return false;
 
     DxfPair pair;

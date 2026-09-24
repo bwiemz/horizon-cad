@@ -12,6 +12,7 @@ add_custom_command(
 add_custom_target(hz_fileio_fbs DEPENDS ${HZ_FBS_GENERATED_DIR}/hzbinary_generated.h)
 
 add_library(hz_fileio STATIC
+    src/AtomicFile.cpp
     src/NativeFormat.cpp
     src/BinaryFormat.cpp
     src/StlExporter.cpp

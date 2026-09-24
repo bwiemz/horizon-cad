@@ -1,4 +1,5 @@
 add_executable(hz_fileio_tests
+    test_AtomicFile.cpp
     test_PartFormat.cpp
     test_AssemblyFormat.cpp
     test_BinaryFormat.cpp

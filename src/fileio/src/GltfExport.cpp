@@ -6,6 +6,7 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 
@@ -204,11 +205,9 @@ std::vector<uint8_t> GltfExport::toGlb(const std::vector<Item>& items) {
 bool GltfExport::save(const std::string& path, const std::vector<Item>& items) {
     const std::vector<uint8_t> glb = toGlb(items);
     if (glb.empty()) return false;
-    std::ofstream file(path, std::ios::binary);
-    if (!file.is_open()) return false;
-    file.write(reinterpret_cast<const char*>(glb.data()), static_cast<std::streamsize>(glb.size()));
-    file.close();
-    return !file.fail();
+    return writeFileAtomically(
+        pathFromUtf8(path),
+        std::string_view(reinterpret_cast<const char*>(glb.data()), glb.size()));
 }
 
 bool GltfExport::saveSolid(const std::string& path, const topo::Solid& solid,

@@ -2,11 +2,13 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QInputDialog>
 #include <QKeySequence>
@@ -94,7 +96,8 @@ namespace hz::ui {
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), m_toolManager(std::make_unique<ToolManager>()) {
-    setWindowTitle("Horizon CAD");
+    // "[*]" is where Qt shows the modified marker; see updateWindowTitle().
+    setWindowTitle("Horizon CAD[*]");
     resize(1280, 800);
 
     // Wire the document manager to the native file format.
@@ -110,6 +113,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
     m_tabBar = new QTabBar(this);
+    m_tabBar->setObjectName(QStringLiteral("documentTabs"));
     m_tabBar->setTabsClosable(true);
     m_tabBar->setMovable(false);
     m_tabBar->setExpanding(false);
@@ -127,7 +131,8 @@ MainWindow::MainWindow(QWidget* parent)
     // AFTER the panels exist (below) — addTab would otherwise fire
     // currentChanged into slots that touch not-yet-created widgets.
     m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
-    m_tabs.push_back(DocTab{m_document, nullptr});
+    m_document->setChangeCallback([this] { refreshModifiedIndicators(); });
+    m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1")});
     m_tabBar->addTab(tr("Drawing 1"));
     m_viewport->setDocument(m_document.get());
 
@@ -642,13 +647,18 @@ MainWindow::DocTab* MainWindow::activeTab() {
 
 QString MainWindow::tabTitleForPath(const std::string& path, const QString& fallback) const {
     if (path.empty()) return fallback;
-    return QString::fromStdString(std::filesystem::path(path).filename().string());
+    // Paths are UTF-8; std::filesystem::path::string() would go through the
+    // Windows code page and throw on characters it cannot represent.
+    return QFileInfo(QString::fromStdString(path)).fileName();
 }
 
 int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                std::shared_ptr<doc::AssemblyDocument> assembly,
                                const QString& title) {
-    m_tabs.push_back(DocTab{std::move(document), std::move(assembly)});
+    // Keep the modified markers current however the document changes: undo
+    // stack pushes, undo/redo, and explicit setDirty() from tools.
+    document->setChangeCallback([this] { refreshModifiedIndicators(); });
+    m_tabs.push_back(DocTab{std::move(document), std::move(assembly), title});
     int index = m_tabBar->addTab(title);
     m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
@@ -681,15 +691,10 @@ void MainWindow::onTabChanged(int /*index*/) {
 void MainWindow::onTabCloseRequested(int index) {
     if (index < 0 || index >= static_cast<int>(m_tabs.size())) return;
 
+    if (!maybeSaveTab(index)) return;
+
     DocTab tab = m_tabs[static_cast<size_t>(index)];
-    bool dirty = tab.assembly ? tab.assembly->isDirty() : tab.document->isDirty();
-    if (dirty) {
-        auto result =
-            QMessageBox::question(this, tr("Unsaved Changes"),
-                                  tr("Close \"%1\" without saving?").arg(m_tabBar->tabText(index)),
-                                  QMessageBox::Close | QMessageBox::Cancel);
-        if (result != QMessageBox::Close) return;
-    }
+    tab.document->setChangeCallback(nullptr);
 
     if (tab.assembly) {
         m_docManager.closeAssembly(tab.assembly);
@@ -760,16 +765,66 @@ void MainWindow::refreshAllPanels() {
 
 void MainWindow::updateWindowTitle() {
     const std::string& path = m_assembly ? m_assembly->filePath() : m_document->filePath();
+    // "[*]" is where Qt shows the modified marker (setWindowModified).
     if (path.empty()) {
-        setWindowTitle("Horizon CAD");
+        setWindowTitle("Horizon CAD[*]");
     } else {
-        setWindowTitle(QString("Horizon CAD - %1").arg(QString::fromStdString(path)));
+        setWindowTitle(QString("Horizon CAD - %1[*]").arg(QString::fromStdString(path)));
     }
-    int index = m_tabBar->currentIndex();
-    if (index >= 0) {
-        QString fallback = m_tabBar->tabText(index);
-        m_tabBar->setTabText(index, tabTitleForPath(path, fallback));
+    if (DocTab* tab = activeTab()) {
+        tab->title = tabTitleForPath(path, tab->title);
     }
+    refreshModifiedIndicators();
+}
+
+bool MainWindow::isTabModified(const DocTab& tab) const {
+    return tab.assembly ? tab.assembly->isDirty() : tab.document->isDirty();
+}
+
+void MainWindow::refreshModifiedIndicators() {
+    for (size_t i = 0; i < m_tabs.size(); ++i) {
+        const DocTab& tab = m_tabs[i];
+        const QString text = isTabModified(tab) ? tab.title + QStringLiteral(" *") : tab.title;
+        const int index = static_cast<int>(i);
+        if (index < m_tabBar->count() && m_tabBar->tabText(index) != text) {
+            m_tabBar->setTabText(index, text);
+        }
+    }
+    const DocTab* active = activeTab();
+    setWindowModified(active != nullptr && isTabModified(*active));
+}
+
+bool MainWindow::maybeSaveTab(int index) {
+    if (index < 0 || index >= static_cast<int>(m_tabs.size())) return true;
+    if (!isTabModified(m_tabs[static_cast<size_t>(index)])) return true;
+
+    // Show the document being asked about; Save acts on the active tab.
+    m_tabBar->setCurrentIndex(index);
+
+    QMessageBox box(QMessageBox::Warning, tr("Unsaved Changes"),
+                    tr("\"%1\" has unsaved changes.").arg(m_tabs[static_cast<size_t>(index)].title),
+                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
+    box.setInformativeText(tr("Do you want to save them before closing?"));
+    box.setDefaultButton(QMessageBox::Save);
+    box.setEscapeButton(QMessageBox::Cancel);
+    switch (box.exec()) {
+        case QMessageBox::Save:
+            return saveActiveDocument();
+        case QMessageBox::Discard:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    for (int i = 0; i < static_cast<int>(m_tabs.size()); ++i) {
+        if (!maybeSaveTab(i)) {
+            event->ignore();
+            return;
+        }
+    }
+    event->accept();
 }
 
 // ---------------------------------------------------------------------------
@@ -991,6 +1046,7 @@ void MainWindow::onInsertComponent() {
     }
 
     m_assembly->addComponent(std::move(comp));
+    refreshModifiedIndicators();
     rebuildScene();
     m_viewport->camera().setIsometricView();
     m_statusPrompt->setText(tr("Component inserted."));
@@ -1225,6 +1281,7 @@ void MainWindow::onAddMate() {
         m_assembly->removeMate(mateId);
         solveAssemblyMates(*m_assembly);
     }
+    refreshModifiedIndicators();
     rebuildScene();
 }
 

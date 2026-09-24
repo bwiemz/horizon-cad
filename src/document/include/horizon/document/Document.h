@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -106,8 +107,21 @@ public:
 
     // --- Dirty tracking ---
 
-    bool isDirty() const { return m_dirty; }
-    void setDirty(bool dirty) { m_dirty = dirty; }
+    /// True when the document differs from what was last saved (or loaded):
+    /// either the undo stack has moved away from its clean state, or a change
+    /// that is not an undoable command was marked with setDirty(true).
+    bool isDirty() const;
+
+    /// setDirty(false) records the current state as saved — it also marks the
+    /// undo stack clean, so undoing past this point makes the document
+    /// modified again. setDirty(true) marks a change made outside the undo
+    /// stack; it stays set until the next setDirty(false).
+    void setDirty(bool dirty);
+
+    /// Called whenever the modified state may have changed: after every undo
+    /// stack change and every setDirty() call. Replaces the undo stack's own
+    /// change callback.
+    void setChangeCallback(std::function<void()> callback);
 
     // --- File path ---
 
@@ -121,6 +135,7 @@ private:
     ParameterRegistry m_parameterRegistry;
     std::unique_ptr<UndoStack> m_undoStack;
     bool m_dirty = false;
+    std::function<void()> m_onChange;
     std::string m_filePath;
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_defaultSketch;

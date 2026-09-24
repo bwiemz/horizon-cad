@@ -28,11 +28,20 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/fileio/AtomicFile.h"
 #include "horizon/modeling/SolidTessellator.h"
 
 using json = nlohmann::json;
 
 namespace hz::io {
+
+/// Serialize without throwing. Text imported from a DXF carries whatever code
+/// page its source used, and json::dump() throws on bytes that are not valid
+/// UTF-8 — which used to abort a save half-way through a truncated file.
+/// Invalid sequences become U+FFFD instead.
+static std::string dumpJson(const json& root, int indent) {
+    return root.dump(indent, ' ', false, json::error_handler_t::replace);
+}
 
 // ---------------------------------------------------------------------------
 // Constraint serialization helpers
@@ -600,21 +609,15 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
 bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
     const json root = buildDocumentRoot(doc, /*includeTessellation=*/true);
 
-    std::ofstream file(filePath);
-    if (!file.is_open()) return false;
     // Pretty-print drawings for diff-friendliness, but write compactly when a
     // tessellation cache is embedded — indented output puts one mesh number
     // per line and inflates part files by orders of magnitude.
-    if (root.contains("tessellationCache")) {
-        file << root.dump();
-    } else {
-        file << root.dump(2);
-    }
-    return file.good();
+    const int indent = root.contains("tessellationCache") ? -1 : 2;
+    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, indent));
 }
 
 std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeTessellation) {
-    return buildDocumentRoot(doc, includeTessellation).dump();
+    return dumpJson(buildDocumentRoot(doc, includeTessellation), -1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1400,7 +1403,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 }
 
 bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
-    std::ifstream file(filePath);
+    std::ifstream file(pathFromUtf8(filePath));
     if (!file.is_open()) return false;
 
     json root;
@@ -1506,16 +1509,12 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
 
 bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc) {
     const json root = buildAssemblyRoot(asmDoc, filePath);
-
-    std::ofstream file(filePath);
-    if (!file.is_open()) return false;
-    file << root.dump(2);
-    return file.good();
+    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, 2));
 }
 
 std::string NativeFormat::assemblyToJson(const doc::AssemblyDocument& asmDoc,
                                          const std::string& filePath) {
-    return buildAssemblyRoot(asmDoc, filePath).dump();
+    return dumpJson(buildAssemblyRoot(asmDoc, filePath), -1);
 }
 
 /// Populate an AssemblyDocument from a parsed envelope. @p filePath anchors
@@ -1605,7 +1604,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
 }
 
 bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc) {
-    std::ifstream file(filePath);
+    std::ifstream file(pathFromUtf8(filePath));
     if (!file.is_open()) return false;
 
     json root;
@@ -1634,7 +1633,7 @@ bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocume
 // ---------------------------------------------------------------------------
 
 std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& filePath) {
-    std::ifstream file(filePath);
+    std::ifstream file(pathFromUtf8(filePath));
     if (!file.is_open()) return nullptr;
 
     json root;
