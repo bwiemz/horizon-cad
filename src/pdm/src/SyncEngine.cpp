@@ -12,14 +12,14 @@ namespace {
 
 constexpr char kArchiveSuffix[] = ".hzarchive";
 
-/// Whether a local and a remote revision hold the same content. Hashes of one
-/// kind are compared directly. When one side still has the FNV-1a hash of a
-/// pre-Phase-119 archive, the remote bytes must match both hashes.
+/// Whether a local and a remote revision, each already verified against its
+/// own hash, hold the same content. Hashes of one kind are compared directly.
+/// When one side still has the FNV-1a hash of a pre-Phase-119 archive, the
+/// remote bytes must match the local hash too.
 bool sameContent(const std::string& localHash, const std::string& remoteHash,
                  const std::string& remoteContent) {
     if (localHash.size() == remoteHash.size()) return localHash == remoteHash;
-    return RevisionArchive::hashMatches(remoteContent, localHash) &&
-           RevisionArchive::hashMatches(remoteContent, remoteHash);
+    return RevisionArchive::hashMatches(remoteContent, localHash);
 }
 
 /// docIds of `<docId>.hzarchive` directories under @p root.
@@ -143,13 +143,27 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
 
     // Histories must agree on their shared prefix (append-only invariant):
     // any shared index with a different content hash is a divergence, and the
-    // document is skipped on both sides — sync never merges.
+    // document is skipped on both sides — sync never merges. Each side's bytes
+    // are checked against their own hash on the way, so a revision that rotted
+    // after it was synced is reported as corrupt, not passed over because the
+    // two manifests still agree.
     const int shared = std::min(localCount, remoteCount);
     for (int i = 0; i < shared; ++i) {
         RevisionInfo remoteInfo;
         std::string remoteContent;
         if (!m_endpoint.fetchRevision(docId, i, remoteInfo, remoteContent)) {
             report.ok = false;
+            return;
+        }
+        std::string localContent;
+        const RevisionArchive::ReadStatus localRead = local.read(i, localContent);
+        if (localRead == RevisionArchive::ReadStatus::Missing) {
+            report.ok = false;
+            return;
+        }
+        if (localRead == RevisionArchive::ReadStatus::Corrupt ||
+            !RevisionArchive::hashMatches(remoteContent, remoteInfo.contentHash)) {
+            report.conflicts.push_back("corrupt:" + docId);
             return;
         }
         if (!sameContent(local.history()[static_cast<size_t>(i)].contentHash,

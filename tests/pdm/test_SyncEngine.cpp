@@ -404,6 +404,32 @@ TEST_F(SyncEngineTest, TamperedLocalRevisionIsNotPushed) {
     EXPECT_EQ(countOf(m_remote, "link"), 1);
 }
 
+// A revision that rots after it was synced is caught on the next sync, on
+// either side, although the two manifests still agree about it.
+TEST_F(SyncEngineTest, RevisionsThatRotAfterSyncingAreCaught) {
+    commitTo(m_local, "cog", "rev0");
+    commitTo(m_local, "cog", "rev1");
+    FileSystemEndpoint remote(m_remote);
+    SyncEngine engine(m_local, remote);
+    ASSERT_EQ(engine.sync().pushed, 2);
+
+    writeText(fs::path(m_remote) / "cog.hzarchive" / "rev_0.blob", "rot");
+    SyncReport report = engine.sync();
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cog");
+
+    writeText(fs::path(m_remote) / "cog.hzarchive" / "rev_0.blob", "rev0");
+    writeText(fs::path(m_local) / "cog.hzarchive" / "rev_1.blob", "rot");
+    report = engine.sync();
+    ASSERT_EQ(report.conflicts.size(), 1u);
+    EXPECT_EQ(report.conflicts[0], "corrupt:cog");
+
+    writeText(fs::path(m_local) / "cog.hzarchive" / "rev_1.blob", "rev1");
+    report = engine.sync();
+    EXPECT_TRUE(report.conflicts.empty());
+    EXPECT_TRUE(report.ok);
+}
+
 // The endpoint refuses content that does not match the hash it is pushed
 // with, and writes nothing.
 TEST_F(SyncEngineTest, EndpointRefusesContentNotMatchingItsHash) {

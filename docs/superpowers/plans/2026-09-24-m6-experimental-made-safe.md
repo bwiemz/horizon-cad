@@ -84,6 +84,10 @@ run code it should not, or give an answer that looks right and is not:
 - **Sync verifies at both ends:**
   - a local revision is verified before it is pushed; a damaged one stops
     the document with `corrupt:`;
+  - every sync also checks the history the two sides already share,
+    reading both sides' bytes against their own hashes. A revision that
+    rotted after it was synced is reported as `corrupt:`, even though the
+    two manifests still agree about it (found in review);
   - the file-system endpoint refuses content that does not match the hash
     it is pushed with, requires the push to land as the next revision, and
     reads it back;
@@ -91,8 +95,8 @@ run code it should not, or give an answer that looks right and is not:
     `corrupt:` and left alone. The endpoint reports it as a count of −1;
   - the same content is recognised across the old and new hashes: when the
     two sides differ in hash kind, the remote bytes must match both.
-- **Tests:** 21 new. Two are for the exclusive create; 19 are in
-  `hz_pdm_tests`, which now has 47:
+- **Tests:** 22 new. Two are for the exclusive create; 20 are in
+  `hz_pdm_tests`, which now has 48:
   - SHA-256;
   - the lock race;
   - five kinds of unreadable lock;
@@ -104,6 +108,7 @@ run code it should not, or give an answer that looks right and is not:
   - the stale handle;
   - legacy archives, alone and syncing with new ones;
   - corrupt archives on each side of a sync;
+  - revisions that rot on either side after they were synced;
   - a tampered local revision;
   - a push whose content does not match its hash.
 - **Not done:** check-in reads the owner and then removes the file. If an
