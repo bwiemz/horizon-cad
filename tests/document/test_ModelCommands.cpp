@@ -18,6 +18,7 @@
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 
@@ -424,4 +425,134 @@ TEST(ModelCommandsTest, LoftAndSweepSayWhyTheyFail) {
     why.clear();
     EXPECT_EQ(sweep.execute(nullptr, &why), nullptr);
     EXPECT_NE(why.find("sweeps no volume"), std::string::npos) << why;
+}
+
+// -- Extrude extents, patterns of features, placed primitives (Phase 134) -----
+
+namespace {
+
+/// A 10 x 10 x 10 box, and the part's volume and height range after the
+/// features given.
+struct BoxPart {
+    Document doc;
+    BoxPart() { add(doc, hz::doc::PrimitiveFeature::makeBox(10, 10, 10)); }
+    std::pair<double, double> zRange() {
+        EXPECT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+        double lo = 1e9;
+        double hi = -1e9;
+        for (const auto& v : doc.solid()->vertices()) {
+            lo = std::min(lo, v.point.z);
+            hi = std::max(hi, v.point.z);
+        }
+        return {lo, hi};
+    }
+};
+
+/// A square sketch @p size wide at (@p x, @p y) on the plane z = @p z.
+std::shared_ptr<Sketch> squareAt(double x, double y, double size, double z) {
+    auto sketch = rectangle(x, y, x + size, y + size);
+    sketch->setPlane(hz::draft::SketchPlane(Vec3(0, 0, z), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    return sketch;
+}
+
+}  // namespace
+
+TEST(ModelCommandsTest, ASymmetricExtrusionGoesHalfEachWay) {
+    Document doc;
+    auto feature = extrude(rectangle(0, 0, 10, 10), 4.0, BodyOperation::NewBody);
+    feature->setExtent(hz::doc::ExtrudeFeature::Extent::Symmetric);
+    add(doc, std::move(feature));
+    EXPECT_NEAR(volume(doc), 400.0, 1e-9);
+    double lo = 1e9;
+    for (const auto& v : doc.solid()->vertices()) lo = std::min(lo, v.point.z);
+    EXPECT_NEAR(lo, -2.0, 1e-9);
+}
+
+// A cut through all goes through the part whatever its distance says; both
+// ways from a sketch in the middle.
+TEST(ModelCommandsTest, ACutThroughAllGoesThroughThePart) {
+    BoxPart part;
+    auto cut = std::make_unique<ExtrudeFeature>(squareAt(4, 4, 2, 10), Vec3(0, 0, -1), 1.0);
+    cut->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    cut->setOperation(BodyOperation::Cut);
+    add(part.doc, std::move(cut));
+    EXPECT_NEAR(volume(part.doc), 1000.0 - 40.0, 1e-6);
+
+    BoxPart middle;
+    auto both = std::make_unique<ExtrudeFeature>(squareAt(4, 4, 2, 5), Vec3(0, 0, 1), 1.0);
+    both->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAllBoth);
+    both->setOperation(BodyOperation::Cut);
+    add(middle.doc, std::move(both));
+    EXPECT_NEAR(volume(middle.doc), 1000.0 - 40.0, 1e-6);
+
+    // Nothing to go through.
+    Document empty;
+    auto alone = extrude(rectangle(0, 0, 1, 1), 1.0, BodyOperation::NewBody);
+    alone->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    add(empty, std::move(alone));
+    EXPECT_FALSE(empty.rebuildModel());
+    EXPECT_NE(empty.lastBuildMessage().find("no part before it"), std::string::npos)
+        << empty.lastBuildMessage();
+}
+
+// A pattern of a hole repeats the hole, not the part: three holes.
+TEST(ModelCommandsTest, APatternOfAFeatureRepeatsOnlyIt) {
+    BoxPart part;
+    auto hole = std::make_unique<ExtrudeFeature>(squareAt(1, 1, 2, 10), Vec3(0, 0, -1), 1.0);
+    hole->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    hole->setOperation(BodyOperation::Cut);
+    const Feature* cut = add(part.doc, std::move(hole));
+    auto pattern = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 3.0, 3);
+    pattern->setTargets({cut->featureID()});
+    add(part.doc, std::move(pattern));
+    EXPECT_NEAR(volume(part.doc), 1000.0 - 3 * 40.0, 1e-6);
+
+    // Round the part's middle: four holes, a quarter turn apart.
+    BoxPart round;
+    auto corner = std::make_unique<ExtrudeFeature>(squareAt(1, 1, 2, 10), Vec3(0, 0, -1), 1.0);
+    corner->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    corner->setOperation(BodyOperation::Cut);
+    const Feature* first = add(round.doc, std::move(corner));
+    auto circular =
+        hz::doc::PatternFeature::makeCircular(Vec3(5, 5, 0), Vec3(0, 0, 1), hz::math::kPi / 2, 4);
+    circular->setTargets({first->featureID()});
+    add(round.doc, std::move(circular));
+    EXPECT_NEAR(volume(round.doc), 1000.0 - 4 * 40.0, 1e-6);
+
+    // A target that is not there says so.
+    BoxPart missing;
+    auto lost = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 3.0, 3);
+    lost->setTargets({"extrude_999"});
+    add(missing.doc, std::move(lost));
+    EXPECT_FALSE(missing.doc.rebuildModel());
+    EXPECT_NE(missing.doc.lastBuildMessage().find("extrude_999"), std::string::npos);
+}
+
+// A primitive stands where it is put: a box on its side, along +X from (10, 0, 0).
+TEST(ModelCommandsTest, APrimitiveStandsWhereItIsPut) {
+    Document doc;
+    auto box = hz::doc::PrimitiveFeature::makeBox(2, 3, 4);
+    EXPECT_TRUE(box->setVector("basePoint", Vec3(10, 0, 0)));
+    EXPECT_TRUE(box->setVector("axisDirection", Vec3(1, 0, 0)));
+    EXPECT_TRUE(box->isPlaced());
+    add(doc, std::move(box));
+    EXPECT_NEAR(volume(doc), 24.0, 1e-9);
+    double loX = 1e9;
+    double hiX = -1e9;
+    for (const auto& v : doc.solid()->vertices()) {
+        loX = std::min(loX, v.point.x);
+        hiX = std::max(hiX, v.point.x);
+    }
+    EXPECT_NEAR(loX, 10.0, 1e-9);
+    EXPECT_NEAR(hiX, 14.0, 1e-9) << "its height, 4, now along x";
+
+    // Upside down: along -Z from the origin.
+    Document down;
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(1.0, 5.0);
+    ASSERT_TRUE(cylinder->setVector("axisDirection", Vec3(0, 0, -1)));
+    add(down, std::move(cylinder));
+    ASSERT_TRUE(down.rebuildModel());
+    double loZ = 1e9;
+    for (const auto& v : down.solid()->vertices()) loZ = std::min(loZ, v.point.z);
+    EXPECT_NEAR(loZ, -5.0, 1e-9);
 }

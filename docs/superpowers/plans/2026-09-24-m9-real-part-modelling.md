@@ -311,19 +311,63 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ## Phase 134: Extrude and pattern options
 
-- **Extrude:**
-  - reverse, symmetric (both ways, half each) and through-all (as far as
-    the body reaches along the direction);
-  - and to a distance from a face.
-- **Pattern the selected features:** a linear or circular pattern repeats
-  the tool bodies of the chosen features (a hole's cut, a boss's join), not
-  the whole solid.
-- **Placed primitives:** a primitive has a position and an orientation,
-  editable afterwards.
-- **Tests:**
-  - symmetric and through-all volumes;
-  - a patterned hole cuts N holes;
-  - a placed box saves and reloads where it was.
+### As built
+
+- **What a feature is built against.** Features are built with a
+  `BuildContext`: the part as it stands before them, and the features
+  applied before them. Only body-creating features see the part. It is
+  passed in `build`, `buildWithDiagnostics`, the replay after a failure and
+  `buildBodies`. `Feature::executeIn` takes it; `execute` alone builds
+  against nothing.
+- **Extrude extents** (`ExtrudeFeature::Extent`):
+  - To the distance: as before.
+  - Both ways, half each.
+  - Through all: as far as the part reaches along the direction, and a
+    hundredth past it.
+  - Through all, both ways.
+
+  Through-all fails, saying why, when there is no part before it or the
+  part is not in front of the sketch. The Extrude form offers the extent
+  and a Reversed direction. The edit form offers the extent as a choice
+  (`parameterChoices`: a choice's names now come from the feature). It is
+  saved as "extent".
+- **Patterns of features:**
+  - `PatternFeature::setTargets(featureIDs)`: the pattern repeats those
+    features' bodies (a hole's cut, a boss) rather than the whole part.
+  - Each copy is moved to its instance, renamed as it (`child("pattern",
+    k)`), and combined as its feature combines.
+  - A target that is missing, suppressed or not body-creating is refused by
+    name.
+  - Both pattern forms have a checklist of the part's add or cut features;
+    none checked is the whole part, as before.
+  - Saved as "features".
+- **Placed primitives:**
+  - A primitive has a base point and an axis direction (its own z), as
+    vectors, editable (Phase 133) and saved.
+  - The primitive forms ask for both.
+  - The solid is built at the origin, then turned and moved
+    (`Pattern::transformed`).
+
+### Tests
+
+8 new, 1 changed.
+- Document:
+  - a symmetric extrusion;
+  - a cut through all, one way and both, and with nothing to go through;
+  - a linear and a circular pattern of a hole alone, and a missing target;
+  - a box and a cylinder placed.
+- Files: extent, pattern features and placement round-trip.
+- Window:
+  - a reversed through-all hole from the Extrude form, repeated by a
+    pattern of that feature;
+  - a cylinder placed from its form.
+- Changed: `PartCommandsTest`'s file gained these.
+
+### Not done
+
+- "Up to a face" and "to a distance from a face".
+- A pattern of features has no picking of its own: the features are chosen
+  from a list.
 
 ## Phase 135: Finding and seeing
 

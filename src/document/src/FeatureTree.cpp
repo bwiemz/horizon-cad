@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -16,6 +17,7 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
@@ -50,6 +52,11 @@ bool countParameter(double value, int min, int max, int& out) {
 }
 
 }  // namespace
+
+std::vector<std::string> Feature::parameterChoices(const std::string& name) const {
+    if (name == "operation") return {"Union", "Subtract", "Intersect"};
+    return {};
+}
 
 Feature::ParameterKind Feature::parameterKind(const std::string& name) const {
     if (name == "angle") return ParameterKind::Angle;
@@ -113,7 +120,8 @@ std::string ExtrudeFeature::name() const {
 }
 
 std::map<std::string, double> ExtrudeFeature::parameters() const {
-    std::map<std::string, double> params = {{"distance", m_distance}};
+    std::map<std::string, double> params = {{"distance", m_distance},
+                                            {"extent", static_cast<double>(m_extent)}};
     if (hasCurvedProfile()) {
         params["segments"] = static_cast<double>(m_segments);
         params["chordTolerance"] = m_chordTolerance;
@@ -124,6 +132,12 @@ std::map<std::string, double> ExtrudeFeature::parameters() const {
 bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     if (name == "distance" && value > 0.0) {
         m_distance = value;
+        return true;
+    }
+    if (name == "extent") {
+        int code = 0;
+        if (!countParameter(value, 0, 3, code)) return false;
+        m_extent = static_cast<Extent>(code);
         return true;
     }
     // Profile arcs are faceted, so these decide how close the extrusion gets
@@ -137,6 +151,18 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
         return setChordTolerance(m_chordTolerance, value);
     }
     return false;
+}
+
+Feature::ParameterKind ExtrudeFeature::parameterKind(const std::string& name) const {
+    if (name == "extent") return ParameterKind::Choice;
+    return Feature::parameterKind(name);
+}
+
+std::vector<std::string> ExtrudeFeature::parameterChoices(const std::string& name) const {
+    if (name == "extent") {
+        return {"To the distance", "Both ways, half each", "Through all", "Through all, both ways"};
+    }
+    return Feature::parameterChoices(name);
 }
 
 std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
@@ -174,12 +200,57 @@ void ExtrudeFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "extrude_");
 }
 
-std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                      std::string* reason) const {
+    return executeIn(BuildContext{}, std::move(inputSolid), reason);
+}
+
+std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& context,
+                                                       std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                       std::string* reason) const {
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
-    return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
-                                   m_featureID, m_segments, m_chordTolerance, reason, naming());
+    const draft::SketchPlane& plane = m_sketch->plane();
+    const auto extrude = [&](const draft::SketchPlane& from, double distance) {
+        return model::Extrude::execute(m_sketch->entities(), from, m_direction, distance,
+                                       m_featureID, m_segments, m_chordTolerance, reason, naming());
+    };
+    // Along the direction, a plane the sketch's, moved @p by.
+    const auto moved = [&plane](const math::Vec3& by) {
+        return draft::SketchPlane(plane.origin() + by, plane.normal(), plane.xAxis());
+    };
+    const math::Vec3 unit = m_direction.normalized();
+    switch (m_extent) {
+        case Extent::Blind:
+            break;
+        case Extent::Symmetric:
+            return extrude(moved(unit * (-m_distance / 2.0)), m_distance);
+        case Extent::ThroughAll:
+        case Extent::ThroughAllBoth: {
+            if (!context.part || context.part->vertices().empty()) {
+                return failWith(reason, "there is no part before it to go through");
+            }
+            // How far the part reaches along the direction, from the
+            // sketch, each way, and a little past it at each end.
+            double lo = std::numeric_limits<double>::infinity();
+            double hi = -lo;
+            for (const auto& v : context.part->vertices()) {
+                const double along = (v.point - plane.origin()).dot(unit);
+                lo = std::min(lo, along);
+                hi = std::max(hi, along);
+            }
+            const double margin = 0.01 * (hi - lo) + 1e-6;
+            if (m_extent == Extent::ThroughAll) {
+                if (hi <= 1e-9) {
+                    return failWith(reason, "the part is not in front of the sketch that way");
+                }
+                return extrude(plane, hi + margin);
+            }
+            const double back = std::min(lo, 0.0) - margin;
+            return extrude(moved(unit * back), std::max(hi, 0.0) + margin - back);
+        }
+    }
+    return extrude(plane, m_distance);
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,7 +1089,40 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
                         "these dimensions do not make a solid: they must be positive (a cone may "
                         "have one zero radius, a torus's tube must be thinner than its ring)");
     }
-    return solid;
+    if (!isPlaced()) return solid;
+    // Stood where it goes: its z axis turned onto the axis direction (the
+    // shortest turn, half round for -Z), then moved to the base point.
+    const math::Vec3 z(0.0, 0.0, 1.0);
+    const math::Vec3 to = m_axisDirection.normalized();
+    const math::Vec3 turnAxis = z.cross(to);
+    const double angle = std::atan2(turnAxis.length(), z.dot(to));
+    const math::Quaternion turn =
+        turnAxis.length() > 1e-12
+            ? math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
+            : math::Quaternion::fromAxisAngle(math::Vec3(1.0, 0.0, 0.0), angle);
+    return model::Pattern::transformed(
+        *solid, math::Mat4::translation(m_basePoint) * math::Mat4::rotation(turn));
+}
+
+bool PrimitiveFeature::isPlaced() const {
+    return m_basePoint.length() > 0.0 ||
+           (m_axisDirection - math::Vec3(0.0, 0.0, 1.0)).length() > 1e-12;
+}
+
+std::map<std::string, math::Vec3> PrimitiveFeature::vectors() const {
+    return {{"basePoint", m_basePoint}, {"axisDirection", m_axisDirection}};
+}
+
+bool PrimitiveFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name == "basePoint" && finite(value)) {
+        m_basePoint = value;
+        return true;
+    }
+    if (name != "axisDirection") return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    m_axisDirection = *unit;
+    return true;
 }
 
 math::IdCounter<int> DatumFeature::s_nextID{1};
@@ -1238,9 +1342,10 @@ std::unique_ptr<topo::Solid> checked(std::unique_ptr<topo::Solid> solid, std::st
 /// cannot carry an exception and would terminate the application.
 std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
                                               std::unique_ptr<topo::Solid> input,
-                                              std::string* reason = nullptr) {
+                                              std::string* reason = nullptr,
+                                              const BuildContext& context = {}) {
     try {
-        return checked(feat.execute(std::move(input), reason), reason);
+        return checked(feat.executeIn(context, std::move(input), reason), reason);
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -1311,10 +1416,16 @@ bool takesPart(const Feature& feature) {
 /// every build: out of a worker, or out of a trial build that has put the
 /// feature into the tree and not yet taken it out.
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
-                                          std::string* reason) {
+                                          std::string* reason,
+                                          const std::vector<const Feature*>& before) {
     try {
-        if (!feature.createsNewBody()) return executeContained(feature, std::move(part), reason);
-        auto tool = executeContained(feature, nullptr, reason);
+        BuildContext context;
+        context.before = before;
+        if (!feature.createsNewBody()) {
+            return executeContained(feature, std::move(part), reason, context);
+        }
+        context.part = part.get();  // what a through-all extrusion goes through
+        auto tool = executeContained(feature, nullptr, reason, context);
         if (!tool) return nullptr;
         return combine(feature.operation(), std::move(part), std::move(tool), reason,
                        feature.naming());
@@ -1327,6 +1438,64 @@ std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_pt
 }
 
 }  // namespace
+
+math::Mat4 PatternFeature::instanceTransform(int k) const {
+    const double at = static_cast<double>(k);
+    if (m_kind == Kind::Linear)
+        return math::Mat4::translation(m_vecA.normalized() * (m_scalar * at));
+    return math::Mat4::translation(m_vecA) *
+           math::Mat4::rotation(
+               math::Quaternion::fromAxisAngle(m_vecB.normalized(), m_scalar * at)) *
+           math::Mat4::translation(m_vecA * -1.0);
+}
+
+std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& context,
+                                                       std::unique_ptr<topo::Solid> inputSolid,
+                                                       std::string* reason) const {
+    if (m_targets.empty()) return execute(std::move(inputSolid), reason);
+    if (!inputSolid) return failWith(reason, "there is no body to pattern");
+    std::unique_ptr<topo::Solid> part = std::move(inputSolid);
+    for (const std::string& id : m_targets) {
+        const Feature* target = nullptr;
+        for (const Feature* feature : context.before) {
+            if (feature->featureID() == id) target = feature;
+        }
+        if (!target) {
+            return failWith(reason, "the feature to repeat (" + id +
+                                        ") is not before the pattern, or is suppressed");
+        }
+        if (!target->createsNewBody()) {
+            return failWith(reason, target->name() +
+                                        " cannot be repeated: only a feature that adds or cuts "
+                                        "material can be");
+        }
+        // Its body as it was built: against the part as it stands now, for
+        // one that goes through all of it.
+        BuildContext targetContext;
+        targetContext.part = part.get();
+        targetContext.before = context.before;
+        std::string why;
+        auto tool = target->executeIn(targetContext, nullptr, &why);
+        if (!tool) return failWith(reason, target->name() + " to repeat: " + why);
+        for (int k = 1; k < m_count; ++k) {
+            if (std::find(m_suppressed.begin(), m_suppressed.end(), k) != m_suppressed.end()) {
+                continue;
+            }
+            auto copy = model::Pattern::transformed(*tool, instanceTransform(k));
+            // Each copy's faces and edges named as its instance, as a
+            // pattern of the whole part names them.
+            for (auto& face : copy->faces()) {
+                if (face.topoId.isValid()) face.topoId = face.topoId.child("pattern", k);
+            }
+            for (auto& edge : copy->edges()) {
+                if (edge.topoId.isValid()) edge.topoId = edge.topoId.child("pattern", k);
+            }
+            part = combine(target->operation(), std::move(part), std::move(copy), reason, naming());
+            if (!part) return nullptr;
+        }
+    }
+    return part;
+}
 
 const char* bodyOperationName(BodyOperation operation) {
     switch (operation) {
@@ -1356,20 +1525,24 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
     }
 
     std::unique_ptr<topo::Solid> solid;
+    std::vector<const Feature*> before;
     for (const auto& feat : m_features) {
         if (!takesPart(*feat)) continue;
-        solid = applyFeature(*feat, std::move(solid), nullptr);
+        solid = applyFeature(*feat, std::move(solid), nullptr, before);
         if (!solid) {
             return nullptr;  // Feature failed
         }
+        before.push_back(feat.get());
     }
     return solid;
 }
 
 std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     std::vector<std::unique_ptr<topo::Solid>> bodies;
+    BuildContext context;
     for (const auto& feat : m_features) {
         if (!takesPart(*feat)) continue;
+        context.part = bodies.empty() ? nullptr : bodies.back().get();
 
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
@@ -1377,7 +1550,7 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
         } else if (feat->createsNewBody() && feat->operation() != BodyOperation::NewBody &&
                    !bodies.empty()) {
             // Join / Cut / Intersect the active body, as the product path does.
-            auto tool = executeContained(*feat, nullptr);
+            auto tool = executeContained(*feat, nullptr, nullptr, context);
             if (!tool) continue;
             auto combined = combine(feat->operation(), std::move(bodies.back()), std::move(tool),
                                     nullptr, feat->naming());
@@ -1387,13 +1560,14 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
             // Start a fresh body. Create features ignore any input solid; a
             // transform with no active body (bodies.empty()) has nothing to act
             // on, so it too is executed against a null input and simply fails.
-            auto solid = executeContained(*feat, nullptr);
+            auto solid = executeContained(*feat, nullptr, nullptr, context);
             if (solid) {
                 bodies.push_back(std::move(solid));
             }
         } else {
             // Transform the active (most-recently-created) body in place.
-            auto solid = executeContained(*feat, std::move(bodies.back()));
+            context.part = nullptr;  // the body is the feature's input
+            auto solid = executeContained(*feat, std::move(bodies.back()), nullptr, context);
             bodies.pop_back();
             if (solid) {
                 bodies.push_back(std::move(solid));
@@ -1401,6 +1575,7 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
             // If the transform failed, the active body is dropped; the next
             // create feature starts a new one.
         }
+        context.before.push_back(feat.get());
     }
     return bodies;
 }
@@ -1417,6 +1592,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
+    std::vector<const Feature*> before;
     for (int i = 0; i < limit; ++i) {
         if (control) {
             if (control->cancel) {
@@ -1431,7 +1607,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason;
-        auto next = applyFeature(feature, std::move(solid), &reason);
+        auto next = applyFeature(feature, std::move(solid), &reason, before);
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()
@@ -1446,6 +1622,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             return result;
         }
         solid = std::move(next);
+        before.push_back(&feature);
         result.lastSuccessfulFeature = i;
     }
 
@@ -1456,13 +1633,15 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
 
 std::unique_ptr<topo::Solid> FeatureTree::replayUpTo(int limit, BuildControl* control) const {
     std::unique_ptr<topo::Solid> solid;
+    std::vector<const Feature*> before;
     for (int i = 0; i < limit; ++i) {
         if (control && control->cancel) return nullptr;
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         if (!takesPart(feature)) continue;
         std::string reason;
-        solid = applyFeature(feature, std::move(solid), &reason);
+        solid = applyFeature(feature, std::move(solid), &reason, before);
         if (!solid) return nullptr;  // built the first time; cannot fail now
+        before.push_back(&feature);
     }
     return solid;
 }

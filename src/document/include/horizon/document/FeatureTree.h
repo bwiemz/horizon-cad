@@ -52,6 +52,16 @@ std::optional<BodyOperation> bodyOperationFromName(std::string_view name);
 ///
 /// Each feature can produce a solid from an optional input solid.
 /// The FeatureTree replays all features sequentially to rebuild the model.
+class Feature;
+
+/// What a feature is built against: the part as it stands before it, and
+/// the features applied before it, in order. Through-all needs the one, a
+/// pattern of features the other.
+struct BuildContext {
+    const topo::Solid* part = nullptr;
+    std::vector<const Feature*> before;
+};
+
 class Feature {
 public:
     virtual ~Feature() = default;
@@ -75,6 +85,16 @@ public:
     /// @return The resulting solid, or nullptr on failure.
     virtual std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                                  std::string* reason = nullptr) const = 0;
+
+    /// execute(), knowing what it is built against. The tree builds every
+    /// feature this way; a feature that needs the part or the features
+    /// before it overrides it, and execute() alone builds it against nothing.
+    virtual std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
+                                                   std::unique_ptr<topo::Solid> inputSolid,
+                                                   std::string* reason = nullptr) const {
+        (void)context;
+        return execute(std::move(inputSolid), reason);
+    }
 
     /// True for non-geometric construction features (datum planes, axes,
     /// points). The feature tree skips these when building the solid, so they
@@ -121,6 +141,9 @@ public:
         Count,   ///< a whole number
         Choice,  ///< the code of one of a few named choices (a Boolean's operation)
     };
+    /// The names of a Choice parameter's values, in code order.
+    virtual std::vector<std::string> parameterChoices(const std::string& name) const;
+
     /// The kind of parameter @p name: by default an "angle" is an angle,
     /// "segments", "arcSegments" and "count" are counts, "operation" a
     /// choice, and anything else a length.
@@ -171,12 +194,23 @@ class ExtrudeFeature : public Feature {
 public:
     ExtrudeFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& direction, double distance);
 
+    /// How far it goes: the distance along the direction; half of it each
+    /// way; or through the part (one way, or both), whatever the distance.
+    enum class Extent { Blind, Symmetric, ThroughAll, ThroughAllBoth };
+    Extent extent() const { return m_extent; }
+    void setExtent(Extent extent) { m_extent = extent; }
+
     std::string name() const override;
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
+                                           std::unique_ptr<topo::Solid> inputSolid,
+                                           std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    ParameterKind parameterKind(const std::string& name) const override;
+    std::vector<std::string> parameterChoices(const std::string& name) const override;
     std::map<std::string, math::Vec3> vectors() const override;
     bool setVector(const std::string& name, const math::Vec3& value) override;
 
@@ -200,6 +234,7 @@ private:
     std::shared_ptr<Sketch> m_sketch;
     math::Vec3 m_direction;
     double m_distance;
+    Extent m_extent = Extent::Blind;
     int m_segments = model::Extrude::kDefaultSegments;
     double m_chordTolerance = 0.0;
     std::string m_featureID;
@@ -486,12 +521,24 @@ public:
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// With targets, the pattern repeats what those features add or cut, not
+    /// the whole part: each target's body, moved to each instance and
+    /// combined as the target combines.
+    std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
+                                           std::unique_ptr<topo::Solid> inputSolid,
+                                           std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     std::map<std::string, math::Vec3> vectors() const override;
     bool setVector(const std::string& name, const math::Vec3& value) override;
     ParameterKind parameterKind(const std::string& name) const override;
     void restoreFeatureID(const std::string& id) override;
+
+    /// The features it repeats, by featureID: none repeats the whole part.
+    const std::vector<std::string>& targets() const { return m_targets; }
+    void setTargets(std::vector<std::string> targets) { m_targets = std::move(targets); }
+    /// Where instance @p k is moved to from instance 0.
+    math::Mat4 instanceTransform(int k) const;
 
     Kind kind() const { return m_kind; }
     const math::Vec3& vecA() const { return m_vecA; }
@@ -505,6 +552,7 @@ public:
 private:
     PatternFeature() = default;
 
+    std::vector<std::string> m_targets;
     Kind m_kind = Kind::Linear;
     math::Vec3 m_vecA;    ///< Linear: direction. Circular: axis point.
     math::Vec3 m_vecB;    ///< Linear: unused. Circular: axis direction.
@@ -537,6 +585,15 @@ public:
                                          std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    /// Where it stands (Phase 134): its base point, and the way its own z
+    /// axis (a cylinder's or cone's axis, a box's height) points. By default
+    /// at the origin, along +Z.
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
+    const math::Vec3& basePoint() const { return m_basePoint; }
+    const math::Vec3& axisDirection() const { return m_axisDirection; }
+    /// Whether it stands anywhere but at the origin along +Z.
+    bool isPlaced() const;
     void restoreFeatureID(const std::string& id) override;
 
     Kind kind() const { return m_kind; }
@@ -565,6 +622,8 @@ private:
     PrimitiveFeature() = default;
 
     Kind m_kind = Kind::Box;
+    math::Vec3 m_basePoint{0.0, 0.0, 0.0};
+    math::Vec3 m_axisDirection{0.0, 0.0, 1.0};
     double m_p0 = 1.0;
     double m_p1 = 1.0;
     double m_p2 = 1.0;
