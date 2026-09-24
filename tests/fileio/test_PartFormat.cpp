@@ -472,8 +472,8 @@ TEST(PartFormatTest, LinearPatternRoundTrip) {
     EXPECT_EQ(pat->kind(), PatternFeature::Kind::Linear);
     EXPECT_EQ(pat->count(), 4);
     EXPECT_DOUBLE_EQ(pat->scalar(), 5.0);
-    ASSERT_EQ(pat->suppressed().size(), 1u);
-    EXPECT_EQ(pat->suppressed()[0], 2);
+    ASSERT_EQ(pat->suppressedInstances().size(), 1u);
+    EXPECT_EQ(pat->suppressedInstances()[0], 2);
 
     EXPECT_TRUE(loaded.rebuildModel());
     ASSERT_NE(loaded.solid(), nullptr);
@@ -915,4 +915,53 @@ TEST(PartFormatTest, FilesWrittenBeforeBodyOperationsLoadAsSeparateBodies) {
     ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
     EXPECT_EQ(loaded.featureTree().feature(0)->operation(), BodyOperation::NewBody);
     EXPECT_EQ(loaded.featureTree().feature(1)->operation(), BodyOperation::NewBody);
+}
+
+// ---------------------------------------------------------------------------
+// Feature suppression (Phase 104)
+// ---------------------------------------------------------------------------
+
+TEST(PartFormatTest, ASuppressedFeatureStaysSuppressed) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto plate = makeRectSketch(10.0, 10.0);
+    original.addSketch(plate);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(plate, Vec3(0, 0, 1), 2.0));
+    original.featureTree().addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 20.0, 3, {1}));
+    original.featureTree().feature(1)->setSuppressed(true);
+
+    nlohmann::json root = nlohmann::json::parse(NativeFormat::documentToJson(original, false));
+    EXPECT_GE(root.at("version").get<int>(), 17)
+        << "an older build would build the suppressed feature: it must refuse the file";
+    const auto& pattern = root.at("featureTree").at(1);
+    EXPECT_TRUE(pattern.at("featureSuppressed").get<bool>());
+    EXPECT_EQ(pattern.at("suppressed"), nlohmann::json::array({1}))
+        << "the pattern's own instance list keeps its key";
+    EXPECT_FALSE(root.at("featureTree").at(0).contains("featureSuppressed"))
+        << "only written when set";
+
+    Document loaded;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), loaded, &error)) << error;
+    ASSERT_EQ(loaded.featureTree().featureCount(), 2u);
+    EXPECT_FALSE(loaded.featureTree().feature(0)->isSuppressed());
+    EXPECT_TRUE(loaded.featureTree().feature(1)->isSuppressed());
+    ASSERT_TRUE(loaded.rebuildModel()) << loaded.lastBuildMessage();
+    EXPECT_EQ(loaded.solid()->shellCount(), 1u) << "the suppressed pattern adds nothing";
+}
+
+TEST(PartFormatTest, AFeatureSuppressionOfTheWrongTypeSkipsOnlyThatFeature) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto plate = makeRectSketch(10.0, 10.0);
+    original.addSketch(plate);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(plate, Vec3(0, 0, 1), 2.0));
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(plate, Vec3(0, 0, 1), 3.0));
+    nlohmann::json root = nlohmann::json::parse(NativeFormat::documentToJson(original, false));
+    root.at("featureTree").at(1)["featureSuppressed"] = "yes";
+
+    Document loaded;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), loaded, &error)) << error;
+    EXPECT_EQ(loaded.featureTree().featureCount(), 1u);
 }

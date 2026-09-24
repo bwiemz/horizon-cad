@@ -75,6 +75,13 @@ struct InterferenceReport {
     std::vector<uint64_t> unchecked;
 };
 
+/// What an edit to an assembly can change: the components placed and the mates
+/// between them. Undo puts one of these back.
+struct AssemblyState {
+    std::vector<ComponentInstance> components;
+    std::vector<Mate> mates;
+};
+
 /// Assembly document: component instances plus the mates that position them.
 ///
 /// This class provides the structural container plus file-path and dirty
@@ -116,6 +123,13 @@ public:
 
     /// Remove all components and mates and reset bookkeeping.
     void clear();
+
+    /// The components and mates as they are now.
+    AssemblyState snapshot() const { return {m_components, m_mates}; }
+
+    /// Put back a snapshot. Leaves the dirty flag alone: an undo stack that
+    /// restores snapshots tracks modification itself.
+    void restore(AssemblyState state);
 
     // --- Analysis ---
 

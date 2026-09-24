@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -117,8 +118,14 @@ public:
     BodyOperation operation() const { return m_operation; }
     void setOperation(BodyOperation operation) { m_operation = operation; }
 
+    /// A suppressed feature stays in the history but takes no part in the
+    /// build, as if it were not there.
+    bool isSuppressed() const { return m_suppressed; }
+    void setSuppressed(bool suppressed) { m_suppressed = suppressed; }
+
 private:
     BodyOperation m_operation = BodyOperation::NewBody;
+    bool m_suppressed = false;
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.
@@ -444,7 +451,9 @@ public:
     const math::Vec3& vecB() const { return m_vecB; }
     double scalar() const { return m_scalar; }
     int count() const { return m_count; }
-    const std::vector<int>& suppressed() const { return m_suppressed; }
+    /// Instance indices the pattern skips (not to be confused with
+    /// suppressing the whole feature, `isSuppressed()`).
+    const std::vector<int>& suppressedInstances() const { return m_suppressed; }
 
 private:
     PatternFeature() = default;
@@ -579,8 +588,21 @@ public:
     /// Append a feature to the end of the tree.
     void addFeature(std::unique_ptr<Feature> feature);
 
+    /// Insert a feature before `index` (at the end when `index` is past it).
+    /// An insertion at or before the rollback index moves the index with the
+    /// feature it pointed at.
+    void insertFeature(size_t index, std::unique_ptr<Feature> feature);
+
     /// Remove the feature at the given index.
     void removeFeature(size_t index);
+
+    /// Remove the feature at `index` and hand it back. Removing at or before
+    /// the rollback index moves the index back by one, so the features before
+    /// it stay active; it clears once no feature is left.
+    std::unique_ptr<Feature> takeFeature(size_t index);
+
+    /// Where `feature` is in the tree, if it is there.
+    std::optional<size_t> indexOf(const Feature* feature) const;
 
     /// Number of features in the tree.
     size_t featureCount() const;
@@ -612,14 +634,27 @@ public:
     /// Rollback index: features after this index are suppressed.
     /// -1 means no rollback (all features active).
     int rollbackIndex() const { return m_rollbackIndex; }
-    void setRollbackIndex(int index) { m_rollbackIndex = index; }
+    void setRollbackIndex(int index);
 
-    /// Move a feature from one position to another.
+    /// Move a feature from one position to another. The rollback index moves
+    /// as for a removal followed by an insertion: the other features stay on
+    /// their side of it.
     void moveFeature(int fromIndex, int toIndex);
+
+    /// Changes whenever anything that affects the build changes: features
+    /// added, removed or moved, the rollback index, or — through
+    /// `markChanged()` — a feature edited in place. Compare two readings to
+    /// learn whether the model needs rebuilding.
+    uint64_t revision() const { return m_revision; }
+
+    /// Record an in-place edit of a feature (a parameter, its operation, its
+    /// suppression), which the tree cannot see for itself.
+    void markChanged() { ++m_revision; }
 
 private:
     std::vector<std::unique_ptr<Feature>> m_features;
     int m_rollbackIndex = -1;
+    uint64_t m_revision = 0;
 };
 
 }  // namespace hz::doc

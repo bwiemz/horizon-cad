@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -36,6 +37,9 @@ public:
     /// The document shown in the active tab (the blank backing document for
     /// an assembly tab).
     doc::Document* activeDocument() const { return m_document.get(); }
+
+    /// The assembly shown in the active tab, or null when it is not one.
+    doc::AssemblyDocument* activeAssembly() const { return m_assembly.get(); }
 
     /// Autosave and crash recovery for this window's documents.
     const RecoveryManager& recovery() const { return *m_recovery; }
@@ -155,6 +159,8 @@ private slots:
 
     void onFeatureDoubleClicked(int featureIndex);
     void onFeatureReordered(int fromIndex, int toIndex);
+    void onFeatureDeleteRequested(int featureIndex);
+    void onFeatureSuppressRequested(int featureIndex, bool suppress);
     void onRollbackChanged(int newIndex);
 
 private:
@@ -193,6 +199,13 @@ private:
     void updateWindowTitle();
 
     bool isTabModified(const DocTab& tab) const;
+    /// Make the assembly edit just done (from `before`) one undo step on the
+    /// active tab. `wasDirty` is the assembly's flag before the edit.
+    void recordAssemblyEdit(doc::AssemblyState before, bool wasDirty, const QString& description);
+    /// The feature at a panel row of the active part, or null.
+    const doc::Feature* featureAt(int featureIndex) const;
+    /// Undo (or redo) on the active document, and rebuild what it changed.
+    void undoOrRedo(bool undo);
     /// Tab captions and the window title show which documents are modified.
     void refreshModifiedIndicators();
     /// If the tab's document is modified, focus it and ask Save / Discard /

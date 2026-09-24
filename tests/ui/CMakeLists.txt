@@ -25,6 +25,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_MainWindowDocuments.cpp
         test_Recovery.cpp
         test_BodyFeatureCommands.cpp
+        test_FeatureEditing.cpp
         test_ViewportGraphics.cpp
     )
     target_link_libraries(hz_ui_window_tests
