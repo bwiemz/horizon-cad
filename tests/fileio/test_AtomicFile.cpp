@@ -175,8 +175,10 @@ TEST(AtomicFileTest, NonAsciiUtf8PathsRoundTrip) {
     const fs::path target = dir.path() / pathFromUtf8(utf8Name);
     ASSERT_TRUE(writeFileAtomically(target, "data"));
     EXPECT_EQ(readAll(target), "data");
-    EXPECT_EQ(target.filename().u8string(),
-              std::u8string(reinterpret_cast<const char8_t*>(utf8Name.data()), utf8Name.size()));
+    // Compared as bytes: gtest prints a std::u8string through a function that
+    // exists only when gtest itself was built as C++20.
+    const std::u8string name = target.filename().u8string();
+    EXPECT_EQ(std::string(name.begin(), name.end()), utf8Name);
 }
 
 // ---------------------------------------------------------------------------
