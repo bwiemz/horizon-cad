@@ -1,13 +1,16 @@
 #include "horizon/fileio/DxfFormat.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -462,47 +465,80 @@ struct DxfPair {
     std::string value;
 };
 
-bool readPair(std::istream& in, DxfPair& pair) {
-    std::string codeLine, valueLine;
-    if (!std::getline(in, codeLine)) return false;
-    if (!std::getline(in, valueLine)) return false;
+/// A malformed or truncated DXF. The message becomes the load error.
+struct DxfError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
 
-    // Trim whitespace.
-    auto trim = [](std::string& s) {
-        size_t start = s.find_first_not_of(" \t\r\n");
-        size_t end = s.find_last_not_of(" \t\r\n");
-        if (start == std::string::npos) {
-            s.clear();
-            return;
-        }
-        s = s.substr(start, end - start + 1);
-    };
+/// The input, and how many lines of it have been read (for error messages).
+struct DxfStream {
+    std::istream& in;
+    long line = 0;
+};
+
+void trim(std::string& s) {
+    const size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        s.clear();
+        return;
+    }
+    const size_t end = s.find_last_not_of(" \t\r\n");
+    s = s.substr(start, end - start + 1);
+}
+
+/// Numbers are parsed with std::from_chars: std::stod follows the C locale,
+/// which Qt sets from the environment on Unix, so under de_DE "1.5" read as 1.
+double toDouble(std::string_view s) {
+    if (!s.empty() && s.front() == '+') s.remove_prefix(1);  // from_chars rejects '+'
+    double value = 0.0;
+    const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    return ec == std::errc{} && std::isfinite(value) ? value : 0.0;
+}
+
+int toInt(std::string_view s) {
+    if (!s.empty() && s.front() == '+') s.remove_prefix(1);
+    int value = 0;
+    const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    return ec == std::errc{} ? value : 0;
+}
+
+/// Read one code/value pair. False only at a clean end of input; a code with
+/// no value, or a code line that is not a number, is a DxfError.
+bool readPair(DxfStream& in, DxfPair& pair) {
+    std::string codeLine;
+    std::string valueLine;
+    if (!std::getline(in.in, codeLine)) return false;
+    ++in.line;
     trim(codeLine);
+    if (!std::getline(in.in, valueLine)) {
+        if (codeLine.empty()) return false;  // a trailing blank line
+        throw DxfError("the file ends in the middle of a group (line " + std::to_string(in.line) +
+                       ")");
+    }
+    ++in.line;
     trim(valueLine);
 
-    try {
-        pair.code = std::stoi(codeLine);
-    } catch (...) {
-        return false;
+    int code = 0;
+    const auto [ptr, ec] =
+        std::from_chars(codeLine.data(), codeLine.data() + codeLine.size(), code);
+    if (ec != std::errc{} || ptr != codeLine.data() + codeLine.size()) {
+        throw DxfError("line " + std::to_string(in.line - 1) + ": expected a group code, found \"" +
+                       codeLine.substr(0, 40) + "\"");
     }
-    pair.value = valueLine;
+    pair.code = code;
+    pair.value = std::move(valueLine);
     return true;
 }
 
-double toDouble(const std::string& s) {
-    try {
-        return std::stod(s);
-    } catch (...) {
-        return 0.0;
+/// Read a pair inside a section, where the end of the input means the file was
+/// cut short. Every section loop reads through this, so a truncated file is an
+/// error instead of a silent partial load — or, as it used to be, a loop that
+/// re-read the last pair forever.
+bool nextPair(DxfStream& in, DxfPair& pair) {
+    if (!readPair(in, pair)) {
+        throw DxfError("the file ends before the end of a section (it may be truncated)");
     }
-}
-
-int toInt(const std::string& s) {
-    try {
-        return std::stoi(s);
-    } catch (...) {
-        return 0;
-    }
+    return true;
 }
 
 // ===========================================================================
@@ -739,21 +775,21 @@ std::shared_ptr<draft::DraftEntity> parseInsert(const std::vector<DxfPair>& grou
 // DXF Import - Section parsers
 // ===========================================================================
 
-void skipSection(std::istream& in) {
+void skipSection(DxfStream& in) {
     DxfPair pair;
-    while (readPair(in, pair)) {
+    while (nextPair(in, pair)) {
         if (pair.code == 0 && pair.value == "ENDSEC") return;
     }
 }
 
-void parseLayerTable(std::istream& in, doc::Document& doc) {
+void parseLayerTable(DxfStream& in, doc::Document& doc) {
     DxfPair pair;
-    while (readPair(in, pair)) {
+    while (nextPair(in, pair)) {
         if (pair.code == 0 && pair.value == "ENDTAB") return;
         if (pair.code == 0 && pair.value == "LAYER") {
             // Collect all groups for this layer entry.
             std::vector<DxfPair> groups;
-            while (readPair(in, pair)) {
+            while (nextPair(in, pair)) {
                 if (pair.code == 0) {
                     // Put back? We can't unread, so process what we have.
                     // Re-dispatch: this pair is the start of the next record.
@@ -794,19 +830,19 @@ void parseLayerTable(std::istream& in, doc::Document& doc) {
     }
 }
 
-void parseTablesSection(std::istream& in, doc::Document& doc) {
+void parseTablesSection(DxfStream& in, doc::Document& doc) {
     DxfPair pair;
-    while (readPair(in, pair)) {
+    while (nextPair(in, pair)) {
         if (pair.code == 0 && pair.value == "ENDSEC") return;
         if (pair.code == 0 && pair.value == "TABLE") {
             // Read table name.
             DxfPair namePair;
-            if (!readPair(in, namePair)) return;
+            if (!nextPair(in, namePair)) return;
             if (namePair.code == 2 && namePair.value == "LAYER") {
                 parseLayerTable(in, doc);
             } else {
                 // Skip other tables (LTYPE, STYLE, VIEW, etc.).
-                while (readPair(in, pair)) {
+                while (nextPair(in, pair)) {
                     if (pair.code == 0 && pair.value == "ENDTAB") break;
                 }
             }
@@ -814,14 +850,14 @@ void parseTablesSection(std::istream& in, doc::Document& doc) {
     }
 }
 
-void parseBlocksSection(std::istream& in, doc::Document& doc) {
+void parseBlocksSection(DxfStream& in, doc::Document& doc) {
     DxfPair pair;
-    while (readPair(in, pair)) {
+    while (nextPair(in, pair)) {
         if (pair.code == 0 && pair.value == "ENDSEC") return;
         if (pair.code == 0 && pair.value == "BLOCK") {
             // Collect BLOCK header groups.
             std::vector<DxfPair> headerGroups;
-            while (readPair(in, pair)) {
+            while (nextPair(in, pair)) {
                 if (pair.code == 0) break;
                 headerGroups.push_back(pair);
             }
@@ -844,7 +880,7 @@ void parseBlocksSection(std::istream& in, doc::Document& doc) {
                 if (pair.code == 0) {
                     std::string entityType = pair.value;
                     std::vector<DxfPair> groups;
-                    while (readPair(in, pair)) {
+                    while (nextPair(in, pair)) {
                         if (pair.code == 0) break;
                         groups.push_back(pair);
                     }
@@ -875,7 +911,7 @@ void parseBlocksSection(std::istream& in, doc::Document& doc) {
                     }
                     continue;  // pair already holds next entity's code 0 line.
                 }
-                if (!readPair(in, pair)) break;
+                if (!nextPair(in, pair)) break;
             }
 
             if (!isSpecial && !blockName.empty()) {
@@ -885,10 +921,10 @@ void parseBlocksSection(std::istream& in, doc::Document& doc) {
     }
 }
 
-void parseEntitiesSection(std::istream& in, doc::Document& doc) {
+void parseEntitiesSection(DxfStream& in, doc::Document& doc) {
     DxfPair pair;
     // Read first entity type.
-    while (readPair(in, pair)) {
+    while (nextPair(in, pair)) {
         if (pair.code == 0) break;
     }
 
@@ -900,7 +936,7 @@ void parseEntitiesSection(std::istream& in, doc::Document& doc) {
         std::vector<DxfPair> groups;
 
         // Collect all group codes until next code 0.
-        while (readPair(in, pair)) {
+        while (nextPair(in, pair)) {
             if (pair.code == 0) break;
             groups.push_back(pair);
         }
@@ -1152,16 +1188,24 @@ namespace {
 
 /// The section loop behind DxfFormat::load. Returns false when the input has
 /// no SECTION at all.
-bool parseDxf(std::istream& in, doc::Document& doc) {
+bool parseDxf(std::istream& input, doc::Document& doc) {
+    DxfStream in{input};
     DxfPair pair;
     bool foundSection = false;
 
-    while (readPair(in, pair)) {
+    for (;;) {
+        try {
+            if (!readPair(in, pair)) break;
+        } catch (const DxfError&) {
+            // Garbage before any section is simply not a DXF file.
+            if (!foundSection) return false;
+            throw;
+        }
         if (pair.code == 0 && pair.value == "EOF") break;
         if (pair.code == 0 && pair.value == "SECTION") {
             foundSection = true;
             DxfPair namePair;
-            if (!readPair(in, namePair)) break;
+            nextPair(in, namePair);
             if (namePair.code == 2) {
                 if (namePair.value == "TABLES") {
                     parseTablesSection(in, doc);
@@ -1184,23 +1228,39 @@ bool parseDxf(std::istream& in, doc::Document& doc) {
 
 }  // namespace
 
-bool DxfFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
-    const auto fail = [error](std::string message) {
-        if (error) *error = std::move(message);
-        return false;
-    };
+namespace {
 
-    const std::filesystem::path path = pathFromUtf8(filePath);
-    if (std::string why = whyUnreadable(path); !why.empty()) return fail(std::move(why));
-    std::ifstream in(path);
-    if (!in.is_open()) return fail("the file could not be read (check its permissions)");
+bool failWith(std::string* error, std::string message) {
+    if (error) *error = std::move(message);
+    return false;
+}
 
+/// parseDxf with every failure turned into a reason.
+bool parseChecked(std::istream& in, doc::Document& doc, std::string* error) {
     try {
-        if (!parseDxf(in, doc)) return fail("this is not a DXF file (it has no SECTION)");
+        if (!parseDxf(in, doc))
+            return failWith(error, "this is not a DXF file (it has no SECTION)");
+    } catch (const DxfError& e) {
+        return failWith(error, e.what());
     } catch (const std::exception& e) {
-        return fail(std::string("the DXF file is damaged: ") + e.what());
+        return failWith(error, std::string("the DXF file is damaged: ") + e.what());
     }
     return true;
+}
+
+}  // namespace
+
+bool DxfFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
+    const std::filesystem::path path = pathFromUtf8(filePath);
+    if (std::string why = whyUnreadable(path); !why.empty()) return failWith(error, std::move(why));
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) return failWith(error, "the file could not be read (check its permissions)");
+    return parseChecked(in, doc, error);
+}
+
+bool DxfFormat::loadFromString(const std::string& text, doc::Document& doc, std::string* error) {
+    std::istringstream in(text);
+    return parseChecked(in, doc, error);
 }
 
 }  // namespace hz::io

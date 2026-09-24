@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <utility>
 
 #include "horizon/math/Expression.h"
 
@@ -72,4 +76,84 @@ TEST(ExpressionEdgeCaseTest, ZeroPower) {
     auto expr = Expression::parse("5 ^ 0");
     ASSERT_NE(expr, nullptr);
     EXPECT_DOUBLE_EQ(expr->evaluate({}), 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// Hostile input: expressions arrive from files, so size and depth are bounded
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string nestedParens(int depth) {
+    return std::string(static_cast<size_t>(depth), '(') + "1" +
+           std::string(static_cast<size_t>(depth), ')');
+}
+
+std::string flatSum(int terms) {
+    std::string s = "1";
+    for (int i = 1; i < terms; ++i) s += "+1";
+    return s;
+}
+
+}  // namespace
+
+TEST(ExpressionLimitsTest, NestingUpToTheLimitParses) {
+    // Each bracket is one level of nesting.
+    auto e = hz::math::Expression::parse(nestedParens(hz::math::Expression::kMaxNestingDepth));
+    ASSERT_NE(e, nullptr);
+    EXPECT_DOUBLE_EQ(e->evaluate({}), 1.0);
+}
+
+TEST(ExpressionLimitsTest, NestingPastTheLimitIsRejected) {
+    EXPECT_EQ(hz::math::Expression::parse(nestedParens(hz::math::Expression::kMaxNestingDepth + 1)),
+              nullptr);
+}
+
+TEST(ExpressionLimitsTest, AStackOverflowOfMinusSignsIsRejected) {
+    // 200 000 nested negations used to recurse once each and overflow the stack.
+    EXPECT_EQ(hz::math::Expression::parse(std::string(200000, '-') + "1"), nullptr);
+}
+
+TEST(ExpressionLimitsTest, ALongPowerTowerIsRejected) {
+    std::string tower = "2";
+    for (int i = 0; i < 10000; ++i) tower += "^1";
+    EXPECT_EQ(hz::math::Expression::parse(tower), nullptr);
+}
+
+TEST(ExpressionLimitsTest, ALongFlatChainIsRejected) {
+    // Parsed in a loop, but it builds a tree as deep as it is long, which
+    // evaluation and destruction would recurse through.
+    EXPECT_EQ(hz::math::Expression::parse(flatSum(200000)), nullptr);
+}
+
+TEST(ExpressionLimitsTest, AReasonableChainStillParses) {
+    auto e = hz::math::Expression::parse(flatSum(400));  // 799 nodes
+    ASSERT_NE(e, nullptr);
+    EXPECT_DOUBLE_EQ(e->evaluate({}), 400.0);
+}
+
+TEST(ExpressionLimitsTest, FromJsonRejectsDeepTreesAndWrongTypes) {
+    // Nested by moving, not copying: copying a json value recurses once per
+    // level, which on Windows' 1 MB stack overflows long before 5000.
+    nlohmann::json deep = {{"type", "literal"}, {"value", 1.0}};
+    for (int i = 0; i < 5000; ++i) {
+        nlohmann::json wrapper = {{"type", "unary"}, {"op", "-"}};
+        wrapper["child"] = std::move(deep);
+        deep = std::move(wrapper);
+    }
+    EXPECT_EQ(hz::math::Expression::fromJson(deep), nullptr);
+
+    // A number where the operator string belongs made json::get throw.
+    const nlohmann::json wrongType = {
+        {"type", "unary"}, {"op", 7}, {"child", {{"type", "literal"}, {"value", 1.0}}}};
+    std::unique_ptr<hz::math::Expression> parsed;
+    ASSERT_NO_THROW(parsed = hz::math::Expression::fromJson(wrongType));
+    EXPECT_EQ(parsed, nullptr);
+
+    // A normal tree still round-trips.
+    auto e = hz::math::Expression::parse("2*(x+3)^2");
+    ASSERT_NE(e, nullptr);
+    auto back = hz::math::Expression::fromJson(e->toJson());
+    ASSERT_NE(back, nullptr);
+    EXPECT_DOUBLE_EQ(back->evaluate({{"x", 1.0}}), 32.0);
 }

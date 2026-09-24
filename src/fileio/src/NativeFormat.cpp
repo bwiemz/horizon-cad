@@ -1,10 +1,13 @@
 #include "horizon/fileio/NativeFormat.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -29,6 +32,7 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/LineType.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -44,6 +48,11 @@ namespace hz::io {
 static std::string dumpJson(const json& root, int indent) {
     return root.dump(indent, ' ', false, json::error_handler_t::replace);
 }
+
+/// The envelope version this build writes, and the newest it can read. A file
+/// from a newer build may hold content this one does not know; loading it
+/// would drop that content silently, and saving would then destroy it.
+static constexpr int kFormatVersion = 16;
 
 /// Store `message` in `error` (when given) and report failure.
 static bool fail(std::string* error, std::string message) {
@@ -71,6 +80,61 @@ static std::string jsonMessage(const std::exception& e) {
     }
     return what;
 }
+
+/// An integer field in [lo, hi], or `fallback` when absent. Throws a
+/// std:: exception, not a json one — every per-item loop catches
+/// std::exception, so a bad field skips its item rather than the document.
+///
+/// nlohmann converts
+/// a float to an integer with a plain static_cast — undefined behaviour out of
+/// range — and an enum, count or index from a file can hold anything. A value
+/// that is not a whole number in range throws, and the load reports the file
+/// as damaged. An enum that indexes a table (a line type's dash pattern) is
+/// otherwise an out-of-bounds read waiting for its first draw.
+static long long intField(const json& obj, const char* key, long long fallback, long long lo,
+                          long long hi) {
+    if (!obj.contains(key)) return fallback;
+    const json& j = obj.at(key);
+    long long v = 0;
+    if (j.is_number_integer() && !j.is_number_unsigned()) {
+        v = j.get<long long>();
+    } else if (j.is_number_unsigned()) {
+        const auto u = j.get<unsigned long long>();
+        if (u > static_cast<unsigned long long>(hi)) {
+            throw std::out_of_range(std::string("\"") + key + "\" is out of range");
+        }
+        v = static_cast<long long>(u);
+    } else if (j.is_number_float()) {
+        const double d = j.get<double>();
+        if (!std::isfinite(d) || d != std::floor(d) || d < static_cast<double>(lo) ||
+            d > static_cast<double>(hi)) {
+            throw std::out_of_range(std::string("\"") + key + "\" is out of range");
+        }
+        v = static_cast<long long>(d);
+    } else {
+        throw std::invalid_argument(std::string("\"") + key + "\" is not a number");
+    }
+    if (v < lo || v > hi) throw std::out_of_range(std::string("\"") + key + "\" is out of range");
+    return v;
+}
+
+/// A count that is clamped rather than refused: 0 and huge values are the
+/// same mistake as a slightly wrong one, and clamping keeps the rest of the
+/// file.
+static int clampedCount(const json& obj, const char* key, int fallback, int lo, int hi) {
+    if (!obj.contains(key)) return fallback;
+    const json& j = obj.at(key);
+    if (!j.is_number()) throw std::invalid_argument(std::string("\"") + key + "\" is not a number");
+    const double d = j.get<double>();
+    if (!std::isfinite(d)) throw std::out_of_range(std::string("\"") + key + "\" is not finite");
+    return static_cast<int>(std::clamp(d, static_cast<double>(lo), static_cast<double>(hi)));
+}
+
+constexpr long long kLastLineType = static_cast<long long>(draft::LineType::Phantom);
+constexpr long long kLastHatchPattern = static_cast<long long>(draft::HatchPattern::CrossHatch);
+constexpr long long kLastAlignment = static_cast<long long>(draft::TextAlignment::Right);
+constexpr long long kLastOrientation =
+    static_cast<long long>(draft::DraftLinearDimension::Orientation::Aligned);
 
 // ---------------------------------------------------------------------------
 // Constraint serialization helpers
@@ -258,7 +322,7 @@ static json serializeEntity(const draft::DraftEntity& entity) {
 /// (without the tessellation cache — that lives in typed binary vectors).
 static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
     json root;
-    root["version"] = 16;
+    root["version"] = kFormatVersion;
     root["type"] = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
 
     // --- Dimension style ---
@@ -663,132 +727,134 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
     std::shared_ptr<draft::DraftEntity> entity;
 
     if (type == "line") {
-        double sx = obj["start"]["x"].get<double>();
-        double sy = obj["start"]["y"].get<double>();
-        double ex = obj["end"]["x"].get<double>();
-        double ey = obj["end"]["y"].get<double>();
+        double sx = obj.at("start").at("x").get<double>();
+        double sy = obj.at("start").at("y").get<double>();
+        double ex = obj.at("end").at("x").get<double>();
+        double ey = obj.at("end").at("y").get<double>();
         entity = std::make_shared<draft::DraftLine>(math::Vec2(sx, sy), math::Vec2(ex, ey));
     } else if (type == "circle") {
-        double cx = obj["center"]["x"].get<double>();
-        double cy = obj["center"]["y"].get<double>();
-        double r = obj["radius"].get<double>();
+        double cx = obj.at("center").at("x").get<double>();
+        double cy = obj.at("center").at("y").get<double>();
+        double r = obj.at("radius").get<double>();
         entity = std::make_shared<draft::DraftCircle>(math::Vec2(cx, cy), r);
     } else if (type == "arc") {
-        double cx = obj["center"]["x"].get<double>();
-        double cy = obj["center"]["y"].get<double>();
-        double r = obj["radius"].get<double>();
-        double sa = obj["startAngle"].get<double>();
-        double ea = obj["endAngle"].get<double>();
+        double cx = obj.at("center").at("x").get<double>();
+        double cy = obj.at("center").at("y").get<double>();
+        double r = obj.at("radius").get<double>();
+        double sa = obj.at("startAngle").get<double>();
+        double ea = obj.at("endAngle").get<double>();
         entity = std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
     } else if (type == "rectangle") {
-        double c1x = obj["corner1"]["x"].get<double>();
-        double c1y = obj["corner1"]["y"].get<double>();
-        double c2x = obj["corner2"]["x"].get<double>();
-        double c2y = obj["corner2"]["y"].get<double>();
+        double c1x = obj.at("corner1").at("x").get<double>();
+        double c1y = obj.at("corner1").at("y").get<double>();
+        double c2x = obj.at("corner2").at("x").get<double>();
+        double c2y = obj.at("corner2").at("y").get<double>();
         entity =
             std::make_shared<draft::DraftRectangle>(math::Vec2(c1x, c1y), math::Vec2(c2x, c2y));
     } else if (type == "polyline") {
         bool closed = obj.value("closed", false);
         std::vector<math::Vec2> points;
-        for (const auto& pt : obj["points"]) {
-            points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        for (const auto& pt : obj.at("points")) {
+            points.emplace_back(pt.at("x").get<double>(), pt.at("y").get<double>());
         }
         entity = std::make_shared<draft::DraftPolyline>(points, closed);
     } else if (type == "linearDimension") {
-        auto p1 =
-            math::Vec2(obj["defPoint1"]["x"].get<double>(), obj["defPoint1"]["y"].get<double>());
-        auto p2 =
-            math::Vec2(obj["defPoint2"]["x"].get<double>(), obj["defPoint2"]["y"].get<double>());
-        auto dp = math::Vec2(obj["dimLinePoint"]["x"].get<double>(),
-                             obj["dimLinePoint"]["y"].get<double>());
-        auto orient =
-            static_cast<draft::DraftLinearDimension::Orientation>(obj.value("orientation", 0));
+        auto p1 = math::Vec2(obj.at("defPoint1").at("x").get<double>(),
+                             obj.at("defPoint1").at("y").get<double>());
+        auto p2 = math::Vec2(obj.at("defPoint2").at("x").get<double>(),
+                             obj.at("defPoint2").at("y").get<double>());
+        auto dp = math::Vec2(obj.at("dimLinePoint").at("x").get<double>(),
+                             obj.at("dimLinePoint").at("y").get<double>());
+        auto orient = static_cast<draft::DraftLinearDimension::Orientation>(
+            intField(obj, "orientation", 0, 0, kLastOrientation));
         auto dim = std::make_shared<draft::DraftLinearDimension>(p1, p2, dp, orient);
         if (obj.contains("textOverride"))
-            dim->setTextOverride(obj["textOverride"].get<std::string>());
+            dim->setTextOverride(obj.at("textOverride").get<std::string>());
         entity = dim;
     } else if (type == "radialDimension") {
-        auto center =
-            math::Vec2(obj["center"]["x"].get<double>(), obj["center"]["y"].get<double>());
-        double radius = obj["radius"].get<double>();
-        auto textPt =
-            math::Vec2(obj["textPoint"]["x"].get<double>(), obj["textPoint"]["y"].get<double>());
+        auto center = math::Vec2(obj.at("center").at("x").get<double>(),
+                                 obj.at("center").at("y").get<double>());
+        double radius = obj.at("radius").get<double>();
+        auto textPt = math::Vec2(obj.at("textPoint").at("x").get<double>(),
+                                 obj.at("textPoint").at("y").get<double>());
         bool isDiam = obj.value("isDiameter", false);
         auto dim = std::make_shared<draft::DraftRadialDimension>(center, radius, textPt, isDiam);
         if (obj.contains("textOverride"))
-            dim->setTextOverride(obj["textOverride"].get<std::string>());
+            dim->setTextOverride(obj.at("textOverride").get<std::string>());
         entity = dim;
     } else if (type == "angularDimension") {
-        auto vertex =
-            math::Vec2(obj["vertex"]["x"].get<double>(), obj["vertex"]["y"].get<double>());
-        auto l1 =
-            math::Vec2(obj["line1Point"]["x"].get<double>(), obj["line1Point"]["y"].get<double>());
-        auto l2 =
-            math::Vec2(obj["line2Point"]["x"].get<double>(), obj["line2Point"]["y"].get<double>());
-        double arcR = obj["arcRadius"].get<double>();
+        auto vertex = math::Vec2(obj.at("vertex").at("x").get<double>(),
+                                 obj.at("vertex").at("y").get<double>());
+        auto l1 = math::Vec2(obj.at("line1Point").at("x").get<double>(),
+                             obj.at("line1Point").at("y").get<double>());
+        auto l2 = math::Vec2(obj.at("line2Point").at("x").get<double>(),
+                             obj.at("line2Point").at("y").get<double>());
+        double arcR = obj.at("arcRadius").get<double>();
         auto dim = std::make_shared<draft::DraftAngularDimension>(vertex, l1, l2, arcR);
         if (obj.contains("textOverride"))
-            dim->setTextOverride(obj["textOverride"].get<std::string>());
+            dim->setTextOverride(obj.at("textOverride").get<std::string>());
         entity = dim;
     } else if (type == "leader") {
         std::vector<math::Vec2> points;
-        for (const auto& pt : obj["points"]) {
-            points.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        for (const auto& pt : obj.at("points")) {
+            points.emplace_back(pt.at("x").get<double>(), pt.at("y").get<double>());
         }
         std::string text = obj.value("text", "");
         auto ldr = std::make_shared<draft::DraftLeader>(points, text);
         if (obj.contains("textOverride"))
-            ldr->setTextOverride(obj["textOverride"].get<std::string>());
+            ldr->setTextOverride(obj.at("textOverride").get<std::string>());
         entity = ldr;
     } else if (type == "blockRef") {
         if (blockTable) {
             std::string blockName = obj.value("blockName", "");
             auto def = blockTable->findBlock(blockName);
             if (def) {
-                auto pos = math::Vec2(obj["insertPos"]["x"].get<double>(),
-                                      obj["insertPos"]["y"].get<double>());
+                auto pos = math::Vec2(obj.at("insertPos").at("x").get<double>(),
+                                      obj.at("insertPos").at("y").get<double>());
                 double rot = obj.value("rotation", 0.0);
                 double scl = obj.value("scale", 1.0);
                 entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
             }
         }
     } else if (type == "text") {
-        auto pos =
-            math::Vec2(obj["position"]["x"].get<double>(), obj["position"]["y"].get<double>());
+        auto pos = math::Vec2(obj.at("position").at("x").get<double>(),
+                              obj.at("position").at("y").get<double>());
         std::string text = obj.value("text", "");
         double textHeight = obj.value("textHeight", 2.5);
         auto txt = std::make_shared<draft::DraftText>(pos, text, textHeight);
-        if (obj.contains("rotation")) txt->setRotation(obj["rotation"].get<double>());
+        if (obj.contains("rotation")) txt->setRotation(obj.at("rotation").get<double>());
         if (obj.contains("alignment"))
-            txt->setAlignment(static_cast<draft::TextAlignment>(obj["alignment"].get<int>()));
+            txt->setAlignment(static_cast<draft::TextAlignment>(
+                intField(obj, "alignment", 0, 0, kLastAlignment)));
         entity = txt;
     } else if (type == "spline") {
         bool closed = obj.value("closed", false);
         std::vector<math::Vec2> controlPoints;
-        for (const auto& cp : obj["controlPoints"]) {
-            controlPoints.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+        for (const auto& cp : obj.at("controlPoints")) {
+            controlPoints.emplace_back(cp.at("x").get<double>(), cp.at("y").get<double>());
         }
         auto splineEnt = std::make_shared<draft::DraftSpline>(controlPoints, closed);
         if (obj.contains("weights")) {
             std::vector<double> wts;
-            wts.reserve(obj["weights"].size());
-            for (const auto& w : obj["weights"]) wts.push_back(w.get<double>());
+            wts.reserve(obj.at("weights").size());
+            for (const auto& w : obj.at("weights")) wts.push_back(w.get<double>());
             splineEnt->setWeights(wts);
         }
         entity = splineEnt;
     } else if (type == "hatch") {
         std::vector<math::Vec2> boundary;
-        for (const auto& pt : obj["boundary"]) {
-            boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+        for (const auto& pt : obj.at("boundary")) {
+            boundary.emplace_back(pt.at("x").get<double>(), pt.at("y").get<double>());
         }
-        auto hatchPattern = static_cast<draft::HatchPattern>(obj.value("pattern", 1));
+        auto hatchPattern =
+            static_cast<draft::HatchPattern>(intField(obj, "pattern", 1, 0, kLastHatchPattern));
         double hatchAngle = obj.value("angle", 0.0);
         double hatchSpacing = obj.value("spacing", 1.0);
         entity =
             std::make_shared<draft::DraftHatch>(boundary, hatchPattern, hatchAngle, hatchSpacing);
     } else if (type == "ellipse") {
-        auto center =
-            math::Vec2(obj["center"]["x"].get<double>(), obj["center"]["y"].get<double>());
+        auto center = math::Vec2(obj.at("center").at("x").get<double>(),
+                                 obj.at("center").at("y").get<double>());
         double semiMajor = obj.value("semiMajor", 1.0);
         double semiMinor = obj.value("semiMinor", 1.0);
         double rot = obj.value("rotation", 0.0);
@@ -797,14 +863,14 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
 
     if (entity) {
         if (obj.contains("id")) {
-            uint64_t savedId = obj["id"].get<uint64_t>();
+            uint64_t savedId = obj.at("id").get<uint64_t>();
             entity->setId(savedId);
             draft::DraftEntity::advanceIdCounter(savedId);
         }
         entity->setLayer(layer);
         entity->setColor(color);
         entity->setLineWidth(lineWidth);
-        entity->setLineType(obj.value("lineType", 0));
+        entity->setLineType(static_cast<int>(intField(obj, "lineType", 0, 0, kLastLineType)));
         uint64_t gid = obj.value("groupId", uint64_t(0));
         entity->setGroupId(gid);
     }
@@ -825,35 +891,35 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     // --- Document type (v16+; earlier files are all drawings) ---
     // Defensive read: a malformed (non-string) "type" must not throw.
     std::string typeTag = "hcad";
-    if (root.contains("type") && root["type"].is_string()) {
-        typeTag = root["type"].get<std::string>();
+    if (root.contains("type") && root.at("type").is_string()) {
+        typeTag = root.at("type").get<std::string>();
     }
     doc.setType(typeTag == "hzpart" ? doc::DocumentType::Part : doc::DocumentType::Drawing);
 
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
-        const auto& dsObj = root["dimensionStyle"];
+        const auto& dsObj = root.at("dimensionStyle");
         draft::DimensionStyle ds;
         ds.textHeight = dsObj.value("textHeight", 2.5);
         ds.arrowSize = dsObj.value("arrowSize", 1.5);
         ds.arrowAngle = dsObj.value("arrowAngle", 0.3);
         ds.extensionGap = dsObj.value("extensionGap", 0.5);
         ds.extensionOvershoot = dsObj.value("extensionOvershoot", 1.0);
-        ds.precision = dsObj.value("precision", 2);
+        ds.precision = static_cast<int>(intField(dsObj, "precision", 2, 0, 12));
         ds.showUnits = dsObj.value("showUnits", false);
         doc.draftDocument().setDimensionStyle(ds);
     }
 
     // --- Load layer table (v3+) ---
     if (root.contains("layers")) {
-        for (const auto& layerObj : root["layers"]) {
+        for (const auto& layerObj : root.at("layers")) {
             draft::LayerProperties props;
             props.name = layerObj.value("name", "0");
             props.color = layerObj.value("color", 0xFFFFFFFFu);
             props.lineWidth = layerObj.value("lineWidth", 1.0);
             props.visible = layerObj.value("visible", true);
             props.locked = layerObj.value("locked", false);
-            props.lineType = layerObj.value("lineType", 1);
+            props.lineType = static_cast<int>(intField(layerObj, "lineType", 1, 0, kLastLineType));
             if (props.name == "0") {
                 // Update default layer properties instead of adding duplicate.
                 auto* defaultLayer = doc.layerManager().getLayer("0");
@@ -863,85 +929,91 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
             }
         }
         if (root.contains("currentLayer")) {
-            doc.layerManager().setCurrentLayer(root["currentLayer"].get<std::string>());
+            doc.layerManager().setCurrentLayer(root.at("currentLayer").get<std::string>());
         }
     }
 
     // --- Load block definitions (v6+) ---
     if (root.contains("blocks")) {
-        for (const auto& blockObj : root["blocks"]) {
+        for (const auto& blockObj : root.at("blocks")) {
             try {
                 auto def = std::make_shared<draft::BlockDefinition>();
                 def->name = blockObj.value("name", "");
-                def->basePoint = math::Vec2(blockObj["basePoint"]["x"].get<double>(),
-                                            blockObj["basePoint"]["y"].get<double>());
+                def->basePoint = math::Vec2(blockObj.at("basePoint").at("x").get<double>(),
+                                            blockObj.at("basePoint").at("y").get<double>());
                 if (blockObj.contains("entities")) {
-                    for (const auto& se : blockObj["entities"]) {
+                    for (const auto& se : blockObj.at("entities")) {
                         std::string stype = se.value("type", "");
                         std::shared_ptr<draft::DraftEntity> subEnt;
                         if (stype == "line") {
                             subEnt = std::make_shared<draft::DraftLine>(
-                                math::Vec2(se["start"]["x"].get<double>(),
-                                           se["start"]["y"].get<double>()),
-                                math::Vec2(se["end"]["x"].get<double>(),
-                                           se["end"]["y"].get<double>()));
+                                math::Vec2(se.at("start").at("x").get<double>(),
+                                           se.at("start").at("y").get<double>()),
+                                math::Vec2(se.at("end").at("x").get<double>(),
+                                           se.at("end").at("y").get<double>()));
                         } else if (stype == "circle") {
                             subEnt = std::make_shared<draft::DraftCircle>(
-                                math::Vec2(se["center"]["x"].get<double>(),
-                                           se["center"]["y"].get<double>()),
-                                se["radius"].get<double>());
+                                math::Vec2(se.at("center").at("x").get<double>(),
+                                           se.at("center").at("y").get<double>()),
+                                se.at("radius").get<double>());
                         } else if (stype == "arc") {
                             subEnt = std::make_shared<draft::DraftArc>(
-                                math::Vec2(se["center"]["x"].get<double>(),
-                                           se["center"]["y"].get<double>()),
-                                se["radius"].get<double>(), se["startAngle"].get<double>(),
-                                se["endAngle"].get<double>());
+                                math::Vec2(se.at("center").at("x").get<double>(),
+                                           se.at("center").at("y").get<double>()),
+                                se.at("radius").get<double>(), se.at("startAngle").get<double>(),
+                                se.at("endAngle").get<double>());
                         } else if (stype == "rectangle") {
                             subEnt = std::make_shared<draft::DraftRectangle>(
-                                math::Vec2(se["corner1"]["x"].get<double>(),
-                                           se["corner1"]["y"].get<double>()),
-                                math::Vec2(se["corner2"]["x"].get<double>(),
-                                           se["corner2"]["y"].get<double>()));
+                                math::Vec2(se.at("corner1").at("x").get<double>(),
+                                           se.at("corner1").at("y").get<double>()),
+                                math::Vec2(se.at("corner2").at("x").get<double>(),
+                                           se.at("corner2").at("y").get<double>()));
                         } else if (stype == "polyline") {
                             std::vector<math::Vec2> pts;
-                            for (const auto& pt : se["points"])
-                                pts.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                            for (const auto& pt : se.at("points"))
+                                pts.emplace_back(pt.at("x").get<double>(),
+                                                 pt.at("y").get<double>());
                             subEnt = std::make_shared<draft::DraftPolyline>(
                                 pts, se.value("closed", false));
                         } else if (stype == "spline") {
                             std::vector<math::Vec2> cps;
-                            for (const auto& cp : se["controlPoints"])
-                                cps.emplace_back(cp["x"].get<double>(), cp["y"].get<double>());
+                            for (const auto& cp : se.at("controlPoints"))
+                                cps.emplace_back(cp.at("x").get<double>(),
+                                                 cp.at("y").get<double>());
                             auto blkSp = std::make_shared<draft::DraftSpline>(
                                 cps, se.value("closed", false));
                             if (se.contains("weights")) {
                                 std::vector<double> wts;
-                                wts.reserve(se["weights"].size());
-                                for (const auto& w : se["weights"]) wts.push_back(w.get<double>());
+                                wts.reserve(se.at("weights").size());
+                                for (const auto& w : se.at("weights"))
+                                    wts.push_back(w.get<double>());
                                 blkSp->setWeights(wts);
                             }
                             subEnt = blkSp;
                         } else if (stype == "text") {
-                            auto pos = math::Vec2(se["position"]["x"].get<double>(),
-                                                  se["position"]["y"].get<double>());
+                            auto pos = math::Vec2(se.at("position").at("x").get<double>(),
+                                                  se.at("position").at("y").get<double>());
                             auto txt = std::make_shared<draft::DraftText>(
                                 pos, se.value("text", ""), se.value("textHeight", 2.5));
                             if (se.contains("rotation"))
-                                txt->setRotation(se["rotation"].get<double>());
+                                txt->setRotation(se.at("rotation").get<double>());
                             if (se.contains("alignment"))
-                                txt->setAlignment(
-                                    static_cast<draft::TextAlignment>(se["alignment"].get<int>()));
+                                txt->setAlignment(static_cast<draft::TextAlignment>(
+                                    intField(se, "alignment", 0, 0, kLastAlignment)));
                             subEnt = txt;
                         } else if (stype == "hatch") {
                             std::vector<math::Vec2> boundary;
-                            for (const auto& pt : se["boundary"])
-                                boundary.emplace_back(pt["x"].get<double>(), pt["y"].get<double>());
+                            for (const auto& pt : se.at("boundary"))
+                                boundary.emplace_back(pt.at("x").get<double>(),
+                                                      pt.at("y").get<double>());
                             subEnt = std::make_shared<draft::DraftHatch>(
-                                boundary, static_cast<draft::HatchPattern>(se.value("pattern", 1)),
+                                boundary,
+                                static_cast<draft::HatchPattern>(
+                                    intField(se, "pattern", 1, 0, kLastHatchPattern)),
                                 se.value("angle", 0.0), se.value("spacing", 1.0));
                         } else if (stype == "ellipse") {
-                            auto ctr = math::Vec2(se["center"]["x"].get<double>(),
-                                                  se["center"]["y"].get<double>());
+                            auto ctr = math::Vec2(se.at("center").at("x").get<double>(),
+                                                  se.at("center").at("y").get<double>());
                             subEnt = std::make_shared<draft::DraftEllipse>(
                                 ctr, se.value("semiMajor", 1.0), se.value("semiMinor", 1.0),
                                 se.value("rotation", 0.0));
@@ -950,13 +1022,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                             subEnt->setLayer(se.value("layer", "0"));
                             subEnt->setColor(se.value("color", 0u));
                             subEnt->setLineWidth(se.value("lineWidth", 0.0));
-                            subEnt->setLineType(se.value("lineType", 0));
+                            subEnt->setLineType(
+                                static_cast<int>(intField(se, "lineType", 0, 0, kLastLineType)));
                             def->entities.push_back(subEnt);
                         }
                     }
                 }
                 doc.draftDocument().blockTable().addBlock(def);
-            } catch (const nlohmann::json::exception&) {
+            } catch (const std::exception&) {
                 continue;  // Skip malformed block definitions.
             }
         }
@@ -964,7 +1037,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 
     // --- Load entities ---
     const auto* blockTablePtr = &doc.draftDocument().blockTable();
-    for (const auto& obj : root["entities"]) {
+    for (const auto& obj : root.at("entities")) {
         try {
             auto entity = deserializeEntity(obj, blockTablePtr);
             if (entity) {
@@ -974,63 +1047,63 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 }
                 doc.draftDocument().addEntity(entity);
             }
-        } catch (const nlohmann::json::exception&) {
+        } catch (const std::exception&) {
             continue;  // Skip malformed entities.
         }
     }
 
     // --- Load constraints (v5+) ---
     if (root.contains("constraints")) {
-        for (const auto& cObj : root["constraints"]) {
+        for (const auto& cObj : root.at("constraints")) {
             std::string ctype = cObj.value("type", "");
             std::shared_ptr<cstr::Constraint> constraint;
 
             if (ctype == "coincident") {
                 constraint = std::make_shared<cstr::CoincidentConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "horizontal") {
                 constraint = std::make_shared<cstr::HorizontalConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "vertical") {
                 constraint = std::make_shared<cstr::VerticalConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "perpendicular") {
                 constraint = std::make_shared<cstr::PerpendicularConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "parallel") {
                 constraint = std::make_shared<cstr::ParallelConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "tangent") {
                 constraint = std::make_shared<cstr::TangentConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]));
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "equal") {
-                constraint = std::make_shared<cstr::EqualConstraint>(deserializeRef(cObj["refA"]),
-                                                                     deserializeRef(cObj["refB"]));
+                constraint = std::make_shared<cstr::EqualConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
             } else if (ctype == "fixed") {
-                auto pos = math::Vec2(cObj["position"]["x"].get<double>(),
-                                      cObj["position"]["y"].get<double>());
+                auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
+                                      cObj.at("position").at("y").get<double>());
                 constraint =
-                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj["ref"]), pos);
+                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
             } else if (ctype == "distance") {
                 double val = cObj.value("value", 0.0);
                 constraint = std::make_shared<cstr::DistanceConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]), val);
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
             } else if (ctype == "angle") {
                 double val = cObj.value("value", 0.0);
                 constraint = std::make_shared<cstr::AngleConstraint>(
-                    deserializeRef(cObj["refA"]), deserializeRef(cObj["refB"]), val);
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
             }
 
             if (constraint) {
                 // Restore the original constraint ID from the file.
                 if (cObj.contains("id")) {
-                    uint64_t savedId = cObj["id"].get<uint64_t>();
+                    uint64_t savedId = cObj.at("id").get<uint64_t>();
                     constraint->setId(savedId);
                     cstr::Constraint::advanceIdCounter(savedId);
                 }
                 // Variable reference (v13+)
                 if (cObj.contains("variableName")) {
-                    constraint->setVariableReference(cObj["variableName"].get<std::string>());
+                    constraint->setVariableReference(cObj.at("variableName").get<std::string>());
                 }
                 doc.constraintSystem().addConstraint(constraint);
             }
@@ -1059,16 +1132,16 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     // --- Load design variables (v13+, v14 nested format) ---
     if (root.contains("designVariables")) {
         auto& pReg = doc.parameterRegistry();
-        for (const auto& [name, value] : root["designVariables"].items()) {
+        for (const auto& [name, value] : root.at("designVariables").items()) {
             if (value.is_number()) {
                 // v13 flat format: "width": 50.0
                 pReg.set(name, value.get<double>());
             } else if (value.is_object()) {
                 // v14 nested format: "width": {"value": 50.0, "expression": "..."}
-                if (value.contains("expression") && value["expression"].is_string()) {
-                    pReg.setExpression(name, value["expression"].get<std::string>());
-                } else if (value.contains("value") && value["value"].is_number()) {
-                    pReg.set(name, value["value"].get<double>());
+                if (value.contains("expression") && value.at("expression").is_string()) {
+                    pReg.setExpression(name, value.at("expression").get<std::string>());
+                } else if (value.contains("value") && value.at("value").is_number()) {
+                    pReg.set(name, value.at("value").get<double>());
                 }
             }
         }
@@ -1082,47 +1155,48 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
         // Clear the default sketch collection — we'll rebuild from file data.
         doc.sketches().clear();
 
-        for (const auto& skObj : root["sketches"]) {
+        for (const auto& skObj : root.at("sketches")) {
             try {
                 // Reconstruct SketchPlane
                 draft::SketchPlane plane;  // default XY
                 if (skObj.contains("plane")) {
-                    const auto& pObj = skObj["plane"];
-                    math::Vec3 origin(pObj["origin"][0].get<double>(),
-                                      pObj["origin"][1].get<double>(),
-                                      pObj["origin"][2].get<double>());
-                    math::Vec3 normal(pObj["normal"][0].get<double>(),
-                                      pObj["normal"][1].get<double>(),
-                                      pObj["normal"][2].get<double>());
-                    math::Vec3 xAxis(pObj["xAxis"][0].get<double>(), pObj["xAxis"][1].get<double>(),
-                                     pObj["xAxis"][2].get<double>());
+                    const auto& pObj = skObj.at("plane");
+                    math::Vec3 origin(pObj.at("origin").at(0).get<double>(),
+                                      pObj.at("origin").at(1).get<double>(),
+                                      pObj.at("origin").at(2).get<double>());
+                    math::Vec3 normal(pObj.at("normal").at(0).get<double>(),
+                                      pObj.at("normal").at(1).get<double>(),
+                                      pObj.at("normal").at(2).get<double>());
+                    math::Vec3 xAxis(pObj.at("xAxis").at(0).get<double>(),
+                                     pObj.at("xAxis").at(1).get<double>(),
+                                     pObj.at("xAxis").at(2).get<double>());
                     plane = draft::SketchPlane(origin, normal, xAxis);
                 }
 
                 auto sketch = std::make_shared<doc::Sketch>(plane);
                 if (skObj.contains("id")) {
-                    sketch->setId(skObj["id"].get<uint64_t>());
+                    sketch->setId(skObj.at("id").get<uint64_t>());
                 }
                 if (skObj.contains("name")) {
-                    sketch->setName(skObj["name"].get<std::string>());
+                    sketch->setName(skObj.at("name").get<std::string>());
                 }
 
                 // Load per-sketch entities
                 if (skObj.contains("entities")) {
-                    for (const auto& eObj : skObj["entities"]) {
+                    for (const auto& eObj : skObj.at("entities")) {
                         try {
                             auto entity = deserializeEntity(eObj, blockTablePtr);
                             if (entity) {
                                 sketch->addEntity(entity);
                             }
-                        } catch (const nlohmann::json::exception&) {
+                        } catch (const std::exception&) {
                             continue;
                         }
                     }
                 }
 
                 doc.sketches().push_back(sketch);
-            } catch (const nlohmann::json::exception&) {
+            } catch (const std::exception&) {
                 continue;  // Skip malformed sketches.
             }
         }
@@ -1152,7 +1226,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     // --- Load feature tree (v15+; v16 stores real sketch IDs) ---
     if (root.contains("featureTree")) {
         doc.featureTree().clear();
-        for (const auto& fObj : root["featureTree"]) {
+        for (const auto& fObj : root.at("featureTree")) {
             try {
                 std::string ftype = fObj.value("type", "");
                 std::string persistedId = fObj.value("featureID", "");
@@ -1168,7 +1242,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 if (ftype == "loft") {
                     std::vector<std::shared_ptr<doc::Sketch>> sections;
                     if (fObj.contains("sketchIds")) {
-                        for (const auto& idJson : fObj["sketchIds"]) {
+                        for (const auto& idJson : fObj.at("sketchIds")) {
                             auto sk = findSketch(idJson.get<uint64_t>());
                             if (sk) sections.push_back(sk);
                         }
@@ -1182,20 +1256,20 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 }
                 if (ftype == "sweep") {
                     auto profile = fObj.contains("sketchId")
-                                       ? findSketch(fObj["sketchId"].get<uint64_t>())
+                                       ? findSketch(fObj.at("sketchId").get<uint64_t>())
                                        : nullptr;
                     auto path = fObj.contains("pathSketchId")
-                                    ? findSketch(fObj["pathSketchId"].get<uint64_t>())
+                                    ? findSketch(fObj.at("pathSketchId").get<uint64_t>())
                                     : nullptr;
                     if (profile && path) {
                         auto feat = std::make_unique<doc::SweepFeature>(profile, path);
                         if (fObj.contains("segments")) {
-                            feat->setParameter("segments", fObj["segments"].get<double>());
+                            feat->setParameter("segments", fObj.at("segments").get<double>());
                         }
                         // After the count: setting the count clears the tolerance.
                         if (fObj.contains("chordTolerance")) {
                             feat->setParameter("chordTolerance",
-                                               fObj["chordTolerance"].get<double>());
+                                               fObj.at("chordTolerance").get<double>());
                         }
                         feat->restoreFeatureID(persistedId);
                         doc.featureTree().addFeature(std::move(feat));
@@ -1208,14 +1282,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     math::Vec3 pullDir(0, 0, 1);
                     math::Vec3 neutralPoint = math::Vec3::Zero;
                     if (fObj.contains("pullDir")) {
-                        pullDir = math::Vec3(fObj["pullDir"][0].get<double>(),
-                                             fObj["pullDir"][1].get<double>(),
-                                             fObj["pullDir"][2].get<double>());
+                        pullDir = math::Vec3(fObj.at("pullDir").at(0).get<double>(),
+                                             fObj.at("pullDir").at(1).get<double>(),
+                                             fObj.at("pullDir").at(2).get<double>());
                     }
                     if (fObj.contains("neutralPoint")) {
-                        neutralPoint = math::Vec3(fObj["neutralPoint"][0].get<double>(),
-                                                  fObj["neutralPoint"][1].get<double>(),
-                                                  fObj["neutralPoint"][2].get<double>());
+                        neutralPoint = math::Vec3(fObj.at("neutralPoint").at(0).get<double>(),
+                                                  fObj.at("neutralPoint").at(1).get<double>(),
+                                                  fObj.at("neutralPoint").at(2).get<double>());
                     }
                     double angle = fObj.value("angle", 0.0);
                     auto feat = std::make_unique<doc::DraftFeature>(pullDir, neutralPoint, angle);
@@ -1227,7 +1301,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     double thickness = fObj.value("thickness", 1.0);
                     std::vector<topo::TopologyID> removed;
                     if (fObj.contains("removedFaces")) {
-                        for (const auto& tagJson : fObj["removedFaces"]) {
+                        for (const auto& tagJson : fObj.at("removedFaces")) {
                             removed.push_back(
                                 topo::TopologyID::fromTag(tagJson.get<std::string>()));
                         }
@@ -1241,7 +1315,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     double radius = fObj.value("radius", 1.0);
                     std::vector<topo::TopologyID> edges;
                     if (fObj.contains("edges")) {
-                        for (const auto& tagJson : fObj["edges"]) {
+                        for (const auto& tagJson : fObj.at("edges")) {
                             edges.push_back(topo::TopologyID::fromTag(tagJson.get<std::string>()));
                         }
                     }
@@ -1249,11 +1323,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     // Absent in files written before the resolution was a
                     // feature property; the feature's own default stands in.
                     if (fObj.contains("arcSegments")) {
-                        feat->setParameter("arcSegments", fObj["arcSegments"].get<double>());
+                        feat->setParameter("arcSegments", fObj.at("arcSegments").get<double>());
                     }
                     // After the count: setting the count clears the tolerance.
                     if (fObj.contains("chordTolerance")) {
-                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                        feat->setParameter("chordTolerance",
+                                           fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
@@ -1263,7 +1338,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     double distance = fObj.value("distance", 1.0);
                     std::vector<topo::TopologyID> edges;
                     if (fObj.contains("edges")) {
-                        for (const auto& tagJson : fObj["edges"]) {
+                        for (const auto& tagJson : fObj.at("edges")) {
                             edges.push_back(topo::TopologyID::fromTag(tagJson.get<std::string>()));
                         }
                     }
@@ -1289,16 +1364,28 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     auto readVec = [&](const char* key) {
                         math::Vec3 v;
                         if (fObj.contains(key)) {
-                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
-                                           fObj[key][2].get<double>());
+                            v = math::Vec3(fObj.at(key).at(0).get<double>(),
+                                           fObj.at(key).at(1).get<double>(),
+                                           fObj.at(key).at(2).get<double>());
                         }
                         return v;
                     };
                     math::Vec3 vecA = readVec("vecA");
                     math::Vec3 vecB = readVec("vecB");
                     double scalar = fObj.value("scalar", 0.0);
-                    int count = fObj.value("count", 1);
-                    std::vector<int> suppressed = fObj.value("suppressed", std::vector<int>{});
+                    const int count = clampedCount(fObj, "count", 1, 1, doc::kMaxPatternCount);
+                    std::vector<int> suppressed;
+                    if (fObj.contains("suppressed")) {
+                        for (const json& index : fObj.at("suppressed")) {
+                            // An instance index; anything outside the pattern
+                            // suppresses nothing, so it is dropped.
+                            if (!index.is_number()) continue;
+                            const double d = index.get<double>();
+                            if (std::isfinite(d) && d >= 0.0 && d < count) {
+                                suppressed.push_back(static_cast<int>(d));
+                            }
+                        }
+                    }
                     std::unique_ptr<doc::PatternFeature> feat;
                     if (fObj.value("kind", "linear") == "circular") {
                         feat = doc::PatternFeature::makeCircular(vecA, vecB, scalar, count,
@@ -1315,8 +1402,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     auto readVec = [&](const char* key) {
                         math::Vec3 v;
                         if (fObj.contains(key)) {
-                            v = math::Vec3(fObj[key][0].get<double>(), fObj[key][1].get<double>(),
-                                           fObj[key][2].get<double>());
+                            v = math::Vec3(fObj.at(key).at(0).get<double>(),
+                                           fObj.at(key).at(1).get<double>(),
+                                           fObj.at(key).at(2).get<double>());
                         }
                         return v;
                     };
@@ -1354,11 +1442,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                         feat = doc::PrimitiveFeature::makeBox(p0, p1, p2);
                     }
                     if (fObj.contains("segments")) {
-                        feat->setParameter("segments", fObj["segments"].get<double>());
+                        feat->setParameter("segments", fObj.at("segments").get<double>());
                     }
                     // After the count: setting the count clears the tolerance.
                     if (fObj.contains("chordTolerance")) {
-                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                        feat->setParameter("chordTolerance",
+                                           fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
@@ -1370,9 +1459,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 // back to it so old files keep loading.
                 std::shared_ptr<doc::Sketch> sketch;
                 if (fObj.contains("sketchId")) {
-                    sketch = findSketch(fObj["sketchId"].get<uint64_t>());
+                    sketch = findSketch(fObj.at("sketchId").get<uint64_t>());
                 } else {
-                    int sketchIndex = fObj.value("sketchIndex", -1);
+                    const int sketchIndex =
+                        static_cast<int>(intField(fObj, "sketchIndex", -1, -1, 1'000'000));
                     if (sketchIndex >= 0 && sketchIndex < static_cast<int>(doc.sketches().size())) {
                         sketch = doc.sketches()[static_cast<size_t>(sketchIndex)];
                     }
@@ -1383,16 +1473,17 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     double distance = fObj.value("distance", 1.0);
                     math::Vec3 direction(0, 0, 1);
                     if (fObj.contains("direction")) {
-                        direction = math::Vec3(fObj["direction"][0].get<double>(),
-                                               fObj["direction"][1].get<double>(),
-                                               fObj["direction"][2].get<double>());
+                        direction = math::Vec3(fObj.at("direction").at(0).get<double>(),
+                                               fObj.at("direction").at(1).get<double>(),
+                                               fObj.at("direction").at(2).get<double>());
                     }
                     auto feat = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
                     if (fObj.contains("segments")) {
-                        feat->setParameter("segments", fObj["segments"].get<double>());
+                        feat->setParameter("segments", fObj.at("segments").get<double>());
                     }
                     if (fObj.contains("chordTolerance")) {
-                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                        feat->setParameter("chordTolerance",
+                                           fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
@@ -1401,28 +1492,29 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     math::Vec3 axisPoint = hz::math::Vec3::Zero;
                     math::Vec3 axisDir = hz::math::Vec3::UnitY;
                     if (fObj.contains("axisPoint")) {
-                        axisPoint = math::Vec3(fObj["axisPoint"][0].get<double>(),
-                                               fObj["axisPoint"][1].get<double>(),
-                                               fObj["axisPoint"][2].get<double>());
+                        axisPoint = math::Vec3(fObj.at("axisPoint").at(0).get<double>(),
+                                               fObj.at("axisPoint").at(1).get<double>(),
+                                               fObj.at("axisPoint").at(2).get<double>());
                     }
                     if (fObj.contains("axisDir")) {
-                        axisDir = math::Vec3(fObj["axisDir"][0].get<double>(),
-                                             fObj["axisDir"][1].get<double>(),
-                                             fObj["axisDir"][2].get<double>());
+                        axisDir = math::Vec3(fObj.at("axisDir").at(0).get<double>(),
+                                             fObj.at("axisDir").at(1).get<double>(),
+                                             fObj.at("axisDir").at(2).get<double>());
                     }
                     auto feat =
                         std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
                     if (fObj.contains("segments")) {
-                        feat->setParameter("segments", fObj["segments"].get<double>());
+                        feat->setParameter("segments", fObj.at("segments").get<double>());
                     }
                     // After the count: setting the count clears the tolerance.
                     if (fObj.contains("chordTolerance")) {
-                        feat->setParameter("chordTolerance", fObj["chordTolerance"].get<double>());
+                        feat->setParameter("chordTolerance",
+                                           fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
                     doc.featureTree().addFeature(std::move(feat));
                 }
-            } catch (const nlohmann::json::exception&) {
+            } catch (const std::exception&) {
                 continue;  // Skip malformed features.
             }
         }
@@ -1435,10 +1527,26 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 /// throws json type and range errors from deep inside the reader; nothing
 /// above this may see them, or they reach the Qt event loop and end the
 /// session.
+/// Refuse a file written by a newer format than this build reads.
+static bool checkVersion(const json& root, std::string* error) {
+    const json& version = root.at("version");
+    if (!version.is_number_integer())
+        return fail(error, "the file's format version is not a number");
+    const auto v = version.get<long long>();
+    if (v > kFormatVersion) {
+        return fail(error, "it was written by a newer version of Horizon CAD (file format " +
+                               std::to_string(v) + "; this version reads up to " +
+                               std::to_string(kFormatVersion) + ")");
+    }
+    if (v < 1) return fail(error, "the file's format version " + std::to_string(v) + " is invalid");
+    return true;
+}
+
 static bool loadDocumentChecked(const json& root, doc::Document& doc, std::string* error) {
     if (!root.is_object() || !root.contains("version") || !root.contains("entities")) {
         return fail(error, "this is not a Horizon document (it has no version or entity list)");
     }
+    if (!checkVersion(root, error)) return false;
     try {
         if (loadDocumentRoot(root, doc)) return true;
         return fail(error, "the document could not be read");
@@ -1481,7 +1589,7 @@ bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc,
 /// BinaryFormat.
 static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::string& filePath) {
     json root;
-    root["version"] = 16;
+    root["version"] = kFormatVersion;
     root["type"] = "hzasm";
 
     const std::filesystem::path asmDir = std::filesystem::path(filePath).parent_path();
@@ -1568,15 +1676,15 @@ std::string NativeFormat::assemblyToJson(const doc::AssemblyDocument& asmDoc,
 /// relative component paths. Shared by loadAssembly() and BinaryFormat.
 static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                              const std::string& filePath) {
-    if (!root.contains("type") || !root["type"].is_string() ||
-        root["type"].get<std::string>() != "hzasm") {
+    if (!root.contains("type") || !root.at("type").is_string() ||
+        root.at("type").get<std::string>() != "hzasm") {
         return false;
     }
 
     asmDoc.clear();
 
     if (root.contains("components")) {
-        for (const auto& cObj : root["components"]) {
+        for (const auto& cObj : root.at("components")) {
             try {
                 doc::ComponentInstance comp;
                 comp.id = cObj.value("id", uint64_t{0});
@@ -1595,8 +1703,8 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                     }
                 }
 
-                if (cObj.contains("transform") && cObj["transform"].size() == 16) {
-                    const auto& t = cObj["transform"];
+                if (cObj.contains("transform") && cObj.at("transform").size() == 16) {
+                    const auto& t = cObj.at("transform");
                     for (int row = 0; row < 4; ++row) {
                         for (int col = 0; col < 4; ++col) {
                             comp.transform.at(row, col) =
@@ -1606,7 +1714,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 }
 
                 asmDoc.addComponent(std::move(comp));
-            } catch (const nlohmann::json::exception&) {
+            } catch (const std::exception&) {
                 continue;  // Skip malformed components.
             }
         }
@@ -1625,22 +1733,22 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     };
 
     if (root.contains("mates")) {
-        for (const auto& mObj : root["mates"]) {
+        for (const auto& mObj : root.at("mates")) {
             try {
                 doc::Mate mate;
                 mate.id = mObj.value("id", uint64_t{0});
                 mate.type = mateTypeFromString(mObj.value("type", "coincident"));
                 mate.value = mObj.value("value", 0.0);
                 if (mObj.contains("a")) {
-                    mate.a.componentId = mObj["a"].value("componentId", uint64_t{0});
-                    mate.a.faceId = topo::TopologyID::fromTag(mObj["a"].value("faceTag", ""));
+                    mate.a.componentId = mObj.at("a").value("componentId", uint64_t{0});
+                    mate.a.faceId = topo::TopologyID::fromTag(mObj.at("a").value("faceTag", ""));
                 }
                 if (mObj.contains("b")) {
-                    mate.b.componentId = mObj["b"].value("componentId", uint64_t{0});
-                    mate.b.faceId = topo::TopologyID::fromTag(mObj["b"].value("faceTag", ""));
+                    mate.b.componentId = mObj.at("b").value("componentId", uint64_t{0});
+                    mate.b.faceId = topo::TopologyID::fromTag(mObj.at("b").value("faceTag", ""));
                 }
                 asmDoc.addMate(std::move(mate));
-            } catch (const nlohmann::json::exception&) {
+            } catch (const std::exception&) {
                 continue;  // Skip malformed mates.
             }
         }
@@ -1655,6 +1763,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
 static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
                                 const std::string& filePath, std::string* error) {
     if (!root.is_object()) return fail(error, "this is not a Horizon assembly");
+    if (root.contains("version") && !checkVersion(root, error)) return false;
     try {
         if (loadAssemblyRoot(root, asmDoc, filePath)) return true;
         return fail(error, "this is not a Horizon assembly (its type is not \"hzasm\")");
@@ -1707,7 +1816,7 @@ std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& fil
     if (!root.contains("tessellationCache")) return nullptr;
 
     try {
-        const auto& cache = root["tessellationCache"];
+        const auto& cache = root.at("tessellationCache");
         auto mesh = std::make_shared<geo::MeshData>();
         mesh->positions = cache.value("positions", std::vector<float>{});
         mesh->normals = cache.value("normals", std::vector<float>{});
@@ -1728,7 +1837,7 @@ std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& fil
             mesh->indices.push_back(static_cast<uint32_t>(index));
         }
         return mesh;
-    } catch (const nlohmann::json::exception&) {
+    } catch (const std::exception&) {
         return nullptr;
     }
 }

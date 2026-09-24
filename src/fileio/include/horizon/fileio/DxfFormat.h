@@ -18,6 +18,10 @@ public:
     /// Read a DXF file and populate the document. On failure returns false,
     /// with the reason in `error` when given; never throws.
     static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr);
+
+    /// As load(), from DXF text in memory.
+    static bool loadFromString(const std::string& text, doc::Document& doc,
+                               std::string* error = nullptr);
 };
 
 }  // namespace hz::io

@@ -20,6 +20,15 @@ namespace hz::doc {
 
 class Sketch;
 
+/// Upper bounds on feature resolution and repetition. Feature parameters come
+/// from files as well as from the UI, and every step or instance costs memory
+/// and time in every later operation, so past these a value is clamped rather
+/// than trusted. (A count of 1e9 from a file would otherwise try to allocate
+/// it on open.)
+inline constexpr int kMaxFacetSegments = 4096;  ///< steps per full turn; see segmentsForTolerance
+inline constexpr int kMaxArcSegments = 1024;    ///< chords across one fillet arc
+inline constexpr int kMaxPatternCount = 10000;  ///< instances in one pattern
+
 /// Abstract base class for parametric modeling features.
 ///
 /// Each feature can produce a solid from an optional input solid.

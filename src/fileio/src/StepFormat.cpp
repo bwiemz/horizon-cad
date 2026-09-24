@@ -2,13 +2,17 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <sstream>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -96,13 +100,28 @@ std::shared_ptr<geo::NurbsSurface> reverseSurfaceU(const geo::NurbsSurface& s) {
 // Writer
 // ===========================================================================
 
+/// Parse a Part-21 real. std::from_chars ignores the C locale (strtod read
+/// "1.5" as 1 under a comma-decimal locale) and must consume the whole token,
+/// so "1-2" is an error rather than a silent 1.
+bool parseReal(std::string_view text, double& out) {
+    if (!text.empty() && text.front() == '+') text.remove_prefix(1);  // from_chars rejects '+'
+    const char* last = text.data() + text.size();
+    const auto [ptr, ec] = std::from_chars(text.data(), last, out);
+    return ec == std::errc{} && ptr == last;
+}
+
 /// Format a real in Part-21 syntax: the mantissa always contains a '.'
 /// (ISO 10303-21 clause 6.4.2 — "1E-07" is invalid, "1.E-07" is required).
+///
+/// std::to_chars rather than printf: it ignores the C locale — which Qt sets
+/// from the environment on Unix, so "%g" wrote "1,5" under de_DE — and gives
+/// the shortest text that reads back as exactly the same double.
 std::string fmtReal(double v) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.15g", v);
-    std::string s(buf);
-    if (s.find("inf") != std::string::npos || s.find("nan") != std::string::npos) return "0.";
+    if (!std::isfinite(v)) return "0.";
+    char buf[64];
+    const auto [end, ec] = std::to_chars(buf, buf + sizeof(buf), v);
+    if (ec != std::errc{}) return "0.";
+    std::string s(buf, end);
     // Part-21 uses upper-case E for exponents.
     std::replace(s.begin(), s.end(), 'e', 'E');
     if (s.find('.') == std::string::npos) {
@@ -441,13 +460,27 @@ private:
         return out;
     }
 
+    /// Read the digits of an entity number ("#123") at `p`. False when the
+    /// number does not fit an int — accumulating it unchecked is signed
+    /// overflow, and a wrapped id could alias another entity.
+    static bool parseEntityNumber(const std::string& s, size_t& p, size_t end, int& id) {
+        id = 0;
+        while (p < end && std::isdigit(static_cast<unsigned char>(s[p]))) {
+            const int digit = s[p] - '0';
+            if (id > (std::numeric_limits<int>::max() - digit) / 10) return false;
+            id = id * 10 + digit;
+            ++p;
+        }
+        return true;
+    }
+
     bool parseInstance(const std::string& s, size_t pos, size_t end, std::string& error) {
         // "#id = RHS" — RHS is TYPE(args) or (TYPE1(args) TYPE2(args) ...).
         size_t p = pos + 1;
         int id = 0;
-        while (p < end && std::isdigit(static_cast<unsigned char>(s[p]))) {
-            id = id * 10 + (s[p] - '0');
-            ++p;
+        if (!parseEntityNumber(s, p, end, id)) {
+            error = "entity number too large near offset " + std::to_string(pos);
+            return false;
         }
         while (p < end &&
                (s[p] == ' ' || s[p] == '=' || s[p] == '\n' || s[p] == '\r' || s[p] == '\t')) {
@@ -553,9 +586,9 @@ private:
         if (c == '#') {
             ++p;
             int id = 0;
-            while (p < end && std::isdigit(static_cast<unsigned char>(s[p]))) {
-                id = id * 10 + (s[p] - '0');
-                ++p;
+            if (!parseEntityNumber(s, p, end, id)) {
+                error = "entity reference too large near offset " + std::to_string(p);
+                return false;
             }
             v.kind = StepValue::Ref;
             v.ref = id;
@@ -602,7 +635,10 @@ private:
                 ++q;
             }
             v.kind = StepValue::Real;
-            v.num = std::strtod(s.substr(p, q - p).c_str(), nullptr);
+            if (!parseReal(std::string_view(s).substr(p, q - p), v.num)) {
+                error = "malformed number near offset " + std::to_string(p);
+                return false;
+            }
             p = q;
             return true;
         }
@@ -1297,7 +1333,13 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
 
     StepParser parser(text);
     std::string error;
-    if (!parser.parse(error)) {
+    bool parsed = false;
+    try {
+        parsed = parser.parse(error);
+    } catch (const std::exception& e) {
+        error = e.what();
+    }
+    if (!parsed) {
         g_lastError = "STEP parse error: " + error;
         return out;
     }
@@ -1333,7 +1375,14 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
     int index = 0;
     for (const std::vector<int>& group : groups) {
         SolidBuilder builder(parser, index);
-        auto solid = builder.build(group, error);
+        std::unique_ptr<topo::Solid> solid;
+        try {
+            solid = builder.build(group, error);
+        } catch (const std::exception& e) {
+            // The geometry constructors throw on inputs the reader's own
+            // checks let through (a degree-0 B-spline, ragged control rows).
+            error = e.what();
+        }
         if (solid == nullptr) {
             g_lastError =
                 "failed to reconstruct solid #" + std::to_string(group.front()) + ": " + error;

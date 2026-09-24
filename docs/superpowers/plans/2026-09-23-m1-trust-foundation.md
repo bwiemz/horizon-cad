@@ -169,6 +169,15 @@ moved to Phase 100 with the rest of the envelope checks.)
 B-spline, 200 000-deep expression, `count: 2e9`, `segments: 1e9`,
 newer version).
 
+**As built.** The reader's per-entity and per-feature `try` blocks were kept:
+a malformed item inside an otherwise readable document is skipped, not the
+whole file — now without undefined behaviour on the way. Reporting what was
+skipped moved to Phase 107's import report. Integer and enum fields go through
+a range-checked reader (a float where an integer belongs was a plain
+`static_cast`), and a line type — which indexes the dash-pattern table — out
+of range fails the load. Expressions are bounded by node count as well as
+depth: `1+1+…+1` parses in a loop but builds a tree as deep as it is long.
+
 ## Phase 101 — Autosave & recovery
 
 **Files:** `src/ui/include/horizon/ui/RecoveryManager.h` (new),
