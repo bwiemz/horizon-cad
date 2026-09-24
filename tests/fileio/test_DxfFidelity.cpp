@@ -223,6 +223,40 @@ TEST(DxfFidelityTest, ABlockInsideABlockIsFlattenedIntoIt) {
     EXPECT_TRUE(contains(in.report.approximated, "1 INSERT entity: inside a block, flattened"));
 }
 
+// An insert of a block the drawing already has, holding a reference to another
+// block, places that reference's pieces by both: its own scale and mirror
+// inside the block, then the insert's. The insert's x scale was replaced by
+// the inner reference's.
+TEST(DxfFidelityTest, ABlockAlreadyInTheDrawingPlacesTheBlocksInsideIt) {
+    Loaded in(dxf(""));
+    ASSERT_TRUE(in.ok) << in.error;
+    auto& blocks = in.doc.draftDocument().blockTable();
+    auto gear = std::make_shared<hz::draft::BlockDefinition>();
+    gear->name = "GEAR";
+    gear->entities.push_back(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0)));
+    blocks.addBlock(gear);
+    auto widget = std::make_shared<hz::draft::BlockDefinition>();
+    widget->name = "WIDGET";
+    widget->entities.push_back(
+        std::make_shared<hz::draft::DraftBlockRef>(gear, Vec2(0, 0), 0.0, 3.0));
+    auto mirroredGear = std::make_shared<hz::draft::DraftBlockRef>(gear, Vec2(0, 5), 0.0, 3.0);
+    mirroredGear->setMirrored(true);
+    widget->entities.push_back(mirroredGear);
+    blocks.addBlock(widget);
+
+    // Scaled (2, 1): unequal, so placed piece by piece.
+    std::string error;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(hz::io::DxfFormat::loadFromString(
+        dxf("0\nINSERT\n8\n0\n2\nWIDGET\n10\n0\n20\n0\n41\n2\n42\n1\n"), in.doc, &error, &report))
+        << error;
+    const auto lines = in.all<hz::draft::DraftLine>();
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(6, 0))) << "3 inside the block, then 2 across";
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 5)));
+    EXPECT_TRUE(near(lines[1]->end(), Vec2(-6, 5))) << "mirrored inside, then 2 across";
+}
+
 TEST(DxfFidelityTest, AnOutOfPlanePolylineWithoutSeqendDoesNotSwallowWhatFollows) {
     Loaded in(
         dxf("0\nPOLYLINE\n8\n0\n66\n1\n70\n0\n210\n1\n220\n0\n230\n0\n"
