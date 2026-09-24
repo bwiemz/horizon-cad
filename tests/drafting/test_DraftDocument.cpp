@@ -9,6 +9,14 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/math/BoundingBox.h"
 
+#if defined(__SANITIZE_THREAD__)
+#define HZ_UNDER_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define HZ_UNDER_TSAN 1
+#endif
+#endif
+
 using hz::draft::DraftCircle;
 using hz::draft::DraftDocument;
 using hz::draft::DraftEntity;
@@ -131,6 +139,9 @@ TEST(DraftDocumentTest, BoundsUpdateMovesTheEntityInTheIndex) {
 // Removing entities one at a time used to rebuild the whole spatial index
 // each time: undoing a 20,000-entity import took minutes.
 TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
+#ifdef HZ_UNDER_TSAN
+    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+#endif
     DraftDocument d;
     std::vector<uint64_t> added;
     for (int i = 0; i < 20000; ++i) {

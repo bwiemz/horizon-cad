@@ -25,10 +25,13 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
+#include "horizon/fileio/BinaryFormat.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/pdm/RevisionArchive.h"
+#include "horizon/pdm/VaultManifest.h"
 #include "horizon/topology/Solid.h"
 
 namespace fs = std::filesystem;
@@ -133,7 +136,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     const fs::path root(argv[1]);
-    for (const char* dir : {"native", "dxf", "step", "expression"})
+    for (const char* dir : {"native", "dxf", "step", "expression", "binary", "plugin", "pdm"})
         fs::create_directories(root / dir);
 
     bool ok = true;
@@ -170,6 +173,67 @@ int main(int argc, char** argv) {
     };
     for (const auto& [name, text] : expressions) {
         ok &= write(root / "expression" / (name + ".txt"), text);
+    }
+
+    // Binary: the part, built so it carries its tessellation cache, and the
+    // assembly, through the binary writer.
+    {
+        hz::doc::Document doc;
+        hz::doc::AssemblyDocument assemblyDoc;
+        std::string error;
+        bool read = hz::io::NativeFormat::documentFromJson(part(), doc, &error);
+        read = read && hz::io::NativeFormat::assemblyFromJson(assembly(), assemblyDoc, "", &error);
+        if (read) doc.rebuildModel();
+        const std::string partPath = (root / "binary" / "part.hzpart").string();
+        const std::string assemblyPath = (root / "binary" / "assembly.hzasm").string();
+        if (!read || !hz::io::BinaryFormat::save(partPath, doc) ||
+            !hz::io::BinaryFormat::saveAssembly(assemblyPath, assemblyDoc)) {
+            std::fprintf(stderr, "binary seed: %s\n", error.c_str());
+            ok = false;
+        } else {
+            std::printf("wrote %s\n", (root / "binary").string().c_str());
+        }
+    }
+
+    // Plugin manifests: every field, and the least a valid one has.
+    ok &= write(root / "plugin" / "full.json", R"({
+    "name": "hole-wizard",
+    "version": "1.2.3",
+    "entry": "main.py",
+    "description": "Parametric hole patterns",
+    "author": "Jane Doe",
+    "minAppVersion": "0.1.0",
+    "permissions": ["document", "ui", "filesystem", "network", "simulation"]
+})");
+    ok &= write(root / "plugin" / "minimal.json",
+                R"({"name": "tiny", "version": "0.0.1", "entry": "main.py"})");
+
+    // PDM: a two-revision archive's manifest, and a check-out lock, as the
+    // real writers make them.
+    {
+        const fs::path scratch = fs::temp_directory_path() / "hz_fuzz_seedgen_pdm";
+        fs::remove_all(scratch);
+        hz::pdm::RevisionArchive archive((scratch / "archive").string());
+        hz::pdm::VaultManifest vault((scratch / "locks").string());
+        const bool made = archive.commit("first", "alice", "Initial") >= 0 &&
+                          archive.commit("second", "bob", "Holes") >= 0 &&
+                          vault.checkOut("part", "alice");
+        std::error_code copied;
+        if (made) {
+            fs::copy_file(scratch / "archive" / "manifest.json", root / "pdm" / "manifest.json",
+                          fs::copy_options::overwrite_existing, copied);
+        }
+        if (made && !copied) {
+            fs::copy_file(scratch / "locks" / "part.lock", root / "pdm" / "part.lock",
+                          fs::copy_options::overwrite_existing, copied);
+        }
+        fs::remove_all(scratch);
+        if (!made || copied) {
+            std::fprintf(stderr, "pdm seed: %s\n", made ? copied.message().c_str() : "commit");
+            ok = false;
+        } else {
+            std::printf("wrote %s\n", (root / "pdm").string().c_str());
+        }
     }
     return ok ? 0 : 1;
 }

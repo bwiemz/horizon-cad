@@ -1,0 +1,27 @@
+# ThreadSanitizer suppressions (TSAN_OPTIONS=suppressions=tests/tsan.supp).
+# CI's ThreadSanitizer job leaves the window tests out (ctest -LE window);
+# these rules are what it takes to run them too, as far as it is known.
+#
+# Qt is not built with ThreadSanitizer, so the synchronization inside it is
+# invisible, and memory Qt passes between its own threads (its thread pool
+# drawing icons, a wait condition torn down at exit) looks raced. These rules
+# cover only what Qt does inside itself: Horizon's own workers are
+# std::threads, and a race in Horizon's code is still reported.
+
+# A dynamically linked Qt (a distribution's): ignore what Qt's GUI libraries
+# do inside themselves. Not QtCore: ignoring it hides Qt's thread starts and
+# exits from ThreadSanitizer's thread registry, which then fails its own
+# check when a later std::thread reuses a thread id.
+called_from_lib:libQt6Gui.so
+called_from_lib:libQt6Widgets.so
+called_from_lib:libQt6OpenGL.so
+called_from_lib:libQt6OpenGLWidgets.so
+
+# QtCore's thread pool and wait conditions (by name, which a static Qt, as in
+# CI, keeps too).
+race:QThreadPoolThread
+race:QThreadPool
+race:QWaitCondition
+
+# Qt's pool threads are still running when the process exits.
+thread:QThread

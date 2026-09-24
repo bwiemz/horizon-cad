@@ -8,10 +8,21 @@
 #include "horizon/drafting/SpatialIndex.h"
 #include "horizon/math/BoundingBox.h"
 
+#if defined(__SANITIZE_THREAD__)
+#define HZ_UNDER_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define HZ_UNDER_TSAN 1
+#endif
+#endif
+
 using namespace hz::draft;
 using namespace hz::math;
 
 TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
+#ifdef HZ_UNDER_TSAN
+    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+#endif
     std::vector<std::shared_ptr<DraftEntity>> entities;
     entities.reserve(10000);
     for (uint64_t i = 0; i < 10000; ++i) {
@@ -51,6 +62,9 @@ TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
 }
 
 TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
+#ifdef HZ_UNDER_TSAN
+    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+#endif
     SpatialIndex index;
     auto start = std::chrono::high_resolution_clock::now();
     for (uint64_t i = 0; i < 10000; ++i) {
@@ -74,6 +88,9 @@ TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
 }
 
 TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
+#ifdef HZ_UNDER_TSAN
+    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+#endif
     SpatialIndex index;
     for (uint64_t i = 0; i < 10000; ++i) {
         double x = static_cast<double>(i % 100) * 5.0;

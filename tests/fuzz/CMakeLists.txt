@@ -46,7 +46,23 @@ hz_add_fuzz_target(hz_fuzz_expression
     CORPUS ${HZ_FUZZ_CORPUS}/expression
     LIBS Horizon::Math
 )
+hz_add_fuzz_target(hz_fuzz_binary
+    SOURCE fuzz_binary.cpp
+    CORPUS ${HZ_FUZZ_CORPUS}/binary
+    LIBS Horizon::FileIO Horizon::Document
+)
+hz_add_fuzz_target(hz_fuzz_plugin_manifest
+    SOURCE fuzz_plugin_manifest.cpp
+    CORPUS ${HZ_FUZZ_CORPUS}/plugin
+    LIBS Horizon::Plugin
+)
+hz_add_fuzz_target(hz_fuzz_pdm
+    SOURCE fuzz_pdm.cpp
+    CORPUS ${HZ_FUZZ_CORPUS}/pdm
+    LIBS Horizon::Pdm
+)
 
 # Regenerates corpus/ from the current writers (see generate_seeds.cpp).
 add_executable(hz_fuzz_seedgen generate_seeds.cpp)
-target_link_libraries(hz_fuzz_seedgen PRIVATE Horizon::FileIO Horizon::Document Horizon::Modeling)
+target_link_libraries(hz_fuzz_seedgen PRIVATE
+    Horizon::FileIO Horizon::Document Horizon::Modeling Horizon::Pdm)

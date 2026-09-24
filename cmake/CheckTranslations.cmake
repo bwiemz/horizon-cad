@@ -1,0 +1,17 @@
+# Test script: every compiled catalog in NAMES is in DIR and is not empty.
+# Run as: cmake -DDIR=<dir> -DNAMES=<a.qm;b.qm> -P CheckTranslations.cmake
+if(NOT NAMES)
+    message(FATAL_ERROR "no catalogs to check")
+endif()
+foreach(name IN LISTS NAMES)
+    set(qm "${DIR}/${name}")
+    if(NOT EXISTS "${qm}")
+        message(FATAL_ERROR "missing: ${qm}")
+    endif()
+    file(SIZE "${qm}" size)
+    if(size EQUAL 0)
+        message(FATAL_ERROR "empty: ${qm}")
+    endif()
+endforeach()
+list(LENGTH NAMES count)
+message(STATUS "${count} catalogs in ${DIR}")

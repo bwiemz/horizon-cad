@@ -1,5 +1,5 @@
 # Compiler warning flags, applied to every first-party target by
-# hz_apply_project_flags() in the root CMakeLists.txt.
+# the root CMakeLists.txt.
 option(HZ_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 function(hz_set_warnings target)
