@@ -79,13 +79,17 @@ std::optional<MeshHit> MeshPicker::pickEdge(const MeshData& mesh, const math::Ma
                                             int height, double tolerancePx, double hiddenBeyond) {
     if (width <= 0 || height <= 0) return std::nullopt;
     const math::Mat4 viewProjection = camera.viewProjectionMatrix();
-    const auto [origin, dir] = camera.screenToRay(x, y, width, height);
-    const Vec3 unit = dir.normalized();
+    // Not structured bindings: the lambda below captures these, and clang
+    // 15 (CI's) cannot capture a structured binding.
+    const auto ray = camera.screenToRay(x, y, width, height);
+    const Vec3 origin = ray.first;
+    const Vec3 unit = ray.second.normalized();
     // How wide a pixel is at a distance along the ray: the ray one pixel
     // over, compared there. An edge a few pixels from the cursor may sit that
     // far behind the face the ray meets beside it and still be the one seen.
-    const auto [origin1, dir1] = camera.screenToRay(x + 1.0, y, width, height);
-    const Vec3 unit1 = dir1.normalized();
+    const auto ray1 = camera.screenToRay(x + 1.0, y, width, height);
+    const Vec3 origin1 = ray1.first;
+    const Vec3 unit1 = ray1.second.normalized();
     const auto pixelAt = [&](double along) {
         return ((origin1 + unit1 * along) - (origin + unit * along)).length();
     };
