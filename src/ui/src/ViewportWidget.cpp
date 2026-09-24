@@ -56,6 +56,9 @@ ViewportWidget::~ViewportWidget() {
 void ViewportWidget::setDocument(doc::Document* doc) {
     m_document = doc;
     m_selectionManager.clearSelection();
+    // A new document can be at the address of one just closed, with the same
+    // undo revision: the analysis must not be taken for its.
+    m_viewportRenderer.invalidateDOF();
     update();
 }
 
@@ -225,7 +228,9 @@ void ViewportWidget::checkGraphics() {
 void ViewportWidget::resizeGL(int w, int h) {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
 
-    m_renderer->resize(gl, w, h);
+    // The framebuffer is in device pixels; w and h are logical ones.
+    const qreal dpr = devicePixelRatioF();
+    m_renderer->resize(gl, qRound(w * dpr), qRound(h * dpr));
 
     double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
     m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
@@ -234,7 +239,8 @@ void ViewportWidget::resizeGL(int w, int h) {
 void ViewportWidget::paintGL() {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
 
-    // Recompute DOF analysis every frame (small matrix -- fast enough for real-time).
+    // The constraint analysis behind the DOF colours: only when the document
+    // changed, not on every frame.
     m_viewportRenderer.recomputeDOF(m_document);
 
     // Clear with background color (kept in sync with setBackgroundColor above).
@@ -262,10 +268,9 @@ void ViewportWidget::paintGL() {
 
     // Render 3D scene graph nodes (solid primitives with PBR-lite, edge overlay).
     if (!m_sceneGraph.nodes().empty()) {
+        // No picking pass here: nothing reads it. A pick renders one
+        // (renderPickingPass, then pickAtPixel) when it needs it.
         m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
-
-        // Update GPU color-picking FBO for 3D selection.
-        m_renderer->renderPickingPass(gl, m_sceneGraph, m_camera);
     }
 
     // Render tool preview (rubber-band).
@@ -281,7 +286,7 @@ void ViewportWidget::paintGL() {
     // texture and draw a fullscreen quad.  This avoids the Qt 6.10
     // qpixmap_win.cpp assertion triggered by QPainter on QOpenGLWidget.
     m_viewportRenderer.blitTextOverlay(gl, m_camera, m_document, m_selectionManager, width(),
-                                       height(), pixelToWorldScale());
+                                       height(), pixelToWorldScale(), devicePixelRatioF());
 }
 
 // ---------------------------------------------------------------------------

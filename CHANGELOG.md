@@ -33,6 +33,15 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
   selection, dismissing whatever dialog it opens. The drawing tools are
   tested through the viewport's own mouse handling: draw, select, delete,
   undo.
+- **The viewport leaked GPU memory and did per-frame work it did not need
+  (113).**
+  - Every model change left the previous model's meshes on the GPU.
+  - The constraint solver ran on every mouse move.
+  - A picking pass that nothing read was drawn every frame.
+  - On a high-DPI screen, dimension text was drawn at half resolution and
+    scaled up.
+
+  All four are fixed.
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 

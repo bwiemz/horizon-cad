@@ -54,12 +54,23 @@ public:
                      const render::SelectionManager& selection, double pixelToWorldScale);
 
     /// Render text to a QImage then blit via GL texture as fullscreen quad.
+    /// The image is drawn at @p devicePixelRatio, so text is sharp on a
+    /// high-DPI screen; @p viewportWidth and @p viewportHeight are logical.
     void blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
                          doc::Document* doc, const render::SelectionManager& selection,
-                         int viewportWidth, int viewportHeight, double pixelToWorldScale);
+                         int viewportWidth, int viewportHeight, double pixelToWorldScale,
+                         qreal devicePixelRatio = 1.0);
 
-    /// Recompute DOF analysis from the document's constraint system.
+    /// Recompute DOF analysis from the document's constraint system, when the
+    /// document or its undo history changed since the last one: it runs the
+    /// constraint solver, and a frame is drawn on every mouse move.
     void recomputeDOF(doc::Document* doc);
+
+    /// Make the next recomputeDOF() run, whatever it is given.
+    void invalidateDOF() { m_dofDirty = true; }
+
+    /// How many analyses have run (for tests).
+    std::uint64_t dofComputations() const { return m_dofComputations; }
 
     /// Access current DOF analysis.
     const cstr::DOFAnalysis& dofAnalysis() const { return m_dofAnalysis; }
@@ -99,6 +110,9 @@ private:
     // DOF visualization
     cstr::DOFAnalysis m_dofAnalysis;
     bool m_dofDirty = true;
+    const doc::Document* m_dofDocument = nullptr;  ///< what the analysis is of
+    std::uint64_t m_dofRevision = 0;               ///< its undo revision then
+    std::uint64_t m_dofComputations = 0;
 
     // Top-right orientation gizmo, drawn in the text-overlay QImage.
     ViewCube m_viewCube;

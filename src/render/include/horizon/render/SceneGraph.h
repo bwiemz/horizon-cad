@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "horizon/geometry/MeshData.h"
@@ -109,11 +110,28 @@ public:
     /// Find a node by ID (searches recursively).
     SceneNode* findNodeById(uint32_t id) const;
 
+    /// The ID of every node in the graph, at any depth.
+    std::unordered_set<uint32_t> nodeIds() const;
+
 private:
     std::vector<std::shared_ptr<SceneNode>> m_nodes;
 
     void collectVisibleHelper(SceneNode* node, std::vector<SceneNode*>& out) const;
     SceneNode* findByIdHelper(SceneNode* node, uint32_t id) const;
 };
+
+/// Drop the entries of @p cache (keyed by node ID) whose node is no longer in
+/// @p live. A scene is rebuilt with new node IDs on every model change, so a
+/// cache that is never pruned keeps every mesh the model ever had.
+template <typename Cache>
+void eraseStaleEntries(Cache& cache, const std::unordered_set<uint32_t>& live) {
+    for (auto it = cache.begin(); it != cache.end();) {
+        if (live.count(it->first) == 0) {
+            it = cache.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
 
 }  // namespace hz::render

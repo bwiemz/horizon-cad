@@ -100,7 +100,8 @@ private:
     ShaderProgram m_edgeShader;
     Grid m_grid;
 
-    // Cached GPU mesh buffers keyed by node ID.
+    // Cached GPU mesh buffers keyed by node ID; renderNodes() drops those whose
+    // node has left the scene.
     std::unordered_map<uint32_t, std::unique_ptr<MeshBuffer>> m_meshCache;
 
     void destroyDynamicBuffers(QOpenGLExtraFunctions* gl);

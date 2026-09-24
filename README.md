@@ -329,6 +329,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 110 | Done | 2D correctness: snaps and picks reach 10 screen pixels at any zoom; hidden and locked layers are not snapped to or trimmed at; typed snaps (endpoint, midpoint, centre, quadrant) and a new intersection snap, with object snaps before the grid; Trim, Break, Extend, Chamfer and Fillet keep line type and group. Milestone 3 complete |
 | 111 | Done | Application essentials: ten shortcuts that did nothing (bound to both menu and ribbon) now work; Open Recent; window and dock layout kept; Preferences (autosave, language, grid snap, snap reach, display units); Help ▸ About with version, revision and build; files open from the command line; every dock in View |
 | 112 | Done | UI test harness: a smoke test runs every one of the window's 166 commands on an empty drawing, part and assembly and on a selection; the drawing tools are driven through the viewport's own mouse handling (draw, select, delete, undo) |
+| 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
