@@ -1146,13 +1146,11 @@ void MainWindow::autosave() {
         if (!tab.snapshotStale && !tab.assembly) continue;
         const std::string& path =
             tab.assembly ? tab.assembly->filePath() : tab.document->filePath();
-        const bool written = tab.assembly
-                                 ? m_recovery->snapshot(tab.recoveryKey, *tab.assembly, tab.title,
-                                                        QString::fromStdString(path),
-                                                        tab.recoveries)
-                                 : m_recovery->snapshot(tab.recoveryKey, *tab.document, tab.title,
-                                                        QString::fromStdString(path),
-                                                        tab.recoveries);
+        const bool written =
+            tab.assembly ? m_recovery->snapshot(tab.recoveryKey, *tab.assembly, tab.title,
+                                                QString::fromStdString(path), tab.recoveries)
+                         : m_recovery->snapshot(tab.recoveryKey, *tab.document, tab.title,
+                                                QString::fromStdString(path), tab.recoveries);
         if (written) {
             tab.snapshotStale = false;
         } else if (failure.isEmpty()) {
