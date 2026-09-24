@@ -10,7 +10,10 @@
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/GeometryValidator.h"
+#include "horizon/topology/HalfEdge.h"
 
 using hz::math::Vec3;
 using hz::model::BooleanOp;
@@ -509,4 +512,86 @@ TEST(BooleanOpTest, BoreKeepsItsCylinder) {
         if (std::abs(std::hypot(c.x, c.y) - 2.0) < 1e-9) ++boreRims;
     }
     EXPECT_GE(boreRims, 2 * hz::model::PrimitiveFactory::kDefaultSegments);
+}
+
+// ---------------------------------------------------------------------------
+// Faces put back together (Phase 106b)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Every face of `solid` has one name, and the solid passes every check.
+void expectCleanSolid(const hz::topo::Solid& solid) {
+    EXPECT_TRUE(solid.isValid()) << solid.validationReport();
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(solid))
+        << hz::topo::GeometryValidator::report(solid);
+}
+
+}  // namespace
+
+TEST(BooleanOpFaces, AGrooveLeavesTheFacesItShould) {
+    // A 10 x 10 x 5 block with a 2-wide, 2-deep groove across its top: two top
+    // pieces, the bottom, four sides (two of them notched), the groove's floor
+    // and two walls — 10 faces. The CSG alone leaves a triangle soup.
+    auto block = PrimitiveFactory::makeBox(10, 10, 5);
+    auto groove = PrimitiveFactory::makeBox(2, 12, 5);
+    offsetSolid(*groove, Vec3(4, -1, 3));
+
+    auto soup = BooleanOp::execute(*block, *groove, BooleanType::Subtract);
+    ASSERT_NE(soup, nullptr);
+    EXPECT_GT(soup->faceCount(), 20u) << "positional results are left as they were";
+
+    auto result = BooleanOp::execute(*block, *groove, BooleanType::Subtract, nullptr,
+                                     hz::model::NamingScheme::FromGeometry);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->faceCount(), 10u);
+    EXPECT_NEAR(volumeOf(*result), 500.0 - 2.0 * 10.0 * 2.0, 1e-6);
+    expectCleanSolid(*result);
+}
+
+TEST(BooleanOpFaces, AFaceWithAHoleIsCutIntoTwo) {
+    // A plate with a square hole through it: each cap is a ring, which a
+    // single-loop face cannot be, so it is cut through the hole into two.
+    auto plate = PrimitiveFactory::makeBox(10, 10, 2);
+    auto hole = PrimitiveFactory::makeBox(2, 2, 4);
+    offsetSolid(*hole, Vec3(4, 4, -1));
+    auto result = BooleanOp::execute(*plate, *hole, BooleanType::Subtract, nullptr,
+                                     hz::model::NamingScheme::FromGeometry);
+    ASSERT_NE(result, nullptr);
+    // Two caps in two pieces each, four outer sides, four hole walls.
+    EXPECT_EQ(result->faceCount(), 12u);
+    EXPECT_NEAR(volumeOf(*result), 200.0 - 8.0, 1e-6);
+    EXPECT_EQ(result->genus(), 1);
+    expectCleanSolid(*result);
+
+    // Each outer corner is still where just three faces meet.
+    for (const auto& v : result->vertices()) {
+        const bool corner =
+            (v.point.x == 0 || v.point.x == 10) && (v.point.y == 0 || v.point.y == 10);
+        if (!corner) continue;
+        int faces = 0;
+        const hz::topo::HalfEdge* start = v.halfEdge;
+        const hz::topo::HalfEdge* he = start;
+        do {
+            ++faces;
+            he = he->twin->next;
+        } while (he != start && faces < 10);
+        EXPECT_EQ(faces, 3) << "corner (" << v.point.x << ", " << v.point.y << ", " << v.point.z
+                            << ")";
+    }
+}
+
+TEST(BooleanOpFaces, ARoundHoleToo) {
+    auto plate = PrimitiveFactory::makeBox(10, 10, 2);
+    auto hole = PrimitiveFactory::makeCylinder(2.0, 4.0);
+    offsetSolid(*hole, Vec3(5, 5, -1));
+    auto soup = BooleanOp::execute(*plate, *hole, BooleanType::Subtract);
+    auto result = BooleanOp::execute(*plate, *hole, BooleanType::Subtract, nullptr,
+                                     hz::model::NamingScheme::FromGeometry);
+    ASSERT_NE(soup, nullptr);
+    ASSERT_NE(result, nullptr);
+    EXPECT_NEAR(volumeOf(*result), volumeOf(*soup), 1e-6) << "the same solid, fewer faces";
+    EXPECT_LT(result->faceCount(), soup->faceCount());
+    EXPECT_EQ(result->genus(), 1);
+    expectCleanSolid(*result);
 }

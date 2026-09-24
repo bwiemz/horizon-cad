@@ -1,7 +1,7 @@
 # Horizon CAD — Production-Readiness Roadmap
 
 **Date:** 2026-09-23
-**Status:** Active. Milestone 1 done (Phases 97–101); Milestone 2 in progress — plan: [2026-09-24-m2-real-parametric-parts.md](../plans/2026-09-24-m2-real-parametric-parts.md).
+**Status:** Active. Milestone 1 done (Phases 97–101); Milestone 2 done (Phases 102–106b, with 104c deferred) — plan: [2026-09-24-m2-real-parametric-parts.md](../plans/2026-09-24-m2-real-parametric-parts.md).
 **Baseline:** `master` @ `28b4de4` (after PR #57, Phases 81–96)
 **Scope:** What stands between the current codebase and a release real users
 can trust with their work. This roadmap continues the phase numbering of the

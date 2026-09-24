@@ -271,3 +271,19 @@ Revolve, Loft, Sweep and the primitives keep their names for now. Each needs the
   - So an edge next to such a face is renamed by an unrelated Boolean, even though both faces are still there.
   - The extra vertices on those edges are very likely why Fillet refuses Boolean results ("non box-like corner", Phase 105).
   - Merging each face's coplanar fragments after the CSG would fix both. It is added to the roadmap as **106b**.
+
+## Phase 106b — Boolean fragments merged
+
+**As built.**
+- **`mergeFragments`** (`FragmentMerge.cpp`, internal to the CSG) runs on a Boolean's fragments before sewing, for FromGeometry features. Old documents' Booleans are left alone, as their names depend on the fragment count.
+  1. Fragments are grouped by source face, operand and plane.
+  2. Vertices are welded at the CSG plane tolerance.
+  3. Every edge is split at vertices lying on it, and cancels against its reverse. What is left chains into loops.
+  4. Straight-run vertices are dropped; the sewer puts back any a neighbour needs.
+  5. A pinch, an overlap, or a hole the cuts cannot resolve leaves that face's fragments as they were.
+- **Holes.** A face here has one loop, so a merged region with holes is cut through each hole, along a line through its middle parallel to the region's longest outer edge, and each side is merged on its own. The cuts meet the outer boundary part-way along an edge, so the outer corners of a plate with a hole stay where three faces meet.
+- **Results:**
+  - A groove across a block leaves 10 faces, where there had been more than 20 triangles.
+  - A plate with a square hole leaves 12 faces.
+  - An edge a cut never touches keeps its name.
+  - **Fillet accepts Boolean results.** The Milestone 2 goal passes end to end through the window: a plate with a hole, filleted, undone and redone, saved and reopened.

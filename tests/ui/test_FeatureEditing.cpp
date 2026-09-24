@@ -26,9 +26,11 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/MainWindow.h"
 
@@ -294,4 +296,49 @@ TEST(FeatureEditingTest, AReorderFromThePanelIsUndoable) {
     EXPECT_EQ(doc.featureTree().feature(1), pocket);
     EXPECT_NEAR(partVolume(doc), 192.0, 1e-6);
     EXPECT_FALSE(doc.isDirty());
+}
+
+TEST(FeatureEditingTest, MilestoneTwoAPlateWithAHoleFilletedUndoneSavedAndReopened) {
+    // "A user can model a plate with a hole, fillet an edge, undo it, save and
+    // reopen it — through the UI."
+    MainWindow w;
+    hz::doc::Document& doc = *w.activeDocument();
+    drawRectangle(doc, 0, 0, 10, 10);
+    extrude(w, 5.0, std::nullopt);
+    doc.draftDocument().clear();
+    doc.draftDocument().addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0));
+    extrude(w, 5.0, BodyOperation::Cut);
+    ASSERT_EQ(doc.featureTree().featureCount(), 2u);
+    ASSERT_EQ(doc.solid()->genus(), 1);
+    const double plate = partVolume(doc);
+
+    {
+        FormFiller filler(
+            QStringLiteral("Fillet"),
+            FormAnswers()
+                .number(QStringLiteral("size"), 1.0)
+                .check(QStringLiteral("edges"), {QStringLiteral("(10, 0, 0) – (10, 0, 5)"),
+                                                 QStringLiteral("(10, 0, 5) – (10, 0, 0)")}));
+        action(w, "action_fillet-3d")->trigger();
+        ASSERT_TRUE(filler.seen());
+    }
+    ASSERT_EQ(doc.featureTree().featureCount(), 3u) << "the fillet was refused";
+    const double filleted = partVolume(doc);
+    EXPECT_LT(filleted, plate);
+
+    action(w, "action_undo")->trigger();
+    EXPECT_EQ(doc.featureTree().featureCount(), 2u);
+    EXPECT_NEAR(partVolume(doc), plate, 1e-9);
+    action(w, "action_redo")->trigger();
+    EXPECT_NEAR(partVolume(doc), filleted, 1e-9);
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const std::string path = dir.filePath(QStringLiteral("plate.hzpart")).toStdString();
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path, doc, &error)) << error;
+    hz::doc::Document reopened;
+    ASSERT_TRUE(hz::io::NativeFormat::load(path, reopened, &error)) << error;
+    ASSERT_TRUE(reopened.rebuildModel()) << reopened.lastBuildMessage();
+    EXPECT_NEAR(partVolume(reopened), filleted, 1e-9) << "the same part, fillet and all";
 }

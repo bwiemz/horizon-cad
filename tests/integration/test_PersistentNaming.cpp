@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -20,6 +21,7 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
@@ -218,6 +220,56 @@ TEST(PersistentNamingTest, ABooleanNamesEachPieceOfASplitFace) {
     std::map<std::string, int> edges;
     for (const auto& edge : solid.edges()) ++edges[edge.topoId.tag()];
     for (const auto& [name, count] : edges) EXPECT_EQ(count, 1) << name << " named twice";
+}
+
+TEST(PersistentNamingTest, AnEdgeTheCutNeverTouchedKeepsItsName) {
+    // With each face put back together after the Boolean (106b), the corner
+    // at (10, 0) is still between the same two whole faces, so it keeps the
+    // name the extrusion gave it.
+    Square part(NamingScheme::FromGeometry);
+    ASSERT_TRUE(part.doc.rebuildModel());
+    const auto corner = verticalEdgeAt(*part.doc.solid(), 10, 0);
+    ASSERT_TRUE(corner);
+
+    auto groove = std::make_shared<Sketch>();
+    groove->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(4, -1), Vec2(6, 11)));
+    groove->setPlane(hz::draft::SketchPlane(Vec3(0, 0, 3), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    auto cut = std::make_unique<ExtrudeFeature>(groove, Vec3(0, 0, 1), 5.0);
+    cut->setOperation(BodyOperation::Cut);
+    part.doc.featureTree().addFeature(std::move(cut));
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+
+    const auto after = whereIs(*part.doc.solid(), *corner);
+    ASSERT_TRUE(after) << "the corner the cut did not touch keeps its name";
+    EXPECT_NEAR(after->x, 10.0, 1e-9);
+    EXPECT_NEAR(after->y, 0.0, 1e-9);
+}
+
+TEST(PersistentNamingTest, APlateWithAHoleCanBeFilleted) {
+    // The Milestone 2 goal. Fillet refused every edge of a Boolean result
+    // ("non box-like corner"): the CSG left each face as triangles, so extra
+    // edges met at every corner.
+    Square part(NamingScheme::FromGeometry);  // 10 x 10 x 5
+    auto hole = std::make_shared<Sketch>();
+    hole->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0));
+    auto cut = std::make_unique<ExtrudeFeature>(hole, Vec3(0, 0, 1), 5.0);
+    cut->setOperation(BodyOperation::Cut);
+    part.doc.featureTree().addFeature(std::move(cut));
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    ASSERT_EQ(part.doc.solid()->genus(), 1);
+    const double before = hz::model::MassPropertiesCalculator::compute(*part.doc.solid()).volume;
+
+    const auto corner = verticalEdgeAt(*part.doc.solid(), 10, 0);
+    ASSERT_TRUE(corner);
+    part.doc.featureTree().addFeature(
+        std::make_unique<hz::doc::FilletFeature>(std::vector<TopologyID>{*corner}, 1.0));
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    const double after = hz::model::MassPropertiesCalculator::compute(*part.doc.solid()).volume;
+    // The corner loses (1 - pi/4) r^2 per unit height, a little more faceted.
+    const double exact = (1.0 - std::acos(-1.0) / 4.0) * 5.0;
+    EXPECT_GT(before - after, exact - 1e-9);
+    EXPECT_LT(before - after, exact + 0.1);
+    EXPECT_EQ(part.doc.solid()->genus(), 1) << "the hole is still there";
 }
 
 TEST(PersistentNamingTest, AnOlderDocumentsBooleanKeepsItsOldNames) {

@@ -8,6 +8,7 @@ add_library(hz_modeling STATIC
     src/SurfaceSurfaceIntersection.cpp
     src/BoundaryMesh.cpp
     src/MeshCsg.cpp
+    src/FragmentMerge.cpp
     src/SolidSewer.cpp
     src/BooleanOp.cpp
     src/FilletOp.cpp
