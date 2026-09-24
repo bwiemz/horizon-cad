@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <unordered_set>
 
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/BoundingBox.h"
@@ -112,16 +111,21 @@ SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& i
     const math::BoundingBox searchBox(
         math::Vec3(cursorWorld.x - m_snapTolerance, cursorWorld.y - m_snapTolerance, -1e9),
         math::Vec3(cursorWorld.x + m_snapTolerance, cursorWorld.y + m_snapTolerance, 1e9));
-    const auto ids = index.query(searchBox);
-    const std::unordered_set<uint64_t> candidates(ids.begin(), ids.end());
+    std::vector<uint64_t> ids = index.query(searchBox);
+    if (ids.empty()) return snapAmong(cursorWorld, {});
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 
-    // One pass over the entities: looking each candidate up by id in the
-    // list was a pass per candidate.
+    // Find the few candidates in the list, stopping once all are found: a
+    // snap runs on every mouse move, and the drawing may be large.
     std::vector<const DraftEntity*> near;
-    near.reserve(candidates.size());
+    near.reserve(ids.size());
+    size_t found = 0;
     for (const auto& entity : entities) {
-        if (!entity || candidates.count(entity->id()) == 0) continue;
+        if (!entity || !std::binary_search(ids.begin(), ids.end(), entity->id())) continue;
+        ++found;
         if (!accept || accept(*entity)) near.push_back(entity.get());
+        if (found == ids.size()) break;
     }
     return snapAmong(cursorWorld, near);
 }
