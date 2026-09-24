@@ -3,6 +3,7 @@
 #include <string>
 
 #include "horizon/document/Document.h"
+#include "horizon/fileio/ImportReport.h"
 
 namespace hz::io {
 
@@ -17,11 +18,13 @@ public:
 
     /// Read a DXF file and populate the document. On failure returns false,
     /// with the reason in `error` when given; never throws.
-    static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr);
+    /// With @p report, the entities it did not read are counted there by type.
+    static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr,
+                     ImportReport* report = nullptr);
 
     /// As load(), from DXF text in memory.
     static bool loadFromString(const std::string& text, doc::Document& doc,
-                               std::string* error = nullptr);
+                               std::string* error = nullptr, ImportReport* report = nullptr);
 };
 
 }  // namespace hz::io

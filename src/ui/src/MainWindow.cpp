@@ -39,7 +39,10 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/fileio/StlExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/modeling/AssemblySolver.h"
@@ -201,13 +204,15 @@ MainWindow::MainWindow(QWidget* parent)
     // Wire the document manager to the native file format.
     m_docManager.setPartLoader([this](const std::string& path, doc::Document& doc) {
         m_lastLoadError.clear();
-        return io::NativeFormat::load(path, doc, &m_lastLoadError);
+        m_lastLoadReport = {};
+        return io::NativeFormat::load(path, doc, &m_lastLoadError, &m_lastLoadReport);
     });
     m_docManager.setMeshLoader(
         [](const std::string& path) { return io::NativeFormat::loadPartMesh(path); });
     m_docManager.setAssemblyLoader([this](const std::string& path, doc::AssemblyDocument& doc) {
         m_lastLoadError.clear();
-        return io::NativeFormat::loadAssembly(path, doc, &m_lastLoadError);
+        m_lastLoadReport = {};
+        return io::NativeFormat::loadAssembly(path, doc, &m_lastLoadError, &m_lastLoadReport);
     });
 
     // Autosave snapshots go to a per-session directory; a crash leaves them
@@ -359,6 +364,30 @@ void MainWindow::createMenus() {
 
     QAction* saveAsAction = fileMenu->addAction(tr("Save &As..."), this, &MainWindow::onSaveFileAs);
     saveAsAction->setShortcut(QKeySequence::SaveAs);
+
+    fileMenu->addSeparator();
+
+    QMenu* importMenu = fileMenu->addMenu(tr("&Import"));
+    importMenu->addAction(tr("&STEP as a New Part..."), this, &MainWindow::onImportStep)
+        ->setObjectName(QStringLiteral("import_step"));
+    importMenu->addAction(tr("&DXF into This Drawing..."), this, &MainWindow::onImportDxf)
+        ->setObjectName(QStringLiteral("import_dxf"));
+
+    QMenu* exportMenu = fileMenu->addMenu(tr("&Export"));
+    QAction* exportStep = exportMenu->addAction(tr("&STEP..."), this, &MainWindow::onExportStep);
+    QAction* exportStl = exportMenu->addAction(tr("S&TL..."), this, &MainWindow::onExportStl);
+    QAction* exportGltf = exportMenu->addAction(tr("&glTF..."), this, &MainWindow::onExportGltf);
+    QAction* exportDxf = exportMenu->addAction(tr("&DXF..."), this, &MainWindow::onExportDxf);
+    exportStep->setObjectName(QStringLiteral("export_step"));
+    exportStl->setObjectName(QStringLiteral("export_stl"));
+    exportGltf->setObjectName(QStringLiteral("export_gltf"));
+    exportDxf->setObjectName(QStringLiteral("export_dxf"));
+    // Offer what the active document has: a part's body, or a drawing.
+    connect(exportMenu, &QMenu::aboutToShow, this, [=, this] {
+        const bool hasBody = !m_assembly && m_document->solid() != nullptr;
+        for (QAction* a : {exportStep, exportStl, exportGltf}) a->setEnabled(hasBody);
+        exportDxf->setEnabled(!m_assembly && !m_document->draftDocument().entities().empty());
+    });
 
     fileMenu->addSeparator();
 
@@ -1131,18 +1160,21 @@ void MainWindow::onOpenFile() {
                 return;
             }
         }
+        const io::ImportReport report = m_lastLoadReport;
         // Saved assemblies come back positioned by their mates.
         solveAssemblyMates(*assembly);
         auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
         addDocumentTab(std::move(backing), std::move(assembly),
                        tabTitleForPath(path, tr("Assembly")));
+        showImportReport(QFileInfo(fileName).fileName(), report);
         return;
     }
 
     if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
         auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
         std::string error;
-        if (!io::DxfFormat::load(path, *document, &error)) {
+        io::ImportReport report;
+        if (!io::DxfFormat::load(path, *document, &error, &report)) {
             m_docManager.closeDocument(document);
             reportFileError(tr("Could not open"), path, error);
             return;
@@ -1150,6 +1182,7 @@ void MainWindow::onOpenFile() {
         document->setFilePath(path);
         document->setDirty(false);
         addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Drawing")));
+        showImportReport(QFileInfo(fileName).fileName(), report);
         return;
     }
 
@@ -1167,7 +1200,9 @@ void MainWindow::onOpenFile() {
             return;
         }
     }
+    const io::ImportReport report = m_lastLoadReport;
     addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Document")));
+    showImportReport(QFileInfo(fileName).fileName(), report);
 }
 
 bool MainWindow::saveActiveDocument() {
@@ -1283,6 +1318,182 @@ void MainWindow::onSaveFileAs() {
         m_document->setFilePath(oldPath);
         m_document->setType(oldType);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Import / Export
+// ---------------------------------------------------------------------------
+
+void MainWindow::showImportReport(const QString& file, const io::ImportReport& report) {
+    if (report.empty()) return;
+    QStringList lines;
+    for (const auto& item : report.skipped) {
+        lines << tr("Left out: %1").arg(QString::fromStdString(item));
+    }
+    for (const auto& item : report.approximated) {
+        lines << tr("Approximated: %1").arg(QString::fromStdString(item));
+    }
+    QMessageBox box(QMessageBox::Warning, tr("Not Everything Was Read"),
+                    tr("\"%1\": %2").arg(file, QString::fromStdString(report.summary())),
+                    QMessageBox::Ok, this);
+    box.setInformativeText(
+        tr("What was left out is not in the document, and saving will not keep it."));
+    box.setDetailedText(lines.join(QLatin1Char('\n')));
+    box.exec();
+}
+
+void MainWindow::onImportStep() {
+    const QString fileName = QFileDialog::getOpenFileName(
+        this, tr("Import STEP"), QString(), tr("STEP Files (*.step *.stp);;All Files (*)"));
+    if (fileName.isEmpty()) return;
+    const std::string path = fileName.toStdString();
+    auto solids = io::StepFormat::load(path);
+    if (solids.empty()) {
+        reportFileError(tr("Could not import"), path, io::StepFormat::lastError());
+        return;
+    }
+
+    // A new part, one body per solid, each kept in the part itself so it does
+    // not depend on the STEP file any more.
+    auto document = m_docManager.newDocument(doc::DocumentType::Part);
+    const std::string source = QFileInfo(fileName).fileName().toStdString();
+    const auto count = static_cast<int>(solids.size());
+    for (auto& solid : solids) {
+        document->featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
+            std::shared_ptr<const topo::Solid>(std::move(solid)), source));
+    }
+    document->rebuildModel();
+    document->setDirty(true);  // it has not been saved anywhere yet
+    addDocumentTab(std::move(document), nullptr, QFileInfo(fileName).completeBaseName());
+    rebuildFeatureTree();
+    m_viewport->camera().setIsometricView();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Imported %n bodies.", "", count));
+}
+
+void MainWindow::onImportDxf() {
+    if (m_assembly) {
+        statusBar()->showMessage(tr("A DXF is imported into a drawing or part, not an assembly"));
+        return;
+    }
+    const QString fileName = QFileDialog::getOpenFileName(this, tr("Import DXF"), QString(),
+                                                          tr("DXF Files (*.dxf);;All Files (*)"));
+    if (fileName.isEmpty()) return;
+    const std::string path = fileName.toStdString();
+    doc::Document imported;
+    std::string error;
+    io::ImportReport report;
+    if (!io::DxfFormat::load(path, imported, &error, &report)) {
+        reportFileError(tr("Could not import"), path, error);
+        return;
+    }
+
+    // Its layers and block definitions (one of the same name already here is
+    // kept) and its entities come in as one undoable step.
+    auto composite = std::make_unique<doc::CompositeCommand>(tr("Import DXF").toStdString());
+    auto& layers = m_document->layerManager();
+    for (const auto& name : imported.layerManager().layerNames()) {
+        if (!layers.getLayer(name)) {
+            composite->addCommand(std::make_unique<doc::AddLayerCommand>(
+                layers, *imported.layerManager().getLayer(name)));
+        }
+    }
+    auto& target = m_document->draftDocument();
+    for (const auto& name : imported.draftDocument().blockTable().blockNames()) {
+        if (!target.blockTable().findBlock(name)) {
+            composite->addCommand(std::make_unique<doc::AddBlockDefinitionCommand>(
+                target, imported.draftDocument().blockTable().findBlock(name)));
+        }
+    }
+    for (const auto& entity : imported.draftDocument().entities()) {
+        composite->addCommand(std::make_unique<doc::AddEntityCommand>(target, entity));
+    }
+    const auto count = static_cast<int>(imported.draftDocument().entities().size());
+    if (!composite->empty()) m_document->undoStack().push(std::move(composite));
+    refreshAllPanels();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Imported %n entities.", "", count));
+    showImportReport(QFileInfo(fileName).fileName(), report);
+}
+
+const topo::Solid* MainWindow::solidToExport(const QString& format) {
+    const topo::Solid* solid = m_assembly ? nullptr : m_document->solid();
+    if (!solid) {
+        statusBar()->showMessage(
+            tr("%1 export writes a part's body; this document has none").arg(format));
+    }
+    return solid;
+}
+
+QString MainWindow::askExportPath(const QString& format, const QString& filter,
+                                  const QString& suffix) {
+    QString fileName =
+        QFileDialog::getSaveFileName(this, tr("Export %1").arg(format), QString(), filter);
+    if (!fileName.isEmpty() && QFileInfo(fileName).suffix().isEmpty()) fileName += suffix;
+    return fileName;
+}
+
+void MainWindow::onExportStep() {
+    const topo::Solid* solid = solidToExport(tr("STEP"));
+    if (!solid) return;
+    const QString fileName =
+        askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
+    if (fileName.isEmpty()) return;
+    if (!io::StepFormat::save(fileName.toStdString(), {solid})) {
+        reportFileError(tr("Could not export"), fileName.toStdString(),
+                        io::StepFormat::lastError());
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+}
+
+void MainWindow::onExportStl() {
+    const topo::Solid* solid = solidToExport(tr("STL"));
+    if (!solid) return;
+    const QString fileName =
+        askExportPath(tr("STL"), tr("STL Files (*.stl)"), QStringLiteral(".stl"));
+    if (fileName.isEmpty()) return;
+    std::string error;
+    if (!io::StlExport::save(fileName.toStdString(), *solid, &error)) {
+        reportFileError(tr("Could not export"), fileName.toStdString(), error);
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+}
+
+void MainWindow::onExportGltf() {
+    const topo::Solid* solid = solidToExport(tr("glTF"));
+    if (!solid) return;
+    const QString fileName =
+        askExportPath(tr("glTF"), tr("glTF Binary (*.glb)"), QStringLiteral(".glb"));
+    if (fileName.isEmpty()) return;
+    const DocTab* tab = activeTab();
+    const std::string name = tab ? tab->title.toStdString() : std::string("Part");
+    if (!io::GltfExport::saveSolid(
+            fileName.toStdString(), *solid,
+            render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f}, name)) {
+        reportFileError(tr("Could not export"), fileName.toStdString(),
+                        "the file could not be written");
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+}
+
+void MainWindow::onExportDxf() {
+    if (m_assembly || m_document->draftDocument().entities().empty()) {
+        statusBar()->showMessage(
+            tr("DXF export writes a drawing; this document has nothing drawn"));
+        return;
+    }
+    const QString fileName =
+        askExportPath(tr("DXF"), tr("DXF Files (*.dxf)"), QStringLiteral(".dxf"));
+    if (fileName.isEmpty()) return;
+    std::string error;
+    if (!io::DxfFormat::save(fileName.toStdString(), *m_document, &error)) {
+        reportFileError(tr("Could not export"), fileName.toStdString(), error);
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
 }
 
 void MainWindow::onInsertComponent() {

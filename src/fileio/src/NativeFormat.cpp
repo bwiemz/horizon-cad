@@ -35,6 +35,7 @@
 #include "horizon/drafting/LineType.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/AtomicFile.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/SolidTessellator.h"
 
 using json = nlohmann::json;
@@ -646,6 +647,12 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["scalar"] = pat->scalar();
             fObj["count"] = pat->count();
             fObj["suppressed"] = pat->suppressedInstances();
+        } else if (const auto* imported = dynamic_cast<const doc::ImportedBodyFeature*>(feat)) {
+            // The body itself travels with the part, as STEP text, so the part
+            // does not depend on the file it was imported from.
+            fObj["type"] = "imported";
+            fObj["source"] = imported->source();
+            if (imported->solid()) fObj["step"] = StepFormat::toString({imported->solid().get()});
         } else if (const auto* datum = dynamic_cast<const doc::DatumFeature*>(feat)) {
             fObj["type"] = "datum";
             switch (datum->datumKind()) {
@@ -898,9 +905,20 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
     return entity;
 }
 
+/// Record an item a load had to leave out: "<kind> <n> (<type>): <why>".
+static void noteSkipped(ImportReport* report, const std::string& kind, size_t index,
+                        const json& obj, const std::string& why) {
+    if (!report) return;
+    std::string line = kind + " " + std::to_string(index + 1);
+    if (obj.is_object() && obj.contains("type") && obj.at("type").is_string()) {
+        line += " (" + obj.at("type").get<std::string>() + ")";
+    }
+    report->skipped.push_back(line + ": " + why);
+}
+
 /// Populate a Document from a parsed envelope. Shared by load() and
 /// BinaryFormat.
-static bool loadDocumentRoot(const json& root, doc::Document& doc) {
+static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport* report) {
     if (!root.contains("version") || !root.contains("entities")) return false;
 
     doc.draftDocument().clear();
@@ -955,7 +973,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 
     // --- Load block definitions (v6+) ---
     if (root.contains("blocks")) {
+        size_t blockIndex = 0;
         for (const auto& blockObj : root.at("blocks")) {
+            const size_t thisBlock = blockIndex++;
             try {
                 auto def = std::make_shared<draft::BlockDefinition>();
                 def->name = blockObj.value("name", "");
@@ -1049,7 +1069,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     }
                 }
                 doc.draftDocument().blockTable().addBlock(def);
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+                noteSkipped(report, "block", thisBlock, blockObj, jsonMessage(e));
                 continue;  // Skip malformed block definitions.
             }
         }
@@ -1057,7 +1078,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 
     // --- Load entities ---
     const auto* blockTablePtr = &doc.draftDocument().blockTable();
+    size_t entityIndex = 0;
     for (const auto& obj : root.at("entities")) {
+        const size_t thisEntity = entityIndex++;
         try {
             auto entity = deserializeEntity(obj, blockTablePtr);
             if (entity) {
@@ -1066,8 +1089,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     doc.draftDocument().advanceGroupIdCounter(gid);
                 }
                 doc.draftDocument().addEntity(entity);
+            } else {
+                noteSkipped(report, "entity", thisEntity, obj,
+                            "not a kind of entity this version reads");
             }
-        } catch (const std::exception&) {
+        } catch (const std::exception& e) {
+            noteSkipped(report, "entity", thisEntity, obj, jsonMessage(e));
             continue;  // Skip malformed entities.
         }
     }
@@ -1175,7 +1202,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
         // Clear the default sketch collection — we'll rebuild from file data.
         doc.sketches().clear();
 
+        size_t sketchIndex = 0;
         for (const auto& skObj : root.at("sketches")) {
+            const size_t thisSketch = sketchIndex++;
             try {
                 // Reconstruct SketchPlane
                 draft::SketchPlane plane;  // default XY
@@ -1203,20 +1232,29 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
 
                 // Load per-sketch entities
                 if (skObj.contains("entities")) {
+                    const std::string where =
+                        "sketch " + std::to_string(thisSketch + 1) + " entity";
+                    size_t sketchEntity = 0;
                     for (const auto& eObj : skObj.at("entities")) {
+                        const size_t thisOne = sketchEntity++;
                         try {
                             auto entity = deserializeEntity(eObj, blockTablePtr);
                             if (entity) {
                                 sketch->addEntity(entity);
+                            } else {
+                                noteSkipped(report, where, thisOne, eObj,
+                                            "not a kind of entity this version reads");
                             }
-                        } catch (const std::exception&) {
+                        } catch (const std::exception& e) {
+                            noteSkipped(report, where, thisOne, eObj, jsonMessage(e));
                             continue;
                         }
                     }
                 }
 
                 doc.sketches().push_back(sketch);
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+                noteSkipped(report, "sketch", thisSketch, skObj, jsonMessage(e));
                 continue;  // Skip malformed sketches.
             }
         }
@@ -1246,7 +1284,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     // --- Load feature tree (v15+; v16 stores real sketch IDs) ---
     if (root.contains("featureTree")) {
         doc.featureTree().clear();
+        size_t featureIndex = 0;
         for (const auto& fObj : root.at("featureTree")) {
+            const size_t thisFeature = featureIndex++;
+            const size_t before = doc.featureTree().featureCount();
             try {
                 std::string ftype = fObj.value("type", "");
                 std::string persistedId = fObj.value("featureID", "");
@@ -1294,11 +1335,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                             if (sk) sections.push_back(sk);
                         }
                     }
-                    if (sections.size() >= 2) {
-                        auto feat = std::make_unique<doc::LoftFeature>(std::move(sections));
-                        feat->restoreFeatureID(persistedId);
-                        addLoaded(std::move(feat));
+                    if (sections.size() < 2) {
+                        throw std::invalid_argument("it needs two or more section sketches, and " +
+                                                    std::to_string(sections.size()) +
+                                                    " could be found");
                     }
+                    auto feat = std::make_unique<doc::LoftFeature>(std::move(sections));
+                    feat->restoreFeatureID(persistedId);
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "sweep") {
@@ -1308,7 +1352,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     auto path = fObj.contains("pathSketchId")
                                     ? findSketch(fObj.at("pathSketchId").get<uint64_t>())
                                     : nullptr;
-                    if (profile && path) {
+                    if (!profile) throw std::invalid_argument("its profile sketch is missing");
+                    if (!path) throw std::invalid_argument("its path sketch is missing");
+                    {
                         auto feat = std::make_unique<doc::SweepFeature>(profile, path);
                         if (fObj.contains("segments")) {
                             feat->setParameter("segments", fObj.at("segments").get<double>());
@@ -1471,6 +1517,19 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     addLoaded(std::move(feat));
                     continue;
                 }
+                if (ftype == "imported") {
+                    auto solids = StepFormat::fromString(fObj.at("step").get<std::string>());
+                    if (solids.empty()) {
+                        throw std::invalid_argument("its body could not be read: " +
+                                                    StepFormat::lastError());
+                    }
+                    auto feat = std::make_unique<doc::ImportedBodyFeature>(
+                        std::shared_ptr<const topo::Solid>(std::move(solids.front())),
+                        fObj.value("source", ""));
+                    feat->restoreFeatureID(persistedId);
+                    addLoaded(std::move(feat));
+                    continue;
+                }
                 if (ftype == "primitive") {
                     const double p0 = fObj.value("p0", 1.0);
                     const double p1 = fObj.value("p1", 1.0);
@@ -1505,6 +1564,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 // the sketch by ID; v15 files stored a (buggy) index — fall
                 // back to it so old files keep loading.
                 std::shared_ptr<doc::Sketch> sketch;
+                if (ftype != "extrude" && ftype != "revolve") {
+                    throw std::invalid_argument("not a kind of feature this version reads");
+                }
                 if (fObj.contains("sketchId")) {
                     sketch = findSketch(fObj.at("sketchId").get<uint64_t>());
                 } else {
@@ -1514,7 +1576,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                         sketch = doc.sketches()[static_cast<size_t>(sketchIndex)];
                     }
                 }
-                if (!sketch) continue;
+                if (!sketch) throw std::invalid_argument("its sketch is missing");
 
                 if (ftype == "extrude") {
                     double distance = fObj.value("distance", 1.0);
@@ -1561,8 +1623,13 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                 }
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+                noteSkipped(report, "feature", thisFeature, fObj, jsonMessage(e));
                 continue;  // Skip malformed features.
+            }
+            if (doc.featureTree().featureCount() == before) {
+                noteSkipped(report, "feature", thisFeature, fObj,
+                            "not a kind of feature this version reads");
             }
         }
     }
@@ -1589,20 +1656,22 @@ static bool checkVersion(const json& root, std::string* error) {
     return true;
 }
 
-static bool loadDocumentChecked(const json& root, doc::Document& doc, std::string* error) {
+static bool loadDocumentChecked(const json& root, doc::Document& doc, std::string* error,
+                                ImportReport* report) {
     if (!root.is_object() || !root.contains("version") || !root.contains("entities")) {
         return fail(error, "this is not a Horizon document (it has no version or entity list)");
     }
     if (!checkVersion(root, error)) return false;
     try {
-        if (loadDocumentRoot(root, doc)) return true;
+        if (loadDocumentRoot(root, doc, report)) return true;
         return fail(error, "the document could not be read");
     } catch (const std::exception& e) {
         return fail(error, "the file is damaged: " + jsonMessage(e));
     }
 }
 
-bool NativeFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
+bool NativeFormat::load(const std::string& filePath, doc::Document& doc, std::string* error,
+                        ImportReport* report) {
     std::ifstream file;
     if (!openForReading(filePath, file, error)) return false;
 
@@ -1613,18 +1682,18 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc, std::st
         return fail(error, "the file is not a readable Horizon document: " + jsonMessage(e));
     }
 
-    return loadDocumentChecked(root, doc, error);
+    return loadDocumentChecked(root, doc, error, report);
 }
 
-bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc,
-                                    std::string* error) {
+bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc, std::string* error,
+                                    ImportReport* report) {
     json root;
     try {
         root = json::parse(text);
     } catch (const std::exception& e) {
         return fail(error, "the document is not valid JSON: " + jsonMessage(e));
     }
-    return loadDocumentChecked(root, doc, error);
+    return loadDocumentChecked(root, doc, error, report);
 }
 
 // ---------------------------------------------------------------------------
@@ -1722,7 +1791,7 @@ std::string NativeFormat::assemblyToJson(const doc::AssemblyDocument& asmDoc,
 /// Populate an AssemblyDocument from a parsed envelope. @p filePath anchors
 /// relative component paths. Shared by loadAssembly() and BinaryFormat.
 static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
-                             const std::string& filePath) {
+                             const std::string& filePath, ImportReport* report) {
     if (!root.contains("type") || !root.at("type").is_string() ||
         root.at("type").get<std::string>() != "hzasm") {
         return false;
@@ -1731,7 +1800,9 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     asmDoc.clear();
 
     if (root.contains("components")) {
+        size_t componentIndex = 0;
         for (const auto& cObj : root.at("components")) {
+            const size_t thisComponent = componentIndex++;
             try {
                 doc::ComponentInstance comp;
                 comp.id = cObj.value("id", uint64_t{0});
@@ -1761,7 +1832,8 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 }
 
                 asmDoc.addComponent(std::move(comp));
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+                noteSkipped(report, "component", thisComponent, cObj, jsonMessage(e));
                 continue;  // Skip malformed components.
             }
         }
@@ -1780,7 +1852,9 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     };
 
     if (root.contains("mates")) {
+        size_t mateIndex = 0;
         for (const auto& mObj : root.at("mates")) {
+            const size_t thisMate = mateIndex++;
             try {
                 doc::Mate mate;
                 mate.id = mObj.value("id", uint64_t{0});
@@ -1795,7 +1869,8 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                     mate.b.faceId = topo::TopologyID::fromTag(mObj.at("b").value("faceTag", ""));
                 }
                 asmDoc.addMate(std::move(mate));
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+                noteSkipped(report, "mate", thisMate, mObj, jsonMessage(e));
                 continue;  // Skip malformed mates.
             }
         }
@@ -1808,11 +1883,12 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
 /// loadAssemblyRoot with every failure turned into a reason; see
 /// loadDocumentChecked.
 static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
-                                const std::string& filePath, std::string* error) {
+                                const std::string& filePath, std::string* error,
+                                ImportReport* report) {
     if (!root.is_object()) return fail(error, "this is not a Horizon assembly");
     if (root.contains("version") && !checkVersion(root, error)) return false;
     try {
-        if (loadAssemblyRoot(root, asmDoc, filePath)) return true;
+        if (loadAssemblyRoot(root, asmDoc, filePath, report)) return true;
         return fail(error, "this is not a Horizon assembly (its type is not \"hzasm\")");
     } catch (const std::exception& e) {
         return fail(error, "the file is damaged: " + jsonMessage(e));
@@ -1820,7 +1896,7 @@ static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
 }
 
 bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc,
-                                std::string* error) {
+                                std::string* error, ImportReport* report) {
     std::ifstream file;
     if (!openForReading(filePath, file, error)) return false;
 
@@ -1831,18 +1907,19 @@ bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocume
         return fail(error, "the file is not a readable Horizon assembly: " + jsonMessage(e));
     }
 
-    return loadAssemblyChecked(root, asmDoc, filePath, error);
+    return loadAssemblyChecked(root, asmDoc, filePath, error, report);
 }
 
 bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
-                                    const std::string& filePath, std::string* error) {
+                                    const std::string& filePath, std::string* error,
+                                    ImportReport* report) {
     json root;
     try {
         root = json::parse(text);
     } catch (const std::exception& e) {
         return fail(error, "the assembly is not valid JSON: " + jsonMessage(e));
     }
-    return loadAssemblyChecked(root, asmDoc, filePath, error);
+    return loadAssemblyChecked(root, asmDoc, filePath, error, report);
 }
 
 // ---------------------------------------------------------------------------

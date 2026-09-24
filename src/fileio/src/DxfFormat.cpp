@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -850,7 +851,10 @@ void parseTablesSection(DxfStream& in, doc::Document& doc) {
     }
 }
 
-void parseBlocksSection(DxfStream& in, doc::Document& doc) {
+/// Entity types a load did not read, counted: "SPLINE" -> 3.
+using Unread = std::map<std::string, int>;
+
+void parseBlocksSection(DxfStream& in, doc::Document& doc, Unread& unread) {
     DxfPair pair;
     while (nextPair(in, pair)) {
         if (pair.code == 0 && pair.value == "ENDSEC") return;
@@ -907,6 +911,8 @@ void parseBlocksSection(DxfStream& in, doc::Document& doc) {
                         if (entity) {
                             applyCommonProps(entity, groups);
                             def->entities.push_back(entity);
+                        } else {
+                            ++unread[entityType + " inside a block"];
                         }
                     }
                     continue;  // pair already holds next entity's code 0 line.
@@ -921,7 +927,7 @@ void parseBlocksSection(DxfStream& in, doc::Document& doc) {
     }
 }
 
-void parseEntitiesSection(DxfStream& in, doc::Document& doc) {
+void parseEntitiesSection(DxfStream& in, doc::Document& doc, Unread& unread) {
     DxfPair pair;
     // Read first entity type.
     while (nextPair(in, pair)) {
@@ -963,11 +969,12 @@ void parseEntitiesSection(DxfStream& in, doc::Document& doc) {
             entity = parseEllipse(groups);
         else if (entityType == "INSERT")
             entity = parseInsert(groups, doc);
-        // Unknown entity types are silently skipped.
 
         if (entity) {
             applyCommonProps(entity, groups);
             doc.draftDocument().addEntity(entity);
+        } else {
+            ++unread[entityType];  // a type this version does not read, or a damaged one
         }
     }
 }
@@ -1188,7 +1195,7 @@ namespace {
 
 /// The section loop behind DxfFormat::load. Returns false when the input has
 /// no SECTION at all.
-bool parseDxf(std::istream& input, doc::Document& doc) {
+bool parseDxf(std::istream& input, doc::Document& doc, Unread& unread) {
     DxfStream in{input};
     DxfPair pair;
     bool foundSection = false;
@@ -1210,9 +1217,9 @@ bool parseDxf(std::istream& input, doc::Document& doc) {
                 if (namePair.value == "TABLES") {
                     parseTablesSection(in, doc);
                 } else if (namePair.value == "BLOCKS") {
-                    parseBlocksSection(in, doc);
+                    parseBlocksSection(in, doc, unread);
                 } else if (namePair.value == "ENTITIES") {
-                    parseEntitiesSection(in, doc);
+                    parseEntitiesSection(in, doc, unread);
                 } else {
                     skipSection(in);
                 }
@@ -1235,32 +1242,42 @@ bool failWith(std::string* error, std::string message) {
     return false;
 }
 
-/// parseDxf with every failure turned into a reason.
-bool parseChecked(std::istream& in, doc::Document& doc, std::string* error) {
+/// parseDxf with every failure turned into a reason, and what it did not
+/// read counted into @p report.
+bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, ImportReport* report) {
+    Unread unread;
     try {
-        if (!parseDxf(in, doc))
+        if (!parseDxf(in, doc, unread))
             return failWith(error, "this is not a DXF file (it has no SECTION)");
     } catch (const DxfError& e) {
         return failWith(error, e.what());
     } catch (const std::exception& e) {
         return failWith(error, std::string("the DXF file is damaged: ") + e.what());
     }
+    if (report) {
+        for (const auto& [type, count] : unread) {
+            report->skipped.push_back(std::to_string(count) + " " + type +
+                                      (count == 1 ? " entity" : " entities") + " not read");
+        }
+    }
     return true;
 }
 
 }  // namespace
 
-bool DxfFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
+bool DxfFormat::load(const std::string& filePath, doc::Document& doc, std::string* error,
+                     ImportReport* report) {
     const std::filesystem::path path = pathFromUtf8(filePath);
     if (std::string why = whyUnreadable(path); !why.empty()) return failWith(error, std::move(why));
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) return failWith(error, "the file could not be read (check its permissions)");
-    return parseChecked(in, doc, error);
+    return parseChecked(in, doc, error, report);
 }
 
-bool DxfFormat::loadFromString(const std::string& text, doc::Document& doc, std::string* error) {
+bool DxfFormat::loadFromString(const std::string& text, doc::Document& doc, std::string* error,
+                               ImportReport* report) {
     std::istringstream in(text);
-    return parseChecked(in, doc, error);
+    return parseChecked(in, doc, error, report);
 }
 
 }  // namespace hz::io

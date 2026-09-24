@@ -9,6 +9,25 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
+
+- **STEP, STL and glTF could not be reached from the window (107).** STEP
+  import and export and glTF export existed in code, but no menu reached
+  them, and there was no STL export at all. File ▸ Import and File ▸ Export
+  now cover all four:
+  - **STEP** imports as a new part. Each body is kept inside the part, so the
+    part no longer depends on the STEP file.
+  - **DXF** imports into the drawing you are working on, as one undoable
+    step.
+  - **Exports:** STEP, STL (new) and glTF for a part's body, and DXF for a
+    drawing.
+- **Opening a file silently lost what could not be read.** Since Phase 100 a
+  malformed item is skipped instead of failing the whole file, but nothing
+  said so, and the next save dropped it for good. A DXF's unread entity types
+  vanished the same way. Opening or importing such a file now lists what was
+  left out, and why ("entity 7 (spline): …", "3 3DFACE entities not read"),
+  before you can save over it. A feature whose sketch is missing now says so.
+
 ## Unreleased — Production readiness, Milestone 2 (Phases 102–106b) — complete
 
 - **Every Boolean result was a heap of triangles, which Fillet refused

@@ -8,6 +8,7 @@ add_executable(hz_fileio_tests
     test_StepFormat.cpp
     test_StepFixtures.cpp
     test_GltfExport.cpp
+    test_ImportExport.cpp
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
     test_DrawingDimensionRenderer.cpp

@@ -252,6 +252,21 @@ private:
 // ---------------------------------------------------------------------------
 
 /// Command to add a new layer.
+/// Add a block definition to the block table (removed again on undo).
+class AddBlockDefinitionCommand : public Command {
+public:
+    AddBlockDefinitionCommand(draft::DraftDocument& doc,
+                              std::shared_ptr<draft::BlockDefinition> block);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::shared_ptr<draft::BlockDefinition> m_block;
+    bool m_added = false;
+};
+
 class AddLayerCommand : public Command {
 public:
     AddLayerCommand(draft::LayerManager& mgr, const draft::LayerProperties& props);
