@@ -343,11 +343,15 @@ void ViewportWidget::drawDatums(QOpenGLExtraFunctions* gl) {
     const math::Mat4 frame =
         m_activeSketch ? m_activeSketch->plane().worldToLocalMatrix() : math::Mat4::identity();
     std::vector<float> lines;
+    // Each segment's ends carry their distance along it (0 and its length):
+    // the line shader dashes by that distance, and all zeros drew solid.
     const auto segment = [&](const math::Vec3& a, const math::Vec3& b) {
-        for (const math::Vec3& p : {frame.transformPoint(a), frame.transformPoint(b)}) {
-            lines.insert(lines.end(), {static_cast<float>(p.x), static_cast<float>(p.y),
-                                       static_cast<float>(p.z), 0.0f});
-        }
+        const math::Vec3 p = frame.transformPoint(a);
+        const math::Vec3 q = frame.transformPoint(b);
+        lines.insert(lines.end(),
+                     {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z),
+                      0.0f, static_cast<float>(q.x), static_cast<float>(q.y),
+                      static_cast<float>(q.z), static_cast<float>((q - p).length())});
     };
     constexpr double kPlaneHalf = 15.0;  // a datum plane is drawn as a square this big
     constexpr double kAxisHalf = 60.0;
