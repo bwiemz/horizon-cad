@@ -181,7 +181,7 @@ A release someone can install:
   - snapping and picking through the viewport;
   - `copyStyleFrom` for pieces made from an entity;
   - the window tests and their helpers;
-  - the five CI gates and how to run each locally;
+  - the CI checks and how to run each locally;
   - the three ways code passing a newer local toolchain fails CI's older
     one.
 - **README** Contributing links all three documents.
@@ -189,7 +189,7 @@ A release someone can install:
   - **The licence.** `LICENSE` is the GPL v3 and the README says MIT. Which
     one applies is the owner's call. Until it is made, the AppStream
     metadata declares no project licence.
-  - **Branch protection** on `master`: require the five CI gates to pass
+  - **Branch protection** on `master`: require the CI checks to pass
     before a merge.
   - **Private vulnerability reporting** has to be turned on in the
     repository's settings (Security ▸ Private vulnerability reporting) for

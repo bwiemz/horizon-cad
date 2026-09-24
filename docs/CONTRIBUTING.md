@@ -133,8 +133,10 @@ Tools live in `src/ui/` and inherit from the `Tool` base class.
 Constraints live in `src/constraint/` under the `hz::cstr` namespace.
 
 1. **Inherit from `Constraint`** and implement:
-   - `evaluate(table)` -- return residual vector
-   - `jacobian(table)` -- return partial derivatives
+   - `evaluate(params, residuals, offset)` -- write the residuals into
+     `residuals`, starting at row `offset`
+   - `jacobian(params, jacobian, offset)` -- write the partial derivatives
+     into `jacobian`, starting at row `offset`
    - `equationCount()` -- number of scalar equations
    - `clone()` -- deep copy
 
@@ -210,7 +212,7 @@ ctest --test-dir build/debug -C Debug --output-on-failure
 
 ## Before you open a pull request
 
-CI runs five gates on every pull request, and a pull request should pass
+CI runs these checks on every pull request, and a pull request should pass
 all of them locally first:
 
 | Gate | What it runs | Locally |
@@ -218,11 +220,13 @@ all of them locally first:
 | Build (Windows, Linux Debug, Linux Release) | MSVC; GCC 11 with `-Werror` | `cmake --preset linux-debug -DHZ_WARNINGS_AS_ERRORS=ON` and build |
 | AddressSanitizer | the whole suite under ASan and UBSan | `-DHZ_ENABLE_SANITIZERS=ON` |
 | Format Check | clang-format 15 | `clang-format --dry-run --Werror` on the files you changed |
-| Static Analysis | clang-tidy 15, `bugprone-*` and `performance-*` | `clang-tidy -p build/linux-debug <file>` |
+| Static Analysis | clang-tidy 15, `bugprone-*` and `performance-*` | `clang-tidy -p build/linux-debug --checks='-*,bugprone-*,performance-*' <file>` |
 
-Things that pass a newer local compiler and fail CI's older one:
+Things that pass a newer local toolchain and fail CI's older one:
 - clang 15 cannot capture a structured binding in a lambda; copy it into a
   plain local first;
+- clang-format 15 lays out a lambda passed before a call's last argument
+  differently (see Formatting above);
 - CI's GoogleTest is built as C++17 and cannot print `char8_t` strings, so
   an `EXPECT_EQ` on two `std::u8string`s fails to link there; compare them
   as `std::string`.
