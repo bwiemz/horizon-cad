@@ -1,16 +1,80 @@
 #include "horizon/ui/FeatureTreePanel.h"
 
+#include <QAction>
+#include <QDropEvent>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
+#include <QMenu>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <functional>
 
 #include "horizon/document/FeatureTree.h"
 
 namespace hz::ui {
+
+namespace {
+
+/// The feature list. A drop does not move its rows: it reports which feature
+/// goes where, and the owner — which makes the move, as a command on the
+/// feature tree — rebuilds the rows from the tree, so the panel cannot show an
+/// order the tree does not have. (The panel used to let QTreeWidget move the
+/// row and listen for the model's rowsMoved; QTreeWidget moves a row by taking
+/// the item out and inserting it again, which is not reported as a move.)
+class FeatureList : public QTreeWidget {
+public:
+    using QTreeWidget::QTreeWidget;
+
+    std::function<void(int from, int to)> onMove;
+
+protected:
+    void dropEvent(QDropEvent* event) override {
+        QTreeWidgetItem* dragged = currentItem();
+        if (event->source() != this || dragged == nullptr) {
+            event->ignore();  // only this list's own rows move
+            return;
+        }
+        const int from = indexOfTopLevelItem(dragged);
+        const QPoint pos = event->position().toPoint();
+        QTreeWidgetItem* over = itemAt(pos);
+        const int overRow = over ? indexOfTopLevelItem(over) : -1;
+        const bool below = over != nullptr && pos.y() >= visualItemRect(over).center().y();
+        const int to = FeatureTreePanel::dropDestination(from, overRow, below, topLevelItemCount());
+
+        // Not a move as far as the drag is concerned: on a move, the view
+        // deletes the dragged row once the drag returns.
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        stopAutoScroll();
+        setState(NoState);
+        viewport()->update();
+        if (to != from && onMove) {
+            // Once the drag has unwound: the move rebuilds these rows.
+            QTimer::singleShot(0, this, [this, from, to] {
+                if (onMove) onMove(from, to);
+            });
+        }
+    }
+};
+
+}  // namespace
+
+int FeatureTreePanel::dropDestination(int from, int overRow, bool belowMiddle, int count) {
+    if (count <= 0 || from < 0 || from >= count) return from;
+    // Where among the current rows the feature goes in: before the row it is
+    // over, or after it when dropped on that row's lower half; after the last
+    // when dropped below every row.
+    const int slot = overRow < 0 ? count : overRow + (belowMiddle ? 1 : 0);
+    // Its index once it has left its own place.
+    const int to = slot > from ? slot - 1 : slot;
+    return std::clamp(to, 0, count - 1);
+}
 
 FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tree"), parent) {
     setObjectName("FeatureTreePanel");
@@ -18,7 +82,9 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     m_stack = new QStackedWidget(this);
 
     // -- Page 0: the feature tree --------------------------------------------
-    m_treeWidget = new QTreeWidget(m_stack);
+    auto* list = new FeatureList(m_stack);
+    list->onMove = [this](int from, int to) { emit featureReordered(from, to); };
+    m_treeWidget = list;
     m_treeWidget->setHeaderLabels({tr("Feature"), tr("Status")});
     m_treeWidget->setRootIsDecorated(false);
     m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -63,17 +129,49 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     connect(m_treeWidget, &QTreeWidget::itemDoubleClicked, this,
             &FeatureTreePanel::onItemDoubleClicked);
 
-    // Detect drag-drop reorder via the model's rowsMoved signal.
-    connect(m_treeWidget->model(), &QAbstractItemModel::rowsMoved, this,
-            [this](const QModelIndex& /*parent*/, int start, int /*end*/,
-                   const QModelIndex& /*dest*/, int row) {
-                int toIndex = (row > start) ? row - 1 : row;
-                emit featureReordered(start, toIndex);
-            });
+    // Edit / Suppress / Delete act on the current feature, from the context
+    // menu or (Delete) the keyboard while the tree has focus.
+    m_editAction = new QAction(tr("Edit…"), this);
+    m_editAction->setObjectName(QStringLiteral("editFeature"));
+    connect(m_editAction, &QAction::triggered, this, [this] {
+        if (currentRow() >= 0) emit featureDoubleClicked(currentRow());
+    });
+    m_suppressAction = new QAction(tr("Suppress"), this);
+    m_suppressAction->setObjectName(QStringLiteral("suppressFeature"));
+    connect(m_suppressAction, &QAction::triggered, this, [this] {
+        const int row = currentRow();
+        if (row < 0) return;
+        const bool suppressed = m_treeWidget->topLevelItem(row)->data(0, Qt::UserRole + 1).toBool();
+        emit featureSuppressRequested(row, !suppressed);
+    });
+    m_deleteAction = new QAction(tr("Delete"), this);
+    m_deleteAction->setObjectName(QStringLiteral("deleteFeature"));
+    m_deleteAction->setShortcut(QKeySequence::Delete);
+    m_deleteAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    connect(m_deleteAction, &QAction::triggered, this, [this] {
+        if (currentRow() >= 0) emit featureDeleteRequested(currentRow());
+    });
+    m_treeWidget->addAction(m_deleteAction);
+    m_treeWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_treeWidget, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        QTreeWidgetItem* item = m_treeWidget->itemAt(pos);
+        if (!item) return;
+        m_treeWidget->setCurrentItem(item);
+        QMenu menu(this);
+        menu.addAction(m_editAction);
+        menu.addAction(m_suppressAction);
+        menu.addSeparator();
+        menu.addAction(m_deleteAction);
+        menu.exec(m_treeWidget->viewport()->mapToGlobal(pos));
+    });
+    connect(m_treeWidget, &QTreeWidget::currentItemChanged, this, [this] { updateActions(); });
+    updateActions();
 }
 
 void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
+    const int current = currentRow();
     m_treeWidget->clear();
+    m_rollbackIndex = tree.rollbackIndex();
 
     const int count = static_cast<int>(tree.featureCount());
     m_stack->setCurrentIndex(count > 0 ? 0 : 1);  // tree vs empty state
@@ -81,17 +179,41 @@ void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
         const auto* feat = tree.feature(static_cast<size_t>(i));
         auto* item = new QTreeWidgetItem(m_treeWidget);
         item->setData(0, Qt::UserRole, i);
+        item->setData(0, Qt::UserRole + 1, feat->isSuppressed());
         item->setText(0, QString::fromStdString(feat->name()));
+        // Features are dropped between rows, never onto one another: a drop
+        // onto an item would nest it in the panel without changing the tree.
+        item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
 
-        const bool suppressed = (m_rollbackIndex >= 0 && i > m_rollbackIndex);
-        if (suppressed) {
-            item->setText(1, tr("Suppressed"));
+        const bool rolledBack = (m_rollbackIndex >= 0 && i > m_rollbackIndex);
+        if (feat->isSuppressed() || rolledBack) {
+            item->setText(1, feat->isSuppressed() ? tr("Suppressed") : tr("Rolled back"));
             item->setForeground(0, QColor(160, 160, 160));
             item->setForeground(1, QColor(160, 160, 160));
         } else {
             item->setText(1, tr("OK"));
         }
     }
+    if (current >= 0 && current < count) {
+        m_treeWidget->setCurrentItem(m_treeWidget->topLevelItem(current));
+    }
+    updateActions();
+}
+
+int FeatureTreePanel::currentRow() const {
+    QTreeWidgetItem* item = m_treeWidget->currentItem();
+    return item ? m_treeWidget->indexOfTopLevelItem(item) : -1;
+}
+
+void FeatureTreePanel::updateActions() {
+    const int row = currentRow();
+    const bool has = row >= 0;
+    m_editAction->setEnabled(has);
+    m_suppressAction->setEnabled(has);
+    m_deleteAction->setEnabled(has);
+    const bool suppressed =
+        has && m_treeWidget->topLevelItem(row)->data(0, Qt::UserRole + 1).toBool();
+    m_suppressAction->setText(suppressed ? tr("Unsuppress") : tr("Suppress"));
 }
 
 void FeatureTreePanel::markFailed(int featureIndex, const std::string& errorMessage) {

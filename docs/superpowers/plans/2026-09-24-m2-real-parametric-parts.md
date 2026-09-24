@@ -77,6 +77,11 @@ that leaves every existing caller and test compiling. It is on
 from their feature, since their kernel ops do not yet distinguish their
 failure modes. `ProfileValidator`'s messages now name coordinates.
 
+Writing those messages exposed that the profile reader accepted only lines,
+arcs and a lone circle: a Rectangle- or Polyline-tool shape (and an imported
+LWPOLYLINE) could not be extruded at all. It now reads them as their line
+segments and names any kind it still cannot use.
+
 ## Phase 104 — Real 3D commands, undoable
 
 Primitive / Boolean / Fillet / Chamfer / Shell / Pattern / Loft / Sweep ribbon
@@ -84,6 +89,97 @@ commands create document features (dialogs + selection) instead of fixed
 demos outside the document. Feature add / edit / delete / reorder / suppress
 and assembly component / mate edits become undo-stack commands, which also
 retires the explicit `setDirty(true)` calls Phase 98 kept for them.
+
+Large, so two PRs: **104a** makes every model edit an undoable command; **104b**
+replaces the demo ribbon commands with ones that add features.
+
+### What the audit found
+
+- Feature edits bypass the undo stack. Add and reorder call
+  `setDirty(true)`; **editing a feature's parameters (double-click) does not
+  mark the document modified at all**, so closing discards the edit without a
+  prompt. Undo never touches the model.
+- There is no way to delete or suppress a feature. The panel labels features
+  past the (unreachable) rollback index "Suppressed".
+- Assembly edits (insert component, add mate) set the assembly's own dirty
+  flag and are not undoable; the mate solve moves components with no way back.
+- Every 3D ribbon command except Extrude/Revolve is a fixed demo that adds a
+  mesh to the scene graph outside the document (never saved, never undone);
+  the Boolean demos `const_cast` a box's vertices. Shell, Pattern, Loft,
+  Sweep and Draft have no command at all.
+- The scripting API adds features straight to the tree: not undoable, and
+  the document is not marked modified.
+
+### 104a design — undoable model edits
+
+- **Feature suppression.** `Feature::isSuppressed()` / `setSuppressed()`; every
+  build path skips a suppressed feature exactly as it skips a datum. Stored as
+  `"featureSuppressed": true` (`"suppressed"` is already a pattern's list of
+  skipped instances, renamed in code to `suppressedInstances()`).
+- **Format version 17.** A build that predates body operations (102) or
+  suppression would silently build a different part from a file that uses
+  them; the version gate refuses instead of misreading.
+- **Tree primitives.** `FeatureTree::insertFeature`, `takeFeature`, `indexOf`,
+  and a `revision()` counter bumped by every mutation (and `markChanged()` for
+  edits made through a `Feature*`), so the window knows when an undo changed
+  the model. Removing or inserting before the rollback index shifts it.
+- **Commands** (`FeatureCommands.h`, `hz::doc`): `AddFeatureCommand` (with the
+  wrapper sketch it was made from), `RemoveFeatureCommand`,
+  `MoveFeatureCommand`, `EditFeatureCommand` (parameters and body operation),
+  `SetFeatureSuppressedCommand`, `AddSketchCommand`. Commands find their
+  feature by identity, not by index, so an edit made outside the stack
+  (a script) cannot make undo act on the wrong feature. Each restores the
+  rollback index it found.
+- **Assembly edits.** `AssemblyDocument::State` (components + mates) with
+  `snapshot()` / `restore()`; `AssemblyEditCommand(before, after)` pushed on
+  the assembly tab's undo stack after an insert or mate. The tab is modified
+  when either the assembly flag or the undo stack says so; saving marks both.
+- **Window.** Add (Extrude/Revolve/box from the empty state), edit, reorder,
+  delete and suppress push commands; undo/redo rebuild the model when the
+  tree's revision moved and the assembly scene when an assembly is active.
+  The feature panel gets a context menu (Edit, Suppress/Unsuppress, Delete)
+  and the Delete key; features can no longer be dropped *onto* each other
+  (which nested them in the panel without changing the tree).
+- **Scripting.** `ScriptContext` pushes the same commands.
+
+### 104b design — real 3D ribbon commands
+
+- Primitives ask for dimensions and a body operation and add a
+  `PrimitiveFeature`.
+- Union / Subtract / Intersect add a `BooleanFeature` that combines the
+  part's bodies (its single-solid `execute` is a no-op today); Subtract keeps
+  the first body and removes the others.
+- Fillet / Chamfer / Shell / Pattern / Loft / Sweep / Draft ask for their
+  inputs (edges and faces by name until the viewport can pick them) and add
+  features. The demos and their scene-graph side channel are removed.
+
+### Requirement → task map
+
+| Roadmap requirement | Where |
+| --- | --- |
+| Feature add undoable | 104a `AddFeatureCommand`; `addBodyFeature` |
+| Feature edit undoable | 104a `EditFeatureCommand`; double-click edit |
+| Feature delete | 104a `RemoveFeatureCommand`; panel menu + Delete key |
+| Feature reorder undoable | 104a `MoveFeatureCommand` |
+| Feature suppress | 104a `Feature::setSuppressed`, `SetFeatureSuppressedCommand`, `"featureSuppressed"` |
+| Assembly component / mate edits undoable | 104a `AssemblyEditCommand` |
+| Retire `setDirty(true)` for these edits | 104a (the undo stack's clean index carries it) |
+| Primitive commands create features | 104b |
+| Boolean commands create features | 104b |
+| Fillet / Chamfer / Shell / Pattern / Loft / Sweep commands create features | 104b |
+
+### Tests (104a)
+
+- Commands: add → undo → redo keeps the same feature object and the model's
+  volume; remove/move/edit/suppress undo to exactly the prior tree; a feature
+  added outside the stack is not the one an undo removes; rollback index
+  follows inserts and removals.
+- Suppression: a suppressed Cut leaves the plate whole; round trip keeps it;
+  a pattern's instance suppression still round-trips.
+- Window (offscreen): editing a parameter marks the tab modified and undo
+  clears it; delete and suppress through the panel; undo after Extrude
+  removes the body; inserting a component into an assembly marks it modified
+  and undo removes it.
 
 ## Phase 105 — Topology correctness gates
 

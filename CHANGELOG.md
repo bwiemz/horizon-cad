@@ -9,7 +9,34 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness, Milestone 2 (Phases 102–103)
+## Unreleased — Production readiness, Milestone 2 (Phases 102–104)
+
+- **Changes to a part's history could not be undone, and one was not even
+  saved (104a).** Undo covered 2D drawing only. Adding, reordering and editing
+  features went around the undo stack, and **editing a feature's values
+  (double-click) did not mark the document modified**, so closing the window
+  discarded the edit without asking. Features could not be deleted or
+  suppressed at all. Inserting a component or adding a mate could not be
+  undone either, and a mate solve moved components with no way back.
+
+  Every one of these is now a command on the undo stack:
+  - adding a feature (with the profile sketch made for it);
+  - editing a feature's values and how its body combines with the part, in
+    one dialog instead of one prompt per value;
+  - reordering, deleting and suppressing a feature, from the feature panel's
+    menu and the Delete key;
+  - inserting a component, and adding a mate together with the moves its solve
+    made.
+
+  Undo rebuilds the model or assembly it changed. The document's modified
+  marker follows the undo stack, so undoing back to the saved state clears it.
+  Script edits go through the same commands.
+
+  A suppressed feature stays in the history but is left out of the build.
+  It is saved as `"featureSuppressed"`, and the file format moves to version
+  17: a build from before body operations (102) or suppression would ignore
+  both and silently build a different part, so it now refuses the file
+  instead.
 
 - **A failed feature said "failed to execute" (103).** Extrude, Revolve,
   Loft, Sweep, Draft, the primitives, patterns and `BooleanOp` returned a bare

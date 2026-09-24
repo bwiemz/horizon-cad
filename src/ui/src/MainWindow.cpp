@@ -29,9 +29,13 @@
 #include <QVBoxLayout>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <numbers>
+#include <optional>
+#include <utility>
 
 #include "horizon/document/Commands.h"
+#include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/fileio/DxfFormat.h"
@@ -97,6 +101,25 @@
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
+
+namespace {
+
+/// Add the "how does this body combine with the part" choice to a feature
+/// dialog, showing `initial`.
+QComboBox* addOperationChoice(QDialog& dialog, QFormLayout& form, doc::BodyOperation initial) {
+    auto* combo = new QComboBox(&dialog);
+    combo->setObjectName(QStringLiteral("bodyOperation"));
+    combo->addItem(MainWindow::tr("Join the part"), static_cast<int>(doc::BodyOperation::Join));
+    combo->addItem(MainWindow::tr("Cut from the part"), static_cast<int>(doc::BodyOperation::Cut));
+    combo->addItem(MainWindow::tr("Keep the intersection"),
+                   static_cast<int>(doc::BodyOperation::Intersect));
+    combo->addItem(MainWindow::tr("New body"), static_cast<int>(doc::BodyOperation::NewBody));
+    combo->setCurrentIndex(combo->findData(static_cast<int>(initial)));
+    form.addRow(MainWindow::tr("Result:"), combo);
+    return combo;
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -173,6 +196,10 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
+    connect(m_featureTreePanel, &FeatureTreePanel::featureDeleteRequested, this,
+            &MainWindow::onFeatureDeleteRequested);
+    connect(m_featureTreePanel, &FeatureTreePanel::featureSuppressRequested, this,
+            &MainWindow::onFeatureSuppressRequested);
     connect(m_featureTreePanel, &FeatureTreePanel::featureReordered, this,
             &MainWindow::onFeatureReordered);
     connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged, this,
@@ -799,7 +826,20 @@ void MainWindow::updateWindowTitle() {
 }
 
 bool MainWindow::isTabModified(const DocTab& tab) const {
-    return tab.assembly ? tab.assembly->isDirty() : tab.document->isDirty();
+    // An assembly's edits are commands on its tab's (backing) document; the
+    // assembly's own flag covers changes made outside them (a recovery).
+    const bool edited = tab.document->isDirty();
+    return tab.assembly ? tab.assembly->isDirty() || edited : edited;
+}
+
+void MainWindow::recordAssemblyEdit(doc::AssemblyState before, bool wasDirty,
+                                    const QString& description) {
+    // From here the undo stack carries the change — undoing back to the saved
+    // state must clear the modified marker, which the assembly's own flag,
+    // set by the edit itself, would not.
+    m_assembly->setDirty(wasDirty);
+    m_document->undoStack().push(std::make_unique<doc::AssemblyEditCommand>(
+        *m_assembly, std::move(before), m_assembly->snapshot(), description.toStdString()));
 }
 
 void MainWindow::refreshModifiedIndicators() {
@@ -1064,11 +1104,12 @@ bool MainWindow::saveActiveDocument() {
     if (m_assembly) {
         if (m_assembly->filePath().empty()) {
             onSaveFileAs();
-            return !m_assembly->isDirty();
+            return !isTabModified(*tab);
         }
         std::string error;
         if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly, &error)) {
             m_assembly->setDirty(false);
+            m_document->setDirty(false);  // the undo stack's saved state
             m_docManager.noteSaved(m_assembly);
             forgetSnapshot(*tab);
             m_statusPrompt->setText(tr("Assembly saved."));
@@ -1195,8 +1236,10 @@ void MainWindow::onInsertComponent() {
         return;
     }
 
+    const bool wasDirty = m_assembly->isDirty();
+    doc::AssemblyState before = m_assembly->snapshot();
     m_assembly->addComponent(std::move(comp));
-    refreshModifiedIndicators();
+    recordAssemblyEdit(std::move(before), wasDirty, tr("Insert Component"));
     rebuildScene();
     m_viewport->camera().setIsometricView();
     m_statusPrompt->setText(tr("Component inserted."));
@@ -1426,12 +1469,17 @@ void MainWindow::onAddMate() {
     mate.value = mate.type == doc::MateType::Angle ? valueSpin->value() * std::numbers::pi / 180.0
                                                    : valueSpin->value();
 
-    uint64_t mateId = m_assembly->addMate(std::move(mate));
-    if (!solveAssemblyMates(*m_assembly)) {
-        m_assembly->removeMate(mateId);
-        solveAssemblyMates(*m_assembly);
+    // The solve moves components; a mate that cannot be solved leaves the
+    // assembly exactly as it was, and one that can is a single undo step.
+    const bool wasDirty = m_assembly->isDirty();
+    doc::AssemblyState before = m_assembly->snapshot();
+    m_assembly->addMate(std::move(mate));
+    if (solveAssemblyMates(*m_assembly)) {
+        recordAssemblyEdit(std::move(before), wasDirty, tr("Add Mate"));
+    } else {
+        m_assembly->restore(std::move(before));
+        m_assembly->setDirty(wasDirty);
     }
-    refreshModifiedIndicators();
     rebuildScene();
 }
 
@@ -1440,14 +1488,27 @@ void MainWindow::onAddMate() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::onUndo() {
-    m_document->undoStack().undo();
-    m_viewport->update();
-    m_layerPanel->refresh();
-    onSelectionChanged();
+    undoOrRedo(true);
 }
 
 void MainWindow::onRedo() {
-    m_document->undoStack().redo();
+    undoOrRedo(false);
+}
+
+void MainWindow::undoOrRedo(bool undo) {
+    const uint64_t revision = m_document->featureTree().revision();
+    if (undo) {
+        m_document->undoStack().undo();
+    } else {
+        m_document->undoStack().redo();
+    }
+    // The model and the assembly are drawn from what they were last built
+    // into; an undo that changed them has to rebuild that.
+    if (m_assembly) {
+        rebuildScene();
+    } else if (m_document->featureTree().revision() != revision) {
+        rebuildFeatureTree();
+    }
     m_viewport->update();
     m_layerPanel->refresh();
     onSelectionChanged();
@@ -2249,8 +2310,6 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
-    if (createdWrapper) m_document->addSketch(sketch);
-
     auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
     feature->setOperation(operation);
     if (!addBodyFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
@@ -2294,8 +2353,6 @@ void MainWindow::onRevolveSketch() {
         return;
     }
 
-    if (createdWrapper) m_document->addSketch(sketch);
-
     auto feature = std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
     feature->setOperation(operation);
     if (!addBodyFeature(std::move(feature), tr("Revolve"), createdWrapper ? sketch : nullptr)) {
@@ -2320,18 +2377,11 @@ bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLab
     size->setValue(value);
     form->addRow(valueLabel, size);
 
-    auto* result = new QComboBox(&dialog);
-    result->setObjectName(QStringLiteral("bodyOperation"));
-    result->addItem(tr("Join the part"), static_cast<int>(doc::BodyOperation::Join));
-    result->addItem(tr("Cut from the part"), static_cast<int>(doc::BodyOperation::Cut));
-    result->addItem(tr("Keep the intersection"), static_cast<int>(doc::BodyOperation::Intersect));
-    result->addItem(tr("New body"), static_cast<int>(doc::BodyOperation::NewBody));
     // Joining is what a second feature usually means; the first body has
     // nothing to join, so it starts one.
     const bool hasBody = m_document->solid() != nullptr;
-    result->setCurrentIndex(result->findData(
-        static_cast<int>(hasBody ? doc::BodyOperation::Join : doc::BodyOperation::NewBody)));
-    form->addRow(tr("Result:"), result);
+    auto* result = addOperationChoice(
+        dialog, *form, hasBody ? doc::BodyOperation::Join : doc::BodyOperation::NewBody);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -2346,25 +2396,29 @@ bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLab
 
 bool MainWindow::addBodyFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
                                 const std::shared_ptr<doc::Sketch>& wrapperSketch) {
-    // New features always go to the end of the active history.
+    // Try the feature at the end of the active history first. One that fails
+    // there itself (a Cut that would leave nothing, an Intersect of bodies
+    // that do not touch) is refused, leaving the part — and the undo
+    // history — as they were.
     auto& tree = m_document->featureTree();
+    const int rollback = tree.rollbackIndex();
     tree.setRollbackIndex(-1);
     tree.addFeature(std::move(feature));
-    const auto index = static_cast<int>(tree.featureCount()) - 1;
+    const size_t index = tree.featureCount() - 1;
     m_document->rebuildModel();
+    const bool failsItself = m_document->failedFeatureIndex() == static_cast<int>(index);
+    const QString reason = QString::fromStdString(m_document->lastBuildMessage());
+    feature = tree.takeFeature(index);
+    tree.setRollbackIndex(rollback);
 
-    if (m_document->failedFeatureIndex() == index) {
-        // The new feature itself fails (a Cut that would leave nothing, an
-        // Intersect of bodies that do not touch): leave the part as it was.
-        const QString reason = QString::fromStdString(m_document->lastBuildMessage());
-        tree.removeFeature(static_cast<size_t>(index));
-        if (wrapperSketch) m_document->removeSketch(wrapperSketch->id());
+    if (failsItself) {
         rebuildFeatureTree();
         statusBar()->showMessage(tr("%1 not added: %2").arg(verb, reason));
         return false;
     }
 
-    m_document->setDirty(true);
+    m_document->undoStack().push(
+        std::make_unique<doc::AddFeatureCommand>(*m_document, std::move(feature), wrapperSketch));
     rebuildFeatureTree();
     if (m_document->failedFeatureIndex() >= 0) {
         statusBar()->showMessage(tr("%1 added, but an earlier feature fails to rebuild").arg(verb));
@@ -2521,37 +2575,93 @@ void MainWindow::onChamfer() {
 // Slots -- Feature Tree Panel
 // ---------------------------------------------------------------------------
 
+const doc::Feature* MainWindow::featureAt(int featureIndex) const {
+    const auto& tree = m_document->featureTree();
+    if (featureIndex < 0 || static_cast<size_t>(featureIndex) >= tree.featureCount()) {
+        return nullptr;
+    }
+    return tree.feature(static_cast<size_t>(featureIndex));
+}
+
 void MainWindow::onFeatureDoubleClicked(int featureIndex) {
-    auto& tree = m_document->featureTree();
-    if (featureIndex < 0 || static_cast<size_t>(featureIndex) >= tree.featureCount()) return;
-    auto* feat = tree.feature(static_cast<size_t>(featureIndex));
+    const doc::Feature* feat = featureAt(featureIndex);
     if (!feat) return;
 
-    auto params = feat->parameters();
-    bool changed = false;
+    // One dialog for all of the feature's values (it used to be one prompt
+    // per parameter, with no way to back out of the ones already answered).
+    const auto params = feat->parameters();
+    const bool buildsBody = feat->createsNewBody();
+    if (params.empty() && !buildsBody) {
+        statusBar()->showMessage(
+            tr("%1 has nothing to edit").arg(QString::fromStdString(feat->name())));
+        return;
+    }
 
-    for (auto& [paramName, paramValue] : params) {
-        bool ok = false;
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Edit %1").arg(QString::fromStdString(feat->name())));
+    auto* form = new QFormLayout(&dialog);
+    // What each box showed: a spin box rounds what it is given to its
+    // decimals (a 360° revolve's 2π shows as 6.2832), so an untouched box is
+    // one that still shows that, not one equal to the stored value.
+    std::map<std::string, std::pair<QDoubleSpinBox*, double>> spins;
+    for (const auto& [name, value] : params) {
+        auto* spin = new QDoubleSpinBox(&dialog);
+        spin->setObjectName(QString::fromStdString(name));
         // A chord tolerance of 0 means "use the facet count"; a 0.001 floor
         // would silently switch it on for anyone clicking through the dialog.
-        const double minValue = paramName == "chordTolerance" ? 0.0 : 0.001;
-        double newValue = QInputDialog::getDouble(
-            this, tr("Edit %1").arg(QString::fromStdString(feat->name())),
-            QString::fromStdString(paramName) + ":", paramValue, minValue, 1e6, 4, &ok);
-        if (ok && newValue != paramValue) {
-            feat->setParameter(paramName, newValue);
-            changed = true;
-        }
+        spin->setRange(name == "chordTolerance" ? 0.0 : 0.001, 1e6);
+        spin->setDecimals(4);
+        spin->setValue(value);
+        form->addRow(QString::fromStdString(name) + QStringLiteral(":"), spin);
+        spins[name] = {spin, spin->value()};
     }
+    QComboBox* result = buildsBody ? addOperationChoice(dialog, *form, feat->operation()) : nullptr;
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) return;
 
-    if (changed) {
-        rebuildFeatureTree();
+    std::map<std::string, double> changed;
+    for (const auto& [name, box] : spins) {
+        const auto& [spin, shown] = box;
+        if (spin->value() != shown) changed[name] = spin->value();
     }
+    std::optional<doc::BodyOperation> operation;
+    if (result) {
+        const auto chosen = static_cast<doc::BodyOperation>(result->currentData().toInt());
+        if (chosen != feat->operation()) operation = chosen;
+    }
+    if (changed.empty() && !operation) return;
+
+    m_document->undoStack().push(std::make_unique<doc::EditFeatureCommand>(
+        *m_document, feat, std::move(changed), operation));
+    rebuildFeatureTree();
 }
 
 void MainWindow::onFeatureReordered(int fromIndex, int toIndex) {
-    m_document->featureTree().moveFeature(fromIndex, toIndex);
-    m_document->setDirty(true);
+    const doc::Feature* feat = featureAt(fromIndex);
+    if (!feat || toIndex < 0 || fromIndex == toIndex) {
+        rebuildFeatureTree();  // the panel may show a move that did not happen
+        return;
+    }
+    m_document->undoStack().push(
+        std::make_unique<doc::MoveFeatureCommand>(*m_document, feat, static_cast<size_t>(toIndex)));
+    rebuildFeatureTree();
+}
+
+void MainWindow::onFeatureDeleteRequested(int featureIndex) {
+    const doc::Feature* feat = featureAt(featureIndex);
+    if (!feat) return;
+    m_document->undoStack().push(std::make_unique<doc::RemoveFeatureCommand>(*m_document, feat));
+    rebuildFeatureTree();
+}
+
+void MainWindow::onFeatureSuppressRequested(int featureIndex, bool suppress) {
+    const doc::Feature* feat = featureAt(featureIndex);
+    if (!feat || feat->isSuppressed() == suppress) return;
+    m_document->undoStack().push(
+        std::make_unique<doc::SetFeatureSuppressedCommand>(*m_document, feat, suppress));
     rebuildFeatureTree();
 }
 

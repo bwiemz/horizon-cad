@@ -989,11 +989,47 @@ std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> 
 
 void FeatureTree::addFeature(std::unique_ptr<Feature> feature) {
     m_features.push_back(std::move(feature));
+    ++m_revision;
+}
+
+void FeatureTree::insertFeature(size_t index, std::unique_ptr<Feature> feature) {
+    index = std::min(index, m_features.size());
+    m_features.insert(m_features.begin() + static_cast<ptrdiff_t>(index), std::move(feature));
+    if (m_rollbackIndex >= 0 && static_cast<int>(index) <= m_rollbackIndex) ++m_rollbackIndex;
+    ++m_revision;
 }
 
 void FeatureTree::removeFeature(size_t index) {
+    takeFeature(index);
+}
+
+std::unique_ptr<Feature> FeatureTree::takeFeature(size_t index) {
     assert(index < m_features.size());
+    auto feature = std::move(m_features[index]);
     m_features.erase(m_features.begin() + static_cast<ptrdiff_t>(index));
+    if (m_features.empty()) {
+        m_rollbackIndex = -1;
+    } else if (m_rollbackIndex >= 0 && static_cast<int>(index) <= m_rollbackIndex) {
+        // The features before the removed one stay active. (When the removed
+        // one was the only active feature, the one after it takes its place:
+        // "nothing active" is not a state the index can express.)
+        m_rollbackIndex = std::max(0, m_rollbackIndex - 1);
+    }
+    ++m_revision;
+    return feature;
+}
+
+std::optional<size_t> FeatureTree::indexOf(const Feature* feature) const {
+    for (size_t i = 0; i < m_features.size(); ++i) {
+        if (m_features[i].get() == feature) return i;
+    }
+    return std::nullopt;
+}
+
+void FeatureTree::setRollbackIndex(int index) {
+    if (index == m_rollbackIndex) return;
+    m_rollbackIndex = index;
+    ++m_revision;
 }
 
 size_t FeatureTree::featureCount() const {
@@ -1012,6 +1048,8 @@ Feature* FeatureTree::feature(size_t index) {
 
 void FeatureTree::clear() {
     m_features.clear();
+    m_rollbackIndex = -1;
+    ++m_revision;
 }
 
 namespace {
@@ -1076,6 +1114,12 @@ std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<to
     return result;
 }
 
+/// Whether a feature takes part in the build. Reference geometry (datums) has
+/// no effect on the solid, and a suppressed feature is left out.
+bool takesPart(const Feature& feature) {
+    return !feature.isConstruction() && !feature.isSuppressed();
+}
+
 /// One step of the regeneration rule every build path shares: a creating
 /// feature builds a tool body, combined with the part by its operation; any
 /// other feature transforms the part.
@@ -1118,7 +1162,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (const auto& feat : m_features) {
-        if (feat->isConstruction()) continue;  // reference geometry: no solid effect
+        if (!takesPart(*feat)) continue;
         solid = applyFeature(*feat, std::move(solid), nullptr);
         if (!solid) {
             return nullptr;  // Feature failed
@@ -1130,7 +1174,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     std::vector<std::unique_ptr<topo::Solid>> bodies;
     for (const auto& feat : m_features) {
-        if (feat->isConstruction()) continue;  // reference geometry: no solid effect
+        if (!takesPart(*feat)) continue;
 
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
@@ -1178,8 +1222,8 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
 
     std::unique_ptr<topo::Solid> solid;
     for (int i = 0; i < limit; ++i) {
-        if (m_features[static_cast<size_t>(i)]->isConstruction()) {
-            result.lastSuccessfulFeature = i;  // construction features never fail
+        if (!takesPart(*m_features[static_cast<size_t>(i)])) {
+            result.lastSuccessfulFeature = i;  // nothing to fail
             continue;
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
@@ -1205,9 +1249,12 @@ void FeatureTree::moveFeature(int fromIndex, int toIndex) {
     if (toIndex < 0 || toIndex >= static_cast<int>(m_features.size())) return;
     if (fromIndex == toIndex) return;
 
-    auto feat = std::move(m_features[static_cast<size_t>(fromIndex)]);
-    m_features.erase(m_features.begin() + fromIndex);
-    m_features.insert(m_features.begin() + toIndex, std::move(feat));
+    // A move is a removal and an insertion, and the rollback index follows it
+    // as it follows those: the features that did not move keep their side of
+    // the rollback bar, and the moved one lands on whichever side it was
+    // dropped.
+    auto feat = takeFeature(static_cast<size_t>(fromIndex));
+    insertFeature(static_cast<size_t>(toIndex), std::move(feat));
 }
 
 }  // namespace hz::doc

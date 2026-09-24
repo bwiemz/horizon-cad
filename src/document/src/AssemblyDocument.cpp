@@ -1,6 +1,7 @@
 #include "horizon/document/AssemblyDocument.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "horizon/document/Document.h"
 #include "horizon/modeling/InterferenceChecker.h"
@@ -35,6 +36,16 @@ InterferenceReport AssemblyDocument::findInterference() const {
         report.pairs.push_back(ci);
     }
     return report;
+}
+
+void AssemblyDocument::restore(AssemblyState state) {
+    m_components = std::move(state.components);
+    m_mates = std::move(state.mates);
+    // Ids handed out since the snapshot are not reused.
+    for (const auto& comp : m_components) {
+        m_nextComponentId = std::max(m_nextComponentId, comp.id + 1);
+    }
+    for (const auto& mate : m_mates) m_nextMateId = std::max(m_nextMateId, mate.id + 1);
 }
 
 uint64_t AssemblyDocument::addComponent(ComponentInstance instance) {

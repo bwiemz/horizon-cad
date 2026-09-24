@@ -11,6 +11,7 @@ add_executable(hz_document_tests
     test_UndoStack.cpp
     test_BodyOperations.cpp
     test_FeatureReasons.cpp
+    test_ModelCommands.cpp
 )
 
 target_link_libraries(hz_document_tests

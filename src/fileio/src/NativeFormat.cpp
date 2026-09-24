@@ -52,7 +52,11 @@ static std::string dumpJson(const json& root, int indent) {
 /// The envelope version this build writes, and the newest it can read. A file
 /// from a newer build may hold content this one does not know; loading it
 /// would drop that content silently, and saving would then destroy it.
-static constexpr int kFormatVersion = 16;
+///
+/// 17: features carry "bodyOperation" (Phase 102) and "featureSuppressed"
+/// (Phase 104). An older build would ignore both and build a different part
+/// — every body separate, suppressed features back in — without a word.
+static constexpr int kFormatVersion = 17;
 
 /// Store `message` in `error` (when given) and report failure.
 static bool fail(std::string* error, std::string message) {
@@ -637,7 +641,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["vecB"] = {pat->vecB().x, pat->vecB().y, pat->vecB().z};
             fObj["scalar"] = pat->scalar();
             fObj["count"] = pat->count();
-            fObj["suppressed"] = pat->suppressed();
+            fObj["suppressed"] = pat->suppressedInstances();
         } else if (const auto* datum = dynamic_cast<const doc::DatumFeature*>(feat)) {
             fObj["type"] = "datum";
             switch (datum->datumKind()) {
@@ -685,6 +689,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         if (feat->createsNewBody()) {
             fObj["bodyOperation"] = doc::bodyOperationName(feat->operation());
         }
+        // Phase 104. ("suppressed" is taken: a pattern's skipped instances.)
+        if (feat->isSuppressed()) fObj["featureSuppressed"] = true;
 
         featureTreeArray.push_back(fObj);
     }
@@ -1247,8 +1253,11 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     if (!parsed) throw std::invalid_argument("unknown feature operation");
                     operation = *parsed;
                 }
+                const bool suppressed =
+                    fObj.contains("featureSuppressed") && fObj.at("featureSuppressed").get<bool>();
                 auto addLoaded = [&](std::unique_ptr<doc::Feature> feature) {
                     if (feature->createsNewBody()) feature->setOperation(operation);
+                    feature->setSuppressed(suppressed);
                     doc.featureTree().addFeature(std::move(feature));
                 };
 

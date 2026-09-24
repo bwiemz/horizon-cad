@@ -4,6 +4,7 @@ add_library(hz_document STATIC
     src/FeatureTree.cpp
     src/UndoStack.cpp
     src/Commands.cpp
+    src/ModelCommands.cpp
     src/ConstraintCommands.cpp
     src/ConstraintSolveHelper.cpp
     src/ParameterRegistry.cpp
