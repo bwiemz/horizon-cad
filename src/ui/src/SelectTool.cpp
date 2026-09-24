@@ -26,12 +26,8 @@ static void expandSelectionToGroups(render::SelectionManager& sel, const draft::
                                     const draft::LayerManager& layerMgr) {
     std::set<uint64_t> groupIds;
     for (uint64_t id : sel.selectedIds()) {
-        for (const auto& e : doc.entities()) {
-            if (e->id() == id && e->groupId() != 0) {
-                groupIds.insert(e->groupId());
-                break;
-            }
-        }
+        const draft::DraftEntity* e = doc.findEntity(id);
+        if (e != nullptr && e->groupId() != 0) groupIds.insert(e->groupId());
     }
     if (groupIds.empty()) return;
 
@@ -66,26 +62,24 @@ bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
         double gripTol = m_viewport->pickTolerance(8.0);
 
         for (uint64_t id : selectedIds) {
-            for (const auto& e : doc.entities()) {
-                if (e->id() != id) continue;
-                auto grips = GripManager::gripPoints(*e);
-                for (int gi = 0; gi < static_cast<int>(grips.size()); ++gi) {
-                    if (worldPos.distanceTo(grips[gi]) <= gripTol) {
-                        // Start grip drag.
-                        m_draggingGrip = true;
-                        m_gripEntityId = id;
-                        m_gripIndex = gi;
-                        m_gripOrigPos = grips[gi];
-                        m_gripCurrentPos = worldPos;
-                        m_gripBeforeClone = e->clone();
-                        m_gripBeforeClone->setId(e->id());
-                        m_gripBeforeClone->setLayer(e->layer());
-                        m_gripBeforeClone->setColor(e->color());
-                        m_gripBeforeClone->setLineWidth(e->lineWidth());
-                        return true;
-                    }
+            const draft::DraftEntity* e = doc.findEntity(id);
+            if (e == nullptr) continue;
+            auto grips = GripManager::gripPoints(*e);
+            for (int gi = 0; gi < static_cast<int>(grips.size()); ++gi) {
+                if (worldPos.distanceTo(grips[gi]) <= gripTol) {
+                    // Start grip drag.
+                    m_draggingGrip = true;
+                    m_gripEntityId = id;
+                    m_gripIndex = gi;
+                    m_gripOrigPos = grips[gi];
+                    m_gripCurrentPos = worldPos;
+                    m_gripBeforeClone = e->clone();
+                    m_gripBeforeClone->setId(e->id());
+                    m_gripBeforeClone->setLayer(e->layer());
+                    m_gripBeforeClone->setColor(e->color());
+                    m_gripBeforeClone->setLineWidth(e->lineWidth());
+                    return true;
                 }
-                break;
             }
         }
     }
@@ -113,18 +107,13 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
         m_gripCurrentPos = snappedPos;
 
         auto& doc = m_viewport->document()->draftDocument();
-        for (auto& e : doc.entities()) {
-            if (e->id() == m_gripEntityId) {
-                auto fresh = m_gripBeforeClone->clone();
-                fresh->setId(m_gripEntityId);
-                fresh->setLayer(m_gripBeforeClone->layer());
-                fresh->setColor(m_gripBeforeClone->color());
-                fresh->setLineWidth(m_gripBeforeClone->lineWidth());
-                e = fresh;
-                GripManager::moveGrip(*e, m_gripIndex, snappedPos);
-                break;
-            }
-        }
+        std::shared_ptr<draft::DraftEntity> fresh = m_gripBeforeClone->clone();
+        fresh->setId(m_gripEntityId);
+        fresh->setLayer(m_gripBeforeClone->layer());
+        fresh->setColor(m_gripBeforeClone->color());
+        fresh->setLineWidth(m_gripBeforeClone->lineWidth());
+        GripManager::moveGrip(*fresh, m_gripIndex, snappedPos);
+        doc.replaceEntity(m_gripEntityId, std::move(fresh));
 
         m_viewport->update();
         return true;
@@ -160,15 +149,12 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         auto& doc = m_viewport->document()->draftDocument();
 
         std::shared_ptr<draft::DraftEntity> afterClone;
-        for (const auto& e : doc.entities()) {
-            if (e->id() == m_gripEntityId) {
-                afterClone = e->clone();
-                afterClone->setId(e->id());
-                afterClone->setLayer(e->layer());
-                afterClone->setColor(e->color());
-                afterClone->setLineWidth(e->lineWidth());
-                break;
-            }
+        if (const auto e = doc.sharedEntity(m_gripEntityId)) {
+            afterClone = e->clone();
+            afterClone->setId(e->id());
+            afterClone->setLayer(e->layer());
+            afterClone->setColor(e->color());
+            afterClone->setLineWidth(e->lineWidth());
         }
 
         if (afterClone && m_gripBeforeClone) {
@@ -214,23 +200,21 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
         auto candidateIds = doc.spatialIndex().query(selectRect);
 
         for (uint64_t candId : candidateIds) {
-            for (const auto& entity : doc.entities()) {
-                if (entity->id() != candId) continue;
-                const auto* lp = layerMgr.getLayer(entity->layer());
-                if (!lp || !lp->visible || lp->locked) break;
+            const draft::DraftEntity* entity = doc.findEntity(candId);
+            if (entity == nullptr) continue;
+            const auto* lp = layerMgr.getLayer(entity->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
 
-                if (windowMode) {
-                    math::BoundingBox ebb = entity->boundingBox();
-                    if (!ebb.isValid()) break;
-                    // Window: entity must be fully inside the selection rectangle.
-                    if (selectRect.contains(ebb)) {
-                        sel.select(entity->id());
-                    }
-                } else {
-                    // Already confirmed intersects via R*-tree query.
+            if (windowMode) {
+                math::BoundingBox ebb = entity->boundingBox();
+                if (!ebb.isValid()) continue;
+                // Window: entity must be fully inside the selection rectangle.
+                if (selectRect.contains(ebb)) {
                     sel.select(entity->id());
                 }
-                break;
+            } else {
+                // Already confirmed intersects via R*-tree query.
+                sel.select(entity->id());
             }
         }
 
@@ -274,11 +258,8 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
     if (hitId != 0) {
         // Find the groupId of the hit entity.
         uint64_t hitGroupId = 0;
-        for (const auto& entity : doc.entities()) {
-            if (entity->id() == hitId) {
-                hitGroupId = entity->groupId();
-                break;
-            }
+        if (const auto entity = doc.sharedEntity(hitId)) {
+            hitGroupId = entity->groupId();
         }
 
         if (shiftHeld) {
@@ -335,17 +316,20 @@ bool SelectTool::keyPressEvent(QKeyEvent* event) {
             }
         }
 
+        // One command for all of them: removing entities one command at a
+        // time scans the drawing once per entity.
+        std::vector<uint64_t> deletable;
+        deletable.reserve(ids.size());
         for (uint64_t id : ids) {
-            bool canDelete = true;
-            for (const auto& e : doc.entities()) {
-                if (e->id() == id) {
-                    const auto* lp = layerMgr.getLayer(e->layer());
-                    if (!lp || !lp->visible || lp->locked) canDelete = false;
-                    break;
-                }
-            }
-            if (!canDelete) continue;
-            composite->addCommand(std::make_unique<doc::RemoveEntityCommand>(doc, id));
+            const draft::DraftEntity* e = doc.findEntity(id);
+            if (e == nullptr) continue;
+            const auto* lp = layerMgr.getLayer(e->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
+            deletable.push_back(id);
+        }
+        if (!deletable.empty()) {
+            composite->addCommand(
+                std::make_unique<doc::RemoveEntitiesCommand>(doc, std::move(deletable)));
         }
         if (!composite->empty()) {
             m_viewport->document()->undoStack().push(std::move(composite));
@@ -451,17 +435,12 @@ void SelectTool::cancel() {
 
     if (m_draggingGrip && m_gripBeforeClone && m_viewport && m_viewport->document()) {
         auto& doc = m_viewport->document()->draftDocument();
-        for (auto& e : doc.entities()) {
-            if (e->id() == m_gripEntityId) {
-                auto restored = m_gripBeforeClone->clone();
-                restored->setId(m_gripEntityId);
-                restored->setLayer(m_gripBeforeClone->layer());
-                restored->setColor(m_gripBeforeClone->color());
-                restored->setLineWidth(m_gripBeforeClone->lineWidth());
-                e = restored;
-                break;
-            }
-        }
+        std::shared_ptr<draft::DraftEntity> restored = m_gripBeforeClone->clone();
+        restored->setId(m_gripEntityId);
+        restored->setLayer(m_gripBeforeClone->layer());
+        restored->setColor(m_gripBeforeClone->color());
+        restored->setLineWidth(m_gripBeforeClone->lineWidth());
+        doc.replaceEntity(m_gripEntityId, std::move(restored));
         m_viewport->update();
     }
     m_draggingGrip = false;

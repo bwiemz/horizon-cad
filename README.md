@@ -305,9 +305,9 @@ Feature Maturity table names rather than a fixed phase list. Landed so far:
 
 ### Production-readiness track
 
-The kernel is broad; the product around it is not yet safe to trust with real
-work. The [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md)
-sets out six milestones from Phase 97 on, starting with data safety.
+The [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md)
+set out six milestones from Phase 97 on, starting with data safety, to make
+the product safe to trust with real work. All six are done.
 
 | Phase | Status | Description |
 |-------|--------|-------------|
@@ -339,6 +339,19 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 119 | Done | PDM integrity: a check-out is one exclusive file creation, so two users racing for a document cannot both get it (with the old lock file, both did); a damaged lock or archive fails closed, where an archive used to read as empty and its next commit overwrote the history; SHA-256 content hashes, verified on every read and push, with old FNV-1a archives still readable |
 | 120 | Done | Scripting & plugin safety: a script's `doc` is removed when its run ends, and a copy the script kept raises instead of reaching a destroyed document (a use-after-free under ASan); scripting is off by default because it is not sandboxed; `PluginRegistry::prepareLoad` checks a plugin again when it is loaded, refuses one whose manifest changed since it was enabled, and returns the entry source it checked |
 | 121 | Done | CAM & FEA honesty: G-code starts from a known modal state, loads its tool and starts the spindle before moving, climbs before every rapid crosses, stops the spindle at the end, and refuses programs or parameters that could rapid through the cut, cut with the spindle stopped or carry a non-finite number; FEA refuses solids that are not boxes, where it used to analyse their bounding box; the maturity table says which modules the application can reach. Milestone 6 complete |
+
+### Product-completeness track
+
+A fresh audit after Phase 121 found what still stands between a trustworthy
+core and a product people can do real work in: a few crashes, hangs and
+silently wrong answers; no way to print; no typed input; no sketching off
+the XY plane or picking in 3D; and a view and a kernel that do not yet scale.
+The [product-completeness roadmap](docs/superpowers/specs/2026-09-24-product-completeness-roadmap.md)
+sets out six milestones from Phase 122 on, starting with the crashes.
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 122 | Done | 2D crash and hang fixes: starting Insert Block while it was active destroyed the active tool and then called it (a use-after-free; ASan confirms the new test catches it); removing an entity rebuilt the whole spatial index, so undoing a large DXF import took minutes (the R-tree now deletes in place, O(log n), and undo puts entities back in their drawing order); finding an entity by id was a scan of the drawing, done per selected entity in box selection, grips (every frame), commands and snapping (now an O(1) lookup); eight property commands left the index stale |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

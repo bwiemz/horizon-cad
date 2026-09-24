@@ -1,7 +1,7 @@
 # Horizon CAD — Production-Readiness Roadmap
 
 **Date:** 2026-09-23
-**Status:** Active. Milestone 1 done (Phases 97–101); Milestone 2 done (Phases 102–106b, with 104c deferred); Milestone 3 in progress — plan: [2026-09-24-m3-interoperability.md](../plans/2026-09-24-m3-interoperability.md).
+**Status:** Complete — Phases 97–121 merged by 2026-09-24 (#58–#85); 104c (sketches on planes, Loft and Sweep commands) carried into Phases 131 and 133. Continued in [2026-09-24-product-completeness-roadmap.md](2026-09-24-product-completeness-roadmap.md).
 **Baseline:** `master` @ `28b4de4` (after PR #57, Phases 81–96)
 **Scope:** What stands between the current codebase and a release real users
 can trust with their work. This roadmap continues the phase numbering of the

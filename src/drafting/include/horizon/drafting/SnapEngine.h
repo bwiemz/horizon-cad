@@ -10,6 +10,8 @@
 
 namespace hz::draft {
 
+class DraftDocument;
+
 struct SnapResult {
     math::Vec2 point;
     SnapType type = SnapType::None;
@@ -42,6 +44,12 @@ public:
     /// The same, looking only at entities the index finds near the cursor.
     SnapResult snap(const math::Vec2& cursorWorld, const SpatialIndex& index,
                     const std::vector<std::shared_ptr<DraftEntity>>& entities,
+                    const Filter& accept = {}) const;
+
+    /// The same for a drawing: the entities its index finds near the cursor,
+    /// looked up by id, so a snap costs the same in a drawing of a hundred
+    /// entities as in one of a hundred thousand.
+    SnapResult snap(const math::Vec2& cursorWorld, const DraftDocument& drawing,
                     const Filter& accept = {}) const;
 
 private:

@@ -539,52 +539,50 @@ void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl, render::GLRenderer
 
     const auto& draftDoc = doc.draftDocument();
     for (uint64_t id : selectedIds) {
-        for (const auto& e : draftDoc.entities()) {
-            if (e->id() != id) continue;
-            auto grips = GripManager::gripPoints(*e);
-            for (const auto& g : grips) {
-                float gx = static_cast<float>(g.x);
-                float gy = static_cast<float>(g.y);
-                float hs = static_cast<float>(s * 0.5);
-                float side = hs * 2.0f;
-                // Draw a small square (4 line segments) with distance attribute.
-                verts.push_back(gx - hs);
-                verts.push_back(gy - hs);
-                verts.push_back(0.0f);
-                verts.push_back(0.0f);
-                verts.push_back(gx + hs);
-                verts.push_back(gy - hs);
-                verts.push_back(0.0f);
-                verts.push_back(side);
+        const draft::DraftEntity* e = draftDoc.findEntity(id);
+        if (e == nullptr) continue;
+        auto grips = GripManager::gripPoints(*e);
+        for (const auto& g : grips) {
+            float gx = static_cast<float>(g.x);
+            float gy = static_cast<float>(g.y);
+            float hs = static_cast<float>(s * 0.5);
+            float side = hs * 2.0f;
+            // Draw a small square (4 line segments) with distance attribute.
+            verts.push_back(gx - hs);
+            verts.push_back(gy - hs);
+            verts.push_back(0.0f);
+            verts.push_back(0.0f);
+            verts.push_back(gx + hs);
+            verts.push_back(gy - hs);
+            verts.push_back(0.0f);
+            verts.push_back(side);
 
-                verts.push_back(gx + hs);
-                verts.push_back(gy - hs);
-                verts.push_back(0.0f);
-                verts.push_back(side);
-                verts.push_back(gx + hs);
-                verts.push_back(gy + hs);
-                verts.push_back(0.0f);
-                verts.push_back(side * 2.0f);
+            verts.push_back(gx + hs);
+            verts.push_back(gy - hs);
+            verts.push_back(0.0f);
+            verts.push_back(side);
+            verts.push_back(gx + hs);
+            verts.push_back(gy + hs);
+            verts.push_back(0.0f);
+            verts.push_back(side * 2.0f);
 
-                verts.push_back(gx + hs);
-                verts.push_back(gy + hs);
-                verts.push_back(0.0f);
-                verts.push_back(side * 2.0f);
-                verts.push_back(gx - hs);
-                verts.push_back(gy + hs);
-                verts.push_back(0.0f);
-                verts.push_back(side * 3.0f);
+            verts.push_back(gx + hs);
+            verts.push_back(gy + hs);
+            verts.push_back(0.0f);
+            verts.push_back(side * 2.0f);
+            verts.push_back(gx - hs);
+            verts.push_back(gy + hs);
+            verts.push_back(0.0f);
+            verts.push_back(side * 3.0f);
 
-                verts.push_back(gx - hs);
-                verts.push_back(gy + hs);
-                verts.push_back(0.0f);
-                verts.push_back(side * 3.0f);
-                verts.push_back(gx - hs);
-                verts.push_back(gy - hs);
-                verts.push_back(0.0f);
-                verts.push_back(side * 4.0f);
-            }
-            break;
+            verts.push_back(gx - hs);
+            verts.push_back(gy + hs);
+            verts.push_back(0.0f);
+            verts.push_back(side * 3.0f);
+            verts.push_back(gx - hs);
+            verts.push_back(gy - hs);
+            verts.push_back(0.0f);
+            verts.push_back(side * 4.0f);
         }
     }
 
@@ -757,7 +755,6 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
     if (doc) {
         const auto& csys = doc->constraintSystem();
         if (!csys.empty()) {
-            const auto& entities = doc->draftDocument().entities();
             // Yellow annotation color: QColor(255, 200, 0) = 0xFFFFC800
             constexpr uint32_t kAnnotationColor = 0xFFFFC800;
 
@@ -830,12 +827,12 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
                 // Compute indicator position: midpoint of referenced features.
                 try {
                     if (!refIds.empty()) {
-                        const auto* e1 = cstr::findEntity(refIds[0], entities);
+                        const auto* e1 = doc->draftDocument().findEntity(refIds[0]);
                         if (e1) {
                             auto snaps = e1->snapPoints();
                             if (!snaps.empty()) pos = snaps[0];
                             if (refIds.size() > 1) {
-                                const auto* e2 = cstr::findEntity(refIds.back(), entities);
+                                const auto* e2 = doc->draftDocument().findEntity(refIds.back());
                                 if (e2) {
                                     auto snaps2 = e2->snapPoints();
                                     if (!snaps2.empty()) {
