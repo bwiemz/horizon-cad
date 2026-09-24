@@ -17,6 +17,29 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
+
+- **A 2D view that scales (136).**
+  - Large drawings pan and zoom without rebuilding anything. What is drawn
+    is built once and kept until the drawing changes. It is drawn in one
+    batch per colour and line style, circles and arcs included, and only
+    the part in view is drawn.
+    - Measured on 140,000 entities in a debug build: a frame that only moves
+      the view took 0.37 s to prepare, and now takes 0.08 ms.
+  - Text over the view is painted again only when it changes.
+  - Fixed:
+    - The grid could hide the drawing. Lines on the drawing plane lost to
+      the grid wherever its lines were close together; on Linux with NVIDIA,
+      everywhere. The axis indicator in the corner shows again for the same
+      reason.
+    - Text over the view was drawn upside down, mirrored across the view
+      from what it labels, and the view cube and view name were upside down
+      at the bottom.
+    - Stretch undid itself as it was made; the stretch showed only after an
+      undo and a redo.
+    - Choosing another tool in the middle of a drag left what was dragged
+      moved, with nothing to undo it.
+
 ## Unreleased — Product completeness, Milestone 9 (Phases 131–135)
 
 - **Sketches on planes (131).**

@@ -52,6 +52,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/RibbonBar.h
     include/horizon/ui/OverlayRenderer.h
     include/horizon/ui/ViewportInputHandler.h
+    include/horizon/ui/DrawingCache.h
     include/horizon/ui/ViewportRenderer.h
     include/horizon/ui/FeatureTreePanel.h
     include/horizon/ui/FeatureForm.h
@@ -81,6 +82,7 @@ add_library(hz_ui STATIC
     src/CommandPalette.cpp
     src/ViewportWidget.cpp
     src/ViewportInputHandler.cpp
+    src/DrawingCache.cpp
     src/ViewportRenderer.cpp
     src/ViewCube.cpp
     src/ToolManager.cpp

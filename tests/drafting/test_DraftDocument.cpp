@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -153,4 +154,46 @@ TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
     // quadratic removal this guards against took minutes.
     EXPECT_LT(ms, 30000.0);
 #endif
+}
+
+// The revision moves with every change made through the drawing, and no two
+// drawings share one (Phase 136): the view builds what it draws again when
+// it moves, and keeps what it built while it does not.
+TEST(DraftDocumentTest, TheRevisionMovesWithEveryChange) {
+    DraftDocument d;
+    std::uint64_t seen = d.revision();
+    const auto moved = [&d, &seen](const char* what) {
+        EXPECT_NE(d.revision(), seen) << what;
+        seen = d.revision();
+    };
+    auto line = lineAt(0, 0);
+    d.addEntity(line);
+    moved("an entity added");
+    line->setEnd(Vec2(5, 0));
+    d.updateEntityBounds(line->id());
+    moved("one changed in place, as a tool changes it");
+    auto twin = line->clone();
+    twin->setId(line->id());
+    d.replaceEntity(line->id(), twin);
+    moved("one replaced");
+    const auto removed = d.removeEntities({twin->id()});
+    moved("removed");
+    d.restoreEntities(removed);
+    moved("put back");
+    d.removeEntity(twin->id());
+    moved("removed again");
+    d.removeEntity(twin->id());
+    d.updateEntityBounds(twin->id());
+    EXPECT_EQ(d.revision(), seen) << "nothing there to remove or re-index: no change";
+    d.setDimensionStyle(hz::draft::DimensionStyle{});
+    moved("the dimension style");
+    d.rebuildSpatialIndex();
+    moved("re-indexed");
+    d.clear();
+    moved("cleared");
+
+    const DraftDocument copy = d;
+    EXPECT_NE(copy.revision(), d.revision()) << "a copy is another drawing";
+    const DraftDocument other;
+    EXPECT_NE(other.revision(), d.revision());
 }

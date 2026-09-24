@@ -24,8 +24,13 @@ public:
     size_t count() const { return m_selected.size(); }
     bool empty() const { return m_selected.empty(); }
 
+    /// Moves on with every change to what is selected, and only then: what
+    /// is drawn from the selection is redrawn when it moves.
+    std::uint64_t revision() const { return m_revision; }
+
 private:
     std::set<uint64_t> m_selected;
+    std::uint64_t m_revision = 0;
 };
 
 }  // namespace hz::render

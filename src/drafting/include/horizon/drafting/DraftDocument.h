@@ -51,9 +51,18 @@ public:
     /// entity. The replacement should carry the same id.
     bool replaceEntity(uint64_t id, std::shared_ptr<DraftEntity> replacement);
 
-    /// Re-index the entity with @p id after its geometry changed, so picking,
-    /// snapping and box selection see where it is now. O(log n).
+    /// Re-index the entity with @p id after it changed in place, so picking,
+    /// snapping and box selection see where it is now, and the view draws it
+    /// anew (revision()). O(log n).
     void updateEntityBounds(uint64_t id);
+
+    /// Moves on with every change made through this class: an entity added,
+    /// removed or replaced, one changed in place and re-indexed
+    /// (updateEntityBounds), the dimension style set, the drawing cleared or
+    /// re-indexed. What is drawn from the drawing is redrawn when it moves.
+    /// No two drawings ever have the same revision, a copy or one made where
+    /// another was included.
+    [[nodiscard]] std::uint64_t revision() const { return m_revision.value(); }
 
     /// The drawing's entities, in drawing order. The mutable overload is for
     /// changing entities in place: add and remove them only through the
@@ -72,7 +81,10 @@ public:
     }
 
     const DimensionStyle& dimensionStyle() const { return m_dimensionStyle; }
-    void setDimensionStyle(const DimensionStyle& style) { m_dimensionStyle = style; }
+    void setDimensionStyle(const DimensionStyle& style) {
+        m_dimensionStyle = style;
+        m_revision.bump();
+    }
 
     BlockTable& blockTable() { return m_blockTable; }
     const BlockTable& blockTable() const { return m_blockTable; }
@@ -84,6 +96,26 @@ public:
     void rebuildSpatialIndex();
 
 private:
+    /// A value no other drawing has had: taken afresh on every change, and
+    /// by a copy.
+    class Revision {
+    public:
+        Revision() : m_value(next()) {}
+        Revision(const Revision& /*other*/) : m_value(next()) {}
+        Revision& operator=(const Revision& /*other*/) {
+            m_value = next();
+            return *this;
+        }
+        ~Revision() = default;
+        void bump() { m_value = next(); }
+        std::uint64_t value() const { return m_value; }
+
+    private:
+        static std::uint64_t next();
+        std::uint64_t m_value;
+    };
+
+    Revision m_revision;
     std::vector<std::shared_ptr<DraftEntity>> m_entities;
     std::unordered_map<uint64_t, std::shared_ptr<DraftEntity>> m_byId;
     DimensionStyle m_dimensionStyle;

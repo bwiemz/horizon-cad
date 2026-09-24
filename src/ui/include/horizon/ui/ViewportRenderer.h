@@ -1,16 +1,20 @@
 #pragma once
 
+#include <QImage>
 #include <QPointF>
+#include <QSize>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "horizon/constraint/SketchSolver.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/render/GLRenderer.h"
+#include "horizon/ui/DrawingCache.h"
 #include "horizon/ui/ViewCube.h"
 
 class QOpenGLExtraFunctions;
-class QImage;
 
 namespace hz::render {
 class Camera;
@@ -43,7 +47,8 @@ public:
     /// Clean up GL resources.
     void destroyGL(QOpenGLExtraFunctions* gl);
 
-    /// Render document entities (collects dimension text info for overlay).
+    /// Draw the document's drawing: what the drawing cache holds, built again
+    /// only when the drawing changed, and only the chunks in view.
     void renderEntities(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
                         const render::Camera& camera, doc::Document& doc,
                         const render::SelectionManager& selection);
@@ -57,9 +62,25 @@ public:
                      const render::Camera& camera, doc::Document& doc,
                      const render::SelectionManager& selection, double pixelToWorldScale);
 
-    /// Render text to a QImage then blit via GL texture as fullscreen quad.
-    /// The image is drawn at @p devicePixelRatio, so text is sharp on a
-    /// high-DPI screen; @p viewportWidth and @p viewportHeight are logical.
+    /// Bring the drawing cache up to date with @p doc (the CPU half of
+    /// renderEntities). Returns whether it was built again.
+    bool prepareEntities(const doc::Document& doc, const render::SelectionManager& selection);
+    const DrawingCache& drawingCache() const { return m_drawing; }
+
+    /// Paint the text overlay (texts, constraint annotations, the view cube)
+    /// into its image, if anything it shows changed since the last time:
+    /// the view, its size, or the drawing cache. Returns whether it painted.
+    bool prepareTextOverlay(const render::Camera& camera, doc::Document* doc,
+                            const render::SelectionManager& selection, int viewportWidth,
+                            int viewportHeight, double pixelToWorldScale,
+                            qreal devicePixelRatio = 1.0);
+    /// How many times the overlay has been painted (for tests).
+    std::uint64_t overlayPaints() const { return m_overlayPaints; }
+
+    /// Draw the text overlay (prepareTextOverlay) over the view: one
+    /// full-view quad, its texture sent to the GPU only when it was painted
+    /// again. The image is drawn at @p devicePixelRatio, so text is sharp on
+    /// a high-DPI screen; @p viewportWidth and @p viewportHeight are logical.
     void blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
                          doc::Document* doc, const render::SelectionManager& selection,
                          int viewportWidth, int viewportHeight, double pixelToWorldScale,
@@ -83,16 +104,29 @@ public:
     ViewCube& viewCube() { return m_viewCube; }
 
 private:
-    /// Text data collected during renderEntities() for overlay.
-    struct DimTextInfo {
-        math::Vec2 worldPos;
-        std::string text;
-        uint32_t color;
-        double textHeight = 0.0;  // 0 = use dimension style default
-        double rotation = 0.0;
-        int alignment = 1;  // 0=Left, 1=Center, 2=Right
+    // What the view draws of the drawing, and the GPU's copy of its batches:
+    // a buffer for each, as of the cache's build m_uploadedBuild.
+    DrawingCache m_drawing;
+    std::vector<render::GLRenderer::LineBuffer> m_lineBuffers;
+    std::uint64_t m_uploadedBuild = 0;
+
+    // The text overlay as last painted, and what it was painted from.
+    struct OverlayStamp {
+        std::array<double, 16> viewProjection{};
+        int width = 0;
+        int height = 0;
+        double ratio = 0.0;
+        double pixelToWorld = 0.0;
+        const doc::Document* document = nullptr;
+        std::uint64_t drawing = 0;
+        bool operator==(const OverlayStamp&) const = default;
     };
-    std::vector<DimTextInfo> m_dimTexts;
+    QImage m_overlayImage;
+    OverlayStamp m_overlayStamp;
+    bool m_overlayPainted = false;
+    std::uint64_t m_overlayPaints = 0;
+    bool m_overlayUploaded = false;  ///< the texture holds the image as painted
+    QSize m_overlayTextureSize;
 
     /// Generate vertices for a circle approximation.
     std::vector<float> circleVertices(const math::Vec2& center, double radius,

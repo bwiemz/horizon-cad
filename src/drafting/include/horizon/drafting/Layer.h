@@ -14,6 +14,8 @@ struct LayerProperties {
     int lineType = 1;  ///< Default = Continuous (see LineType.h).
     bool visible = true;
     bool locked = false;
+
+    bool operator==(const LayerProperties&) const = default;
 };
 
 class LayerManager {
@@ -35,6 +37,9 @@ public:
     void setCurrentLayer(const std::string& name);
 
     void clear();
+
+    /// The same layers, alike in every property, and the same current one.
+    bool operator==(const LayerManager&) const = default;
 
 private:
     std::unordered_map<std::string, LayerProperties> m_layers;
