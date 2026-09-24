@@ -178,6 +178,16 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
         if (currentRow() >= 0) emit featureDeleteRequested(currentRow());
     });
     m_treeWidget->addAction(m_deleteAction);
+    // The part as it stood after a feature: the ones after it are left out of
+    // the build, until it is rolled forward again. Each is one undo step.
+    m_rollbackHereAction = new QAction(tr("Roll Back to Here"), this);
+    m_rollbackHereAction->setObjectName(QStringLiteral("rollbackHere"));
+    connect(m_rollbackHereAction, &QAction::triggered, this, [this] {
+        if (currentRow() >= 0) emit rollbackChanged(currentRow());
+    });
+    m_rollForwardAction = new QAction(tr("Roll Forward to the End"), this);
+    m_rollForwardAction->setObjectName(QStringLiteral("rollForward"));
+    connect(m_rollForwardAction, &QAction::triggered, this, [this] { emit rollbackChanged(-1); });
     m_treeWidget->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_treeWidget, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         QTreeWidgetItem* item = m_treeWidget->itemAt(pos);
@@ -186,6 +196,9 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
         QMenu menu(this);
         menu.addAction(m_editAction);
         menu.addAction(m_suppressAction);
+        menu.addSeparator();
+        menu.addAction(m_rollbackHereAction);
+        menu.addAction(m_rollForwardAction);
         menu.addSeparator();
         menu.addAction(m_deleteAction);
         menu.exec(m_treeWidget->viewport()->mapToGlobal(pos));
@@ -255,6 +268,9 @@ void FeatureTreePanel::updateActions() {
     m_editAction->setEnabled(has);
     m_suppressAction->setEnabled(has);
     m_deleteAction->setEnabled(has);
+    const int count = m_treeWidget->topLevelItemCount();
+    m_rollbackHereAction->setEnabled(has && row != m_rollbackIndex && row < count - 1);
+    m_rollForwardAction->setEnabled(m_rollbackIndex >= 0);
     const bool suppressed =
         has && m_treeWidget->topLevelItem(row)->data(0, Qt::UserRole + 1).toBool();
     m_suppressAction->setText(suppressed ? tr("Unsuppress") : tr("Suppress"));

@@ -797,6 +797,11 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         featureTreeArray.push_back(fObj);
     }
     root["featureTree"] = featureTreeArray;
+    // Where the part is rolled back to, if it is (Phase 133; before, a save
+    // rolled it forward).
+    if (doc.featureTree().rollbackIndex() >= 0) {
+        root["rollbackIndex"] = doc.featureTree().rollbackIndex();
+    }
 
     // --- Tessellation cache (v16+, parts only) ---
     // Enables lightweight assembly loading: readers can display the part
@@ -1665,6 +1670,15 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 noteSkipped(report, "feature", thisFeature, fObj,
                             "not a kind of feature this version reads");
             }
+        }
+    }
+
+    // The rollback point, if it is one of the features read.
+    if (const auto rollback = root.find("rollbackIndex");
+        rollback != root.end() && rollback->is_number_integer()) {
+        const auto index = rollback->get<long long>();
+        if (index >= 0 && index < static_cast<long long>(doc.featureTree().featureCount()) - 1) {
+            doc.featureTree().setRollbackIndex(static_cast<int>(index));
         }
     }
 

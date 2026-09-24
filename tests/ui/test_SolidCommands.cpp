@@ -297,7 +297,7 @@ TEST(SolidCommandsTest, EditingKeepsAZeroAndRefusesWhatAFeatureCannotUse) {
         edit->trigger();
         ASSERT_TRUE(filler.seen());
     }
-    EXPECT_TRUE(w.statusBar()->currentMessage().contains("segments"))
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains("Segments per turn"))
         << w.statusBar()->currentMessage().toStdString();
     EXPECT_DOUBLE_EQ(doc.featureTree().feature(0)->parameters().at("height"), 4.0);
     EXPECT_NE(doc.featureTree().feature(0)->parameters().at("segments"), 2.0);

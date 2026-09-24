@@ -97,22 +97,30 @@ std::vector<std::string> setParameters(Feature& feature,
 std::vector<std::string> refusedParameters(Feature& feature,
                                            const std::map<std::string, double>& values);
 
+/// The names in @p values that @p feature refuses as vectors
+/// (Feature::setVector): tried, and the feature put back as it was.
+std::vector<std::string> refusedVectors(Feature& feature,
+                                        const std::map<std::string, math::Vec3>& values);
+
 /// Change a feature's parameters and, for a feature that builds a body, how
 /// that body combines with the part. Undo puts back every parameter, not only
 /// the edited ones: setting one can change another (a facet count clears a
 /// chord tolerance).
 class EditFeatureCommand : public Command {
 public:
+    /// @p vectors are directions and points to set (Feature::setVector).
     EditFeatureCommand(Document& doc, const Feature* feature,
                        std::map<std::string, double> parameters,
-                       std::optional<BodyOperation> operation = std::nullopt);
+                       std::optional<BodyOperation> operation = std::nullopt,
+                       std::map<std::string, math::Vec3> vectors = {});
 
     void execute() override;
     void undo() override;
     std::string description() const override;
 
 private:
-    void apply(const std::map<std::string, double>& parameters, BodyOperation operation);
+    void apply(const std::map<std::string, double>& parameters, BodyOperation operation,
+               const std::map<std::string, math::Vec3>& vectors);
 
     Document& m_doc;
     const Feature* m_feature;
@@ -120,6 +128,24 @@ private:
     std::map<std::string, double> m_old;
     std::optional<BodyOperation> m_newOperation;
     BodyOperation m_oldOperation = BodyOperation::NewBody;
+    std::map<std::string, math::Vec3> m_newVectors;
+    std::map<std::string, math::Vec3> m_oldVectors;
+};
+
+/// Roll the part back to just after feature @p index (-1: to the end): the
+/// features after it stay in the history but are left out of the build.
+class SetRollbackCommand : public Command {
+public:
+    SetRollbackCommand(Document& doc, int index);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    Document& m_doc;
+    int m_index;
+    int m_before = -1;
 };
 
 /// Suppress a feature (leave it out of the build) or bring it back.

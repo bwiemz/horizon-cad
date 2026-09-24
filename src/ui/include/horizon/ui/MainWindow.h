@@ -208,6 +208,13 @@ private slots:
     void onEditSketch();
     void onFinishSketch();
 
+    // Loft, Sweep and datums (Phase 133).
+    void onLoft();
+    void onSweep();
+    void onDatumPlane();
+    void onDatumAxis();
+    void onDatumPoint();
+
     void onBooleanUnion();
     void onBooleanSubtract();
     void onBooleanIntersect();

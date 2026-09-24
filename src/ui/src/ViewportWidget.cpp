@@ -335,6 +335,51 @@ void ViewportWidget::setModelHover(const std::optional<ModelPick>& pick) {
     update();
 }
 
+void ViewportWidget::drawDatums(QOpenGLExtraFunctions* gl) {
+    if (!m_document) return;
+    const auto& tree = m_document->featureTree();
+    const int rollback = tree.rollbackIndex();
+    // In the frame the view works in: the sketch's, while one is edited.
+    const math::Mat4 frame =
+        m_activeSketch ? m_activeSketch->plane().worldToLocalMatrix() : math::Mat4::identity();
+    std::vector<float> lines;
+    const auto segment = [&](const math::Vec3& a, const math::Vec3& b) {
+        for (const math::Vec3& p : {frame.transformPoint(a), frame.transformPoint(b)}) {
+            lines.insert(lines.end(), {static_cast<float>(p.x), static_cast<float>(p.y),
+                                       static_cast<float>(p.z), 0.0f});
+        }
+    };
+    constexpr double kPlaneHalf = 15.0;  // a datum plane is drawn as a square this big
+    constexpr double kAxisHalf = 60.0;
+    constexpr double kPointHalf = 1.0;
+    for (size_t i = 0; i < tree.featureCount(); ++i) {
+        if (rollback >= 0 && static_cast<int>(i) > rollback) break;
+        const auto* datum = dynamic_cast<const doc::DatumFeature*>(tree.feature(i));
+        if (!datum || datum->isSuppressed()) continue;
+        const math::Vec3& o = datum->origin();
+        switch (datum->datumKind()) {
+            case doc::DatumFeature::DatumKind::Plane: {
+                const auto plane = datum->asPlane();
+                const math::Vec3 u = plane.xAxis * kPlaneHalf;
+                const math::Vec3 v = plane.yAxis() * kPlaneHalf;
+                const math::Vec3 corners[4] = {o - u - v, o + u - v, o + u + v, o - u + v};
+                for (int k = 0; k < 4; ++k) segment(corners[k], corners[(k + 1) % 4]);
+                break;
+            }
+            case doc::DatumFeature::DatumKind::Axis:
+                segment(o - datum->dirA() * kAxisHalf, o + datum->dirA() * kAxisHalf);
+                break;
+            case doc::DatumFeature::DatumKind::Point:
+                for (const math::Vec3& d :
+                     {math::Vec3::UnitX, math::Vec3::UnitY, math::Vec3::UnitZ}) {
+                    segment(o - d * kPointHalf, o + d * kPointHalf);
+                }
+                break;
+        }
+    }
+    m_renderer->drawLines(gl, m_camera, lines, math::Vec3(0.95, 0.75, 0.3), 1.5f, 2);
+}
+
 void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
     if (m_modelSelection.empty() && !m_modelHover) return;
     const auto draw = [&](const ModelPick& pick, const math::Vec3& colour, float alpha) {
@@ -507,6 +552,7 @@ void ViewportWidget::paintGL() {
     // tab switched for a drawing's) is when that matters most. No picking
     // pass here: nothing reads it; a pick renders one when it needs it.
     m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
+    drawDatums(gl);
     drawModelHighlights(gl);
 
     // Render tool preview (rubber-band).

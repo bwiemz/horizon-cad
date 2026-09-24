@@ -143,10 +143,26 @@ std::vector<std::string> refusedParameters(Feature& feature,
 
 // --- EditFeatureCommand ---
 
+std::vector<std::string> refusedVectors(Feature& feature,
+                                        const std::map<std::string, math::Vec3>& values) {
+    const auto before = feature.vectors();
+    std::vector<std::string> refused;
+    for (const auto& [name, value] : values) {
+        if (!feature.setVector(name, value)) refused.push_back(name);
+    }
+    for (const auto& [name, value] : before) feature.setVector(name, value);
+    return refused;
+}
+
 EditFeatureCommand::EditFeatureCommand(Document& doc, const Feature* feature,
                                        std::map<std::string, double> parameters,
-                                       std::optional<BodyOperation> operation)
-    : m_doc(doc), m_feature(feature), m_new(std::move(parameters)), m_newOperation(operation) {}
+                                       std::optional<BodyOperation> operation,
+                                       std::map<std::string, math::Vec3> vectors)
+    : m_doc(doc),
+      m_feature(feature),
+      m_new(std::move(parameters)),
+      m_newOperation(operation),
+      m_newVectors(std::move(vectors)) {}
 
 void EditFeatureCommand::execute() {
     Feature* feature = inTree(m_doc, m_feature);
@@ -155,24 +171,47 @@ void EditFeatureCommand::execute() {
     // parameter can change another. It is what undo restores.
     m_old = feature->parameters();
     m_oldOperation = feature->operation();
-    apply(m_new, m_newOperation.value_or(m_oldOperation));
+    m_oldVectors = feature->vectors();
+    apply(m_new, m_newOperation.value_or(m_oldOperation), m_newVectors);
 }
 
 void EditFeatureCommand::undo() {
-    apply(m_old, m_oldOperation);
+    apply(m_old, m_oldOperation, m_oldVectors);
 }
 
 void EditFeatureCommand::apply(const std::map<std::string, double>& parameters,
-                               BodyOperation operation) {
+                               BodyOperation operation,
+                               const std::map<std::string, math::Vec3>& vectors) {
     Feature* feature = inTree(m_doc, m_feature);
     if (!feature) return;
     setParameters(*feature, parameters);
+    for (const auto& [name, value] : vectors) feature->setVector(name, value);
     feature->setOperation(operation);
     m_doc.featureTree().markChanged();
 }
 
 std::string EditFeatureCommand::description() const {
     return "Edit " + nameOf(m_feature);
+}
+
+// --- SetRollbackCommand ---
+
+SetRollbackCommand::SetRollbackCommand(Document& doc, int index) : m_doc(doc), m_index(index) {}
+
+void SetRollbackCommand::execute() {
+    auto& tree = m_doc.featureTree();
+    m_before = tree.rollbackIndex();
+    const int last = static_cast<int>(tree.featureCount()) - 1;
+    // The last feature, or past it, is no rollback at all.
+    tree.setRollbackIndex(m_index < 0 || m_index >= last ? -1 : m_index);
+}
+
+void SetRollbackCommand::undo() {
+    m_doc.featureTree().setRollbackIndex(m_before);
+}
+
+std::string SetRollbackCommand::description() const {
+    return m_index < 0 ? "Roll Forward" : "Roll Back";
 }
 
 // --- SetFeatureSuppressedCommand ---

@@ -47,7 +47,8 @@ public:
     /// @return The lofted solid, or nullptr if the input is invalid.
     static std::unique_ptr<topo::Solid> execute(const std::vector<LoftSection>& sections,
                                                 const std::string& featureID,
-                                                int twistSegments = kDefaultTwistSegments);
+                                                int twistSegments = kDefaultTwistSegments,
+                                                std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

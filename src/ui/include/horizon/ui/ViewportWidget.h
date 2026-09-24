@@ -275,6 +275,9 @@ private:
 
     /// Draw the chosen and hovered faces and edges over the solids.
     void drawModelHighlights(QOpenGLExtraFunctions* gl);
+    /// Draw the part's datum planes, axes and points (construction
+    /// geometry, not the solid).
+    void drawDatums(QOpenGLExtraFunctions* gl);
 
     // Active tool
     Tool* m_activeTool = nullptr;

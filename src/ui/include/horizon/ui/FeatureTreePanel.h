@@ -94,6 +94,8 @@ private:
     QAction* m_editAction = nullptr;
     QAction* m_suppressAction = nullptr;
     QAction* m_deleteAction = nullptr;
+    QAction* m_rollbackHereAction = nullptr;
+    QAction* m_rollForwardAction = nullptr;
     int m_rollbackIndex = -1;
 };
 
