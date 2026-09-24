@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "FragmentMerge.h"
 #include "MeshCsg.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -167,6 +168,11 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     }
 
     auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type);
+    if (naming == NamingScheme::FromGeometry && !fragments.empty()) {
+        // The CSG works on triangles and leaves every face in pieces, even a
+        // face the cut never reached; put each face back together.
+        fragments = mergeFragments(std::move(fragments), kCsgPlaneEps);
+    }
     if (fragments.empty()) {
         switch (type) {
             case BooleanType::Subtract:

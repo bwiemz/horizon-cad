@@ -9,7 +9,23 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness, Milestone 2 (Phases 102–106)
+## Unreleased — Production readiness, Milestone 2 (Phases 102–106b) — complete
+
+- **Every Boolean result was a heap of triangles, which Fillet refused
+  (106b).** The CSG triangulates both parts and splits the triangles along
+  the other part's planes, then kept the pieces apart. A groove across a block
+  came out as more than 20 triangles for 10 faces, and even faces the cut
+  never reached came out in pieces. Every corner had extra edges meeting at
+  it, so Fillet refused any edge of a part that had been through a Boolean
+  ("non box-like corner"). A plate with a hole could not be filleted.
+
+  Each face's pieces are now put back together after the Boolean. A face with
+  a hole through it is cut through the hole into two, since a face here has a
+  single loop; the cut meets the outer edge part-way along, so the corners are
+  unaffected. The grooved block has its 10 faces, and names survive a
+  Boolean that doesn't touch them. **A plate with a hole can now be filleted,
+  undone, saved and reopened through the window**, which was the goal of
+  Milestone 2. Files saved earlier rebuild exactly as before.
 
 - **An edit to a sketch could move a fillet to a different edge (106).** An
   extrusion numbered its side faces in profile order and its edges in storage
@@ -32,9 +48,8 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
   Boolean result, since their references were made against those names. The
   format moves to version 18, so older builds refuse the new files.
 
-  **Not fixed yet:** the Boolean splits faces the cut never reaches and
-  leaves the fragments separate, so an unrelated Boolean can still rename an
-  edge beside them. Merging those fragments is the next step (106b).
+  (Boolean results were still left in fragments, which renamed edges beside
+  an unrelated cut; 106b, above, puts them back together.)
 
 - **Parts with a hole through them failed validation (105).** The
   Euler–Poincaré check read `V − E + F = 2(S − R)`: the face-hole count was on
