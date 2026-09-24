@@ -151,7 +151,10 @@ void resolveTJunctions(EdgeCounts& open, const std::vector<Vec3>& pts, double to
         for (const auto& edge : edges) {
             const auto it = open.find(edge);
             if (it == open.end()) continue;  // cancelled by a split made meanwhile
-            const auto [a, b] = edge;
+            // Plain copies, not a structured binding: the lambda below uses
+            // them, and clang before 16 cannot capture a binding.
+            const int a = edge.first;
+            const int b = edge.second;
             const Vec3& pa = pts[static_cast<size_t>(a)];
             const Vec3 ab = pts[static_cast<size_t>(b)] - pa;
             const double len2 = ab.dot(ab);
