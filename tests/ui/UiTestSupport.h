@@ -12,19 +12,25 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileDialog>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QSpinBox>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QWidget>
 #include <limits>
 #include <map>
 #include <optional>
 #include <utility>
 
 #include "horizon/document/FeatureTree.h"
+#include "horizon/math/Vec2.h"
+#include "horizon/ui/MainWindow.h"
+#include "horizon/ui/ViewportWidget.h"
 
 namespace hz::test {
 
@@ -266,6 +272,74 @@ private:
     bool m_seen = false;
     QTimer m_timer;
     QElapsedTimer m_clock;
+};
+
+/// Dismisses every modal dialog that opens while it lives: message boxes,
+/// file dialogs, forms. For tests that run commands only to see they do not
+/// crash, whatever they ask. Records the titles it dismissed.
+class ModalCloser {
+public:
+    ModalCloser() {
+        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
+        m_timer.start(5);
+    }
+
+    const QStringList& dismissed() const { return m_dismissed; }
+
+private:
+    void poll() {
+        QWidget* modal = QApplication::activeModalWidget();
+        if (modal == nullptr) return;
+        m_dismissed << modal->windowTitle();
+        if (auto* dialog = qobject_cast<QDialog*>(modal)) {
+            dialog->reject();
+        } else {
+            modal->close();  // a modal that is not a dialog must not hang the test
+        }
+    }
+
+    QTimer m_timer;
+    QStringList m_dismissed;
+};
+
+/// Drives a window's viewport the way a user does: presses, moves and
+/// releases at world points, through the viewport's own mouse handling, so the
+/// active tool sees what it would see from a real click.
+class ToolDriver {
+public:
+    explicit ToolDriver(hz::ui::MainWindow& window)
+        : m_viewport(window.findChild<hz::ui::ViewportWidget*>()) {
+        EXPECT_NE(m_viewport, nullptr);
+        // A size to project with; the window is never shown, so no layout
+        // gives it one.
+        if (m_viewport != nullptr) m_viewport->resize(1000, 700);
+    }
+
+    hz::ui::ViewportWidget& viewport() { return *m_viewport; }
+
+    void click(const hz::math::Vec2& world) {
+        send(QEvent::MouseButtonPress, world, Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, world, Qt::LeftButton, Qt::NoButton);
+    }
+
+    void move(const hz::math::Vec2& world) {
+        send(QEvent::MouseMove, world, Qt::NoButton, Qt::NoButton);
+    }
+
+    void key(Qt::Key key) {
+        QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
+        QCoreApplication::sendEvent(m_viewport, &press);
+    }
+
+private:
+    void send(QEvent::Type type, const hz::math::Vec2& world, Qt::MouseButton button,
+              Qt::MouseButtons buttons) {
+        const QPointF at = m_viewport->worldToScreen(world);
+        QMouseEvent event(type, at, m_viewport->mapToGlobal(at), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(m_viewport, &event);
+    }
+
+    hz::ui::ViewportWidget* m_viewport;
 };
 
 }  // namespace hz::test

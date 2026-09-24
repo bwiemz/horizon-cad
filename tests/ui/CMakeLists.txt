@@ -31,6 +31,8 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_ViewportGraphics.cpp
         test_Drafting2D.cpp
         test_AppEssentials.cpp
+        test_ToolEdits.cpp
+        test_Smoke.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

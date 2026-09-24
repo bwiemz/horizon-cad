@@ -28,6 +28,11 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
   - Help ▸ About shows the version, revision and build.
   - `horizon file...` opens files from the command line.
   - View reaches every dock.
+- **Every command is exercised (112).** A smoke test triggers each of the
+  window's 166 commands on an empty drawing, part and assembly, and on a
+  selection, dismissing whatever dialog it opens. The drawing tools are
+  tested through the viewport's own mouse handling: draw, select, delete,
+  undo.
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
