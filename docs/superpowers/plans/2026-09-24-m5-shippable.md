@@ -46,6 +46,10 @@ A release someone can install:
 - **Installer.** The CPack settings are now `cmake/CPackSettings.cmake`,
   included before `include(CPack)`, and they set `CPACK_PACKAGE_VERSION`.
   `CPackConfig.cmake` is generated for the first time, with version 0.1.0.
+  The generator is NSIS on Windows only, where the tool exists, and a
+  tarball elsewhere. `cpack` on Linux now produces
+  `HorizonCAD-0.1.0-Linux.tar.gz`, the project's first package; it holds
+  only the executable, and Qt, translations and licences come in 116.
 - **CHANGELOG and README.**
   - The "1.0.0" section now carries 0.1.0, not released.
   - "Post-1.0" work is called "post-roadmap".
