@@ -69,24 +69,27 @@ SnapResult SnapEngine::snapAmong(const math::Vec2& cursorWorld,
         }
     };
 
-    // Only entities that pass within the tolerance can cross near the cursor.
-    std::vector<const DraftEntity*> touching;
-    for (const DraftEntity* entity : near) {
-        for (const auto& sp : entity->typedSnapPoints()) consider(sp.point, sp.type);
-        if (entity->hitTest(cursorWorld, m_snapTolerance)) touching.push_back(entity);
-    }
-    constexpr size_t kMaxTouching = 32;  // a bound on the pairs tried per cursor move
-    const size_t n = std::min(touching.size(), kMaxTouching);
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            for (const auto& p : intersect(*touching[i], *touching[j]).points) {
-                consider(p, SnapType::Intersection);
+    if (m_objectSnap) {
+        // Only entities that pass within the tolerance can cross near the cursor.
+        std::vector<const DraftEntity*> touching;
+        for (const DraftEntity* entity : near) {
+            for (const auto& sp : entity->typedSnapPoints()) consider(sp.point, sp.type);
+            if (entity->hitTest(cursorWorld, m_snapTolerance)) touching.push_back(entity);
+        }
+        constexpr size_t kMaxTouching = 32;  // a bound on the pairs tried per cursor move
+        const size_t n = std::min(touching.size(), kMaxTouching);
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = i + 1; j < n; ++j) {
+                for (const auto& p : intersect(*touching[i], *touching[j]).points) {
+                    consider(p, SnapType::Intersection);
+                }
             }
         }
+        if (best.type != SnapType::None) return best;
     }
-    if (best.type != SnapType::None) return best;
 
     // The grid only when no object snap is in reach.
+    if (!m_gridSnap) return best;
     const math::Vec2 gridPt = snapToGrid(cursorWorld);
     if (cursorWorld.distanceTo(gridPt) < m_snapTolerance) {
         best.point = gridPt;

@@ -46,6 +46,9 @@ private slots:
     void onEllipseSemiMinorChanged(double value);
     void onEllipseRotationChanged(double value);
     void onLineTypeChanged(int index);
+    /// A line's, circle's or arc's geometry was typed in (the spin that
+    /// changed is the sender).
+    void onGeometryEdited();
 
 private:
     void createWidgets();
@@ -100,6 +103,26 @@ private:
     QDoubleSpinBox* m_ellipseSemiMajorSpin = nullptr;
     QDoubleSpinBox* m_ellipseSemiMinorSpin = nullptr;
     QDoubleSpinBox* m_ellipseRotationSpin = nullptr;
+
+    // Geometry of a line, a circle or an arc: typed in, applied as a grip
+    // edit would be (one undo step, constraints solved after).
+    QWidget* m_lineGeomWidget = nullptr;
+    QDoubleSpinBox* m_lineStartX = nullptr;
+    QDoubleSpinBox* m_lineStartY = nullptr;
+    QDoubleSpinBox* m_lineEndX = nullptr;
+    QDoubleSpinBox* m_lineEndY = nullptr;
+    QDoubleSpinBox* m_lineLength = nullptr;
+    QDoubleSpinBox* m_lineAngle = nullptr;
+    QWidget* m_circleGeomWidget = nullptr;
+    QDoubleSpinBox* m_circleCenterX = nullptr;
+    QDoubleSpinBox* m_circleCenterY = nullptr;
+    QDoubleSpinBox* m_circleRadius = nullptr;
+    QWidget* m_arcGeomWidget = nullptr;
+    QDoubleSpinBox* m_arcCenterX = nullptr;
+    QDoubleSpinBox* m_arcCenterY = nullptr;
+    QDoubleSpinBox* m_arcRadius = nullptr;
+    QDoubleSpinBox* m_arcStartAngle = nullptr;
+    QDoubleSpinBox* m_arcEndAngle = nullptr;
 
     // Constraint info
     QWidget* m_constraintWidget = nullptr;
