@@ -24,6 +24,14 @@ an installed Qt carries that Qt's own licence files instead.
 GoogleTest (BSD-3-Clause) is used only by the test suite and is not part of
 a package.
 
-Qt is used under the LGPL-3.0: a package links Qt dynamically, so it can be
-replaced by a modified Qt. Qt's source is available from
-<https://download.qt.io/>.
+Qt is used under the LGPL-3.0, which lets a user run Horizon CAD with a
+modified Qt:
+- **Windows:** the installer links Qt dynamically. Qt's DLLs sit next to
+  `horizon.exe` and can be replaced.
+- **Linux:** the release packages link a static Qt, built by vcpkg. Horizon
+  CAD's complete source and build files are published in this repository,
+  and each release is tagged there, so it can be rebuilt against a modified
+  Qt.
+- **A build against an installed Qt** links that Qt dynamically.
+
+Qt's source is available from <https://download.qt.io/>.
