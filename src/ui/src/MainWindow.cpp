@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QSysInfo>
@@ -318,6 +319,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Wire up the status bar coordinate display.
     connect(m_viewport, &ViewportWidget::mouseMoved, this, &MainWindow::onMouseMoved);
+    connect(m_viewport, &ViewportWidget::typedInputChanged, this, &MainWindow::updateStatusBar);
 
     // Wire up selection changes to property panel.
     connect(m_viewport, &ViewportWidget::selectionChanged, this, &MainWindow::onSelectionChanged);
@@ -510,6 +512,24 @@ void MainWindow::createMenus() {
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
     toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
+    toolsMenu->addSeparator();
+
+    // Drafting aids: the status bar shows each as a toggle (iconText).
+    QMenu* aidsMenu = toolsMenu->addMenu(tr("Drafting &Aids"));
+    const auto aid = [this, aidsMenu](const QString& text, const QString& shortName,
+                                      const char* name, Qt::Key key) {
+        QAction* act = aidsMenu->addAction(text);
+        act->setObjectName(QString::fromLatin1(name));
+        act->setIconText(shortName);
+        act->setShortcut(QKeySequence(key));
+        act->setCheckable(true);
+        connect(act, &QAction::toggled, this, [this, act] { onDraftingAidToggled(act); });
+        return act;
+    };
+    m_actObjectSnap = aid(tr("Object &Snap"), tr("SNAP"), "action_object_snap", Qt::Key_F3);
+    m_actGridSnap = aid(tr("&Grid Snap"), tr("GRID"), "action_grid_snap", Qt::Key_F9);
+    m_actOrtho = aid(tr("&Ortho"), tr("ORTHO"), "action_ortho", Qt::Key_F8);
+    m_actPolar = aid(tr("&Polar Tracking"), tr("POLAR"), "action_polar", Qt::Key_F10);
 
     // ---- Measure ----
     QMenu* measureMenu = menuBar()->addMenu(tr("&Measure"));
@@ -774,13 +794,21 @@ void MainWindow::createStatusBar() {
 
     // Tool prompt (center, stretch).
     m_statusPrompt = new QLabel(tr("Ready"), this);
+    m_statusPrompt->setObjectName(QStringLiteral("statusPrompt"));
     m_statusPrompt->setStyleSheet("QLabel { padding: 0 6px; color: #a0c4ff; }");
     sb->addWidget(m_statusPrompt, 1);
 
-    // Snap/grid indicator.
-    m_statusSnap = new QLabel(tr("SNAP  GRID"), this);
-    m_statusSnap->setStyleSheet("QLabel { padding: 0 6px; color: #80cc80; }");
-    sb->addPermanentWidget(m_statusSnap);
+    // Drafting aids, each a toggle: lit when on.
+    for (QAction* act : {m_actObjectSnap, m_actGridSnap, m_actOrtho, m_actPolar}) {
+        auto* button = new QToolButton(this);
+        button->setDefaultAction(act);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setAutoRaise(true);
+        button->setStyleSheet(
+            "QToolButton { padding: 0 4px; color: #707070; }"
+            "QToolButton:checked { color: #80cc80; background: transparent; }");
+        sb->addPermanentWidget(button);
+    }
 
     // Selection count.
     m_statusSelection = new QLabel(tr("0 selected"), this);
@@ -828,16 +856,39 @@ void MainWindow::createStatusBar() {
     sb->addPermanentWidget(m_statusTool);
 }
 
+void MainWindow::onDraftingAidToggled(QAction* changed) {
+    // Ortho and polar tracking each hold the direction: one at a time.
+    if (changed == m_actOrtho && m_actOrtho->isChecked()) {
+        const QSignalBlocker quiet(m_actPolar);
+        m_actPolar->setChecked(false);
+    } else if (changed == m_actPolar && m_actPolar->isChecked()) {
+        const QSignalBlocker quiet(m_actOrtho);
+        m_actOrtho->setChecked(false);
+    }
+    Preferences prefs = Preferences::current();
+    prefs.objectSnap = m_actObjectSnap->isChecked();
+    prefs.gridSnap = m_actGridSnap->isChecked();
+    prefs.ortho = m_actOrtho->isChecked();
+    prefs.polarTracking = m_actPolar->isChecked();
+    prefs.save();
+    applyPreferences(prefs);
+    statusBar()->showMessage(changed->isChecked() ? tr("%1 on").arg(changed->iconText())
+                                                  : tr("%1 off").arg(changed->iconText()),
+                             3000);
+}
+
+QString MainWindow::toolPrompt() const {
+    const Tool* tool = m_viewport ? m_viewport->activeTool() : nullptr;
+    if (tool == nullptr) return tr("Ready");
+    const std::string prompt = tool->promptText() + m_viewport->typedPoint().prompt();
+    return prompt.empty() ? tr("Ready") : QString::fromStdString(prompt);
+}
+
 void MainWindow::updateStatusBar() {
     if (m_viewport && m_viewport->activeTool()) {
         auto* tool = m_viewport->activeTool();
         m_statusTool->setText(QString::fromStdString(tool->name()));
-        auto prompt = tool->promptText();
-        if (!prompt.empty()) {
-            m_statusPrompt->setText(QString::fromStdString(prompt));
-        } else {
-            m_statusPrompt->setText(tr("Ready"));
-        }
+        m_statusPrompt->setText(toolPrompt());
     } else {
         m_statusTool->setText(tr("None"));
         m_statusPrompt->setText(tr("Ready"));
@@ -1287,6 +1338,18 @@ void MainWindow::onNewAssembly() {
 }
 
 void MainWindow::applyPreferences(const Preferences& prefs) {
+    m_viewport->setDraftingAids(DraftingAids{prefs.objectSnap, prefs.gridSnap, prefs.ortho,
+                                             prefs.polarTracking, prefs.polarAngle});
+    const std::pair<QAction*, bool> aids[] = {
+        {m_actObjectSnap, prefs.objectSnap},
+        {m_actGridSnap, prefs.gridSnap},
+        {m_actOrtho, prefs.ortho},
+        {m_actPolar, prefs.polarTracking},
+    };
+    for (const auto& [act, on] : aids) {
+        const QSignalBlocker quiet(act);
+        act->setChecked(on);
+    }
     m_autosaveTimer->stop();
     if (prefs.autosaveSeconds > 0) m_autosaveTimer->start(prefs.autosaveSeconds * 1000);
     // As the last write left it: a failure still stands until a write works.
@@ -2822,12 +2885,7 @@ void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
         tr("X: %1  Y: %2").arg(prefs.formatLength(worldPos.x), prefs.formatLength(worldPos.y)));
 
     // Update tool prompt dynamically as mouse moves.
-    if (m_viewport && m_viewport->activeTool()) {
-        auto prompt = m_viewport->activeTool()->promptText();
-        if (!prompt.empty()) {
-            m_statusPrompt->setText(QString::fromStdString(prompt));
-        }
-    }
+    if (m_viewport && m_viewport->activeTool()) m_statusPrompt->setText(toolPrompt());
 }
 
 void MainWindow::onSelectionChanged() {

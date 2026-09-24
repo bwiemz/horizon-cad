@@ -42,6 +42,7 @@ bool LineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
             return true;
 
         case State::WaitingForEnd:
+            if (snappedPos.distanceTo(m_startPoint) < 1e-12) return true;  // no length
             // Commit the line via undo command.
             if (m_viewport && m_viewport->document()) {
                 auto line = std::make_shared<draft::DraftLine>(m_startPoint, snappedPos);
@@ -50,7 +51,10 @@ bool LineTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
                     m_viewport->document()->draftDocument(), line);
                 m_viewport->document()->undoStack().push(std::move(cmd));
             }
-            m_state = State::WaitingForStart;
+            // The next segment starts where this one ended, until Enter or
+            // Escape ends the chain.
+            m_startPoint = snappedPos;
+            m_currentPos = snappedPos;
             return true;
     }
     return false;
@@ -75,8 +79,9 @@ bool LineTool::mouseReleaseEvent(QMouseEvent* /*event*/, const math::Vec2& /*wor
 }
 
 bool LineTool::keyPressEvent(QKeyEvent* event) {
-    if (event->key() == Qt::Key_Escape) {
-        cancel();
+    const bool enter = event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter;
+    if (event->key() == Qt::Key_Escape || (enter && m_state == State::WaitingForEnd)) {
+        cancel();  // the segments drawn stay
         return true;
     }
     return false;
@@ -101,7 +106,7 @@ std::string LineTool::promptText() const {
         case State::WaitingForStart:
             return "Specify first point";
         case State::WaitingForEnd:
-            return "Specify next point or press Escape";
+            return "Specify next point (Enter or Escape to finish)";
     }
     return "";
 }

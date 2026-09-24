@@ -26,6 +26,12 @@ public:
 
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
 
+    bool acceptsTypedPoints() const override { return true; }
+    std::optional<math::Vec2> basePoint() const override {
+        if (m_state != State::WaitingForSecondCorner) return std::nullopt;
+        return m_firstCorner;
+    }
+
     std::string promptText() const override;
     bool wantsCrosshair() const override;
 

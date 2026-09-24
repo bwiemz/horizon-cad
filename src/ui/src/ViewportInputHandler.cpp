@@ -6,6 +6,7 @@
 #include <QWheelEvent>
 
 #include "horizon/ui/Tool.h"
+#include "horizon/ui/TypedPoint.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -58,6 +59,7 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
 
     // Compute the world position and emit signal for status bar.
     math::Vec2 wp = viewport->worldPositionAtCursor(event->pos().x(), event->pos().y());
+    viewport->setCursorWorld(wp);
     emit viewport->mouseMoved(wp);
 
     // Update crosshair position for overlay renderer.
@@ -113,8 +115,37 @@ void ViewportInputHandler::handleWheel(QWheelEvent* event, ViewportWidget* viewp
 }
 
 void ViewportInputHandler::handleKeyPress(QKeyEvent* event, ViewportWidget* viewport) {
-    if (event->key() == Qt::Key_Escape && viewport->activeTool()) {
-        viewport->activeTool()->cancel();
+    Tool* tool = viewport->activeTool();
+    TypedPoint& typed = viewport->typedPoint();
+    const int key = event->key();
+
+    // A point typed for a tool that places points: Enter places it, as a
+    // click there would. Escape first drops what is typed, then the tool.
+    if (tool && tool->acceptsTypedPoints()) {
+        if ((key == Qt::Key_Return || key == Qt::Key_Enter) && typed.typing()) {
+            std::optional<math::Vec2> toward;
+            if (viewport->cursorWorld()) toward = viewport->snap(*viewport->cursorWorld()).point;
+            if (const auto point = typed.take(tool->basePoint(), toward)) {
+                viewport->applyTypedPoint(*point);
+            }
+            emit viewport->typedInputChanged();
+            return;
+        }
+        if (key == Qt::Key_Escape && typed.typing()) {
+            typed.clear();
+            emit viewport->typedInputChanged();
+            return;
+        }
+        if (typed.key(key)) {
+            emit viewport->typedInputChanged();
+            return;
+        }
+    }
+
+    if (key == Qt::Key_Escape && tool) {
+        typed.clear();
+        tool->cancel();
+        emit viewport->typedInputChanged();
         viewport->update();
         return;
     }

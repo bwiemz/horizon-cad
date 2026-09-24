@@ -17,6 +17,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/ui/OverlayRenderer.h"
+#include "horizon/ui/TypedPoint.h"
 #include "horizon/ui/ViewportInputHandler.h"
 #include "horizon/ui/ViewportRenderer.h"
 
@@ -40,6 +41,15 @@ struct CameraState {
     math::Vec3 eye;
     math::Vec3 target;
     math::Vec3 up;
+};
+
+/// Drafting aids (the status bar's toggles, F3/F8/F9/F10).
+struct DraftingAids {
+    bool objectSnap = true;    ///< snap to points on entities
+    bool gridSnap = true;      ///< snap to the grid when no entity is near
+    bool ortho = false;        ///< hold the direction from the last point to 0/90/180/270°
+    bool polar = false;        ///< hold it to the nearest multiple of polarAngle
+    double polarAngle = 15.0;  ///< polar tracking's step, in degrees
 };
 
 /// The main 2D/3D viewport widget backed by OpenGL.
@@ -94,8 +104,30 @@ public:
     }
 
     /// The snap for a cursor at @p worldPos: to what is drawn on visible,
-    /// unlocked layers, within snapPixels() of it on screen at any zoom.
+    /// unlocked layers, within snapPixels() of it on screen at any zoom; else
+    /// the grid. Then, with ortho or polar tracking on and no entity snapped
+    /// to, the direction from the active tool's base point is held to the
+    /// nearest allowed angle. While a typed point is being placed, that point
+    /// exactly.
     draft::SnapResult snap(const math::Vec2& worldPos);
+
+    /// The drafting aids in force.
+    const DraftingAids& draftingAids() const { return m_aids; }
+    void setDraftingAids(const DraftingAids& aids);
+
+    // ---- Typed input ----
+
+    /// What is being typed for the active tool's next point.
+    TypedPoint& typedPoint() { return m_typedPoint; }
+    const TypedPoint& typedPoint() const { return m_typedPoint; }
+
+    /// Give @p point to the active tool as a click there, without snapping
+    /// or tracking. True when the tool used it.
+    bool applyTypedPoint(const math::Vec2& point);
+
+    /// Where the cursor last was over the viewport, in world coordinates.
+    const std::optional<math::Vec2>& cursorWorld() const { return m_cursorWorld; }
+    void setCursorWorld(const math::Vec2& world) { m_cursorWorld = world; }
 
     /// The world distance @p pixels screen pixels span at the current zoom:
     /// how far a click reaches to pick an entity, the same on screen at any
@@ -143,6 +175,10 @@ signals:
     /// Emitted when the selection changes.
     void selectionChanged();
 
+    /// Emitted when what is typed for the active tool changes, or is taken
+    /// or refused: the prompt shows it.
+    void typedInputChanged();
+
 protected:
     // QOpenGLWidget overrides
     void initializeGL() override;
@@ -160,6 +196,12 @@ protected:
 private:
     /// Record a context Qt could not create at all, and tell the user once.
     void checkGraphics();
+
+    DraftingAids m_aids;
+    TypedPoint m_typedPoint;
+    /// Set while applyTypedPoint() hands the tool its point: snap() returns it.
+    std::optional<math::Vec2> m_typedOverride;
+    std::optional<math::Vec2> m_cursorWorld;
 
     QString m_graphicsProblem;
     /// initializeGL() got an OpenGL 3.3 context and built the renderer:

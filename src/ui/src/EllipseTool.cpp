@@ -55,6 +55,9 @@ bool EllipseTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
         }
 
         case State::MinorAxis:
+            // The point clicked (or typed): the cursor's last move may not
+            // have been there.
+            m_currentPos = snappedPos;
             finishEllipse();
             break;
     }

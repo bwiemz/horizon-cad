@@ -13,6 +13,7 @@
 #include <cmath>
 
 #include "horizon/document/Document.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec4.h"
 #include "horizon/render/GLRenderer.h"
@@ -70,8 +71,12 @@ void ViewportWidget::setActiveTool(Tool* tool) {
     if (m_activeTool) {
         m_activeTool->deactivate();
     }
+    m_typedPoint.clear();  // typed for the tool before
     m_activeTool = tool;
     if (m_activeTool) {
+        // Keys go to the tool: a point or a length typed straight after
+        // picking the tool from the ribbon, which otherwise kept the focus.
+        setFocus(Qt::OtherFocusReason);
         m_activeTool->activate(this);
         m_overlayRenderer.setCrosshairEnabled(m_activeTool->wantsCrosshair());
     } else {
@@ -146,7 +151,41 @@ double ViewportWidget::pixelToWorldScale() const {
     return m_lastPixelScale;
 }
 
+namespace {
+
+/// A unit vector at @p radians, with the components of the axis directions
+/// exactly 0 and ±1, so a point held to an axis has exactly its base's other
+/// coordinate.
+math::Vec2 direction(double radians) {
+    math::Vec2 u(std::cos(radians), std::sin(radians));
+    for (double* c : {&u.x, &u.y}) {
+        if (std::abs(*c) < 1e-12) *c = 0.0;
+        if (std::abs(std::abs(*c) - 1.0) < 1e-12) *c = *c > 0.0 ? 1.0 : -1.0;
+    }
+    return u;
+}
+
+/// @p point projected onto the ray from @p base nearest its own direction
+/// whose angle is a whole multiple of @p stepDegrees.
+math::Vec2 alongNearestAngle(const math::Vec2& base, const math::Vec2& point, double stepDegrees) {
+    const math::Vec2 d = point - base;
+    if (d.length() < 1e-12 || !(stepDegrees > 0.0)) return point;
+    const double step = stepDegrees * math::kDegToRad;
+    const math::Vec2 u = direction(std::round(std::atan2(d.y, d.x) / step) * step);
+    return base + u * d.dot(u);
+}
+
+}  // namespace
+
+void ViewportWidget::setDraftingAids(const DraftingAids& aids) {
+    m_aids = aids;
+    m_snapEngine.setObjectSnapEnabled(aids.objectSnap);
+    m_snapEngine.setGridSnapEnabled(aids.gridSnap);
+}
+
 draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
+    // A typed point is exactly where it was typed: no snap, no tracking.
+    if (m_typedOverride) return {*m_typedOverride, draft::SnapType::None};
     if (m_document == nullptr) return {worldPos, draft::SnapType::None};
     m_snapEngine.setSnapTolerance(m_snapPixels * pixelToWorldScale());
     const auto& layers = m_document->layerManager();
@@ -155,7 +194,47 @@ draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
         const auto* layer = layers.getLayer(entity.layer());
         return layer != nullptr && layer->visible && !layer->locked;
     };
-    return m_snapEngine.snap(worldPos, drawing, snappable);
+    draft::SnapResult result = m_snapEngine.snap(worldPos, drawing, snappable);
+
+    // Ortho and polar tracking, from the point the tool measures from. An
+    // entity snapped to wins over them: it is the point that was aimed at.
+    const bool tracking = m_aids.ortho || m_aids.polar;
+    const bool onEntity =
+        result.type != draft::SnapType::None && result.type != draft::SnapType::Grid;
+    if (tracking && !onEntity && m_activeTool != nullptr) {
+        if (const auto base = m_activeTool->basePoint()) {
+            result.point =
+                alongNearestAngle(*base, result.point, m_aids.ortho ? 90.0 : m_aids.polarAngle);
+            result.type = draft::SnapType::None;
+        }
+    }
+    return result;
+}
+
+bool ViewportWidget::applyTypedPoint(const math::Vec2& point) {
+    if (m_activeTool == nullptr) return false;
+    const QPointF at = worldToScreen(point);
+    const QPointF global = mapToGlobal(at);
+    m_typedOverride = point;
+    QMouseEvent press(QEvent::MouseButtonPress, at, global, Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    const bool used = m_activeTool->mousePressEvent(&press, point);
+    if (m_activeTool != nullptr) {
+        QMouseEvent release(QEvent::MouseButtonRelease, at, global, Qt::LeftButton, Qt::NoButton,
+                            Qt::NoModifier);
+        m_activeTool->mouseReleaseEvent(&release, point);
+    }
+    m_typedOverride.reset();
+    // The rubber band follows the cursor again, from the point just placed.
+    if (m_activeTool != nullptr && m_cursorWorld) {
+        const QPointF cursor = worldToScreen(*m_cursorWorld);
+        QMouseEvent move(QEvent::MouseMove, cursor, mapToGlobal(cursor), Qt::NoButton, Qt::NoButton,
+                         Qt::NoModifier);
+        m_activeTool->mouseMoveEvent(&move, *m_cursorWorld);
+    }
+    if (used) emit selectionChanged();
+    update();
+    return used;
 }
 
 QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {

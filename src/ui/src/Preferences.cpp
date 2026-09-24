@@ -34,6 +34,13 @@ Preferences Preferences::load() {
     p.gridSpacing = std::isfinite(grid) && grid > 0.0 ? grid : 1.0;
     p.snapPixels =
         std::clamp(settings.value(QStringLiteral("drafting/snapPixels"), 10).toInt(), 2, 100);
+    p.objectSnap = settings.value(QStringLiteral("drafting/objectSnap"), true).toBool();
+    p.gridSnap = settings.value(QStringLiteral("drafting/gridSnap"), true).toBool();
+    p.ortho = settings.value(QStringLiteral("drafting/ortho"), false).toBool();
+    p.polarTracking =
+        !p.ortho && settings.value(QStringLiteral("drafting/polarTracking"), false).toBool();
+    const double polar = settings.value(QStringLiteral("drafting/polarAngle"), 15.0).toDouble();
+    p.polarAngle = std::isfinite(polar) ? std::clamp(polar, 1.0, 90.0) : 15.0;
     const QString unit = settings.value(QStringLiteral("units/length"), "mm").toString();
     p.lengthUnit = lengthUnits().contains(unit) ? unit : QStringLiteral("mm");
     p.decimals = std::clamp(settings.value(QStringLiteral("units/decimals"), 3).toInt(), 0, 8);
@@ -51,6 +58,11 @@ void Preferences::save() const {
     }
     settings.setValue(QStringLiteral("drafting/gridSpacing"), gridSpacing);
     settings.setValue(QStringLiteral("drafting/snapPixels"), snapPixels);
+    settings.setValue(QStringLiteral("drafting/objectSnap"), objectSnap);
+    settings.setValue(QStringLiteral("drafting/gridSnap"), gridSnap);
+    settings.setValue(QStringLiteral("drafting/ortho"), ortho);
+    settings.setValue(QStringLiteral("drafting/polarTracking"), polarTracking);
+    settings.setValue(QStringLiteral("drafting/polarAngle"), polarAngle);
     settings.setValue(QStringLiteral("units/length"), lengthUnit);
     settings.setValue(QStringLiteral("units/decimals"), decimals);
     cache() = *this;
