@@ -21,7 +21,8 @@ using namespace hz::math;
 
 TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
 #ifdef HZ_UNDER_TSAN
-    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+    GTEST_SKIP()
+        << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
 #endif
     std::vector<std::shared_ptr<DraftEntity>> entities;
     entities.reserve(10000);
@@ -63,7 +64,8 @@ TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
 
 TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
 #ifdef HZ_UNDER_TSAN
-    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+    GTEST_SKIP()
+        << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
 #endif
     SpatialIndex index;
     auto start = std::chrono::high_resolution_clock::now();
@@ -89,7 +91,8 @@ TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
 
 TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
 #ifdef HZ_UNDER_TSAN
-    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+    GTEST_SKIP()
+        << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
 #endif
     SpatialIndex index;
     for (uint64_t i = 0; i < 10000; ++i) {

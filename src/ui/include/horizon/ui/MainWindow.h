@@ -280,8 +280,7 @@ private:
         io::ImportReport report;
         std::string error;  ///< why nothing was read (lastError is per thread)
     };
-    static StepLoad loadStep(const std::string& path,
-                             const std::atomic<bool>* cancelled = nullptr);
+    static StepLoad loadStep(const std::string& path, const std::atomic<bool>* cancelled = nullptr);
     void finishStepImport(const QString& fileName, StepLoad load);
     void onImportFinished();
     void showInterference(const doc::AssemblyDocument& assembly,
