@@ -122,4 +122,40 @@ int loopSize(const Wire* wire) {
     return count;
 }
 
+// ---------------------------------------------------------------------------
+// loopNormal / signedVolume
+// ---------------------------------------------------------------------------
+
+math::Vec3 loopNormal(const Face* face) {
+    const auto verts = faceVertices(face);
+    math::Vec3 n(0, 0, 0);
+    for (size_t i = 0; i < verts.size(); ++i) {
+        const math::Vec3& a = verts[i]->point;
+        const math::Vec3& b = verts[(i + 1) % verts.size()]->point;
+        n.x += (a.y - b.y) * (a.z + b.z);
+        n.y += (a.z - b.z) * (a.x + b.x);
+        n.z += (a.x - b.x) * (a.y + b.y);
+    }
+    const double len = n.length();
+    return len > 1e-12 ? n * (1.0 / len) : math::Vec3(0, 0, 0);
+}
+
+double signedVolume(const Shell& shell) {
+    double volume = 0.0;
+    const auto fan = [&volume](const Wire* wire) {
+        if (!wire || !wire->halfEdge || !wire->halfEdge->origin) return;
+        const HalfEdge* start = wire->halfEdge;
+        const math::Vec3& a = start->origin->point;
+        for (const HalfEdge* he = start->next; he && he->next && he->next != start; he = he->next) {
+            if (!he->origin || !he->next->origin) return;
+            volume += a.dot(he->origin->point.cross(he->next->origin->point)) / 6.0;
+        }
+    };
+    for (const Face* face : shell.faces) {
+        fan(face->outerLoop);
+        for (const Wire* inner : face->innerLoops) fan(inner);
+    }
+    return volume;
+}
+
 }  // namespace hz::topo

@@ -75,6 +75,7 @@ void Document::clear() {
     m_solid.reset();
     m_lastBuildMessage.clear();
     m_failedFeatureIndex = -1;
+    m_built = false;
 }
 
 bool Document::rebuildModel() {
@@ -86,6 +87,8 @@ bool Document::applyBuild(BuildResult result) {
     m_solid = std::move(result.solid);
     m_lastBuildMessage = result.failureMessage;
     m_failedFeatureIndex = result.failedFeatureIndex;
+    m_built = true;
+    m_builtRevision = m_featureTree.revision();
     return m_failedFeatureIndex < 0;
 }
 

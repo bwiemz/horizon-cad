@@ -106,6 +106,14 @@ public:
     /// Index of the feature that failed in the last rebuild (-1 = none).
     int failedFeatureIndex() const { return m_failedFeatureIndex; }
 
+    /// Whether the model has not been built since the feature tree last
+    /// changed. A build that failed counts: its partial solid and its failure
+    /// stand until the tree changes, rather than being built again.
+    bool needsBuild() const {
+        return m_featureTree.featureCount() > 0 &&
+               (!m_built || m_builtRevision != m_featureTree.revision());
+    }
+
     // --- Document type ---
 
     DocumentType type() const { return m_type; }
@@ -149,6 +157,8 @@ private:
     std::unique_ptr<topo::Solid> m_solid;
     std::string m_lastBuildMessage;
     int m_failedFeatureIndex = -1;
+    bool m_built = false;          ///< a build has been applied...
+    uint64_t m_builtRevision = 0;  ///< ...for this revision of the feature tree
     DocumentType m_type = DocumentType::Drawing;
 };
 

@@ -52,8 +52,14 @@ std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
             continue;
         }
 
-        for (size_t i = 1; i + 1 < loop.size(); ++i)
-            tris.push_back({loop[0], loop[i], loop[i + 1]});
+        // A fan from the first corner overlaps itself on a non-convex face
+        // (a U-shaped cap counted 11 for 7), and the surface area adds
+        // triangle areas unsigned: triangulate the face properly instead.
+        if (loop.size() == 3) {
+            tris.push_back({loop[0], loop[1], loop[2]});
+        } else if (loop.size() > 3) {
+            for (const auto& tri : BoundaryMesh::triangulatePolygon(loop)) tris.push_back(tri);
+        }
     }
     return tris;
 }

@@ -34,12 +34,14 @@ enum class BooleanType { Union, Subtract, Intersect };
 ///   (topo::Face::analyticSurface, looked up per operand by TopologyID) and
 ///   each result edge lying along a source edge keeps that edge's ideal curve,
 ///   so a bore still resolves to its cylinder for mates and dimensions.
-/// - Face holes (inner loops) on the input solids are not honored: only the
-///   outer loop of each face is taken.  Extrude/primitive/prior-Boolean
-///   inputs never carry inner loops, so this affects only externally
-///   imported faces-with-holes.
-/// - Faces crossing the intersection are returned as planar fragments; no
-///   coplanar-fragment re-merging is performed yet.
+/// - Face holes (inner loops) are honored: a face's outer loop and its holes
+///   are bridged into one outline (BoundaryMesh::keyholePolygon) before
+///   triangulation. A hole that no bridge can reach without crossing an edge
+///   is left out.
+/// - With `FromGeometry` naming, the fragments of each split face are merged
+///   back into one face (FragmentMerge). They stay as fragments with
+///   `Positional` naming, and where merging gives up: a face with more than
+///   60 holes, or fragments that pinch or overlap.
 class BooleanOp {
 public:
     /// Execute a Boolean operation on two solids.

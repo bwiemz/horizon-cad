@@ -32,25 +32,6 @@ static std::vector<const Edge*> findEdges(const Solid& solid, const TopologyID& 
     return pieces;
 }
 
-static Vec3 faceNormal(const Face* face) {
-    if (face->surface) {
-        double uMid = (face->surface->uMin() + face->surface->uMax()) * 0.5;
-        double vMid = (face->surface->vMin() + face->surface->vMax()) * 0.5;
-        return face->surface->normal(uMid, vMid);
-    }
-    auto verts = faceVertices(face);
-    if (verts.size() >= 3) {
-        Vec3 a = verts[1]->point - verts[0]->point;
-        Vec3 b = verts[2]->point - verts[0]->point;
-        Vec3 n = a.cross(b);
-        double len = n.length();
-        if (len > 1e-12) {
-            return n * (1.0 / len);
-        }
-    }
-    return Vec3(0, 0, 1);
-}
-
 // ---------------------------------------------------------------------------
 // Chamfer geometry for a single edge
 // ---------------------------------------------------------------------------
@@ -179,11 +160,14 @@ static bool computeChamferGeometry(const Edge* edge, double distA, double distB,
     }
     info.edgeDir = dir * (1.0 / edgeLen);
 
-    Vec3 nA = faceNormal(info.faceA);
-    Vec3 nB = faceNormal(info.faceB);
-
-    Vec3 candidateA = info.edgeDir.cross(nA);
-    Vec3 candidateB = info.edgeDir.cross(nB);
+    // Inward on each face from the loop's winding: walking a loop with its
+    // normal up, the face lies to the left. faceA's loop runs v1->v2 and
+    // faceB's v2->v1. Comparing with a face's centroid picked the wrong side
+    // on non-convex faces, an L-shaped cap for one.
+    const Vec3 nA = loopNormal(info.faceA);
+    const Vec3 nB = loopNormal(info.faceB);
+    Vec3 candidateA = nA.cross(info.edgeDir);
+    Vec3 candidateB = nB.cross(info.edgeDir * (-1.0));
 
     double lenA = candidateA.length();
     double lenB = candidateB.length();
@@ -192,32 +176,6 @@ static bool computeChamferGeometry(const Edge* edge, double distA, double distB,
     }
     candidateA = candidateA * (1.0 / lenA);
     candidateB = candidateB * (1.0 / lenB);
-
-    // Ensure offset directions point inward.
-    auto vertsA = faceVertices(info.faceA);
-    Vec3 centroidA(0, 0, 0);
-    for (const auto* v : vertsA) {
-        centroidA = centroidA + v->point;
-    }
-    if (!vertsA.empty()) {
-        centroidA = centroidA * (1.0 / static_cast<double>(vertsA.size()));
-    }
-    Vec3 edgeMid = (info.v1->point + info.v2->point) * 0.5;
-    if (candidateA.dot(centroidA - edgeMid) < 0) {
-        candidateA = candidateA * (-1.0);
-    }
-
-    auto vertsB = faceVertices(info.faceB);
-    Vec3 centroidB(0, 0, 0);
-    for (const auto* v : vertsB) {
-        centroidB = centroidB + v->point;
-    }
-    if (!vertsB.empty()) {
-        centroidB = centroidB * (1.0 / static_cast<double>(vertsB.size()));
-    }
-    if (candidateB.dot(centroidB - edgeMid) < 0) {
-        candidateB = candidateB * (-1.0);
-    }
 
     info.offsetA = candidateA;
     info.offsetB = candidateB;

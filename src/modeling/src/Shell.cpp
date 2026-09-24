@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "RingStack.h"
 #include "horizon/topology/Queries.h"
@@ -13,6 +14,10 @@ using hz::math::Vec3;
 using namespace hz::topo;
 
 namespace {
+
+constexpr const char* kOnlyPrisms =
+    "shell supports only a plain prism for now (two caps and straight sides); this part has "
+    "other features, holes or tapered sides, which would be lost";
 
 Vec3 polyCentroid(const std::vector<Vec3>& poly) {
     Vec3 c = Vec3::Zero;
@@ -39,42 +44,18 @@ std::vector<Vec3> facePolygon(const Face& face) {
     return poly;
 }
 
-// Minimum distance from the polygon centroid to any edge line (inradius).
-double polygonInradius(const std::vector<Vec3>& poly, const Vec3& centroid) {
-    double minDist = std::numeric_limits<double>::max();
-    const size_t N = poly.size();
-    for (size_t i = 0; i < N; ++i) {
-        const Vec3& a = poly[i];
-        const Vec3& b = poly[(i + 1) % N];
-        Vec3 e = b - a;
-        double len = e.length();
-        if (len < 1e-12) continue;
-        Vec3 ap = centroid - a;
-        double t = std::clamp(ap.dot(e) / (len * len), 0.0, 1.0);
-        Vec3 closest = a + e * t;
-        minDist = std::min(minDist, (centroid - closest).length());
-    }
-    return minDist;
-}
-
-// Mitered inward offset of a planar polygon by @p t. @p axis is the polygon's
-// outward normal. Preserves winding.
+// Mitered inward offset of a planar polygon by @p t. The polygon must run
+// counter-clockwise around @p axis, its outward normal: then the inside of
+// each edge is on its left, axis x edge. (Picking "inward" as the side
+// facing the centroid turned edges of non-convex profiles outward.)
 std::vector<Vec3> offsetPolygonInward(const std::vector<Vec3>& poly, const Vec3& axis, double t) {
     const size_t N = poly.size();
-    Vec3 centroid = polyCentroid(poly);
 
     std::vector<Vec3> edgeInward(N);
     for (size_t i = 0; i < N; ++i) {
-        Vec3 e = poly[(i + 1) % N] - poly[i];
-        Vec3 nin = axis.cross(e);
-        if (nin.length() < 1e-12) {
-            edgeInward[i] = Vec3::Zero;
-            continue;
-        }
-        nin = nin.normalized();
-        Vec3 mid = (poly[i] + poly[(i + 1) % N]) * 0.5;
-        if (nin.dot(centroid - mid) < 0.0) nin = -nin;
-        edgeInward[i] = nin;
+        const Vec3 e = poly[(i + 1) % N] - poly[i];
+        const Vec3 nin = axis.cross(e);
+        edgeInward[i] = nin.length() < 1e-12 ? Vec3::Zero : nin.normalized();
     }
 
     std::vector<Vec3> inner(N);
@@ -89,6 +70,70 @@ std::vector<Vec3> offsetPolygonInward(const std::vector<Vec3>& poly, const Vec3&
         inner[i] = poly[i] + (nPrev + nCur) * (t / denom);
     }
     return inner;
+}
+
+// Why @p inner, the inward offset of @p outer (both counter-clockwise around
+// @p axis), cannot be a cavity profile, or "" if it can: every edge must keep
+// its direction (an edge the offset turns back on itself has collapsed), and
+// the polygon must be simple and lie inside @p outer.
+std::string innerProfileProblem(const std::vector<Vec3>& outer, const std::vector<Vec3>& inner,
+                                const Vec3& axis) {
+    const size_t N = outer.size();
+    Vec3 u = axis.cross(std::abs(axis.x) < 0.9 ? Vec3(1, 0, 0) : Vec3(0, 1, 0)).normalized();
+    Vec3 v = axis.cross(u);
+    struct P2 {
+        double x, y;
+    };
+    const auto flat = [&](const std::vector<Vec3>& poly) {
+        std::vector<P2> out;
+        out.reserve(poly.size());
+        for (const Vec3& q : poly) out.push_back({q.dot(u), q.dot(v)});
+        return out;
+    };
+    const std::vector<P2> a = flat(outer);
+    const std::vector<P2> b = flat(inner);
+
+    double scale = 0.0;
+    for (size_t i = 0; i < N; ++i) {
+        scale = std::max(scale, std::hypot(a[(i + 1) % N].x - a[i].x, a[(i + 1) % N].y - a[i].y));
+    }
+    const double eps = 1e-9 * std::max(scale, 1.0);
+
+    for (size_t i = 0; i < N; ++i) {
+        const size_t j = (i + 1) % N;
+        const double dx = b[j].x - b[i].x, dy = b[j].y - b[i].y;
+        const double ox = a[j].x - a[i].x, oy = a[j].y - a[i].y;
+        if (dx * ox + dy * oy <= eps * scale) {
+            return "the wall is too thick for this profile: an edge of the cavity collapses";
+        }
+    }
+    const auto cross = [](const P2& o, const P2& p, const P2& q) {
+        return (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+    };
+    for (size_t i = 0; i < N; ++i) {
+        for (size_t k = i + 1; k < N; ++k) {
+            if (k == i + 1 || (i == 0 && k == N - 1)) continue;  // neighbours share a corner
+            const P2 &p1 = b[i], &p2 = b[(i + 1) % N], &q1 = b[k], &q2 = b[(k + 1) % N];
+            const double d1 = cross(q1, q2, p1), d2 = cross(q1, q2, p2);
+            const double d3 = cross(p1, p2, q1), d4 = cross(p1, p2, q2);
+            if (((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) &&
+                ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps))) {
+                return "the wall is too thick for this profile: the cavity crosses itself";
+            }
+        }
+    }
+    // Every cavity corner inside the outer profile (crossing-number test).
+    for (const P2& q : b) {
+        bool inside = false;
+        for (size_t i = 0, j = N - 1; i < N; j = i++) {
+            if ((a[i].y > q.y) != (a[j].y > q.y) &&
+                q.x < (a[j].x - a[i].x) * (q.y - a[i].y) / (a[j].y - a[i].y) + a[i].x) {
+                inside = !inside;
+            }
+        }
+        if (!inside) return "the wall is too thick for this profile: the cavity leaves the part";
+    }
+    return {};
 }
 
 // Reorder @p src so each entry aligns (horizontally, perpendicular to axis)
@@ -175,6 +220,11 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
         result.message = "shell requires at least one face to remove (closed hollow deferred)";
         return result;
     }
+    // Only the first face would be opened; the others would be ignored.
+    if (removedFaceIds.size() > 1) {
+        result.message = "opening more than one face is not supported yet";
+        return result;
+    }
     // The cup is rebuilt from two caps of one body; anything else in the
     // solid would be dropped without a word. A part holds several bodies
     // after a New-body feature or a spaced pattern.
@@ -244,7 +294,7 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
         }
     }
     if (!baseFace || bestDot < 0.9) {
-        result.message = "no matching opposing cap found (unsupported solid for shell)";
+        result.message = kOnlyPrisms;
         return result;
     }
 
@@ -256,11 +306,33 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
         return result;
     }
 
-    // Self-intersection guard.
-    const double inradius = polygonInradius(topPoly, topCentroid);
-    if (thickness >= inradius) {
-        result.message = "wall thickness (" + std::to_string(thickness) +
-                         ") meets or exceeds profile inradius (" + std::to_string(inradius) + ")";
+    // The cup is rebuilt from the two caps alone, with vertical walls. That is
+    // the part only when the part is a right prism: the two caps, one side
+    // face per edge and nothing else, the base straight below the top.
+    // Anything else (a hole, a boss, a split face, a taper) would be dropped
+    // or wrong without a word, so it is refused.
+    const size_t N = topPoly.size();
+    bool prism = solid->faces().size() == N + 2 && solid->vertices().size() == 2 * N;
+    for (const auto& face : solid->faces()) {
+        if (!prism) break;
+        if (!face.innerLoops.empty()) prism = false;
+        if (&face != removedFace && &face != baseFace && faceVertices(&face).size() != 4) {
+            prism = false;
+        }
+    }
+    std::vector<Vec3> outerTop = topPoly;
+    std::vector<Vec3> outerBase = alignByHorizontal(basePoly, outerTop, axis);
+    if (prism) {
+        double size = height;
+        for (size_t i = 0; i < N; ++i)
+            size = std::max(size, (topPoly[(i + 1) % N] - topPoly[i]).length());
+        const double tolerance = 1e-6 * std::max(1.0, size);
+        for (size_t i = 0; i < N && prism; ++i) {
+            prism = (outerBase[i] - (outerTop[i] - axis * height)).length() <= tolerance;
+        }
+    }
+    if (!prism) {
+        result.message = kOnlyPrisms;
         return result;
     }
     if (thickness >= height) {
@@ -270,9 +342,12 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
 
     // Build the four cup rings, all index-aligned and CCW around +axis:
     //   outer base → outer top → inner top (rim) → inner base (cavity floor).
-    std::vector<Vec3> outerTop = topPoly;
-    std::vector<Vec3> outerBase = alignByHorizontal(basePoly, outerTop, axis);
     std::vector<Vec3> innerTop = offsetPolygonInward(outerTop, axis, thickness);
+    const std::string problem = innerProfileProblem(outerTop, innerTop, axis);
+    if (!problem.empty()) {
+        result.message = problem;
+        return result;
+    }
     std::vector<Vec3> innerBase(innerTop.size());
     for (size_t i = 0; i < innerTop.size(); ++i) {
         innerBase[i] = innerTop[i] - axis * (height - thickness);

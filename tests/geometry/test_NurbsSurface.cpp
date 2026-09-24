@@ -724,3 +724,29 @@ TEST(NurbsSurfaceTest, RationalSurfacesAreExactBetweenKnots) {
         }
     }
 }
+
+// A sphere octant: exact, bounded by the three quarter circles between its
+// axes, and facing out when the axes are right-handed.
+TEST(NurbsSurfaceTest, SphereOctantIsOneEighthOfTheSphere) {
+    const hz::math::Vec3 c(1.0, 2.0, 3.0);
+    const double r = 2.5;
+    const hz::math::Vec3 e1(0, -1, 0), e2(-1, 0, 0), e3(0, 0, -1);  // right-handed, pointing back
+    ASSERT_GT(e1.dot(e2.cross(e3)), 0.0);
+    const auto octant = hz::geo::NurbsSurface::makeSphereOctant(c, r, e1, e2, e3);
+
+    EXPECT_NEAR(octant.evaluate(0, 0).distanceTo(c + e1 * r), 0.0, 1e-12);
+    EXPECT_NEAR(octant.evaluate(1, 0).distanceTo(c + e2 * r), 0.0, 1e-12);
+    EXPECT_NEAR(octant.evaluate(0.3, 1).distanceTo(c + e3 * r), 0.0, 1e-12);
+    for (double u = 0.0; u <= 1.0; u += 0.125) {
+        for (double v = 0.0; v <= 1.0; v += 0.125) {
+            const hz::math::Vec3 p = octant.evaluate(u, v);
+            EXPECT_NEAR((p - c).length(), r, 1e-12) << u << ", " << v;
+            // Inside the octant: no component against an axis.
+            EXPECT_GE((p - c).dot(e1), -1e-12);
+            EXPECT_GE((p - c).dot(e2), -1e-12);
+            EXPECT_GE((p - c).dot(e3), -1e-12);
+        }
+    }
+    const hz::math::Vec3 mid = octant.evaluate(0.5, 0.5);
+    EXPECT_GT(octant.normal(0.5, 0.5).dot(mid - c), 0.0) << "faces away from the center";
+}

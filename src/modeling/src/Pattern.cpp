@@ -12,6 +12,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/topology/Queries.h"
 
 namespace hz::model {
 
@@ -191,30 +192,6 @@ void forEachLoopVertex(const Face& face, Visit&& visit) {
     };
     walk(face.outerLoop);
     for (const Wire* inner : face.innerLoops) walk(inner);
-}
-
-// The volume a shell encloses, signed by its orientation: positive when its
-// faces point away from what it encloses. Each loop is fanned from its first
-// vertex (the divergence theorem over the loop's triangles).
-double signedVolume(const Shell& shell) {
-    double volume = 0.0;
-    for (const Face* face : shell.faces) {
-        const auto loop = [&volume](const Wire* wire) {
-            if (!wire || !wire->halfEdge || !wire->halfEdge->origin) return;
-            const HalfEdge* start = wire->halfEdge;
-            const Vec3& a = start->origin->point;
-            for (const HalfEdge* he = start->next; he && he->next && he->next != start;
-                 he = he->next) {
-                if (!he->origin || !he->next->origin) return;
-                const Vec3& b = he->origin->point;
-                const Vec3& c = he->next->origin->point;
-                volume += a.dot(b.cross(c)) / 6.0;
-            }
-        };
-        loop(face->outerLoop);
-        for (const Wire* inner : face->innerLoops) loop(inner);
-    }
-    return volume;
 }
 
 BoundingBox boundsOf(const Solid& solid) {

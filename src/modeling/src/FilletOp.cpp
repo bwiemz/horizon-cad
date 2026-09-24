@@ -846,7 +846,19 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
             }
         }
         fd.vertices.assign(forward.rbegin(), forward.rend());
-        fd.surface = std::make_shared<geo::NurbsSurface>(
+        // The corner is the eighth of the ball facing the vertex: from the
+        // ball's centre, back along each of the three edges. Drawing and
+        // exporting the whole sphere left seven eighths of it inside the part
+        // and in every STL and glTF export. The whole sphere stays as the
+        // ideal surface, for mates and dimensions.
+        Vec3 axes[3];
+        for (size_t k = 0; k < 3; ++k) {
+            axes[k] = dirFromVertex(filletEdges[b.edgeIndices[k]], b.vertex) * (-1.0);
+        }
+        if (axes[0].dot(axes[1].cross(axes[2])) < 0.0) std::swap(axes[0], axes[1]);
+        fd.surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeSphereOctant(
+            b.sphereCenter, b.radius, axes[0], axes[1], axes[2]));
+        fd.analyticSurface = std::make_shared<geo::NurbsSurface>(
             geo::NurbsSurface::makeSphere(b.sphereCenter, b.radius));
         newFaces.push_back(std::move(fd));
     }
