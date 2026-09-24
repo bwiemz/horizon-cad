@@ -39,6 +39,7 @@ public:
     RemoveEntityCommand(draft::DraftDocument& doc, uint64_t entityId);
 
     void execute() override;
+    /// Puts the entity back where it was in the drawing order.
     void undo() override;
     std::string description() const override;
 
@@ -46,6 +47,24 @@ private:
     draft::DraftDocument& m_doc;
     std::shared_ptr<draft::DraftEntity> m_entity;
     uint64_t m_entityId;
+    size_t m_position = draft::DraftDocument::npos;
+};
+
+/// Removes many entities as one step, in one pass over the drawing, and puts
+/// them all back in their places on undo. Deleting thousands of entities one
+/// RemoveEntityCommand at a time scans the drawing once per entity.
+class RemoveEntitiesCommand : public Command {
+public:
+    RemoveEntitiesCommand(draft::DraftDocument& doc, std::vector<uint64_t> entityIds);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    std::vector<draft::PlacedEntity> m_removed;
 };
 
 /// Command to move (translate) one or more DraftEntities.

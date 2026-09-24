@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/BoundingBox.h"
 
@@ -126,6 +127,25 @@ SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& i
         ++found;
         if (!accept || accept(*entity)) near.push_back(entity.get());
         if (found == ids.size()) break;
+    }
+    return snapAmong(cursorWorld, near);
+}
+
+SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const DraftDocument& drawing,
+                            const Filter& accept) const {
+    const math::BoundingBox searchBox(
+        math::Vec3(cursorWorld.x - m_snapTolerance, cursorWorld.y - m_snapTolerance, -1e9),
+        math::Vec3(cursorWorld.x + m_snapTolerance, cursorWorld.y + m_snapTolerance, 1e9));
+    std::vector<uint64_t> ids = drawing.spatialIndex().query(searchBox);
+    // In id order, so the same candidates are weighed in the same order
+    // whatever shape the index has.
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    std::vector<const DraftEntity*> near;
+    near.reserve(ids.size());
+    for (uint64_t id : ids) {
+        const DraftEntity* entity = drawing.findEntity(id);
+        if (entity != nullptr && (!accept || accept(*entity))) near.push_back(entity);
     }
     return snapAmong(cursorWorld, near);
 }

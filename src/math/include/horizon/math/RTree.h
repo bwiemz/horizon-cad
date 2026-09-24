@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -97,28 +98,41 @@ public:
     /// Remove all entries and reset the tree.
     void clear() {
         m_nodes.clear();
+        m_free.clear();
         m_size = 0;
         m_root = allocateNode();
         m_nodes[m_root].isLeaf = true;
         m_nodes[m_root].parent = -1;
     }
 
-    /// Remove a value from the tree.
-    /// Uses collect-all / clear / re-insert strategy — O(n log n) but correct.
-    /// If the value is not present this is a no-op.
-    void remove(const ValueT& value) {
-        // Collect every (value, bbox) pair except the one being removed.
-        std::vector<std::pair<ValueT, BoundingBox>> entries;
-        entries.reserve(m_size);
-        bool found = collectEntries(m_root, value, entries);
-        if (!found) return;  // nothing to do
-
-        // Rebuild from scratch.
-        clear();
-        for (auto& [v, bb] : entries) {
-            insert(v, bb);
+    /// Remove one entry equal to @p value, looking for it where @p where says
+    /// it is: the box it was inserted with. Returns whether an entry was
+    /// removed. O(log n) when the box is right; when it is not, the whole tree
+    /// is searched, so a stale box costs time, not correctness.
+    ///
+    /// The entry leaves its leaf; a node left with fewer than MinChildren is
+    /// dissolved and its entries inserted again, and the root shrinks when it
+    /// has a single child (Guttman's CondenseTree). Nothing is rebuilt.
+    bool remove(const ValueT& value, const BoundingBox& where) {
+        Slot slot;
+        if (!findEntry(m_root, value, &where, slot) && !findEntry(m_root, value, nullptr, slot)) {
+            return false;
         }
+        eraseEntry(slot);
+        return true;
     }
+
+    /// Remove every entry equal to @p value. Searches the whole tree; prefer
+    /// remove(value, where) when the entry's box is known. A no-op if the
+    /// value is not present.
+    void remove(const ValueT& value) {
+        Slot slot;
+        while (m_size > 0 && findEntry(m_root, value, nullptr, slot)) eraseEntry(slot);
+    }
+
+    /// Nodes in use: at most about 2n / MinChildren for n entries, however
+    /// many inserts and removals led there (freed nodes are reused).
+    [[nodiscard]] size_t nodeCount() const { return m_nodes.size() - m_free.size(); }
 
 private:
     struct Entry {
@@ -134,14 +148,123 @@ private:
         std::vector<int> children;   // only used if !isLeaf
     };
 
+    /// Where an entry lives: its leaf and its index in the leaf's entries.
+    struct Slot {
+        int leaf = -1;
+        size_t index = 0;
+    };
+
     std::vector<Node> m_nodes;
+    std::vector<int> m_free;  ///< indices of nodes freed by removals, reused first
     int m_root = 0;
     size_t m_size = 0;
 
-    /// Allocate a new node in the flat vector, return its index.
+    /// Allocate a node, reusing a freed one if there is one; return its index.
+    /// Reuse does not reallocate m_nodes, so references to other nodes stay
+    /// valid; a new node may.
     int allocateNode() {
+        if (!m_free.empty()) {
+            const int index = m_free.back();
+            m_free.pop_back();
+            m_nodes[static_cast<size_t>(index)] = Node{};
+            return index;
+        }
         m_nodes.emplace_back();
         return static_cast<int>(m_nodes.size()) - 1;
+    }
+
+    void freeNode(int index) {
+        Node& node = m_nodes[static_cast<size_t>(index)];
+        node.entries.clear();
+        node.children.clear();
+        node.parent = -1;
+        m_free.push_back(index);
+    }
+
+    /// Find an entry equal to @p value, descending only into nodes whose box
+    /// intersects @p where when it is given.
+    bool findEntry(int nodeIdx, const ValueT& value, const BoundingBox* where, Slot& out) const {
+        const Node& node = m_nodes[static_cast<size_t>(nodeIdx)];
+        if (where != nullptr && (!node.bbox.isValid() || !node.bbox.intersects(*where))) {
+            return false;
+        }
+        if (node.isLeaf) {
+            for (size_t i = 0; i < node.entries.size(); ++i) {
+                const Entry& entry = node.entries[i];
+                // With a box, the entry must be there too: a value inserted
+                // twice is removed where the caller says, not wherever.
+                if (entry.value == value && (where == nullptr || entry.bbox.intersects(*where))) {
+                    out = Slot{nodeIdx, i};
+                    return true;
+                }
+            }
+            return false;
+        }
+        for (int child : node.children) {
+            if (findEntry(child, value, where, out)) return true;
+        }
+        return false;
+    }
+
+    /// Take the entry at @p slot out of the tree and condense the path above it.
+    void eraseEntry(const Slot& slot) {
+        auto& entries = m_nodes[static_cast<size_t>(slot.leaf)].entries;
+        entries.erase(entries.begin() + static_cast<std::ptrdiff_t>(slot.index));
+        --m_size;
+        if (m_size == 0) {
+            clear();
+            return;
+        }
+
+        // Walk up from the leaf: dissolve underfull nodes, keeping their
+        // entries to insert again; tighten the boxes of the rest.
+        std::vector<Entry> orphans;
+        int current = slot.leaf;
+        while (current != m_root) {
+            const int parent = m_nodes[static_cast<size_t>(current)].parent;
+            const Node& node = m_nodes[static_cast<size_t>(current)];
+            const size_t count = node.isLeaf ? node.entries.size() : node.children.size();
+            if (count < static_cast<size_t>(MinChildren)) {
+                auto& siblings = m_nodes[static_cast<size_t>(parent)].children;
+                siblings.erase(std::find(siblings.begin(), siblings.end(), current));
+                collectAndFree(current, orphans);
+            } else {
+                recomputeBBox(current);
+            }
+            current = parent;
+        }
+        recomputeBBox(m_root);
+
+        // A root with a single child is replaced by that child.
+        while (!m_nodes[static_cast<size_t>(m_root)].isLeaf &&
+               m_nodes[static_cast<size_t>(m_root)].children.size() == 1) {
+            const int child = m_nodes[static_cast<size_t>(m_root)].children.front();
+            freeNode(m_root);
+            m_root = child;
+            m_nodes[static_cast<size_t>(m_root)].parent = -1;
+        }
+        if (!m_nodes[static_cast<size_t>(m_root)].isLeaf &&
+            m_nodes[static_cast<size_t>(m_root)].children.empty()) {
+            m_nodes[static_cast<size_t>(m_root)].isLeaf = true;
+            m_nodes[static_cast<size_t>(m_root)].bbox.reset();
+        }
+
+        m_size -= orphans.size();
+        // insert() puts the first entry of an empty tree into a leaf root.
+        if (m_size == 0) clear();
+        for (const Entry& orphan : orphans) insert(orphan.value, orphan.bbox);
+    }
+
+    /// Move every entry under @p nodeIdx into @p out and free its nodes.
+    void collectAndFree(int nodeIdx, std::vector<Entry>& out) {
+        Node& node = m_nodes[static_cast<size_t>(nodeIdx)];
+        if (node.isLeaf) {
+            out.insert(out.end(), node.entries.begin(), node.entries.end());
+        } else {
+            const std::vector<int> children = node.children;
+            for (int child : children) collectAndFree(child, out);
+        }
+        freeNode(nodeIdx);
     }
 
     /// Compute 2D area of a bounding box (x * y, ignoring z).
@@ -439,28 +562,6 @@ private:
             recomputeBBox(current);
             current = m_nodes[current].parent;
         }
-    }
-
-    /// Recursively collect all (value, bbox) entries, excluding one specific value.
-    /// Returns true if the excluded value was found at least once.
-    bool collectEntries(int nodeIdx, const ValueT& exclude,
-                        std::vector<std::pair<ValueT, BoundingBox>>& out) const {
-        const auto& node = m_nodes[nodeIdx];
-        bool found = false;
-        if (node.isLeaf) {
-            for (const auto& entry : node.entries) {
-                if (entry.value == exclude) {
-                    found = true;
-                } else {
-                    out.emplace_back(entry.value, entry.bbox);
-                }
-            }
-        } else {
-            for (int childIdx : node.children) {
-                if (collectEntries(childIdx, exclude, out)) found = true;
-            }
-        }
-        return found;
     }
 
     /// Recursively query a node for entries intersecting the search box.

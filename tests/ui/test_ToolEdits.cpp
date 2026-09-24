@@ -9,10 +9,13 @@
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
+#include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Tool.h"
+#include "horizon/ui/ViewportWidget.h"
 
 using hz::math::Vec2;
 using hz::test::ToolDriver;
@@ -100,4 +103,54 @@ TEST(ToolEditsTest, ALineClickedAndDeletedCanBeUndone) {
 
     trigger(w, "action_undo");
     EXPECT_EQ(all<hz::draft::DraftLine>(w).size(), 1u);
+}
+
+// Starting Insert Block while it is already active used to destroy the active
+// tool and then deactivate it: a use after free (AddressSanitizer reports it).
+TEST(ToolEditsTest, InsertBlockCanBeStartedAgainWhileItIsActive) {
+    MainWindow w;
+    auto bolt = std::make_shared<hz::draft::BlockDefinition>();
+    bolt->name = "Bolt";
+    bolt->entities.push_back(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0)));
+    w.activeDocument()->draftDocument().blockTable().addBlock(bolt);
+
+    for (int round = 0; round < 3; ++round) {
+        hz::test::FormFiller accept(QStringLiteral("Insert Block"), hz::test::FormAnswers{});
+        trigger(w, "action_block-insert");
+        ASSERT_TRUE(accept.seen()) << "round " << round;
+        const hz::ui::Tool* active = w.findChild<hz::ui::ViewportWidget*>()->activeTool();
+        ASSERT_NE(active, nullptr);
+        EXPECT_EQ(active->name(), "Insert Block");
+    }
+    trigger(w, "tool_select");  // deactivates the last one
+}
+
+// Deleting a box selection is one step, and undoing it puts every entity back
+// where it was in the drawing order, not at the end.
+TEST(ToolEditsTest, DeletingASelectionAndUndoingKeepsTheDrawingOrder) {
+    MainWindow w;
+    auto& drawing = w.activeDocument()->draftDocument();
+    std::vector<uint64_t> order;
+    for (int i = 0; i < 6; ++i) {
+        const double y = 2.0 * i;
+        auto line = std::make_shared<hz::draft::DraftLine>(Vec2(0, y), Vec2(3, y));
+        order.push_back(line->id());
+        drawing.addEntity(line);
+    }
+    const auto ids = [&drawing] {
+        std::vector<uint64_t> out;
+        for (const auto& e : drawing.entities()) out.push_back(e->id());
+        return out;
+    };
+
+    ToolDriver drive(w);
+    trigger(w, "tool_select");
+    drive.drag(Vec2(-1, 1), Vec2(4, 7.5));  // a window around lines 1, 2 and 3
+    drive.key(Qt::Key_Delete);
+    EXPECT_EQ(ids(), (std::vector<uint64_t>{order[0], order[4], order[5]}));
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(ids(), order) << "undo restores the drawing order";
+    trigger(w, "action_redo");
+    EXPECT_EQ(ids(), (std::vector<uint64_t>{order[0], order[4], order[5]}));
 }

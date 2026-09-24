@@ -41,15 +41,12 @@ void PolylineEditTool::cancel() {
     if (m_dragging && m_beforeClone && m_viewport && m_viewport->document()) {
         // Restore entity state in-place from before-clone.
         auto& doc = m_viewport->document()->draftDocument();
-        for (auto& entity : doc.entities()) {
-            if (entity->id() == m_editEntityId) {
-                auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get());
-                auto* beforePoly = dynamic_cast<const draft::DraftPolyline*>(m_beforeClone.get());
-                if (poly && beforePoly) {
-                    poly->setPoints(beforePoly->points());
-                    poly->setClosed(beforePoly->closed());
-                }
-                break;
+        if (const auto entity = doc.sharedEntity(m_editEntityId)) {
+            auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get());
+            auto* beforePoly = dynamic_cast<const draft::DraftPolyline*>(m_beforeClone.get());
+            if (poly && beforePoly) {
+                poly->setPoints(beforePoly->points());
+                poly->setClosed(beforePoly->closed());
             }
         }
         m_dragging = false;
@@ -186,11 +183,8 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
         int idx = findNearestVertex(worldPos, gripTol);
         if (idx >= 0) {
             // Start dragging this vertex.
-            for (const auto& entity : doc.entities()) {
-                if (entity->id() == m_editEntityId) {
-                    m_beforeClone = entity->clone();
-                    break;
-                }
+            if (const auto entity = doc.sharedEntity(m_editEntityId)) {
+                m_beforeClone = entity->clone();
             }
             m_dragging = true;
             m_dragVertexIndex = idx;

@@ -354,11 +354,8 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     // Find first selected entity.
     const draft::DraftEntity* first = nullptr;
     if (selectedIds.empty()) return;  // Defensive guard.
-    for (const auto& e : doc.entities()) {
-        if (e->id() == selectedIds.front()) {
-            first = e.get();
-            break;
-        }
+    if (const auto e = doc.sharedEntity(selectedIds.front())) {
+        first = e.get();
     }
     if (!first) {
         m_currentIds.clear();
@@ -560,13 +557,10 @@ void PropertyPanel::onColorClicked() {
 
     QColor initial(Qt::white);
     // Find current color of first entity.
-    for (const auto& e : viewport->document()->draftDocument().entities()) {
-        if (e->id() == m_currentIds.front()) {
-            uint32_t c = e->color();
-            if (c != 0x00000000) {
-                initial = QColor((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
-            }
-            break;
+    if (const auto e = viewport->document()->draftDocument().sharedEntity(m_currentIds.front())) {
+        uint32_t c = e->color();
+        if (c != 0x00000000) {
+            initial = QColor((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
         }
     }
 

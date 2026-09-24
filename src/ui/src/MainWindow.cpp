@@ -2158,15 +2158,20 @@ void MainWindow::onCut() {
 
     // Only remove entities on visible/unlocked layers.
     const auto& layerMgr = m_document->layerManager();
-    auto composite = std::make_unique<doc::CompositeCommand>("Cut");
-    for (const auto& entity : m_document->draftDocument().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
+    auto& drawing = m_document->draftDocument();
+    std::vector<uint64_t> removable;
+    removable.reserve(ids.size());
+    for (uint64_t id : ids) {
+        const draft::DraftEntity* entity = drawing.findEntity(id);
+        if (entity == nullptr) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
-        composite->addCommand(
-            std::make_unique<doc::RemoveEntityCommand>(m_document->draftDocument(), entity->id()));
+        removable.push_back(id);
     }
-    if (!composite->empty()) {
+    if (!removable.empty()) {
+        auto composite = std::make_unique<doc::CompositeCommand>("Cut");
+        composite->addCommand(
+            std::make_unique<doc::RemoveEntitiesCommand>(drawing, std::move(removable)));
         m_document->undoStack().push(std::move(composite));
     }
 
@@ -2367,16 +2372,13 @@ void MainWindow::onRectangularArray() {
             if (r == 0 && c == 0) continue;  // Skip original position.
             math::Vec2 offset(c * sx, r * sy);
             for (uint64_t id : filteredIds) {
-                for (const auto& entity : m_document->draftDocument().entities()) {
-                    if (entity->id() == id) {
-                        auto clone = entity->clone();
-                        clone->translate(offset);
-                        newIds.push_back(clone->id());
-                        allClones.push_back(clone);
-                        composite->addCommand(std::make_unique<doc::AddEntityCommand>(
-                            m_document->draftDocument(), clone));
-                        break;
-                    }
+                if (const auto entity = m_document->draftDocument().sharedEntity(id)) {
+                    auto clone = entity->clone();
+                    clone->translate(offset);
+                    newIds.push_back(clone->id());
+                    allClones.push_back(clone);
+                    composite->addCommand(std::make_unique<doc::AddEntityCommand>(
+                        m_document->draftDocument(), clone));
                 }
             }
         }
@@ -2425,16 +2427,13 @@ void MainWindow::onPolarArray() {
     for (int i = 1; i < count; ++i) {
         double angle = step * i;
         for (uint64_t id : filteredIds) {
-            for (const auto& entity : m_document->draftDocument().entities()) {
-                if (entity->id() == id) {
-                    auto clone = entity->clone();
-                    clone->rotate(center, angle);
-                    newIds.push_back(clone->id());
-                    allClones.push_back(clone);
-                    composite->addCommand(std::make_unique<doc::AddEntityCommand>(
-                        m_document->draftDocument(), clone));
-                    break;
-                }
+            if (const auto entity = m_document->draftDocument().sharedEntity(id)) {
+                auto clone = entity->clone();
+                clone->rotate(center, angle);
+                newIds.push_back(clone->id());
+                allClones.push_back(clone);
+                composite->addCommand(
+                    std::make_unique<doc::AddEntityCommand>(m_document->draftDocument(), clone));
             }
         }
     }
@@ -2645,8 +2644,10 @@ void MainWindow::onInsertBlock() {
     auto def = m_document->draftDocument().blockTable().findBlock(dlg.selectedBlock());
     if (!def) return;
 
-    // Create the tool and set it active.  The tool is owned by ToolManager lifetime
-    // so we manage it independently (it replaces any existing active tool).
+    // A new InsertBlockTool replaces the previous one, which may be the active
+    // tool: the viewport lets go of it (deactivating it while it still exists)
+    // before it is destroyed.
+    m_viewport->setActiveTool(nullptr);
     auto tool = std::make_unique<InsertBlockTool>(def, dlg.rotation(), dlg.scale());
     m_toolManager->registerTool(std::move(tool));
     m_toolManager->setActiveTool("Insert Block");

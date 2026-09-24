@@ -58,26 +58,42 @@ std::string AddEntityCommand::description() const {
 
 RemoveEntityCommand::RemoveEntityCommand(draft::DraftDocument& doc, uint64_t entityId)
     : m_doc(doc), m_entityId(entityId) {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == entityId) {
-            m_entity = e;
-            break;
-        }
+    if (const auto e = m_doc.sharedEntity(entityId)) {
+        m_entity = e;
     }
 }
 
 void RemoveEntityCommand::execute() {
-    m_doc.removeEntity(m_entityId);
+    m_position = m_doc.removeEntity(m_entityId);
 }
 
 void RemoveEntityCommand::undo() {
     if (m_entity) {
-        m_doc.addEntity(m_entity);
+        m_doc.insertEntity(m_position, m_entity);
     }
 }
 
 std::string RemoveEntityCommand::description() const {
     return "Remove Entity";
+}
+
+// --- RemoveEntitiesCommand ---
+
+RemoveEntitiesCommand::RemoveEntitiesCommand(draft::DraftDocument& doc,
+                                             std::vector<uint64_t> entityIds)
+    : m_doc(doc), m_entityIds(std::move(entityIds)) {}
+
+void RemoveEntitiesCommand::execute() {
+    m_removed = m_doc.removeEntities(m_entityIds);
+}
+
+void RemoveEntitiesCommand::undo() {
+    m_doc.restoreEntities(m_removed);
+    m_removed.clear();
+}
+
+std::string RemoveEntitiesCommand::description() const {
+    return m_entityIds.size() == 1 ? "Remove Entity" : "Remove Entities";
 }
 
 // --- MoveEntityCommand ---
@@ -95,14 +111,11 @@ MoveEntityCommand::MoveEntityCommand(draft::DraftDocument& doc,
 
 void MoveEntityCommand::execute() {
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->translate(m_delta);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->translate(m_delta);
+            m_doc.updateEntityBounds(id);
         }
     }
-    m_doc.rebuildSpatialIndex();
 
     // Auto-solve constraints after geometry change.
     if (!m_solveCmd) {
@@ -122,14 +135,11 @@ void MoveEntityCommand::undo() {
 
     math::Vec2 neg{-m_delta.x, -m_delta.y};
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->translate(neg);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->translate(neg);
+            m_doc.updateEntityBounds(id);
         }
     }
-    m_doc.rebuildSpatialIndex();
 }
 
 std::string MoveEntityCommand::description() const {
@@ -170,13 +180,10 @@ DuplicateEntityCommand::DuplicateEntityCommand(draft::DraftDocument& doc,
 void DuplicateEntityCommand::execute() {
     if (m_clones.empty()) {
         for (uint64_t id : m_sourceIds) {
-            for (const auto& e : m_doc.entities()) {
-                if (e->id() == id) {
-                    auto clone = e->clone();
-                    clone->translate(m_offset);
-                    m_clones.push_back(clone);
-                    break;
-                }
+            if (const auto e = m_doc.sharedEntity(id)) {
+                auto clone = e->clone();
+                clone->translate(m_offset);
+                m_clones.push_back(clone);
             }
         }
         remapCloneGroupIds(m_doc, m_clones);
@@ -215,13 +222,10 @@ MirrorEntityCommand::MirrorEntityCommand(draft::DraftDocument& doc,
 void MirrorEntityCommand::execute() {
     if (m_mirroredEntities.empty()) {
         for (uint64_t id : m_sourceIds) {
-            for (const auto& e : m_doc.entities()) {
-                if (e->id() == id) {
-                    auto mirrored = e->clone();
-                    mirrored->mirror(m_axisP1, m_axisP2);
-                    m_mirroredEntities.push_back(mirrored);
-                    break;
-                }
+            if (const auto e = m_doc.sharedEntity(id)) {
+                auto mirrored = e->clone();
+                mirrored->mirror(m_axisP1, m_axisP2);
+                m_mirroredEntities.push_back(mirrored);
             }
         }
         remapCloneGroupIds(m_doc, m_mirroredEntities);
@@ -260,13 +264,10 @@ RotateEntityCommand::RotateEntityCommand(draft::DraftDocument& doc,
 void RotateEntityCommand::execute() {
     if (m_rotatedEntities.empty()) {
         for (uint64_t id : m_sourceIds) {
-            for (const auto& e : m_doc.entities()) {
-                if (e->id() == id) {
-                    auto rotated = e->clone();
-                    rotated->rotate(m_center, m_angle);
-                    m_rotatedEntities.push_back(rotated);
-                    break;
-                }
+            if (const auto e = m_doc.sharedEntity(id)) {
+                auto rotated = e->clone();
+                rotated->rotate(m_center, m_angle);
+                m_rotatedEntities.push_back(rotated);
             }
         }
         remapCloneGroupIds(m_doc, m_rotatedEntities);
@@ -305,13 +306,10 @@ ScaleEntityCommand::ScaleEntityCommand(draft::DraftDocument& doc,
 void ScaleEntityCommand::execute() {
     if (m_scaledEntities.empty()) {
         for (uint64_t id : m_sourceIds) {
-            for (const auto& e : m_doc.entities()) {
-                if (e->id() == id) {
-                    auto scaled = e->clone();
-                    scaled->scale(m_basePoint, m_factor);
-                    m_scaledEntities.push_back(scaled);
-                    break;
-                }
+            if (const auto e = m_doc.sharedEntity(id)) {
+                auto scaled = e->clone();
+                scaled->scale(m_basePoint, m_factor);
+                m_scaledEntities.push_back(scaled);
             }
         }
         remapCloneGroupIds(m_doc, m_scaledEntities);
@@ -350,23 +348,17 @@ ChangeEntityLayerCommand::ChangeEntityLayerCommand(draft::DraftDocument& doc,
 void ChangeEntityLayerCommand::execute() {
     m_oldLayers.clear();
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_oldLayers.emplace_back(id, e->layer());
-                e->setLayer(m_newLayer);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_oldLayers.emplace_back(id, e->layer());
+            e->setLayer(m_newLayer);
         }
     }
 }
 
 void ChangeEntityLayerCommand::undo() {
     for (const auto& [id, oldLayer] : m_oldLayers) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setLayer(oldLayer);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setLayer(oldLayer);
         }
     }
 }
@@ -385,23 +377,17 @@ ChangeEntityColorCommand::ChangeEntityColorCommand(draft::DraftDocument& doc,
 void ChangeEntityColorCommand::execute() {
     m_oldColors.clear();
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_oldColors.emplace_back(id, e->color());
-                e->setColor(m_newColor);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_oldColors.emplace_back(id, e->color());
+            e->setColor(m_newColor);
         }
     }
 }
 
 void ChangeEntityColorCommand::undo() {
     for (const auto& [id, oldColor] : m_oldColors) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setColor(oldColor);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setColor(oldColor);
         }
     }
 }
@@ -420,23 +406,17 @@ ChangeEntityLineWidthCommand::ChangeEntityLineWidthCommand(draft::DraftDocument&
 void ChangeEntityLineWidthCommand::execute() {
     m_oldWidths.clear();
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_oldWidths.emplace_back(id, e->lineWidth());
-                e->setLineWidth(m_newWidth);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_oldWidths.emplace_back(id, e->lineWidth());
+            e->setLineWidth(m_newWidth);
         }
     }
 }
 
 void ChangeEntityLineWidthCommand::undo() {
     for (const auto& [id, oldWidth] : m_oldWidths) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setLineWidth(oldWidth);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setLineWidth(oldWidth);
         }
     }
 }
@@ -455,23 +435,17 @@ ChangeEntityLineTypeCommand::ChangeEntityLineTypeCommand(draft::DraftDocument& d
 void ChangeEntityLineTypeCommand::execute() {
     m_oldLineTypes.clear();
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_oldLineTypes.emplace_back(id, e->lineType());
-                e->setLineType(m_newLineType);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_oldLineTypes.emplace_back(id, e->lineType());
+            e->setLineType(m_newLineType);
         }
     }
 }
 
 void ChangeEntityLineTypeCommand::undo() {
     for (const auto& [id, oldLt] : m_oldLineTypes) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setLineType(oldLt);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setLineType(oldLt);
         }
     }
 }
@@ -487,24 +461,18 @@ ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc, 
     : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
 
 void ChangeTextOverrideCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
-                m_oldText = dim->textOverride();
-                dim->setTextOverride(m_newText);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
+            m_oldText = dim->textOverride();
+            dim->setTextOverride(m_newText);
         }
     }
 }
 
 void ChangeTextOverrideCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
-                dim->setTextOverride(m_oldText);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* dim = dynamic_cast<draft::DraftDimension*>(e.get())) {
+            dim->setTextOverride(m_oldText);
         }
     }
 }
@@ -572,11 +540,8 @@ void RemoveLayerCommand::undo() {
 
     // Restore entity layers.
     for (const auto& [id, oldLayer] : m_movedEntities) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setLayer(oldLayer);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setLayer(oldLayer);
         }
     }
 }
@@ -640,15 +605,12 @@ void CreateBlockCommand::execute() {
     m_savedEntities.clear();
     math::Vec2 centroid;
     for (uint64_t id : m_entityIds) {
-        for (const auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_savedEntities.push_back(e);
-                auto bb = e->boundingBox();
-                if (bb.isValid()) {
-                    auto c = bb.center();
-                    centroid += math::Vec2(c.x, c.y);
-                }
-                break;
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_savedEntities.push_back(e);
+            auto bb = e->boundingBox();
+            if (bb.isValid()) {
+                auto c = bb.center();
+                centroid += math::Vec2(c.x, c.y);
             }
         }
     }
@@ -703,11 +665,8 @@ ExplodeBlockCommand::ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blo
 
 void ExplodeBlockCommand::execute() {
     // Find the block reference.
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_blockRefId) {
-            m_savedBlockRef = e;
-            break;
-        }
+    if (const auto e = m_doc.sharedEntity(m_blockRefId)) {
+        m_savedBlockRef = e;
     }
     auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
     if (!ref) return;
@@ -772,28 +731,22 @@ ChangeBlockRefRotationCommand::ChangeBlockRefRotationCommand(draft::DraftDocumen
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
 void ChangeBlockRefRotationCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
-                m_oldRotation = ref->rotation();
-                ref->setRotation(m_newRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+            m_oldRotation = ref->rotation();
+            ref->setRotation(m_newRotation);
         }
     }
-    m_doc.rebuildSpatialIndex();
+    m_doc.updateEntityBounds(m_entityId);
 }
 
 void ChangeBlockRefRotationCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
-                ref->setRotation(m_oldRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+            ref->setRotation(m_oldRotation);
         }
     }
-    m_doc.rebuildSpatialIndex();
+    m_doc.updateEntityBounds(m_entityId);
 }
 
 std::string ChangeBlockRefRotationCommand::description() const {
@@ -807,28 +760,22 @@ ChangeBlockRefScaleCommand::ChangeBlockRefScaleCommand(draft::DraftDocument& doc
     : m_doc(doc), m_entityId(entityId), m_newScale(newScale) {}
 
 void ChangeBlockRefScaleCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
-                m_oldScale = ref->uniformScale();
-                ref->setUniformScale(m_newScale);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+            m_oldScale = ref->uniformScale();
+            ref->setUniformScale(m_newScale);
         }
     }
-    m_doc.rebuildSpatialIndex();
+    m_doc.updateEntityBounds(m_entityId);
 }
 
 void ChangeBlockRefScaleCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
-                ref->setUniformScale(m_oldScale);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* ref = dynamic_cast<draft::DraftBlockRef*>(e.get())) {
+            ref->setUniformScale(m_oldScale);
         }
     }
-    m_doc.rebuildSpatialIndex();
+    m_doc.updateEntityBounds(m_entityId);
 }
 
 std::string ChangeBlockRefScaleCommand::description() const {
@@ -842,26 +789,22 @@ ChangeTextContentCommand::ChangeTextContentCommand(draft::DraftDocument& doc, ui
     : m_doc(doc), m_entityId(entityId), m_newText(newText) {}
 
 void ChangeTextContentCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                m_oldText = txt->text();
-                txt->setText(m_newText);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            m_oldText = txt->text();
+            txt->setText(m_newText);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeTextContentCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                txt->setText(m_oldText);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            txt->setText(m_oldText);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeTextContentCommand::description() const {
@@ -875,26 +818,22 @@ ChangeTextHeightCommand::ChangeTextHeightCommand(draft::DraftDocument& doc, uint
     : m_doc(doc), m_entityId(entityId), m_newHeight(newHeight) {}
 
 void ChangeTextHeightCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                m_oldHeight = txt->textHeight();
-                txt->setTextHeight(m_newHeight);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            m_oldHeight = txt->textHeight();
+            txt->setTextHeight(m_newHeight);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeTextHeightCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                txt->setTextHeight(m_oldHeight);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            txt->setTextHeight(m_oldHeight);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeTextHeightCommand::description() const {
@@ -908,26 +847,22 @@ ChangeTextRotationCommand::ChangeTextRotationCommand(draft::DraftDocument& doc, 
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
 void ChangeTextRotationCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                m_oldRotation = txt->rotation();
-                txt->setRotation(m_newRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            m_oldRotation = txt->rotation();
+            txt->setRotation(m_newRotation);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeTextRotationCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                txt->setRotation(m_oldRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            txt->setRotation(m_oldRotation);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeTextRotationCommand::description() const {
@@ -941,26 +876,22 @@ ChangeTextAlignmentCommand::ChangeTextAlignmentCommand(draft::DraftDocument& doc
     : m_doc(doc), m_entityId(entityId), m_newAlignment(newAlignment) {}
 
 void ChangeTextAlignmentCommand::execute() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                m_oldAlignment = static_cast<int>(txt->alignment());
-                txt->setAlignment(static_cast<draft::TextAlignment>(m_newAlignment));
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            m_oldAlignment = static_cast<int>(txt->alignment());
+            txt->setAlignment(static_cast<draft::TextAlignment>(m_newAlignment));
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeTextAlignmentCommand::undo() {
-    for (const auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
-                txt->setAlignment(static_cast<draft::TextAlignment>(m_oldAlignment));
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* txt = dynamic_cast<draft::DraftText*>(e.get())) {
+            txt->setAlignment(static_cast<draft::TextAlignment>(m_oldAlignment));
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeTextAlignmentCommand::description() const {
@@ -976,26 +907,22 @@ ChangeSplineClosedCommand::ChangeSplineClosedCommand(draft::DraftDocument& doc, 
     : m_doc(doc), m_entityId(entityId), m_newClosed(newClosed) {}
 
 void ChangeSplineClosedCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
-                m_oldClosed = sp->closed();
-                sp->setClosed(m_newClosed);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
+            m_oldClosed = sp->closed();
+            sp->setClosed(m_newClosed);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeSplineClosedCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
-                sp->setClosed(m_oldClosed);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* sp = dynamic_cast<draft::DraftSpline*>(e.get())) {
+            sp->setClosed(m_oldClosed);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeSplineClosedCommand::description() const {
@@ -1011,24 +938,18 @@ ChangeHatchPatternCommand::ChangeHatchPatternCommand(draft::DraftDocument& doc, 
     : m_doc(doc), m_entityId(entityId), m_newPattern(newPattern) {}
 
 void ChangeHatchPatternCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                m_oldPattern = static_cast<int>(h->pattern());
-                h->setPattern(static_cast<draft::HatchPattern>(m_newPattern));
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            m_oldPattern = static_cast<int>(h->pattern());
+            h->setPattern(static_cast<draft::HatchPattern>(m_newPattern));
         }
     }
 }
 
 void ChangeHatchPatternCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                h->setPattern(static_cast<draft::HatchPattern>(m_oldPattern));
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            h->setPattern(static_cast<draft::HatchPattern>(m_oldPattern));
         }
     }
 }
@@ -1046,24 +967,18 @@ ChangeHatchAngleCommand::ChangeHatchAngleCommand(draft::DraftDocument& doc, uint
     : m_doc(doc), m_entityId(entityId), m_newAngle(newAngle) {}
 
 void ChangeHatchAngleCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                m_oldAngle = h->angle();
-                h->setAngle(m_newAngle);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            m_oldAngle = h->angle();
+            h->setAngle(m_newAngle);
         }
     }
 }
 
 void ChangeHatchAngleCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                h->setAngle(m_oldAngle);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            h->setAngle(m_oldAngle);
         }
     }
 }
@@ -1081,24 +996,18 @@ ChangeHatchSpacingCommand::ChangeHatchSpacingCommand(draft::DraftDocument& doc, 
     : m_doc(doc), m_entityId(entityId), m_newSpacing(newSpacing) {}
 
 void ChangeHatchSpacingCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                m_oldSpacing = h->spacing();
-                h->setSpacing(m_newSpacing);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            m_oldSpacing = h->spacing();
+            h->setSpacing(m_newSpacing);
         }
     }
 }
 
 void ChangeHatchSpacingCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
-                h->setSpacing(m_oldSpacing);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* h = dynamic_cast<draft::DraftHatch*>(e.get())) {
+            h->setSpacing(m_oldSpacing);
         }
     }
 }
@@ -1116,26 +1025,22 @@ ChangeEllipseSemiMajorCommand::ChangeEllipseSemiMajorCommand(draft::DraftDocumen
     : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
 
 void ChangeEllipseSemiMajorCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                m_oldValue = el->semiMajor();
-                el->setSemiMajor(m_newValue);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            m_oldValue = el->semiMajor();
+            el->setSemiMajor(m_newValue);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeEllipseSemiMajorCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                el->setSemiMajor(m_oldValue);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            el->setSemiMajor(m_oldValue);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeEllipseSemiMajorCommand::description() const {
@@ -1151,26 +1056,22 @@ ChangeEllipseSemiMinorCommand::ChangeEllipseSemiMinorCommand(draft::DraftDocumen
     : m_doc(doc), m_entityId(entityId), m_newValue(newValue) {}
 
 void ChangeEllipseSemiMinorCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                m_oldValue = el->semiMinor();
-                el->setSemiMinor(m_newValue);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            m_oldValue = el->semiMinor();
+            el->setSemiMinor(m_newValue);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeEllipseSemiMinorCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                el->setSemiMinor(m_oldValue);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            el->setSemiMinor(m_oldValue);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeEllipseSemiMinorCommand::description() const {
@@ -1186,26 +1087,22 @@ ChangeEllipseRotationCommand::ChangeEllipseRotationCommand(draft::DraftDocument&
     : m_doc(doc), m_entityId(entityId), m_newRotation(newRotation) {}
 
 void ChangeEllipseRotationCommand::execute() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                m_oldRotation = el->rotation();
-                el->setRotation(m_newRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            m_oldRotation = el->rotation();
+            el->setRotation(m_newRotation);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 void ChangeEllipseRotationCommand::undo() {
-    for (auto& e : m_doc.entities()) {
-        if (e->id() == m_entityId) {
-            if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
-                el->setRotation(m_oldRotation);
-            }
-            break;
+    if (const auto e = m_doc.sharedEntity(m_entityId)) {
+        if (auto* el = dynamic_cast<draft::DraftEllipse*>(e.get())) {
+            el->setRotation(m_oldRotation);
         }
     }
+    m_doc.updateEntityBounds(m_entityId);  // its bounds may have changed
 }
 
 std::string ChangeEllipseRotationCommand::description() const {
@@ -1232,7 +1129,7 @@ void GripMoveCommand::execute() {
     if (m_firstExec) {
         // State is already applied by the caller (live grip drag).
         m_firstExec = false;
-        m_doc.rebuildSpatialIndex();
+        m_doc.updateEntityBounds(m_entityId);
 
         // Auto-solve constraints after geometry change.
         m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
@@ -1263,21 +1160,14 @@ std::string GripMoveCommand::description() const {
 }
 
 void GripMoveCommand::applyState(const draft::DraftEntity& state) {
-    auto& entities = m_doc.entities();
-    for (auto& e : entities) {
-        if (e->id() == m_entityId) {
-            auto replacement = state.clone();
-            replacement->setId(m_entityId);
-            replacement->setLayer(state.layer());
-            replacement->setColor(state.color());
-            replacement->setLineWidth(state.lineWidth());
-            replacement->setLineType(state.lineType());
-            replacement->setGroupId(state.groupId());
-            e = replacement;
-            m_doc.rebuildSpatialIndex();
-            return;
-        }
-    }
+    auto replacement = state.clone();
+    replacement->setId(m_entityId);
+    replacement->setLayer(state.layer());
+    replacement->setColor(state.color());
+    replacement->setLineWidth(state.lineWidth());
+    replacement->setLineType(state.lineType());
+    replacement->setGroupId(state.groupId());
+    m_doc.replaceEntity(m_entityId, std::move(replacement));
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,23 +1184,17 @@ void GroupEntitiesCommand::execute() {
     }
     m_oldGroupIds.clear();
     for (uint64_t id : m_entityIds) {
-        for (auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                m_oldGroupIds.emplace_back(id, e->groupId());
-                e->setGroupId(m_newGroupId);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_oldGroupIds.emplace_back(id, e->groupId());
+            e->setGroupId(m_newGroupId);
         }
     }
 }
 
 void GroupEntitiesCommand::undo() {
     for (const auto& [id, oldGid] : m_oldGroupIds) {
-        for (auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setGroupId(oldGid);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setGroupId(oldGid);
         }
     }
 }
@@ -1344,11 +1228,8 @@ void UngroupEntitiesCommand::execute() {
 
 void UngroupEntitiesCommand::undo() {
     for (const auto& [id, gid] : m_savedGroupIds) {
-        for (auto& e : m_doc.entities()) {
-            if (e->id() == id) {
-                e->setGroupId(gid);
-                break;
-            }
+        if (const auto e = m_doc.sharedEntity(id)) {
+            e->setGroupId(gid);
         }
     }
 }
