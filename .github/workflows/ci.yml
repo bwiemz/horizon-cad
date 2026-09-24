@@ -669,7 +669,8 @@ jobs:
   fuzz:
     name: Fuzz (libFuzzer)
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    # As the others: with a cold vcpkg cache, Qt is built from source first.
+    timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,read"
