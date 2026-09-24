@@ -11,6 +11,27 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
+- **DXF geometry came in wrong in several common cases (108a).**
+  - A polyline's arc segments (bulges) came in as straight lines.
+  - Mirrored entities (an extrusion of (0, 0, −1)) came in unmirrored.
+  - The old POLYLINE / VERTEX form was not read at all.
+  - A partial ellipse came in whole.
+  - A block inserted with unequal scales was drawn at their average: (2, 1)
+    became 1.5. A mirrored insert lost its mirror.
+  - A block inside a block was dropped.
+
+  All of these are now read as the file means them. Where the drawing model
+  cannot hold something as it was, the import report says what was
+  approximated:
+  - a polyline with arcs comes in as grouped lines and arcs;
+  - a stretched block comes in exploded;
+  - a partial ellipse comes in as a polyline.
+
+  Entities out of the drawing's plane, and 3D polylines, are reported rather
+  than flattened.
+- **Mirroring an arc across an axis that missed its centre put it in the
+  wrong place (108a).** The 2D Mirror tool was affected. Fixed.
+
 - **STEP, STL and glTF could not be reached from the window (107).** STEP
   import and export and glTF export existed in code, but no menu reached
   them, and there was no STL export at all. File ▸ Import and File ▸ Export

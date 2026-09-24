@@ -81,6 +81,44 @@ POINT, MTEXT chunk order and `\P` / `%%` codes, the full ACI colour table,
 entity gets a DXF fixture authored to the spec. Anything still unread goes
 into the 107 report.
 
+This is split in two: **108a** for geometry and **108b** for text and
+metadata (MTEXT codes, `%%` codes, the ACI table, `$INSUNITS`,
+`$DWGCODEPAGE`, escaped output).
+
+**108a as built.** Import now reads every section's raw entities before it
+builds any of them, so a POLYLINE can take its VERTEX entities and a block
+can insert one defined after it.
+- **Polyline arcs.** An LWPOLYLINE or POLYLINE segment with a bulge comes
+  in as an arc. The polyline's pieces are kept together as one group, since
+  a polyline here has straight segments only; it is reported as
+  approximated.
+- **The old POLYLINE form.** POLYLINE / VERTEX / SEQEND is read. A 3D
+  polyline or mesh is reported as not read, not flattened.
+- **Object coordinate systems.** An extrusion of (0, 0, −1) is mirrored
+  exactly for CIRCLE, ARC, LWPOLYLINE, POLYLINE, HATCH and INSERT.
+  - TEXT keeps its position mirrored but cannot be drawn mirrored; this is
+    reported.
+  - Any other extrusion is out of the drawing's plane and is reported.
+- **Partial ELLIPSE** (41/42) becomes a polyline on the curve, which is
+  reported. A whole one stays an ellipse.
+- **INSERT scales.** Unequal scales used to be averaged, so (2, 1) drew at
+  1.5, and a negative one lost its mirror. Such an insert is now placed piece
+  by piece:
+  - exactly for a similarity;
+  - for unequal scales, lines, polylines, splines and hatches stay exact and
+    a circle becomes an exact ellipse, while arcs and ellipses become
+    polylines and text keeps its proportions.
+
+  Pieces on layer 0 take the insert's layer, and ByBlock colour takes its
+  colour.
+- **Nested INSERTs** are flattened into their block. A block that contains
+  itself is refused.
+- **POINT** is reported as not read: there is no point entity yet.
+- **Found while testing:** `DraftArc::mirror` read its end points after
+  moving its centre. Every arc mirrored in an axis that does not pass
+  through its centre came out wrong, and the 2D Mirror tool is among the
+  callers. Fixed, with the drafting module's first transform tests.
+
 ## Phase 109 — STEP fidelity
 
 `LENGTH_UNIT` conversion, faces with inner loops (now that Phase 105

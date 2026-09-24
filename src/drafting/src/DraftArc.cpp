@@ -97,13 +97,14 @@ std::shared_ptr<DraftEntity> DraftArc::clone() const {
 }
 
 void DraftArc::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
-    // Mirror center.
+    // Mirror the end points first: startPoint() and endPoint() read the
+    // center, and reading them after moving it put both ends in the wrong
+    // place for any axis not through the center.
+    const math::Vec2 sp = mirrorPoint(startPoint(), axisP1, axisP2);
+    const math::Vec2 ep = mirrorPoint(endPoint(), axisP1, axisP2);
     m_center = mirrorPoint(m_center, axisP1, axisP2);
 
-    // Mirror the start and end points, then recompute angles.
-    // Mirroring reverses the winding, so swap start/end.
-    math::Vec2 sp = mirrorPoint(startPoint(), axisP1, axisP2);
-    math::Vec2 ep = mirrorPoint(endPoint(), axisP1, axisP2);
+    // Mirroring reverses the winding, so the old start becomes the new end.
 
     // After mirror, the old start becomes new end and vice versa.
     m_startAngle = math::normalizeAngle(std::atan2(ep.y - m_center.y, ep.x - m_center.x));
