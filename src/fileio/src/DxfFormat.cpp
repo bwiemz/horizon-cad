@@ -1311,8 +1311,8 @@ Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const 
     ++im.placedPieces;
     if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(&e)) {
         // A block within the block: place its pieces, then these.
-        const double sx = ref->mirrored() ? -ref->uniformScale() : ref->uniformScale();
-        Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(), sx,
+        const double innerSx = ref->mirrored() ? -ref->uniformScale() : ref->uniformScale();
+        Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(), innerSx,
                                     ref->uniformScale(), im, depth + 1);
         Entities out;
         for (const auto& piece : inner) {

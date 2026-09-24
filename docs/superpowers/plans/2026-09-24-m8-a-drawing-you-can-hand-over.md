@@ -90,6 +90,10 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
       mirrored reference rather than exploding it.
     - Text in a mirrored block plots readable, over its mirror image's
       place, and ends where it began.
+  - **The fix's own review** found that importing a DXF insert, at
+    unequal scales, of a block the drawing already had placed the blocks
+    inside it with the inner reference's x scale in place of the insert's.
+    A local name shadowed the parameter.
   - **`DraftText::mirror` turned text half a turn too far.** It both
     reflected the reading direction and flipped the alignment, so a text
     mirrored in an upright axis came out upside down, on the wrong side of
@@ -97,7 +101,7 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
 
 ### Tests
 
-17 new, 1 changed.
+18 new, 1 changed.
 - Plot scene:
   - layer styles, and hidden and locked layers;
   - blocks expanded, nested, with ByBlock and text;
@@ -122,7 +126,9 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
   - mirrored and half-turned references round-trip through the native
     format and DXF;
   - the DXF insert test now expects a mirrored reference, not exploded
-    pieces.
+    pieces;
+  - a block already in the drawing places the blocks inside it by both
+    scales.
   All of them fail on the code before the fix.
 
 ### Not done
