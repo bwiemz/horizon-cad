@@ -11,6 +11,8 @@
 #include <QTabBar>
 #include <QTemporaryDir>
 #include <QToolButton>
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include "UiTestSupport.h"
@@ -19,6 +21,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -170,4 +173,44 @@ TEST(RebuildJobTest, ACancelledRebuildIsDoneWhenTheTabIsShownAgain) {
     ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_NEAR(volumeOf(part), 24.0 * 12, 1e-6);
+}
+
+// Saving while a rebuild runs on a worker caches the part as it is now. The
+// document still held the part from before the edit, and Save wrote its mesh
+// as the file's tessellation cache, which lightweight assembly loads show.
+TEST(RebuildJobTest, SavingDuringARebuildCachesThePartAsItIsNow) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    const auto addBox = [&w](double x, double y, double z) {
+        FormFiller filler(QStringLiteral("Box"), FormAnswers()
+                                                     .number(QStringLiteral("size0"), x)
+                                                     .number(QStringLiteral("size1"), y)
+                                                     .number(QStringLiteral("size2"), z));
+        w.findChild<QAction*>(QStringLiteral("action_box"))->trigger();
+        return filler.seen();
+    };
+    ASSERT_TRUE(addBox(2, 3, 4));
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+    Document& part = *w.activeDocument();
+    ASSERT_NE(part.solid(), nullptr);
+    const std::string path = dir.filePath(QStringLiteral("part.hcad")).toStdString();
+    part.setFilePath(path);
+
+    ASSERT_TRUE(addBox(10, 1, 1));
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+
+    // Undo the long box. The rebuild goes to a worker; until it is applied,
+    // the document's solid still has the long box in it.
+    w.findChild<QAction*>(QStringLiteral("action_undo"))->trigger();
+    ASSERT_TRUE(w.rebuildRunning());
+    w.findChild<QAction*>(QStringLiteral("action_save"))->trigger();
+
+    const auto mesh = hz::io::NativeFormat::loadPartMesh(path);
+    ASSERT_NE(mesh, nullptr);
+    float maxExtent = 0.0f;
+    for (float c : mesh->positions) maxExtent = std::max(maxExtent, std::abs(c));
+    EXPECT_LT(maxExtent, 4.5f) << "the cache still held the undone 10-long box";
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
 }

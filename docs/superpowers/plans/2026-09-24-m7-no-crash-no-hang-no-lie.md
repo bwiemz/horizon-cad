@@ -160,8 +160,13 @@ without it.
   `FeatureTree::buildWithDiagnostics` replays the features up to the failing
   one, so a failed build pays twice and a successful one nothing.
   `Document::needsBuild()` counts a failed build as built until the tree
-  changes. `rebuildScene` and Save build only a model that has no solid and
-  has not been built.
+  changes. `rebuildScene` builds only a model that has no solid and has not
+  been built.
+- **Save caches the part as it is.** Save builds any model that is behind its
+  features before writing the tessellation cache. It used to build only when
+  there was no solid, so during a rebuild on a worker it cached the part as
+  it was before the edit, and lightweight assembly loads showed that. (Found
+  in review; the gap predates this phase.)
 - **Mass properties** triangulate every face of more than three corners
   (`BoundaryMesh::triangulatePolygon`), not a fan. Volume is unchanged.
 - **Fillet corners** carry `NurbsSurface::makeSphereOctant`, an exact
@@ -170,7 +175,7 @@ without it.
   read.
 - **The Boolean header** no longer says holes are ignored and split faces are
   never merged back.
-- **Tests:** 10 new.
+- **Tests:** 11 new.
   - Shell:
     - an asymmetric L, with its exact cup volume;
     - the thickness limit, 1.4 accepted and 1.5 refused;
@@ -183,6 +188,7 @@ without it.
   - Mass properties: a U-channel's area.
   - A corner blend's mesh area matches the part's.
   - The octant patch itself.
+  - Save during a rebuild on a worker caches the part as it is.
 - **Not done** (Milestone 11):
   - a real offset-based shell;
   - Draft on selected faces;
