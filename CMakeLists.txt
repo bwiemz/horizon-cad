@@ -20,7 +20,9 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Options
 option(HZ_BUILD_TESTS "Build unit and integration tests" ON)
 option(HZ_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
-option(HZ_ENABLE_SCRIPTING "Build the embedded Python scripting module" ON)
+# Off by default: a script runs with the user's full rights, with nothing to
+# stop it, until scripting is sandboxed. CI and developers turn it on.
+option(HZ_ENABLE_SCRIPTING "Build the embedded Python scripting module (not sandboxed)" OFF)
 option(HZ_BUILD_FUZZERS "Also build libFuzzer executables for the file readers (Clang)" OFF)
 
 # CMake module path

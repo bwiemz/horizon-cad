@@ -118,9 +118,72 @@ run code it should not, or give an answer that looks right and is not:
 
 ## Phase 120: Scripting & plugin safety
 
-Clear the scripting `doc` global after each run (a use-after-free);
-`HZ_ENABLE_SCRIPTING` off by default until scripts are sandboxed; plugin
-entry scripts re-validated when loaded.
+### What the audit found
+
+- **A script could reach a document after it was gone.**
+  - `ScriptEngine::run(code, ctx)` bound `ctx` into the interpreter's
+    globals as `doc`, by raw pointer, and never removed it. The caller's
+    context could be destroyed as soon as the run returned, but `doc` stayed
+    for the next run.
+  - Removing the global alone would not have been enough: a script can keep
+    `doc` under another name (`kept = doc`), and every such copy held the
+    same raw pointer.
+
+  Under AddressSanitizer, the old code fails the new test with a
+  stack-use-after-scope.
+- **Scripting was built by default** wherever Python and pybind11 were
+  found. A script runs with the user's full rights, and nothing sandboxes
+  it.
+- **Plugins were checked once, at discovery.** Nothing checked them again
+  before they would run: an entry script swapped afterwards for a link out
+  of the plugin, or a manifest that added a permission after the user
+  enabled the plugin, would have gone through. There was also no load path
+  at all, so no single place where such a check could live.
+
+### As built
+
+- **`doc` lives exactly as long as its run:**
+  - the document is bound as a `DocHandle`, not a raw `ScriptContext*`.
+    Every copy a script keeps is that one handle;
+  - when the run ends, the handle is released and `doc` removed. A kept copy
+    then raises "this document is no longer available" instead of reaching
+    freed memory;
+  - the end of the run is a scope object, so it happens however the run
+    ends, a C++ exception included. Its teardown uses the C API, which
+    cannot throw. `eval()` now also reports a result that fails to convert,
+    instead of throwing.
+- **Scripting is off by default** (`HZ_ENABLE_SCRIPTING=OFF`). The CI build
+  jobs turn it on, so it is still built and tested on Windows and Linux. The
+  release workflow (Phase 117) builds without it.
+- **`PluginRegistry::prepareLoad(name, appVersion)`** is the one way to load
+  a plugin. It checks, at load time:
+  - that the plugin is registered, enabled and compatible;
+  - that its `plugin.json` still passes every discovery check, containment
+    of the entry included;
+  - that its manifest is unchanged since discovery (permissions compared as
+    a set). A changed plugin must be rediscovered and enabled again.
+
+  It then reads the entry script through its resolved path and returns the
+  source, so a loader runs exactly the bytes that were checked.
+- **Tests:** 9 new:
+  - four in `hz_scripting_tests`, now 27, passing under ASan:
+    - `doc` is gone after a run;
+    - a kept copy is cut off, and a new run still gets a working `doc`;
+    - a failed run still ends its scope;
+    - a script cannot construct a document;
+  - five in `hz_plugin_tests`, now 18:
+    - enabled only;
+    - compatibility;
+    - a changed manifest;
+    - files broken after discovery;
+    - an entry replaced by a link out of the plugin.
+- **Not done:**
+  - Scripts and plugins are still not sandboxed, and plugin permissions are
+    still not enforced. Both are documented in SECURITY.md.
+  - Nothing in the application runs scripts or plugins yet.
+  - `prepareLoad` narrows the gap between checking the entry and reading
+    it to one step; it does not close it. That would need opening each path
+    component without following links.
 
 ## Phase 121: CAM & FEA honesty
 

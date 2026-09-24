@@ -406,3 +406,74 @@ TEST(ScriptEngineTest, ThermalAnalysisWithoutSolidDoesNotConverge) {
     ASSERT_TRUE(res.ok) << res.error;
     EXPECT_EQ(res.output, "False\n");
 }
+
+// ---------------------------------------------------------------------------
+// `doc` lives only as long as its run (Phase 120)
+// ---------------------------------------------------------------------------
+
+// `doc` was left in the globals after a run, pointing at a context the caller
+// then destroyed; the next run could use it. It is now gone when the run ends.
+TEST(ScriptEngineTest, DocIsRemovedWhenTheRunEnds) {
+    ScriptEngine engine;
+    {
+        hz::doc::Document doc;
+        doc.setType(hz::doc::DocumentType::Part);
+        ScriptContext ctx(doc);
+        auto res = engine.run("print(doc.feature_count())", &ctx);
+        ASSERT_TRUE(res.ok) << res.error;
+        EXPECT_EQ(res.output, "0\n");
+    }
+    auto res = engine.run("print('doc' in globals())");
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "False\n");
+}
+
+// A script that keeps `doc` under another name cannot use it once its run is
+// over: the call raises instead of reaching the destroyed context (which
+// AddressSanitizer would report as a use after free).
+TEST(ScriptEngineTest, AKeptDocIsCutOffAfterItsRun) {
+    ScriptEngine engine;
+    {
+        hz::doc::Document doc;
+        doc.setType(hz::doc::DocumentType::Part);
+        ScriptContext ctx(doc);
+        ASSERT_TRUE(engine.run("kept = doc\nkept_list = [doc]", &ctx).ok);
+    }
+    for (const char* use : {"kept.feature_count()", "kept_list[0].add_box(1.0, 1.0, 1.0)"}) {
+        auto res = engine.run(use);
+        EXPECT_FALSE(res.ok) << use;
+        EXPECT_NE(res.error.find("no longer available"), std::string::npos) << res.error;
+    }
+
+    // A new run gets a working `doc` again, while the kept one stays cut off.
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+    auto res = engine.run("doc.add_box(1.0, 2.0, 3.0)\nprint(doc.feature_count())", &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "1\n");
+    EXPECT_FALSE(engine.run("kept.feature_count()", &ctx).ok);
+}
+
+// The run's scope is undone when the script fails too: its output is kept and
+// `doc` is removed, from run() and eval() alike.
+TEST(ScriptEngineTest, AFailedRunStillEndsItsScope) {
+    ScriptEngine engine;
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+    auto failed = engine.run("print('before')\nraise ValueError('boom')", &ctx);
+    EXPECT_FALSE(failed.ok);
+    EXPECT_EQ(failed.output, "before\n");
+    EXPECT_EQ(engine.eval("'doc' in globals()").value, "False");
+
+    EXPECT_FALSE(engine.eval("doc.no_such_method()", &ctx).ok);
+    EXPECT_EQ(engine.eval("'doc' in globals()").value, "False");
+}
+
+// A script cannot make a document of its own: the type has no constructor.
+TEST(ScriptEngineTest, ScriptsCannotConstructADocument) {
+    ScriptEngine engine;
+    auto res = engine.run("horizon.Document()");
+    EXPECT_FALSE(res.ok);
+}

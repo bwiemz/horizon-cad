@@ -31,6 +31,13 @@ struct PluginManifest {
     std::filesystem::path rootDir;  ///< directory the manifest came from
 };
 
+/// A plugin ready to run, as PluginRegistry::prepareLoad() found it.
+struct LoadablePlugin {
+    PluginManifest manifest;
+    std::filesystem::path entryPath;  ///< the entry script, resolved
+    std::string entrySource;          ///< its contents, read after the checks
+};
+
 /// A manifest that failed validation, kept for diagnostics.
 struct ManifestError {
     std::filesystem::path dir;
@@ -67,6 +74,24 @@ public:
     /// plugin. Returns false when the name is unknown.
     bool setEnabled(const std::string& name, bool enabled);
     bool isEnabled(const std::string& name) const;
+
+    /// The one way to load a plugin (Phase 120). Discovery checked the
+    /// plugin's files when it scanned them; they can change after that, so
+    /// this checks the plugin again, as it is loaded:
+    /// - it is registered, enabled and compatible with @p appVersion;
+    /// - its plugin.json still passes every discovery check, the entry's
+    ///   containment in the plugin directory included;
+    /// - its manifest is unchanged since discovery. A plugin that changed must
+    ///   be discovered and enabled again, so it cannot, say, add a permission
+    ///   after the user enabled it.
+    ///
+    /// The entry script is read after the checks, through its resolved path,
+    /// and returned: the loader runs exactly the source that was checked
+    /// instead of opening the file again. On failure returns std::nullopt,
+    /// with the reason in @p error when given.
+    std::optional<LoadablePlugin> prepareLoad(const std::string& name,
+                                              const std::string& appVersion,
+                                              std::string* error = nullptr) const;
 
     /// True when @p manifest's minAppVersion gate admits @p appVersion.
     static bool isCompatible(const PluginManifest& manifest, const std::string& appVersion);

@@ -28,10 +28,13 @@ public:
     ScriptEngine& operator=(const ScriptEngine&) = delete;
 
     /// Execute Python source. When @p ctx is non-null it is exposed to the
-    /// script as the global `doc`.
+    /// script as the global `doc` for this run only: `doc` is removed when the
+    /// run ends, and any reference the script kept to it raises an error if
+    /// used later, so @p ctx may be destroyed as soon as run() returns.
     Result run(const std::string& code, ScriptContext* ctx = nullptr);
 
     /// Evaluate a single expression; `value` holds its repr() (for a REPL).
+    /// @p ctx is exposed as `doc` as for run().
     Result eval(const std::string& expr, ScriptContext* ctx = nullptr);
 
 private:

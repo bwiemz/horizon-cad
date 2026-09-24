@@ -122,7 +122,7 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-system-qt
 | `HZ_BUILD_TESTS` | `ON` | Build the Google Test suites |
 | `HZ_WARNINGS_AS_ERRORS` | `OFF` | `-Werror` / `/WX` (CI turns it on for Linux) |
 | `HZ_ENABLE_SANITIZERS` | `OFF` | AddressSanitizer + UndefinedBehaviorSanitizer (GCC/Clang) |
-| `HZ_ENABLE_SCRIPTING` | `ON` | Embedded Python, when Python 3 and pybind11 are found |
+| `HZ_ENABLE_SCRIPTING` | `OFF` | Embedded Python, when Python 3 and pybind11 are found. Off until scripts are sandboxed: a script can do anything the user can |
 
 ## Architecture
 
@@ -193,7 +193,7 @@ the application, so users cannot reach it yet. Ratings:
 | kinematics | prototype, library-only | Serial chains only |
 | cam | prototype, library-only | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet. Not safe to run on a machine (Phase 121) |
 | plugin registry | experimental, library-only | Fail-closed validation without code execution; the execution bridge is future work |
-| scripting (Python) | experimental, library-only | Optional embedded CPython; not sandboxed |
+| scripting (Python) | experimental, library-only | Embedded CPython, off by default (`HZ_ENABLE_SCRIPTING`) because it is not sandboxed. A script's `doc` is valid only during its run; a copy it keeps raises if used later |
 | ui / app | experimental | Qt ribbon shell, i18n catalogs, 2D drafting tools with full undo. The 3D ribbon's primitive, Boolean, fillet and chamfer commands are still fixed demos outside the document (Phase 104); Extrude and Revolve are real features that join, cut, intersect or start a body. The first offscreen UI tests exist; the broad harness is Phase 112 |
 
 ## Roadmap
@@ -332,6 +332,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
 | 114 | Done | Off-thread work: a model rebuild that would freeze the window runs on a worker, from a snapshot, with progress and cancel, applied only if the part has not changed; large STEP imports and interference checks run in the background; atomic ID counters. Milestone 4 complete |
 | 119 | Done | PDM integrity: a check-out is one exclusive file creation, so two users racing for a document cannot both get it (with the old lock file, both did); a damaged lock or archive fails closed, where an archive used to read as empty and its next commit overwrote the history; SHA-256 content hashes, verified on every read and push, with old FNV-1a archives still readable |
+| 120 | Done | Scripting & plugin safety: a script's `doc` is removed when its run ends, and a copy the script kept raises instead of reaching a destroyed document (a use-after-free under ASan); scripting is off by default because it is not sandboxed; `PluginRegistry::prepareLoad` checks a plugin again when it is loaded, refuses one whose manifest changed since it was enabled, and returns the entry source it checked |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

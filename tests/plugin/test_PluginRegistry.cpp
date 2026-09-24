@@ -250,3 +250,100 @@ TEST_F(PluginRegistryTest, MissingRootIsEmptyNotFatal) {
     EXPECT_TRUE(registry.plugins().empty());
     EXPECT_TRUE(registry.errors().empty());
 }
+
+// -- Checked again at load (Phase 120) ----------------------------------------
+
+// A loader gets the plugin's entry source only for a plugin the user enabled,
+// and gets the bytes that were checked.
+TEST_F(PluginRegistryTest, LoadingNeedsAnEnabledPlugin) {
+    const fs::path dir = makePlugin("hole-wizard", validManifest());
+    PluginRegistry registry;
+    registry.discover(m_root);
+
+    std::string error;
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+    EXPECT_NE(error.find("not enabled"), std::string::npos) << error;
+    EXPECT_FALSE(registry.prepareLoad("no-such-plugin", "0.1.0", &error));
+    EXPECT_NE(error.find("no plugin named"), std::string::npos) << error;
+
+    ASSERT_TRUE(registry.setEnabled("hole-wizard", true));
+    const auto plugin = registry.prepareLoad("hole-wizard", "0.1.0", &error);
+    ASSERT_TRUE(plugin) << error;
+    EXPECT_EQ(plugin->manifest.name, "hole-wizard");
+    EXPECT_EQ(plugin->entrySource, "# entry\n");
+    EXPECT_EQ(plugin->entryPath, fs::weakly_canonical(dir / "main.py"));
+}
+
+TEST_F(PluginRegistryTest, LoadingChecksCompatibility) {
+    makePlugin("future", R"({"name": "future", "version": "1.0.0", "entry": "main.py",
+                             "minAppVersion": "9.0.0"})");
+    PluginRegistry registry;
+    registry.discover(m_root);
+    ASSERT_TRUE(registry.setEnabled("future", true));
+    std::string error;
+    EXPECT_FALSE(registry.prepareLoad("future", "0.1.0", &error));
+    EXPECT_NE(error.find("9.0.0"), std::string::npos) << error;
+    EXPECT_TRUE(registry.prepareLoad("future", "9.0.0", &error)) << error;
+}
+
+// A plugin that gains a permission after the user enabled it does not load
+// with it: it has to be discovered and enabled again.
+TEST_F(PluginRegistryTest, APluginThatChangedMustBeEnabledAgain) {
+    const fs::path dir = makePlugin("hole-wizard", validManifest());
+    PluginRegistry registry;
+    registry.discover(m_root);
+    ASSERT_TRUE(registry.setEnabled("hole-wizard", true));
+
+    std::ofstream(dir / "plugin.json") << R"({"name": "hole-wizard", "version": "1.2.3",
+        "entry": "main.py", "description": "Parametric hole patterns", "author": "Jane Doe",
+        "permissions": ["document", "ui", "network"]})";
+    std::string error;
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+    EXPECT_NE(error.find("changed"), std::string::npos) << error;
+
+    // Listing the same permissions in another order is not a change.
+    std::ofstream(dir / "plugin.json") << R"({"name": "hole-wizard", "version": "1.2.3",
+        "entry": "main.py", "description": "Parametric hole patterns", "author": "Jane Doe",
+        "permissions": ["ui", "document"]})";
+    EXPECT_TRUE(registry.prepareLoad("hole-wizard", "0.1.0", &error)) << error;
+}
+
+// Files that disappear or break after discovery stop the load.
+TEST_F(PluginRegistryTest, APluginBrokenAfterDiscoveryDoesNotLoad) {
+    const fs::path dir = makePlugin("hole-wizard", validManifest());
+    PluginRegistry registry;
+    registry.discover(m_root);
+    ASSERT_TRUE(registry.setEnabled("hole-wizard", true));
+    std::string error;
+
+    fs::remove(dir / "main.py");
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+    EXPECT_NE(error.find("no longer valid"), std::string::npos) << error;
+
+    std::ofstream(dir / "main.py") << "# entry\n";
+    std::ofstream(dir / "plugin.json") << "{ broken";
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+
+    fs::remove(dir / "plugin.json");
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+    EXPECT_NE(error.find("cannot read"), std::string::npos) << error;
+}
+
+#ifndef _WIN32
+// The entry replaced after discovery by a link to a file outside the plugin
+// (symbolic links need extra rights on Windows).
+TEST_F(PluginRegistryTest, AnEntryThatNowEscapesDoesNotLoad) {
+    const fs::path dir = makePlugin("hole-wizard", validManifest());
+    PluginRegistry registry;
+    registry.discover(m_root);
+    ASSERT_TRUE(registry.setEnabled("hole-wizard", true));
+
+    std::ofstream(m_root / "secret.txt") << "not a plugin";
+    fs::remove(dir / "main.py");
+    fs::create_symlink(m_root / "secret.txt", dir / "main.py");
+
+    std::string error;
+    EXPECT_FALSE(registry.prepareLoad("hole-wizard", "0.1.0", &error));
+    EXPECT_NE(error.find("inside the plugin directory"), std::string::npos) << error;
+}
+#endif

@@ -111,8 +111,9 @@ jobs:
             ninja-build \
             pkg-config
 
+      # Scripting is off by default (it is not sandboxed); test it here.
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }}
+        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }} --config Debug

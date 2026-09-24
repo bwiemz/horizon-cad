@@ -25,6 +25,16 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
     old FNV-1a hash still load, verify and sync.
   - A second handle on an archive appends after the first's commit instead
     of overwriting it.
+- **A script could reach a document after it was gone (120).**
+  - The `doc` a script was given stayed in the interpreter after its run,
+    pointing at a document the caller might already have destroyed. It is
+    now removed when the run ends, and any copy the script kept raises an
+    error if used later.
+  - Scripting is off by default (`HZ_ENABLE_SCRIPTING`), because nothing
+    sandboxes a script.
+  - A plugin is checked again when it is loaded, not only when it is found.
+    One that changed since the user enabled it, such as by adding a
+    permission, has to be enabled again.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 
