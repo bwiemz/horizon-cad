@@ -18,6 +18,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
 using hz::doc::Document;
@@ -129,4 +130,31 @@ TEST(FeatureReasonsTest, BooleanReasonsDistinguishEmptyFromFailed) {
     EXPECT_EQ(hz::model::BooleanOp::execute(*a, *far, hz::model::BooleanType::Intersect, &why),
               nullptr);
     EXPECT_TRUE(contains(why, "do not overlap")) << why;
+}
+
+namespace {
+
+/// A feature whose kernel returns a malformed solid: a box with a stray
+/// vertex that belongs to no edge or face, which no solid can have.
+class MalformedFeature : public hz::doc::Feature {
+public:
+    std::string name() const override { return "Malformed"; }
+    std::string featureID() const override { return "malformed_1"; }
+    bool createsNewBody() const override { return true; }
+    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid> /*input*/,
+                                             std::string* /*reason*/) const override {
+        auto box = hz::model::PrimitiveFactory::makeBox(1, 1, 1);
+        box->allocVertex()->point = Vec3(5, 5, 5);
+        return box;
+    }
+};
+
+}  // namespace
+
+TEST(FeatureReasonsTest, AMalformedResultStopsAtTheFeatureThatMadeIt) {
+    Document doc;
+    doc.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    doc.featureTree().addFeature(std::make_unique<MalformedFeature>());
+    const std::string message = failureAt(doc, 1);
+    EXPECT_TRUE(contains(message, "not a valid solid")) << message;
 }

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <map>
 #include <memory>
 #include <utility>
@@ -367,4 +368,40 @@ TEST(GeometryValidatorTest, LoopOffItsPlanarCarrierIsCaught) {
 TEST(GeometryValidatorTest, EmptySolidIsVacuouslyValid) {
     Solid empty;
     EXPECT_TRUE(GV::check(empty).ok());
+}
+
+// ---------------------------------------------------------------------------
+// facePlane on bilinear carriers (Phase 105): decided from the control net
+// ---------------------------------------------------------------------------
+
+namespace {
+
+Face faceOn(const Vec3& p00, const Vec3& p10, const Vec3& p01, const Vec3& p11) {
+    Face face;
+    face.surface = std::make_shared<hz::geo::NurbsSurface>(
+        std::vector<std::vector<Vec3>>{{p00, p01}, {p10, p11}},
+        std::vector<std::vector<double>>{{1, 1}, {1, 1}}, std::vector<double>{0, 0, 1, 1},
+        std::vector<double>{0, 0, 1, 1}, 1, 1);
+    return face;
+}
+
+}  // namespace
+
+TEST(GeometryValidatorTest, AFlatBilinearFaceFarFromTheOriginIsFlat) {
+    // Decided from the control net. (Sampling the normal at nine points called
+    // about one in nine faces of a 10,000-box pattern curved, and so never
+    // checked them for flatness.)
+    const Vec3 o(12345.678, 9876.5, 20000.25);
+    const Face face = faceOn(o, o + Vec3(1, 0, 0), o + Vec3(0, 1, 0), o + Vec3(1, 1, 0));
+    Vec3 origin, normal;
+    ASSERT_TRUE(GV::facePlane(face, origin, normal));
+    EXPECT_NEAR(std::abs(normal.z), 1.0, 1e-12);
+    EXPECT_NEAR(origin.x, o.x + 0.5, 1e-9);
+}
+
+TEST(GeometryValidatorTest, ATwistedBilinearFaceIsCurved) {
+    const Face face =
+        faceOn(Vec3(0, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(1, 1, 0.25));  // one corner lifted
+    Vec3 origin, normal;
+    EXPECT_FALSE(GV::facePlane(face, origin, normal));
 }

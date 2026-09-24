@@ -759,3 +759,24 @@ TEST(StepFormat, NumbersIgnoreACommaDecimalLocale) {
     const double volume = hz::model::MassPropertiesCalculator::compute(*solids[0]).volume;
     EXPECT_NEAR(volume, 0.5 * 1.5 * 2.5, 1e-12);
 }
+
+TEST(StepFormat, APartWithAHoleThroughItRoundTrips) {
+    // Import validates the solid, and the Euler check used to read
+    // V − E + F = 2(S − R): every torus, every part with a hole through it,
+    // was refused as "failed validation".
+    auto torus = PrimitiveFactory::makeTorus(5.0, 1.5);
+    auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
+    auto boxB = Pattern::transformed(*PrimitiveFactory::makeBox(4, 4, 20),
+                                     hz::math::Mat4::translation(Vec3(3, 3, -5)));
+    auto pierced = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
+    ASSERT_NE(pierced, nullptr);
+    ASSERT_EQ(pierced->genus(), 1);
+
+    for (const hz::topo::Solid* solid : {torus.get(), pierced.get()}) {
+        const auto loaded = StepFormat::fromString(StepFormat::toString({solid}));
+        ASSERT_EQ(loaded.size(), 1u) << StepFormat::lastError();
+        EXPECT_EQ(loaded[0]->genus(), 1);
+        EXPECT_NEAR(MassPropertiesCalculator::compute(*loaded[0]).volume,
+                    MassPropertiesCalculator::compute(*solid).volume, 1e-6);
+    }
+}

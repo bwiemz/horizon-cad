@@ -188,6 +188,30 @@ bool GeometryValidator::facePlane(const Face& face, Vec3& originOut, Vec3& norma
     const double v0 = s.vMin();
     const double v1 = s.vMax();
 
+    // A bilinear patch — the carrier of box, extrusion and pattern faces — is
+    // planar exactly when its four control points are, which settles it
+    // without evaluating the surface: on a 10,000-body pattern the sampling
+    // below took most of a validation that every feature now runs.
+    const auto& cp = s.controlPoints();
+    if (s.degreeU() == 1 && s.degreeV() == 1 && cp.size() == 2 && cp[0].size() == 2 &&
+        cp[1].size() == 2) {
+        const Vec3 du = cp[1][0] - cp[0][0];
+        const Vec3 dv = cp[0][1] - cp[0][0];
+        const Vec3 n = du.cross(dv);  // the normal at (u0, v0), as sampled below
+        const double len = n.length();
+        if (len > 1e-12 * du.length() * dv.length()) {
+            const Vec3 unit = n * (1.0 / len);
+            const Vec3 diagonal = cp[1][1] - cp[0][0];
+            if (std::abs(unit.dot(diagonal)) > 1e-7 * diagonal.length()) {
+                return false;  // Twisted: a curved carrier.
+            }
+            originOut = s.evaluate((u0 + u1) * 0.5, (v0 + v1) * 0.5);
+            normalOut = unit;
+            return true;
+        }
+        // A corner with a collapsed side: fall back to sampling.
+    }
+
     Vec3 ref(0, 0, 0);
     bool haveRef = false;
     for (int i = 0; i <= 2; ++i) {
@@ -218,7 +242,8 @@ bool GeometryValidator::facePlane(const Face& face, Vec3& originOut, Vec3& norma
     return true;
 }
 
-GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double tol) {
+GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double tol, Scope scope) {
+    const bool everything = scope == Scope::Everything;
     Issues issues;
     const double areaTol = tol * tol;
 
@@ -276,7 +301,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
             ++issues.twinCoincidenceErrors;
         }
 
-        if (edge.curve != nullptr) {
+        if (everything && edge.curve != nullptr) {
             const Vec3 c0 = edge.curve->evaluate(edge.curve->tMin());
             const Vec3 c1 = edge.curve->evaluate(edge.curve->tMax());
             const bool forward = c0.distanceTo(a) <= tol && c1.distanceTo(b) <= tol;
@@ -345,7 +370,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
     }
 
     // -- Coincident vertices (reported only) ---------------------------------
-    {
+    if (everything) {
         const double cell = std::max(tol, 1e-12);
         std::map<CellKey, std::vector<const Vertex*>> buckets;
         for (const auto& v : solid.vertices()) {
@@ -380,7 +405,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
 }
 
 bool GeometryValidator::isGeometricallyValid(const Solid& solid, double tol) {
-    return check(solid, tol).ok();
+    return check(solid, tol, Scope::FailingOnly).ok();
 }
 
 std::string GeometryValidator::report(const Solid& solid, double tol) {

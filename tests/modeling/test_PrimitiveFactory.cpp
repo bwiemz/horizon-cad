@@ -388,11 +388,8 @@ TEST(PrimitiveFactoryTest, TorusIsAManifoldGenusOneShell) {
     EXPECT_TRUE(solid->checkManifold());
 
     // A torus has genus 1, so its Euler characteristic is 0, not 2.
-    // Solid::checkEulerFormula() carries no genus term and therefore reports
-    // false here — that is the check's documented limit, not a defect in the
-    // solid, which the geometric validator confirms is sound.
-    EXPECT_FALSE(solid->checkEulerFormula())
-        << "the genus-0 Euler check is expected to reject a torus";
+    EXPECT_TRUE(solid->checkEulerFormula()) << solid->validationReport();
+    EXPECT_EQ(solid->genus(), 1);
     EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
         << GeometryValidator::report(*solid);
 }

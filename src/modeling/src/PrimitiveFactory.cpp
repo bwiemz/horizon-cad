@@ -722,9 +722,7 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, dou
     }
 
     // Grid of tube cross-sections around the major circle.  Unlike the other
-    // primitives this shell has genus 1, so V - E + F is 0 rather than 2 and
-    // Solid::checkEulerFormula() — which carries no genus term — reports
-    // false.  checkManifold() and the geometric validator both hold.
+    // primitives this shell has genus 1, so V - E + F is 0 rather than 2.
     std::vector<std::vector<Vec3>> rings;
     rings.reserve(static_cast<size_t>(segments));
     for (int i = 0; i < segments; ++i) {

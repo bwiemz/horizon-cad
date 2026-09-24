@@ -31,9 +31,7 @@ namespace hz::model {
 /// the axis sweeps through itself, and the result would not be a solid.
 ///
 /// A full revolution of a profile that stays clear of the axis is a torus-like
-/// shell of genus 1.  It is manifold and closed, but @c checkEulerFormula()
-/// carries no genus term and reports such a shell as invalid; see
-/// PrimitiveFactory::makeTorus for the same caveat.
+/// shell of genus 1.
 class Revolve {
 public:
     /// Angular steps around the axis for a full revolution.  A partial

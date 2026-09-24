@@ -80,11 +80,8 @@ public:
     /// @param segments     Facets around the major circle.
     /// @param tubeSegments Facets around the tube; defaults to half @p segments.
     ///
-    /// A genus-1 quad grid (n*m V, 2n*m E, n*m F).  Note that
-    /// `Solid::checkEulerFormula()` has no genus term, so it reports false for
-    /// a torus even though `checkManifold()` and the geometric validator both
-    /// pass — V - E + F is 0 here, not 2.  Returns nullptr unless
-    /// 0 < minorRadius < majorRadius.
+    /// A genus-1 quad grid (n*m V, 2n*m E, n*m F): V - E + F is 0, not 2.
+    /// Returns nullptr unless 0 < minorRadius < majorRadius.
     static std::unique_ptr<topo::Solid> makeTorus(double majorRadius, double minorRadius,
                                                   int segments = kDefaultSegments,
                                                   int tubeSegments = 0);

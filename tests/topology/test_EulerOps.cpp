@@ -738,3 +738,41 @@ TEST(TopologyIntegrationTest, TetrahedronValidationReport) {
     EXPECT_NE(report.find("Euler formula OK"), std::string::npos) << "Report: " << report;
     EXPECT_NE(report.find("Manifold checks OK"), std::string::npos) << "Report: " << report;
 }
+
+// ---------------------------------------------------------------------------
+// The Euler–Poincaré check: V − E + F − R = 2(S − G) (Phase 105)
+// ---------------------------------------------------------------------------
+
+TEST(EulerOpsTest, EulerCheckRejectsCountsNoSolidCanHave) {
+    // An extra vertex that belongs to nothing makes V − E + F odd.
+    Solid stray;
+    euler::makeVertexFaceSolid(stray, Vec3(0, 0, 0));
+    stray.allocVertex();
+    EXPECT_FALSE(stray.checkEulerFormula());
+
+    // Two sphere-like pieces in one shell: V − E + F = 4 > 2S. (The old
+    // check, V − E + F = 2(S − R), rejected every hole through a part and
+    // accepted no genus; this is what it should reject instead.)
+    Solid doubled;
+    euler::makeVertexFaceSolid(doubled, Vec3(0, 0, 0));
+    doubled.allocVertex();
+    doubled.allocFace();
+    EXPECT_EQ(doubled.shellCount(), 1u);
+    EXPECT_FALSE(doubled.checkEulerFormula()) << doubled.validationReport();
+}
+
+TEST(EulerOpsTest, EulerCheckCountsHandlesAndRings) {
+    Solid solid;
+    euler::makeVertexFaceSolid(solid, Vec3(0, 0, 0));
+    EXPECT_TRUE(solid.checkEulerFormula());
+    EXPECT_EQ(solid.genus(), 0);
+
+    // A face's inner loops (rings) count on the left: a second vertex and face
+    // make V − E + F = 4, and two rings bring V − E + F − R back to 2.
+    solid.allocVertex();
+    Face* extra = solid.allocFace();
+    extra->innerLoops.push_back(solid.allocWire());
+    extra->innerLoops.push_back(solid.allocWire());
+    EXPECT_TRUE(solid.checkEulerFormula()) << solid.validationReport();
+    EXPECT_EQ(solid.genus(), 0);
+}

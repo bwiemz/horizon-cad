@@ -26,10 +26,7 @@ namespace hz::model {
 /// faces, see Extrude) and linear edge curves.
 ///
 /// A watertight, T-junction-free input yields a solid that passes
-/// Solid::checkManifold().  checkEulerFormula() additionally holds for
-/// genus-0 shells; the topology module's Euler check has no genus term, so
-/// through-hole (genus ≥ 1) solids report as Euler-invalid even when the
-/// mesh is perfectly manifold.
+/// Solid::checkManifold(), and checkEulerFormula() for any genus.
 ///
 /// Assumes 2-manifold contact: twin pairing greedily matches each directed
 /// half-edge with the first available oppositely-directed one on the same
