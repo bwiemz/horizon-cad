@@ -7,10 +7,10 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 ### Drawing Tools
 - **Line** (chaining), **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polyline** (multi-click; closed with Polyline Edit)
 - **Ellipse** (center + semi-axes), **Spline** (cubic B-spline with control points)
-- **Text** (standalone text entities with height, rotation, alignment)
+- **Text** (standalone text entities of one line or several, with height, rotation, alignment)
 - **Hatch** (boundary fill: solid, parallel lines, or cross-hatch)
 - Snapping to endpoints, midpoints, centers, quadrants, intersections and the grid, each switchable (F3, F9); ortho (F8) and polar tracking (F10)
-- Points typed while drawing: `x,y`, `@dx,dy`, `@length<angle`, or a length toward the cursor
+- Points typed while drawing and dimensioning: `x,y`, `@dx,dy`, `@length<angle`, or a length toward the cursor
 
 ### Editing Tools
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
@@ -25,9 +25,10 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - **Linear** dimensions (horizontal, vertical, aligned) with auto-orientation detection
 - **Radial** dimensions (radius or diameter) placed on circles and arcs
 - **Angular** dimensions measuring the angle between two lines
+- **Continue** and **baseline** dimensions: a chain on from the last dimension, or each from its first point, stepped out
 - **Leader** annotations with custom text
 - Text override support on all dimension types
-- A dimension style (text height, arrow size, precision) kept with the drawing; it has no editor yet
+- A dimension style editor (text height, arrows, extension lines, decimal places, and the unit: mm, cm, m, in or ft) kept with the drawing
 
 ### Measurement Tools
 - **Distance** measurement between two points
@@ -360,6 +361,7 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 126 | Done | A safety net that catches: CI gains a ThreadSanitizer job (a worker now rebuilds while the window edits), a coverage job with a table by module in each run's summary, and a libFuzzer job that fuzzes every reader of untrusted input for a minute each (it only replayed seeds before), with new targets for the binary format, plugin manifests and the PDM's archive and locks; the Windows build reports its /W4 warnings by code; packages must carry the translations (compiled with any lrelease, and checked in every build), which the release build could not compile before; the vcpkg cache is kept when a later step fails; every job has a time limit, tests run in parallel, and the workflow only reads the repository |
 | 127 | Done | Print and PDF, without the printer: the drawing exports to PDF and SVG on a chosen paper (A0–A4, Letter, Legal, Tabloid) and orientation, fitted or to scale (1:200 to 10:1), with line weights in millimetres, dash patterns and text to scale, white plotted black; a scale that does not fit is warned about first; block contents now all draw, on screen too (text, hatches, dimensions and nested blocks were left out); printing itself waits on the Qt PrintSupport decision |
 | 128 | Done | Precise input: points typed at the keyboard in the drawing tools (x,y; @dx,dy; @length<angle; or a length toward the cursor), refused whole when they are not a point; the line tool chains; object snap, grid snap, ortho and polar tracking switched from the status bar or F3/F9/F8/F10, and kept; a line's, circle's or arc's geometry typed into the property panel, one undo step each; selecting an entity no longer pushed edits of it onto the undo stack |
+| 129 | Done | Dimensions and text: a dimension style editor, one undo step, with the unit dimensions show (mm, cm, m, in, ft) and whether they say it; continue and baseline dimensions; the linear dimension takes typed points; text of several lines, written, edited in the panel, plotted, and saved to DXF as MTEXT that reads back as one text |
 | 130 | Done | Layers and blocks: layers can be renamed (carrying their entities, in blocks too, and the current layer) and their line weight set; Create Block takes a base point, puts the entities back in their drawing order on undo, and restores the same block reference on redo; the README's feature list now says only what the product does |
 
 The full multi-year design is in

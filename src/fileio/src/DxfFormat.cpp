@@ -187,7 +187,44 @@ void writePolyline(std::ostream& out, const draft::DraftPolyline& poly) {
     writeLwPolyline(out, poly.points(), poly.closed(), poly);
 }
 
+/// A text of several lines, as MTEXT: attached at the top of its first line
+/// (by its alignment), one text height above the first baseline and turned
+/// with it, so that its lines, 5/3 of the height apart, fall where the
+/// text's own do.
+void writeMText(std::ostream& out, const draft::DraftText& text) {
+    writeGroup(out, 0, std::string("MTEXT"));
+    writeCommonProps(out, text);
+    writeGroup(out, 100, std::string("AcDbEntity"));
+    writeGroup(out, 100, std::string("AcDbMText"));
+    const double h = text.textHeight();
+    const double r = text.rotation();
+    const math::Vec2 top = text.position() + math::Vec2(-h * std::sin(r), h * std::cos(r));
+    writeGroup(out, 10, top.x);
+    writeGroup(out, 20, top.y);
+    writeGroup(out, 30, 0.0);
+    writeGroup(out, 40, h);
+    writeGroup(out, 41, 0.0);  // no wrapping width
+    int attach = 1;            // top left
+    if (text.alignment() == draft::TextAlignment::Center) attach = 2;
+    if (text.alignment() == draft::TextAlignment::Right) attach = 3;
+    writeGroup(out, 71, attach);
+    writeGroup(out, 72, 1);  // left to right
+    // A value longer than 250 bytes goes in chunks (3), the rest last (1);
+    // readers join them before decoding.
+    std::string value = dxf::encodeMText(text.lines());
+    while (value.size() > 250) {
+        writeGroup(out, 3, value.substr(0, 250));
+        value.erase(0, 250);
+    }
+    writeGroup(out, 1, value);
+    if (r != 0.0) writeGroup(out, 50, r * math::kRadToDeg);
+}
+
 void writeText(std::ostream& out, const draft::DraftText& text) {
+    if (text.lines().size() > 1) {
+        writeMText(out, text);
+        return;
+    }
     writeGroup(out, 0, std::string("TEXT"));
     writeCommonProps(out, text);
     writeGroup(out, 100, std::string("AcDbEntity"));
@@ -824,10 +861,11 @@ std::shared_ptr<draft::DraftEntity> parseText(const std::vector<DxfPair>& groups
     return text;
 }
 
-/// An MTEXT entity, one text per line: its chunks (3) come before its last
-/// part (1), and \P breaks a line. Lines are laid out from the attachment
-/// point (71) as AutoCAD does: 5/3 of the height apart, times the spacing
-/// factor (44).
+/// An MTEXT entity: its chunks (3) come before its last part (1), and \P
+/// breaks a line. Lines are laid out from the attachment point (71) as
+/// AutoCAD does: 5/3 of the height apart, times the spacing factor (44). At
+/// the usual spacing that is how a text of several lines lays them out, so it
+/// comes in as one; at any other, as one text per line, grouped.
 Entities mtextEntities(const std::vector<DxfPair>& groups, Import& im) {
     std::string content;
     for (const auto& g : groups) {
@@ -849,9 +887,9 @@ Entities mtextEntities(const std::vector<DxfPair>& groups, Import& im) {
     int attach = toInt(findGroup(groups, 71, "1"));
     if (attach < 1 || attach > 9) attach = 1;
     double spacing = toDouble(findGroup(groups, 44, "1"));
-    if (spacing <= 0.0) spacing = 1.0;
+    if (!(spacing > 0.0) || !std::isfinite(spacing)) spacing = 1.0;
 
-    const double pitch = height * 5.0 / 3.0 * spacing;
+    const double pitch = height * draft::DraftText::kLinePitch * spacing;
     const double below = pitch * static_cast<double>(lines.size() - 1);
     double baseline = -height;  // top: the first line hangs below the point
     const int row = (attach - 1) / 3;
@@ -865,8 +903,31 @@ Entities mtextEntities(const std::vector<DxfPair>& groups, Import& im) {
     const double s = std::sin(rotation);
 
     Entities out;
+    const auto blank = [](const std::string& line) {
+        return line.find_first_not_of(' ') == std::string::npos;
+    };
+    if (std::abs(spacing - 1.0) < 1e-9) {
+        // One text, from the first line with anything on it to the last.
+        size_t first = 0;
+        while (first < lines.size() && blank(lines[first])) ++first;
+        size_t last = lines.size();
+        while (last > first && blank(lines[last - 1])) --last;
+        if (first == last) return out;
+        std::string joined;
+        for (size_t i = first; i < last; ++i) {
+            if (i > first) joined += '\n';
+            joined += lines[i];
+        }
+        baseline -= pitch * static_cast<double>(first);
+        auto text = std::make_shared<draft::DraftText>(at + math::Vec2(-s * baseline, c * baseline),
+                                                       joined, height);
+        text->setRotation(rotation);
+        text->setAlignment(align);
+        out.push_back(std::move(text));
+        return out;
+    }
     for (const auto& line : lines) {
-        if (line.find_first_not_of(' ') != std::string::npos) {
+        if (!blank(line)) {
             auto text = std::make_shared<draft::DraftText>(
                 at + math::Vec2(-s * baseline, c * baseline), line, height);
             text->setRotation(rotation);
@@ -878,8 +939,9 @@ Entities mtextEntities(const std::vector<DxfPair>& groups, Import& im) {
     if (out.size() > 1) {
         const uint64_t group = im.doc.draftDocument().nextGroupId();
         for (auto& piece : out) piece->setGroupId(group);
-        ++im.notes
-              .approximated[{"MTEXT", "several lines, brought in as one text per line, grouped"}];
+        ++im.notes.approximated[{"MTEXT",
+                                 "lines spaced other than usual, brought in as one text per line, "
+                                 "grouped"}];
     }
     return out;
 }

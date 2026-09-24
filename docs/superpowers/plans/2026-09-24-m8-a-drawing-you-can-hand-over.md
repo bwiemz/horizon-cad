@@ -206,8 +206,105 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
 
 ## Phase 129: Dimensions and text
 
-Dimension style editor; display units in dimensions; baseline and continue
-dimensions; multi-line text.
+### What the audit found
+
+- **The dimension style had no editor.** `DimensionStyle` (text height,
+  arrows, extension lines, precision) was saved with the drawing, but
+  nothing in the window changed it, and no command could undo a change.
+- **`showUnits` did nothing.** Dimensions always printed a bare number of
+  millimetres; a drawing could not be dimensioned in inches.
+- **Dimensions were one at a time.** There was no way to chain them, or to
+  measure several from one datum, as every drawing of a machined part
+  does.
+- **Text was one line.** The text tool took one line, the panel's field one
+  line, and a DXF MTEXT of several lines came in as a text per line,
+  grouped, and was written back as that many TEXTs.
+
+### As built
+
+- **Units:**
+  - `DimensionStyle` has a `unit` (mm, cm, m, in, ft) and
+    `formatLength(mm)`, which converts from the model's millimetres,
+    rounds to the precision and, with `showUnits`, adds the unit: "25.40
+    mm", `1.00"` for inches, `1.5'` for feet.
+  - The model stays in millimetres; only what a dimension shows changes.
+  - It is written with a point whatever the program's locale. The angular
+    dimension's value is too.
+  - The native format saves the unit. A file without one, or with one
+    nothing knows, shows millimetres.
+- **The style editor:**
+  - Dimension ▸ Style… is a form over every field, the arrow's half-angle in
+    degrees.
+  - OK pushes one `ChangeDimensionStyleCommand`; OK with nothing changed
+    pushes nothing.
+  - A field left as it was shown keeps its value exactly. The form rounds
+    to its decimals, and the arrow's default 0.3 radians shows as 17.2
+    degrees.
+- **Continue and baseline** (`ChainDimensionTool`, two modes):
+  - They start from the last horizontal or vertical dimension on a usable
+    layer, or, when there is none, from the one clicked.
+  - Continue goes on from its second point, each new dimension starting
+    where the last ended, on the same line.
+  - Baseline measures each from its first point, each a step of 1.5 text
+    heights further out, on the side its line is.
+  - Enter picks another dimension to go on from. Each dimension is its own
+    undo step.
+- **The linear dimension takes typed points** (Phase 128's input). Its
+  orientation follows the point given, not the cursor's last position.
+- **Text of several lines:**
+  - `DraftText::lines()` splits the text at its line breaks.
+    `lineBaseline(i)` puts each line 5/3 of the height below the last (DXF's
+    MTEXT spacing), turned with the text.
+  - The bounds and the pick cover every line, as wide as the widest.
+  - The viewport and the plot draw each line at its baseline.
+  - The text tool asks for several lines, dropping Windows line ends and
+    trailing breaks.
+  - The panel's field is a plain-text editor, taken when it is left and
+    only when it changed.
+- **DXF:**
+  - A text of several lines is written as one MTEXT: attached at the top
+    by its alignment, `encodeMText` escaping `\`, `{` and `}` and joining
+    lines with `\P`, in chunks of 250 bytes.
+  - An MTEXT at the usual spacing is read as one text, from its first
+    non-blank line to its last. At any other spacing it is still a text
+    per line, grouped and reported.
+
+### Tests
+
+23 new, 2 changed.
+- Drafting:
+  - lengths in each unit, with and without it;
+  - an unknown unit is millimetres;
+  - the value in a comma-decimal locale;
+  - dimension text in units, overrides and angles untouched;
+  - lines, baselines turned with the text, bounds and picking, and the
+    plot.
+- Document:
+  - a text given more lines is indexed down the page;
+  - the style change undoes and redoes.
+- Native: the unit round-trips; an unknown one, a number or null reads as
+  mm.
+- DXF:
+  - MTEXT as one text, with blank end lines dropped;
+  - other spacing split and reported;
+  - the attachment test moved to one text;
+  - a text of several lines written and read back: escapes, a 300-byte
+    line, alignment and rotation.
+- Window:
+  - the style form, shown and applied, one undo step;
+  - OK unchanged is no step. This fails on the form as first written;
+  - continue, baseline, following the dimension picked, and waiting for
+    one;
+  - typed points for a linear dimension;
+  - text of several lines written through the tool and edited in the
+    panel.
+
+### Not done
+
+- Continue and baseline for aligned, angular and ordinate dimensions.
+- Dual units (a length in mm and in).
+- Fractional inches (1 1/2").
+- MTEXT's wrapping width. Lines break only where the text has breaks.
 
 ## Phase 130: Layers and blocks
 

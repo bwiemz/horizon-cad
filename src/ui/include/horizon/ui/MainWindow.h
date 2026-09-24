@@ -161,6 +161,10 @@ private slots:
     void onPolarArray();
 
     void onLinearDimTool();
+    /// Dimension > Style: the drawing's dimension style, in a form.
+    void onDimensionStyle();
+    /// Make the registered tool called @p name the active one.
+    void activateTool(const std::string& name);
     void onRadialDimTool();
     void onAngularDimTool();
     void onLeaderTool();

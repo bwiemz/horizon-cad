@@ -86,8 +86,11 @@ public:
             stroke(hatch->boundary(), true, s);
             segments(hatch->generateHatchLines(), s);
         } else if (const auto* text = dynamic_cast<const DraftText*>(&e)) {
-            addText(text->position(), text->text(), text->textHeight(), text->rotation(),
-                    text->alignment(), s);
+            const auto lines = text->lines();
+            for (size_t i = 0; i < lines.size(); ++i) {
+                addText(text->lineBaseline(i), lines[i], text->textHeight(), text->rotation(),
+                        text->alignment(), s);
+            }
         } else if (const auto* dim = dynamic_cast<const DraftDimension*>(&e)) {
             segments(dim->extensionLines(m_dims), s);
             segments(dim->dimensionLines(m_dims), s);

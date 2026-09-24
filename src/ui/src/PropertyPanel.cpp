@@ -3,11 +3,13 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -143,9 +145,11 @@ void PropertyPanel::createWidgets() {
     auto* textForm = new QFormLayout(m_textPropsWidget);
     textForm->setContentsMargins(0, 0, 0, 0);
 
-    m_textContentEdit = new QLineEdit(m_textPropsWidget);
-    connect(m_textContentEdit, &QLineEdit::editingFinished, this,
-            &PropertyPanel::onTextContentChanged);
+    m_textContentEdit = new QPlainTextEdit(m_textPropsWidget);
+    m_textContentEdit->setObjectName(QStringLiteral("textContent"));
+    m_textContentEdit->setTabChangesFocus(true);
+    m_textContentEdit->setMaximumHeight(4 * m_textContentEdit->fontMetrics().lineSpacing() + 12);
+    m_textContentEdit->installEventFilter(this);
     textForm->addRow(tr("Content:"), m_textContentEdit);
 
     m_textHeightSpin = new QDoubleSpinBox(m_textPropsWidget);
@@ -543,7 +547,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     if (selectedIds.size() == 1) {
         auto* textEnt = dynamic_cast<const draft::DraftText*>(first);
         if (textEnt) {
-            m_textContentEdit->setText(QString::fromStdString(textEnt->text()));
+            m_textContentEdit->setPlainText(QString::fromStdString(textEnt->text()));
             m_textHeightSpin->setValue(textEnt->textHeight());
             m_textRotationSpin->setValue(textEnt->rotation() * math::kRadToDeg);
             m_textAlignCombo->setCurrentIndex(static_cast<int>(textEnt->alignment()));
@@ -897,13 +901,24 @@ void PropertyPanel::onBlockScaleChanged(double value) {
     viewport->update();
 }
 
+bool PropertyPanel::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_textContentEdit && event->type() == QEvent::FocusOut) {
+        onTextContentChanged();
+    }
+    return QDockWidget::eventFilter(watched, event);
+}
+
 void PropertyPanel::onTextContentChanged() {
     if (m_updatingUI || m_currentIds.size() != 1) return;
 
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    std::string newText = m_textContentEdit->text().toStdString();
+    std::string newText = m_textContentEdit->toPlainText().toStdString();
+    // Leaving the field is not an edit: only a changed text is.
+    const auto* current = dynamic_cast<const draft::DraftText*>(
+        viewport->document()->draftDocument().findEntity(m_currentIds.front()));
+    if (current == nullptr || current->text() == newText) return;
     auto cmd = std::make_unique<doc::ChangeTextContentCommand>(
         viewport->document()->draftDocument(), m_currentIds.front(), newText);
     viewport->document()->undoStack().push(std::move(cmd));

@@ -50,6 +50,9 @@ bool LinearDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
         case State::WaitingForDimLine: {
             if (!m_viewport || !m_viewport->document()) return false;
 
+            // The orientation follows the point given (clicked or typed), which
+            // the cursor's last move may not have reached.
+            m_currentPos = snapped;
             auto orientation = detectOrientation();
             auto dim = std::make_shared<draft::DraftLinearDimension>(m_point1, m_point2, snapped,
                                                                      orientation);

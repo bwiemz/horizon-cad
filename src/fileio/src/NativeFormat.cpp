@@ -342,7 +342,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
                               {"extensionGap", ds.extensionGap},
                               {"extensionOvershoot", ds.extensionOvershoot},
                               {"precision", ds.precision},
-                              {"showUnits", ds.showUnits}};
+                              {"showUnits", ds.showUnits},
+                              {"unit", ds.unit}};
 
     // --- Layer table ---
     json layersArray = json::array();
@@ -945,6 +946,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
         ds.extensionOvershoot = dsObj.value("extensionOvershoot", 1.0);
         ds.precision = static_cast<int>(intField(dsObj, "precision", 2, 0, 12));
         ds.showUnits = dsObj.value("showUnits", false);
+        // Absent before Phase 129 (millimetres); an unknown one reads as them.
+        const auto unit = dsObj.find("unit");
+        if (unit != dsObj.end() && unit->is_string() &&
+            draft::isDimensionUnit(unit->get<std::string>())) {
+            ds.unit = unit->get<std::string>();
+        }
         doc.draftDocument().setDimensionStyle(ds);
     }
 

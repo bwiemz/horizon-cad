@@ -100,6 +100,11 @@ std::vector<std::string> decodeMText(std::string_view value, const Decoder& deco
 /// only control characters are tabs and line breaks.
 std::string encodeText(std::string_view text);
 
+/// An MTEXT value to write for @p lines: each line as encodeText writes a
+/// TEXT value, with MTEXT's own escapes (\\, \{, \}), joined by \P.
+/// decodeMText reads it back as the same lines.
+std::string encodeMText(const std::vector<std::string>& lines);
+
 // ---------------------------------------------------------------------------
 // Units
 // ---------------------------------------------------------------------------

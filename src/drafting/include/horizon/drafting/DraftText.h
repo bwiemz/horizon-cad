@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "DraftEntity.h"
 
@@ -36,8 +37,21 @@ public:
     TextAlignment alignment() const { return m_alignment; }
     void setAlignment(TextAlignment align) { m_alignment = align; }
 
+    /// Baselines are this many text heights apart, as DXF's MTEXT has them.
+    static constexpr double kLinePitch = 5.0 / 3.0;
+
+    /// The text's lines: what is between its line breaks ('\n'); one when it
+    /// has none. The first line's baseline is at position(), the others
+    /// below it (lineBaseline()).
+    std::vector<std::string> lines() const;
+
+    /// Where line @p index is written: its baseline point, at position() for
+    /// the first line, kLinePitch heights further down the page (turned with
+    /// the text) for each line after.
+    math::Vec2 lineBaseline(size_t index) const;
+
 private:
-    /// Approximate width of the text in world units.
+    /// Approximate width of the widest line in world units.
     double approxWidth() const;
 
     math::Vec2 m_position;

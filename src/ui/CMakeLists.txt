@@ -66,6 +66,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/TypedLength.h
     include/horizon/ui/TypedPoint.h
     include/horizon/ui/PdfExport.h
+    include/horizon/ui/ChainDimensionTool.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
@@ -97,6 +98,7 @@ add_library(hz_ui STATIC
     src/TypedLength.cpp
     src/TypedPoint.cpp
     src/PdfExport.cpp
+    src/ChainDimensionTool.cpp
     src/BreakTool.cpp
     src/ExtendTool.cpp
     src/StretchTool.cpp

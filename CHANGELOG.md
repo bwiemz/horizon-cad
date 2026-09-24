@@ -49,6 +49,26 @@ work, not "post-1.0".
   - Choosing a tool from the ribbon now puts the keyboard on the drawing, so
     typing reaches the tool.
 
+- **Dimensions and text (129).**
+  - Dimension ▸ Style… edits the dimension style: text height, arrow size
+    and angle, extension gap and overshoot, decimal places, and the unit
+    dimensions are shown in (mm, cm, m, in or ft), with or without it
+    ("25.40 mm", `1.00"`). The model stays in millimetres. It is one undo
+    step, and it is saved with the drawing. The style could not be changed
+    before.
+  - Dimension ▸ Continue goes on from the last horizontal or vertical
+    dimension, each new one starting where the one before ended. Dimension ▸
+    Baseline measures each from the first one's first point, a step further
+    out. Enter picks another dimension to go on from.
+  - The linear dimension takes typed points.
+  - Text can have several lines: the text tool asks for them, the property
+    panel edits them (the edit is taken when you leave the field), and they
+    draw, select, plot and export one below the other.
+  - A text of several lines is saved to DXF as one MTEXT and read back as one
+    text. An MTEXT from another program comes in as one text too, unless its
+    lines are spaced other than usual; then it is still one text per line,
+    grouped.
+
 - **Layers and blocks (130).**
   - Layers can be renamed from the layer panel. Everything on the layer,
     inside blocks too, goes with it, as does the current layer. A layer's

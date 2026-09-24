@@ -5,6 +5,7 @@ add_library(hz_drafting STATIC
     src/Layer.cpp
     src/SnapEngine.cpp
     src/PlotScene.cpp
+    src/DimensionStyle.cpp
     src/DraftLine.cpp
     src/DraftCircle.cpp
     src/DraftArc.cpp

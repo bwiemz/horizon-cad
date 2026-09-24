@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <locale>
 #include <sstream>
 
 #include "horizon/math/Constants.h"
@@ -71,6 +72,7 @@ std::string DraftAngularDimension::displayText(const DimensionStyle& style) cons
     if (hasTextOverride()) return m_textOverride;
 
     std::ostringstream oss;
+    oss.imbue(std::locale::classic());  // a point, as formatLength writes lengths
     oss << std::fixed << std::setprecision(style.precision) << computedValue();
     oss << "\xC2\xB0";  // UTF-8 degree symbol °
     return oss.str();

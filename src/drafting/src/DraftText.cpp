@@ -10,9 +10,29 @@ namespace hz::draft {
 DraftText::DraftText(const math::Vec2& position, const std::string& text, double textHeight)
     : m_position(position), m_text(text), m_textHeight(textHeight) {}
 
+std::vector<std::string> DraftText::lines() const {
+    std::vector<std::string> out;
+    size_t start = 0;
+    for (size_t at = m_text.find('\n'); at != std::string::npos; at = m_text.find('\n', start)) {
+        out.push_back(m_text.substr(start, at - start));
+        start = at + 1;
+    }
+    out.push_back(m_text.substr(start));
+    return out;
+}
+
+math::Vec2 DraftText::lineBaseline(size_t index) const {
+    const double down = static_cast<double>(index) * kLinePitch * m_textHeight;
+    // Down the page in the text's own frame: -y, turned by its rotation.
+    return m_position + math::Vec2(down * std::sin(m_rotation), -down * std::cos(m_rotation));
+}
+
 double DraftText::approxWidth() const {
-    // Average character width ≈ 0.6 × textHeight.  Minimum 1 char.
-    return std::max(1.0, static_cast<double>(m_text.size())) * m_textHeight * 0.6;
+    // Average character width ≈ 0.6 × textHeight, for the widest line.
+    // Minimum 1 char.
+    size_t widest = 0;
+    for (const auto& line : lines()) widest = std::max(widest, line.size());
+    return std::max(1.0, static_cast<double>(widest)) * m_textHeight * 0.6;
 }
 
 math::BoundingBox DraftText::boundingBox() const {
@@ -35,7 +55,9 @@ math::BoundingBox DraftText::boundingBox() const {
             x1 = 0.0;
             break;
     }
-    double y0 = -h * 0.25;  // baseline offset
+    // Below the last line's baseline; the lines after the first go down.
+    const double below = static_cast<double>(lines().size() - 1) * kLinePitch * h;
+    double y0 = -h * 0.25 - below;
     double y1 = h * 0.75;
 
     // Rotate corners and build bbox.
@@ -73,7 +95,8 @@ bool DraftText::hitTest(const math::Vec2& point, double tolerance) const {
             x1 = 0.0;
             break;
     }
-    double y0 = -h * 0.25;
+    const double below = static_cast<double>(lines().size() - 1) * kLinePitch * h;
+    double y0 = -h * 0.25 - below;
     double y1 = h * 0.75;
 
     return local.x >= x0 - tolerance && local.x <= x1 + tolerance && local.y >= y0 - tolerance &&
