@@ -24,8 +24,8 @@ attack surface: `.hcad`, `.hzpart`, `.hzasm`, DXF and STEP. They are fuzzed
 should not is a security bug.
 
 Two modules are experimental and are not sandboxed:
-- **Python scripting:** a script can do anything the user can. It is off in
-  release builds.
+- **Python scripting:** a script can do anything the user can. It is off by
+  default (`HZ_ENABLE_SCRIPTING`) and in release builds.
 - **Plugins:** the plugin registry reads and checks plugin manifests, but
   the application does not run plugins yet. The permissions a manifest
   declares record what the plugin asks for; nothing enforces them.

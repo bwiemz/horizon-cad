@@ -55,6 +55,11 @@ ctest --test-dir build/linux-debug --output-on-failure
 `linux-system-qt` builds against an installed Qt 6 instead of building Qt
 with vcpkg, which is much faster the first time.
 
+Python scripting is off by default because it is not sandboxed. To build and
+test it, install Python 3 and pybind11 and configure with
+`-DHZ_ENABLE_SCRIPTING=ON` (CI does, in the build and AddressSanitizer
+jobs).
+
 ---
 
 ## How to Add an Entity Type
