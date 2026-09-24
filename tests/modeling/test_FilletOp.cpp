@@ -13,6 +13,7 @@
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -787,4 +788,30 @@ TEST(FilletOpTest, ArcSegmentsForToleranceMeetsTheSagBudget) {
     // Nonsense input falls back to the default.
     EXPECT_EQ(FilletOp::arcSegmentsForTolerance(0.0, 0.1), FilletOp::kDefaultArcSegments);
     EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 0.0), FilletOp::kDefaultArcSegments);
+}
+
+// A three-edge corner is an eighth of the rolling ball. Its face carried the
+// whole sphere, which tessellation drew in full: seven eighths of a ball
+// inside every filleted corner of every STL and glTF export.
+TEST(FilletOpTest, ACornerBlendDrawsOnlyItsEighthOfTheBall) {
+    auto box = hz::model::PrimitiveFactory::makeBox(10, 10, 10);
+    const double r = 2.0;
+    auto result = FilletOp::execute(*box, edgesAtCorner(*box, Vec3(0, 0, 0)), r, "fillet_1");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+
+    const auto mesh = hz::model::SolidTessellator::tessellate(*result.solid, 0.01);
+    double meshArea = 0.0;
+    for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        const auto at = [&mesh](uint32_t i) {
+            return Vec3(mesh.positions[3 * i], mesh.positions[3 * i + 1],
+                        mesh.positions[3 * i + 2]);
+        };
+        const Vec3 a = at(mesh.indices[t]), b = at(mesh.indices[t + 1]),
+                   c = at(mesh.indices[t + 2]);
+        meshArea += 0.5 * (b - a).cross(c - a).length();
+    }
+    const double modelArea =
+        hz::model::MassPropertiesCalculator::compute(*result.solid).surfaceArea;
+    // The whole ball would add 7/8 x 4 pi r^2, about 44, to the 600-odd.
+    EXPECT_NEAR(meshArea, modelArea, 0.01 * modelArea);
 }

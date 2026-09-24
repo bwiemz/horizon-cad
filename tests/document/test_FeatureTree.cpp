@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
@@ -949,4 +950,56 @@ TEST(FeatureTreeTest, ThrowingFeatureFailsEveryBuildPathWithoutEscaping) {
     std::vector<std::unique_ptr<hz::topo::Solid>> bodies;
     ASSERT_NO_THROW(bodies = tree.buildBodies());
     EXPECT_TRUE(bodies.empty());
+}
+
+// -- A failed feature leaves the part as it stood (Phase 123) ------------------
+
+// One failing feature used to empty the whole part: the build returned no
+// solid, and the viewport went blank. It now returns the part as it stands
+// before the failing feature, and still says which feature failed and why.
+TEST(FeatureTreeTest, AFailedFeatureLeavesThePartBeforeIt) {
+    FeatureTree tree;
+    tree.addFeature(
+        std::make_unique<ExtrudeFeature>(makeRectSketch(10.0, 8.0), Vec3(0, 0, 1), 5.0));
+    tree.addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make("nowhere", "none")}));
+    tree.addFeature(std::make_unique<ExtrudeFeature>(makeRectSketch(2.0, 2.0), Vec3(0, 0, 1), 9.0));
+
+    BuildResult result = tree.buildWithDiagnostics();
+    EXPECT_EQ(result.failedFeatureIndex, 1);
+    EXPECT_FALSE(result.failureMessage.empty());
+    ASSERT_NE(result.solid, nullptr) << "the extrude before the failing shell";
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume, 400.0, 1e-6);
+}
+
+// Nothing before the failing feature: no solid, but still the reason.
+TEST(FeatureTreeTest, AFailedFirstFeatureLeavesNothing) {
+    FeatureTree tree;
+    tree.addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make("box", "top")}));
+    BuildResult result = tree.buildWithDiagnostics();
+    EXPECT_EQ(result.failedFeatureIndex, 0);
+    EXPECT_EQ(result.solid, nullptr);
+}
+
+// A failed build is a build: the document does not ask to be built again
+// until its feature tree changes (the window rebuilt a failing model on
+// every redraw, on the GUI thread).
+TEST(FeatureTreeTest, AFailedBuildIsNotBuiltAgainUntilTheTreeChanges) {
+    Document doc;
+    doc.setType(DocumentType::Part);
+    EXPECT_FALSE(doc.needsBuild()) << "an empty tree has nothing to build";
+    doc.featureTree().addFeature(
+        std::make_unique<ExtrudeFeature>(makeRectSketch(10.0, 8.0), Vec3(0, 0, 1), 5.0));
+    doc.featureTree().addFeature(std::make_unique<ShellFeature>(
+        1.0, std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::make("nowhere", "none")}));
+    EXPECT_TRUE(doc.needsBuild());
+
+    EXPECT_FALSE(doc.rebuildModel());
+    EXPECT_EQ(doc.failedFeatureIndex(), 1);
+    ASSERT_NE(doc.solid(), nullptr);
+    EXPECT_FALSE(doc.needsBuild());
+
+    doc.featureTree().markChanged();
+    EXPECT_TRUE(doc.needsBuild());
 }

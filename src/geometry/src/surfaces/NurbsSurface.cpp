@@ -476,6 +476,33 @@ NurbsSurface NurbsSurface::makeCylinder(const math::Vec3& center, const math::Ve
 // makeSphere — 9x5 rational NURBS (revolve a semicircle around Z)
 // ---------------------------------------------------------------------------
 
+NurbsSurface NurbsSurface::makeSphereOctant(const math::Vec3& center, double radius,
+                                            const math::Vec3& e1, const math::Vec3& e2,
+                                            const math::Vec3& e3) {
+    const double w = std::cos(math::kPi / 4.0);  // sqrt(2)/2, the weight of a quarter arc
+    const double r = radius;
+    // The profile, from the equator (along e1) to the pole (along e3): radial
+    // distance from the e3 axis, height along it, weight.
+    const double rho[3] = {r, r, 0.0};
+    const double height[3] = {0.0, r, r};
+    const double profileWts[3] = {1.0, w, 1.0};
+    // The quarter turn from e1 to e2; its middle control point sits on the
+    // corner of the square, as in any rational quarter circle.
+    const math::Vec3 turn[3] = {e1, e1 + e2, e2};
+    const double turnWts[3] = {1.0, w, 1.0};
+
+    std::vector<std::vector<math::Vec3>> ctrlPts(3, std::vector<math::Vec3>(3));
+    std::vector<std::vector<double>> wts(3, std::vector<double>(3));
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            ctrlPts[i][j] = center + turn[i] * rho[j] + e3 * height[j];
+            wts[i][j] = turnWts[i] * profileWts[j];
+        }
+    }
+    const std::vector<double> knots = {0, 0, 0, 1, 1, 1};
+    return NurbsSurface(std::move(ctrlPts), std::move(wts), knots, knots, 2, 2);
+}
+
 NurbsSurface NurbsSurface::makeSphere(const math::Vec3& center, double radius) {
     // The sphere is a surface of revolution: revolve a semicircular arc (V direction)
     // around the Z axis (U direction).

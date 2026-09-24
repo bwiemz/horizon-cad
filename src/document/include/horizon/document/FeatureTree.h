@@ -607,6 +607,9 @@ private:
 
 /// Result of building the feature tree with diagnostics.
 struct BuildResult {
+    /// The part. When a feature fails, the part as it stands before that
+    /// feature (null if nothing before it made a solid), so the user sees
+    /// what they had, not an empty viewport.
     std::unique_ptr<topo::Solid> solid;
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
@@ -699,6 +702,10 @@ public:
     void markChanged() { ++m_revision; }
 
 private:
+    /// Apply the features before @p limit again, for the part as it stood
+    /// before a feature that failed. Null if cancelled or if nothing made a
+    /// solid.
+    std::unique_ptr<topo::Solid> replayUpTo(int limit, BuildControl* control) const;
     std::vector<std::unique_ptr<Feature>> m_features;
     int m_rollbackIndex = -1;
     uint64_t m_revision = 0;

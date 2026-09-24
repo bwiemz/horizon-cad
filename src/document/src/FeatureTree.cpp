@@ -1330,6 +1330,12 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             result.failureMessage = reason.empty()
                                         ? "Feature '" + feature.name() + "' failed to execute"
                                         : "Feature '" + feature.name() + "' failed: " + reason;
+            // The part as it stood before the failing feature: the feature
+            // consumed the solid it failed on, so build it again up to there.
+            // Only a failed build pays for this; a successful one copies
+            // nothing.
+            result.solid = replayUpTo(i, control);
+            if (control && control->cancel) result.cancelled = true;
             return result;
         }
         solid = std::move(next);
@@ -1339,6 +1345,19 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     if (control) control->done = limit;
     result.solid = std::move(solid);
     return result;
+}
+
+std::unique_ptr<topo::Solid> FeatureTree::replayUpTo(int limit, BuildControl* control) const {
+    std::unique_ptr<topo::Solid> solid;
+    for (int i = 0; i < limit; ++i) {
+        if (control && control->cancel) return nullptr;
+        const Feature& feature = *m_features[static_cast<size_t>(i)];
+        if (!takesPart(feature)) continue;
+        std::string reason;
+        solid = applyFeature(feature, std::move(solid), &reason);
+        if (!solid) return nullptr;  // built the first time; cannot fail now
+    }
+    return solid;
 }
 
 void FeatureTree::moveFeature(int fromIndex, int toIndex) {

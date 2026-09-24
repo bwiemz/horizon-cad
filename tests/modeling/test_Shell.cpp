@@ -3,9 +3,17 @@
 #include <cmath>
 #include <string>
 
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Shell.h"
+#include "horizon/topology/GeometryValidator.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -140,4 +148,102 @@ TEST(ShellTest, APartWithSeveralBodiesIsRefusedNotTruncated) {
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.solid, nullptr);
     EXPECT_NE(r.message.find("several bodies"), std::string::npos) << r.message;
+}
+
+// -- Refuse what cannot be shelled correctly (Phase 123) ----------------------
+
+namespace {
+
+// An extruded polygon, @p height tall, from @p corners (counter-clockwise).
+std::unique_ptr<hz::topo::Solid> prismOf(const std::vector<hz::math::Vec2>& corners,
+                                         double height) {
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> profile;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        profile.push_back(
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]));
+    }
+    return Extrude::execute(profile, hz::draft::SketchPlane{}, Vec3(0, 0, 1), height, "prism");
+}
+
+// The face whose corners are all at height @p z.
+TopologyID faceAt(const hz::topo::Solid& solid, double z) {
+    for (const auto& f : solid.faces()) {
+        bool all = true;
+        for (const auto* v : hz::topo::faceVertices(&f))
+            all = all && std::abs(v->point.z - z) < 1e-9;
+        if (all) return f.topoId;
+    }
+    return {};
+}
+
+double volumeOf(const hz::topo::Solid& solid) {
+    return MassPropertiesCalculator::compute(solid).volume;
+}
+
+// An L whose arms are 10 long and 3 wide: its centroid is not where the old
+// code assumed "inward" lay.
+const std::vector<hz::math::Vec2> kL = {{0, 0}, {10, 0}, {10, 3}, {3, 3}, {3, 10}, {0, 10}};
+
+}  // namespace
+
+// Each edge of the cavity is the edge of the profile moved inward, to its
+// left. Picking "inward" as the side facing the centroid moved the edges at
+// the L's inner corner outward, and the cavity broke through the walls.
+TEST(ShellTest, AnLShapedPrismIsHollowedInward) {
+    auto l = prismOf(kL, 4.0);
+    ASSERT_NE(l, nullptr);
+    const TopologyID top = faceAt(*l, 4.0);
+    ASSERT_TRUE(top.isValid());
+    ShellResult r = Shell::execute(std::move(l), 1.0, {top});
+    ASSERT_TRUE(r.ok) << r.message;
+    // Outer L: 100 - 49 = 51. Cavity: (8 x 8 - 7 x 7) = 15, 3 deep.
+    EXPECT_NEAR(volumeOf(*r.solid), 51.0 * 4.0 - 15.0 * 3.0, 1e-6);
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*r.solid))
+        << hz::topo::GeometryValidator::report(*r.solid);
+}
+
+// The limit is where an arm of the cavity closes up (half the arm's width,
+// 1.5), not a distance from the centroid, which refused walls it could make.
+TEST(ShellTest, TheWallCanBeAsThickAsTheProfileAllows) {
+    {
+        auto l = prismOf(kL, 4.0);
+        const TopologyID top = faceAt(*l, 4.0);
+        ShellResult r = Shell::execute(std::move(l), 1.4, {top});
+        ASSERT_TRUE(r.ok) << r.message;
+        const double cavity = (10.0 - 2.8) * (10.0 - 2.8) - 49.0;
+        EXPECT_NEAR(volumeOf(*r.solid), 51.0 * 4.0 - cavity * (4.0 - 1.4), 1e-6);
+    }
+    {
+        auto l = prismOf(kL, 4.0);
+        const TopologyID top = faceAt(*l, 4.0);
+        ShellResult r = Shell::execute(std::move(l), 1.5, {top});
+        EXPECT_FALSE(r.ok);
+        EXPECT_NE(r.message.find("too thick"), std::string::npos) << r.message;
+    }
+}
+
+// The cup is built from the two caps. A plate with a hole through it would
+// have come back as a plain cup, the hole gone: it is refused instead.
+TEST(ShellTest, APartWithAHoleIsRefusedNotStripped) {
+    auto plate = PrimitiveFactory::makeBox(20, 20, 5);
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> circle = {
+        std::make_shared<hz::draft::DraftCircle>(hz::math::Vec2(10, 10), 2.0)};
+    auto rod = Extrude::execute(circle, hz::draft::SketchPlane{}, Vec3(0, 0, 1), 5.0, "rod");
+    ASSERT_NE(rod, nullptr);
+    auto drilled = BooleanOp::execute(*plate, *rod, BooleanType::Subtract);
+    ASSERT_NE(drilled, nullptr);
+    const TopologyID top = faceAt(*drilled, 5.0);
+    ASSERT_TRUE(top.isValid());
+    ShellResult r = Shell::execute(std::move(drilled), 1.0, {top});
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.message.find("plain prism"), std::string::npos) << r.message;
+}
+
+// Only the first face was ever opened; the rest were ignored.
+TEST(ShellTest, OpeningTwoFacesIsRefused) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    ShellResult r = Shell::execute(
+        std::move(box), 1.0, {TopologyID::make("box", "top"), TopologyID::make("box", "front")});
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.message.find("more than one face"), std::string::npos) << r.message;
 }
