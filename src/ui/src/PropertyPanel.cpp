@@ -37,6 +37,7 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/LineType.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/ViewportWidget.h"
 
@@ -656,12 +657,20 @@ void PropertyPanel::onGeometryEdited() {
         const math::Vec2 start(entered(m_lineStartX, line->start().x),
                                entered(m_lineStartY, line->start().y));
         math::Vec2 end(entered(m_lineEndX, line->end().x), entered(m_lineEndY, line->end().y));
+        // Length and angle move the end; the start stays. A line with no
+        // length (a grip dragged onto the other end) takes its direction, or
+        // its length, from the other field.
         const math::Vec2 d = line->end() - line->start();
-        if (changed == m_lineLength && d.length() > 0.0) {
-            end = start + d * (m_lineLength->value() / d.length());  // along the line
+        const bool hasLength = d.length() > 1e-12;
+        if (changed == m_lineLength) {
+            const double a = m_lineAngle->value() * math::kDegToRad;
+            const math::Vec2 along =
+                hasLength ? d * (1.0 / d.length()) : math::Vec2(std::cos(a), std::sin(a));
+            end = start + along * m_lineLength->value();
         } else if (changed == m_lineAngle) {
             const double a = m_lineAngle->value() * math::kDegToRad;
-            end = start + math::Vec2(std::cos(a), std::sin(a)) * d.length();
+            const double length = hasLength ? d.length() : m_lineLength->value();
+            end = start + math::Vec2(std::cos(a), std::sin(a)) * length;
         }
         if (end.distanceTo(start) < 1e-9) return;  // a line has length
         line->setStart(start);
@@ -674,10 +683,14 @@ void PropertyPanel::onGeometryEdited() {
         arc->setCenter(math::Vec2(entered(m_arcCenterX, arc->center().x),
                                   entered(m_arcCenterY, arc->center().y)));
         arc->setRadius(entered(m_arcRadius, arc->radius()));
+        // An arc keeps its angles in [0, 2π): what it contains, its picking
+        // and its bounds depend on it.
         if (changed == m_arcStartAngle) {
-            arc->setStartAngle(m_arcStartAngle->value() * math::kDegToRad);
+            arc->setStartAngle(math::normalizeAngle(m_arcStartAngle->value() * math::kDegToRad));
         }
-        if (changed == m_arcEndAngle) arc->setEndAngle(m_arcEndAngle->value() * math::kDegToRad);
+        if (changed == m_arcEndAngle) {
+            arc->setEndAngle(math::normalizeAngle(m_arcEndAngle->value() * math::kDegToRad));
+        }
     } else {
         return;
     }
