@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QStatusBar>
@@ -253,4 +254,71 @@ TEST(ImportExportTest, AStepFileInMetresComesInAsMillimetresAndSaysSo) {
     EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("metres")))
         << w.statusBar()->currentMessage().toStdString();
     EXPECT_NEAR(partVolume(*w.activeDocument()), 6.0e9, 6.0e9 * 1e-9);
+}
+
+// -- Plotting (Phase 127) ------------------------------------------------------
+
+namespace {
+
+hz::test::FormAnswers plotAnswers(const char* scale) {
+    return hz::test::FormAnswers()
+        .choose(QStringLiteral("paper"), QStringLiteral("A4"))
+        .choose(QStringLiteral("orientation"), QStringLiteral("Landscape"))
+        .choose(QStringLiteral("scale"), QString::fromLatin1(scale))
+        .choose(QStringLiteral("colours"), QStringLiteral("As drawn"));
+}
+
+void drawALine(MainWindow& w) {
+    w.activeDocument()->draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 0), hz::math::Vec2(100, 40)));
+}
+
+QByteArray contents(const QString& path) {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+}  // namespace
+
+// A drawing plots to PDF and to SVG from the Export menu.
+TEST(ImportExportTest, ADrawingPlotsToPdfAndSvg) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    drawALine(w);
+    for (const char* format : {"pdf", "svg"}) {
+        const QString path = dir.filePath(QStringLiteral("plot.") + QString::fromLatin1(format));
+        hz::test::FormFiller form(QStringLiteral("Export ") + QString::fromLatin1(format).toUpper(),
+                                  plotAnswers("Fit to paper"));
+        {
+            FilePicker picker(path);
+            w.findChild<QAction*>(QStringLiteral("export_") + QString::fromLatin1(format))
+                ->trigger();
+        }
+        ASSERT_TRUE(form.seen()) << format;
+        const QByteArray bytes = contents(path);
+        if (QString::fromLatin1(format) == QStringLiteral("pdf")) {
+            EXPECT_TRUE(bytes.startsWith("%PDF-")) << "a PDF";
+        } else {
+            EXPECT_TRUE(bytes.contains("<svg ")) << "an SVG";
+            EXPECT_TRUE(bytes.contains("<polyline ")) << "with the line";
+        }
+    }
+}
+
+// At a scale the drawing does not fit on the paper, the user is told before
+// anything is cut off; Cancel writes nothing.
+TEST(ImportExportTest, APlotThatDoesNotFitIsSaidFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    drawALine(w);
+    const QString path = dir.filePath(QStringLiteral("big.svg"));
+    hz::test::FormFiller form(QStringLiteral("Export SVG"), plotAnswers("10:1"));
+    DialogResponder cancel(QMessageBox::Cancel, QStringLiteral("Export SVG"), 5000);
+    w.findChild<QAction*>(QStringLiteral("export_svg"))->trigger();
+    ASSERT_TRUE(form.seen());
+    EXPECT_TRUE(cancel.seen()) << "the drawing is 1000 mm across at 10:1";
+    EXPECT_TRUE(cancel.text().contains(QStringLiteral("cut off"))) << cancel.text().toStdString();
+    EXPECT_FALSE(QFileInfo::exists(path));
 }

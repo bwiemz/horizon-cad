@@ -117,6 +117,9 @@ private slots:
     void onExportStl();
     void onExportGltf();
     void onExportDxf();
+    /// Plot the drawing to a PDF (@p pdf) or an SVG file, on a paper, at a
+    /// scale, chosen in a form.
+    void onExportPlot(bool pdf);
     void onInsertComponent();
     void onAddMate();
     void onCheckInterference();

@@ -15,9 +15,81 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
 
 ## Phase 127: Print and PDF
 
-Print and PDF/SVG export of the drawing at a chosen scale and paper size,
-with real plot line weights and text to scale (P1). Printing waits on the
-PrintSupport decision.
+### What the audit found
+
+- **A drawing could not leave Horizon CAD except as DXF** (P1). There was
+  no printing, no PDF, no SVG and no image.
+- **Blocks drew only part of what they held.** The viewport drew seven
+  kinds of entity from a block (lines, circles, arcs, rectangles,
+  polylines, splines, ellipses). Text, hatches, dimensions and blocks within
+  the block were not drawn (found mapping the renderer for this phase).
+
+### As built
+
+- **`PlotScene`** (drafting, no Qt) is what a drawing plots: strokes and
+  text in world coordinates, built by `buildPlotScene`.
+  - It includes entities on visible layers, locked ones too.
+  - ByLayer and ByBlock are resolved.
+  - Blocks are expanded to 16 levels, every kind of entity, text scaled and
+    turned with its block.
+  - Circles and arcs go in steps of a degree or less, ellipses and splines
+    are evaluated, and hatches bring their boundary and clipped lines.
+  - Dimensions bring their extension lines, dimension lines, arrowheads and
+    value.
+- **On paper:**
+  - `plotTransform` places the scene: fitted to the printable area, or at a
+    scale, centred, the page's y down. It says whether the drawing fits.
+  - `plotWeightMm`: widths are millimetres, as DXF has them; the default
+    width 1.0 plots at 0.25 mm. Clamped to 0.05–2.11 mm.
+  - `plotDashMm`: the viewport's dash patterns in centimetres.
+  - `plotColor`: white, drawn on the dark viewport, plots black; or
+    everything black.
+- **`io::SvgExport`**: a page the paper's size in millimetres, a polyline
+  or polygon per stroke with weight, dashes and colour, and escaped text at
+  its height. Numbers are written in the C locale, so a comma locale does
+  not garble coordinates. It is written atomically.
+- **`ui::exportPdf`**: a one-page vector PDF (`QPdfWriter`, QtGui) of the
+  same scene, through `QSaveFile`. Pens are in millimetres, and dash
+  patterns are in pen widths, as Qt wants. It is guarded by
+  `QT_CONFIG(pdf)`: a Qt without PDF gets a clear error, not a build
+  failure.
+- **File ▸ Export ▸ PDF… / SVG…** ask for the paper (A0–A4, Letter, Legal,
+  Tabloid), the orientation, the scale (fit, or 1:200 to 10:1) and the
+  colours. At a scale the drawing does not fit, a warning comes before
+  anything is cut off (Cancel is the default).
+- **The viewport draws block references through `plotBlockReference`**,
+  the same expansion, so everything a block holds shows on screen. This
+  replaces 90 lines of per-type code.
+- Checked by eye: a sample drawing exported to PDF and SVG, rendered with
+  `pdftoppm` and `rsvg-convert`, came out the same and right. It had lines,
+  a dashed red line, a circle, an arc, text, a dimension, and a turned,
+  scaled block with text.
+
+### Tests
+
+10 new.
+- Plot scene:
+  - layer styles, and hidden and locked layers;
+  - blocks expanded, nested, with ByBlock and text;
+  - a dimension's lines and value;
+  - weights, dashes and colours;
+  - the drawing on the paper, fitted and at a scale that does not fit.
+- SVG:
+  - the page, strokes, weights, dashes and escaped text;
+  - monochrome;
+  - numbers under a comma locale (it skips where no de_DE locale exists).
+- Window:
+  - a drawing plots to PDF and to SVG from the menu;
+  - a plot that does not fit is warned about, and Cancel writes nothing.
+
+### Not done
+
+- **Printing** (`QPrinter`, Qt PrintSupport) waits on the owner's
+  decision.
+- No paper space or layouts, and no title block on the plot.
+- Plot styles (weight by colour) are not supported.
+- Dimension text sits on its line rather than above it.
+- Fonts are the system's sans serif. `DraftText` has no font of its own.
 
 ## Phase 128: Precise input
 

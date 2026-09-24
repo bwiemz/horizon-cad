@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
 
+- **Drawings to PDF and SVG (127).**
+  - File ▸ Export ▸ PDF… and SVG… plot the drawing on a chosen paper and
+    orientation, fitted or at a scale from 1:200 to 10:1, with line weights
+    in millimetres, dash patterns, and text at its height. White lines,
+    drawn on the dark screen, plot black; or everything can plot black. If
+    the drawing does not fit the paper at the scale chosen, you are told
+    before anything is cut off. Printing waits on adding Qt's print support.
+  - Blocks now draw everything they hold, on screen too: text, hatches,
+    dimensions and blocks inside blocks were left out.
 - **Drawing to exact sizes (128).**
   - While a drawing tool waits for a point, type one and press Enter:
     `x,y`; `@dx,dy` from the last point; `@length<angle`; or a length alone,
