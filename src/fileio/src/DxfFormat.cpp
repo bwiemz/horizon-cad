@@ -1,6 +1,7 @@
 #include "horizon/fileio/DxfFormat.h"
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <cmath>
 #include <exception>
@@ -85,6 +86,22 @@ std::string nextHandle() {
 // Common entity property writer
 // ===========================================================================
 
+/// The DXF lineweight nearest @p widthMm, in hundredths of a millimetre.
+/// Group 370 takes only these values; `width * 100` wrote others (1.5 as
+/// 150), which strict readers reject. Never 0 (hairline): the reader takes
+/// that as no width, ByLayer on an entity and the default on a layer, so a
+/// thin width is written as the thinnest weight above it.
+int dxfLineweight(double widthMm) {
+    static constexpr int kWeights[] = {5,  9,  13, 15, 18,  20,  25,  30,  35,  40,  50, 53,
+                                       60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211};
+    const double hundredths = widthMm * 100.0;
+    int best = kWeights[0];
+    for (int w : kWeights) {
+        if (std::abs(w - hundredths) < std::abs(best - hundredths)) best = w;
+    }
+    return best;
+}
+
 void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
     writeGroup(out, 5, nextHandle());
     writeGroup(out, 8, entity.layer());
@@ -100,7 +117,7 @@ void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
             std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(entity.lineType()))));
     }
     if (entity.lineWidth() > 0.0) {
-        writeGroup(out, 370, static_cast<int>(entity.lineWidth() * 100.0));
+        writeGroup(out, 370, dxfLineweight(entity.lineWidth()));
     }
 }
 
@@ -597,43 +614,6 @@ std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& grou
     return std::make_shared<draft::DraftSpline>(cps, closed);
 }
 
-std::shared_ptr<draft::DraftEntity> parseHatch(const std::vector<DxfPair>& groups) {
-    std::string patternName = findGroup(groups, 2, "ANSI31");
-    int solidFill = toInt(findGroup(groups, 70, "0"));
-    double angle = toDouble(findGroup(groups, 52, "0")) * math::kDegToRad;
-    double spacing = toDouble(findGroup(groups, 41, "1.0"));
-
-    // Parse boundary vertices (first polyline boundary path).
-    // Look for group 93 (vertex count), then subsequent 10/20 pairs.
-    // In a hatch, boundary vertex 10/20 groups appear after the boundary header.
-    auto xs = findAllDoubles(groups, 10);
-    auto ys = findAllDoubles(groups, 20);
-
-    // Skip the first 10/20 (elevation point) — boundary vertices start after.
-    if (xs.size() > 1 && ys.size() > 1) {
-        xs.erase(xs.begin());
-        ys.erase(ys.begin());
-    }
-
-    size_t count = std::min(xs.size(), ys.size());
-    if (count < 3) return nullptr;
-
-    std::vector<math::Vec2> boundary;
-    boundary.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        boundary.emplace_back(xs[i], ys[i]);
-    }
-
-    draft::HatchPattern pattern = draft::HatchPattern::Lines;
-    if (solidFill)
-        pattern = draft::HatchPattern::Solid;
-    else if (patternName == "ANSI37")
-        pattern = draft::HatchPattern::CrossHatch;
-
-    if (spacing <= 0.0) spacing = 1.0;
-    return std::make_shared<draft::DraftHatch>(boundary, pattern, angle, spacing);
-}
-
 // ===========================================================================
 // DXF Import - Section parsers
 // ===========================================================================
@@ -776,7 +756,17 @@ struct Import {
     std::vector<std::shared_ptr<draft::BlockDefinition>> built;  ///< Blocks this import made
     Entities added;                      ///< and the drawing entities it made.
     std::vector<std::string> converted;  ///< Changes that lose nothing (ImportReport::converted).
+    /// Pieces placed, and blocks within blocks walked, by flattening blocks
+    /// into blocks. Nesting is capped in depth, but ten inserts of a block
+    /// of ten inserts, eight deep, is a hundred million pieces from a few
+    /// kilobytes: past the budget the import stops flattening and says so.
+    size_t placedPieces = 0;
+    bool placementCut = false;
 };
+
+/// The most pieces a DXF import places by flattening nested blocks
+/// (DxfFormat::setMaxFlattenedEntities).
+std::atomic<size_t> g_maxPlacedPieces{2'000'000};
 
 /// Report what a text's codes asked for that the drawing cannot show.
 void noteLosses(const dxf::TextLosses& losses, const std::string& type, Import& im) {
@@ -991,6 +981,225 @@ std::vector<PolyVertex> lwPolylineVertices(const std::vector<DxfPair>& groups) {
     return v;
 }
 
+/// Points along an arc about @p c of radius @p r, from angle @p from through
+/// @p sweep radians (positive counter-clockwise), the first point left out:
+/// a boundary's next edge supplies it.
+void appendArcPoints(std::vector<math::Vec2>& out, const math::Vec2& c, double r, double from,
+                     double sweep) {
+    const int steps = std::max(2, static_cast<int>(std::ceil(std::abs(sweep) / (math::kPi / 16))));
+    for (int k = 1; k <= steps; ++k) {
+        const double a = from + sweep * k / steps;
+        out.emplace_back(c.x + r * std::cos(a), c.y + r * std::sin(a));
+    }
+}
+
+/// One boundary path of a HATCH: its outline, and whether the file marks it
+/// the outer boundary.
+struct HatchLoop {
+    std::vector<math::Vec2> points;
+    bool external = false;
+};
+
+/// What a HATCH gave: the hatch, and what could not come with it.
+struct HatchParse {
+    std::shared_ptr<draft::DraftEntity> hatch;
+    int islandsLeftOut = 0;  ///< boundary paths inside the outer one (islands)
+    bool curves = false;     ///< arcs, ellipses or splines turned into segments
+};
+
+/// A HATCH's boundary paths, read in the order the file writes them: group
+/// 91 counts the paths; each starts at 92 (bit 2: a polyline path, else a
+/// path of edges), and the coordinates of each vertex or edge follow its
+/// header. Reading every 10/20 in the entity as one polygon merged all the
+/// paths, and the seed points after them, into one garbled outline.
+std::vector<HatchLoop> hatchLoops(const std::vector<DxfPair>& g, bool& curves) {
+    size_t i = 0;
+    const auto seek = [&g, &i](int code) {
+        while (i < g.size() && g[i].code != code) ++i;
+        return i < g.size();
+    };
+    // The next group, if it has @p code: its value as a number.
+    const auto take = [&g, &i](int code, double& value) {
+        if (i >= g.size() || g[i].code != code) return false;
+        value = toDouble(g[i++].value);
+        return true;
+    };
+    std::vector<HatchLoop> loops;
+    if (!seek(91)) return loops;
+    const int paths = std::clamp(toInt(g[i++].value), 0, 10000);
+    for (int path = 0; path < paths; ++path) {
+        if (!seek(92)) break;
+        const int flags = toInt(g[i++].value);
+        HatchLoop loop;
+        loop.external = (flags & 1) != 0;
+        double n = 0, x = 0, y = 0;
+        if ((flags & 2) != 0) {
+            // A polyline path: 72 has-bulge, 73 closed, 93 vertices, then
+            // 10/20 (and 42 when it has bulges) for each.
+            double hasBulge = 0, closed = 0;
+            take(72, hasBulge);
+            take(73, closed);
+            if (!seek(93)) break;
+            n = std::clamp(toDouble(g[i++].value), 0.0, 1e6);
+            std::vector<PolyVertex> v;
+            for (int k = 0; k < static_cast<int>(n); ++k) {
+                if (!take(10, x) || !take(20, y)) break;
+                double bulge = 0;
+                if (hasBulge != 0) take(42, bulge);
+                v.push_back({math::Vec2(x, y), bulge});
+            }
+            for (size_t k = 0; k < v.size(); ++k) {
+                loop.points.push_back(v[k].p);
+                if (std::abs(v[k].bulge) <= 1e-12) continue;
+                const auto arc = arcFromBulge(v[k].p, v[(k + 1) % v.size()].p, v[k].bulge);
+                const auto* a = dynamic_cast<const draft::DraftArc*>(arc.get());
+                if (a == nullptr) continue;
+                const double from = std::atan2(v[k].p.y - a->center().y, v[k].p.x - a->center().x);
+                const double sweep = 4.0 * std::atan(v[k].bulge);
+                appendArcPoints(loop.points, a->center(), a->radius(), from, sweep);
+                loop.points.pop_back();  // the next vertex
+                curves = true;
+            }
+        } else {
+            // A path of edges: 93 edges, each 72 (1 line, 2 arc, 3 ellipse,
+            // 4 spline) and its own groups.
+            if (!seek(93)) break;
+            n = std::clamp(toDouble(g[i++].value), 0.0, 1e6);
+            for (int k = 0; k < static_cast<int>(n); ++k) {
+                double type = 0;
+                if (!take(72, type)) break;
+                if (type == 1) {
+                    double x2 = 0, y2 = 0;
+                    if (!take(10, x) || !take(20, y) || !take(11, x2) || !take(21, y2)) break;
+                    loop.points.emplace_back(x, y);
+                } else if (type == 2 || type == 3) {
+                    double mx = 0, my = 0, r = 0, start = 0, end = 0, ccw = 1;
+                    if (!take(10, x) || !take(20, y)) break;
+                    if (type == 3 && (!take(11, mx) || !take(21, my))) break;
+                    if (!take(40, r) || !take(50, start) || !take(51, end)) break;
+                    take(73, ccw);
+                    double sweep = (end - start) * math::kDegToRad;
+                    while (sweep <= 0.0) sweep += 2.0 * math::kPi;
+                    // Clockwise edges run the other way: their angles are
+                    // written as for the counter-clockwise arc.
+                    double from = start * math::kDegToRad;
+                    if (ccw == 0) {
+                        from = -from;
+                        sweep = -sweep;
+                    }
+                    std::vector<math::Vec2> arc;
+                    arc.emplace_back();  // the start point, filled below
+                    appendArcPoints(arc, math::Vec2(0, 0), 1.0, from, sweep);
+                    arc.front() = math::Vec2(std::cos(from), std::sin(from));
+                    // A circle of radius r, or an ellipse: major axis (mx, my),
+                    // minor axis the major turned a quarter, times r.
+                    const double major = type == 2 ? r : std::hypot(mx, my);
+                    const double minor = type == 2 ? r : major * r;
+                    const double turn = type == 2 ? 0.0 : std::atan2(my, mx);
+                    for (size_t q = 0; q + 1 < arc.size();
+                         ++q) {  // the end is the next edge's start
+                        const double ex = arc[q].x * major, ey = arc[q].y * minor;
+                        loop.points.emplace_back(x + ex * std::cos(turn) - ey * std::sin(turn),
+                                                 y + ex * std::sin(turn) + ey * std::cos(turn));
+                    }
+                    curves = true;
+                } else if (type == 4) {
+                    // A spline edge: kept as its control polygon.
+                    double degree = 0, rational = 0, periodic = 0, knots = 0, controls = 0;
+                    take(94, degree);
+                    take(73, rational);
+                    take(74, periodic);
+                    if (!take(95, knots) || !take(96, controls)) break;
+                    for (int q = 0; q < static_cast<int>(std::clamp(knots, 0.0, 1e6)); ++q) {
+                        double knot = 0;
+                        if (!take(40, knot)) break;
+                    }
+                    const int count = static_cast<int>(std::clamp(controls, 0.0, 1e6));
+                    for (int q = 0; q < count; ++q) {
+                        if (!take(10, x) || !take(20, y)) break;
+                        double w = 0;
+                        if (rational != 0) take(42, w);
+                        if (q + 1 < count) loop.points.emplace_back(x, y);
+                    }
+                    // Fit data (AutoCAD 2010 on, written even when there is
+                    // none): 97 fit points at 11/21, then the end tangents at
+                    // 12/22 and 13/23. Left unread, it stopped the edges after
+                    // this one from being read.
+                    double fits = 0;
+                    if (take(97, fits)) {
+                        for (int q = 0; q < static_cast<int>(std::clamp(fits, 0.0, 1e6)); ++q) {
+                            double fx = 0, fy = 0;
+                            if (!take(11, fx) || !take(21, fy)) break;
+                        }
+                        double t = 0;
+                        if (take(12, t)) take(22, t);
+                        if (take(13, t)) take(23, t);
+                    }
+                    curves = true;
+                } else {
+                    break;  // not a known edge: the rest of this path cannot be read
+                }
+            }
+        }
+        // Drop repeated points (an edge ending where the next begins).
+        std::vector<math::Vec2> clean;
+        for (const auto& q : loop.points) {
+            if (clean.empty() || (q - clean.back()).length() > 1e-12) clean.push_back(q);
+        }
+        while (clean.size() > 1 && (clean.front() - clean.back()).length() <= 1e-12)
+            clean.pop_back();
+        loop.points = std::move(clean);
+        if (loop.points.size() >= 3) loops.push_back(std::move(loop));
+    }
+    return loops;
+}
+
+double polygonArea(const std::vector<math::Vec2>& pts) {
+    double a = 0.0;
+    for (size_t k = 0; k < pts.size(); ++k) {
+        const auto& p = pts[k];
+        const auto& q = pts[(k + 1) % pts.size()];
+        a += p.x * q.y - q.x * p.y;
+    }
+    return 0.5 * a;
+}
+
+/// A HATCH. The drawing's hatch has one boundary: the path the file marks
+/// as the outer one (else the largest). Islands inside it are reported, not
+/// merged into it.
+HatchParse parseHatch(const std::vector<DxfPair>& groups) {
+    HatchParse result;
+    std::string patternName = findGroup(groups, 2, "ANSI31");
+    int solidFill = toInt(findGroup(groups, 70, "0"));
+    double angle = toDouble(findGroup(groups, 52, "0")) * math::kDegToRad;
+    double spacing = toDouble(findGroup(groups, 41, "1.0"));
+
+    const std::vector<HatchLoop> loops = hatchLoops(groups, result.curves);
+    if (loops.empty()) return result;
+    size_t outer = 0;
+    for (size_t k = 0; k < loops.size(); ++k) {
+        if (loops[k].external) {
+            outer = k;
+            break;
+        }
+        if (std::abs(polygonArea(loops[k].points)) > std::abs(polygonArea(loops[outer].points))) {
+            outer = k;
+        }
+    }
+    result.islandsLeftOut = static_cast<int>(loops.size()) - 1;
+
+    draft::HatchPattern pattern = draft::HatchPattern::Lines;
+    if (solidFill)
+        pattern = draft::HatchPattern::Solid;
+    else if (patternName == "ANSI37")
+        pattern = draft::HatchPattern::CrossHatch;
+
+    if (spacing <= 0.0) spacing = 1.0;
+    result.hatch =
+        std::make_shared<draft::DraftHatch>(loops[outer].points, pattern, angle, spacing);
+    return result;
+}
+
 /// A partial ELLIPSE (groups 41/42 its start and end parameters) as a
 /// polyline; a whole one as an ellipse.
 std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& groups, Import& im) {
@@ -1029,6 +1238,14 @@ Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, dou
 
 Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const math::Vec2& at,
                      double rotation, double sx, double sy, Import& im, int depth) {
+    // Every placement counts, a block within the block too: a definition
+    // made only of inserts (one already in the drawing can be) places
+    // nothing itself, but walking it multiplies all the same.
+    if (im.placementCut || im.placedPieces >= g_maxPlacedPieces.load(std::memory_order_relaxed)) {
+        im.placementCut = true;
+        return {};
+    }
+    ++im.placedPieces;
     if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(&e)) {
         // A block within the block: place its pieces, then these.
         Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(),
@@ -1126,6 +1343,7 @@ Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, dou
     if (depth > 16) return {};  // blocks nested past any sensible depth: a cycle
     Entities out;
     for (const auto& e : def.entities) {
+        if (im.placementCut) break;
         auto placed = placeEntity(*e, def.basePoint, at, rotation, sx, sy, im, depth);
         out.insert(out.end(), placed.begin(), placed.end());
     }
@@ -1202,7 +1420,12 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
     } else if (type == "SPLINE") {
         out.push_back(parseSpline(g));
     } else if (type == "HATCH") {
-        out.push_back(parseHatch(g));
+        HatchParse hatch = parseHatch(g);
+        if (hatch.islandsLeftOut > 0) {
+            ++im.notes.approximated[{type, "islands inside it left out (one boundary is kept)"}];
+        }
+        if (hatch.curves) ++im.notes.approximated[{type, "curved boundary brought in as segments"}];
+        out.push_back(std::move(hatch.hatch));
     } else if (type == "ELLIPSE") {
         out.push_back(ellipseEntity(g, im));
     } else if (type == "INSERT") {
@@ -1542,6 +1765,11 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         }
         writeGroup(out, 6,
                    std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(lp->lineType))));
+        // The layer's width, which the reader already took: a layer at the
+        // default width (1.0, what an unset weight reads as) says "default",
+        // as does one with no width, which the reader reads as the default.
+        const bool defaultWidth = lp->lineWidth <= 0.0 || std::abs(lp->lineWidth - 1.0) < 1e-9;
+        writeGroup(out, 370, defaultWidth ? -3 : dxfLineweight(lp->lineWidth));
     }
     writeGroup(out, 0, std::string("ENDTAB"));
     writeGroup(out, 0, std::string("ENDSEC"));
@@ -1682,6 +1910,12 @@ bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, Impo
                 std::to_string(n) + (n == 1 ? " character" : " characters") + " in code page " +
                 im.decoder.codepage() + " could not be read, shown as \xEF\xBF\xBD");
         }
+        if (im.placementCut) {
+            report->skipped.push_back(
+                "flattening blocks nested inside blocks stopped after " +
+                std::to_string(g_maxPlacedPieces.load(std::memory_order_relaxed)) +
+                " placements; the rest were left out");
+        }
         report->converted.insert(report->converted.end(), im.converted.begin(), im.converted.end());
     }
     return true;
@@ -1702,6 +1936,14 @@ bool DxfFormat::loadFromString(const std::string& text, doc::Document& doc, std:
                                ImportReport* report) {
     std::istringstream in(text);
     return parseChecked(in, doc, error, report);
+}
+
+void DxfFormat::setMaxFlattenedEntities(size_t limit) {
+    g_maxPlacedPieces.store(limit, std::memory_order_relaxed);
+}
+
+size_t DxfFormat::maxFlattenedEntities() {
+    return g_maxPlacedPieces.load(std::memory_order_relaxed);
 }
 
 }  // namespace hz::io

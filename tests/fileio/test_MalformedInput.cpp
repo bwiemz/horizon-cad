@@ -260,3 +260,58 @@ TEST(MalformedInputTest, DxfNumbersIgnoreACommaDecimalLocale) {
     EXPECT_DOUBLE_EQ(line->start().x, 1.5) << "std::stod read 1.5 as 1 under de_DE";
     EXPECT_DOUBLE_EQ(line->end().x, 2.25);
 }
+
+// Two entities under one ID (a damaged or hand-edited file). The later one
+// used to hide the earlier from every lookup: unselectable, undeletable. It
+// is loaded under a new ID, and the report says so.
+TEST(MalformedInputTest, ADuplicateEntityIdIsRenumbered) {
+    hz::io::ImportReport report;
+    Document doc;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(
+        R"({"version":16,"entities":[)"
+        R"({"type":"line","id":7,"start":{"x":0,"y":0},"end":{"x":1,"y":0}},)"
+        R"({"type":"line","id":7,"start":{"x":0,"y":5},"end":{"x":1,"y":5}}]})",
+        doc, &error, &report))
+        << error;
+    const auto& entities = doc.draftDocument().entities();
+    ASSERT_EQ(entities.size(), 2u);
+    EXPECT_EQ(entities[0]->id(), 7u);
+    EXPECT_NE(entities[1]->id(), 7u);
+    EXPECT_EQ(doc.draftDocument().findEntity(entities[0]->id()), entities[0].get());
+    EXPECT_EQ(doc.draftDocument().findEntity(entities[1]->id()), entities[1].get());
+    bool noted = false;
+    for (const auto& line : report.approximated) noted = noted || contains(line, "earlier entity");
+    EXPECT_TRUE(noted);
+}
+
+// A duplicate given a new ID must not take one a later entity holds in the
+// file. With IDs a, a, a+2 (making the second entity takes a+1 before its
+// saved ID is set), the duplicate was given a+2, and the third entity, whose
+// ID it was, was then renumbered as a duplicate too.
+TEST(MalformedInputTest, ARenumberedDuplicateTakesNoLaterEntitysId) {
+    const uint64_t a = hz::draft::DraftEntity::newId() + 10;
+    const std::string line = R"({"type":"line","id":%ID%,"start":{"x":0,"y":0},)"
+                             R"("end":{"x":1,"y":0}})";
+    const auto withId = [&line](uint64_t id) {
+        std::string out = line;
+        out.replace(out.find("%ID%"), 4, std::to_string(id));
+        return out;
+    };
+    hz::io::ImportReport report;
+    Document doc;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(
+        R"({"version":16,"entities":[)" + withId(a) + "," + withId(a) + "," + withId(a + 2) + "]}",
+        doc, &error, &report))
+        << error;
+    const auto& entities = doc.draftDocument().entities();
+    ASSERT_EQ(entities.size(), 3u);
+    EXPECT_EQ(entities[0]->id(), a);
+    EXPECT_EQ(entities[2]->id(), a + 2) << "the third keeps the ID it had";
+    EXPECT_NE(entities[1]->id(), a);
+    EXPECT_NE(entities[1]->id(), a + 2);
+    int noted = 0;
+    for (const auto& l : report.approximated) noted += contains(l, "earlier entity") ? 1 : 0;
+    EXPECT_EQ(noted, 1) << "one duplicate";
+}

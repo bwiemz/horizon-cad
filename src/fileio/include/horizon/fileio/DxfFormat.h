@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 
 #include "horizon/document/Document.h"
@@ -25,6 +26,15 @@ public:
     /// As load(), from DXF text in memory.
     static bool loadFromString(const std::string& text, doc::Document& doc,
                                std::string* error = nullptr, ImportReport* report = nullptr);
+
+    /// The most placements one import makes by flattening blocks inserted
+    /// into blocks (default 2,000,000): each entity placed, and each block
+    /// within a block walked. Nesting multiplies: ten inserts of a block of
+    /// ten inserts, eight levels deep, is a hundred million entities from a
+    /// few kilobytes. An import that would make more stops flattening there,
+    /// and its report says what was left out.
+    static void setMaxFlattenedEntities(size_t limit);
+    static size_t maxFlattenedEntities();
 };
 
 }  // namespace hz::io
