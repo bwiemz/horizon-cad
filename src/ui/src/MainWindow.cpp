@@ -587,6 +587,8 @@ void MainWindow::createRibbonBar() {
         QAction* act = menuActionFor(shortcut);
         if (act != nullptr) {
             act->setIcon(IconGenerator::icon(iconName));
+            // The ribbon's short label ("New"), not the menu's ("New Drawing").
+            act->setIconText(tooltip);
             tb->addAction(act);
         } else {
             act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);

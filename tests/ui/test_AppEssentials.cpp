@@ -86,6 +86,12 @@ TEST(AppEssentialsTest, EveryShortcutRunsOneCommand) {
         EXPECT_EQ(actions.size(), 1u) << key << ":" << names;
     }
     ASSERT_TRUE(byKey.count("Ctrl+Z"));
+
+    // The ribbon shows the shared action by its own short name.
+    auto* newAction = w.findChild<QAction*>(QStringLiteral("action_new"));
+    ASSERT_NE(newAction, nullptr);
+    EXPECT_EQ(newAction->iconText(), QStringLiteral("New"));
+    EXPECT_EQ(newAction->text(), QStringLiteral("&New Drawing")) << "and the menu by its own";
 }
 
 TEST(AppEssentialsTest, OpenedFilesAreFirstInOpenRecent) {
