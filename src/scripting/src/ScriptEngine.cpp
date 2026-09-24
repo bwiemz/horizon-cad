@@ -5,6 +5,7 @@
 #include <pybind11/stl.h>
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -228,7 +229,22 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     m.def("cam_pocket_rect", &hz::cam::CamGenerator::pocketRect, py::arg("min"), py::arg("max"),
           py::arg("tool_radius"), py::arg("stepover"), py::arg("cut_depth"), py::arg("safe_z"),
           py::arg("feed"));
-    m.def("cam_gcode", &hz::cam::GcodeWriter::toGcode, py::arg("path"), py::arg("decimals") = 3);
+    // A program is written only when it is safe to start; otherwise the
+    // script gets the reason as a ValueError.
+    const auto camGcode = [](const hz::cam::Toolpath& path, double spindleRpm, int tool,
+                             bool coolant, int decimals) {
+        hz::cam::GcodeOptions options;
+        options.spindleRpm = spindleRpm;
+        options.toolNumber = tool;
+        options.coolant = coolant;
+        options.decimals = decimals;
+        std::string error;
+        std::optional<std::string> gcode = hz::cam::GcodeWriter::toGcode(path, options, &error);
+        if (!gcode) throw py::value_error(error);
+        return *gcode;
+    };
+    m.def("cam_gcode", camGcode, py::arg("path"), py::arg("spindle_rpm"), py::arg("tool") = 1,
+          py::arg("coolant") = false, py::arg("decimals") = 3);
     m.def("spindle_rpm", &hz::cam::spindleRpm, py::arg("surface_speed"), py::arg("diameter"));
     m.def("feed_rate", &hz::cam::feedRate, py::arg("rpm"), py::arg("flutes"), py::arg("chip_load"));
 
@@ -250,18 +266,21 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     py::class_<ScriptContext::StaticAnalysisResult>(m, "StaticAnalysisResult")
         .def_readonly("converged", &ScriptContext::StaticAnalysisResult::converged)
         .def_readonly("max_displacement", &ScriptContext::StaticAnalysisResult::maxDisplacement)
-        .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises);
+        .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises)
+        .def_readonly("error", &ScriptContext::StaticAnalysisResult::error);
 
     py::class_<ScriptContext::ModalAnalysisResult>(m, "ModalAnalysisResult")
         .def_readonly("converged", &ScriptContext::ModalAnalysisResult::converged)
         .def_readonly("natural_frequencies",
-                      &ScriptContext::ModalAnalysisResult::naturalFrequencies);
+                      &ScriptContext::ModalAnalysisResult::naturalFrequencies)
+        .def_readonly("error", &ScriptContext::ModalAnalysisResult::error);
 
     py::class_<ScriptContext::ThermalAnalysisResult>(m, "ThermalAnalysisResult")
         .def_readonly("converged", &ScriptContext::ThermalAnalysisResult::converged)
         .def_readonly("min_temperature", &ScriptContext::ThermalAnalysisResult::minTemperature)
         .def_readonly("max_temperature", &ScriptContext::ThermalAnalysisResult::maxTemperature)
-        .def_readonly("max_flux", &ScriptContext::ThermalAnalysisResult::maxFlux);
+        .def_readonly("max_flux", &ScriptContext::ThermalAnalysisResult::maxFlux)
+        .def_readonly("error", &ScriptContext::ThermalAnalysisResult::error);
 
     // The document is bound through DocHandle, never as a raw ScriptContext*,
     // so a script cannot keep a pointer past its run.

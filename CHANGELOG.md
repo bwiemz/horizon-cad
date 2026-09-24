@@ -35,6 +35,19 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
   - A plugin is checked again when it is loaded, not only when it is found.
     One that changed since the user enabled it, such as by adding a
     permission, has to be enabled again.
+- **G-code that could hurt a machine, and FEA that analysed the wrong shape
+  (121).**
+  - A program now starts from a known state, loads its tool, and starts the
+    spindle before it moves. Its first rapid climbs before it crosses, and so
+    does every rapid after it. It stops the spindle at the end.
+  - A program that could rapid through the cut, cut with the spindle
+    stopped, or carries a feed of zero or a number that is not finite is
+    refused, with the reason. So are toolpath parameters that would make one.
+  - The analyses meshed a solid's bounding box, so a cylinder was analysed
+    as the bar around it. They now refuse any solid that is not an
+    axis-aligned box, and say why.
+  - The maturity table in the README says which modules the application
+    can reach.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

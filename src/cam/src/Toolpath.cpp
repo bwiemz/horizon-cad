@@ -1,6 +1,8 @@
 #include "horizon/cam/Toolpath.h"
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace hz::cam {
 
@@ -9,6 +11,21 @@ namespace {
 double distance(const math::Vec3& a, const math::Vec3& b) {
     const double dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/// Whether a path can be generated safely: a positive feed, a cut below the
+/// safe plane, and finite numbers throughout.
+bool usable(double cutDepth, double safeZ, double feed) {
+    return std::isfinite(cutDepth) && std::isfinite(safeZ) && std::isfinite(feed) && feed > 0.0 &&
+           cutDepth < safeZ;
+}
+
+bool finite(const math::Vec2& p) {
+    return std::isfinite(p.x) && std::isfinite(p.y);
+}
+
+bool allFinite(const std::vector<math::Vec2>& points) {
+    return std::all_of(points.begin(), points.end(), [](const math::Vec2& p) { return finite(p); });
 }
 
 double lengthOf(const Toolpath& path, MoveType type) {
@@ -34,7 +51,7 @@ double Toolpath::rapidLength() const {
 Toolpath CamGenerator::contour(const std::vector<math::Vec2>& profile, double cutDepth,
                                double safeZ, double feed, bool closed) {
     Toolpath path;
-    if (profile.empty()) return path;
+    if (profile.empty() || !usable(cutDepth, safeZ, feed) || !allFinite(profile)) return path;
 
     const math::Vec2& p0 = profile.front();
     path.moves.push_back({MoveType::Rapid, {p0.x, p0.y, safeZ}, 0.0});
@@ -53,6 +70,7 @@ Toolpath CamGenerator::contour(const std::vector<math::Vec2>& profile, double cu
 Toolpath CamGenerator::drill(const std::vector<math::Vec2>& holes, double cutDepth, double safeZ,
                              double feed) {
     Toolpath path;
+    if (!usable(cutDepth, safeZ, feed) || !allFinite(holes)) return path;
     for (const math::Vec2& h : holes) {
         path.moves.push_back({MoveType::Rapid, {h.x, h.y, safeZ}, 0.0});
         path.moves.push_back({MoveType::Feed, {h.x, h.y, cutDepth}, feed});  // plunge
@@ -64,7 +82,11 @@ Toolpath CamGenerator::drill(const std::vector<math::Vec2>& holes, double cutDep
 Toolpath CamGenerator::pocketRect(const math::Vec2& min, const math::Vec2& max, double toolRadius,
                                   double stepover, double cutDepth, double safeZ, double feed) {
     Toolpath path;
-    if (toolRadius <= 0.0 || stepover <= 0.0 || feed <= 0.0) return path;
+    if (!usable(cutDepth, safeZ, feed) || !finite(min) || !finite(max) ||
+        !std::isfinite(toolRadius) || !std::isfinite(stepover) || toolRadius <= 0.0 ||
+        stepover <= 0.0) {
+        return path;
+    }
 
     // Inset the rectangle by a full tool radius; the tool centre travels here.
     const double minX = min.x + toolRadius, maxX = max.x - toolRadius;

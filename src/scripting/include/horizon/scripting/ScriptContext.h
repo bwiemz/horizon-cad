@@ -57,6 +57,12 @@ public:
     void addDatumPoint(const math::Vec3& position);
 
     // --- Analysis ----------------------------------------------------------
+    // The finite-element analyses below mesh the solid's bounding box, not the
+    // solid: a tetrahedral mesher for arbitrary B-Reps does not exist yet. So
+    // they run only on a solid that fills its bounding box, which is an
+    // axis-aligned box, and refuse any other (`converged` false, `error`
+    // saying why) rather than report the box's results as the solid's.
+
     /// Mass properties of the current solid (volume/area/centroid/inertia/mass)
     /// at the given density. `valid` is false when there is no solid.
     model::MassProperties massProperties(double density = 1.0) const;
@@ -66,6 +72,7 @@ public:
         bool converged = false;        ///< false if there is no solid or the solve fails
         double maxDisplacement = 0.0;  ///< peak nodal displacement magnitude
         double maxVonMises = 0.0;      ///< peak element von Mises stress
+        std::string error;             ///< why the analysis was refused, "" if it ran
     };
 
     /// Run a simple axial linear-static analysis on the current solid: mesh its
@@ -79,6 +86,7 @@ public:
     struct ModalAnalysisResult {
         bool converged = false;                  ///< false if there is no solid or the solve fails
         std::vector<double> naturalFrequencies;  ///< hertz, ascending
+        std::string error;                       ///< why the analysis was refused, "" if it ran
     };
 
     /// Run a modal analysis on the current solid: mesh its bounding box
@@ -94,6 +102,7 @@ public:
         double minTemperature = 0.0;  ///< min nodal temperature
         double maxTemperature = 0.0;  ///< max nodal temperature
         double maxFlux = 0.0;         ///< peak element heat-flux magnitude
+        std::string error;            ///< why the analysis was refused, "" if it ran
     };
 
     /// Run a steady-state conduction analysis on the current solid: mesh its

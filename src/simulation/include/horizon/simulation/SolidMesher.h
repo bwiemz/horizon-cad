@@ -24,10 +24,11 @@ Aabb solidAabb(const topo::Solid& solid);
 /// Mesh the axis-aligned bounding box of @p solid into a structured tet mesh of
 /// nx*ny*nz*6 tetrahedra, positioned at the box's location.
 ///
-/// For an axis-aligned box solid this meshes the solid exactly; for other solids
-/// it meshes the bounding box — a coarse analysis domain (a full B-Rep
-/// tetrahedralizer is a follow-up). Returns an empty mesh for an empty solid,
-/// a zero-extent bounding box, or a subdivision count < 1.
+/// For an axis-aligned box solid this meshes the solid exactly. For any other
+/// solid it meshes the box, not the solid, and results computed on it are the
+/// box's: callers must refuse such a solid (as ScriptContext's analyses do)
+/// until a B-Rep tetrahedralizer exists. Returns an empty mesh for an empty
+/// solid, a zero-extent bounding box, or a subdivision count < 1.
 TetMesh meshSolidBoundingBox(const topo::Solid& solid, int nx, int ny, int nz);
 
 /// Indices of the mesh nodes lying on the plane {component[axis] == coord} to

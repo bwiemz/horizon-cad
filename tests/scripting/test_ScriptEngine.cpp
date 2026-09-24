@@ -259,8 +259,8 @@ TEST(ScriptEngineTest, CamToolpathsAndGcode) {
         "10)]\n"
         "c = horizon.cam_contour(sq, cut_depth=-2.0, safe_z=5.0, feed=100.0, closed=True)\n"
         "print(abs(c.cutting_length() - 47.0) < 1e-9)\n"  // 40 perimeter + 7 plunge
-        "g = horizon.cam_gcode(c)\n"
-        "print('G21' in g and 'M2' in g)\n"
+        "g = horizon.cam_gcode(c, spindle_rpm=12000.0)\n"
+        "print('S12000 M3' in g and g.endswith('M5\\nM30\\n'))\n"
         "pk = horizon.cam_pocket_rect(horizon.Vec2(0, 0), horizon.Vec2(100, 100),\n"
         "                             tool_radius=5.0, stepover=10.0, cut_depth=-2.0,\n"
         "                             safe_z=5.0, feed=100.0)\n"
@@ -476,4 +476,49 @@ TEST(ScriptEngineTest, ScriptsCannotConstructADocument) {
     ScriptEngine engine;
     auto res = engine.run("horizon.Document()");
     EXPECT_FALSE(res.ok);
+}
+
+// ---------------------------------------------------------------------------
+// FEA runs only where its mesh is the solid (Phase 121)
+// ---------------------------------------------------------------------------
+
+// The analyses mesh the solid's bounding box. A cylinder is not its box, so
+// they refuse it and say why, where they used to report the box's results.
+TEST(ScriptEngineTest, AnalysesRefuseASolidThatIsNotABox) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(
+        "doc.add_cylinder(1.0, 10.0)\n"
+        "doc.rebuild()\n"
+        "results = [doc.static_analysis(force=1000.0, youngs_modulus=200e9),\n"
+        "           doc.modal_analysis(youngs_modulus=200e9),\n"
+        "           doc.thermal_analysis(conductivity=50.0, hot_temperature=100.0)]\n"
+        "for r in results:\n"
+        "    print(r.converged, 'axis-aligned box' in r.error)\n"
+        "print(results[0].error)\n",
+        &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output.substr(0, 33), "False True\nFalse True\nFalse True\n") << res.output;
+    // A faceted unit-radius cylinder fills about pi/4 of its box.
+    EXPECT_NE(res.output.find("fills 78% of its box"), std::string::npos) << res.output;
+}
+
+TEST(ScriptEngineTest, AnalysesOfABoxRunAndSayNothingIsWrong) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(
+        "doc.add_box(10.0, 1.0, 1.0)\n"
+        "doc.rebuild()\n"
+        "r = doc.static_analysis(force=1000.0, youngs_modulus=200e9)\n"
+        "print(r.converged, repr(r.error))\n"
+        "print(repr(doc.thermal_analysis(conductivity=5.0, hot_temperature=1.0).error))\n",
+        &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    EXPECT_EQ(res.output, "True ''\n''\n");
 }
