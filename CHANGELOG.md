@@ -36,6 +36,26 @@ continues from a fresh audit after Phase 121.
   - Changing a text's height, content or alignment, closing a spline, or
     changing an ellipse left picking and box selection working from the old
     outline.
+- **Operations that gave a wrong part without saying so (123).**
+  - Shell rebuilt the part as a new cup made from two of its faces. Every
+    hole, boss or pocket was dropped, and only the first of several open
+    faces was used. It now hollows only a plain prism (two caps and straight
+    sides) and refuses anything else, with the reason.
+  - Shell, Draft and Chamfer decided which side was inside by looking at a
+    centroid, which is wrong on L-shaped and other non-convex parts: a
+    shelled L broke through its own wall. They now use the direction the
+    faces are wound in.
+  - When one feature failed, the whole part disappeared, and the window
+    rebuilt the failing model on every redraw. The part now stays as it was
+    before the failing feature, which is marked, and is rebuilt only when
+    something changes.
+  - Saving a part while it was being rebuilt in the background wrote the
+    mesh of the part before the last change into the file, and assemblies
+    loading it lightweight showed that. Save now builds the part first.
+  - The surface area of non-convex faces was too high: a U-shaped cap
+    counted 116 instead of 52.
+  - Every three-edge fillet corner carried a whole sphere, which STL and
+    glTF exports wrote out. They now write the corner alone.
 
 ## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
 

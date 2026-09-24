@@ -109,10 +109,91 @@ without it.
 
 ## Phase 123: Kernel honesty
 
-Shell refuses what it cannot shell and offsets by loop winding. Draft and
-Chamfer take their direction from winding. The last good solid is kept, and
-the failing feature marked. Surface area on non-convex faces and the stray
-sphere in STL/glTF exports are fixed.
+### What the audit found
+
+- **Shell built a different part.** It made a new cup from two faces: the
+  removed cap and an opposite cap with the same number of corners.
+  - Everything else on the part was dropped: holes, bosses, pockets.
+  - Only the first of several open faces was used.
+  - "Inward" was the side facing the profile's centroid. On an L-shaped cap
+    that turned the inner-corner edges outward, and the cavity broke through
+    the walls.
+  - The cavity's walls were always straight down, so a tapered part got the
+    wrong wall thickness.
+  - The thickness limit was a distance from the centroid, which refused
+    walls the profile could take.
+- **Draft and Chamfer compared with a centroid too.** Draft judged each face
+  against its body's centroid, so hole walls and the inner faces of an L
+  leaned the wrong way. Chamfer judged each face against its own centroid,
+  which is wrong on non-convex faces.
+- **A failing feature emptied the part.** The build returned no solid, the
+  viewport went blank, and `rebuildScene` then rebuilt the failing model on
+  the GUI thread at every redraw, tab switch and save.
+- **Surface area was too high on non-convex faces.** A face without holes
+  was fanned from its first corner and the triangles' areas added unsigned.
+  An extruded U counted 116 for its 52-square cap.
+- **Each three-edge fillet corner carried a whole sphere.** The tessellator
+  drew all of it, so every STL and glTF export had seven eighths of a ball
+  inside each blended corner.
+
+### As built
+
+- **Shell:**
+  - It opens one face. More are refused.
+  - It hollows a right prism only: N+2 faces, 2N vertices, quad sides, no
+    holes, the base straight below the top. Anything else is refused with
+    one message saying why.
+  - The inner profile is offset by winding, `axis × edge` on the
+    counter-clockwise cap.
+  - The profile is then checked: every edge keeps its direction, the polygon
+    stays simple, and it stays inside the outer profile. This replaces the
+    centroid "inradius". An L with 3-wide arms now takes a 1.4 wall and
+    refuses 1.5, where its arms close.
+  - The header now describes what Shell does.
+- **Draft** takes each face's outward normal from its loop's winding, turned
+  over for a body wound inside out. That is judged by the body's signed
+  volume, now `topo::signedVolume`, which Pattern shares.
+- **Chamfer** uses FilletOp's rule: walking a loop with its normal up, the
+  face lies to the left (`topo::loopNormal`). This holds however the body is
+  wound.
+- **A failed build keeps the part as it stood.**
+  `FeatureTree::buildWithDiagnostics` replays the features up to the failing
+  one, so a failed build pays twice and a successful one nothing.
+  `Document::needsBuild()` counts a failed build as built until the tree
+  changes. `rebuildScene` builds only a model that has no solid and has not
+  been built.
+- **Save caches the part as it is.** Save builds any model that is behind its
+  features before writing the tessellation cache. It used to build only when
+  there was no solid, so during a rebuild on a worker it cached the part as
+  it was before the edit, and lightweight assembly loads showed that. (Found
+  in review; the gap predates this phase.)
+- **Mass properties** triangulate every face of more than three corners
+  (`BoundaryMesh::triangulatePolygon`), not a fan. Volume is unchanged.
+- **Fillet corners** carry `NurbsSurface::makeSphereOctant`, an exact
+  rational biquadratic eighth of the ball facing the vertex. The whole
+  sphere remains the face's analytic surface, which mates and dimensions
+  read.
+- **The Boolean header** no longer says holes are ignored and split faces are
+  never merged back.
+- **Tests:** 11 new.
+  - Shell:
+    - an asymmetric L, with its exact cup volume;
+    - the thickness limit, 1.4 accepted and 1.5 refused;
+    - a drilled plate refused;
+    - two open faces refused.
+  - A failing feature:
+    - leaves the part before it;
+    - leaves nothing when it is the first feature;
+    - is not rebuilt until the tree changes.
+  - Mass properties: a U-channel's area.
+  - A corner blend's mesh area matches the part's.
+  - The octant patch itself.
+  - Save during a rebuild on a worker caches the part as it is.
+- **Not done** (Milestone 11):
+  - a real offset-based shell;
+  - Draft on selected faces;
+  - curved STEP faces are still drawn untrimmed;
+  - the validator still cannot see faces crossing each other.
 
 ## Phase 124: Hostile files, round 2
 

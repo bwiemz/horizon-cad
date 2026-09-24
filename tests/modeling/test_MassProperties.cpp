@@ -2,8 +2,13 @@
 
 #include <cmath>
 #include <deque>
+#include <memory>
 #include <numbers>
+#include <vector>
 
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
@@ -110,4 +115,23 @@ TEST(MassPropertiesTest, CylinderCentroidAndBounds) {
     EXPECT_GT(mp.volume, 0.0);
     EXPECT_LE(mp.volume, roundVol + 1e-6);
     EXPECT_GT(mp.surfaceArea, 0.0);
+}
+
+// The caps of a U-channel are non-convex. Fanned from their first corner,
+// the fan's triangles overlap and their unsigned areas added up to more than
+// the cap: the surface area came out high.
+TEST(MassPropertiesTest, NonConvexFacesHaveTheirTrueArea) {
+    const std::vector<hz::math::Vec2> u = {{0, 0}, {10, 0}, {10, 10}, {8, 10},
+                                           {8, 2}, {2, 2},  {2, 10},  {0, 10}};
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> profile;
+    for (size_t i = 0; i < u.size(); ++i) {
+        profile.push_back(std::make_shared<hz::draft::DraftLine>(u[i], u[(i + 1) % u.size()]));
+    }
+    auto channel =
+        Extrude::execute(profile, hz::draft::SketchPlane{}, Vec3(0, 0, 1), 3.0, "channel");
+    ASSERT_NE(channel, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*channel);
+    // Cap: 100 - 6 x 8 = 52; perimeter 56.
+    EXPECT_NEAR(props.volume, 52.0 * 3.0, 1e-9);
+    EXPECT_NEAR(props.surfaceArea, 2.0 * 52.0 + 56.0 * 3.0, 1e-9);
 }

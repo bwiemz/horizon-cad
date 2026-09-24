@@ -108,6 +108,16 @@ public:
     /// Create a spherical surface centered at @p center with given radius.
     static NurbsSurface makeSphere(const math::Vec3& center, double radius);
 
+    /// One eighth of a sphere: the points of the sphere around @p center where
+    /// the orthonormal directions @p e1, @p e2 and @p e3 all point outward
+    /// (every component non-negative). Exact: a rational biquadratic patch,
+    /// the quarter arc from e1 to e3 revolved a quarter turn towards e2, with
+    /// e3's pole a degenerate edge. Its normal points away from the center
+    /// when (e1, e2, e3) is right-handed. The corner of a three-edge fillet.
+    static NurbsSurface makeSphereOctant(const math::Vec3& center, double radius,
+                                         const math::Vec3& e1, const math::Vec3& e2,
+                                         const math::Vec3& e3);
+
     /// Create a toroidal surface centered at @p center around @p axis.
     static NurbsSurface makeTorus(const math::Vec3& center, const math::Vec3& axis,
                                   double majorRadius, double minorRadius);

@@ -15,28 +15,12 @@ using namespace hz::topo;
 
 namespace {
 
-// Outward-oriented Newell normal of a face (flipped to point away from the
-// solid centroid).
-Vec3 outwardFaceNormal(const Face& face, const Vec3& solidCentroid) {
-    auto verts = faceVertices(&face);
-    if (verts.size() < 3) return Vec3::Zero;
-
-    Vec3 n = Vec3::Zero;
-    Vec3 c = Vec3::Zero;
-    const size_t M = verts.size();
-    for (size_t i = 0; i < M; ++i) {
-        const Vec3& a = verts[i]->point;
-        const Vec3& b = verts[(i + 1) % M]->point;
-        n.x += (a.y - b.y) * (a.z + b.z);
-        n.y += (a.z - b.z) * (a.x + b.x);
-        n.z += (a.x - b.x) * (a.y + b.y);
-        c += a;
-    }
-    if (n.length() < 1e-12) return Vec3::Zero;
-    n = n.normalized();
-    c = c * (1.0 / static_cast<double>(M));
-    if (n.dot(c - solidCentroid) < 0.0) n = -n;
-    return n;
+// A face's outward normal: its loop normal, turned over when its body is
+// wound inside out (@p orientation -1). The winding says which side is
+// outside on any shape; comparing with a centroid does not, and turned the
+// walls of holes and the inner faces of an L-shaped part the wrong way.
+Vec3 outwardFaceNormal(const Face& face, double orientation) {
+    return loopNormal(&face) * orientation;
 }
 
 }  // namespace
@@ -48,33 +32,22 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
     const Vec3 pull = pullDirRaw.normalized();
     const double tanA = std::tan(angleRad);
 
-    // Each face is oriented against the centre of its own body. One centroid
-    // for the whole solid lies outside some bodies when there are several
-    // (a New-body feature, a spaced pattern) and would turn their faces
-    // inside out, drafting them the wrong way.
-    std::unordered_map<const Shell*, std::pair<Vec3, size_t>> sums;
-    for (const auto& face : solid->faces()) {
-        auto& [sum, count] = sums[face.shell];
-        for (const auto* v : faceVertices(&face)) {
-            sum += v->point;
-            ++count;
-        }
+    // Each body's winding, from its signed volume: +1 when its loops' normals
+    // point outward, -1 when it is wound inside out.
+    std::unordered_map<const Shell*, double> orientations;
+    for (const auto& shell : solid->shells()) {
+        orientations[&shell] = signedVolume(shell) < 0.0 ? -1.0 : 1.0;
     }
-    if (sums.empty()) return nullptr;
-    std::unordered_map<const Shell*, Vec3> centroids;
-    for (const auto& [shell, acc] : sums) {
-        if (acc.second > 0) centroids[shell] = acc.first * (1.0 / static_cast<double>(acc.second));
-    }
-    const auto centroidOf = [&](const Face& face) {
-        const auto it = centroids.find(face.shell);
-        return it != centroids.end() ? it->second : Vec3::Zero;
+    const auto orientationOf = [&orientations](const Face& face) {
+        const auto it = orientations.find(face.shell);
+        return it != orientations.end() ? it->second : 1.0;
     };
 
     // Collect each vertex's incident lateral-face horizontal normals.
     // A lateral face's normal is roughly perpendicular to the pull direction.
     std::unordered_map<const Vertex*, std::vector<Vec3>> lateralNormals;
     for (const auto& face : solid->faces()) {
-        Vec3 n = outwardFaceNormal(face, centroidOf(face));
+        Vec3 n = outwardFaceNormal(face, orientationOf(face));
         if (n.length() < 1e-9) continue;
         if (std::abs(n.dot(pull)) > 0.5) continue;  // cap face — skip
 
@@ -129,7 +102,7 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
             std::vector<Vec3> ring;
             ring.reserve(verts.size());
             for (const auto* vv : verts) ring.push_back(vv->point);
-            Vec3 n = outwardFaceNormal(face, centroidOf(face));
+            Vec3 n = outwardFaceNormal(face, orientationOf(face));
             face.surface = ringstack::makeCapSurface(ring, n);
         }
     }

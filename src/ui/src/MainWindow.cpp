@@ -982,7 +982,10 @@ void MainWindow::rebuildScene() {
             m_viewport->sceneGraph().addNode(node);
         }
     } else if (m_document->featureTree().featureCount() > 0) {
-        if (!m_document->solid()) m_document->rebuildModel();
+        // Build only a model that has not been built: a failed build keeps
+        // its partial solid (or none), and building it again here, on the
+        // GUI thread, would only fail again.
+        if (!m_document->solid() && m_document->needsBuild()) m_document->rebuildModel();
         if (m_document->solid()) {
             auto meshData = model::SolidTessellator::tessellate(*m_document->solid(), 0.1);
             auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
@@ -1443,10 +1446,9 @@ bool MainWindow::saveActiveDocument() {
         ok = io::DxfFormat::save(path, *m_document, &error);
     } else {
         // Make sure parts carry a fresh tessellation cache for lightweight
-        // assembly loading.
-        if (m_document->featureTree().featureCount() > 0 && !m_document->solid()) {
-            m_document->rebuildModel();
-        }
+        // assembly loading. A solid may be there and still be out of date:
+        // while a rebuild runs on a worker, it is the part before the edit.
+        if (m_document->needsBuild()) m_document->rebuildModel();
         ok = io::NativeFormat::save(path, *m_document, &error);
     }
     if (ok) {
