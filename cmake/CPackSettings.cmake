@@ -1,8 +1,10 @@
-# CPack / NSIS installer configuration
+# CPack / NSIS installer settings, included before include(CPack) (see the
+# top-level CMakeLists.txt). Not named CPack.cmake: that shadows CMake's module.
 set(CPACK_GENERATOR "NSIS")
 set(CPACK_PACKAGE_NAME "HorizonCAD")
 set(CPACK_PACKAGE_VENDOR "Horizon CAD Project")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Open-source parametric 2D/3D CAD")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})

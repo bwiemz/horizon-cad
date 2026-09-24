@@ -9,6 +9,28 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+**Versions.** The version is set in one place, `project()` in the top-level
+`CMakeLists.txt`, and everything else reads it from there: the About box,
+`horizon --version`, the log and the installer. It is **0.1.0**, and no
+version has been released yet. The 80-phase roadmap was recorded here under
+"1.0.0", but nothing was ever built or shipped as 1.0.0: that section now
+carries the version the code had, and the work after it is post-roadmap
+work, not "post-1.0".
+
+## Unreleased — Production readiness, Milestone 5 (Phases 115–118)
+
+- **The version was not one number, and the installer was never configured
+  (115).**
+  - The version is now set only in `project()`. It reaches the code through
+    a generated header (the About box, `--version`, the log) and the
+    installer through CPack.
+  - The source revision is kept current on every build.
+  - `cmake/CPack.cmake` shadowed CMake's own CPack module, so
+    `include(CPack)` never wrote an installer configuration. The settings
+    are now `CPackSettings.cmake`, included first.
+  - The CHANGELOG's "1.0.0" is now 0.1.0, the version the code has always
+    had.
+
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 
 - **Ten common shortcuts did nothing (111).** Ctrl+Z, Ctrl+Y, Ctrl+S,
@@ -436,10 +458,10 @@ Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-2
   time is never mistaken for a crashed one, and two instances starting
   together cannot both recover the same documents.
 
-## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
+## Unreleased — Post-roadmap kernel work, continued (Phases 89–96)
 
 Continues against the "Not yet addressed" list in the
-[post-1.0 findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
+[post-roadmap kernel findings note](docs/superpowers/notes/2026-09-01-post-1.0-kernel-findings.md).
 
 - **Sweep collapsed on any turning path (89).** `Sweep` carried the profile
   along the path by translation only, which the header described as a
@@ -587,7 +609,7 @@ Continues against the "Not yet addressed" list in the
 
 ## Unreleased — Geometric validation, faceted geometry, working blends (Phases 81–88)
 
-Post-1.0 kernel work, continuing from the review response below. Where kernel
+Post-roadmap kernel work, continuing from the review response below. Where kernel
 hardening fixed what the Booleans *did*, this pass fixes what the kernel could
 not *see*.
 
@@ -773,7 +795,7 @@ them, and checking why turned up defects rather than missing features.
   with it. Files written before the field existed simply lack the key and load
   at the feature's default, which is what they were built with.
 
-## Unreleased — Kernel hardening (post-1.0 review response)
+## Unreleased — Kernel hardening (post-roadmap review response)
 
 Response to the external senior review: fix the Boolean/kernel reality gap
 first, then the architecture boundary, interop pinning, and CI enforcement.
@@ -846,7 +868,7 @@ automated verify pass was cut short):
   inputs, greedy twin pairing at non-manifold edges, and Booleans against
   coarse-box-topology curved primitives (torus/revolve).
 
-## 1.0.0 — Production readiness
+## 0.1.0 — The 80-phase roadmap (not released)
 
 All 80 roadmap phases (plus the 61b sheet-metal insert) delivered. ~900
 automated regression tests pass across the Windows, Ubuntu, and

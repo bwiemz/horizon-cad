@@ -39,6 +39,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
     target_link_libraries(hz_ui_window_tests
         PRIVATE
             Horizon::UI
+            Horizon::Version
             GTest::gtest
     )
     get_target_property(_hz_qt_core_type Qt6::Core TYPE)
