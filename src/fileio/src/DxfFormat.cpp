@@ -88,10 +88,12 @@ std::string nextHandle() {
 
 /// The DXF lineweight nearest @p widthMm, in hundredths of a millimetre.
 /// Group 370 takes only these values; `width * 100` wrote others (1.5 as
-/// 150), which strict readers reject.
+/// 150), which strict readers reject. Never 0 (hairline): the reader takes
+/// that as no width, ByLayer on an entity and the default on a layer, so a
+/// thin width is written as the thinnest weight above it.
 int dxfLineweight(double widthMm) {
-    static constexpr int kWeights[] = {0,  5,  9,  13, 15, 18,  20,  25,  30,  35,  40,  50,
-                                       53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211};
+    static constexpr int kWeights[] = {5,  9,  13, 15, 18,  20,  25,  30,  35,  40,  50, 53,
+                                       60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211};
     const double hundredths = widthMm * 100.0;
     int best = kWeights[0];
     for (int w : kWeights) {
@@ -754,10 +756,10 @@ struct Import {
     std::vector<std::shared_ptr<draft::BlockDefinition>> built;  ///< Blocks this import made
     Entities added;                      ///< and the drawing entities it made.
     std::vector<std::string> converted;  ///< Changes that lose nothing (ImportReport::converted).
-    /// Pieces placed by flattening blocks into blocks. Nesting is capped in
-    /// depth, but ten inserts of a block of ten inserts, eight deep, is a
-    /// hundred million pieces from a few kilobytes: past the budget the
-    /// import stops flattening and says so.
+    /// Pieces placed, and blocks within blocks walked, by flattening blocks
+    /// into blocks. Nesting is capped in depth, but ten inserts of a block
+    /// of ten inserts, eight deep, is a hundred million pieces from a few
+    /// kilobytes: past the budget the import stops flattening and says so.
     size_t placedPieces = 0;
     bool placementCut = false;
 };
@@ -1119,6 +1121,20 @@ std::vector<HatchLoop> hatchLoops(const std::vector<DxfPair>& g, bool& curves) {
                         if (rational != 0) take(42, w);
                         if (q + 1 < count) loop.points.emplace_back(x, y);
                     }
+                    // Fit data (AutoCAD 2010 on, written even when there is
+                    // none): 97 fit points at 11/21, then the end tangents at
+                    // 12/22 and 13/23. Left unread, it stopped the edges after
+                    // this one from being read.
+                    double fits = 0;
+                    if (take(97, fits)) {
+                        for (int q = 0; q < static_cast<int>(std::clamp(fits, 0.0, 1e6)); ++q) {
+                            double fx = 0, fy = 0;
+                            if (!take(11, fx) || !take(21, fy)) break;
+                        }
+                        double t = 0;
+                        if (take(12, t)) take(22, t);
+                        if (take(13, t)) take(23, t);
+                    }
                     curves = true;
                 } else {
                     break;  // not a known edge: the rest of this path cannot be read
@@ -1222,6 +1238,14 @@ Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, dou
 
 Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const math::Vec2& at,
                      double rotation, double sx, double sy, Import& im, int depth) {
+    // Every placement counts, a block within the block too: a definition
+    // made only of inserts (one already in the drawing can be) places
+    // nothing itself, but walking it multiplies all the same.
+    if (im.placementCut || im.placedPieces >= g_maxPlacedPieces.load(std::memory_order_relaxed)) {
+        im.placementCut = true;
+        return {};
+    }
+    ++im.placedPieces;
     if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(&e)) {
         // A block within the block: place its pieces, then these.
         Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(),
@@ -1246,12 +1270,6 @@ Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const 
         for (const auto& p : pts) out.push_back(T(p));
         return out;
     };
-
-    if (im.placedPieces >= g_maxPlacedPieces.load(std::memory_order_relaxed)) {
-        im.placementCut = true;
-        return {};
-    }
-    ++im.placedPieces;
 
     auto copy = e.clone();
     if (std::abs(std::abs(sx) - std::abs(sy)) <= 1e-12 * std::max(std::abs(sx), 1.0)) {
@@ -1748,9 +1766,10 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         writeGroup(out, 6,
                    std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(lp->lineType))));
         // The layer's width, which the reader already took: a layer at the
-        // default width (1.0, what an unset weight reads as) says "default".
-        writeGroup(out, 370,
-                   std::abs(lp->lineWidth - 1.0) < 1e-9 ? -3 : dxfLineweight(lp->lineWidth));
+        // default width (1.0, what an unset weight reads as) says "default",
+        // as does one with no width, which the reader reads as the default.
+        const bool defaultWidth = lp->lineWidth <= 0.0 || std::abs(lp->lineWidth - 1.0) < 1e-9;
+        writeGroup(out, 370, defaultWidth ? -3 : dxfLineweight(lp->lineWidth));
     }
     writeGroup(out, 0, std::string("ENDTAB"));
     writeGroup(out, 0, std::string("ENDSEC"));
@@ -1893,9 +1912,9 @@ bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, Impo
         }
         if (im.placementCut) {
             report->skipped.push_back(
-                "blocks nested inside blocks would make more than " +
+                "flattening blocks nested inside blocks stopped after " +
                 std::to_string(g_maxPlacedPieces.load(std::memory_order_relaxed)) +
-                " entities; the rest were left out");
+                " placements; the rest were left out");
         }
         report->converted.insert(report->converted.end(), im.converted.begin(), im.converted.end());
     }

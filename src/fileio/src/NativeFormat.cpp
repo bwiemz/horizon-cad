@@ -1077,6 +1077,15 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
     }
 
     // --- Load entities ---
+    // Every ID the file gives its entities first, so that an ID handed to a
+    // duplicate below is not one a later entity holds in the file.
+    for (const auto& obj : root.at("entities")) {
+        if (!obj.is_object()) continue;
+        const auto id = obj.find("id");
+        if (id != obj.end() && id->is_number_unsigned()) {
+            draft::DraftEntity::advanceIdCounter(id->get<uint64_t>());
+        }
+    }
     const auto* blockTablePtr = &doc.draftDocument().blockTable();
     size_t entityIndex = 0;
     for (const auto& obj : root.at("entities")) {
