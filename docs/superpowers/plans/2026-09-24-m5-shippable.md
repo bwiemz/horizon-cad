@@ -73,7 +73,9 @@ A release someone can install:
   `.ico`, and the rendered files are committed, so a build needs no tools.
   The icon is used as:
   - the window icon (a Qt resource);
-  - the executable's icon on Windows (`horizon.rc`);
+  - the executable's icon on Windows (`horizon.rc.in`). CMake fills in the
+    icon's absolute path, because rc.exe resolves a relative one against its
+    working directory, which differs between Ninja and Visual Studio;
   - the NSIS installer's icons;
   - the Linux hicolor icons.
 - **Linux desktop integration** (`packaging/linux`), under the application
@@ -92,8 +94,9 @@ A release someone can install:
   - translations next to the executable, where `LocaleManager` looks;
   - on Windows, the Qt runtime through `qt_generate_deploy_app_script`.
 - **`THIRD_PARTY_NOTICES.md`** lists each library, what it is used for and
-  its licence, and says how Qt's LGPL is met: Qt is linked dynamically in a
-  package.
+  its licence, and says how Qt's LGPL is met. The Windows installer links Qt
+  dynamically. The Linux release packages link vcpkg's static Qt, and are
+  relinkable because the whole source is published and each release tagged.
 - **AppImage.** `packaging/linux/build-appimage.sh <build dir>` installs
   into an AppDir and runs linuxdeploy with its Qt plugin. The release
   workflow (117) provides linuxdeploy; it is not downloaded here.

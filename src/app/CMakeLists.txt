@@ -17,8 +17,13 @@ target_link_libraries(horizon
 if (MSVC)
     target_sources(horizon PRIVATE horizon.manifest)
 endif()
+# The executable's icon. The resource script names it by absolute path:
+# rc.exe resolves a relative path against its working directory, which is the
+# build directory under Ninja but the project's directory under Visual Studio.
 if (WIN32)
-    target_sources(horizon PRIVATE horizon.rc)  # the executable's icon
+    set(HZ_APP_ICON "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.ico")
+    configure_file(horizon.rc.in ${CMAKE_CURRENT_BINARY_DIR}/horizon.rc @ONLY)
+    target_sources(horizon PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/horizon.rc)
 endif()
 
 install(TARGETS horizon
