@@ -361,7 +361,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines()
         if (!entity) return;
         if (auto line = cstr::lineOf(ref, *entity)) lines.push_back(*line);
     };
-    show(m_hoveredRef);                                         // the line under the cursor
+    show(m_hoveredRef);                                        // the line under the cursor
     if (m_state == State::WaitingForSecond) show(m_firstRef);  // the first one picked
     return lines;
 }
@@ -377,7 +377,7 @@ std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() c
         if (!entity) return;
         if (auto point = cstr::pointOf(ref, *entity)) circles.push_back({*point, ptRadius});
     };
-    show(m_hoveredRef);                                         // the point under the cursor
+    show(m_hoveredRef);                                        // the point under the cursor
     if (m_state == State::WaitingForSecond) show(m_firstRef);  // the first one picked
     return circles;
 }
