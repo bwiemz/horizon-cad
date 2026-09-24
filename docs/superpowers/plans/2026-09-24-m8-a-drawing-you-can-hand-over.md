@@ -317,6 +317,9 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
   - An MTEXT at the usual spacing is read as one text, from its first
     non-blank line to its last. At any other spacing it is still a text
     per line, grouped and reported.
+- **Found in review:** the form offered 0–8 decimal places, where a file may
+  hold up to 12. Opening the form on such a drawing and pressing OK
+  narrowed it to 8. The form now offers 0–12.
 
 ### Tests
 
@@ -341,7 +344,8 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
     line, alignment and rotation.
 - Window:
   - the style form, shown and applied, one undo step;
-  - OK unchanged is no step. This fails on the form as first written;
+  - OK unchanged is no step, with 12 decimal places too. This fails on
+    the form as first written;
   - continue, baseline, following the dimension picked, and waiting for
     one;
   - typed points for a linear dimension;

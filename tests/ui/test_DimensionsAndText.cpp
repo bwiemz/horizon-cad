@@ -137,13 +137,18 @@ TEST(DimensionsAndTextTest, TheStyleFormChangesTheStyleInOneStep) {
         << "one step undoes it all";
 }
 
-// OK with nothing changed pushes nothing to undo.
+// OK with nothing changed pushes nothing to undo, whatever the style holds:
+// the most decimal places a file may have (12) too.
 TEST(DimensionsAndTextTest, AnUnchangedStyleIsNotAStep) {
     MainWindow w;
+    auto style = w.activeDocument()->draftDocument().dimensionStyle();
+    style.precision = 12;
+    w.activeDocument()->draftDocument().setDimensionStyle(style);
     hz::test::FormFiller filler(QStringLiteral("Dimension Style"), hz::test::FormAnswers());
     trigger(w, "action_dim_style");
     ASSERT_TRUE(filler.seen());
     EXPECT_FALSE(w.activeDocument()->undoStack().canUndo());
+    EXPECT_EQ(w.activeDocument()->draftDocument().dimensionStyle().precision, 12);
 }
 
 // Continue takes the last dimension and goes on from its second point, each

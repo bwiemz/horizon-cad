@@ -2739,7 +2739,7 @@ void MainWindow::onDimensionStyle() {
     auto* overshoot = form.number(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
                                   now.extensionOvershoot, 0.0, 1000.0, 3);
     auto* precision =
-        form.count(QStringLiteral("precision"), tr("Decimal places:"), now.precision, 0, 8);
+        form.count(QStringLiteral("precision"), tr("Decimal places:"), now.precision, 0, 12);
     auto* unit = form.choice(QStringLiteral("unit"), tr("Unit:"), units);
     unit->setCurrentIndex(
         std::max(0, static_cast<int>(units.indexOf(QString::fromStdString(now.unit)))));
