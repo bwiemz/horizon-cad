@@ -143,6 +143,30 @@ void Camera::setRightView() {
     m_up = math::Vec3(0.0, 0.0, 1.0);
 }
 
+void Camera::setBackView() {
+    // Looking along +Y from behind, Z up
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(0.0, dist, 0.0);
+    m_up = math::Vec3(0.0, 0.0, 1.0);
+}
+
+void Camera::setBottomView() {
+    // Looking along +Z up from below, Y up on screen
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(0.0, 0.0, -dist);
+    m_up = math::Vec3(0.0, 1.0, 0.0);
+}
+
+void Camera::setLeftView() {
+    // Looking along +X from the left, Z up
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(-dist, 0.0, 0.0);
+    m_up = math::Vec3(0.0, 0.0, 1.0);
+}
+
 void Camera::setIsometricView() {
     double dist = (m_eye - m_target).length();
     if (dist < 1e-10) dist = 10.0;
