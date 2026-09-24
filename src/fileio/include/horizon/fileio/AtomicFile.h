@@ -15,6 +15,12 @@ namespace hz::io {
 /// platform.
 std::filesystem::path pathFromUtf8(std::string_view utf8);
 
+/// Empty when `path` names an existing file; otherwise why it cannot be read
+/// as one ("the file does not exist", "it is a folder, not a file"). Checked
+/// before opening, because std::ifstream happily "opens" a directory on POSIX
+/// and only fails on the first read, with a message about basic_filebuf.
+std::string whyUnreadable(const std::filesystem::path& path);
+
 /// Replace the file at `path` with `data` atomically: a crash, a full disk or a
 /// concurrent reader sees either the previous file or the complete new one,
 /// never a truncated mix.

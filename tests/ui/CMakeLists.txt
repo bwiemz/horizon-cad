@@ -20,7 +20,10 @@ gtest_discover_tests(hz_ui_tests)
 # offscreen platform so they run headless on every CI runner.
 if(TARGET Qt6::QOffscreenIntegrationPlugin)
     add_executable(hz_ui_window_tests
+        window_tests_main.cpp
+        test_Application.cpp
         test_MainWindowDocuments.cpp
+        test_ViewportGraphics.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

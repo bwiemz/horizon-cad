@@ -2,10 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/Document.h"
@@ -938,7 +942,7 @@ void parseEntitiesSection(std::istream& in, doc::Document& doc) {
 // Public API: save
 // ===========================================================================
 
-bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
+bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std::string* error) {
     // Build the whole file in memory, then replace the target atomically.
     std::ostringstream out;
 
@@ -1137,17 +1141,18 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc) {
     // ---- EOF ----
     writeGroup(out, 0, std::string("EOF"));
 
-    return writeFileAtomically(pathFromUtf8(filePath), out.str());
+    return writeFileAtomically(pathFromUtf8(filePath), out.str(), error);
 }
 
 // ===========================================================================
 // Public API: load
 // ===========================================================================
 
-bool DxfFormat::load(const std::string& filePath, doc::Document& doc) {
-    std::ifstream in(pathFromUtf8(filePath));
-    if (!in.is_open()) return false;
+namespace {
 
+/// The section loop behind DxfFormat::load. Returns false when the input has
+/// no SECTION at all.
+bool parseDxf(std::istream& in, doc::Document& doc) {
     DxfPair pair;
     bool foundSection = false;
 
@@ -1175,6 +1180,27 @@ bool DxfFormat::load(const std::string& filePath, doc::Document& doc) {
     doc.draftDocument().rebuildSpatialIndex();
 
     return foundSection;
+}
+
+}  // namespace
+
+bool DxfFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
+    const auto fail = [error](std::string message) {
+        if (error) *error = std::move(message);
+        return false;
+    };
+
+    const std::filesystem::path path = pathFromUtf8(filePath);
+    if (std::string why = whyUnreadable(path); !why.empty()) return fail(std::move(why));
+    std::ifstream in(path);
+    if (!in.is_open()) return fail("the file could not be read (check its permissions)");
+
+    try {
+        if (!parseDxf(in, doc)) return fail("this is not a DXF file (it has no SECTION)");
+    } catch (const std::exception& e) {
+        return fail(std::string("the DXF file is damaged: ") + e.what());
+    }
+    return true;
 }
 
 }  // namespace hz::io

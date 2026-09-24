@@ -15,17 +15,25 @@ namespace hz::io {
 ///  - .hzpart ("hzpart") — parametric part: sketches + feature tree +
 ///                         optional tessellation cache for lightweight loads
 ///  - .hzasm  ("hzasm")  — assembly: component references + transforms
+///
+/// Every load and save reports failure by returning false; when `error` is
+/// given it receives a reason a user can act on ("the file does not exist",
+/// "parse error at line 3, column 5: ..."). Loaders never throw: a malformed
+/// file is a failed load, not an exception.
 class NativeFormat {
 public:
-    static bool save(const std::string& filePath, const doc::Document& doc);
+    static bool save(const std::string& filePath, const doc::Document& doc,
+                     std::string* error = nullptr);
 
-    static bool load(const std::string& filePath, doc::Document& doc);
+    static bool load(const std::string& filePath, doc::Document& doc, std::string* error = nullptr);
 
     /// Save an assembly document (.hzasm). Component part paths are stored
     /// relative to the assembly file when possible.
-    static bool saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc);
+    static bool saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc,
+                             std::string* error = nullptr);
 
-    static bool loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc);
+    static bool loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc,
+                             std::string* error = nullptr);
 
     /// Read only the tessellation cache of a part file, without constructing
     /// a Document (lightweight component resolution). Returns nullptr when
@@ -40,7 +48,8 @@ public:
     static std::string documentToJson(const doc::Document& doc, bool includeTessellation);
 
     /// Populate a Document from a JSON envelope string.
-    static bool documentFromJson(const std::string& text, doc::Document& doc);
+    static bool documentFromJson(const std::string& text, doc::Document& doc,
+                                 std::string* error = nullptr);
 
     /// Serialize the assembly envelope. @p filePath anchors relative component
     /// paths (pass the eventual on-disk location; empty keeps paths as-is).
@@ -49,7 +58,7 @@ public:
 
     /// Populate an AssemblyDocument from a JSON envelope string.
     static bool assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
-                                 const std::string& filePath);
+                                 const std::string& filePath, std::string* error = nullptr);
 };
 
 }  // namespace hz::io

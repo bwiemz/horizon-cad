@@ -1,15 +1,18 @@
 #include <spdlog/spdlog.h>
 
-#include <QApplication>
 #include <QDir>
 #include <QFile>
 #include <QLocale>
 #include <QPalette>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QStyleFactory>
 #include <QSurfaceFormat>
+#include <QSysInfo>
 
+#include "horizon/ui/Application.h"
 #include "horizon/ui/LocaleManager.h"
+#include "horizon/ui/Logging.h"
 #include "horizon/ui/MainWindow.h"
 
 // Suppress a specific Qt 6.10 qpixmap_win.cpp assertion on MSVC debug builds.
@@ -65,24 +68,23 @@ static void applyDarkTheme(QApplication& app) {
     }
 }
 
-int main(int argc, char* argv[]) {
-#if defined(_MSC_VER) && defined(_DEBUG)
-    // Install targeted hook to suppress only the Qt 6.10 bitmap-mask assertion.
-    _CrtSetReportHookW2(_CRT_RPTHOOK_INSTALL, suppressQtBitmapAssert);
-#endif
-
-    // Request an OpenGL 3.3 Core Profile context.
-    QSurfaceFormat format;
-    format.setVersion(3, 3);
-    format.setProfile(QSurfaceFormat::CoreProfile);
-    format.setDepthBufferSize(24);
-    format.setSamples(4);
-    QSurfaceFormat::setDefaultFormat(format);
-
-    QApplication app(argc, argv);
+/// Everything that needs the application object. Kept apart from main() so the
+/// application — and every widget — is destroyed before logging is shut down:
+/// their destructors may still log, or reach std::terminate.
+static int run(int argc, char* argv[]) {
+    // Contains exceptions that escape event handlers instead of terminating.
+    hz::ui::Application app(argc, argv);
     app.setApplicationName("Horizon CAD");
     app.setOrganizationName("Horizon CAD Project");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(QStringLiteral(HZ_VERSION));
+
+    // Logging comes first so everything after it — including Qt's own
+    // warnings — lands in the log file.
+    const QString logFile = hz::ui::initializeLogging(
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/logs");
+    spdlog::info("Horizon CAD {} starting (Qt {}, {})", HZ_VERSION, qVersion(),
+                 QSysInfo::prettyProductName().toStdString());
+    if (!logFile.isEmpty()) spdlog::info("Log file: {}", logFile.toStdString());
 
     applyDarkTheme(app);
 
@@ -97,10 +99,28 @@ int main(int argc, char* argv[]) {
         spdlog::info("UI language: {}", uiLanguage.toStdString());
     }
 
-    spdlog::info("Horizon CAD starting...");
-
     hz::ui::MainWindow window;
     window.show();
-
     return app.exec();
+}
+
+int main(int argc, char* argv[]) {
+#if defined(_MSC_VER) && defined(_DEBUG)
+    // Install targeted hook to suppress only the Qt 6.10 bitmap-mask assertion.
+    _CrtSetReportHookW2(_CRT_RPTHOOK_INSTALL, suppressQtBitmapAssert);
+#endif
+    hz::ui::Application::installTerminateHandler();
+
+    // Request an OpenGL 3.3 Core Profile context.
+    QSurfaceFormat format;
+    format.setVersion(3, 3);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setDepthBufferSize(24);
+    format.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(format);
+
+    const int status = run(argc, argv);
+    spdlog::info("Horizon CAD exiting (status {})", status);
+    hz::ui::shutdownLogging();
+    return status;
 }

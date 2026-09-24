@@ -1,5 +1,7 @@
 #include "horizon/ui/MainWindow.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QAction>
 #include <QActionGroup>
 #include <QCloseEvent>
@@ -101,13 +103,15 @@ MainWindow::MainWindow(QWidget* parent)
     resize(1280, 800);
 
     // Wire the document manager to the native file format.
-    m_docManager.setPartLoader([](const std::string& path, doc::Document& doc) {
-        return io::NativeFormat::load(path, doc);
+    m_docManager.setPartLoader([this](const std::string& path, doc::Document& doc) {
+        m_lastLoadError.clear();
+        return io::NativeFormat::load(path, doc, &m_lastLoadError);
     });
     m_docManager.setMeshLoader(
         [](const std::string& path) { return io::NativeFormat::loadPartMesh(path); });
-    m_docManager.setAssemblyLoader([](const std::string& path, doc::AssemblyDocument& doc) {
-        return io::NativeFormat::loadAssembly(path, doc);
+    m_docManager.setAssemblyLoader([this](const std::string& path, doc::AssemblyDocument& doc) {
+        m_lastLoadError.clear();
+        return io::NativeFormat::loadAssembly(path, doc, &m_lastLoadError);
     });
 
     // Central area: document tab bar above the shared viewport.
@@ -876,7 +880,7 @@ void MainWindow::onOpenFile() {
     if (fileName.endsWith(".hzasm", Qt::CaseInsensitive)) {
         auto assembly = m_docManager.openAssembly(path);
         if (!assembly) {
-            QMessageBox::warning(this, tr("Error"), tr("Failed to open assembly."));
+            reportFileError(tr("Could not open"), path, m_lastLoadError);
             return;
         }
         // The manager dedups by canonical path — an existing instance means
@@ -898,9 +902,10 @@ void MainWindow::onOpenFile() {
 
     if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
         auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
-        if (!io::DxfFormat::load(path, *document)) {
+        std::string error;
+        if (!io::DxfFormat::load(path, *document, &error)) {
             m_docManager.closeDocument(document);
-            QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+            reportFileError(tr("Could not open"), path, error);
             return;
         }
         document->setFilePath(path);
@@ -913,7 +918,7 @@ void MainWindow::onOpenFile() {
     // entities, sketches, feature tree, design variables).
     auto document = m_docManager.openPart(path);
     if (!document) {
-        QMessageBox::warning(this, tr("Error"), tr("Failed to open file."));
+        reportFileError(tr("Could not open"), path, m_lastLoadError);
         return;
     }
     // Dedup hit → the document is already shown in some tab; focus it.
@@ -935,14 +940,15 @@ bool MainWindow::saveActiveDocument() {
             onSaveFileAs();
             return !m_assembly->isDirty();
         }
-        if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly)) {
+        std::string error;
+        if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly, &error)) {
             m_assembly->setDirty(false);
             m_docManager.noteSaved(m_assembly);
             m_statusPrompt->setText(tr("Assembly saved."));
             updateWindowTitle();
             return true;
         }
-        QMessageBox::warning(this, tr("Error"), tr("Failed to save assembly."));
+        reportFileError(tr("Could not save"), m_assembly->filePath(), error);
         return false;
     }
 
@@ -952,15 +958,16 @@ bool MainWindow::saveActiveDocument() {
     }
     std::string path = m_document->filePath();
     bool ok = false;
+    std::string error;
     if (QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive)) {
-        ok = io::DxfFormat::save(path, *m_document);
+        ok = io::DxfFormat::save(path, *m_document, &error);
     } else {
         // Make sure parts carry a fresh tessellation cache for lightweight
         // assembly loading.
         if (m_document->featureTree().featureCount() > 0 && !m_document->solid()) {
             m_document->rebuildModel();
         }
-        ok = io::NativeFormat::save(path, *m_document);
+        ok = io::NativeFormat::save(path, *m_document, &error);
     }
     if (ok) {
         m_document->setDirty(false);
@@ -969,8 +976,23 @@ bool MainWindow::saveActiveDocument() {
         updateWindowTitle();
         return true;
     }
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save file."));
+    reportFileError(tr("Could not save"), path, error);
     return false;
+}
+
+void MainWindow::reportFileError(const QString& summary, const std::string& path,
+                                 const std::string& reason) {
+    spdlog::error("{} '{}': {}", summary.toStdString(), path,
+                  reason.empty() ? std::string("no reason given") : reason);
+
+    // Reasons arrive as clauses ("the file does not exist"); show a sentence.
+    QString detail = reason.empty() ? tr("The reason is unknown; see the log for details.")
+                                    : QString::fromStdString(reason);
+    detail[0] = detail[0].toUpper();
+    if (!detail.endsWith('.')) detail += '.';
+
+    const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+    QMessageBox::warning(this, tr("Error"), tr("%1 \"%2\".\n\n%3").arg(summary, name, detail));
 }
 
 void MainWindow::onSaveFile() {

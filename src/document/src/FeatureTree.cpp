@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <exception>
+#include <string>
 
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
@@ -961,6 +963,36 @@ void FeatureTree::clear() {
     m_features.clear();
 }
 
+namespace {
+
+/// Run a feature, turning an exception from the kernel (the NURBS constructors
+/// throw on invalid input, for one) into a failure with its reason, instead of
+/// letting it unwind into the caller — ultimately the Qt event loop, which
+/// cannot carry an exception and would terminate the application.
+std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
+                                              std::unique_ptr<topo::Solid> input,
+                                              std::string* reason = nullptr) {
+    try {
+        return feat.execute(std::move(input));
+    } catch (const std::exception& e) {
+        if (reason) *reason = e.what();
+    } catch (...) {
+        if (reason) *reason = "unknown error";
+    }
+    return nullptr;
+}
+
+std::vector<std::unique_ptr<topo::Solid>> executeMultiContained(
+    const Feature& feat, std::vector<std::unique_ptr<topo::Solid>> bodies) {
+    try {
+        return feat.executeMulti(std::move(bodies));
+    } catch (...) {
+        return {};
+    }
+}
+
+}  // namespace
+
 std::unique_ptr<topo::Solid> FeatureTree::build() const {
     if (m_features.empty()) {
         return nullptr;
@@ -969,7 +1001,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
     std::unique_ptr<topo::Solid> solid;
     for (const auto& feat : m_features) {
         if (feat->isConstruction()) continue;  // reference geometry: no solid effect
-        solid = feat->execute(std::move(solid));
+        solid = executeContained(*feat, std::move(solid));
         if (!solid) {
             return nullptr;  // Feature failed
         }
@@ -984,18 +1016,18 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
 
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
-            bodies = feat->executeMulti(std::move(bodies));
+            bodies = executeMultiContained(*feat, std::move(bodies));
         } else if (feat->createsNewBody() || bodies.empty()) {
             // Start a fresh body. Create features ignore any input solid; a
             // transform with no active body (bodies.empty()) has nothing to act
             // on, so it too is executed against a null input and simply fails.
-            auto solid = feat->execute(nullptr);
+            auto solid = executeContained(*feat, nullptr);
             if (solid) {
                 bodies.push_back(std::move(solid));
             }
         } else {
             // Transform the active (most-recently-created) body in place.
-            auto solid = feat->execute(std::move(bodies.back()));
+            auto solid = executeContained(*feat, std::move(bodies.back()));
             bodies.pop_back();
             if (solid) {
                 bodies.push_back(std::move(solid));
@@ -1023,11 +1055,14 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
             result.lastSuccessfulFeature = i;  // construction features never fail
             continue;
         }
-        auto next = m_features[static_cast<size_t>(i)]->execute(std::move(solid));
+        const Feature& feature = *m_features[static_cast<size_t>(i)];
+        std::string reason;
+        auto next = executeContained(feature, std::move(solid), &reason);
         if (!next) {
             result.failedFeatureIndex = i;
-            result.failureMessage =
-                "Feature '" + m_features[static_cast<size_t>(i)]->name() + "' failed to execute";
+            result.failureMessage = reason.empty()
+                                        ? "Feature '" + feature.name() + "' failed to execute"
+                                        : "Feature '" + feature.name() + "' failed: " + reason;
             return result;
         }
         solid = std::move(next);

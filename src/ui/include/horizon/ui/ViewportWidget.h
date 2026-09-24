@@ -53,6 +53,11 @@ public:
     explicit ViewportWidget(QWidget* parent = nullptr);
     ~ViewportWidget() override;
 
+    /// Empty while the viewport can draw; otherwise why it cannot (no OpenGL
+    /// 3.3 context, or the shaders failed to compile). Known after the first
+    /// show; the user is told once.
+    const QString& graphicsProblem() const { return m_graphicsProblem; }
+
     // ---- Document ----
 
     void setDocument(doc::Document* doc);
@@ -124,6 +129,7 @@ protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
+    void showEvent(QShowEvent* event) override;
 
     // Input events
     void mousePressEvent(QMouseEvent* event) override;
@@ -133,6 +139,12 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
+    /// Record a context Qt could not create at all, and tell the user once.
+    void checkGraphics();
+
+    QString m_graphicsProblem;
+    bool m_graphicsCheckScheduled = false;
+    bool m_graphicsProblemReported = false;
     /// Snap the camera to the standard view requested by a view-cube click.
     void applyViewCubeRegion(ViewCube::Region region);
 

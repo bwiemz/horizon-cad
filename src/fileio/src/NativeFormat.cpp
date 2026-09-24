@@ -5,7 +5,9 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <set>
+#include <string>
 #include <system_error>
+#include <utility>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
@@ -41,6 +43,33 @@ namespace hz::io {
 /// Invalid sequences become U+FFFD instead.
 static std::string dumpJson(const json& root, int indent) {
     return root.dump(indent, ' ', false, json::error_handler_t::replace);
+}
+
+/// Store `message` in `error` (when given) and report failure.
+static bool fail(std::string* error, std::string message) {
+    if (error) *error = std::move(message);
+    return false;
+}
+
+/// Open `filePath` for reading, or say why it cannot be.
+static bool openForReading(const std::string& filePath, std::ifstream& file, std::string* error) {
+    const std::filesystem::path p = pathFromUtf8(filePath);
+    if (std::string why = whyUnreadable(p); !why.empty()) return fail(error, std::move(why));
+    file.open(p);
+    if (!file.is_open()) return fail(error, "the file could not be read (check its permissions)");
+    return true;
+}
+
+/// nlohmann's messages start with an internal tag
+/// ("[json.exception.parse_error.101] "); the rest — "parse error at line 3,
+/// column 5: ..." — is what a user can act on.
+static std::string jsonMessage(const std::exception& e) {
+    std::string what = e.what();
+    if (what.rfind("[json.exception.", 0) == 0) {
+        const auto end = what.find("] ");
+        if (end != std::string::npos) what.erase(0, end + 2);
+    }
+    return what;
 }
 
 // ---------------------------------------------------------------------------
@@ -606,14 +635,14 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
     return root;
 }
 
-bool NativeFormat::save(const std::string& filePath, const doc::Document& doc) {
+bool NativeFormat::save(const std::string& filePath, const doc::Document& doc, std::string* error) {
     const json root = buildDocumentRoot(doc, /*includeTessellation=*/true);
 
     // Pretty-print drawings for diff-friendliness, but write compactly when a
     // tessellation cache is embedded — indented output puts one mesh number
     // per line and inflates part files by orders of magnitude.
     const int indent = root.contains("tessellationCache") ? -1 : 2;
-    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, indent));
+    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, indent), error);
 }
 
 std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeTessellation) {
@@ -1402,28 +1431,45 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
     return true;
 }
 
-bool NativeFormat::load(const std::string& filePath, doc::Document& doc) {
-    std::ifstream file(pathFromUtf8(filePath));
-    if (!file.is_open()) return false;
+/// loadDocumentRoot, with every failure turned into a reason. A malformed file
+/// throws json type and range errors from deep inside the reader; nothing
+/// above this may see them, or they reach the Qt event loop and end the
+/// session.
+static bool loadDocumentChecked(const json& root, doc::Document& doc, std::string* error) {
+    if (!root.is_object() || !root.contains("version") || !root.contains("entities")) {
+        return fail(error, "this is not a Horizon document (it has no version or entity list)");
+    }
+    try {
+        if (loadDocumentRoot(root, doc)) return true;
+        return fail(error, "the document could not be read");
+    } catch (const std::exception& e) {
+        return fail(error, "the file is damaged: " + jsonMessage(e));
+    }
+}
+
+bool NativeFormat::load(const std::string& filePath, doc::Document& doc, std::string* error) {
+    std::ifstream file;
+    if (!openForReading(filePath, file, error)) return false;
 
     json root;
     try {
         file >> root;
-    } catch (...) {
-        return false;
+    } catch (const std::exception& e) {
+        return fail(error, "the file is not a readable Horizon document: " + jsonMessage(e));
     }
 
-    return loadDocumentRoot(root, doc);
+    return loadDocumentChecked(root, doc, error);
 }
 
-bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc) {
+bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc,
+                                    std::string* error) {
     json root;
     try {
         root = json::parse(text);
-    } catch (...) {
-        return false;
+    } catch (const std::exception& e) {
+        return fail(error, "the document is not valid JSON: " + jsonMessage(e));
     }
-    return loadDocumentRoot(root, doc);
+    return loadDocumentChecked(root, doc, error);
 }
 
 // ---------------------------------------------------------------------------
@@ -1507,9 +1553,10 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
     return root;
 }
 
-bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc) {
+bool NativeFormat::saveAssembly(const std::string& filePath, const doc::AssemblyDocument& asmDoc,
+                                std::string* error) {
     const json root = buildAssemblyRoot(asmDoc, filePath);
-    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, 2));
+    return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, 2), error);
 }
 
 std::string NativeFormat::assemblyToJson(const doc::AssemblyDocument& asmDoc,
@@ -1603,29 +1650,43 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     return true;
 }
 
-bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc) {
-    std::ifstream file(pathFromUtf8(filePath));
-    if (!file.is_open()) return false;
+/// loadAssemblyRoot with every failure turned into a reason; see
+/// loadDocumentChecked.
+static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
+                                const std::string& filePath, std::string* error) {
+    if (!root.is_object()) return fail(error, "this is not a Horizon assembly");
+    try {
+        if (loadAssemblyRoot(root, asmDoc, filePath)) return true;
+        return fail(error, "this is not a Horizon assembly (its type is not \"hzasm\")");
+    } catch (const std::exception& e) {
+        return fail(error, "the file is damaged: " + jsonMessage(e));
+    }
+}
+
+bool NativeFormat::loadAssembly(const std::string& filePath, doc::AssemblyDocument& asmDoc,
+                                std::string* error) {
+    std::ifstream file;
+    if (!openForReading(filePath, file, error)) return false;
 
     json root;
     try {
         file >> root;
-    } catch (...) {
-        return false;
+    } catch (const std::exception& e) {
+        return fail(error, "the file is not a readable Horizon assembly: " + jsonMessage(e));
     }
 
-    return loadAssemblyRoot(root, asmDoc, filePath);
+    return loadAssemblyChecked(root, asmDoc, filePath, error);
 }
 
 bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocument& asmDoc,
-                                    const std::string& filePath) {
+                                    const std::string& filePath, std::string* error) {
     json root;
     try {
         root = json::parse(text);
-    } catch (...) {
-        return false;
+    } catch (const std::exception& e) {
+        return fail(error, "the assembly is not valid JSON: " + jsonMessage(e));
     }
-    return loadAssemblyRoot(root, asmDoc, filePath);
+    return loadAssemblyChecked(root, asmDoc, filePath, error);
 }
 
 // ---------------------------------------------------------------------------
