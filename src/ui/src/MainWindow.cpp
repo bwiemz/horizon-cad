@@ -52,6 +52,7 @@
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/fileio/StlExport.h"
+#include "horizon/fileio/SvgExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/modeling/AssemblySolver.h"
@@ -92,6 +93,7 @@
 #include "horizon/ui/MoveTool.h"
 #include "horizon/ui/OffsetTool.h"
 #include "horizon/ui/PasteTool.h"
+#include "horizon/ui/PdfExport.h"
 #include "horizon/ui/PolarArrayDialog.h"
 #include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/PolylineTool.h"
@@ -410,6 +412,11 @@ void MainWindow::createMenus() {
     QAction* exportStl = exportMenu->addAction(tr("S&TL..."), this, &MainWindow::onExportStl);
     QAction* exportGltf = exportMenu->addAction(tr("&glTF..."), this, &MainWindow::onExportGltf);
     QAction* exportDxf = exportMenu->addAction(tr("&DXF..."), this, &MainWindow::onExportDxf);
+    QAction* exportPdf = exportMenu->addAction(tr("&PDF..."), this, [this] { onExportPlot(true); });
+    QAction* exportSvg =
+        exportMenu->addAction(tr("S&VG..."), this, [this] { onExportPlot(false); });
+    exportPdf->setObjectName(QStringLiteral("export_pdf"));
+    exportSvg->setObjectName(QStringLiteral("export_svg"));
     exportStep->setObjectName(QStringLiteral("export_step"));
     exportStl->setObjectName(QStringLiteral("export_stl"));
     exportGltf->setObjectName(QStringLiteral("export_gltf"));
@@ -418,7 +425,8 @@ void MainWindow::createMenus() {
     connect(exportMenu, &QMenu::aboutToShow, this, [=, this] {
         const bool hasBody = !m_assembly && m_document->solid() != nullptr;
         for (QAction* a : {exportStep, exportStl, exportGltf}) a->setEnabled(hasBody);
-        exportDxf->setEnabled(!m_assembly && !m_document->draftDocument().entities().empty());
+        const bool hasDrawing = !m_assembly && !m_document->draftDocument().entities().empty();
+        for (QAction* a : {exportDxf, exportPdf, exportSvg}) a->setEnabled(hasDrawing);
     });
 
     fileMenu->addSeparator();
@@ -1882,6 +1890,95 @@ void MainWindow::onExportDxf() {
     if (fileName.isEmpty()) return;
     std::string error;
     if (!io::DxfFormat::save(fileName.toStdString(), *m_document, &error)) {
+        reportFileError(tr("Could not export"), fileName.toStdString(), error);
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+}
+
+namespace {
+
+/// "1:50" as paper millimetres per drawing millimetre (0.02); "2:1" as 2; 0
+/// for anything else ("Fit to paper").
+double plotScaleFrom(const QString& text) {
+    const QStringList parts = text.split(QLatin1Char(':'));
+    if (parts.size() != 2) return 0.0;
+    bool paperOk = false;
+    bool drawingOk = false;
+    const double paper = parts[0].toDouble(&paperOk);
+    const double drawing = parts[1].toDouble(&drawingOk);
+    return paperOk && drawingOk && paper > 0.0 && drawing > 0.0 ? paper / drawing : 0.0;
+}
+
+}  // namespace
+
+void MainWindow::onExportPlot(bool pdf) {
+    const QString format = pdf ? tr("PDF") : tr("SVG");
+    if (m_assembly) {
+        statusBar()->showMessage(tr("%1 export plots a drawing, not an assembly").arg(format));
+        return;
+    }
+    const draft::DraftDocument& drawing = m_document->draftDocument();
+    const draft::PlotScene scene =
+        draft::buildPlotScene(drawing, m_document->layerManager(), drawing.dimensionStyle());
+    if (scene.empty()) {
+        statusBar()->showMessage(
+            tr("%1 export plots a drawing; nothing visible is drawn").arg(format));
+        return;
+    }
+
+    FeatureForm form(this, tr("Export %1").arg(format));
+    QStringList papers;
+    for (const auto& size : draft::standardPaperSizes()) papers << QString::fromLatin1(size.name);
+    auto* paper = form.choice(QStringLiteral("paper"), tr("Paper:"), papers);
+    auto* orientation = form.choice(QStringLiteral("orientation"), tr("Orientation:"),
+                                    {tr("Landscape"), tr("Portrait")});
+    auto* scale =
+        form.choice(QStringLiteral("scale"), tr("Scale:"),
+                    {tr("Fit to paper"), QStringLiteral("1:1"), QStringLiteral("1:2"),
+                     QStringLiteral("1:5"), QStringLiteral("1:10"), QStringLiteral("1:20"),
+                     QStringLiteral("1:50"), QStringLiteral("1:100"), QStringLiteral("1:200"),
+                     QStringLiteral("2:1"), QStringLiteral("5:1"), QStringLiteral("10:1")});
+    auto* colours =
+        form.choice(QStringLiteral("colours"), tr("Colours:"), {tr("As drawn"), tr("Black")});
+    if (!form.exec()) return;
+
+    draft::PlotLayout layout;
+    const draft::PaperSize& size =
+        draft::standardPaperSizes()[static_cast<size_t>(std::max(paper->currentIndex(), 0))];
+    const bool landscape = orientation->currentIndex() == 0;
+    layout.paperWidthMm = landscape ? size.heightMm : size.widthMm;
+    layout.paperHeightMm = landscape ? size.widthMm : size.heightMm;
+    layout.scale = plotScaleFrom(scale->currentText());
+    layout.monochrome = colours->currentIndex() == 1;
+
+    // At a chosen scale the drawing may not fit: say so before cutting it off.
+    bool fits = true;
+    draft::plotTransform(scene, layout, &fits);
+    if (!fits) {
+        QMessageBox box(QMessageBox::Warning, tr("Export %1").arg(format),
+                        tr("At %1 the drawing is larger than the paper: what is outside it will be "
+                           "cut off.")
+                            .arg(scale->currentText()),
+                        QMessageBox::Save | QMessageBox::Cancel, this);
+        box.setDefaultButton(QMessageBox::Cancel);
+        if (box.exec() != QMessageBox::Save) return;
+    }
+
+    const QString fileName =
+        pdf ? askExportPath(format, tr("PDF Files (*.pdf)"), QStringLiteral(".pdf"))
+            : askExportPath(format, tr("SVG Files (*.svg)"), QStringLiteral(".svg"));
+    if (fileName.isEmpty()) return;
+    std::string error;
+    bool ok = false;
+    if (pdf) {
+        QString why;
+        ok = exportPdf(fileName, scene, layout, &why);
+        error = why.toStdString();
+    } else {
+        ok = io::SvgExport::save(fileName.toStdString(), scene, layout, &error);
+    }
+    if (!ok) {
         reportFileError(tr("Could not export"), fileName.toStdString(), error);
         return;
     }

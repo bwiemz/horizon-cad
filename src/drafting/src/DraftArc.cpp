@@ -137,6 +137,11 @@ void DraftArc::rotate(const math::Vec2& center, double angle) {
 void DraftArc::scale(const math::Vec2& center, double factor) {
     m_center = scalePoint(m_center, center, factor);
     m_radius *= std::abs(factor);
+    // A negative factor turns the arc half round about its centre too.
+    if (factor < 0.0) {
+        m_startAngle = math::normalizeAngle(m_startAngle + math::kPi);
+        m_endAngle = math::normalizeAngle(m_endAngle + math::kPi);
+    }
 }
 
 }  // namespace hz::draft

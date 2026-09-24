@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
@@ -14,8 +15,10 @@ DraftBlockRef::DraftBlockRef(std::shared_ptr<BlockDefinition> definition,
       m_uniformScale(uniformScale) {}
 
 math::Vec2 DraftBlockRef::transformPoint(const math::Vec2& defPt) const {
-    // worldPt = insertPos + rotate((defPt - basePoint) * scale, rotation)
-    math::Vec2 local = (defPt - m_definition->basePoint) * m_uniformScale;
+    // worldPt = insertPos + rotate(mirror(defPt - basePoint) * scale, rotation)
+    math::Vec2 local = defPt - m_definition->basePoint;
+    if (m_mirrored) local.x = -local.x;
+    local = local * m_uniformScale;
     double c = std::cos(m_rotation), s = std::sin(m_rotation);
     return {m_insertPos.x + local.x * c - local.y * s, m_insertPos.y + local.x * s + local.y * c};
 }
@@ -26,7 +29,9 @@ math::Vec2 DraftBlockRef::inverseTransformPoint(const math::Vec2& worldPt) const
     double c = std::cos(-m_rotation), s = std::sin(-m_rotation);
     math::Vec2 rotated = {d.x * c - d.y * s, d.x * s + d.y * c};
     double invScale = (std::abs(m_uniformScale) > 1e-12) ? (1.0 / m_uniformScale) : 0.0;
-    return rotated * invScale + m_definition->basePoint;
+    math::Vec2 local = rotated * invScale;
+    if (m_mirrored) local.x = -local.x;
+    return local + m_definition->basePoint;
 }
 
 math::BoundingBox DraftBlockRef::boundingBox() const {
@@ -88,6 +93,7 @@ void DraftBlockRef::translate(const math::Vec2& delta) {
 std::shared_ptr<DraftEntity> DraftBlockRef::clone() const {
     auto copy =
         std::make_shared<DraftBlockRef>(m_definition, m_insertPos, m_rotation, m_uniformScale);
+    copy->setMirrored(m_mirrored);
     copy->setLayer(layer());
     copy->setColor(color());
     copy->setLineWidth(lineWidth());
@@ -102,13 +108,12 @@ void DraftBlockRef::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
     math::Vec2 v = m_insertPos - axisP1;
     m_insertPos = axisP1 + d * (2.0 * v.dot(d)) - v;
 
-    // Mirroring negates the rotation and adds PI reflection.
+    // A mirror in an axis at angle a, after a turn by the rotation, is the
+    // content mirrored in its own y axis and turned by 2a - rotation + pi.
+    // (A negative scale cannot stand for it: that is a half turn.)
     double axisAngle = std::atan2(d.y, d.x);
-    m_rotation = 2.0 * axisAngle - m_rotation;
-    m_rotation = math::normalizeAngle(m_rotation);
-
-    // Mirroring flips scale sign to reflect sub-entities.
-    m_uniformScale = -m_uniformScale;
+    m_rotation = math::normalizeAngle(2.0 * axisAngle - m_rotation + math::kPi);
+    m_mirrored = !m_mirrored;
 }
 
 void DraftBlockRef::rotate(const math::Vec2& center, double angle) {
