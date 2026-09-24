@@ -1,0 +1,207 @@
+name: Release
+
+# A tag vX.Y.Z builds, tests and packages Horizon CAD on Windows and Linux,
+# writes SHA-256 checksums, and opens a DRAFT GitHub release with them: the
+# owner reviews and publishes it. Run by hand (workflow_dispatch) to try the
+# packaging without releasing; the artifacts are then kept on the run.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
+
+jobs:
+  linux:
+    name: Linux (tarball and AppImage)
+    runs-on: ubuntu-22.04
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The tag names the version project() already has: one version.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} but project() says ${version}"
+            exit 1
+          fi
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            ninja-build \
+            pkg-config \
+            file
+
+      # Scripting is not shipped until it is sandboxed (Phase 120).
+      - name: Configure
+        run: cmake --preset linux-release -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF
+
+      - name: Build
+        run: cmake --build build/linux-release --config Release
+
+      - name: Test
+        run: ctest --test-dir build/linux-release -C Release --output-on-failure
+
+      - name: Package a tarball
+        run: cpack --config build/linux-release/CPackConfig.cmake -B dist -G TGZ
+
+      # linuxdeploy's own AppImage needs FUSE, which the runner lacks:
+      # APPIMAGE_EXTRACT_AND_RUN runs it without.
+      - name: Package an AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          version=$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)
+          mkdir -p tools
+          curl -fsSL -o tools/linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x tools/linuxdeploy
+          export PATH="${PWD}/tools:${PATH}"
+          export OUTPUT="HorizonCAD-${version}-x86_64.AppImage"
+          packaging/linux/build-appimage.sh build/linux-release "${PWD}/dist"
+
+      - name: Keep the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/*.tar.gz
+            dist/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows (installer)
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-windows-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-windows-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Restore vcpkg root and install Ninja
+        shell: pwsh
+        run: |
+          # msvc-dev-cmd points VCPKG_ROOT at the VS-bundled vcpkg; restore
+          # the instance run-vcpkg checked out so binary caching works.
+          echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
+          choco install ninja -y --no-progress
+
+      - name: Configure
+        run: cmake --preset ci-windows-release -DHZ_ENABLE_SCRIPTING=OFF
+
+      - name: Build
+        run: cmake --build build/ci-windows-release --config Release
+
+      - name: Test
+        run: ctest --test-dir build/ci-windows-release -C Release --output-on-failure
+
+      # NSIS is installed on GitHub's Windows images.
+      - name: Package an installer
+        run: cpack --config build/ci-windows-release/CPackConfig.cmake -B dist -G NSIS
+
+      - name: Keep the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+  release:
+    name: Draft the release
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Collect the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${{ github.repository }}" \
+            --draft \
+            --title "Horizon CAD ${GITHUB_REF_NAME#v}" \
+            --generate-notes

@@ -40,6 +40,16 @@ work, not "post-1.0".
     runtime too.
   - A script builds an AppImage with linuxdeploy.
   - A test installs the build and checks what a package would hold.
+- **A release pipeline, and CI that no longer rebuilds Qt every time
+  (117).**
+  - The vcpkg binary cache restored nothing. It now keeps built packages
+    between runs.
+  - CI adds a Linux Release build with `-Werror`. It turned up a GCC false
+    positive, now avoided.
+  - A tag `vX.Y.Z` builds, tests and packages Windows and Linux (installer,
+    AppImage and tarball), with SHA-256 checksums, into a draft release.
+  - Dependabot keeps the workflows' actions current.
+  - `docs/RELEASING.md` says how to cut a release.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

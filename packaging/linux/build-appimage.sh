@@ -3,9 +3,11 @@
 #
 #   packaging/linux/build-appimage.sh <build dir> [output dir]
 #
-# Needs linuxdeploy and linuxdeploy-plugin-qt on PATH (the release workflow
-# downloads both), and QMAKE pointing at the qmake of the Qt the build used,
-# so the Qt plugin bundles that Qt and its plugins.
+# Needs linuxdeploy on PATH (the release workflow downloads it). For a build
+# against a shared Qt, also linuxdeploy-plugin-qt and QMAKE pointing at that
+# Qt's qmake, so the plugin bundles Qt and its plugins. A build against a
+# static Qt (vcpkg's x64-linux) has Qt inside the executable: leave QMAKE
+# unset and the plugin is not used.
 set -euo pipefail
 
 build="${1:?usage: build-appimage.sh <build dir> [output dir]}"
@@ -23,9 +25,11 @@ cmake --install "${build}" --prefix "${appdir}/usr"
 mkdir -p "${out}"
 (
     cd "${out}"
+    plugin=()
+    if [[ -n "${QMAKE:-}" ]]; then plugin=(--plugin qt); fi
     linuxdeploy \
         --appdir "${appdir}" \
-        --plugin qt \
+        "${plugin[@]}" \
         --desktop-file "${appdir}/usr/share/applications/${app_id}.desktop" \
         --icon-file "${appdir}/usr/share/icons/hicolor/256x256/apps/${app_id}.png" \
         --output appimage

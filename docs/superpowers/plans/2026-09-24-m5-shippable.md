@@ -112,6 +112,36 @@ A release someone can install:
   is rebuilt from source in every job.
 - Dependabot for actions.
 
+**As built.**
+- **vcpkg binary cache.** It did nothing, for two reasons:
+  - the `x-gha` backend relied on GitHub's retired cache API;
+  - `VCPKG_BINARY_SOURCES` was set only on the run-vcpkg step, while vcpkg
+    installs during the configure step.
+
+  Every job now uses vcpkg's `files` backend in the workspace, set at job
+  level, with `actions/cache` restoring and saving it. The key is the OS,
+  triplet, manifest hash and baseline.
+- **Release CI job.** `Build (ubuntu-22.04, Release)` uses `linux-release`
+  with `-Werror`.
+  - A local Release build found GCC reporting an `-Warray-bounds` false
+    positive, an insert at index −1, in `PolylineEditTool`. The index is now
+    an unsigned position checked against the size.
+  - All 1310 tests pass in Release.
+- **Release workflow** (`.github/workflows/release.yml`), triggered by a tag
+  `v*` or run by hand:
+  - **Linux:** checks the tag against `project()`, builds and tests
+    Release, and makes a tarball with CPack and an AppImage with linuxdeploy
+    (run without FUSE).
+  - **Windows:** builds and tests Release (`ci-windows-release`, a new
+    preset) and makes an NSIS installer.
+  - **Release:** gathers the packages, writes `SHA256SUMS.txt`, and opens a
+    draft release for the owner to publish.
+  - Scripting is off in release builds until Phase 120.
+- **Dependabot** checks GitHub Actions weekly, grouped into one pull request.
+- **`docs/RELEASING.md`** describes how to cut a release.
+- **Not verified here:** the release workflow needs GitHub's runners (NSIS,
+  and downloading linuxdeploy). Run it by hand once before the first tag.
+
 ## Phase 118: Governance
 
 - The licence resolved (**owner decision**: LICENSE is GPL v3 text while

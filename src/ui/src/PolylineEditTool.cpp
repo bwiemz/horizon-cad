@@ -227,7 +227,12 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
 
                 m_beforeClone = entity->clone();
                 auto pts = poly->points();
-                pts.insert(pts.begin() + segIdx + 1, closestPt);
+                // Where the new vertex goes, as an unsigned position checked
+                // against the size: GCC's -Warray-bounds cannot see that
+                // segIdx >= 0 and reported an insert at -1 in Release builds.
+                const size_t at = static_cast<size_t>(segIdx) + 1;
+                if (at > pts.size()) break;
+                pts.insert(pts.begin() + static_cast<std::ptrdiff_t>(at), closestPt);
                 poly->setPoints(pts);
                 pushSnapshot("Add vertex");
                 break;
