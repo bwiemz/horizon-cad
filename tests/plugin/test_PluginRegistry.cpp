@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #ifdef _WIN32
 #include <windows.h>
@@ -270,7 +271,12 @@ TEST_F(PluginRegistryTest, LoadingNeedsAnEnabledPlugin) {
     const auto plugin = registry.prepareLoad("hole-wizard", "0.1.0", &error);
     ASSERT_TRUE(plugin) << error;
     EXPECT_EQ(plugin->manifest.name, "hole-wizard");
-    EXPECT_EQ(plugin->entrySource, "# entry\n");
+    // The bytes on disk, whatever line ending the helper's text-mode write
+    // gave them.
+    std::ifstream in(dir / "main.py", std::ios::binary);
+    const std::string onDisk{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    EXPECT_EQ(plugin->entrySource, onDisk);
+    EXPECT_EQ(plugin->entrySource.rfind("# entry", 0), 0u);
     EXPECT_EQ(plugin->entryPath, fs::weakly_canonical(dir / "main.py"));
 }
 

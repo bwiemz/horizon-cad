@@ -121,8 +121,9 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         });
 
     py::class_<DatumPlane>(m, "DatumPlane")
-        .def(py::init(
-                 [](const Vec3& o, const Vec3& n, const Vec3& x) { return DatumPlane{o, n, x}; }),
+        .def(py::init([](const Vec3& o, const Vec3& n, const Vec3& x) {
+                 return DatumPlane{o, n, x};
+             }),
              py::arg("origin"), py::arg("normal"), py::arg("x_axis"))
         .def_readwrite("origin", &DatumPlane::origin)
         .def_readwrite("normal", &DatumPlane::normal)
@@ -130,7 +131,9 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
         .def("y_axis", &DatumPlane::yAxis);
 
     py::class_<DatumAxis>(m, "DatumAxis")
-        .def(py::init([](const Vec3& o, const Vec3& d) { return DatumAxis{o, d}; }),
+        .def(py::init([](const Vec3& o, const Vec3& d) {
+                 return DatumAxis{o, d};
+             }),
              py::arg("origin"), py::arg("direction"))
         .def_readwrite("origin", &DatumAxis::origin)
         .def_readwrite("direction", &DatumAxis::direction);
