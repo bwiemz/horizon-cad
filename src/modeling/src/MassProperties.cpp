@@ -4,6 +4,7 @@
 #include <cmath>
 #include <vector>
 
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -24,7 +25,9 @@ using Triangle = std::array<Vec3, 3>;
 // star-shaped solids and reported non-convex solids — like a sheet-metal
 // L-fold — at a fraction of their true volume. Curved faces are approximated
 // by their loop polygon (the follow-up for smooth-surface accuracy is per-face
-// NURBS integration). Inner loops (holes) are not yet subtracted.
+// NURBS integration). A face with holes is triangulated as a whole, its holes
+// bridged in: fans of its loops would give the right volume but count each
+// hole's area into the surface area instead of out of it.
 std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
     std::vector<Triangle> tris;
     for (const auto& face : solid.faces()) {
@@ -38,6 +41,16 @@ std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
             if (cur && cur->origin) loop.push_back(cur->origin->point);
             cur = cur ? cur->next : nullptr;
         } while (cur && cur != start && loop.size() < 100000);
+
+        if (!face.innerLoops.empty() && loop.size() >= 3) {
+            std::vector<std::vector<Vec3>> holes;
+            for (const topo::Wire* inner : face.innerLoops) {
+                if (inner) holes.push_back(BoundaryMesh::loopPoints(*inner, true));
+            }
+            const auto keyhole = BoundaryMesh::keyholePolygon(loop, std::move(holes));
+            for (const auto& tri : BoundaryMesh::triangulatePolygon(keyhole)) tris.push_back(tri);
+            continue;
+        }
 
         for (size_t i = 1; i + 1 < loop.size(); ++i)
             tris.push_back({loop[0], loop[i], loop[i + 1]});

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <optional>
@@ -18,10 +19,13 @@
 #include <variant>
 
 #include "horizon/fileio/AtomicFile.h"
+#include "horizon/fileio/ImportReport.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Pattern.h"
 
 namespace hz::io {
 
@@ -1244,6 +1248,85 @@ private:
     std::map<int, EdgeRecord> m_edges;
 };
 
+// ===========================================================================
+// Units
+// ===========================================================================
+
+/// Millimetres per unit of the length unit instance `id`: an SI_UNIT of
+/// metres with its prefix, or a CONVERSION_BASED_UNIT through its measure
+/// ('INCH' is 25.4 of a millimetre unit). 0 when it cannot be read.
+double unitMillimetres(const StepParser& parser, int id, std::string* name, int depth = 0) {
+    const StepInstance* inst = depth > 8 ? nullptr : parser.find(id);
+    if (inst == nullptr) return 0.0;
+    if (const StepList* si = inst->leaf("SI_UNIT")) {
+        if (si->size() < 2 || (*si)[1].kind != StepValue::Enum || (*si)[1].text != "METRE") {
+            return 0.0;
+        }
+        static const std::map<std::string, double> kPrefixes = {
+            {"EXA", 1e18},  {"PETA", 1e15},  {"TERA", 1e12},   {"GIGA", 1e9},
+            {"MEGA", 1e6},  {"KILO", 1e3},   {"HECTO", 1e2},   {"DECA", 1e1},
+            {"DECI", 1e-1}, {"CENTI", 1e-2}, {"MILLI", 1e-3},  {"MICRO", 1e-6},
+            {"NANO", 1e-9}, {"PICO", 1e-12}, {"FEMTO", 1e-15}, {"ATTO", 1e-18}};
+        double metres = 1.0;
+        std::string prefix;
+        if ((*si)[0].kind == StepValue::Enum) {
+            const auto it = kPrefixes.find((*si)[0].text);
+            if (it == kPrefixes.end()) return 0.0;
+            metres = it->second;
+            prefix = it->first;
+            std::transform(prefix.begin(), prefix.end(), prefix.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        }
+        if (name) *name = prefix + "metres";
+        return metres * 1000.0;
+    }
+    if (const StepList* cb = inst->leaf("CONVERSION_BASED_UNIT")) {
+        if (cb->size() < 2 || !(*cb)[1].isRef()) return 0.0;
+        const StepInstance* measure = parser.find((*cb)[1].ref);
+        const StepList* args = measure ? measure->leaf("LENGTH_MEASURE_WITH_UNIT") : nullptr;
+        if (args == nullptr) args = measure ? measure->leaf("MEASURE_WITH_UNIT") : nullptr;
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isRef()) return 0.0;
+        // The value: LENGTH_MEASURE(25.4), or a bare real.
+        double value = 0.0;
+        const StepValue& v = (*args)[0];
+        if (v.kind == StepValue::Real) {
+            value = v.num;
+        } else if (v.kind == StepValue::Typed && v.items && !v.items->empty() &&
+                   v.items->front().kind == StepValue::Real) {
+            value = v.items->front().num;
+        }
+        const double base = unitMillimetres(parser, (*args)[1].ref, nullptr, depth + 1);
+        if (!(value > 0.0) || !(base > 0.0) || !std::isfinite(value * base)) return 0.0;
+        if (name) {
+            std::string unit = (*cb)[0].kind == StepValue::Str ? (*cb)[0].text : "";
+            std::transform(unit.begin(), unit.end(), unit.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (unit == "inch") unit = "inches";
+            if (unit == "foot") unit = "feet";
+            *name = unit.empty() ? "a converted unit" : unit;
+        }
+        return value * base;
+    }
+    return 0.0;
+}
+
+/// Millimetres per length unit in the representation context `contextId`:
+/// the LENGTH_UNIT of its GLOBAL_UNIT_ASSIGNED_CONTEXT. 1 when it names
+/// none; 0 when it names one that cannot be read.
+double contextMillimetres(const StepParser& parser, int contextId, std::string* name) {
+    const StepInstance* ctx = parser.find(contextId);
+    const StepList* units = ctx ? ctx->leaf("GLOBAL_UNIT_ASSIGNED_CONTEXT") : nullptr;
+    if (units == nullptr || units->empty() || !(*units)[0].isList()) return 1.0;
+    for (const StepValue& u : *(*units)[0].items) {
+        if (!u.isRef()) continue;
+        const StepInstance* unit = parser.find(u.ref);
+        if (unit != nullptr && unit->hasType("LENGTH_UNIT")) {
+            return unitMillimetres(parser, u.ref, name);
+        }
+    }
+    return 1.0;
+}
+
 }  // namespace
 
 // ===========================================================================
@@ -1327,7 +1410,8 @@ bool StepFormat::save(const std::string& filePath, const std::vector<const topo:
     return true;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::string& text) {
+std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::string& text,
+                                                                 ImportReport* report) {
     g_lastError.clear();
     std::vector<std::unique_ptr<topo::Solid>> out;
 
@@ -1346,56 +1430,110 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
 
     // Group MANIFOLD_SOLID_BREPs by shape representation: sibling MSBs in one
     // ADVANCED_BREP_SHAPE_REPRESENTATION are the shells of a single solid.
-    std::vector<std::vector<int>> groups;
+    // Each group keeps its representation's context, which holds its units.
+    struct Group {
+        std::vector<int> msbs;
+        int context = 0;
+    };
+    std::vector<Group> groups;
     std::unordered_set<int> grouped;
     for (int repId : parser.allOfType("ADVANCED_BREP_SHAPE_REPRESENTATION")) {
         const StepInstance* rep = parser.find(repId);
         const StepList* args = rep ? rep->leaf("ADVANCED_BREP_SHAPE_REPRESENTATION") : nullptr;
         if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
-        std::vector<int> ids;
+        Group group;
+        if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
         for (const StepValue& item : *(*args)[1].items) {
             if (!item.isRef() || grouped.count(item.ref) != 0) continue;
             const StepInstance* it = parser.find(item.ref);
             if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
-                ids.push_back(item.ref);
+                group.msbs.push_back(item.ref);
                 grouped.insert(item.ref);
             }
         }
-        if (!ids.empty()) groups.push_back(std::move(ids));
+        if (!group.msbs.empty()) groups.push_back(std::move(group));
     }
-    // MSBs outside any representation (minimal files) import one solid each.
+    // MSBs outside any representation (minimal files) import one solid each,
+    // in the file's first context with units, if it has one.
+    int fileContext = 0;
+    for (int id : parser.allOfType("GLOBAL_UNIT_ASSIGNED_CONTEXT")) {
+        fileContext = id;
+        break;
+    }
     for (int id : parser.allOfType("MANIFOLD_SOLID_BREP")) {
-        if (grouped.count(id) == 0) groups.push_back({id});
+        if (grouped.count(id) == 0) groups.push_back({{id}, fileContext});
     }
 
     if (groups.empty()) {
         g_lastError = "no MANIFOLD_SOLID_BREP found in file";
         return out;
     }
-    int index = 0;
-    for (const std::vector<int>& group : groups) {
-        SolidBuilder builder(parser, index);
+
+    // Each solid on its own: one that cannot be rebuilt is reported, and the
+    // others still come in. Its index in the file names its topology, so a
+    // solid's names do not depend on whether the ones before it were read.
+    std::vector<std::string> failures;
+    std::map<std::string, int> conversions;
+    std::string firstError;
+    for (size_t index = 0; index < groups.size(); ++index) {
+        const Group& group = groups[index];
+        const std::string which =
+            "solid " + std::to_string(index + 1) + " (#" + std::to_string(group.msbs.front()) + ")";
+        SolidBuilder builder(parser, static_cast<int>(index));
         std::unique_ptr<topo::Solid> solid;
         try {
-            solid = builder.build(group, error);
+            solid = builder.build(group.msbs, error);
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
             // checks let through (a degree-0 B-spline, ragged control rows).
             error = e.what();
         }
         if (solid == nullptr) {
-            g_lastError =
-                "failed to reconstruct solid #" + std::to_string(group.front()) + ": " + error;
-            out.clear();
-            return out;
+            if (firstError.empty()) {
+                firstError = "failed to reconstruct solid #" + std::to_string(group.msbs.front()) +
+                             ": " + error;
+            }
+            failures.push_back(which + ": " + error);
+            continue;
+        }
+
+        // Into millimetres. A unit that cannot be read is taken as the
+        // millimetre, and said so.
+        std::string unit;
+        const double mm =
+            group.context != 0 ? contextMillimetres(parser, group.context, &unit) : 1.0;
+        if (!(mm > 0.0)) {
+            ++conversions["the length unit could not be read; read as millimetres"];
+        } else if (mm != 1.0) {
+            solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
+            std::ostringstream factor;
+            factor << std::setprecision(10) << mm;
+            ++conversions["drawn in " + unit + ", scaled by " + factor.str() + " into millimetres"];
         }
         out.push_back(std::move(solid));
-        ++index;
+    }
+
+    if (out.empty()) {
+        g_lastError = firstError;
+        return out;
+    }
+    if (report) {
+        for (const auto& failure : failures) report->skipped.push_back(failure);
+        for (const auto& [what, count] : conversions) {
+            const std::string line =
+                (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what;
+            if (what.rfind("the length unit", 0) == 0) {
+                report->approximated.push_back(line);
+            } else {
+                report->converted.push_back(line);
+            }
+        }
     }
     return out;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath) {
+std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath,
+                                                           ImportReport* report) {
     g_lastError.clear();
     std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
     if (!file) {
@@ -1404,7 +1542,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& fi
     }
     std::ostringstream ss;
     ss << file.rdbuf();
-    return fromString(ss.str());
+    return fromString(ss.str(), report);
 }
 
 const std::string& StepFormat::lastError() {

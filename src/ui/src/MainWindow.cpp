@@ -1357,7 +1357,8 @@ void MainWindow::onImportStep() {
         this, tr("Import STEP"), QString(), tr("STEP Files (*.step *.stp);;All Files (*)"));
     if (fileName.isEmpty()) return;
     const std::string path = fileName.toStdString();
-    auto solids = io::StepFormat::load(path);
+    io::ImportReport report;
+    auto solids = io::StepFormat::load(path, &report);
     if (solids.empty()) {
         reportFileError(tr("Could not import"), path, io::StepFormat::lastError());
         return;
@@ -1378,6 +1379,7 @@ void MainWindow::onImportStep() {
     rebuildFeatureTree();
     m_viewport->camera().setIsometricView();
     m_viewport->update();
+    showImportReport(QFileInfo(fileName).fileName(), report);
     m_statusPrompt->setText(tr("Imported %n bodies.", "", count));
 }
 

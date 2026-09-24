@@ -11,6 +11,16 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
+- **STEP files came in at the wrong size, all-or-nothing, with holes filled
+  in (109).**
+  - The length unit was ignored, so a part in inches came in 25.4 times
+    too small and one in metres 1000 times too small.
+  - One solid the reader could not rebuild refused the whole file.
+  - A face with a hole was drawn over it, counted as solid in mass
+    properties, and cut through by Booleans.
+
+  Solids now come in in millimetres, and the conversion is noted. A bad
+  solid is reported and the rest come in. Holes are holes.
 - **DXF text, colour and units came in wrong (108b).**
   - MTEXT chunks were joined back to front. Its lines ran together into
     one. Formatting codes such as `\pxi-3;` were left in the text.

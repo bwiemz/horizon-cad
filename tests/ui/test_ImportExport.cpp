@@ -227,3 +227,30 @@ TEST(ImportExportTest, AnInchDrawingIsScaledAndSaysSoWithoutAWarning) {
     ASSERT_NE(line, nullptr);
     EXPECT_NEAR((line->end() - line->start()).length(), 25.4, 1e-9);
 }
+
+TEST(ImportExportTest, AStepFileInMetresComesInAsMillimetresAndSaysSo) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("metres.step"));
+    {
+        auto box = hz::model::PrimitiveFactory::makeBox(1, 2, 3);
+        std::string text = hz::io::StepFormat::toString({box.get()});
+        const std::string mm = "SI_UNIT(.MILLI.,.METRE.)";
+        const size_t at = text.find(mm);
+        ASSERT_NE(at, std::string::npos);
+        text.replace(at, mm.size(), "SI_UNIT($,.METRE.)");
+        std::ofstream out(path.toStdString(), std::ios::binary);
+        out << text;
+    }
+
+    MainWindow w;
+    DialogResponder warning(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    {
+        FilePicker picker(path);
+        action(w, "import_step")->trigger();
+    }
+    EXPECT_FALSE(warning.seen()) << "nothing was lost, so nothing to warn about";
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("metres")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_NEAR(partVolume(*w.activeDocument()), 6.0e9, 6.0e9 * 1e-9);
+}
