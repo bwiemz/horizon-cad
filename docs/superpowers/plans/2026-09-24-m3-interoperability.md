@@ -123,6 +123,62 @@ can insert one defined after it.
   through its centre came out wrong, and the 2D Mirror tool is among the
   callers. Fixed, with the drafting module's first transform tests.
 
+**108b as built.**
+- **Text.**
+  - *MTEXT:* chunks (3) are now joined in order; they used to be joined
+    back to front. Each line (`\P`, `\N`, `\X`, `^J`) becomes a text of
+    its own, grouped with the others. Lines are placed from the attachment
+    point (71) and spaced 5/3 of the height apart, times factor 44.
+  - *MTEXT formatting codes* (`\f \H \C \p`… up to `;`, and `{}`) are
+    dropped. A change of height or colour, or an underline, is reported as
+    approximated. A stacked fraction `\S1/2;` is written inline as "1/2"
+    and reported. A `\p` is paragraph formatting, not a line break; the
+    old reader broke the line there.
+  - *TEXT* reads `%%d %%p %%c %%% %%nnn`, `\U+XXXX` (including surrogate
+    pairs), and `^I ^J ^M` and `^ `. Only those three carets are decoded,
+    so "2^N" stays as it is. Text values keep their spaces.
+  - *Placement:* TEXT with any alignment but left-on-baseline stands at its
+    second point (11/21), moved to the baseline for bottom, middle and top.
+    The old reader always used the first point, which other writers leave
+    at 0, 0, and which AutoCAD writes after its own layout. MTEXT takes its
+    direction (11/21), else its angle (50), in degrees as AutoCAD writes
+    it.
+- **Colour.** The full 256-entry index replaces the ten named colours:
+  index 12 used to come in white. It is generated from its structure:
+  - 24 hues;
+  - five levels, 1, 0.65, 0.5, 0.3 and 0.15;
+  - a pale version of each level at half saturation;
+  - six greys.
+
+  True colour (420) is read on entities and layers and wins over 62. It
+  is written whenever the index does not hold the colour exactly, so
+  every colour round-trips. Black is written as index 7 and true colour 0.
+- **Code pages.** Every value is turned into UTF-8 as it is read.
+  - A value that is valid UTF-8 is kept, which is how AutoCAD 2007 and
+    later write every file.
+  - Otherwise the value is read in `$DWGCODEPAGE`: Windows-1252 (the
+    default) or Windows-1251.
+  - Any other code page's bytes become U+FFFD and are counted in the
+    report.
+
+  A byte-order mark is skipped. A binary DXF is refused with a reason.
+- **Units.** `$INSUNITS` scales the drawing into millimetres.
+  - A block is scaled once, in its definition; an insert of it only moves.
+  - The conversion goes in the report's new `converted` list, which the
+    window shows in the status bar, not as a warning.
+  - Saved files now declare `$INSUNITS` 4 (mm), `$MEASUREMENT` 1 and
+    `$DWGCODEPAGE`.
+- **Writing.** TEXT values are encoded so they read back:
+  - the degree, plus-minus and diameter signs are written as `%%` codes;
+  - a `%` that would start a code is written as `%%%`;
+  - control characters are written as `^` codes, and a caret that could
+    be read as one as `^ `.
+
+  No value can carry a line break into the file.
+- **Not done:** MTEXT word wrap to its box width (41). Text in a
+  multibyte code page, such as `\M+` or ANSI_932, is reported, not
+  decoded.
+
 ## Phase 109 — STEP fidelity
 
 `LENGTH_UNIT` conversion, faces with inner loops (now that Phase 105

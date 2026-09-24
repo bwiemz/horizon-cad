@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <fstream>
 #include <memory>
@@ -197,4 +198,32 @@ TEST(ImportExportTest, OpeningAFileWithDamagedItemsSaysWhatWasLeftOut) {
     EXPECT_TRUE(report.text().contains(QStringLiteral("1 item was left out")))
         << report.text().toStdString();
     EXPECT_EQ(w.activeDocument()->draftDocument().entities().size(), 1u);
+}
+
+TEST(ImportExportTest, AnInchDrawingIsScaledAndSaysSoWithoutAWarning) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("inches.dxf"));
+    {
+        std::ofstream out(path.toStdString());
+        out << "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n1\n0\nENDSEC\n"
+               "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n0\n"
+               "0\nENDSEC\n0\nEOF\n";
+    }
+
+    MainWindow w;
+    DialogResponder warning(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    {
+        FilePicker picker(path);
+        action(w, "import_dxf")->trigger();
+    }
+    EXPECT_FALSE(warning.seen()) << "nothing was lost, so nothing to warn about";
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("scaled by 25.4")))
+        << w.statusBar()->currentMessage().toStdString();
+
+    const auto& entities = w.activeDocument()->draftDocument().entities();
+    ASSERT_EQ(entities.size(), 1u);
+    const auto* line = dynamic_cast<const hz::draft::DraftLine*>(entities[0].get());
+    ASSERT_NE(line, nullptr);
+    EXPECT_NEAR((line->end() - line->start()).length(), 25.4, 1e-9);
 }
