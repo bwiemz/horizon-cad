@@ -281,6 +281,9 @@ definitions choose directions and faces with. 135 is independent and last.
     to the tree.
   - The rollback point is saved in the file, so the background rebuild,
     which builds from a saved copy, honours it too.
+- **Found in review:** datums were drawn solid, not dashed as meant: every
+  vertex was given distance 0, and the line shader dashes by distance. Each
+  segment's end now carries its length.
 
 ### Tests
 
