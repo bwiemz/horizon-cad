@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 
+#include "../TimeLimits.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SnapEngine.h"
 #include "horizon/drafting/SpatialIndex.h"
@@ -12,6 +13,7 @@ using namespace hz::draft;
 using namespace hz::math;
 
 TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
+    HZ_SKIP_WITHOUT_TIME_LIMITS();
     std::vector<std::shared_ptr<DraftEntity>> entities;
     entities.reserve(10000);
     for (uint64_t i = 0; i < 10000; ++i) {
@@ -51,6 +53,7 @@ TEST(SpatialIndexPerfTest, TenThousandEntitySnapUnder1ms) {
 }
 
 TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
+    HZ_SKIP_WITHOUT_TIME_LIMITS();
     SpatialIndex index;
     auto start = std::chrono::high_resolution_clock::now();
     for (uint64_t i = 0; i < 10000; ++i) {
@@ -67,13 +70,15 @@ TEST(SpatialIndexPerfTest, TenThousandEntityInsertUnder100ms) {
     EXPECT_LT(ms, 100.0);
 #else
     // Debug builds on shared CI runners (especially MSVC with iterator
-    // debugging) run several times slower; the perf target only binds in
-    // Release.
-    EXPECT_LT(ms, 500.0);
+    // debugging) run several times slower, and CI runs four tests at once:
+    // this took 570 ms under ASan and on MSVC Debug. The perf target only
+    // binds in Release; here only a much worse regression fails.
+    EXPECT_LT(ms, 2000.0);
 #endif
 }
 
 TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
+    HZ_SKIP_WITHOUT_TIME_LIMITS();
     SpatialIndex index;
     for (uint64_t i = 0; i < 10000; ++i) {
         double x = static_cast<double>(i % 100) * 5.0;
@@ -96,5 +101,9 @@ TEST(SpatialIndexPerfTest, TenThousandEntityBoxSelectUnder5ms) {
     double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
     double avgMs = totalMs / 1000.0;
     std::cout << "[PERF] 10k entities, avg box query: " << avgMs << " ms" << std::endl;
+#ifdef NDEBUG
     EXPECT_LT(avgMs, 5.0) << "Box query too slow: " << avgMs << " ms average";
+#else
+    EXPECT_LT(avgMs, 20.0) << "Box query too slow: " << avgMs << " ms average";  // as the snap's
+#endif
 }

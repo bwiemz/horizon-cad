@@ -97,6 +97,22 @@ continues from a fresh audit after Phase 121.
     and one typed as "." was dropped without a word. Both are now refused,
     and the prompt says so. The fillet prompt now shows the radius.
   - Seven empty `catch (...)` blocks that swallowed errors are gone.
+- **A safety net that catches (126).**
+  - CI runs the tests under ThreadSanitizer, now that models rebuild on a
+    worker while the window is being edited.
+  - CI measures line coverage and shows it by module in each run's summary.
+  - CI fuzzes every reader of untrusted input with libFuzzer, a minute each,
+    where it only replayed the seed files before. New fuzz targets cover the
+    binary part format, plugin manifests, and the PDM's revision archive and
+    check-out locks.
+  - The Windows build counts its /W4 warnings, by code, in each run.
+  - Packages must carry the translations. They were compiled only when Qt's
+    own Linguist tools were found, which the release build never had; now
+    any lrelease will do, a package build without one fails, and every
+    build checks the catalogs are where the application looks for them.
+  - The vcpkg cache is kept when a later step fails, so the next run does not
+    rebuild Qt. Every job has a time limit, tests run in parallel, and the
+    workflow can only read the repository.
 
 ## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
 

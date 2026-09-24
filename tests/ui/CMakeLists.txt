@@ -1,5 +1,6 @@
 add_executable(hz_ui_tests
     test_LocaleManager.cpp
+    test_Workers.cpp
 )
 
 target_link_libraries(hz_ui_tests
@@ -59,7 +60,9 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             COMMENT "Deploying Qt offscreen platform plugin next to hz_ui_window_tests"
             VERBATIM)
     endif()
-    gtest_discover_tests(hz_ui_window_tests)
+    # Labelled, so a job can leave them out: the ThreadSanitizer job does,
+    # since Qt is not instrumented and its own threads look raced.
+    gtest_discover_tests(hz_ui_window_tests PROPERTIES LABELS window)
 else()
     message(STATUS "Horizon MainWindow tests: SKIPPED (Qt offscreen platform plugin not found)")
 endif()

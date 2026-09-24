@@ -1,0 +1,16 @@
+[
+  {
+    "author": "alice",
+    "hash": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e",
+    "index": 0,
+    "message": "Initial",
+    "timestamp": "2026-09-24T17:48:00Z"
+  },
+  {
+    "author": "bob",
+    "hash": "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+    "index": 1,
+    "message": "Holes",
+    "timestamp": "2026-09-24T17:48:00Z"
+  }
+]

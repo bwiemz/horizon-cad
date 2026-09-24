@@ -10,24 +10,34 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The jobs read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build (${{ matrix.os }}${{ matrix.config && format(', {0}', matrix.config) || '' }})
     runs-on: ${{ matrix.os }}
+    # A cold vcpkg cache builds Qt from source, which takes most of this.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         include:
           # Warnings fail the Linux build. MSVC's /W4 backlog has not been
           # measured yet, so Windows reports warnings without failing on them.
+          # Translations are required where the release workflow builds its
+          # packages from, so a package cannot quietly ship without them.
           - os: windows-latest
             preset: ci-windows
             triplet: x64-windows
             werror: 'OFF'
+            translations: 'ON'
           - os: ubuntu-22.04
             preset: linux-debug
             triplet: x64-linux
             werror: 'ON'
+            translations: 'ON'
           # Release: the optimiser finds warnings (-Warray-bounds and the
           # like) and behaviour a Debug build never shows.
           - os: ubuntu-22.04
@@ -49,7 +59,8 @@ jobs:
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -94,6 +105,14 @@ jobs:
           echo "Python3_ROOT_DIR=$(python -c 'import sys; print(sys.prefix)')" >> "$GITHUB_ENV"
           echo "Python3_EXECUTABLE=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
 
+      # vcpkg's Qt is built without its tools, so lrelease comes from
+      # elsewhere: PySide6 on Windows, the distribution's Qt tools on Linux.
+      # A .qm catalog does not depend on the Qt that compiled it.
+      - name: Install lrelease (Windows)
+        if: runner.os == 'Windows' && matrix.translations == 'ON'
+        shell: bash
+        run: python -m pip install pyside6-essentials
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -124,21 +143,58 @@ jobs:
             automake \
             libtool \
             ninja-build \
-            pkg-config
+            pkg-config \
+            qt6-l10n-tools
 
       # Scripting is off by default (it is not sandboxed); test it here.
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON
+        id: configure
+        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON -DHZ_REQUIRE_TRANSLATIONS=${{ matrix.translations || 'OFF' }}
 
+      # The log is kept so the Windows warnings can be counted below.
       - name: Build
-        run: cmake --build build/${{ matrix.preset }} --config ${{ matrix.config || 'Debug' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build/${{ matrix.preset }} --config ${{ matrix.config || 'Debug' }} 2>&1 | tee build.log
+
+      # MSVC builds at /W4 without /WX: the warnings are tolerated, so count
+      # them, by code, where each run shows it. A header's warning is counted
+      # once, not once per file that includes it.
+      - name: Count the MSVC warnings
+        if: always() && runner.os == 'Windows'
+        shell: bash
+        run: |
+          grep -oE '[^ ]+\([0-9]+(,[0-9]+)?\): warning C[0-9]+' build.log | sort -u > warnings.txt || true
+          total=$(wc -l < warnings.txt)
+          {
+            echo "### MSVC /W4 warnings: ${total}"
+            echo
+            echo "| Code | Count |"
+            echo "|------|------:|"
+            grep -oE 'warning C[0-9]+' warnings.txt | sort | uniq -c | sort -rn | head -25 \
+              | awk '{ printf "| %s | %s |\n", $3, $1 }'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "MSVC /W4 warnings: ${total}"
 
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4
+
+      # Saved even when a later step failed: vcpkg's packages (Qt above all)
+      # are the slow part, and a failed job used to throw them away, so the
+      # next run built them all again. Saved only once vcpkg has installed
+      # everything (Configure succeeded), and not over an exact hit.
+      - name: Save the vcpkg binary cache
+        if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
   asan:
     name: AddressSanitizer
     runs-on: ubuntu-22.04
+    timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
@@ -167,7 +223,8 @@ jobs:
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -231,17 +288,30 @@ jobs:
           echo "Python3_EXECUTABLE=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
 
       - name: Configure with ASan + UBSan
+        id: configure
         run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=ON
 
       - name: Build
         run: cmake --build build/linux-debug --config Debug
 
       - name: Test
-        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure
+        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4
+
+      # Saved even when a later step failed: vcpkg's packages (Qt above all)
+      # are the slow part, and a failed job used to throw them away, so the
+      # next run built them all again. Saved only once vcpkg has installed
+      # everything (Configure succeeded), and not over an exact hit.
+      - name: Save the vcpkg binary cache
+        if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
   format-check:
     name: Format Check
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -259,6 +329,7 @@ jobs:
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-22.04
+    timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
@@ -271,7 +342,8 @@ jobs:
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -320,6 +392,7 @@ jobs:
             pkg-config
 
       - name: Configure with compile_commands.json
+        id: configure
         run: cmake --preset linux-debug
 
       - name: Generate build-time headers for analysis
@@ -364,3 +437,340 @@ jobs:
               --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
               < tidy-files.txt 2>&1 | tee clang-tidy-output.txt
           echo "::notice::clang-tidy gate passed (excluded-check warnings above are the advisory backlog)."
+
+      # Saved even when a later step failed: vcpkg's packages (Qt above all)
+      # are the slow part, and a failed job used to throw them away, so the
+      # next run built them all again. Saved only once vcpkg has installed
+      # everything (Configure succeeded), and not over an exact hit.
+      - name: Save the vcpkg binary cache
+        if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+  # Data races in the work done on worker threads: model rebuilds from their
+  # snapshots, background tasks, the ID counters every thread shares (N1 in
+  # the product-completeness roadmap). The window tests are left out: Qt is
+  # not instrumented, so its own threads look raced (tests/tsan.supp holds
+  # what is known of that), and those tests exercise no worker the others do
+  # not.
+  tsan:
+    name: ThreadSanitizer
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,read"
+      EXTRA_PACKAGES: ''
+      TSAN_OPTIONS: second_deadlock_stack=1 history_size=4 suppressions=${{ github.workspace }}/tests/tsan.supp
+    steps:
+      # Instrumented, statically linked Qt test binaries are large; reclaim
+      # the preinstalled toolchains this job does not use (see the ASan job).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost /usr/local/share/powershell \
+            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-}"
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The vcpkg packages the other Linux jobs build and save; this job only
+      # reads them.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            ninja-build \
+            pkg-config ${{ env.EXTRA_PACKAGES }}
+
+      # The runner's kernel randomizes more address bits than GCC 11's
+      # ThreadSanitizer can map around ("unexpected memory mapping").
+      - name: Let ThreadSanitizer map its shadow memory
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      # -Werror is left off: GCC warns that std::atomic_thread_fence is not
+      # supported under ThreadSanitizer, which is not what this job is for.
+      - name: Configure with ThreadSanitizer
+        run: cmake --preset linux-debug -DHZ_ENABLE_TSAN=ON -DHZ_WARNINGS_AS_ERRORS=OFF
+
+      - name: Build
+        run: cmake --build build/linux-debug --config Debug
+
+      - name: Test
+        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4 --label-exclude window
+
+  # Which lines the tests run (N4). Reported, not gated: the job summary has
+  # a table by module, and the full report is kept with the run.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,read"
+      EXTRA_PACKAGES: ''
+    steps:
+      # Instrumented, statically linked Qt test binaries are large; reclaim
+      # the preinstalled toolchains this job does not use (see the ASan job).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost /usr/local/share/powershell \
+            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-}"
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The vcpkg packages the other Linux jobs build and save; this job only
+      # reads them.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            ninja-build \
+            pkg-config ${{ env.EXTRA_PACKAGES }}
+
+      - name: Configure with coverage
+        run: cmake --preset linux-debug -DHZ_ENABLE_COVERAGE=ON -DHZ_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build/linux-debug --config Debug
+
+      - name: Test
+        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4
+
+      - name: Report
+        if: always()
+        run: |
+          python3 -m pip install --user gcovr
+          mkdir -p coverage
+          python3 -m gcovr --root . build/linux-debug --filter 'src/' \
+            --exclude-unreachable-branches --gcov-ignore-parse-errors \
+            --json-summary coverage/summary.json --html-details coverage/index.html \
+            --print-summary -j 4
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import collections, json
+          files = json.load(open("coverage/summary.json"))["files"]
+          lines = collections.defaultdict(lambda: [0, 0])
+          for f in files:
+              parts = f["filename"].split("/")
+              module = parts[1] if len(parts) > 2 and parts[0] == "src" else "other"
+              lines[module][0] += f["line_covered"]
+              lines[module][1] += f["line_total"]
+          covered = sum(c for c, _ in lines.values())
+          total = sum(t for _, t in lines.values())
+          print(f"### Line coverage: {100.0 * covered / max(total, 1):.1f}% ({covered}/{total})")
+          print()
+          print("| Module | Lines | Covered |")
+          print("|--------|------:|--------:|")
+          for module, (c, t) in sorted(lines.items(), key=lambda kv: kv[1][0] / max(kv[1][1], 1)):
+              print(f"| {module} | {t} | {100.0 * c / max(t, 1):.1f}% |")
+          PY
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+
+  # Real fuzzing of the readers of untrusted input with libFuzzer (N3), not
+  # only the replay of the seed corpus that every build runs. Clang builds
+  # the fuzz targets; vcpkg's packages are still GCC's, which Clang links.
+  fuzz:
+    name: Fuzz (libFuzzer)
+    runs-on: ubuntu-22.04
+    # As the others: with a cold vcpkg cache, Qt is built from source first.
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,read"
+      EXTRA_PACKAGES: 'clang-15'
+      UBSAN_OPTIONS: print_stacktrace=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The vcpkg packages the other Linux jobs build and save; this job only
+      # reads them.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            ninja-build \
+            pkg-config ${{ env.EXTRA_PACKAGES }}
+
+      - name: Configure with Clang, libFuzzer and ASan + UBSan
+        run: >
+          cmake --preset linux-debug -B build/fuzz
+          -DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
+          -DHZ_BUILD_FUZZERS=ON -DHZ_ENABLE_SANITIZERS=ON -DHZ_WARNINGS_AS_ERRORS=OFF
+
+      - name: Build the fuzz targets
+        run: >
+          cmake --build build/fuzz --config Debug --target
+          hz_fuzz_native_json hz_fuzz_step hz_fuzz_dxf hz_fuzz_expression
+          hz_fuzz_binary hz_fuzz_plugin_manifest hz_fuzz_pdm
+
+      # A minute each, from the committed seeds. A crash leaves its input in
+      # fuzz-artifacts/, kept below: add it to the target's corpus directory
+      # with the fix, so every build replays it from then on.
+      - name: Fuzz
+        run: |
+          mkdir -p fuzz-artifacts
+          status=0
+          for pair in native_json:native step:step dxf:dxf expression:expression \
+                      binary:binary plugin_manifest:plugin pdm:pdm; do
+            target=${pair%%:*}
+            corpus=${pair#*:}
+            work="fuzz-work/${target}"
+            mkdir -p "${work}"
+            cp -r "tests/fuzz/corpus/${corpus}/." "${work}/"
+            echo "::group::hz_fuzz_${target}"
+            if ! "build/fuzz/tests/fuzz/hz_fuzz_${target}" "${work}" \
+                -max_total_time=60 -timeout=10 -rss_limit_mb=2048 -print_final_stats=1 \
+                -artifact_prefix="fuzz-artifacts/${target}-"; then
+              echo "::error::hz_fuzz_${target} found a failing input"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit ${status}
+
+      - name: Keep the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: fuzz-artifacts/
+          if-no-files-found: ignore

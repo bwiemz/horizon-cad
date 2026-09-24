@@ -24,6 +24,14 @@ option(HZ_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
 # stop it, until scripting is sandboxed. CI and developers turn it on.
 option(HZ_ENABLE_SCRIPTING "Build the embedded Python scripting module (not sandboxed)" OFF)
 option(HZ_BUILD_FUZZERS "Also build libFuzzer executables for the file readers (Clang)" OFF)
+option(HZ_ENABLE_TSAN "Enable ThreadSanitizer (not with HZ_ENABLE_SANITIZERS)" OFF)
+option(HZ_ENABLE_COVERAGE "Instrument for line coverage (GCC or Clang, --coverage)" OFF)
+# Packages must carry the translations; a developer build may do without.
+option(HZ_REQUIRE_TRANSLATIONS "Fail to configure when the translations cannot be compiled" OFF)
+if(HZ_ENABLE_TSAN AND HZ_ENABLE_SANITIZERS)
+    message(FATAL_ERROR "ThreadSanitizer cannot be combined with AddressSanitizer: "
+                        "turn off HZ_ENABLE_SANITIZERS or HZ_ENABLE_TSAN")
+endif()
 
 # CMake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -58,6 +66,12 @@ if(HZ_ENABLE_SCRIPTING)
     endif()
 endif()
 
+# Before src/, so a check declared beside what it checks (the application's
+# translations) is registered too.
+if(HZ_BUILD_TESTS)
+    enable_testing()
+endif()
+
 # All source libraries
 add_subdirectory(src)
 
@@ -68,7 +82,6 @@ endif()
 # Tests
 if(HZ_BUILD_TESTS)
     find_package(GTest CONFIG REQUIRED)
-    enable_testing()
     add_subdirectory(tests)
 endif()
 
@@ -92,6 +105,12 @@ foreach(_hz_target IN LISTS _hz_targets)
         hz_set_warnings(${_hz_target})
         if(HZ_ENABLE_SANITIZERS)
             hz_enable_sanitizers(${_hz_target})
+        endif()
+        if(HZ_ENABLE_TSAN)
+            hz_enable_tsan(${_hz_target})
+        endif()
+        if(HZ_ENABLE_COVERAGE)
+            hz_enable_coverage(${_hz_target})
         endif()
         if(HZ_BUILD_FUZZERS)
             # Coverage feedback for libFuzzer from every library it drives.

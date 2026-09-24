@@ -1,0 +1,9 @@
+{
+    "name": "hole-wizard",
+    "version": "1.2.3",
+    "entry": "main.py",
+    "description": "Parametric hole patterns",
+    "author": "Jane Doe",
+    "minAppVersion": "0.1.0",
+    "permissions": ["document", "ui", "filesystem", "network", "simulation"]
+}

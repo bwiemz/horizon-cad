@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
@@ -131,6 +132,7 @@ TEST(DraftDocumentTest, BoundsUpdateMovesTheEntityInTheIndex) {
 // Removing entities one at a time used to rebuild the whole spatial index
 // each time: undoing a 20,000-entity import took minutes.
 TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
+    HZ_SKIP_WITHOUT_TIME_LIMITS();
     DraftDocument d;
     std::vector<uint64_t> added;
     for (int i = 0; i < 20000; ++i) {
@@ -147,6 +149,6 @@ TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
 #ifdef NDEBUG
     EXPECT_LT(ms, 500.0);
 #else
-    EXPECT_LT(ms, 10000.0);  // Debug and sanitizer builds; was minutes
+    EXPECT_LT(ms, 10000.0);  // Debug builds; was minutes
 #endif
 }

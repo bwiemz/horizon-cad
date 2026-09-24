@@ -71,27 +71,68 @@ if (WIN32)
 endif()
 
 # Translations (Phase 77): compile translations/*.ts to .qm next to the
-# executable when Qt Linguist tools are present. Quiet gating (mirrors the
-# Vulkan/scripting pattern) — default builds don't require qttools; the
-# shipped .ts sources are the ground truth either way.
+# executable. Qt's LinguistTools package is used when it is there; otherwise
+# any lrelease on the system is (a distribution's Qt tools, or PySide6's), as a
+# .qm catalog does not depend on the Qt that compiled it. A developer build may
+# go without catalogs, the shipped .ts sources being the ground truth; a
+# package must not (HZ_REQUIRE_TRANSLATIONS, which the release workflow sets).
+file(GLOB HZ_TS_FILES ${CMAKE_SOURCE_DIR}/translations/horizon_*.ts)
+set(HZ_QM_FILES)
 find_package(Qt6 COMPONENTS LinguistTools QUIET)
 if (TARGET Qt6::lrelease)
-    message(STATUS "Horizon translations: ENABLED (lrelease found)")
-    file(GLOB HZ_TS_FILES ${CMAKE_SOURCE_DIR}/translations/horizon_*.ts)
     qt6_add_translation(HZ_QM_FILES ${HZ_TS_FILES})
-    target_sources(horizon PRIVATE ${HZ_QM_FILES})
-    # Copy compiled catalogs next to the executable, where LocaleManager looks
-    # (<exe dir>/translations). A generator expression in a source file's
-    # OUTPUT_LOCATION property is NOT evaluated, so place them with an explicit
-    # POST_BUILD copy (genexes are valid here) instead.
-    add_custom_command(TARGET horizon POST_BUILD
+    set(HZ_LRELEASE_USED "Qt6::lrelease")
+else()
+    find_program(HZ_LRELEASE NAMES lrelease-qt6 lrelease pyside6-lrelease
+                 HINTS /usr/lib/qt6/bin /usr/lib/x86_64-linux-gnu/qt6/bin)
+    if (HZ_LRELEASE)
+        foreach(ts IN LISTS HZ_TS_FILES)
+            get_filename_component(catalog ${ts} NAME_WE)
+            set(qm ${CMAKE_CURRENT_BINARY_DIR}/${catalog}.qm)
+            add_custom_command(OUTPUT ${qm}
+                COMMAND ${HZ_LRELEASE} ${ts} -qm ${qm}
+                DEPENDS ${ts}
+                COMMENT "Compiling ${catalog}.qm"
+                VERBATIM)
+            list(APPEND HZ_QM_FILES ${qm})
+        endforeach()
+        set(HZ_LRELEASE_USED ${HZ_LRELEASE})
+    endif()
+endif()
+if (HZ_QM_FILES)
+    message(STATUS "Horizon translations: ENABLED (${HZ_LRELEASE_USED})")
+    # Compile the catalogs and copy them next to the executable, where
+    # LocaleManager looks (<exe dir>/translations), in every build: a copy
+    # hung on the executable's POST_BUILD ran only when it was relinked, so an
+    # edited catalog did not reach it. A generator expression in a source
+    # file's OUTPUT_LOCATION property is not evaluated; in a COMMAND it is.
+    add_custom_target(horizon_translations ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory
                 $<TARGET_FILE_DIR:horizon>/translations
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HZ_QM_FILES}
                 $<TARGET_FILE_DIR:horizon>/translations
-        COMMENT "Copying compiled .qm catalogs next to horizon executable")
+        DEPENDS ${HZ_QM_FILES}
+        COMMENT "Placing the .qm catalogs next to the horizon executable"
+        VERBATIM)
     # ... and in a package, where LocaleManager looks for them the same way.
     install(FILES ${HZ_QM_FILES} DESTINATION bin/translations)
+    # Every catalog is where the application looks for it.
+    if (HZ_BUILD_TESTS)
+        set(HZ_QM_NAMES)
+        foreach(qm IN LISTS HZ_QM_FILES)
+            get_filename_component(name ${qm} NAME)
+            list(APPEND HZ_QM_NAMES ${name})
+        endforeach()
+        add_test(NAME TranslationsAreNextToTheExecutable
+            COMMAND ${CMAKE_COMMAND}
+                -DDIR=$<TARGET_FILE_DIR:horizon>/translations
+                "-DNAMES=${HZ_QM_NAMES}"
+                -P ${CMAKE_SOURCE_DIR}/cmake/CheckTranslations.cmake)
+    endif()
+elseif (HZ_REQUIRE_TRANSLATIONS)
+    message(FATAL_ERROR "HZ_REQUIRE_TRANSLATIONS is ON, but the translations cannot be compiled: "
+                        "no lrelease was found. Install Qt's Linguist tools (lrelease) or "
+                        "PySide6 (pyside6-lrelease).")
 else()
-    message(STATUS "Horizon translations: catalogs not compiled (Qt Linguist tools not found)")
+    message(STATUS "Horizon translations: catalogs not compiled (no lrelease found)")
 endif()

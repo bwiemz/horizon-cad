@@ -19,6 +19,7 @@ jobs:
   linux:
     name: Linux (tarball and AppImage)
     runs-on: ubuntu-22.04
+    timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
     steps:
@@ -82,11 +83,13 @@ jobs:
             libtool \
             ninja-build \
             pkg-config \
-            file
+            file \
+            qt6-l10n-tools
 
-      # Scripting is not shipped until it is sandboxed (Phase 120).
+      # Scripting is not shipped until it is sandboxed (Phase 120). The
+      # translations are: a package without them is refused at configure.
       - name: Configure
-        run: cmake --preset linux-release -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF
+        run: cmake --preset linux-release -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build/linux-release --config Release
@@ -96,6 +99,13 @@ jobs:
 
       - name: Package a tarball
         run: cpack --config build/linux-release/CPackConfig.cmake -B dist -G TGZ
+
+      - name: Check the tarball carries the translations
+        run: |
+          expected=$(ls translations/horizon_*.ts | wc -l)
+          found=$(tar -tzf dist/*.tar.gz | grep -cE '/translations/horizon_[a-z_]+\.qm$' || true)
+          echo "translations: ${found} of ${expected}"
+          test "${found}" -eq "${expected}"
 
       # linuxdeploy's own AppImage needs FUSE, which the runner lacks:
       # APPIMAGE_EXTRACT_AND_RUN runs it without.
@@ -124,6 +134,7 @@ jobs:
   windows:
     name: Windows (installer)
     runs-on: windows-latest
+    timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
@@ -158,8 +169,18 @@ jobs:
           echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
           choco install ninja -y --no-progress
 
+      # vcpkg's Qt is built without its tools; PySide6 brings lrelease. A .qm
+      # catalog does not depend on the Qt that compiled it.
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install lrelease
+        run: python -m pip install pyside6-essentials
+
       - name: Configure
-        run: cmake --preset ci-windows-release -DHZ_ENABLE_SCRIPTING=OFF
+        run: cmake --preset ci-windows-release -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build/ci-windows-release --config Release
@@ -183,6 +204,7 @@ jobs:
     needs: [linux, windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

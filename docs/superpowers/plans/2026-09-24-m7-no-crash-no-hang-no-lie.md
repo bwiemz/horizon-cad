@@ -367,5 +367,89 @@ without it.
 
 ## Phase 126: A safety net that catches
 
-A TSan job; coverage; a Clang libFuzzer job and new fuzz targets; `/W4`
-measured; translations in packages; CI cache and timeouts.
+### What the audit found
+
+- **No ThreadSanitizer (N1).** A worker rebuilds models while the window
+  edits, and imports and interference checks run on workers too, but no job
+  looked for data races.
+- **Fuzzing only replayed seeds (N3).** libFuzzer never ran, and CI never
+  compiled with Clang. The binary format, plugin manifests and the PDM's
+  files had no fuzz target at all.
+- **No coverage measurement (N4).**
+- **The Windows warnings were not counted (N5).** MSVC builds at `/W4`
+  without `/WX`, and nothing said how many warnings there were.
+- **Packages probably shipped no translations (N6).** Catalogs were compiled
+  only when Qt's LinguistTools package was found. vcpkg's Qt has no tools,
+  so the release build never compiled them. The executable's `POST_BUILD`
+  copy also missed an edited catalog when the executable did not relink.
+- **CI hygiene:**
+  - a failed job threw away the vcpkg cache it had just built (Qt);
+  - no job had a time limit;
+  - tests ran one at a time;
+  - the workflow had the default token permissions.
+
+### As built
+
+- **Build options:**
+  - `HZ_ENABLE_TSAN` (`-fsanitize=thread`, refused together with ASan);
+  - `HZ_ENABLE_COVERAGE` (`--coverage`);
+  - `HZ_REQUIRE_TRANSLATIONS`.
+
+  `enable_testing()` now comes before `src/`, so a test can be declared
+  beside what it checks.
+- **Translations:**
+  - With no LinguistTools package, any `lrelease` compiles the catalogs:
+    `lrelease-qt6`, `lrelease` or `pyside6-lrelease`.
+  - A `horizon_translations` target places them next to the executable in
+    every build.
+  - The `TranslationsAreNextToTheExecutable` test checks each one is there.
+  - `HZ_REQUIRE_TRANSLATIONS` fails the configure when no `lrelease` exists.
+- **CI (`ci.yml`):**
+  - `permissions: contents: read`, and a time limit on every job.
+  - The vcpkg cache is restored, then saved even when a later step failed,
+    once Configure has succeeded.
+  - `ctest --parallel 4`.
+  - The Windows and Linux Debug builds require translations: `lrelease`
+    comes from PySide6 on Windows and `qt6-l10n-tools` on Linux.
+  - The Windows build counts its warnings by code into the run summary.
+  - **ThreadSanitizer:** every test but the window tests (label `window`),
+    with `tests/tsan.supp`. The job sets `vm.mmap_rnd_bits=28`, which the
+    runner's kernel needs for GCC 11's TSan.
+    - Qt is not instrumented, so the window tests report Qt's own threads.
+      Locally all 46 reports were inside Qt: its thread pool drawing icons,
+      a wait condition torn down at exit.
+    - `called_from_lib` for QtCore hides Qt's thread starts from TSan's
+      registry, which then aborts on a reused thread ID.
+    - So the worker tests moved out of the window tests, into
+      `test_Workers.cpp` in `hz_ui_tests`, which has no Qt threads.
+    - A new test edits a document while its rebuild runs on a worker, and
+      another checks a `BackgroundTask` sees its Cancel.
+    - Timing tests skip under TSan.
+  - **Coverage:** the whole suite, then gcovr. The summary gets a table by
+    module, and the HTML report is kept with the run.
+  - **Fuzz:** Clang 15 builds the seven targets, which are fuzzed a minute
+    each from the committed seeds. Failing inputs are kept with the run.
+- **Release (`release.yml`):**
+  - both packages require translations;
+  - the Linux tarball is checked to hold every catalog;
+  - every job has a time limit.
+- **New fuzz targets:**
+  - `hz_fuzz_binary`: part, assembly and mesh-only reads;
+  - `hz_fuzz_plugin_manifest`: the manifest and semver parsers;
+  - `hz_fuzz_pdm`: an archive manifest over no blobs, and a lock file.
+
+  Each has seeds from the real writers (`hz_fuzz_seedgen`). They share
+  `FuzzTempDir.h` for the readers that take a path.
+- **Checked locally:**
+  - The three new targets ran a minute each under libFuzzer with ASan and
+    UBSan: 67,000 binary inputs, 900,000 manifests and 208,000 PDM inputs,
+    with no failure.
+  - The suite under ThreadSanitizer (GCC 16, a distribution's Qt): all
+    1,307 tests outside the window tests pass.
+  - Both translation paths: Qt's LinguistTools and a plain `lrelease`.
+- **Not done:**
+  - `/WX` on Windows waits for the count to reach zero.
+  - Coverage is reported, not gated.
+  - A Clang build of the whole project (not only the fuzz targets).
+  - Windows Release on pull requests.
+  - The OpenGL viewport in CI (N2).
