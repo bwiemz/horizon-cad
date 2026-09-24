@@ -36,6 +36,12 @@ std::vector<math::Vec2> DraftLine::snapPoints() const {
     return {m_start, m_end};
 }
 
+std::vector<SnapPoint> DraftLine::typedSnapPoints() const {
+    return {{m_start, SnapType::Endpoint},
+            {m_end, SnapType::Endpoint},
+            {(m_start + m_end) * 0.5, SnapType::Midpoint}};
+}
+
 void DraftLine::translate(const math::Vec2& delta) {
     m_start += delta;
     m_end += delta;

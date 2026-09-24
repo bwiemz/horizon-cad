@@ -12,4 +12,12 @@ DraftEntity::DraftEntity()
       m_lineType(0),
       m_groupId(0) {}
 
+std::vector<SnapPoint> DraftEntity::typedSnapPoints() const {
+    const auto points = snapPoints();
+    std::vector<SnapPoint> out;
+    out.reserve(points.size());
+    for (const auto& p : points) out.push_back({p, SnapType::Endpoint});
+    return out;
+}
+
 }  // namespace hz::draft

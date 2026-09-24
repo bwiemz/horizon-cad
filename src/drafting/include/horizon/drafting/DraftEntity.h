@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/drafting/SnapPoint.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Vec2.h"
 
@@ -42,9 +43,23 @@ public:
     uint64_t groupId() const { return m_groupId; }
     void setGroupId(uint64_t gid) { m_groupId = gid; }
 
+    /// Take @p other's layer, colour, line width, line type and group: what a
+    /// piece made from @p other (by Trim, Break, Extend...) keeps of it.
+    void copyStyleFrom(const DraftEntity& other) {
+        m_layer = other.m_layer;
+        m_color = other.m_color;
+        m_lineWidth = other.m_lineWidth;
+        m_lineType = other.m_lineType;
+        m_groupId = other.m_groupId;
+    }
+
     virtual math::BoundingBox boundingBox() const = 0;
     virtual bool hitTest(const math::Vec2& point, double tolerance) const = 0;
     virtual std::vector<math::Vec2> snapPoints() const = 0;
+
+    /// The snap points, each with its kind: endpoints, midpoints, centres,
+    /// quadrants. By default every snapPoints() point is an endpoint.
+    virtual std::vector<SnapPoint> typedSnapPoints() const;
     virtual void translate(const math::Vec2& delta) = 0;
     virtual std::shared_ptr<DraftEntity> clone() const = 0;
     virtual void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) = 0;

@@ -19,6 +19,7 @@ public:
     math::BoundingBox boundingBox() const override;
     bool hitTest(const math::Vec2& point, double tolerance) const override;
     std::vector<math::Vec2> snapPoints() const override;
+    std::vector<SnapPoint> typedSnapPoints() const override;
     void translate(const math::Vec2& delta) override;
     std::shared_ptr<DraftEntity> clone() const override;
     void mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) override;

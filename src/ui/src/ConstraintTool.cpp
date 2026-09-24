@@ -92,7 +92,7 @@ cstr::GeometryRef ConstraintTool::detectFeature(const math::Vec2& worldPos) cons
 
     const auto& doc = m_viewport->document()->draftDocument();
     const auto& layerMgr = m_viewport->document()->layerManager();
-    double tolerance = std::max(10.0 * m_viewport->pixelToWorldScale(), 0.15);
+    double tolerance = m_viewport->pickTolerance(10.0);
 
     cstr::GeometryRef bestRef;
     double bestDist = tolerance;

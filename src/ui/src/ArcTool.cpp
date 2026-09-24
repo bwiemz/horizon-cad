@@ -30,9 +30,7 @@ bool ArcTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
-        auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result =
-            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result = m_viewport->snap(worldPos);
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }
@@ -74,9 +72,7 @@ bool ArcTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos)
 
     math::Vec2 snappedPos = worldPos;
     if (m_viewport && m_viewport->document()) {
-        auto& draftDoc = m_viewport->document()->draftDocument();
-        auto result =
-            m_viewport->snapEngine().snap(worldPos, draftDoc.spatialIndex(), draftDoc.entities());
+        auto result = m_viewport->snap(worldPos);
         snappedPos = result.point;
         m_viewport->setLastSnapResult(result);
     }

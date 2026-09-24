@@ -63,8 +63,7 @@ bool HatchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     const auto& layerMgr = m_viewport->document()->layerManager();
 
     // Hit-test to find a closed entity under the cursor.
-    double pixelScale = m_viewport->pixelToWorldScale();
-    const double tolerance = std::max(10.0 * pixelScale, 0.15);
+    const double tolerance = m_viewport->pickTolerance(10.0);
 
     const draft::DraftEntity* hitEntity = nullptr;
     for (const auto& entity : doc.entities()) {

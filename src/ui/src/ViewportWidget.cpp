@@ -138,6 +138,18 @@ double ViewportWidget::pixelToWorldScale() const {
     return p0.distanceTo(p1);
 }
 
+draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
+    if (m_document == nullptr) return {worldPos, draft::SnapType::None};
+    m_snapEngine.setSnapTolerance(kSnapPixels * pixelToWorldScale());
+    const auto& layers = m_document->layerManager();
+    const auto& drawing = m_document->draftDocument();
+    return m_snapEngine.snap(worldPos, drawing.spatialIndex(), drawing.entities(),
+                             [&layers](const draft::DraftEntity& entity) {
+                                 const auto* layer = layers.getLayer(entity.layer());
+                                 return layer != nullptr && layer->visible && !layer->locked;
+                             });
+}
+
 QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
     math::Vec4 clip =
         m_camera.viewProjectionMatrix() * math::Vec4(math::Vec3(wp.x, wp.y, 0.0), 1.0);

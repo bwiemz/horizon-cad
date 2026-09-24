@@ -70,6 +70,17 @@ std::vector<math::Vec2> DraftBlockRef::snapPoints() const {
     return points;
 }
 
+std::vector<SnapPoint> DraftBlockRef::typedSnapPoints() const {
+    std::vector<SnapPoint> out = {{m_insertPos, SnapType::Endpoint}};
+    // A block is placed by a rotation and one scale, so a centre, midpoint
+    // or quadrant of its content stays one.
+    for (const auto& ent : m_definition->entities) {
+        for (const auto& sp : ent->typedSnapPoints())
+            out.push_back({transformPoint(sp.point), sp.type});
+    }
+    return out;
+}
+
 void DraftBlockRef::translate(const math::Vec2& delta) {
     m_insertPos += delta;
 }

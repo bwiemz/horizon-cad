@@ -83,6 +83,19 @@ public:
     draft::SnapEngine& snapEngine() { return m_snapEngine; }
     void setLastSnapResult(const draft::SnapResult& result) { m_lastSnapResult = result; }
 
+    /// How near the cursor, on screen, a snap or a pick reaches.
+    static constexpr double kSnapPixels = 10.0;
+    static constexpr double kPickPixels = 10.0;
+
+    /// The snap for a cursor at @p worldPos: to what is drawn on visible,
+    /// unlocked layers, within kSnapPixels of it on screen at any zoom.
+    draft::SnapResult snap(const math::Vec2& worldPos);
+
+    /// The world distance @p pixels screen pixels span at the current zoom:
+    /// how far a click reaches to pick an entity, the same on screen at any
+    /// zoom.
+    double pickTolerance(double pixels = kPickPixels) const { return pixels * pixelToWorldScale(); }
+
     // ---- Tools ----
 
     /// Set the active tool.  The viewport does NOT take ownership.
