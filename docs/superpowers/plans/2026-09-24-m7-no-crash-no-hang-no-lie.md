@@ -191,8 +191,62 @@ without it.
 
 ## Phase 124: Hostile files, round 2
 
-A DXF expansion budget; multi-loop HATCH import with tests; valid
-lineweights; an entity budget on every reader.
+### What the audit found
+
+- **Hatch boundaries were garbled.** `parseHatch` took every 10/20 pair in
+  the entity after the first as one polygon. That merged the outer boundary,
+  its islands, and the seed points after them into one outline, and turned
+  edge-defined boundaries (lines, arcs, ellipses, splines) into their
+  endpoints. It said nothing, and no test read a hatch.
+- **Nested blocks multiplied without bound.** Blocks inserted into blocks are
+  flattened. The depth was capped at 16, but not the breadth: ten inserts of
+  a block of ten inserts, eight levels deep, is 10⁸ entities from a few
+  kilobytes, made on the GUI thread.
+- **Lineweights were not DXF lineweights.** Group 370 was written as
+  `width × 100` (1.5 as 150), not one of the 24 values DXF allows, and the
+  layer table wrote none, though the reader takes it.
+- **A duplicate ID hid an entity** (from the Phase 122 review). A native file
+  with two entities under one ID gave the second the first's place in the id
+  lookup. The first could then be neither selected nor deleted.
+
+### As built
+
+- **Hatch boundaries are read path by path**, in the file's order:
+  - 91 paths, each starting at 92;
+  - a polyline path's 72/73/93 and vertices, with their bulges followed as
+    arcs;
+  - an edge path's 93 edges, each by its 72 type: lines; circular and
+    elliptic arcs, including clockwise ones, sampled every π/16; splines,
+    by their control polygon.
+
+  The hatch keeps the path the file marks as outer (else the largest). The
+  report says "islands inside it left out" when there were more, and
+  "curved boundary brought in as segments" when a curve was sampled.
+- **Flattening has a budget** of 2,000,000 placed entities per import. It is
+  `DxfFormat::setMaxFlattenedEntities`, for tests and embedding applications.
+  Past it, flattening stops, and the report lists what was left out.
+- **Lineweights:** `dxfLineweight` writes the nearest allowed value. Layers
+  write theirs: a default-width layer is written as -3 (default), which reads
+  back as the default.
+- **A duplicate native ID** gives the later entity a new one
+  (`DraftEntity::newId()`), and the report says so.
+- **The other readers' output is proportional to their input.** The native
+  format's counts are capped (Phase 100), and the STEP reader has no
+  instancing. So the DXF flattening budget is the entity budget that was
+  missing.
+- **Tests:** 5 new.
+  - DXF:
+    - a hatch with an island and a seed point;
+    - an edge boundary with a half circle;
+    - nested blocks cut at a budget of 1,000;
+    - every 370 written is valid, and the layer widths round-trip.
+  - Native: a duplicate ID.
+
+  Two new fuzz seeds cover every hatch path and edge type, and nested
+  inserts.
+- **Not done:**
+  - A hatch still has one boundary. Holding islands needs `DraftHatch` to
+    take more than one loop.
 
 ## Phase 125: Background work that stops
 

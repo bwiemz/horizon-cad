@@ -1088,6 +1088,20 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 if (gid != 0) {
                     doc.draftDocument().advanceGroupIdCounter(gid);
                 }
+                // Two entities under one ID (a damaged or hand-edited file):
+                // the later one would hide the earlier from every lookup,
+                // selection and deletion. It keeps its place, under a new ID;
+                // constraints naming the ID stay with the earlier one.
+                if (doc.draftDocument().findEntity(entity->id()) != nullptr) {
+                    const uint64_t taken = entity->id();
+                    entity->setId(draft::DraftEntity::newId());
+                    if (report) {
+                        report->approximated.push_back(
+                            "entity " + std::to_string(thisEntity + 1) + ": its ID " +
+                            std::to_string(taken) +
+                            " belongs to an earlier entity; it was given a new one");
+                    }
+                }
                 doc.draftDocument().addEntity(entity);
             } else {
                 noteSkipped(report, "entity", thisEntity, obj,

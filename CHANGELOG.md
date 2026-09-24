@@ -53,6 +53,21 @@ continues from a fresh audit after Phase 121.
     counted 116 instead of 52.
   - Every three-edge fillet corner carried a whole sphere, which STL and
     glTF exports wrote out. They now write the corner alone.
+- **Files that came in wrong, or could not be opened at all (124).**
+  - A DXF hatch with islands, or one bounded by arcs, came in as one garbled
+    outline: every coordinate in it, the islands' and the seed points'
+    included, was read as a single polygon. Its boundary is now read path by
+    path; the outer one is kept, arcs and curves are followed, and any
+    islands are reported.
+  - A DXF of blocks inserting blocks, ten at a time and a few levels deep,
+    could ask for a hundred million entities from a few kilobytes and run
+    out of memory. Flattening now stops at 2,000,000 entities and says so.
+  - DXF lineweights were written as any number (a width of 1.5 as 150),
+    which strict readers reject. They are now the nearest of the 24 values
+    DXF allows, and layers carry their widths too.
+  - A native file holding two entities with the same ID made one of them
+    impossible to select or delete. The second is now given a new ID, and
+    the report says so.
 
 ## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
 
