@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -604,24 +605,6 @@ std::shared_ptr<draft::DraftEntity> parseArc(const std::vector<DxfPair>& groups)
     return std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
 }
 
-std::shared_ptr<draft::DraftEntity> parseLwPolyline(const std::vector<DxfPair>& groups) {
-    int flags = toInt(findGroup(groups, 70, "0"));
-    bool closed = (flags & 1) != 0;
-
-    // Collect vertex points (multiple group 10/20 pairs).
-    auto xs = findAllDoubles(groups, 10);
-    auto ys = findAllDoubles(groups, 20);
-    size_t count = std::min(xs.size(), ys.size());
-    if (count < 2) return nullptr;
-
-    std::vector<math::Vec2> pts;
-    pts.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        pts.emplace_back(xs[i], ys[i]);
-    }
-    return std::make_shared<draft::DraftPolyline>(pts, closed);
-}
-
 std::shared_ptr<draft::DraftEntity> parseText(const std::vector<DxfPair>& groups) {
     double x = toDouble(findGroup(groups, 10));
     double y = toDouble(findGroup(groups, 20));
@@ -737,41 +720,6 @@ std::shared_ptr<draft::DraftEntity> parseHatch(const std::vector<DxfPair>& group
     return std::make_shared<draft::DraftHatch>(boundary, pattern, angle, spacing);
 }
 
-std::shared_ptr<draft::DraftEntity> parseEllipse(const std::vector<DxfPair>& groups) {
-    double cx = toDouble(findGroup(groups, 10));
-    double cy = toDouble(findGroup(groups, 20));
-    // Major axis endpoint relative to center.
-    double mx = toDouble(findGroup(groups, 11));
-    double my = toDouble(findGroup(groups, 21));
-    double ratio = toDouble(findGroup(groups, 40, "1.0"));
-
-    double semiMajor = std::sqrt(mx * mx + my * my);
-    if (semiMajor < 1e-12) semiMajor = 1.0;
-    double semiMinor = semiMajor * ratio;
-    double rotation = std::atan2(my, mx);
-
-    return std::make_shared<draft::DraftEllipse>(math::Vec2(cx, cy), semiMajor, semiMinor,
-                                                 rotation);
-}
-
-std::shared_ptr<draft::DraftEntity> parseInsert(const std::vector<DxfPair>& groups,
-                                                const doc::Document& doc) {
-    std::string blockName = findGroup(groups, 2);
-    double x = toDouble(findGroup(groups, 10));
-    double y = toDouble(findGroup(groups, 20));
-    double xScale = toDouble(findGroup(groups, 41, "1.0"));
-    double yScale = toDouble(findGroup(groups, 42, "1.0"));
-    double rotation = toDouble(findGroup(groups, 50, "0")) * math::kDegToRad;
-
-    auto def = doc.draftDocument().blockTable().findBlock(blockName);
-    if (!def) return nullptr;
-
-    double uniformScale = (std::abs(xScale) + std::abs(yScale)) / 2.0;
-    if (std::abs(uniformScale) < 1e-9) uniformScale = 1.0;
-
-    return std::make_shared<draft::DraftBlockRef>(def, math::Vec2(x, y), rotation, uniformScale);
-}
-
 // ===========================================================================
 // DXF Import - Section parsers
 // ===========================================================================
@@ -851,131 +799,476 @@ void parseTablesSection(DxfStream& in, doc::Document& doc) {
     }
 }
 
-/// Entity types a load did not read, counted: "SPLINE" -> 3.
-using Unread = std::map<std::string, int>;
+using Entities = std::vector<std::shared_ptr<draft::DraftEntity>>;
 
-void parseBlocksSection(DxfStream& in, doc::Document& doc, Unread& unread) {
-    DxfPair pair;
-    while (nextPair(in, pair)) {
-        if (pair.code == 0 && pair.value == "ENDSEC") return;
-        if (pair.code == 0 && pair.value == "BLOCK") {
-            // Collect BLOCK header groups.
-            std::vector<DxfPair> headerGroups;
-            while (nextPair(in, pair)) {
-                if (pair.code == 0) break;
-                headerGroups.push_back(pair);
-            }
+/// One DXF entity as read: its type and group pairs, not yet built.
+struct RawEntity {
+    std::string type;
+    std::vector<DxfPair> groups;
+};
 
-            std::string blockName = findGroup(headerGroups, 2, "");
-            double bx = toDouble(findGroup(headerGroups, 10, "0"));
-            double by = toDouble(findGroup(headerGroups, 20, "0"));
-
-            // Skip special AutoCAD blocks.
-            bool isSpecial = (!blockName.empty() && blockName[0] == '*');
-
-            auto def = std::make_shared<draft::BlockDefinition>();
-            def->name = blockName;
-            def->basePoint = math::Vec2(bx, by);
-
-            // Parse sub-entities until ENDBLK.
-            // 'pair' already holds the first entity or ENDBLK.
-            while (true) {
-                if (pair.code == 0 && pair.value == "ENDBLK") break;
-                if (pair.code == 0) {
-                    std::string entityType = pair.value;
-                    std::vector<DxfPair> groups;
-                    while (nextPair(in, pair)) {
-                        if (pair.code == 0) break;
-                        groups.push_back(pair);
-                    }
-
-                    if (!isSpecial) {
-                        std::shared_ptr<draft::DraftEntity> entity;
-                        if (entityType == "LINE")
-                            entity = parseLine(groups);
-                        else if (entityType == "CIRCLE")
-                            entity = parseCircle(groups);
-                        else if (entityType == "ARC")
-                            entity = parseArc(groups);
-                        else if (entityType == "LWPOLYLINE")
-                            entity = parseLwPolyline(groups);
-                        else if (entityType == "TEXT")
-                            entity = parseText(groups);
-                        else if (entityType == "MTEXT")
-                            entity = parseMText(groups);
-                        else if (entityType == "SPLINE")
-                            entity = parseSpline(groups);
-                        else if (entityType == "ELLIPSE")
-                            entity = parseEllipse(groups);
-
-                        if (entity) {
-                            applyCommonProps(entity, groups);
-                            def->entities.push_back(entity);
-                        } else {
-                            ++unread[entityType + " inside a block"];
-                        }
-                    }
-                    continue;  // pair already holds next entity's code 0 line.
-                }
-                if (!nextPair(in, pair)) break;
-            }
-
-            if (!isSpecial && !blockName.empty()) {
-                doc.draftDocument().blockTable().addBlock(def);
-            }
+/// Read entities up to the code-0 pair `end` (ENDSEC or ENDBLK) or EOF. On
+/// entry `pair` holds the first entity's code-0 pair; on exit, the terminator.
+std::vector<RawEntity> readRawEntities(DxfStream& in, DxfPair& pair, const char* end) {
+    std::vector<RawEntity> raws;
+    while (!(pair.code == 0 && (pair.value == end || pair.value == "EOF"))) {
+        if (pair.code != 0) {
+            nextPair(in, pair);  // a stray group between entities
+            continue;
         }
+        RawEntity raw{pair.value, {}};
+        while (nextPair(in, pair)) {
+            if (pair.code == 0) break;
+            raw.groups.push_back(pair);
+        }
+        raws.push_back(std::move(raw));
     }
+    return raws;
 }
 
-void parseEntitiesSection(DxfStream& in, doc::Document& doc, Unread& unread) {
+/// What a DXF import saw besides the entities it made. Keys are
+/// {entity type, what about it}.
+struct ImportNotes {
+    std::map<std::pair<std::string, std::string>, int> unread;
+    std::map<std::pair<std::string, std::string>, int> approximated;
+};
+
+/// A block from the BLOCKS section, kept raw until every block is known, so
+/// an INSERT inside one can refer to a block defined after it.
+struct RawBlock {
+    math::Vec2 base;
+    std::vector<RawEntity> entities;
+};
+
+struct Import {
+    doc::Document& doc;
+    ImportNotes notes;
+    std::map<std::string, RawBlock> blocks;
+    std::vector<std::string> building;  ///< Blocks being built: a cycle guard.
+};
+
+/// How an entity's object coordinate system (its extrusion direction, groups
+/// 210/220/230) sits against the drawing: the same, mirrored (extrusion
+/// (0, 0, -1): its x runs the other way), or out of the drawing's plane.
+enum class Ocs { Plane, Mirrored, OutOfPlane };
+
+Ocs ocsOf(const std::vector<DxfPair>& groups) {
+    const double nx = toDouble(findGroup(groups, 210, "0"));
+    const double ny = toDouble(findGroup(groups, 220, "0"));
+    const double nz = toDouble(findGroup(groups, 230, "1"));
+    if (std::abs(nx) > 1e-9 || std::abs(ny) > 1e-9) return Ocs::OutOfPlane;
+    return nz < 0.0 ? Ocs::Mirrored : Ocs::Plane;
+}
+
+/// Give `to` the layer, colour, line width and line type of `from`.
+void copyProperties(const draft::DraftEntity& from, draft::DraftEntity& to) {
+    to.setLayer(from.layer());
+    to.setColor(from.color());
+    to.setLineWidth(from.lineWidth());
+    to.setLineType(from.lineType());
+}
+
+/// Mirror in the y axis: x becomes -x. The drawing's view of a mirrored OCS.
+void mirrorInYAxis(draft::DraftEntity& entity) {
+    entity.mirror(math::Vec2(0, 0), math::Vec2(0, 1));
+}
+
+/// The arc a polyline segment with `bulge` (the tangent of a quarter of its
+/// included angle; positive runs counterclockwise) makes from a to b.
+std::shared_ptr<draft::DraftEntity> arcFromBulge(const math::Vec2& a, const math::Vec2& b,
+                                                 double bulge) {
+    const math::Vec2 chord = b - a;
+    const double d = chord.length();
+    if (d < 1e-12) return nullptr;
+    const math::Vec2 left(-chord.y / d, chord.x / d);
+    const double h = d * (1.0 - bulge * bulge) / (4.0 * bulge);
+    const math::Vec2 c = (a + b) * 0.5 + left * h;
+    const double r = std::abs(d * (1.0 + bulge * bulge) / (4.0 * bulge));
+    const double angA = std::atan2(a.y - c.y, a.x - c.x);
+    const double angB = std::atan2(b.y - c.y, b.x - c.x);
+    return bulge > 0.0 ? std::make_shared<draft::DraftArc>(c, r, angA, angB)
+                       : std::make_shared<draft::DraftArc>(c, r, angB, angA);
+}
+
+struct PolyVertex {
+    math::Vec2 p;
+    double bulge = 0.0;
+};
+
+/// A polyline's vertices, as lines and arcs when any segment is an arc (a
+/// polyline here has straight segments only), kept together as one group.
+Entities polylineEntities(const std::vector<PolyVertex>& v, bool closed, const std::string& type,
+                          Import& im) {
+    if (v.size() < 2) return {};
+    const size_t segments = closed ? v.size() : v.size() - 1;
+    bool arcs = false;
+    for (size_t k = 0; k < segments; ++k) arcs = arcs || std::abs(v[k].bulge) > 1e-12;
+    if (!arcs) {
+        std::vector<math::Vec2> pts;
+        pts.reserve(v.size());
+        for (const auto& vertex : v) pts.push_back(vertex.p);
+        return {std::make_shared<draft::DraftPolyline>(pts, closed)};
+    }
+    Entities pieces;
+    const uint64_t group = im.doc.draftDocument().nextGroupId();
+    for (size_t k = 0; k < segments; ++k) {
+        const math::Vec2& a = v[k].p;
+        const math::Vec2& b = v[(k + 1) % v.size()].p;
+        std::shared_ptr<draft::DraftEntity> piece;
+        if (std::abs(v[k].bulge) > 1e-12) {
+            piece = arcFromBulge(a, b, v[k].bulge);
+        } else if ((b - a).length() > 1e-12) {
+            piece = std::make_shared<draft::DraftLine>(a, b);
+        }
+        if (!piece) continue;
+        piece->setGroupId(group);
+        pieces.push_back(std::move(piece));
+    }
+    ++im.notes.approximated[{type, "arcs brought in as lines and arcs, grouped"}];
+    return pieces;
+}
+
+/// An LWPOLYLINE's vertices: each 10/20 starts one, and a 42 after it is its
+/// bulge.
+std::vector<PolyVertex> lwPolylineVertices(const std::vector<DxfPair>& groups) {
+    std::vector<PolyVertex> v;
+    for (const auto& g : groups) {
+        if (g.code == 10) {
+            v.push_back({math::Vec2(toDouble(g.value), 0.0), 0.0});
+        } else if (g.code == 20 && !v.empty()) {
+            v.back().p.y = toDouble(g.value);
+        } else if (g.code == 42 && !v.empty()) {
+            v.back().bulge = toDouble(g.value);
+        }
+    }
+    return v;
+}
+
+/// A partial ELLIPSE (groups 41/42 its start and end parameters) as a
+/// polyline; a whole one as an ellipse.
+std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& groups, Import& im) {
+    const math::Vec2 c(toDouble(findGroup(groups, 10)), toDouble(findGroup(groups, 20)));
+    const math::Vec2 major(toDouble(findGroup(groups, 11)), toDouble(findGroup(groups, 21)));
+    const double ratio = toDouble(findGroup(groups, 40, "1.0"));
+    const double semiMajor = major.length();
+    if (semiMajor < 1e-12 || !(ratio > 0.0)) return nullptr;
+    const double start = toDouble(findGroup(groups, 41, "0"));
+    double end = toDouble(findGroup(groups, 42, std::to_string(math::kTwoPi)));
+    if (end <= start) end += math::kTwoPi;
+    if (std::abs(end - start - math::kTwoPi) < 1e-9) {
+        return std::make_shared<draft::DraftEllipse>(c, semiMajor, semiMajor * ratio,
+                                                     std::atan2(major.y, major.x));
+    }
+    // The minor axis follows the extrusion: N x major, scaled.
+    const double nz = toDouble(findGroup(groups, 230, "1")) < 0.0 ? -1.0 : 1.0;
+    const math::Vec2 minor = math::Vec2(-nz * major.y, nz * major.x) * ratio;
+    const int steps = std::max(8, static_cast<int>(std::ceil(64.0 * (end - start) / math::kTwoPi)));
+    std::vector<math::Vec2> pts;
+    pts.reserve(static_cast<size_t>(steps) + 1);
+    for (int k = 0; k <= steps; ++k) {
+        const double t = start + (end - start) * k / steps;
+        pts.push_back(c + major * std::cos(t) + minor * std::sin(t));
+    }
+    ++im.notes.approximated[{"ELLIPSE", "partial, brought in as a polyline"}];
+    return std::make_shared<draft::DraftPolyline>(pts, false);
+}
+
+/// A block's entities placed by an insert: moved from the block's base, scaled
+/// by (sx, sy), rotated, moved to `at`. Exact for equal scales (mirrored or
+/// not); with unequal ones, lines, polylines, splines, hatches and circles stay
+/// exact and arcs, ellipses and text are approximated.
+Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, double rotation,
+                    double sx, double sy, Import& im, int depth);
+
+Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const math::Vec2& at,
+                     double rotation, double sx, double sy, Import& im, int depth) {
+    if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(&e)) {
+        // A block within the block: place its pieces, then these.
+        Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(),
+                                    ref->uniformScale(), ref->uniformScale(), im, depth + 1);
+        Entities out;
+        for (const auto& piece : inner) {
+            auto placed = placeEntity(*piece, base, at, rotation, sx, sy, im, depth + 1);
+            out.insert(out.end(), placed.begin(), placed.end());
+        }
+        return out;
+    }
+    const double cr = std::cos(rotation);
+    const double sr = std::sin(rotation);
+    const auto T = [&](const math::Vec2& p) {
+        const double x = (p.x - base.x) * sx;
+        const double y = (p.y - base.y) * sy;
+        return math::Vec2(at.x + x * cr - y * sr, at.y + x * sr + y * cr);
+    };
+    const auto all = [&](const std::vector<math::Vec2>& pts) {
+        std::vector<math::Vec2> out;
+        out.reserve(pts.size());
+        for (const auto& p : pts) out.push_back(T(p));
+        return out;
+    };
+
+    auto copy = e.clone();
+    if (std::abs(std::abs(sx) - std::abs(sy)) <= 1e-12 * std::max(std::abs(sx), 1.0)) {
+        // Equal scales: a similarity, which every entity takes exactly.
+        copy->translate(math::Vec2(-base.x, -base.y));
+        if (sx < 0.0) copy->mirror(math::Vec2(0, 0), math::Vec2(0, 1));
+        if (sy < 0.0) copy->mirror(math::Vec2(0, 0), math::Vec2(1, 0));
+        copy->scale(math::Vec2(0, 0), std::abs(sx));
+        copy->rotate(math::Vec2(0, 0), rotation);
+        copy->translate(at);
+        return {copy};
+    }
+    if (auto* line = dynamic_cast<draft::DraftLine*>(copy.get())) {
+        line->setStart(T(line->start()));
+        line->setEnd(T(line->end()));
+        return {copy};
+    }
+    if (auto* poly = dynamic_cast<draft::DraftPolyline*>(copy.get())) {
+        poly->setPoints(all(poly->points()));
+        return {copy};
+    }
+    if (auto* spline = dynamic_cast<draft::DraftSpline*>(copy.get())) {
+        spline->setControlPoints(all(spline->controlPoints()));
+        return {copy};
+    }
+    if (auto* hatch = dynamic_cast<draft::DraftHatch*>(copy.get())) {
+        hatch->setBoundary(all(hatch->boundary()));
+        return {copy};
+    }
+    if (const auto* circle = dynamic_cast<const draft::DraftCircle*>(&e)) {
+        // An axis-aligned stretch, then a rotation: an ellipse, exactly.
+        const double a = circle->radius() * std::abs(sx);
+        const double b = circle->radius() * std::abs(sy);
+        auto ellipse = std::make_shared<draft::DraftEllipse>(
+            T(circle->center()), std::max(a, b), std::min(a, b),
+            a >= b ? rotation : rotation + math::kPi / 2.0);
+        copyProperties(e, *ellipse);
+        return {ellipse};
+    }
+    if (auto* text = dynamic_cast<draft::DraftText*>(copy.get())) {
+        text->setPosition(T(text->position()));
+        text->setTextHeight(text->textHeight() * std::abs(sy));
+        text->setRotation(text->rotation() + rotation);
+        ++im.notes.approximated[{"TEXT", "in a block with unequal scales, kept its proportions"}];
+        return {copy};
+    }
+    std::vector<math::Vec2> samples;
+    if (const auto* arc = dynamic_cast<const draft::DraftArc*>(&e)) {
+        const int steps =
+            std::max(8, static_cast<int>(std::ceil(64.0 * arc->sweepAngle() / math::kTwoPi)));
+        for (int k = 0; k <= steps; ++k) {
+            const double t = arc->startAngle() + arc->sweepAngle() * k / steps;
+            samples.push_back(arc->center() + math::Vec2(std::cos(t), std::sin(t)) * arc->radius());
+        }
+    } else if (const auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(&e)) {
+        samples = ellipse->evaluate(64);
+    }
+    if (!samples.empty()) {
+        auto poly = std::make_shared<draft::DraftPolyline>(all(samples), false);
+        copyProperties(e, *poly);
+        ++im.notes.approximated[{"ARC/ELLIPSE",
+                                 "in a block with unequal scales, brought in as a polyline"}];
+        return {poly};
+    }
+    ++im.notes.unread[{"drawing", " in a block with unequal scales"}];
+    return {};
+}
+
+Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, double rotation,
+                    double sx, double sy, Import& im, int depth) {
+    if (depth > 16) return {};  // blocks nested past any sensible depth: a cycle
+    Entities out;
+    for (const auto& e : def.entities) {
+        auto placed = placeEntity(*e, def.basePoint, at, rotation, sx, sy, im, depth);
+        out.insert(out.end(), placed.begin(), placed.end());
+    }
+    return out;
+}
+
+std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Import& im);
+
+/// The drawing entities raws[i] becomes; a POLYLINE takes its VERTEX entities
+/// with it. Advances `i` past what it used. `inBlock` says whether this is a
+/// block's content, where an INSERT is flattened into the block.
+Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, bool inBlock) {
+    const RawEntity& raw = raws[i++];
+    const std::vector<DxfPair>& g = raw.groups;
+    const std::string& type = raw.type;
+    const std::string where = inBlock ? " inside a block" : "";
+    const auto unread = [&](const std::string& why) -> Entities {
+        ++im.notes.unread[{type, where + why}];
+        return {};
+    };
+
+    // Entities placed in their object coordinate system. The rest (LINE,
+    // SPLINE, ELLIPSE, MTEXT) are in world coordinates by the DXF reference;
+    // an ELLIPSE's extrusion only sets which way its parameter runs (see
+    // ellipseEntity).
+    static const std::set<std::string> kOcsTypes = {"CIRCLE", "ARC",   "LWPOLYLINE", "POLYLINE",
+                                                    "TEXT",   "HATCH", "INSERT"};
+    Ocs ocs = Ocs::Plane;
+    if (kOcsTypes.count(type)) {
+        ocs = ocsOf(g);
+        if (ocs == Ocs::OutOfPlane) {
+            if (type == "POLYLINE") {
+                // Its vertices go with it — and nothing after them, SEQEND
+                // or not, so a missing SEQEND cannot swallow what follows.
+                while (i < raws.size() && raws[i].type == "VERTEX") ++i;
+                if (i < raws.size() && raws[i].type == "SEQEND") ++i;
+            }
+            return unread(" (not in the drawing's plane)");
+        }
+    }
+
+    Entities out;
+    if (type == "LINE") {
+        out.push_back(parseLine(g));
+    } else if (type == "CIRCLE") {
+        out.push_back(parseCircle(g));
+    } else if (type == "ARC") {
+        out.push_back(parseArc(g));
+    } else if (type == "LWPOLYLINE") {
+        const bool closed = (toInt(findGroup(g, 70, "0")) & 1) != 0;
+        out = polylineEntities(lwPolylineVertices(g), closed, type, im);
+    } else if (type == "POLYLINE") {
+        // The old form: its vertices follow as VERTEX entities, then SEQEND.
+        const int flags = toInt(findGroup(g, 70, "0"));
+        std::vector<PolyVertex> vertices;
+        while (i < raws.size() && raws[i].type == "VERTEX") {
+            const auto& vg = raws[i++].groups;
+            if ((toInt(findGroup(vg, 70, "0")) & 16) != 0) continue;  // a spline frame point
+            vertices.push_back(
+                {math::Vec2(toDouble(findGroup(vg, 10)), toDouble(findGroup(vg, 20))),
+                 toDouble(findGroup(vg, 42, "0"))});
+        }
+        if (i < raws.size() && raws[i].type == "SEQEND") ++i;
+        if ((flags & (8 | 16 | 64)) != 0) return unread(" (a 3D polyline or mesh)");
+        out = polylineEntities(vertices, (flags & 1) != 0, type, im);
+    } else if (type == "TEXT") {
+        out.push_back(parseText(g));
+        if (ocs == Ocs::Mirrored) {
+            ++im.notes.approximated[{type, "written mirrored, brought in unmirrored"}];
+        }
+    } else if (type == "MTEXT") {
+        out.push_back(parseMText(g));
+    } else if (type == "SPLINE") {
+        out.push_back(parseSpline(g));
+    } else if (type == "HATCH") {
+        out.push_back(parseHatch(g));
+    } else if (type == "ELLIPSE") {
+        out.push_back(ellipseEntity(g, im));
+    } else if (type == "INSERT") {
+        const std::string name = findGroup(g, 2);
+        auto def =
+            inBlock ? buildBlock(name, im) : im.doc.draftDocument().blockTable().findBlock(name);
+        if (!def) return unread(" (its block is missing)");
+        const math::Vec2 at(toDouble(findGroup(g, 10)), toDouble(findGroup(g, 20)));
+        const double sx = toDouble(findGroup(g, 41, "1.0"));
+        const double sy = toDouble(findGroup(g, 42, "1.0"));
+        const double rotation = toDouble(findGroup(g, 50, "0")) * math::kDegToRad;
+        const bool plainRef = !inBlock && ocs == Ocs::Plane && sx > 0.0 &&
+                              std::abs(sx - sy) <= 1e-12 * std::max(sx, 1.0);
+        if (plainRef) {
+            out.push_back(std::make_shared<draft::DraftBlockRef>(def, at, rotation, sx));
+        } else {
+            // A block reference here has one positive scale: an insert with
+            // two, or a mirrored one, or one inside a block, is placed piece
+            // by piece.
+            out = placeBlock(*def, at, rotation, sx, sy, im, 0);
+            if (inBlock) {
+                ++im.notes.approximated[{type, "inside a block, flattened into it"}];
+            } else {
+                ++im.notes.approximated[{type, "unequal or mirrored scales, exploded"}];
+            }
+            // Block content on layer 0 takes the insert's layer and, when it
+            // has no colour of its own, the insert's colour. Content on a
+            // named layer keeps that layer's colour.
+            const std::string layer = findGroup(g, 8, "0");
+            const std::string aci = findGroup(g, 62, "");
+            for (auto& piece : out) {
+                if (piece->layer() != "0") continue;
+                piece->setLayer(layer);
+                if (piece->color() == 0 && !aci.empty()) piece->setColor(aciToArgb(toInt(aci)));
+            }
+            if (ocs == Ocs::Mirrored) {
+                for (auto& piece : out) mirrorInYAxis(*piece);
+            }
+            return out;
+        }
+    } else {
+        return unread("");
+    }
+
+    out.erase(std::remove(out.begin(), out.end(), nullptr), out.end());
+    if (out.empty()) return unread(" (damaged)");
+    for (auto& piece : out) {
+        applyCommonProps(piece, g);
+        if (ocs == Ocs::Mirrored) mirrorInYAxis(*piece);
+    }
+    return out;
+}
+
+/// Build a block from its raw entities, building any block it inserts first.
+std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Import& im) {
+    if (auto built = im.doc.draftDocument().blockTable().findBlock(name)) return built;
+    const auto raw = im.blocks.find(name);
+    if (raw == im.blocks.end()) return nullptr;
+    if (std::find(im.building.begin(), im.building.end(), name) != im.building.end()) {
+        return nullptr;  // a block that contains itself
+    }
+    im.building.push_back(name);
+    auto def = std::make_shared<draft::BlockDefinition>();
+    def->name = name;
+    def->basePoint = raw->second.base;
+    const auto& raws = raw->second.entities;
+    for (size_t i = 0; i < raws.size();) {
+        auto pieces = readEntity(raws, i, im, true);
+        def->entities.insert(def->entities.end(), pieces.begin(), pieces.end());
+    }
+    im.building.pop_back();
+    im.doc.draftDocument().blockTable().addBlock(def);
+    return def;
+}
+
+void parseBlocksSection(DxfStream& in, Import& im) {
     DxfPair pair;
-    // Read first entity type.
+    nextPair(in, pair);
+    while (!(pair.code == 0 && (pair.value == "ENDSEC" || pair.value == "EOF"))) {
+        if (!(pair.code == 0 && pair.value == "BLOCK")) {
+            nextPair(in, pair);
+            continue;
+        }
+        std::string name;
+        math::Vec2 base;
+        // The BLOCK header's groups, up to its first entity (or ENDBLK).
+        while (nextPair(in, pair)) {
+            if (pair.code == 0) break;
+            if (pair.code == 2) name = pair.value;
+            if (pair.code == 10) base.x = toDouble(pair.value);
+            if (pair.code == 20) base.y = toDouble(pair.value);
+        }
+        RawBlock block{base, readRawEntities(in, pair, "ENDBLK")};
+        if (pair.code == 0 && pair.value == "ENDBLK") {
+            while (nextPair(in, pair)) {
+                if (pair.code == 0) break;  // ENDBLK's own groups
+            }
+        }
+        // Model and paper space blocks (names starting "*") hold the
+        // drawing's layouts, not reusable blocks.
+        if (!name.empty() && name[0] != '*') im.blocks[name] = std::move(block);
+    }
+    for (const auto& entry : im.blocks) buildBlock(entry.first, im);
+}
+
+void parseEntitiesSection(DxfStream& in, Import& im) {
+    DxfPair pair;
     while (nextPair(in, pair)) {
         if (pair.code == 0) break;
     }
-
-    while (true) {
-        if (pair.code == 0 && pair.value == "ENDSEC") return;
-        if (pair.code == 0 && pair.value == "EOF") return;
-
-        std::string entityType = pair.value;
-        std::vector<DxfPair> groups;
-
-        // Collect all group codes until next code 0.
-        while (nextPair(in, pair)) {
-            if (pair.code == 0) break;
-            groups.push_back(pair);
-        }
-
-        // Parse entity.
-        std::shared_ptr<draft::DraftEntity> entity;
-        if (entityType == "LINE")
-            entity = parseLine(groups);
-        else if (entityType == "CIRCLE")
-            entity = parseCircle(groups);
-        else if (entityType == "ARC")
-            entity = parseArc(groups);
-        else if (entityType == "LWPOLYLINE")
-            entity = parseLwPolyline(groups);
-        else if (entityType == "TEXT")
-            entity = parseText(groups);
-        else if (entityType == "MTEXT")
-            entity = parseMText(groups);
-        else if (entityType == "SPLINE")
-            entity = parseSpline(groups);
-        else if (entityType == "HATCH")
-            entity = parseHatch(groups);
-        else if (entityType == "ELLIPSE")
-            entity = parseEllipse(groups);
-        else if (entityType == "INSERT")
-            entity = parseInsert(groups, doc);
-
-        if (entity) {
-            applyCommonProps(entity, groups);
-            doc.draftDocument().addEntity(entity);
-        } else {
-            ++unread[entityType];  // a type this version does not read, or a damaged one
-        }
+    const auto raws = readRawEntities(in, pair, "ENDSEC");
+    for (size_t i = 0; i < raws.size();) {
+        for (auto& entity : readEntity(raws, i, im, false))
+            im.doc.draftDocument().addEntity(entity);
     }
 }
 
@@ -1195,7 +1488,7 @@ namespace {
 
 /// The section loop behind DxfFormat::load. Returns false when the input has
 /// no SECTION at all.
-bool parseDxf(std::istream& input, doc::Document& doc, Unread& unread) {
+bool parseDxf(std::istream& input, Import& im) {
     DxfStream in{input};
     DxfPair pair;
     bool foundSection = false;
@@ -1215,11 +1508,11 @@ bool parseDxf(std::istream& input, doc::Document& doc, Unread& unread) {
             nextPair(in, namePair);
             if (namePair.code == 2) {
                 if (namePair.value == "TABLES") {
-                    parseTablesSection(in, doc);
+                    parseTablesSection(in, im.doc);
                 } else if (namePair.value == "BLOCKS") {
-                    parseBlocksSection(in, doc, unread);
+                    parseBlocksSection(in, im);
                 } else if (namePair.value == "ENTITIES") {
-                    parseEntitiesSection(in, doc, unread);
+                    parseEntitiesSection(in, im);
                 } else {
                     skipSection(in);
                 }
@@ -1228,7 +1521,7 @@ bool parseDxf(std::istream& input, doc::Document& doc, Unread& unread) {
     }
 
     // Rebuild spatial index after loading all entities.
-    doc.draftDocument().rebuildSpatialIndex();
+    im.doc.draftDocument().rebuildSpatialIndex();
 
     return foundSection;
 }
@@ -1245,19 +1538,25 @@ bool failWith(std::string* error, std::string message) {
 /// parseDxf with every failure turned into a reason, and what it did not
 /// read counted into @p report.
 bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, ImportReport* report) {
-    Unread unread;
+    Import im{doc, {}, {}, {}};
     try {
-        if (!parseDxf(in, doc, unread))
-            return failWith(error, "this is not a DXF file (it has no SECTION)");
+        if (!parseDxf(in, im)) return failWith(error, "this is not a DXF file (it has no SECTION)");
     } catch (const DxfError& e) {
         return failWith(error, e.what());
     } catch (const std::exception& e) {
         return failWith(error, std::string("the DXF file is damaged: ") + e.what());
     }
     if (report) {
-        for (const auto& [type, count] : unread) {
-            report->skipped.push_back(std::to_string(count) + " " + type +
-                                      (count == 1 ? " entity" : " entities") + " not read");
+        const auto entities = [](int n) {
+            return n == 1 ? std::string(" entity") : std::string(" entities");
+        };
+        for (const auto& [key, count] : im.notes.unread) {
+            report->skipped.push_back(std::to_string(count) + " " + key.first + entities(count) +
+                                      key.second + " not read");
+        }
+        for (const auto& [key, count] : im.notes.approximated) {
+            report->approximated.push_back(std::to_string(count) + " " + key.first +
+                                           entities(count) + ": " + key.second);
         }
     }
     return true;
