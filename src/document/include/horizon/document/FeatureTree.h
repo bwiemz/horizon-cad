@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -610,6 +611,16 @@ struct BuildResult {
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
+    bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
+};
+
+/// How a build running on another thread says how far it has got, and learns
+/// it should stop. The build looks between features: a feature already
+/// running finishes first.
+struct BuildControl {
+    std::atomic<bool> cancel{false};
+    std::atomic<int> done{0};   ///< features applied so far
+    std::atomic<int> total{0};  ///< features the build will apply
 };
 
 /// Ordered list of parametric features that can be replayed to rebuild a solid.
@@ -665,7 +676,7 @@ public:
 
     /// Rebuild with diagnostics: records which feature failed and why.
     /// Respects the rollback index (features beyond it are skipped).
-    BuildResult buildWithDiagnostics() const;
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr) const;
 
     /// Rollback index: features after this index are suppressed.
     /// -1 means no rollback (all features active).

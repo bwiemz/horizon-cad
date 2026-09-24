@@ -13,12 +13,15 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/Preferences.h"
+#include "horizon/ui/RebuildJob.h"
 
 class QCloseEvent;
 class QTimer;
 class QLabel;
 class QTabBar;
 class QMenu;
+class QProgressBar;
+class QToolButton;
 
 namespace hz::ui {
 
@@ -59,6 +62,17 @@ public:
     /// Put @p prefs into effect: the autosave interval, the grid snap and the
     /// snap reach. The display unit is read where lengths are shown.
     void applyPreferences(const Preferences& prefs);
+
+    /// When a model rebuild runs on a worker thread: when the last one took
+    /// long enough to freeze the window (Auto), always, or never.
+    enum class RebuildMode { Auto, Always, Never };
+    void setRebuildMode(RebuildMode mode) { m_rebuildMode = mode; }
+
+    /// A rebuild is running on a worker.
+    bool rebuildRunning() const { return m_rebuildJob != nullptr; }
+
+    /// A rebuild longer than this goes to a worker the next time (Auto).
+    static constexpr qint64 kWorkerRebuildMs = 300;
 
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
@@ -207,6 +221,11 @@ private:
         bool snapshotStale = true;
         /// Reopened from a crashed session and not saved since.
         bool recovered = false;
+        /// How long its last model rebuild took, in milliseconds.
+        qint64 lastBuildMs = 0;
+        /// Its model is out of date: a rebuild for it was dropped while
+        /// another tab was shown.
+        bool modelStale = false;
     };
 
     void createMenus();
@@ -221,6 +240,17 @@ private:
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();
+
+    /// Show what the active document's last build gave: failures in the
+    /// feature tree panel, and the model in the viewport.
+    void showBuildResult();
+    /// Rebuild the active document on a worker (see RebuildJob). One runs at
+    /// a time: asked again, the running one stops and a new one starts from
+    /// the document as it is by then.
+    void startRebuild();
+    /// A worker's rebuild is done: apply it if the document is where it was.
+    void onRebuildFinished();
+    void updateRebuildProgress();
 
     /// The window's size and position and where its docks are, kept across
     /// sessions.
@@ -324,6 +354,16 @@ private:
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
     QMenu* m_recentMenu = nullptr;
+
+    // Model rebuilds on a worker thread (Phase 114).
+    RebuildMode m_rebuildMode = RebuildMode::Auto;
+    std::unique_ptr<RebuildJob> m_rebuildJob;
+    std::shared_ptr<doc::Document> m_rebuildDocument;  ///< what the job builds; kept alive
+    bool m_rebuildAgain = false;                       ///< the document changed while the job ran
+    qint64 m_rebuildStartedMs = 0;
+    QProgressBar* m_rebuildProgress = nullptr;
+    QToolButton* m_rebuildCancel = nullptr;
+    QTimer* m_rebuildPoll = nullptr;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

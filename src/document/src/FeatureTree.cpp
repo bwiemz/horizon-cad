@@ -1298,7 +1298,7 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     return bodies;
 }
 
-BuildResult FeatureTree::buildWithDiagnostics() const {
+BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     BuildResult result;
     if (m_features.empty()) {
         return result;
@@ -1307,9 +1307,17 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
     const int limit = (m_rollbackIndex >= 0)
                           ? std::min(m_rollbackIndex + 1, static_cast<int>(m_features.size()))
                           : static_cast<int>(m_features.size());
+    if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
     for (int i = 0; i < limit; ++i) {
+        if (control) {
+            if (control->cancel) {
+                result.cancelled = true;
+                return result;
+            }
+            control->done = i;
+        }
         if (!takesPart(*m_features[static_cast<size_t>(i)])) {
             result.lastSuccessfulFeature = i;  // nothing to fail
             continue;
@@ -1328,6 +1336,7 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
         result.lastSuccessfulFeature = i;
     }
 
+    if (control) control->done = limit;
     result.solid = std::move(solid);
     return result;
 }

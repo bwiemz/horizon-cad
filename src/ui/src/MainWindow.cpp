@@ -8,10 +8,12 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QElapsedTimer>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -22,6 +24,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QProgressBar>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -29,6 +32,7 @@
 #include <QTabBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <filesystem>
 #include <functional>
@@ -324,7 +328,10 @@ MainWindow::MainWindow(QWidget* parent)
     restoreWindowLayout();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Stop a worker's rebuild before anything it could report to is gone.
+    m_rebuildJob.reset();
+}
 
 void MainWindow::onCommandPalette() {
     // Gather every leaf command from the menu bar (the menus mirror the ribbon
@@ -778,6 +785,28 @@ void MainWindow::createStatusBar() {
     m_statusSelection->setStyleSheet("QLabel { padding: 0 6px; }");
     sb->addPermanentWidget(m_statusSelection);
 
+    // A rebuild running on a worker: how far it is, and a way to stop it.
+    m_rebuildProgress = new QProgressBar(this);
+    m_rebuildProgress->setObjectName(QStringLiteral("rebuildProgress"));
+    m_rebuildProgress->setMaximumWidth(140);
+    m_rebuildProgress->setTextVisible(false);
+    m_rebuildProgress->hide();
+    sb->addPermanentWidget(m_rebuildProgress);
+    m_rebuildCancel = new QToolButton(this);
+    m_rebuildCancel->setObjectName(QStringLiteral("cancelRebuild"));
+    m_rebuildCancel->setText(tr("Cancel"));
+    m_rebuildCancel->setToolTip(tr("Stop rebuilding the model"));
+    m_rebuildCancel->hide();
+    connect(m_rebuildCancel, &QToolButton::clicked, this, [this] {
+        if (!m_rebuildJob) return;
+        m_rebuildAgain = false;
+        m_rebuildJob->cancel();
+    });
+    sb->addPermanentWidget(m_rebuildCancel);
+    m_rebuildPoll = new QTimer(this);
+    m_rebuildPoll->setInterval(100);
+    connect(m_rebuildPoll, &QTimer::timeout, this, &MainWindow::updateRebuildProgress);
+
     // Active tool name.
     m_statusTool = new QLabel(tr("Select"), this);
     m_statusTool->setMinimumWidth(80);
@@ -885,7 +914,11 @@ void MainWindow::activateTabDocument() {
 
     m_viewport->setActiveSketch(nullptr);
     m_viewport->setDocument(m_document.get());
-    rebuildScene();
+    if (tab->modelStale) {
+        rebuildFeatureTree();
+    } else {
+        rebuildScene();
+    }
     refreshAllPanels();
     updateWindowTitle();
 }
@@ -3144,8 +3177,26 @@ void MainWindow::onRollbackChanged(int newIndex) {
 }
 
 void MainWindow::rebuildFeatureTree() {
+    DocTab* tab = activeTab();
+    const bool onWorker =
+        tab != nullptr && !m_assembly &&
+        (m_rebuildMode == RebuildMode::Always ||
+         (m_rebuildMode == RebuildMode::Auto && tab->lastBuildMs >= kWorkerRebuildMs));
+    if (onWorker) {
+        startRebuild();
+        return;
+    }
+    QElapsedTimer clock;
+    clock.start();
     m_document->rebuildModel();
+    if (tab) {
+        tab->lastBuildMs = clock.elapsed();
+        tab->modelStale = false;
+    }
+    showBuildResult();
+}
 
+void MainWindow::showBuildResult() {
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
 
@@ -3158,6 +3209,79 @@ void MainWindow::rebuildFeatureTree() {
     }
 
     rebuildScene();
+}
+
+void MainWindow::startRebuild() {
+    if (m_rebuildJob) {
+        // One at a time: this one starts when the running one is done, from
+        // the active document as it is then. A running rebuild of this same
+        // document is out of date already, so it stops at its next feature;
+        // one of another document finishes, and is applied to it.
+        m_rebuildAgain = true;
+        if (m_rebuildDocument == m_document) m_rebuildJob->cancel();
+        return;
+    }
+    m_rebuildDocument = m_document;
+    m_rebuildJob = std::make_unique<RebuildJob>(*m_document);
+    m_rebuildStartedMs = QDateTime::currentMSecsSinceEpoch();
+    // Posted from the worker to this window's thread. The destructor waits
+    // for the worker, and Qt drops what is still queued for a deleted object.
+    m_rebuildJob->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onRebuildFinished, Qt::QueuedConnection);
+    });
+    m_rebuildProgress->setRange(0, 0);  // busy until the job knows its size
+    m_rebuildProgress->show();
+    m_rebuildCancel->show();
+    m_rebuildPoll->start();
+    m_statusPrompt->setText(tr("Rebuilding the model..."));
+}
+
+void MainWindow::updateRebuildProgress() {
+    if (!m_rebuildJob) return;
+    const int total = m_rebuildJob->total();
+    if (total > 0) {
+        m_rebuildProgress->setRange(0, total);
+        m_rebuildProgress->setValue(m_rebuildJob->done());
+    }
+}
+
+void MainWindow::onRebuildFinished() {
+    if (!m_rebuildJob || !m_rebuildJob->finished()) return;
+    // The worker is done; destroying the job only joins its thread.
+    const std::unique_ptr<RebuildJob> job = std::move(m_rebuildJob);
+    const std::shared_ptr<doc::Document> document = std::move(m_rebuildDocument);
+    bool again = std::exchange(m_rebuildAgain, false);
+    m_rebuildPoll->stop();
+    m_rebuildProgress->hide();
+    m_rebuildCancel->hide();
+
+    DocTab* tab = nullptr;
+    for (DocTab& t : m_tabs) {
+        if (t.document == document) tab = &t;
+    }
+    // A tab closed meanwhile has nothing to apply to.
+    if (tab != nullptr) {
+        doc::BuildResult result = job->takeResult();
+        const bool cancelled = result.cancelled;
+        const bool active = document == m_document;
+        if (!cancelled && RebuildJob::stampOf(*document) == job->stamp()) {
+            document->applyBuild(std::move(result));
+            tab->lastBuildMs = QDateTime::currentMSecsSinceEpoch() - m_rebuildStartedMs;
+            tab->modelStale = false;
+            if (active && !again) {
+                m_statusPrompt->setText(tr("Ready"));
+                showBuildResult();
+            }
+        } else if (!active) {
+            tab->modelStale = true;  // rebuilt when its tab is shown again
+        } else if (!cancelled) {
+            again = true;  // it changed while the job ran: build what it is now
+        } else if (!again) {
+            statusBar()->showMessage(
+                tr("Rebuild cancelled: the model is as it was before the last change."), 10000);
+        }
+    }
+    if (again) startRebuild();  // the active document, as it is now
 }
 
 }  // namespace hz::ui
