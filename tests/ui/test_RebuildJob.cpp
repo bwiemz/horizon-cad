@@ -31,8 +31,8 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
-#include "horizon/ui/MainWindow.h"
 #include "horizon/ui/BackgroundTask.h"
+#include "horizon/ui/MainWindow.h"
 #include "horizon/ui/RebuildJob.h"
 #include "horizon/ui/WorkerThread.h"
 
