@@ -60,7 +60,8 @@ void writeGroup(std::ostream& out, int code, const std::string& value) {
         return;
     }
     std::string flat = value;
-    std::replace_if(flat.begin(), flat.end(), [](char c) { return c == '\r' || c == '\n'; }, ' ');
+    const auto isBreak = [](char c) { return c == '\r' || c == '\n'; };
+    std::replace_if(flat.begin(), flat.end(), isBreak, ' ');
     out << "  " << code << "\n" << flat << "\n";
 }
 
