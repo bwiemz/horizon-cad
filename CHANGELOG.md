@@ -73,6 +73,30 @@ continues from a fresh audit after Phase 121.
   - A native file holding two entities with the same ID made one of them
     impossible to select or delete. The second is now given a new ID that
     no other entity in the file holds, and the report says so.
+- **Background work that did not stop, and failures nobody saw (125).**
+  - Cancel did not stop a STEP import or an interference check running in
+    the background: they ran to the end, and quitting waited for them. Both
+    now stop.
+  - If the system could not start a thread for background work, the work
+    was never done and was waited for forever, along with every rebuild
+    after it. It is now done in the foreground instead.
+  - An autosave that could not be written (a full disk, a folder that is
+    not writable), or could not start at all, was recorded only in the log.
+    The status bar now says so until autosave works again.
+  - A recovered document that crashed Horizon CAD was offered again at
+    every start, with Recover as the default. When a document's recovery
+    was followed by another crash, Recover is no longer the default and the
+    message says why.
+  - Recovered documents were not autosaved until the next autosave, and the
+    crashed session's copies were deleted at once, so a crash in between
+    lost them. They are now saved in the new session first.
+  - On a graphics driver older than OpenGL 3.3, the viewport reported the
+    problem and then made OpenGL 3 calls anyway. It now only clears the
+    background.
+  - A fillet radius or chamfer distance typed as "1.2.3" was taken as 1.2,
+    and one typed as "." was dropped without a word. Both are now refused,
+    and the prompt says so. The fillet prompt now shows the radius.
+  - Seven empty `catch (...)` blocks that swallowed errors are gone.
 
 ## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
 

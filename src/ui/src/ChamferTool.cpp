@@ -16,7 +16,7 @@ void ChamferTool::activate(ViewportWidget* viewport) {
     Tool::activate(viewport);
     m_state = State::SelectFirstLine;
     m_firstEntityId = 0;
-    m_distInput.clear();
+    m_distance.clear();
 }
 
 void ChamferTool::deactivate() {
@@ -55,7 +55,7 @@ bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/,
     double tA = d3.cross(d2) / denom;
     math::Vec2 corner = lineA->start() + d1 * tA;
 
-    // Compute chamfer points at m_chamferDist from the corner along each line.
+    // Compute chamfer points at the chamfer distance from the corner along each line.
     // Direction away from corner on line A.
     double lenA = d1.length();
     if (lenA < 1e-10) return false;
@@ -76,8 +76,8 @@ bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/,
     math::Vec2 awayDirB = (distStartB < distEndB) ? dirB : -dirB;
 
     // Chamfer points.
-    chamferPtA = corner + awayDirA * m_chamferDist;
-    chamferPtB = corner + awayDirB * m_chamferDist;
+    chamferPtA = corner + awayDirA * m_distance.value();
+    chamferPtB = corner + awayDirB * m_distance.value();
 
     // Trim: the endpoint closer to the corner gets moved to the chamfer point.
     if (distStartA < distEndA) {
@@ -208,38 +208,14 @@ bool ChamferTool::keyPressEvent(QKeyEvent* event) {
         return true;
     }
 
-    // Capture numeric input for chamfer distance.
-    if (event->key() >= Qt::Key_0 && event->key() <= Qt::Key_9) {
-        m_distInput += static_cast<char>('0' + (event->key() - Qt::Key_0));
-        return true;
-    }
-    if (event->key() == Qt::Key_Period) {
-        m_distInput += '.';
-        return true;
-    }
-    if (event->key() == Qt::Key_Backspace && !m_distInput.empty()) {
-        m_distInput.pop_back();
-        return true;
-    }
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        if (!m_distInput.empty()) {
-            try {
-                double d = std::stod(m_distInput);
-                if (d > 0.0) m_chamferDist = d;
-            } catch (...) {
-            }
-            m_distInput.clear();
-        }
-        return true;
-    }
-
-    return false;
+    // A distance typed while the tool runs.
+    return m_distance.key(event->key());
 }
 
 void ChamferTool::cancel() {
     m_state = State::SelectFirstLine;
     m_firstEntityId = 0;
-    m_distInput.clear();
+    m_distance.clear();
 }
 
 std::vector<std::pair<math::Vec2, math::Vec2>> ChamferTool::getPreviewLines() const {
@@ -276,12 +252,7 @@ std::string ChamferTool::promptText() const {
             base = "Select second line for chamfer";
             break;
     }
-    if (!m_distInput.empty()) {
-        base += "  Distance: " + m_distInput;
-    } else {
-        base += "  [dist=" + std::to_string(m_chamferDist).substr(0, 5) + "]";
-    }
-    return base;
+    return base + m_distance.prompt("distance");
 }
 
 bool ChamferTool::wantsCrosshair() const {

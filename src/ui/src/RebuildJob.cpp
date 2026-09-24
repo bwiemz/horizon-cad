@@ -6,6 +6,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/ui/WorkerThread.h"
 
 namespace hz::ui {
 
@@ -23,7 +24,7 @@ RebuildJob::~RebuildJob() {
 
 void RebuildJob::start(std::function<void()> onFinished) {
     m_onFinished = std::move(onFinished);
-    m_thread = std::thread([this] { run(); });
+    startWorker(m_thread, [this] { run(); });
 }
 
 void RebuildJob::run() {

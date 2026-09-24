@@ -62,6 +62,8 @@ add_library(hz_ui STATIC
     include/horizon/ui/PreferencesDialog.h
     include/horizon/ui/RebuildJob.h
     include/horizon/ui/BackgroundTask.h
+    include/horizon/ui/WorkerThread.h
+    include/horizon/ui/TypedLength.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
@@ -69,6 +71,7 @@ add_library(hz_ui STATIC
     src/Preferences.cpp
     src/PreferencesDialog.cpp
     src/RebuildJob.cpp
+    src/WorkerThread.cpp
     src/MainWindow.cpp
     src/FeatureForm.cpp
     src/LocaleManager.cpp
@@ -89,6 +92,7 @@ add_library(hz_ui STATIC
     src/TrimTool.cpp
     src/FilletTool.cpp
     src/ChamferTool.cpp
+    src/TypedLength.cpp
     src/BreakTool.cpp
     src/ExtendTool.cpp
     src/StretchTool.cpp

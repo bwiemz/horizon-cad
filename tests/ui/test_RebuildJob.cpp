@@ -14,6 +14,12 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <system_error>
+#include <thread>
+
+#ifdef __linux__
+#include <sys/resource.h>
+#endif
 
 #include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
@@ -26,7 +32,9 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/RebuildJob.h"
+#include "horizon/ui/WorkerThread.h"
 
 using hz::doc::Document;
 using hz::doc::PrimitiveFeature;
@@ -214,3 +222,52 @@ TEST(RebuildJobTest, SavingDuringARebuildCachesThePartAsItIsNow) {
     EXPECT_LT(maxExtent, 4.5f) << "the cache still held the undone 10-long box";
     ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
 }
+
+#ifdef __linux__
+// When no thread can be started, background work runs on the caller's
+// thread. std::thread's exception used to escape start(): the job was never
+// finished, so it was waited for forever and every later rebuild queued
+// behind it. RLIMIT_NPROC at 0 makes the system refuse new threads.
+TEST(RebuildJobTest, WithoutThreadsTheWorkIsDoneHere) {
+    rlimit saved{};
+    ASSERT_EQ(getrlimit(RLIMIT_NPROC, &saved), 0);
+    rlimit none = saved;
+    none.rlim_cur = 0;
+    ASSERT_EQ(setrlimit(RLIMIT_NPROC, &none), 0);
+    bool denied = false;
+    try {
+        std::thread probe([] {});
+        probe.join();
+    } catch (const std::system_error&) {
+        denied = true;
+    }
+
+    std::thread::id ranOn;
+    bool taskFinished = false;
+    int taskResult = 0;
+    bool jobFinished = false;
+    Document doc;
+    doc.featureTree().addFeature(PrimitiveFeature::makeBox(2, 3, 4));
+    if (denied) {
+        std::thread holder;
+        hz::ui::startWorker(holder, [&ranOn] { ranOn = std::this_thread::get_id(); });
+        EXPECT_FALSE(holder.joinable());
+
+        hz::ui::BackgroundTask<int> task([](const std::atomic<bool>&) { return 7; });
+        task.start();
+        taskFinished = task.finished();
+        taskResult = task.take();
+
+        RebuildJob job(doc);
+        job.start();
+        jobFinished = job.finished();
+    }
+    setrlimit(RLIMIT_NPROC, &saved);
+    if (!denied) GTEST_SKIP() << "this process may start threads whatever the limit (root)";
+
+    EXPECT_EQ(ranOn, std::this_thread::get_id());
+    EXPECT_TRUE(taskFinished);
+    EXPECT_EQ(taskResult, 7);
+    EXPECT_TRUE(jobFinished);
+}
+#endif

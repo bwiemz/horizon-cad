@@ -44,12 +44,14 @@ RecoveryManager::RecoveryManager(const QString& root) : m_root(root) {
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_sessionDir = QDir(root).filePath(id);
     if (!QDir().mkpath(m_sessionDir)) {
-        spdlog::warn("Autosave disabled: cannot create {}", m_sessionDir.toStdString());
+        m_problem = QStringLiteral("cannot create %1").arg(QDir::toNativeSeparators(m_sessionDir));
+        spdlog::warn("Autosave disabled: {}", m_problem.toStdString());
         return;
     }
     m_lock = makeLock(m_sessionDir);
     if (!m_lock->tryLock(0)) {
-        spdlog::warn("Autosave disabled: cannot lock {}", m_sessionDir.toStdString());
+        m_problem = QStringLiteral("cannot lock %1").arg(QDir::toNativeSeparators(m_sessionDir));
+        spdlog::warn("Autosave disabled: {}", m_problem.toStdString());
         return;
     }
     m_active = true;
@@ -65,31 +67,35 @@ RecoveryManager::~RecoveryManager() {
 }
 
 bool RecoveryManager::snapshot(quint64 key, const doc::Document& doc, const QString& title,
-                               const QString& originalPath) {
+                               const QString& originalPath, int recoveries) {
     const QString type =
         doc.type() == doc::DocumentType::Part ? QStringLiteral("hzpart") : QStringLiteral("hcad");
     return writeSnapshot(key, io::NativeFormat::documentToJson(doc, /*includeTessellation=*/false),
-                         type, title, originalPath);
+                         type, title, originalPath, recoveries);
 }
 
 bool RecoveryManager::snapshot(quint64 key, const doc::AssemblyDocument& assembly,
-                               const QString& title, const QString& originalPath) {
+                               const QString& title, const QString& originalPath,
+                               int recoveries) {
     // Component paths are kept as they are in memory, not made relative to
     // the snapshot's own directory.
     return writeSnapshot(key, io::NativeFormat::assemblyToJson(assembly, std::string()),
-                         QStringLiteral("hzasm"), title, originalPath);
+                         QStringLiteral("hzasm"), title, originalPath, recoveries);
 }
 
 bool RecoveryManager::writeSnapshot(quint64 key, const std::string& json, const QString& type,
-                                    const QString& title, const QString& originalPath) {
+                                    const QString& title, const QString& originalPath,
+                                    int recoveries) {
     if (!m_active) return false;
     const QString base = QDir(m_sessionDir).filePath(QString::number(key));
-
-    std::string error;
-    if (!io::writeFileAtomically(toPath(base + '.' + type), json, &error)) {
+    const auto failed = [&](const std::string& error) {
+        m_problem = QString::fromStdString(error);
         spdlog::warn("Autosave of '{}' failed: {}", title.toStdString(), error);
         return false;
-    }
+    };
+
+    std::string error;
+    if (!io::writeFileAtomically(toPath(base + '.' + type), json, &error)) return failed(error);
     // A document whose type changed (Save As a part) must not leave its old
     // snapshot behind — removed only now, so a failed write keeps the old one.
     for (const QString& other : kSnapshotTypes) {
@@ -97,19 +103,20 @@ bool RecoveryManager::writeSnapshot(quint64 key, const std::string& json, const 
     }
     // The sidecar goes second: a snapshot without one is ignored, never a
     // sidecar pointing at a half-written snapshot.
-    const QJsonObject meta{
+    QJsonObject meta{
         {QStringLiteral("originalPath"), originalPath},
         {QStringLiteral("title"), title},
         {QStringLiteral("type"), type},
         {QStringLiteral("savedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
     };
+    if (recoveries > 0) meta.insert(QStringLiteral("recoveries"), recoveries);
     const QByteArray metaJson = QJsonDocument(meta).toJson();
     if (!io::writeFileAtomically(
             toPath(base + QStringLiteral(".json")),
             std::string_view(metaJson.constData(), static_cast<size_t>(metaJson.size())), &error)) {
-        spdlog::warn("Autosave of '{}' failed: {}", title.toStdString(), error);
-        return false;
+        return failed(error);
     }
+    m_problem.clear();
     return true;
 }
 
@@ -154,6 +161,7 @@ std::vector<RecoveryManager::Entry> RecoveryManager::claimOrphans() {
                 type,
                 QDateTime::fromString(meta.value(QStringLiteral("savedAt")).toString(),
                                       Qt::ISODateWithMs),
+                std::max(0, meta.value(QStringLiteral("recoveries")).toInt()),
             });
             ++found;
         }
@@ -168,6 +176,31 @@ std::vector<RecoveryManager::Entry> RecoveryManager::claimOrphans() {
         m_claimedLocks.push_back(std::move(lock));
     }
     return entries;
+}
+
+void RecoveryManager::noteRecoveryAttempt() {
+    for (const QString& dir : m_claimedDirs) {
+        const QDir sessionDir(dir);
+        for (const QFileInfo& sidecar :
+             sessionDir.entryInfoList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+            QFile file(sidecar.absoluteFilePath());
+            if (!file.open(QIODevice::ReadOnly)) continue;
+            QJsonObject meta = QJsonDocument::fromJson(file.readAll()).object();
+            file.close();
+            if (meta.isEmpty()) continue;
+            meta.insert(QStringLiteral("recoveries"),
+                        std::max(0, meta.value(QStringLiteral("recoveries")).toInt()) + 1);
+            const QByteArray json = QJsonDocument(meta).toJson();
+            std::string error;
+            if (!io::writeFileAtomically(
+                    toPath(sidecar.absoluteFilePath()),
+                    std::string_view(json.constData(), static_cast<size_t>(json.size())),
+                    &error)) {
+                spdlog::warn("Could not mark {} as being recovered: {}",
+                             sidecar.absoluteFilePath().toStdString(), error);
+            }
+        }
+    }
 }
 
 void RecoveryManager::discardClaimedOrphans() {

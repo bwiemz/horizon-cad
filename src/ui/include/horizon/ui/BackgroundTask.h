@@ -7,6 +7,8 @@
 #include <thread>
 #include <utility>
 
+#include "horizon/ui/WorkerThread.h"
+
 namespace hz::ui {
 
 /// Work run on a worker thread while the window stays usable: an import, an
@@ -28,10 +30,11 @@ public:
     BackgroundTask& operator=(const BackgroundTask&) = delete;
 
     /// Run on a worker. @p onFinished is called on the worker when the work
-    /// is done; post from it to the GUI thread.
+    /// is done; post from it to the GUI thread. When no worker thread can be
+    /// had, the work runs here instead (startWorker).
     void start(std::function<void()> onFinished = {}) {
         m_onFinished = std::move(onFinished);
-        m_thread = std::thread([this] { run(); });
+        startWorker(m_thread, [this] { run(); });
     }
 
     void cancel() { m_cancelled = true; }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -152,7 +153,10 @@ public:
         std::size_t faceCount() const;
     };
     InterferenceInput interferenceInput() const;
-    static InterferenceReport measureInterference(const InterferenceInput& input);
+    /// Measure @p input. Once @p cancelled is set, measuring stops between
+    /// pairs, and the report holds only the pairs measured by then.
+    static InterferenceReport measureInterference(const InterferenceInput& input,
+                                                  const std::atomic<bool>* cancelled = nullptr);
 
     // --- Dirty tracking ---
 

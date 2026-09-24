@@ -813,6 +813,14 @@ void MainWindow::createStatusBar() {
     m_rebuildPoll->setInterval(100);
     connect(m_rebuildPoll, &QTimer::timeout, this, &MainWindow::updateRebuildProgress);
 
+    // Autosave that is off or failing, which would otherwise go unnoticed
+    // until a crash left nothing to recover.
+    m_autosaveWarning = new QLabel(this);
+    m_autosaveWarning->setObjectName(QStringLiteral("autosaveWarning"));
+    m_autosaveWarning->setStyleSheet("QLabel { padding: 0 6px; color: #ff9a8a; }");
+    m_autosaveWarning->hide();
+    sb->addPermanentWidget(m_autosaveWarning);
+
     // Active tool name.
     m_statusTool = new QLabel(tr("Select"), this);
     m_statusTool->setMinimumWidth(80);
@@ -1096,9 +1104,38 @@ void MainWindow::forgetSnapshot(DocTab& tab) {
     m_recovery->remove(tab.recoveryKey);
     tab.snapshotStale = true;
     tab.recovered = false;  // saved (or closed): it is an ordinary document again
+    tab.recoveries = 0;
+}
+
+void MainWindow::showAutosaveState(const QString& failure) {
+    if (!m_autosaveTimer->isActive()) {
+        m_autosaveWarning->hide();  // turned off in the preferences
+        return;
+    }
+    if (!m_recovery->isActive()) {
+        m_autosaveWarning->setText(tr("Autosave off"));
+        m_autosaveWarning->setToolTip(
+            tr("Unsaved changes cannot be recovered after a crash: autosave could not start "
+               "(%1).")
+                .arg(m_recovery->problem()));
+        m_autosaveWarning->show();
+    } else if (!failure.isEmpty()) {
+        if (m_autosaveWarning->isHidden()) {
+            statusBar()->showMessage(tr("Autosave failed: %1").arg(failure), 15000);
+        }
+        m_autosaveWarning->setText(tr("Autosave failed"));
+        m_autosaveWarning->setToolTip(
+            tr("The last autosave could not be written (%1), so recent changes cannot be "
+               "recovered after a crash. Save your work.")
+                .arg(failure));
+        m_autosaveWarning->show();
+    } else {
+        m_autosaveWarning->hide();
+    }
 }
 
 void MainWindow::autosave() {
+    QString failure;
     for (DocTab& tab : m_tabs) {
         if (!isTabModified(tab)) {
             m_recovery->remove(tab.recoveryKey);
@@ -1111,11 +1148,18 @@ void MainWindow::autosave() {
             tab.assembly ? tab.assembly->filePath() : tab.document->filePath();
         const bool written = tab.assembly
                                  ? m_recovery->snapshot(tab.recoveryKey, *tab.assembly, tab.title,
-                                                        QString::fromStdString(path))
+                                                        QString::fromStdString(path),
+                                                        tab.recoveries)
                                  : m_recovery->snapshot(tab.recoveryKey, *tab.document, tab.title,
-                                                        QString::fromStdString(path));
-        if (written) tab.snapshotStale = false;
+                                                        QString::fromStdString(path),
+                                                        tab.recoveries);
+        if (written) {
+            tab.snapshotStale = false;
+        } else if (failure.isEmpty()) {
+            failure = m_recovery->problem();
+        }
     }
+    showAutosaveState(failure);
 }
 
 void MainWindow::offerRecovery() {
@@ -1123,10 +1167,12 @@ void MainWindow::offerRecovery() {
     if (orphans.empty()) return;
 
     QString list;
+    QStringList again;
     for (const auto& entry : orphans) {
         list += QStringLiteral("\n  \u2022 %1 (%2)")
                     .arg(entry.title,
                          QLocale().toString(entry.savedAt.toLocalTime(), QLocale::ShortFormat));
+        if (entry.recoveries > 0) again << entry.title;
     }
     QMessageBox box(QMessageBox::Warning, tr("Recover Documents"),
                     tr("Horizon CAD did not shut down properly. These documents had unsaved "
@@ -1135,7 +1181,19 @@ void MainWindow::offerRecovery() {
                     QMessageBox::Yes | QMessageBox::Discard | QMessageBox::Cancel, this);
     box.button(QMessageBox::Yes)->setText(tr("Recover"));
     box.button(QMessageBox::Cancel)->setText(tr("Later"));
-    box.setDefaultButton(QMessageBox::Yes);
+    if (again.isEmpty()) {
+        box.setDefaultButton(QMessageBox::Yes);
+    } else {
+        // Recovered before, and Horizon CAD stopped again: opening one of
+        // them may be what stops it. Recover stays there, but it is not the
+        // default, so pressing Enter at every start does not repeat it.
+        box.setInformativeText(
+            tr("Horizon CAD stopped again after these were last recovered: %1. Opening them may "
+               "be what stops it. Save your other work before recovering them, or choose Later "
+               "to keep them for now.")
+                .arg(again.join(QStringLiteral(", "))));
+        box.setDefaultButton(QMessageBox::Cancel);
+    }
     box.setEscapeButton(QMessageBox::Cancel);
     const int choice = box.exec();
     if (choice == QMessageBox::Cancel) return;  // kept for the next start
@@ -1143,6 +1201,10 @@ void MainWindow::offerRecovery() {
         m_recovery->discardClaimedOrphans();
         return;
     }
+
+    // Counted before anything is opened: if opening one stops the
+    // application, the next start knows.
+    m_recovery->noteRecoveryAttempt();
 
     QStringList failed;
     for (const auto& entry : orphans) {
@@ -1161,6 +1223,7 @@ void MainWindow::offerRecovery() {
             auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
             addDocumentTab(std::move(backing), std::move(assembly), entry.title);
             m_tabs.back().recovered = true;
+            m_tabs.back().recoveries = entry.recoveries + 1;
         } else {
             auto document = m_docManager.newDocument(entry.type == QStringLiteral("hzpart")
                                                          ? doc::DocumentType::Part
@@ -1176,9 +1239,13 @@ void MainWindow::offerRecovery() {
             document->setDirty(true);
             addDocumentTab(std::move(document), nullptr, entry.title);
             m_tabs.back().recovered = true;
+            m_tabs.back().recoveries = entry.recoveries + 1;
         }
     }
     refreshModifiedIndicators();
+    // Into this session's snapshots before the old ones go: a crash from
+    // here on still finds them, counted.
+    autosave();
     m_recovery->discardClaimedOrphans();
     if (!failed.isEmpty()) {
         spdlog::error("Recovery failed for: {}", failed.join("; ").toStdString());
@@ -1224,6 +1291,7 @@ void MainWindow::onNewAssembly() {
 void MainWindow::applyPreferences(const Preferences& prefs) {
     m_autosaveTimer->stop();
     if (prefs.autosaveSeconds > 0) m_autosaveTimer->start(prefs.autosaveSeconds * 1000);
+    showAutosaveState();
     m_viewport->snapEngine().setGridSpacing(prefs.gridSpacing);
     m_viewport->setSnapPixels(prefs.snapPixels);
 }
@@ -1559,9 +1627,10 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     box.exec();
 }
 
-MainWindow::StepLoad MainWindow::loadStep(const std::string& path) {
+MainWindow::StepLoad MainWindow::loadStep(const std::string& path,
+                                          const std::atomic<bool>* cancelled) {
     StepLoad load;
-    load.solids = io::StepFormat::load(path, &load.report);
+    load.solids = io::StepFormat::load(path, &load.report, cancelled);
     if (load.solids.empty()) load.error = io::StepFormat::lastError();
     return load;
 }
@@ -1584,7 +1653,7 @@ void MainWindow::onImportStep() {
     }
     m_importFile = fileName;
     m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
-        [path](const std::atomic<bool>& /*cancelled*/) { return loadStep(path); });
+        [path](const std::atomic<bool>& cancelled) { return loadStep(path, &cancelled); });
     m_importTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
     });
@@ -1900,8 +1969,8 @@ void MainWindow::onCheckInterference() {
     // or its tab closed, while they are measured.
     m_interferenceAssembly = m_assembly;
     m_interferenceTask = std::make_unique<BackgroundTask<doc::InterferenceReport>>(
-        [input](const std::atomic<bool>& /*cancelled*/) {
-            return doc::AssemblyDocument::measureInterference(*input);
+        [input](const std::atomic<bool>& cancelled) {
+            return doc::AssemblyDocument::measureInterference(*input, &cancelled);
         });
     m_interferenceTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onInterferenceFinished, Qt::QueuedConnection);
@@ -2988,9 +3057,20 @@ bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QS
     tree.setRollbackIndex(-1);
     tree.addFeature(std::move(feature));
     const size_t index = tree.featureCount() - 1;
-    m_document->rebuildModel();
-    const bool failsItself = m_document->failedFeatureIndex() == static_cast<int>(index);
-    const QString reason = QString::fromStdString(m_document->lastBuildMessage());
+    // However the trial ends, the feature comes back out of the tree and the
+    // rollback is put back: a feature left in the tree but not in the undo
+    // history could never be undone.
+    bool failsItself = true;
+    QString reason;
+    try {
+        m_document->rebuildModel();
+        failsItself = m_document->failedFeatureIndex() == static_cast<int>(index);
+        reason = QString::fromStdString(m_document->lastBuildMessage());
+    } catch (const std::exception& e) {
+        reason = QString::fromUtf8(e.what());
+    } catch (...) {
+        reason = tr("an unknown error");
+    }
     feature = tree.takeFeature(index);
     tree.setRollbackIndex(rollback);
 

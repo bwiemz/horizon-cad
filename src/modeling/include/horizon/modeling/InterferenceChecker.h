@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <vector>
 
@@ -35,8 +36,11 @@ struct InterferencePair {
 /// sharing a face or tangent along a line — do not interfere.
 class InterferenceChecker {
 public:
-    /// Find every interfering pair among @p solids (each already in world space).
-    static std::vector<InterferencePair> check(const std::vector<const topo::Solid*>& solids);
+    /// Find every interfering pair among @p solids (each already in world
+    /// space). Once @p cancelled is set, the check stops before the next
+    /// candidate pair and returns the pairs found by then.
+    static std::vector<InterferencePair> check(const std::vector<const topo::Solid*>& solids,
+                                               const std::atomic<bool>* cancelled = nullptr);
 
     /// True if two world-space solids share interior volume.
     static bool solidsInterfere(const topo::Solid& a, const topo::Solid& b);

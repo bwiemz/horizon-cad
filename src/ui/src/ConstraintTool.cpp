@@ -276,9 +276,9 @@ void ConstraintTool::commitConstraint() {
         case Mode::Fixed: {
             // Extract current position
             const auto* entity = cstr::findEntity(m_firstRef.entityId, entities);
-            if (!entity) return;
-            math::Vec2 pos = cstr::extractPoint(m_firstRef, *entity);
-            constraint = std::make_shared<cstr::FixedConstraint>(m_firstRef, pos);
+            const auto pos = entity ? cstr::pointOf(m_firstRef, *entity) : std::nullopt;
+            if (!pos) return;
+            constraint = std::make_shared<cstr::FixedConstraint>(m_firstRef, *pos);
             break;
         }
         case Mode::Distance: {
@@ -286,9 +286,10 @@ void ConstraintTool::commitConstraint() {
             const auto* e1 = cstr::findEntity(m_firstRef.entityId, entities);
             const auto* e2 = cstr::findEntity(m_hoveredRef.entityId, entities);
             if (!e1 || !e2) return;
-            math::Vec2 p1 = cstr::extractPoint(m_firstRef, *e1);
-            math::Vec2 p2 = cstr::extractPoint(m_hoveredRef, *e2);
-            double dist = p1.distanceTo(p2);
+            const auto p1 = cstr::pointOf(m_firstRef, *e1);
+            const auto p2 = cstr::pointOf(m_hoveredRef, *e2);
+            if (!p1 || !p2) return;
+            double dist = p1->distanceTo(*p2);
             bool ok = false;
             double val = QInputDialog::getDouble(m_viewport, "Distance Constraint",
                                                  "Distance:", dist, 0.0, 1e9, 4, &ok);
@@ -301,9 +302,10 @@ void ConstraintTool::commitConstraint() {
             const auto* e1 = cstr::findEntity(m_firstRef.entityId, entities);
             const auto* e2 = cstr::findEntity(m_hoveredRef.entityId, entities);
             if (!e1 || !e2) return;
-            auto [s1, e1p] = cstr::extractLine(m_firstRef, *e1);
-            auto [s2, e2p] = cstr::extractLine(m_hoveredRef, *e2);
-            math::Vec2 d1 = e1p - s1, d2 = e2p - s2;
+            const auto l1 = cstr::lineOf(m_firstRef, *e1);
+            const auto l2 = cstr::lineOf(m_hoveredRef, *e2);
+            if (!l1 || !l2) return;
+            math::Vec2 d1 = l1->second - l1->first, d2 = l2->second - l2->first;
             double angle = std::atan2(d1.cross(d2), d1.dot(d2));
             double angleDeg = math::radToDeg(angle);
             bool ok = false;
@@ -350,70 +352,33 @@ void ConstraintTool::commitConstraint() {
 std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines() const {
     std::vector<std::pair<math::Vec2, math::Vec2>> lines;
     if (!m_viewport || !m_viewport->document()) return lines;
-
-    // Show highlighted line feature
-    if (m_hoveredRef.isValid() && m_hoveredRef.featureType == cstr::FeatureType::Line) {
-        const auto* entity = cstr::findEntity(m_hoveredRef.entityId,
-                                              m_viewport->document()->draftDocument().entities());
-        if (entity) {
-            try {
-                auto [s, e] = cstr::extractLine(m_hoveredRef, *entity);
-                lines.push_back({s, e});
-            } catch (...) {
-            }
-        }
-    }
-
-    // Show first selected feature if it's a line
-    if (m_state == State::WaitingForSecond && m_firstRef.isValid() &&
-        m_firstRef.featureType == cstr::FeatureType::Line) {
-        const auto* entity = cstr::findEntity(m_firstRef.entityId,
-                                              m_viewport->document()->draftDocument().entities());
-        if (entity) {
-            try {
-                auto [s, e] = cstr::extractLine(m_firstRef, *entity);
-                lines.push_back({s, e});
-            } catch (...) {
-            }
-        }
-    }
-
+    const auto& draft = m_viewport->document()->draftDocument();
+    // A ref that no longer fits its entity (edited meanwhile) highlights
+    // nothing: this is only a preview.
+    const auto show = [&](const cstr::GeometryRef& ref) {
+        if (!ref.isValid() || ref.featureType != cstr::FeatureType::Line) return;
+        const auto* entity = draft.findEntity(ref.entityId);
+        if (!entity) return;
+        if (auto line = cstr::lineOf(ref, *entity)) lines.push_back(*line);
+    };
+    show(m_hoveredRef);                                         // the line under the cursor
+    if (m_state == State::WaitingForSecond) show(m_firstRef);  // the first one picked
     return lines;
 }
 
 std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() const {
     std::vector<std::pair<math::Vec2, double>> circles;
     if (!m_viewport || !m_viewport->document()) return circles;
-
-    double ptRadius = 5.0 * m_viewport->pixelToWorldScale();
-
-    // Show highlighted point feature
-    if (m_hoveredRef.isValid() && m_hoveredRef.featureType == cstr::FeatureType::Point) {
-        const auto* entity = cstr::findEntity(m_hoveredRef.entityId,
-                                              m_viewport->document()->draftDocument().entities());
-        if (entity) {
-            try {
-                math::Vec2 p = cstr::extractPoint(m_hoveredRef, *entity);
-                circles.push_back({p, ptRadius});
-            } catch (...) {
-            }
-        }
-    }
-
-    // Show first selected point
-    if (m_state == State::WaitingForSecond && m_firstRef.isValid() &&
-        m_firstRef.featureType == cstr::FeatureType::Point) {
-        const auto* entity = cstr::findEntity(m_firstRef.entityId,
-                                              m_viewport->document()->draftDocument().entities());
-        if (entity) {
-            try {
-                math::Vec2 p = cstr::extractPoint(m_firstRef, *entity);
-                circles.push_back({p, ptRadius});
-            } catch (...) {
-            }
-        }
-    }
-
+    const auto& draft = m_viewport->document()->draftDocument();
+    const double ptRadius = 5.0 * m_viewport->pixelToWorldScale();
+    const auto show = [&](const cstr::GeometryRef& ref) {
+        if (!ref.isValid() || ref.featureType != cstr::FeatureType::Point) return;
+        const auto* entity = draft.findEntity(ref.entityId);
+        if (!entity) return;
+        if (auto point = cstr::pointOf(ref, *entity)) circles.push_back({*point, ptRadius});
+    };
+    show(m_hoveredRef);                                         // the point under the cursor
+    if (m_state == State::WaitingForSecond) show(m_firstRef);  // the first one picked
     return circles;
 }
 

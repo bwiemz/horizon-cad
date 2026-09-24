@@ -1,6 +1,7 @@
 #include "horizon/fileio/StepFormat.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -34,6 +35,9 @@ using hz::math::Vec3;
 namespace {
 
 thread_local std::string g_lastError;
+
+/// lastError() after a read stopped by its cancel flag.
+constexpr const char* kCancelled = "cancelled";
 
 constexpr double kMergeTol = 1e-9;
 
@@ -399,8 +403,9 @@ class StepParser {
 public:
     explicit StepParser(const std::string& text) : m_text(text) {}
 
-    /// Parse the DATA section into the instance map. False on hard error.
-    bool parse(std::string& error) {
+    /// Parse the DATA section into the instance map. False on hard error,
+    /// or once @p cancelled is set.
+    bool parse(std::string& error, const std::atomic<bool>* cancelled = nullptr) {
         std::string stripped = stripComments(m_text);
         const size_t dataPos = stripped.find("DATA;");
         if (dataPos == std::string::npos) {
@@ -411,7 +416,13 @@ public:
         const size_t endPos = stripped.find("ENDSEC;", dataPos);
         const size_t limit = (endPos == std::string::npos) ? stripped.size() : endPos;
 
+        size_t read = 0;
         while (pos < limit) {
+            if (cancelled != nullptr && (++read & 1023U) == 0 &&
+                cancelled->load(std::memory_order_relaxed)) {
+                error = kCancelled;
+                return false;
+            }
             // Find next instance start.
             while (pos < limit && stripped[pos] != '#') ++pos;
             if (pos >= limit) break;
@@ -681,8 +692,9 @@ private:
 
 class SolidBuilder {
 public:
-    SolidBuilder(const StepParser& parser, int solidIndex)
-        : m_parser(parser), m_solidIndex(solidIndex) {}
+    SolidBuilder(const StepParser& parser, int solidIndex,
+                 const std::atomic<bool>* cancelled = nullptr)
+        : m_parser(parser), m_solidIndex(solidIndex), m_cancelled(cancelled) {}
 
     /// Build one topo::Solid from a group of MANIFOLD_SOLID_BREP instance ids
     /// (one shell per MSB — Horizon multi-shell solids export as siblings in
@@ -711,6 +723,10 @@ public:
             shell->solid = m_solid.get();
 
             for (const StepValue& faceRef : *(*shellArgs)[1].items) {
+                if (m_cancelled != nullptr && m_cancelled->load(std::memory_order_relaxed)) {
+                    error = kCancelled;
+                    return nullptr;
+                }
                 if (!faceRef.isRef()) continue;
                 if (!buildFace(faceRef.ref, shell, error)) return nullptr;
             }
@@ -1243,6 +1259,7 @@ private:
 
     const StepParser& m_parser;
     int m_solidIndex;
+    const std::atomic<bool>* m_cancelled;
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
@@ -1410,18 +1427,25 @@ bool StepFormat::save(const std::string& filePath, const std::vector<const topo:
     return true;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::string& text,
-                                                                 ImportReport* report) {
+std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
+    const std::string& text, ImportReport* report, const std::atomic<bool>* cancelled) {
     g_lastError.clear();
     std::vector<std::unique_ptr<topo::Solid>> out;
+    const auto stopped = [cancelled] {
+        return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
+    };
 
     StepParser parser(text);
     std::string error;
     bool parsed = false;
     try {
-        parsed = parser.parse(error);
+        parsed = parser.parse(error, cancelled);
     } catch (const std::exception& e) {
         error = e.what();
+    }
+    if (stopped()) {
+        g_lastError = kCancelled;
+        return out;
     }
     if (!parsed) {
         g_lastError = "STEP parse error: " + error;
@@ -1476,10 +1500,14 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
     std::map<std::string, int> conversions;
     std::string firstError;
     for (size_t index = 0; index < groups.size(); ++index) {
+        if (stopped()) {
+            g_lastError = kCancelled;
+            return {};
+        }
         const Group& group = groups[index];
         const std::string which =
             "solid " + std::to_string(index + 1) + " (#" + std::to_string(group.msbs.front()) + ")";
-        SolidBuilder builder(parser, static_cast<int>(index));
+        SolidBuilder builder(parser, static_cast<int>(index), cancelled);
         std::unique_ptr<topo::Solid> solid;
         try {
             solid = builder.build(group.msbs, error);
@@ -1512,6 +1540,10 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
         }
         out.push_back(std::move(solid));
     }
+    if (stopped()) {  // during the last solid
+        g_lastError = kCancelled;
+        return {};
+    }
 
     if (out.empty()) {
         g_lastError = firstError;
@@ -1533,7 +1565,8 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
 }
 
 std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath,
-                                                           ImportReport* report) {
+                                                           ImportReport* report,
+                                                           const std::atomic<bool>* cancelled) {
     g_lastError.clear();
     std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
     if (!file) {
@@ -1542,7 +1575,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& fi
     }
     std::ostringstream ss;
     ss << file.rdbuf();
-    return fromString(ss.str(), report);
+    return fromString(ss.str(), report, cancelled);
 }
 
 const std::string& StepFormat::lastError() {
