@@ -119,14 +119,25 @@ damages the existing file.
    `std::set_terminate` handler logs and flushes before aborting.
 3. **Feature execution.** `buildWithDiagnostics` catches exceptions from
    `execute()` and records `e.what()` as the feature's failure.
-4. **Reasons.** `NativeFormat::load/save`, `DxfFormat::load/save` take an
-   optional `std::string* error`; the UI shows it ("Failed to open file:
-   <reason>") and logs it.
-5. **GL.** Shader or context failures are shown to the user instead of a
-   blank viewport; `~ViewportWidget` tolerates a missing context.
+4. **Reasons.** `NativeFormat::load/save/loadAssembly/saveAssembly`,
+   `documentFromJson/assemblyFromJson` and `DxfFormat::load/save` take an
+   optional `std::string* error` and never throw: parse and type errors become
+   the reason ("parse error at line 3, column 5: ..."), and a path that is
+   missing or a folder is checked before opening. The UI shows "Could not open
+   “name”. <Reason>." and logs it; DocumentManager's loader hooks keep their
+   signature (MainWindow's loaders capture the reason).
+5. **GL.** `initializeGL` logs the driver and flags a context older than 3.3 or
+   shaders that failed to compile; a check shortly after the first show catches
+   a context Qt could not create at all (paintGL then never runs). Either way
+   the user is told once instead of facing a blank viewport.
 
-**Tests:** feature that throws → build reports the message; loaders fill the
-error string for a missing file, bad JSON, and a newer version.
+**Tests:** feature that throws → build reports the message and no build path
+throws; loaders give a reason for a missing file, a folder, bad JSON (with line
+and column), foreign JSON, a wrong-typed field (previously an uncaught
+`type_error`), a wrong assembly type, a non-DXF file, and a failed save;
+`hz::ui::Application` contains a throwing event handler and reports it once;
+a viewport on a platform without OpenGL raises the warning. (The version gate
+moved to Phase 100 with the rest of the envelope checks.)
 
 ## Phase 100 — Hostile-input hardening
 

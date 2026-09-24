@@ -4,16 +4,15 @@
 
 #include <gtest/gtest.h>
 
-#include <QAbstractButton>
 #include <QApplication>
 #include <QMessageBox>
 #include <QTabBar>
-#include <QTimer>
 #include <filesystem>
 #include <memory>
 #include <random>
 #include <string>
 
+#include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
@@ -36,35 +35,10 @@ extern "C" const char* __lsan_default_options() {
 #endif
 
 namespace fs = std::filesystem;
+using hz::test::DialogResponder;
 using hz::ui::MainWindow;
 
 namespace {
-
-/// Answers the next modal message box with `button`, and records whether one
-/// appeared at all. Stops polling when destroyed, so a dialog that never
-/// comes cannot leak into the next test.
-class DialogResponder {
-public:
-    explicit DialogResponder(QMessageBox::StandardButton button) : m_button(button) {
-        QObject::connect(&m_timer, &QTimer::timeout, [this] {
-            auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
-            if (!box) return;
-            m_timer.stop();
-            m_seen = true;
-            m_text = box->text();
-            box->button(m_button)->click();
-        });
-        m_timer.start(5);
-    }
-    bool seen() const { return m_seen; }
-    const QString& text() const { return m_text; }
-
-private:
-    QMessageBox::StandardButton m_button;
-    QTimer m_timer;
-    bool m_seen = false;
-    QString m_text;
-};
 
 void addLine(hz::doc::Document& doc) {
     auto line = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 0), hz::math::Vec2(1, 0));
@@ -170,14 +144,4 @@ TEST(MainWindowDocumentsTest, TabCloseOffersSaveAndCancelKeepsTheTab) {
         EXPECT_FALSE(w.activeDocument()->isDirty());
         EXPECT_FALSE(bar->tabText(0).endsWith('*'));
     }
-}
-
-int main(int argc, char** argv) {
-    // Headless by default; an explicit QT_QPA_PLATFORM still wins.
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
-        qputenv("QT_QPA_PLATFORM", "offscreen");
-    }
-    QApplication app(argc, argv);
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }

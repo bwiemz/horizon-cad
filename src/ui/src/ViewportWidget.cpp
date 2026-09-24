@@ -1,8 +1,14 @@
 #include "horizon/ui/ViewportWidget.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QKeyEvent>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QOpenGLExtraFunctions>
+#include <QShowEvent>
+#include <QSurfaceFormat>
+#include <QTimer>
 #include <QWheelEvent>
 #include <cmath>
 
@@ -148,16 +154,55 @@ QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::initializeGL() {
-    auto* gl = QOpenGLContext::currentContext()->extraFunctions();
+    QOpenGLContext* context = QOpenGLContext::currentContext();
+    auto* gl = context->extraFunctions();
+
+    const QSurfaceFormat format = context->format();
+    const auto* version = reinterpret_cast<const char*>(gl->glGetString(GL_VERSION));
+    const auto* device = reinterpret_cast<const char*>(gl->glGetString(GL_RENDERER));
+    spdlog::info("OpenGL {}.{} context: {} on {}", format.majorVersion(), format.minorVersion(),
+                 version ? version : "unknown version", device ? device : "unknown device");
 
     m_renderer = std::make_unique<render::GLRenderer>();
     m_renderer->initialize(gl);
+    if (format.version() < qMakePair(3, 3)) {
+        m_graphicsProblem = tr("The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.")
+                                .arg(format.majorVersion())
+                                .arg(format.minorVersion());
+    } else if (!m_renderer->isInitialized()) {
+        m_graphicsProblem = tr("The graphics driver could not compile Horizon CAD's shaders.");
+    }
     // Deep canvas — darker than the panel chrome so the viewport reads as the
     // focal surface (panels #2d–#32, data surfaces #1e, viewport ~#1c1d21).
     m_renderer->setBackgroundColor(0.11f, 0.115f, 0.13f);
 
     // Set up GL resources for text overlay (QImage -> texture -> quad).
     m_viewportRenderer.initTextOverlayGL(gl);
+}
+
+void ViewportWidget::showEvent(QShowEvent* event) {
+    QOpenGLWidget::showEvent(event);
+    if (m_graphicsCheckScheduled) return;
+    m_graphicsCheckScheduled = true;
+    // The context is created on the first paint; give it that long.
+    QTimer::singleShot(1500, this, &ViewportWidget::checkGraphics);
+}
+
+void ViewportWidget::checkGraphics() {
+    // No initializeGL() at all: Qt could not create a context, or this
+    // platform has no OpenGL (paintGL will never run, so the viewport would
+    // simply stay blank without a word).
+    if (m_graphicsProblem.isEmpty() && !isValid()) {
+        m_graphicsProblem = tr("OpenGL is not available, so the viewport cannot draw.");
+    }
+    if (m_graphicsProblem.isEmpty() || m_graphicsProblemReported) return;
+    m_graphicsProblemReported = true;
+
+    spdlog::error("Viewport cannot draw: {}", m_graphicsProblem.toStdString());
+    QMessageBox::warning(window(), tr("Graphics Problem"),
+                         m_graphicsProblem + "\n\n" +
+                             tr("You can still open and save documents, but the viewport will "
+                                "stay blank. Updating the graphics driver usually fixes this."));
 }
 
 void ViewportWidget::resizeGL(int w, int h) {

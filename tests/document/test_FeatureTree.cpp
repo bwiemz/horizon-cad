@@ -2,6 +2,9 @@
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -901,4 +904,48 @@ TEST(FeatureTreeTest, ExtrudeResolutionIsAParameterOfCurvedProfilesOnly) {
     const double fineErr = exact - hz::model::MassPropertiesCalculator::compute(*fine).volume;
     EXPECT_GT(fineErr, 0.0);
     EXPECT_LT(fineErr, coarseErr * 0.1);
+}
+
+// ---------------------------------------------------------------------------
+// Exceptions from the kernel become feature failures
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A feature whose kernel call throws, as the NURBS constructors do on
+/// invalid input.
+class ThrowingFeature : public Feature {
+public:
+    std::string name() const override { return "Broken"; }
+    std::string featureID() const override { return "broken_1"; }
+    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid>) const override {
+        throw std::invalid_argument("degree must be at least 1");
+    }
+};
+
+}  // namespace
+
+TEST(FeatureTreeTest, ThrowingFeatureIsAFailureWithItsReason) {
+    FeatureTree tree;
+    tree.addFeature(std::make_unique<ExtrudeFeature>(makeOffsetRectSketch(), Vec3(0, 0, 1), 1.0));
+    tree.addFeature(std::make_unique<ThrowingFeature>());
+
+    BuildResult result;
+    ASSERT_NO_THROW(result = tree.buildWithDiagnostics());
+    EXPECT_EQ(result.failedFeatureIndex, 1);
+    EXPECT_EQ(result.lastSuccessfulFeature, 0);
+    EXPECT_NE(result.failureMessage.find("Broken"), std::string::npos) << result.failureMessage;
+    EXPECT_NE(result.failureMessage.find("degree must be at least 1"), std::string::npos)
+        << result.failureMessage;
+}
+
+TEST(FeatureTreeTest, ThrowingFeatureFailsEveryBuildPathWithoutEscaping) {
+    FeatureTree tree;
+    tree.addFeature(std::make_unique<ThrowingFeature>());
+    std::unique_ptr<hz::topo::Solid> solid;
+    ASSERT_NO_THROW(solid = tree.build());
+    EXPECT_EQ(solid, nullptr);
+    std::vector<std::unique_ptr<hz::topo::Solid>> bodies;
+    ASSERT_NO_THROW(bodies = tree.buildBodies());
+    EXPECT_TRUE(bodies.empty());
 }

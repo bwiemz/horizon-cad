@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness (Phases 97–98)
+## Unreleased — Production readiness (Phases 97–99)
 
 Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
 
@@ -78,6 +78,30 @@ Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-2
   active code page.
 - `~ViewportWidget` dereferenced the current GL context unconditionally and
   crashed when the viewport had never been shown.
+- **An error left no trace and no reason (99).** The whole code base made two
+  spdlog calls, both to stdout — which a Windows GUI-subsystem executable
+  discards — so a problem in the field left nothing behind. Logging now goes
+  to a rotating file in the platform's app-data directory (`…/logs/horizon.log`,
+  3 × 5 MB), Qt's own warnings are routed into it, warnings flush immediately,
+  and start-up records the version, Qt version, OS and OpenGL driver.
+
+  An exception escaping a slot or event handler terminated the application,
+  and every open document with it; a kernel op that throws (the NURBS
+  constructors do, on invalid input) during a rebuild would do exactly that.
+  `hz::ui::Application::notify()` now contains it: the failing command is
+  abandoned, the user is told once (not once per repaint), and the session
+  survives to save. Feature execution catches too, so a throwing feature is a
+  failed feature whose reason appears in the tree. `std::terminate` logs its
+  cause before the process goes.
+
+  Files that failed to open or save said "Failed to open file." and nothing
+  more. The loaders and savers now return the reason — "the file does not
+  exist", "it is a folder, not a file", "parse error at line 3, column 5: …",
+  "this is not a Horizon document", the write error — and never throw; a
+  wrong-typed field that used to throw `json::type_error` out of `load()` is
+  now "the file is damaged: …". A viewport that cannot draw (no OpenGL 3.3,
+  shaders that fail to compile, or no context at all) says so instead of
+  staying blank.
 
 ## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 

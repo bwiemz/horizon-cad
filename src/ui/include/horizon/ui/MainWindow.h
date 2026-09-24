@@ -177,12 +177,19 @@ private:
     /// If the tab's document is modified, focus it and ask Save / Discard /
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
+
+    /// Tell the user a file operation failed and why, and log it.
+    /// `summary` is e.g. "Could not open".
+    void reportFileError(const QString& summary, const std::string& path,
+                         const std::string& reason);
     QString tabTitleForPath(const std::string& path, const QString& fallback) const;
 
     ViewportWidget* m_viewport = nullptr;
     QTabBar* m_tabBar = nullptr;
     std::unique_ptr<ToolManager> m_toolManager;
     doc::DocumentManager m_docManager;
+    /// Why the document manager's last part/assembly load failed.
+    std::string m_lastLoadError;
     std::vector<DocTab> m_tabs;
     std::shared_ptr<doc::Document> m_document;
     std::shared_ptr<doc::AssemblyDocument> m_assembly;

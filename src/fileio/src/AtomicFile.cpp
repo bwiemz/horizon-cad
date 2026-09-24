@@ -26,6 +26,14 @@ std::filesystem::path pathFromUtf8(std::string_view utf8) {
     return fs::path(std::u8string(utf8.begin(), utf8.end()));
 }
 
+std::string whyUnreadable(const std::filesystem::path& path) {
+    std::error_code ec;
+    const fs::file_status status = fs::status(path, ec);
+    if (ec || !fs::exists(status)) return "the file does not exist";
+    if (fs::is_directory(status)) return "it is a folder, not a file";
+    return {};
+}
+
 namespace {
 
 void setError(std::string* error, const std::string& message) {
