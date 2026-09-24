@@ -4,6 +4,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <utility>
 
 #include "horizon/math/Expression.h"
 
@@ -132,9 +133,13 @@ TEST(ExpressionLimitsTest, AReasonableChainStillParses) {
 }
 
 TEST(ExpressionLimitsTest, FromJsonRejectsDeepTreesAndWrongTypes) {
+    // Nested by moving, not copying: copying a json value recurses once per
+    // level, which on Windows' 1 MB stack overflows long before 5000.
     nlohmann::json deep = {{"type", "literal"}, {"value", 1.0}};
     for (int i = 0; i < 5000; ++i) {
-        deep = {{"type", "unary"}, {"op", "-"}, {"child", deep}};
+        nlohmann::json wrapper = {{"type", "unary"}, {"op", "-"}};
+        wrapper["child"] = std::move(deep);
+        deep = std::move(wrapper);
     }
     EXPECT_EQ(hz::math::Expression::fromJson(deep), nullptr);
 
