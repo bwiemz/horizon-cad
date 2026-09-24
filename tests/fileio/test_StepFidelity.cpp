@@ -32,10 +32,8 @@ using hz::model::MassPropertiesCalculator;
 
 namespace {
 
-const fs::path kFixtureRoot = fs::path(HZ_STEP_FIXTURE_DIR);
-
 std::string fixture(const std::string& name) {
-    std::ifstream in(kFixtureRoot / "import_ok" / name, std::ios::binary);
+    std::ifstream in(fs::path(HZ_STEP_FIXTURE_DIR) / "import_ok" / name, std::ios::binary);
     std::stringstream text;
     text << in.rdbuf();
     return text.str();
@@ -62,7 +60,7 @@ double drawnArea(const hz::topo::Solid& solid, double z) {
         Vec3 p[3];
         bool flat = true;
         for (size_t k = 0; k < 3; ++k) {
-            const size_t i = mesh.indices[t + k] * 3;
+            const size_t i = static_cast<size_t>(mesh.indices[t + k]) * 3;
             p[k] = Vec3(mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]);
             flat = flat && std::abs(p[k].z - z) < 1e-4;
         }
@@ -134,7 +132,7 @@ TEST(StepFidelityTest, APlateWithAHoleRoundTripsAndTakesABoolean) {
 
 namespace {
 
-const std::string kMillimetres = "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))";
+const char* const kMillimetres = "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))";
 
 bool contains(const std::vector<std::string>& lines, const std::string& part) {
     for (const auto& line : lines) {
@@ -186,7 +184,7 @@ TEST(StepFidelityTest, AFileInInchesIsScaledIntoMillimetres) {
     inches = replaced(inches, "\nENDSEC;\nEND-ISO-10303-21;",
                       "\n#9001=LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),#9002);\n"
                       "#9002=" +
-                          kMillimetres +
+                          std::string(kMillimetres) +
                           ";\n"
                           "#9003=DIMENSIONAL_EXPONENTS(1.,0.,0.,0.,0.,0.,0.);\n"
                           "ENDSEC;\nEND-ISO-10303-21;");
