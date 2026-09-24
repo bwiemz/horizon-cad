@@ -157,3 +157,38 @@ fillers, dialog responders, file pickers). This phase fills the gaps.
   cancel.
 - Sketches are snapshotted into the job.
 - Atomic ID counters.
+
+**As built.**
+- **Atomic ID counters.** `math::IdCounter` (`next()` is a fetch_add;
+  `reserveThrough()` uses compare-exchange) replaces the 17 plain static
+  counters: DraftEntity, Constraint, Sketch, SceneNode, and the 13 feature
+  classes. A worker can then make objects while the window does.
+- **Rebuild.**
+  - `FeatureTree::buildWithDiagnostics(BuildControl*)` reports features done
+    and total, and checks a cancel flag between features.
+  - `Document::applyBuild` takes a build made elsewhere; a cancelled one
+    leaves the model as it was.
+  - `RebuildJob` snapshots the whole document, sketches included, as its
+    native JSON on the GUI thread. The worker loads the snapshot into a
+    document of its own and builds that, so nothing it reads can change
+    under it. The job carries the document's undo and feature revisions.
+  - `MainWindow` sends a rebuild to the worker when the last one took over
+    300 ms (`RebuildMode::Auto`; also `Always` and `Never`).
+  - A progress bar and Cancel sit in the status bar meanwhile.
+  - The result is applied only if the document is where it was; otherwise
+    the document as it is now is rebuilt.
+  - One job runs at a time. A new request for the same document supersedes
+    the running job; a job for another document finishes, and that tab is
+    rebuilt when shown if its result was dropped.
+- **Import and interference.** `BackgroundTask<Result>` runs any work on a
+  worker, and its cancel means "stop waiting".
+  - A STEP file of 1 MB or more is parsed on a worker; the part is made on
+    the GUI thread when it is done.
+  - Interference is split into `interferenceInput()` (copies of the placed
+    solids, taken on the GUI thread) and `measureInterference()` (the CSG,
+    on the worker, from 2000 faces up). The assembly can be edited, or its
+    tab closed, meanwhile.
+- The window's destructor waits for its workers.
+- **Not done:** a feature being added still trial-builds on the GUI thread,
+  to refuse one that fails itself. Only the rebuild that follows moves to
+  the worker.

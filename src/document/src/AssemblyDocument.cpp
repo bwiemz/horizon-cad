@@ -10,27 +10,40 @@
 namespace hz::doc {
 
 InterferenceReport AssemblyDocument::findInterference() const {
-    InterferenceReport report;
-    std::vector<std::unique_ptr<topo::Solid>> placed;
-    std::vector<uint64_t> ids;
+    return measureInterference(interferenceInput());
+}
+
+AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const {
+    InterferenceInput input;
     for (const auto& comp : m_components) {
         if (comp.suppressed) continue;
         const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
         if (solid == nullptr) {
-            report.unchecked.push_back(comp.id);
+            input.unchecked.push_back(comp.id);
             continue;
         }
-        placed.push_back(model::Pattern::transformed(*solid, comp.transform));
-        ids.push_back(comp.id);
+        input.placed.push_back(model::Pattern::transformed(*solid, comp.transform));
+        input.ids.push_back(comp.id);
     }
+    return input;
+}
 
+std::size_t AssemblyDocument::InterferenceInput::faceCount() const {
+    std::size_t faces = 0;
+    for (const auto& solid : placed) faces += solid ? solid->faceCount() : 0;
+    return faces;
+}
+
+InterferenceReport AssemblyDocument::measureInterference(const InterferenceInput& input) {
+    InterferenceReport report;
+    report.unchecked = input.unchecked;
     std::vector<const topo::Solid*> solids;
-    solids.reserve(placed.size());
-    for (const auto& s : placed) solids.push_back(s.get());
+    solids.reserve(input.placed.size());
+    for (const auto& s : input.placed) solids.push_back(s.get());
     for (const auto& pair : model::InterferenceChecker::check(solids)) {
         ComponentInterference ci;
-        ci.componentA = ids[pair.indexA];
-        ci.componentB = ids[pair.indexB];
+        ci.componentA = input.ids[pair.indexA];
+        ci.componentB = input.ids[pair.indexB];
         ci.volume = pair.volume;
         ci.volumeResolved = pair.volumeResolved;
         report.pairs.push_back(ci);

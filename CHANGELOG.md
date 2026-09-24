@@ -42,6 +42,14 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
     scaled up.
 
   All four are fixed.
+- **Long work froze the window (114).**
+  - A model rebuild that takes seconds, such as a Boolean on a finely
+    faceted part, used to freeze the window after every edit. It now runs
+    on a worker thread, with a progress bar and a Cancel button, and its
+    result is used only if the part has not changed meanwhile.
+  - Large STEP imports and interference checks also run in the background.
+  - Every ID counter is now atomic, so objects made on two threads never
+    share an ID.
 
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 

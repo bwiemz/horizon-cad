@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QProgressBar>
+#include <QTemporaryDir>
 #include <memory>
 
 #include "UiTestSupport.h"
@@ -15,7 +16,9 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/RebuildJob.h"
 
@@ -112,4 +115,22 @@ TEST(RebuildJobTest, AnEditWhileTheWorkerRunsIsBuiltToo) {
     ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
     EXPECT_EQ(w.activeDocument()->featureTree().featureCount(), 0u);
     EXPECT_EQ(w.activeDocument()->solid(), nullptr);
+}
+
+TEST(RebuildJobTest, AStepImportOnAWorkerMakesThePart) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("bracket.step"));
+    auto box = hz::model::PrimitiveFactory::makeBox(3, 4, 5);
+    ASSERT_TRUE(hz::io::StepFormat::save(path.toStdString(), {box.get()}));
+
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    {
+        hz::test::FilePicker picker(path);
+        w.findChild<QAction*>(QStringLiteral("import_step"))->trigger();
+    }
+    ASSERT_TRUE(waitFor([&] { return !w.backgroundWorkRunning(); }));
+    EXPECT_EQ(w.activeDocument()->type(), hz::doc::DocumentType::Part);
+    EXPECT_NEAR(volumeOf(*w.activeDocument()), 60.0, 1e-9);
 }

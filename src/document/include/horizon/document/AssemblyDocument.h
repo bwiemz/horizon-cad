@@ -141,6 +141,19 @@ public:
     /// passed — resolve them first for a complete answer.
     InterferenceReport findInterference() const;
 
+    /// What an interference check measures: each unsuppressed, resolved
+    /// component's solid, placed. Copies — so the measuring can run on a
+    /// worker thread while the assembly is edited.
+    struct InterferenceInput {
+        std::vector<std::unique_ptr<topo::Solid>> placed;
+        std::vector<uint64_t> ids;        ///< the component of each placed solid
+        std::vector<uint64_t> unchecked;  ///< components with no solid to check
+        /// Faces in all the placed solids: how long the measuring will take.
+        std::size_t faceCount() const;
+    };
+    InterferenceInput interferenceInput() const;
+    static InterferenceReport measureInterference(const InterferenceInput& input);
+
     // --- Dirty tracking ---
 
     bool isDirty() const { return m_dirty; }

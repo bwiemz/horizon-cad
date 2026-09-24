@@ -61,6 +61,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/Preferences.h
     include/horizon/ui/PreferencesDialog.h
     include/horizon/ui/RebuildJob.h
+    include/horizon/ui/BackgroundTask.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp

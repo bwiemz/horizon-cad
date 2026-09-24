@@ -11,6 +11,8 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RebuildJob.h"
@@ -63,16 +65,25 @@ public:
     /// snap reach. The display unit is read where lengths are shown.
     void applyPreferences(const Preferences& prefs);
 
-    /// When a model rebuild runs on a worker thread: when the last one took
-    /// long enough to freeze the window (Auto), always, or never.
+    /// When long work — a model rebuild, a STEP import, an interference
+    /// check — runs on a worker thread: when it would freeze the window
+    /// (Auto), always, or never.
     enum class RebuildMode { Auto, Always, Never };
     void setRebuildMode(RebuildMode mode) { m_rebuildMode = mode; }
 
     /// A rebuild is running on a worker.
     bool rebuildRunning() const { return m_rebuildJob != nullptr; }
+    /// Anything is running on a worker.
+    bool backgroundWorkRunning() const {
+        return m_rebuildJob != nullptr || m_importTask != nullptr || m_interferenceTask != nullptr;
+    }
 
-    /// A rebuild longer than this goes to a worker the next time (Auto).
+    /// What goes to a worker in Auto: a rebuild after one that took longer
+    /// than this, a STEP file at least this big, an interference check of at
+    /// least this many faces.
     static constexpr qint64 kWorkerRebuildMs = 300;
+    static constexpr qint64 kWorkerImportBytes = 1'000'000;
+    static constexpr std::size_t kWorkerInterferenceFaces = 2000;
 
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
@@ -251,6 +262,21 @@ private:
     /// A worker's rebuild is done: apply it if the document is where it was.
     void onRebuildFinished();
     void updateRebuildProgress();
+    /// Show the progress bar and Cancel while anything runs on a worker.
+    void updateBusyIndicator();
+
+    /// A STEP file read into solids — on the GUI thread or a worker.
+    struct StepLoad {
+        std::vector<std::unique_ptr<topo::Solid>> solids;
+        io::ImportReport report;
+        std::string error;  ///< why nothing was read (lastError is per thread)
+    };
+    static StepLoad loadStep(const std::string& path);
+    void finishStepImport(const QString& fileName, StepLoad load);
+    void onImportFinished();
+    void showInterference(const doc::AssemblyDocument& assembly,
+                          const doc::InterferenceReport& report);
+    void onInterferenceFinished();
 
     /// The window's size and position and where its docks are, kept across
     /// sessions.
@@ -364,6 +390,10 @@ private:
     QProgressBar* m_rebuildProgress = nullptr;
     QToolButton* m_rebuildCancel = nullptr;
     QTimer* m_rebuildPoll = nullptr;
+    std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
+    QString m_importFile;
+    std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
+    std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

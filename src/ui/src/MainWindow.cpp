@@ -329,8 +329,10 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
-    // Stop a worker's rebuild before anything it could report to is gone.
+    // Stop work on workers before anything it could report to is gone.
     m_rebuildJob.reset();
+    m_importTask.reset();
+    m_interferenceTask.reset();
 }
 
 void MainWindow::onCommandPalette() {
@@ -795,12 +797,15 @@ void MainWindow::createStatusBar() {
     m_rebuildCancel = new QToolButton(this);
     m_rebuildCancel->setObjectName(QStringLiteral("cancelRebuild"));
     m_rebuildCancel->setText(tr("Cancel"));
-    m_rebuildCancel->setToolTip(tr("Stop rebuilding the model"));
+    m_rebuildCancel->setToolTip(tr("Stop the work running in the background"));
     m_rebuildCancel->hide();
     connect(m_rebuildCancel, &QToolButton::clicked, this, [this] {
-        if (!m_rebuildJob) return;
-        m_rebuildAgain = false;
-        m_rebuildJob->cancel();
+        if (m_rebuildJob) {
+            m_rebuildAgain = false;
+            m_rebuildJob->cancel();
+        }
+        if (m_importTask) m_importTask->cancel();
+        if (m_interferenceTask) m_interferenceTask->cancel();
     });
     sb->addPermanentWidget(m_rebuildCancel);
     m_rebuildPoll = new QTimer(this);
@@ -1548,15 +1553,57 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     box.exec();
 }
 
+MainWindow::StepLoad MainWindow::loadStep(const std::string& path) {
+    StepLoad load;
+    load.solids = io::StepFormat::load(path, &load.report);
+    if (load.solids.empty()) load.error = io::StepFormat::lastError();
+    return load;
+}
+
 void MainWindow::onImportStep() {
     const QString fileName = QFileDialog::getOpenFileName(
         this, tr("Import STEP"), QString(), tr("STEP Files (*.step *.stp);;All Files (*)"));
     if (fileName.isEmpty()) return;
     const std::string path = fileName.toStdString();
-    io::ImportReport report;
-    auto solids = io::StepFormat::load(path, &report);
-    if (solids.empty()) {
-        reportFileError(tr("Could not import"), path, io::StepFormat::lastError());
+    const bool onWorker =
+        m_rebuildMode == RebuildMode::Always ||
+        (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
+    if (!onWorker) {
+        finishStepImport(fileName, loadStep(path));
+        return;
+    }
+    if (m_importTask) {
+        statusBar()->showMessage(tr("A STEP import is already running"));
+        return;
+    }
+    m_importFile = fileName;
+    m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
+        [path](const std::atomic<bool>& /*cancelled*/) { return loadStep(path); });
+    m_importTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Importing %1...").arg(QFileInfo(fileName).fileName()));
+    updateBusyIndicator();
+}
+
+void MainWindow::onImportFinished() {
+    if (!m_importTask || !m_importTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<StepLoad>> task = std::move(m_importTask);
+    updateBusyIndicator();
+    if (task->cancelled()) {
+        m_statusPrompt->setText(tr("Ready"));
+        statusBar()->showMessage(tr("Import cancelled"), 10000);
+        return;
+    }
+    StepLoad load = task->take();
+    if (!task->error().empty()) load.error = task->error();
+    finishStepImport(m_importFile, std::move(load));
+}
+
+void MainWindow::finishStepImport(const QString& fileName, StepLoad load) {
+    const std::string path = fileName.toStdString();
+    if (load.solids.empty()) {
+        reportFileError(tr("Could not import"), path, load.error);
         return;
     }
 
@@ -1564,8 +1611,8 @@ void MainWindow::onImportStep() {
     // not depend on the STEP file any more.
     auto document = m_docManager.newDocument(doc::DocumentType::Part);
     const std::string source = QFileInfo(fileName).fileName().toStdString();
-    const auto count = static_cast<int>(solids.size());
-    for (auto& solid : solids) {
+    const auto count = static_cast<int>(load.solids.size());
+    for (auto& solid : load.solids) {
         document->featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
             std::shared_ptr<const topo::Solid>(std::move(solid)), source));
     }
@@ -1575,7 +1622,7 @@ void MainWindow::onImportStep() {
     rebuildFeatureTree();
     m_viewport->camera().setIsometricView();
     m_viewport->update();
-    showImportReport(QFileInfo(fileName).fileName(), report);
+    showImportReport(QFileInfo(fileName).fileName(), load.report);
     m_statusPrompt->setText(tr("Imported %n bodies.", "", count));
 }
 
@@ -1830,9 +1877,56 @@ void MainWindow::onCheckInterference() {
         }
     }
 
-    const auto report = m_assembly->findInterference();
-    auto nameOf = [this](uint64_t id) {
-        const auto* comp = m_assembly->component(id);
+    auto input =
+        std::make_shared<doc::AssemblyDocument::InterferenceInput>(m_assembly->interferenceInput());
+    const bool onWorker =
+        m_rebuildMode == RebuildMode::Always ||
+        (m_rebuildMode == RebuildMode::Auto && input->faceCount() >= kWorkerInterferenceFaces);
+    if (!onWorker) {
+        showInterference(*m_assembly, doc::AssemblyDocument::measureInterference(*input));
+        return;
+    }
+    if (m_interferenceTask) {
+        statusBar()->showMessage(tr("An interference check is already running"));
+        return;
+    }
+    // The input is copies of the placed solids: the assembly can be edited,
+    // or its tab closed, while they are measured.
+    m_interferenceAssembly = m_assembly;
+    m_interferenceTask = std::make_unique<BackgroundTask<doc::InterferenceReport>>(
+        [input](const std::atomic<bool>& /*cancelled*/) {
+            return doc::AssemblyDocument::measureInterference(*input);
+        });
+    m_interferenceTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onInterferenceFinished, Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Checking interference..."));
+    updateBusyIndicator();
+}
+
+void MainWindow::onInterferenceFinished() {
+    if (!m_interferenceTask || !m_interferenceTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<doc::InterferenceReport>> task =
+        std::move(m_interferenceTask);
+    const std::shared_ptr<doc::AssemblyDocument> assembly = std::move(m_interferenceAssembly);
+    updateBusyIndicator();
+    m_statusPrompt->setText(tr("Ready"));
+    if (task->cancelled()) {
+        statusBar()->showMessage(tr("Interference check cancelled"), 10000);
+        return;
+    }
+    if (!task->error().empty()) {
+        statusBar()->showMessage(
+            tr("The interference check failed: %1").arg(QString::fromStdString(task->error())));
+        return;
+    }
+    showInterference(*assembly, task->take());
+}
+
+void MainWindow::showInterference(const doc::AssemblyDocument& assembly,
+                                  const doc::InterferenceReport& report) {
+    auto nameOf = [&assembly](uint64_t id) {
+        const auto* comp = assembly.component(id);
         const std::string name = comp && !comp->name.empty() ? comp->name : "component";
         return QString("%1 (#%2)").arg(QString::fromStdString(name)).arg(id);
     };
@@ -3229,15 +3323,22 @@ void MainWindow::startRebuild() {
     m_rebuildJob->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onRebuildFinished, Qt::QueuedConnection);
     });
-    m_rebuildProgress->setRange(0, 0);  // busy until the job knows its size
-    m_rebuildProgress->show();
-    m_rebuildCancel->show();
     m_rebuildPoll->start();
     m_statusPrompt->setText(tr("Rebuilding the model..."));
+    updateBusyIndicator();
+}
+
+void MainWindow::updateBusyIndicator() {
+    const bool busy = backgroundWorkRunning();
+    m_rebuildProgress->setVisible(busy);
+    m_rebuildCancel->setVisible(busy);
+    // Busy (no steps) until a rebuild, alone, knows how many features it has.
+    m_rebuildProgress->setRange(0, 0);
+    if (busy) updateRebuildProgress();
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob) return;
+    if (!m_rebuildJob || m_importTask || m_interferenceTask) return;
     const int total = m_rebuildJob->total();
     if (total > 0) {
         m_rebuildProgress->setRange(0, total);
@@ -3252,8 +3353,7 @@ void MainWindow::onRebuildFinished() {
     const std::shared_ptr<doc::Document> document = std::move(m_rebuildDocument);
     bool again = std::exchange(m_rebuildAgain, false);
     m_rebuildPoll->stop();
-    m_rebuildProgress->hide();
-    m_rebuildCancel->hide();
+    updateBusyIndicator();
 
     DocTab* tab = nullptr;
     for (DocTab& t : m_tabs) {
