@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness (Phases 97–99)
+## Unreleased — Production readiness (Phases 97–100)
 
 Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
 
@@ -102,6 +102,43 @@ Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-2
   now "the file is damaged: …". A viewport that cannot draw (no OpenGL 3.3,
   shaders that fail to compile, or no context at all) says so instead of
   staying blank.
+- **Hostile input could crash, hang or quietly misread the app (100).**
+  - *Native files.* The reader indexed `const json` objects with `[]`, which
+    for a missing key or an empty array is an assertion in Debug and
+    undefined behaviour in Release — no `try` can catch it. Every access in
+    the readers is now checked. Integer and enum fields are range-checked (a
+    float where an integer belongs went through a plain `static_cast`; a line
+    type out of range would index past the dash-pattern table). A file from a
+    newer format version is refused with both version numbers instead of
+    loading with its unknown content dropped, ready to be destroyed by the
+    next save. Counts that cost memory on every rebuild are clamped:
+    `segments` at 4096 steps per turn (the cap the tolerance path already
+    used), fillet chords at 1024, pattern instances at 10 000 — a pattern
+    count of 2e9 in a file tried to allocate that many copies on open, and
+    `static_cast<int>` of an infinite parameter was undefined behaviour.
+  - *DXF.* A file cut short hung the application: the entity loop re-read its
+    last pair forever at end of input. Every section now reads through one
+    function that treats the end of input as "the file ends before the end of
+    a section (it may be truncated)", a group code without a value and a
+    non-numeric code line are errors naming the line, and numbers are parsed
+    with `std::from_chars` — `std::stod` follows the C locale, which Qt sets
+    from the environment on Unix, so under de_DE "1.5" read as 1.
+  - *STEP.* Exceptions from the NURBS constructors (a degree-0 B-spline passes
+    the reader's own checks) became the import error instead of escaping;
+    `#` entity numbers are overflow-checked; reals are written and read with
+    `to_chars`/`from_chars`, which ignore the locale and round-trip exactly
+    (`%.15g` did neither), and a malformed number is an error rather than a
+    silent prefix.
+  - *Expressions* read from files recursed without limit: 200 000 minus signs
+    overflowed the stack. Parsing is bounded to 64 levels of nesting and 1024
+    nodes (a long flat sum parses in a loop but builds a tree evaluation must
+    recurse through), and `Expression::fromJson` now honours its "nullptr on
+    any error" contract instead of throwing on a wrong-typed field.
+  - *Fuzzing.* libFuzzer targets for the native, DXF and STEP readers and for
+    expressions (`HZ_BUILD_FUZZERS=ON`, Clang). The same targets always build
+    as corpus replays registered with CTest, so the seed corpus — real
+    documents from the real writers, plus every crashing input above — runs
+    in every build, including the sanitizer job.
 
 ## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 

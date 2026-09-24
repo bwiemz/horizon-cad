@@ -21,6 +21,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 option(HZ_BUILD_TESTS "Build unit and integration tests" ON)
 option(HZ_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
 option(HZ_ENABLE_SCRIPTING "Build the embedded Python scripting module" ON)
+option(HZ_BUILD_FUZZERS "Also build libFuzzer executables for the file readers (Clang)" OFF)
 
 # CMake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -58,6 +59,10 @@ endif()
 # All source libraries
 add_subdirectory(src)
 
+if(HZ_BUILD_FUZZERS AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "HZ_BUILD_FUZZERS needs Clang (libFuzzer)")
+endif()
+
 # Tests
 if(HZ_BUILD_TESTS)
     find_package(GTest CONFIG REQUIRED)
@@ -85,6 +90,10 @@ foreach(_hz_target IN LISTS _hz_targets)
         hz_set_warnings(${_hz_target})
         if(HZ_ENABLE_SANITIZERS)
             hz_enable_sanitizers(${_hz_target})
+        endif()
+        if(HZ_BUILD_FUZZERS)
+            # Coverage feedback for libFuzzer from every library it drives.
+            target_compile_options(${_hz_target} PRIVATE -fsanitize=fuzzer-no-link)
         endif()
     endif()
 endforeach()

@@ -211,7 +211,12 @@ nlohmann::json FunctionCallExpr::toJson() const {
 
 // --- Expression::fromJson (static) -----------------------------------------
 
-std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
+namespace {
+
+/// Expression::fromJson with the tree bounded: `depth` is the current level,
+/// `nodes` counts every node built so far.
+std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, int& nodes) {
+    if (depth > Expression::kMaxNestingDepth || ++nodes > Expression::kMaxNodes) return nullptr;
     if (!j.is_object() || !j.contains("type")) {
         return nullptr;
     }
@@ -245,8 +250,8 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
         else
             return nullptr;
 
-        auto left = fromJson(j.at("left"));
-        auto right = fromJson(j.at("right"));
+        auto left = fromJsonBounded(j.at("left"), depth + 1, nodes);
+        auto right = fromJsonBounded(j.at("right"), depth + 1, nodes);
         if (!left || !right) return nullptr;
         return std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
     }
@@ -260,7 +265,7 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
         else
             return nullptr;
 
-        auto child = fromJson(j.at("child"));
+        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
         if (!child) return nullptr;
         return std::make_unique<UnaryOpExpr>(op, std::move(child));
     }
@@ -273,7 +278,7 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
 
         std::vector<std::unique_ptr<Expression>> args;
         for (const auto& argJson : argsJson) {
-            auto arg = fromJson(argJson);
+            auto arg = fromJsonBounded(argJson, depth + 1, nodes);
             if (!arg) return nullptr;
             args.push_back(std::move(arg));
         }
@@ -281,6 +286,19 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
     }
 
     return nullptr;  // unknown type
+}
+
+}  // namespace
+
+std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
+    // A wrong-typed field (a number where the operator belongs) makes
+    // json::get throw; the contract is nullptr on any error.
+    try {
+        int nodes = 0;
+        return fromJsonBounded(j, 0, nodes);
+    } catch (const nlohmann::json::exception&) {
+        return nullptr;
+    }
 }
 
 // ===========================================================================
@@ -428,6 +446,30 @@ public:
     }
 
 private:
+    /// One level of recursion (a bracket, a minus sign, a power, a function's
+    /// arguments). Past Expression::kMaxNestingDepth the parse fails.
+    class Nesting {
+    public:
+        explicit Nesting(Parser& parser) : m_parser(parser) {
+            if (++m_parser.m_depth > Expression::kMaxNestingDepth) m_parser.m_hasError = true;
+        }
+        ~Nesting() { --m_parser.m_depth; }
+        Nesting(const Nesting&) = delete;
+        Nesting& operator=(const Nesting&) = delete;
+
+    private:
+        Parser& m_parser;
+    };
+
+    /// Build a node, counting it against Expression::kMaxNodes. A long flat
+    /// chain ("1+1+...+1") parses in a loop but still builds a tree as deep as
+    /// it is long, which evaluation and destruction then recurse through.
+    template <typename Node, typename... Args>
+    std::unique_ptr<Expression> node(Args&&... args) {
+        if (++m_nodes > Expression::kMaxNodes) m_hasError = true;
+        return std::make_unique<Node>(std::forward<Args>(args)...);
+    }
+
     void advance() {
         m_current = m_tokenizer.next();
         if (m_current.type == TokenType::Error) {
@@ -455,7 +497,7 @@ private:
             advance();
             auto right = parseMulDiv();
             if (m_hasError || !right) return nullptr;
-            left = std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
+            left = node<BinaryOpExpr>(op, std::move(left), std::move(right));
         }
         return left;
     }
@@ -471,7 +513,7 @@ private:
             advance();
             auto right = parsePower();
             if (m_hasError || !right) return nullptr;
-            left = std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
+            left = node<BinaryOpExpr>(op, std::move(left), std::move(right));
         }
         return left;
     }
@@ -483,10 +525,11 @@ private:
 
         if (m_current.type == TokenType::Caret) {
             advance();
+            Nesting nesting(*this);
+            if (m_hasError) return nullptr;
             auto exponent = parsePower();  // right-associative: recurse into parsePower
             if (m_hasError || !exponent) return nullptr;
-            return std::make_unique<BinaryOpExpr>(BinaryOpExpr::Op::Pow, std::move(base),
-                                                  std::move(exponent));
+            return node<BinaryOpExpr>(BinaryOpExpr::Op::Pow, std::move(base), std::move(exponent));
         }
         return base;
     }
@@ -495,9 +538,11 @@ private:
     std::unique_ptr<Expression> parseUnary() {
         if (m_current.type == TokenType::Minus) {
             advance();
+            Nesting nesting(*this);
+            if (m_hasError) return nullptr;
             auto child = parseUnary();
             if (m_hasError || !child) return nullptr;
-            return std::make_unique<UnaryOpExpr>(UnaryOpExpr::Op::Negate, std::move(child));
+            return node<UnaryOpExpr>(UnaryOpExpr::Op::Negate, std::move(child));
         }
         return parsePrimary();
     }
@@ -510,7 +555,7 @@ private:
         if (m_current.type == TokenType::Number) {
             double val = m_current.numValue;
             advance();
-            return std::make_unique<LiteralExpr>(val);
+            return node<LiteralExpr>(val);
         }
 
         // IDENTIFIER (variable, constant, or function call)
@@ -521,6 +566,8 @@ private:
             // Check for function call: IDENTIFIER '(' args ')'
             if (m_current.type == TokenType::LParen) {
                 advance();
+                Nesting nesting(*this);
+                if (m_hasError) return nullptr;
                 std::vector<std::unique_ptr<Expression>> args;
 
                 // Handle empty arg list (shouldn't happen for our functions, but be safe)
@@ -538,21 +585,23 @@ private:
                 }
 
                 if (!expect(TokenType::RParen)) return nullptr;
-                return std::make_unique<FunctionCallExpr>(name, std::move(args));
+                return node<FunctionCallExpr>(name, std::move(args));
             }
 
             // Built-in constant: pi
             if (name == "pi") {
-                return std::make_unique<LiteralExpr>(3.14159265358979323846);
+                return node<LiteralExpr>(3.14159265358979323846);
             }
 
             // Variable reference
-            return std::make_unique<VariableExpr>(name);
+            return node<VariableExpr>(name);
         }
 
         // '(' expression ')'
         if (m_current.type == TokenType::LParen) {
             advance();
+            Nesting nesting(*this);
+            if (m_hasError) return nullptr;
             auto inner = parseAddSub();
             if (m_hasError || !inner) return nullptr;
             if (!expect(TokenType::RParen)) return nullptr;
@@ -567,6 +616,8 @@ private:
     Tokenizer m_tokenizer;
     Token m_current;
     bool m_hasError;
+    int m_depth = 0;
+    int m_nodes = 0;
 };
 
 }  // anonymous namespace

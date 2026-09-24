@@ -34,6 +34,15 @@ public:
 
     /// Parse an expression string; returns nullptr on any error.
     static std::unique_ptr<Expression> parse(const std::string& input);
+
+    /// Limits on what parse() and fromJson() accept. Evaluating, printing and
+    /// destroying an expression recurse once per level of its tree, and parsing
+    /// recurses once per nested bracket, minus sign or power, so an unbounded
+    /// input from a file (200 000 minus signs, or "1+1+...+1") would overflow
+    /// the stack. Past these limits the input is rejected instead. Both are far
+    /// beyond any design-variable expression a person writes.
+    static constexpr int kMaxNestingDepth = 64;  ///< nested (), unary minus, ^
+    static constexpr int kMaxNodes = 1024;       ///< numbers, names, operators, calls
 };
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cctype>
+#include <clocale>
+#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -653,4 +656,106 @@ TEST(StepFormat, LoadMissingFileFails) {
     auto solids = StepFormat::load("Z:/definitely/not/a/real/path.step");
     EXPECT_TRUE(solids.empty());
     EXPECT_FALSE(StepFormat::lastError().empty());
+}
+
+// ---------------------------------------------------------------------------
+// Hostile input: the reader must reject, not throw or overflow
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The one-face shell from RejectsNonManifoldShell, with edge #11 carried by
+/// `curve` (entity #10).
+std::string squareShellWithCurve(const std::string& curve) {
+    return "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+           "#1 = CARTESIAN_POINT('',(0.,0.,0.));\n#2 = CARTESIAN_POINT('',(1.,0.,0.));\n"
+           "#3 = CARTESIAN_POINT('',(1.,1.,0.));\n#4 = CARTESIAN_POINT('',(0.,1.,0.));\n"
+           "#5 = VERTEX_POINT('',#1);\n#6 = VERTEX_POINT('',#2);\n"
+           "#7 = VERTEX_POINT('',#3);\n#8 = VERTEX_POINT('',#4);\n"
+           "#9 = DIRECTION('',(1.,0.,0.));\n" +
+           curve +
+           "\n#30 = LINE('',#1,VECTOR('',#9,1.));\n"
+           "#11 = EDGE_CURVE('',#5,#6,#10,.T.);\n#12 = EDGE_CURVE('',#6,#7,#30,.T.);\n"
+           "#13 = EDGE_CURVE('',#7,#8,#30,.T.);\n#14 = EDGE_CURVE('',#8,#5,#30,.T.);\n"
+           "#15 = ORIENTED_EDGE('',*,*,#11,.T.);\n#16 = ORIENTED_EDGE('',*,*,#12,.T.);\n"
+           "#17 = ORIENTED_EDGE('',*,*,#13,.T.);\n#18 = ORIENTED_EDGE('',*,*,#14,.T.);\n"
+           "#19 = EDGE_LOOP('',(#15,#16,#17,#18));\n#20 = FACE_OUTER_BOUND('',#19,.T.);\n"
+           "#21 = CARTESIAN_POINT('',(0.,0.,0.));\n#22 = DIRECTION('',(0.,0.,1.));\n"
+           "#23 = AXIS2_PLACEMENT_3D('',#21,#22,$);\n#24 = PLANE('',#23);\n"
+           "#25 = ADVANCED_FACE('',(#20),#24,.T.);\n#26 = CLOSED_SHELL('',(#25));\n"
+           "#27 = MANIFOLD_SOLID_BREP('bad',#26);\nENDSEC;\nEND-ISO-10303-21;\n";
+}
+
+}  // namespace
+
+TEST(StepFormat, DegreeZeroBSplineIsAnErrorNotAnException) {
+    // The knot count matches (2 points + degree 0 + 1 = 3), so the reader's own
+    // check passes, and NurbsCurve's constructor throws invalid_argument.
+    const std::string text = squareShellWithCurve(
+        "#10 = B_SPLINE_CURVE_WITH_KNOTS('',0,(#1,#2),.UNSPECIFIED.,.F.,.F.,(1,1,1),"
+        "(0.,0.5,1.),.UNSPECIFIED.);");
+    std::vector<std::unique_ptr<hz::topo::Solid>> solids;
+    ASSERT_NO_THROW(solids = StepFormat::fromString(text));
+    EXPECT_TRUE(solids.empty());
+    EXPECT_NE(StepFormat::lastError().find("degree"), std::string::npos)
+        << "the constructor's reason reaches the caller: " << StepFormat::lastError();
+}
+
+TEST(StepFormat, OversizedEntityNumberIsRejected) {
+    // 99999999999 does not fit an int; it used to wrap (signed overflow).
+    const std::string text =
+        "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+        "#99999999999 = CARTESIAN_POINT('',(0.,0.,0.));\n"
+        "#1 = VERTEX_POINT('',#99999999999);\nENDSEC;\nEND-ISO-10303-21;\n";
+    std::vector<std::unique_ptr<hz::topo::Solid>> solids;
+    ASSERT_NO_THROW(solids = StepFormat::fromString(text));
+    EXPECT_TRUE(solids.empty());
+    EXPECT_NE(StepFormat::lastError().find("too large"), std::string::npos)
+        << StepFormat::lastError();
+}
+
+TEST(StepFormat, CoordinatesRoundTripExactly) {
+    // "%.15g" dropped the last digits of a double; the shortest round-trip
+    // form reads back as the same value.
+    auto box = PrimitiveFactory::makeBox(1.0 / 3.0, 0.1 + 0.2, std::sqrt(2.0));
+    ASSERT_NE(box, nullptr);
+    auto solids = StepFormat::fromString(StepFormat::toString(refs(*box)));
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+
+    std::vector<Vec3> before;
+    std::vector<Vec3> after;
+    for (const auto& v : box->vertices()) before.push_back(v.point);
+    for (const auto& v : solids[0]->vertices()) after.push_back(v.point);
+    ASSERT_EQ(before.size(), after.size());
+    for (const Vec3& p : before) {
+        const bool found = std::any_of(after.begin(), after.end(), [&](const Vec3& q) {
+            return q.x == p.x && q.y == p.y && q.z == p.z;  // bit-exact, not approximately
+        });
+        EXPECT_TRUE(found) << "vertex (" << p.x << ", " << p.y << ", " << p.z << ") changed";
+    }
+}
+
+TEST(StepFormat, NumbersIgnoreACommaDecimalLocale) {
+    // Qt sets the C locale from the environment on Unix; under de_DE the old
+    // printf/strtod wrote "0,5" and read "0.5" as 0.
+    const char* previous = std::setlocale(LC_NUMERIC, nullptr);
+    const std::string saved = previous ? previous : "C";
+    const char* comma = nullptr;
+    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "ru_RU.UTF-8"}) {
+        if (std::setlocale(LC_NUMERIC, name) != nullptr) {
+            comma = name;
+            break;
+        }
+    }
+    if (comma == nullptr) GTEST_SKIP() << "no comma-decimal locale installed";
+
+    auto box = PrimitiveFactory::makeBox(0.5, 1.5, 2.5);
+    const std::string text = StepFormat::toString(refs(*box));
+    auto solids = StepFormat::fromString(text);
+    std::setlocale(LC_NUMERIC, saved.c_str());
+
+    EXPECT_EQ(text.find("0,5"), std::string::npos) << "numbers written with a comma";
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const double volume = hz::model::MassPropertiesCalculator::compute(*solids[0]).volume;
+    EXPECT_NEAR(volume, 0.5 * 1.5 * 2.5, 1e-12);
 }

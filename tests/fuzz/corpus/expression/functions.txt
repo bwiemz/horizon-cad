@@ -1,0 +1,1 @@
+sqrt(abs(sin(a)*cos(b))) + atan2(width, 10)

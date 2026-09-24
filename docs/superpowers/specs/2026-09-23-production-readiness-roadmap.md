@@ -111,7 +111,7 @@ save and reopen it — through the UI, with every failure explained.
 
 | Phase | Title | Scope | Effort |
 |------:|-------|-------|:------:|
-| 107 | Import/Export reachable | File ▸ Import/Export submenus for STEP (import/export), STL, glTF, DXF; each import produces a report of what was skipped or approximated. | M |
+| 107 | Import/Export reachable | File ▸ Import/Export submenus for STEP (import/export), STL, glTF, DXF; each import — and each native load — produces a report of what was skipped or approximated. (Since Phase 100 a malformed entity or feature inside an otherwise readable `.hcad` is skipped rather than crashing, but still silently; the report is where the user learns of it before a save drops it for good.) | M |
 | 108 | DXF fidelity | LWPOLYLINE bulges (import and export), OCS extrusion, partial ELLIPSE, non-uniform/mirrored INSERT scale, nested INSERTs, POLYLINE/VERTEX, POINT, MTEXT chunk order and `\P`/`%%` codes, full ACI colour table, `$INSUNITS`, `$DWGCODEPAGE` → UTF-8, escaped string output; DXF fixtures authored to the spec for each entity; an import report instead of silent skipping. | L |
 | 109 | STEP fidelity | `LENGTH_UNIT` conversion, faces with inner loops (needs Phase 105), per-solid partial import instead of all-or-nothing, round-trip-exact real formatting. | M |
 | 110 | 2D correctness pass | Snap tolerance in screen pixels; hidden/locked layers excluded from snapping and trim cutting edges; correct Midpoint/Center snap types; intersection snap; Trim preserves line type and group; zoom-independent pick tolerances. | M |

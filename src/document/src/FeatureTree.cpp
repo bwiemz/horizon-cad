@@ -28,6 +28,19 @@ namespace hz::doc {
 
 namespace {
 
+/// A count parameter as an int. False for NaN, infinity or a value below
+/// `min`; clamped to `max` above it. static_cast<int> of a double outside the
+/// range of int is undefined behaviour, and a file can hold any double.
+bool countParameter(double value, int min, int max, int& out) {
+    if (!std::isfinite(value) || value < min) return false;
+    out = value >= max ? max : static_cast<int>(value);
+    return true;
+}
+
+}  // namespace
+
+namespace {
+
 // Accept a chord-sag budget: a non-negative finite distance, where 0 switches
 // the feature back to its explicit facet count.
 bool setChordTolerance(double& target, double value) {
@@ -82,8 +95,8 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     }
     // Profile arcs are faceted, so these decide how close the extrusion gets
     // to the exact solid.  A polygon profile is exact and has neither.
-    if (name == "segments" && value >= 3.0 && hasCurvedProfile()) {
-        m_segments = static_cast<int>(value);
+    if (name == "segments" && hasCurvedProfile()) {
+        if (!countParameter(value, 3, kMaxFacetSegments, m_segments)) return false;
         m_chordTolerance = 0.0;
         return true;
     }
@@ -153,8 +166,8 @@ bool RevolveFeature::setParameter(const std::string& name, double value) {
     }
     // A revolve is faceted, so the step count decides how close its volume
     // gets to the exact one.  Three steps is the fewest that bounds a volume.
-    if (name == "segments" && value >= 3.0) {
-        m_segments = static_cast<int>(value);
+    if (name == "segments") {
+        if (!countParameter(value, 3, kMaxFacetSegments, m_segments)) return false;
         m_chordTolerance = 0.0;
         return true;
     }
@@ -332,8 +345,8 @@ bool SweepFeature::setParameter(const std::string& name, double value) {
     // Arcs in the path are swept as mitered chords, so this decides how close
     // a curved sweep gets to the exact one.  Three steps per turn is the
     // fewest that still turns a full circle.
-    if (name == "segments" && value >= 3.0) {
-        m_segments = static_cast<int>(value);
+    if (name == "segments") {
+        if (!countParameter(value, 3, kMaxFacetSegments, m_segments)) return false;
         m_chordTolerance = 0.0;
         return true;
     }
@@ -473,8 +486,8 @@ bool FilletFeature::setParameter(const std::string& name, double value) {
     }
     // Blends are faceted across the arc; one chord is the degenerate case that
     // removes a chamfer's worth of material rather than a fillet's.
-    if (name == "arcSegments" && value >= 1.0) {
-        m_arcSegments = static_cast<int>(value);
+    if (name == "arcSegments") {
+        if (!countParameter(value, 1, kMaxArcSegments, m_arcSegments)) return false;
         m_chordTolerance = 0.0;
         return true;
     }
@@ -576,8 +589,8 @@ std::map<std::string, double> BooleanFeature::parameters() const {
 
 bool BooleanFeature::setParameter(const std::string& name, double value) {
     if (name == "operation") {
-        int v = static_cast<int>(value);
-        if (v >= 0 && v <= 2) {
+        int v = 0;
+        if (countParameter(value, 0, 2, v) && value <= 2.0) {
             m_type = static_cast<model::BooleanType>(v);
             return true;
         }
@@ -631,7 +644,7 @@ std::unique_ptr<PatternFeature> PatternFeature::makeLinear(const math::Vec3& dir
     f->m_kind = Kind::Linear;
     f->m_vecA = direction;
     f->m_scalar = spacing;
-    f->m_count = count;
+    f->m_count = std::clamp(count, 1, kMaxPatternCount);
     f->m_suppressed = std::move(suppressed);
     f->m_featureID = "pattern_" + std::to_string(s_nextID++);
     return f;
@@ -646,7 +659,7 @@ std::unique_ptr<PatternFeature> PatternFeature::makeCircular(const math::Vec3& a
     f->m_vecA = axisPoint;
     f->m_vecB = axisDir;
     f->m_scalar = angleStepRad;
-    f->m_count = count;
+    f->m_count = std::clamp(count, 1, kMaxPatternCount);
     f->m_suppressed = std::move(suppressed);
     f->m_featureID = "pattern_" + std::to_string(s_nextID++);
     return f;
@@ -671,10 +684,7 @@ std::map<std::string, double> PatternFeature::parameters() const {
 }
 
 bool PatternFeature::setParameter(const std::string& name, double value) {
-    if (name == "count" && value >= 1.0) {
-        m_count = static_cast<int>(value);
-        return true;
-    }
+    if (name == "count") return countParameter(value, 1, kMaxPatternCount, m_count);
     if (name == "spacing") {
         m_scalar = value;
         return true;
@@ -799,10 +809,9 @@ std::map<std::string, double> PrimitiveFeature::parameters() const {
 
 bool PrimitiveFeature::setParameter(const std::string& name, double value) {
     if (name == "segments") {
-        if (!isFaceted() || value < 3.0) {
+        if (!isFaceted() || !countParameter(value, 3, kMaxFacetSegments, m_segments)) {
             return false;
         }
-        m_segments = static_cast<int>(value);
         m_chordTolerance = 0.0;
         return true;
     }
