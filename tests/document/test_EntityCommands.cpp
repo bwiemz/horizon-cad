@@ -5,6 +5,7 @@
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
@@ -109,6 +110,44 @@ TEST(EntityCommandsTest, ChangingTextHeightReindexesIt) {
     EXPECT_TRUE(indexedAt(d, text->id(), big.center().x, big.max().y - 0.5));
     grow.undo();
     EXPECT_FALSE(indexedAt(d, text->id(), big.center().x, big.max().y - 0.5));
+}
+
+// A text given more lines grows downwards, and can be found there.
+TEST(EntityCommandsTest, TextGivenMoreLinesIsIndexedDownThePage) {
+    DraftDocument d;
+    auto text = std::make_shared<DraftText>(Vec2(0, 0), "HELLO", 2.0);
+    d.addEntity(text);
+    const Vec2 third = text->lineBaseline(2) + Vec2(1.0, 0.5);
+    EXPECT_FALSE(indexedAt(d, text->id(), third.x, third.y));
+    hz::doc::ChangeTextContentCommand lines(d, text->id(), "HELLO\nTWO\nTHREE");
+    lines.execute();
+    EXPECT_TRUE(indexedAt(d, text->id(), third.x, third.y));
+    lines.undo();
+    EXPECT_FALSE(indexedAt(d, text->id(), third.x, third.y));
+}
+
+// The dimension style is one undoable step, and undo puts every setting back.
+TEST(EntityCommandsTest, ChangingTheDimensionStyleUndoes) {
+    DraftDocument d;
+    hz::doc::UndoStack stack;
+    const hz::draft::DimensionStyle before = d.dimensionStyle();
+    hz::draft::DimensionStyle inches = before;
+    inches.unit = "in";
+    inches.showUnits = true;
+    inches.precision = 3;
+    inches.textHeight = 3.5;
+    stack.push(std::make_unique<hz::doc::ChangeDimensionStyleCommand>(d, inches));
+    EXPECT_EQ(d.dimensionStyle().unit, "in");
+    EXPECT_EQ(d.dimensionStyle().precision, 3);
+    EXPECT_DOUBLE_EQ(d.dimensionStyle().textHeight, 3.5);
+
+    stack.undo();
+    EXPECT_EQ(d.dimensionStyle().unit, before.unit);
+    EXPECT_EQ(d.dimensionStyle().showUnits, before.showUnits);
+    EXPECT_EQ(d.dimensionStyle().precision, before.precision);
+    EXPECT_DOUBLE_EQ(d.dimensionStyle().textHeight, before.textHeight);
+    stack.redo();
+    EXPECT_EQ(d.dimensionStyle().unit, "in");
 }
 
 // Renaming a layer carries everything on it, in the drawing and in block

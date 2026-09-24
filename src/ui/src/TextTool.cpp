@@ -24,9 +24,11 @@ bool TextTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) {
 
     // Ask for text content.
     bool ok = false;
-    QString text =
-        QInputDialog::getText(m_viewport, QObject::tr("Text"), QObject::tr("Enter text:"),
-                              QLineEdit::Normal, QString(), &ok);
+    // Several lines, if wanted: each is written below the one before.
+    QString text = QInputDialog::getMultiLineText(m_viewport, QObject::tr("Text"),
+                                                  QObject::tr("Enter text:"), QString(), &ok);
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    while (text.endsWith(QLatin1Char('\n'))) text.chop(1);
     if (!ok || text.trimmed().isEmpty()) return true;
 
     // Get default text height from dimension style.
