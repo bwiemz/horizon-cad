@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -526,6 +527,32 @@ TEST(ModelCommandsTest, APatternOfAFeatureRepeatsOnlyIt) {
     add(missing.doc, std::move(lost));
     EXPECT_FALSE(missing.doc.rebuildModel());
     EXPECT_NE(missing.doc.lastBuildMessage().find("extrude_999"), std::string::npos);
+}
+
+// Two patterns of one separate body name their copies apart. Named alike, a
+// fillet on one copy's edge could find the other copy's after a rebuild.
+TEST(ModelCommandsTest, TwoPatternsOfOneBodyNameTheirCopiesApart) {
+    BoxPart part;
+    auto post = std::make_unique<ExtrudeFeature>(squareAt(20, 0, 2, 0), Vec3(0, 0, 1), 4.0);
+    post->setOperation(BodyOperation::NewBody);
+    const Feature* body = add(part.doc, std::move(post));
+    auto along = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 2);
+    along->setTargets({body->featureID()});
+    add(part.doc, std::move(along));
+    auto across = hz::doc::PatternFeature::makeLinear(Vec3(0, 1, 0), 5.0, 2);
+    across->setTargets({body->featureID(), body->featureID()});  // repeated once, not twice
+    EXPECT_EQ(across->targets().size(), 1u);
+    add(part.doc, std::move(across));
+    EXPECT_NEAR(volume(part.doc), 1000.0 + 3 * 16.0, 1e-6) << "the box, the post and two copies";
+
+    std::set<std::string> names;
+    for (const auto& face : part.doc.solid()->faces()) {
+        EXPECT_TRUE(names.insert(face.topoId.tag()).second) << "two faces " << face.topoId.tag();
+    }
+    names.clear();
+    for (const auto& edge : part.doc.solid()->edges()) {
+        EXPECT_TRUE(names.insert(edge.topoId.tag()).second) << "two edges " << edge.topoId.tag();
+    }
 }
 
 // A primitive stands where it is put: a box on its side, along +X from (10, 0, 0).

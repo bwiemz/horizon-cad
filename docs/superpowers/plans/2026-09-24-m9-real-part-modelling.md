@@ -337,8 +337,12 @@ definitions choose directions and faces with. 135 is independent and last.
 - **Patterns of features:**
   - `PatternFeature::setTargets(featureIDs)`: the pattern repeats those
     features' bodies (a hole's cut, a boss) rather than the whole part.
-  - Each copy is moved to its instance, renamed as it (`child("pattern",
-    k)`), and combined as its feature combines.
+  - Each copy is moved to its instance, renamed as that pattern's instance
+    (`child(<pattern's featureID>, k)`), and combined as its feature
+    combines. Named by the pattern, not "pattern" as a whole-part pattern
+    names copies: two patterns of one separate body made copies named
+    alike, and a new body is collected without renaming them apart.
+  - A feature listed twice is repeated once.
   - A target that is missing, suppressed or not body-creating is refused by
     name.
   - Both pattern forms have a checklist of the part's add or cut features;
@@ -353,11 +357,12 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ### Tests
 
-8 new, 1 changed.
+9 new, 1 changed.
 - Document:
   - a symmetric extrusion;
   - a cut through all, one way and both, and with nothing to go through;
   - a linear and a circular pattern of a hole alone, and a missing target;
+  - two patterns of one separate body, whose copies are named apart;
   - a box and a cylinder placed.
 - Files: extent, pattern features and placement round-trip.
 - Window:

@@ -1439,6 +1439,15 @@ std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_pt
 
 }  // namespace
 
+void PatternFeature::setTargets(std::vector<std::string> targets) {
+    m_targets.clear();
+    for (auto& id : targets) {
+        if (std::find(m_targets.begin(), m_targets.end(), id) == m_targets.end()) {
+            m_targets.push_back(std::move(id));
+        }
+    }
+}
+
 math::Mat4 PatternFeature::instanceTransform(int k) const {
     const double at = static_cast<double>(k);
     if (m_kind == Kind::Linear)
@@ -1482,13 +1491,15 @@ std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& conte
                 continue;
             }
             auto copy = model::Pattern::transformed(*tool, instanceTransform(k));
-            // Each copy's faces and edges named as its instance, as a
-            // pattern of the whole part names them.
+            // Each copy's faces and edges named as this pattern's instance k.
+            // By this pattern, not "pattern" as a whole-part pattern names
+            // them: two patterns of one separate body would otherwise make
+            // copies named alike, and nothing after renames them apart.
             for (auto& face : copy->faces()) {
-                if (face.topoId.isValid()) face.topoId = face.topoId.child("pattern", k);
+                if (face.topoId.isValid()) face.topoId = face.topoId.child(featureID(), k);
             }
             for (auto& edge : copy->edges()) {
-                if (edge.topoId.isValid()) edge.topoId = edge.topoId.child("pattern", k);
+                if (edge.topoId.isValid()) edge.topoId = edge.topoId.child(featureID(), k);
             }
             part = combine(target->operation(), std::move(part), std::move(copy), reason, naming());
             if (!part) return nullptr;
