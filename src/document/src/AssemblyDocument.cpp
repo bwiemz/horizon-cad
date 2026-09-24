@@ -34,13 +34,14 @@ std::size_t AssemblyDocument::InterferenceInput::faceCount() const {
     return faces;
 }
 
-InterferenceReport AssemblyDocument::measureInterference(const InterferenceInput& input) {
+InterferenceReport AssemblyDocument::measureInterference(const InterferenceInput& input,
+                                                         const std::atomic<bool>* cancelled) {
     InterferenceReport report;
     report.unchecked = input.unchecked;
     std::vector<const topo::Solid*> solids;
     solids.reserve(input.placed.size());
     for (const auto& s : input.placed) solids.push_back(s.get());
-    for (const auto& pair : model::InterferenceChecker::check(solids)) {
+    for (const auto& pair : model::InterferenceChecker::check(solids, cancelled)) {
         ComponentInterference ci;
         ci.componentA = input.ids[pair.indexA];
         ci.componentB = input.ids[pair.indexB];

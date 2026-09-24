@@ -11,7 +11,7 @@
 
 namespace hz::cstr {
 
-math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity) {
+std::optional<math::Vec2> pointOf(const GeometryRef& ref, const draft::DraftEntity& entity) {
     if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
         if (ref.featureIndex == 0) return line->start();
         if (ref.featureIndex == 1) return line->end();
@@ -29,25 +29,36 @@ math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity
         if (ref.featureIndex >= 0 && ref.featureIndex < static_cast<int>(pts.size()))
             return pts[ref.featureIndex];
     }
+    return std::nullopt;
+}
+
+std::optional<std::pair<math::Vec2, math::Vec2>> lineOf(const GeometryRef& ref,
+                                                        const draft::DraftEntity& entity) {
+    if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
+        if (ref.featureIndex == 0) return std::pair{line->start(), line->end()};
+    } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(&entity)) {
+        auto c = rect->corners();
+        int i = ref.featureIndex;
+        if (i >= 0 && i < 4) return std::pair{c[i], c[(i + 1) % 4]};
+    } else if (auto* poly = dynamic_cast<const draft::DraftPolyline*>(&entity)) {
+        auto& pts = poly->points();
+        int i = ref.featureIndex;
+        int n = static_cast<int>(pts.size());
+        if (i >= 0 && i < n - 1) return std::pair{pts[i], pts[i + 1]};
+        if (poly->closed() && i == n - 1) return std::pair{pts[n - 1], pts[0]};
+    }
+    return std::nullopt;
+}
+
+math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity) {
+    if (auto point = pointOf(ref, entity)) return *point;
     throw std::runtime_error("extractPoint: invalid GeometryRef for entity " +
                              std::to_string(ref.entityId));
 }
 
 std::pair<math::Vec2, math::Vec2> extractLine(const GeometryRef& ref,
                                               const draft::DraftEntity& entity) {
-    if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
-        if (ref.featureIndex == 0) return {line->start(), line->end()};
-    } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(&entity)) {
-        auto c = rect->corners();
-        int i = ref.featureIndex;
-        if (i >= 0 && i < 4) return {c[i], c[(i + 1) % 4]};
-    } else if (auto* poly = dynamic_cast<const draft::DraftPolyline*>(&entity)) {
-        auto& pts = poly->points();
-        int i = ref.featureIndex;
-        int n = static_cast<int>(pts.size());
-        if (i >= 0 && i < n - 1) return {pts[i], pts[i + 1]};
-        if (poly->closed() && i == n - 1) return {pts[n - 1], pts[0]};
-    }
+    if (auto line = lineOf(ref, entity)) return *line;
     throw std::runtime_error("extractLine: invalid GeometryRef for entity " +
                              std::to_string(ref.entityId));
 }

@@ -825,25 +825,22 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
                 }
 
                 // Compute indicator position: midpoint of referenced features.
-                try {
-                    if (!refIds.empty()) {
-                        const auto* e1 = doc->draftDocument().findEntity(refIds[0]);
-                        if (e1) {
-                            auto snaps = e1->snapPoints();
-                            if (!snaps.empty()) pos = snaps[0];
-                            if (refIds.size() > 1) {
-                                const auto* e2 = doc->draftDocument().findEntity(refIds.back());
-                                if (e2) {
-                                    auto snaps2 = e2->snapPoints();
-                                    if (!snaps2.empty()) {
-                                        pos = {(pos.x + snaps2[0].x) * 0.5,
-                                               (pos.y + snaps2[0].y) * 0.5};
-                                    }
+                if (!refIds.empty()) {
+                    const auto* e1 = doc->draftDocument().findEntity(refIds[0]);
+                    if (e1) {
+                        auto snaps = e1->snapPoints();
+                        if (!snaps.empty()) pos = snaps[0];
+                        if (refIds.size() > 1) {
+                            const auto* e2 = doc->draftDocument().findEntity(refIds.back());
+                            if (e2) {
+                                auto snaps2 = e2->snapPoints();
+                                if (!snaps2.empty()) {
+                                    pos = {(pos.x + snaps2[0].x) * 0.5,
+                                           (pos.y + snaps2[0].y) * 0.5};
                                 }
                             }
                         }
                     }
-                } catch (...) {
                 }
 
                 // Offset slightly above the position.

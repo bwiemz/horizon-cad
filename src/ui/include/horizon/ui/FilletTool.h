@@ -4,6 +4,7 @@
 
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Tool.h"
+#include "horizon/ui/TypedLength.h"
 
 namespace hz::ui {
 
@@ -33,8 +34,7 @@ private:
     enum class State { SelectFirstLine, SelectSecondLine };
     State m_state = State::SelectFirstLine;
 
-    double m_filletRadius = 1.0;
-    std::string m_radiusInput;
+    TypedLength m_radius{1.0};
 
     uint64_t m_firstEntityId = 0;
     math::Vec2 m_firstClickPos;

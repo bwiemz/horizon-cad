@@ -1158,6 +1158,8 @@ std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
     return nullptr;
 }
 
+/// executeMulti() for buildBodies(), which has no way to say why a feature
+/// failed: a combine that throws leaves no bodies, as one that fails does.
 std::vector<std::unique_ptr<topo::Solid>> executeMultiContained(
     const Feature& feat, std::vector<std::unique_ptr<topo::Solid>> bodies) {
     try {
@@ -1211,12 +1213,26 @@ bool takesPart(const Feature& feature) {
 /// One step of the regeneration rule every build path shares: a creating
 /// feature builds a tool body, combined with the part by its operation; any
 /// other feature transforms the part.
+///
+/// Nothing escapes it. The feature itself is contained (executeContained),
+/// but combining its body with the part (collecting a new body, checking the
+/// result) is kernel code too, and an exception from it would unwind through
+/// every build: out of a worker, or out of a trial build that has put the
+/// feature into the tree and not yet taken it out.
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
                                           std::string* reason) {
-    if (!feature.createsNewBody()) return executeContained(feature, std::move(part), reason);
-    auto tool = executeContained(feature, nullptr, reason);
-    if (!tool) return nullptr;
-    return combine(feature.operation(), std::move(part), std::move(tool), reason, feature.naming());
+    try {
+        if (!feature.createsNewBody()) return executeContained(feature, std::move(part), reason);
+        auto tool = executeContained(feature, nullptr, reason);
+        if (!tool) return nullptr;
+        return combine(feature.operation(), std::move(part), std::move(tool), reason,
+                       feature.naming());
+    } catch (const std::exception& e) {
+        if (reason) *reason = e.what();
+    } catch (...) {
+        if (reason) *reason = "unknown error";
+    }
+    return nullptr;
 }
 
 }  // namespace

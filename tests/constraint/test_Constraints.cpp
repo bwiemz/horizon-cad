@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Eigen/Dense>
+#include <stdexcept>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
@@ -207,4 +208,26 @@ TEST(Constraints, DimensionalValueAccessors) {
 
     cstr::CoincidentConstraint cc(refA, refB);
     EXPECT_FALSE(cc.hasDimensionalValue());
+}
+
+// A ref that does not fit its entity gives nothing, where extractPoint() and
+// extractLine() throw; the constraint tool's preview caught and dropped that.
+TEST(GeometryRef, ARefThatDoesNotFitItsEntityGivesNothing) {
+    draft::DraftLine line(math::Vec2(0, 0), math::Vec2(3, 4));
+    const cstr::GeometryRef end{line.id(), cstr::FeatureType::Point, 1};
+    const auto p = cstr::pointOf(end, line);
+    ASSERT_TRUE(p.has_value());
+    EXPECT_DOUBLE_EQ(p->x, 3.0);
+    EXPECT_DOUBLE_EQ(p->y, 4.0);
+
+    const cstr::GeometryRef past{line.id(), cstr::FeatureType::Point, 2};
+    EXPECT_FALSE(cstr::pointOf(past, line).has_value());
+    EXPECT_THROW(cstr::extractPoint(past, line), std::runtime_error);
+
+    const cstr::GeometryRef edge{line.id(), cstr::FeatureType::Line, 0};
+    EXPECT_TRUE(cstr::lineOf(edge, line).has_value());
+    EXPECT_FALSE(cstr::lineOf({line.id(), cstr::FeatureType::Line, 1}, line).has_value());
+    draft::DraftCircle circle(math::Vec2(0, 0), 1.0);
+    EXPECT_FALSE(cstr::lineOf(edge, circle).has_value()) << "a circle has no line";
+    EXPECT_THROW(cstr::extractLine(edge, circle), std::runtime_error);
 }

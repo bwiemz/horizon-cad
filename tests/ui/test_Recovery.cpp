@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QMessageBox>
 #include <QTabBar>
 #include <QTemporaryDir>
@@ -20,6 +21,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/RecoveryManager.h"
 
 using hz::test::DialogResponder;
@@ -62,6 +64,26 @@ QString leaveCrashedSession(const QString& root, const QString& title, const QSt
                                             {"savedAt", "2026-09-23T12:00:00.000Z"}})
                       .toJson());
     return dir;
+}
+
+/// Rewrite the recovery count in the sidecar leaveCrashedSession() wrote.
+void setRecoveries(const QString& dir, int recoveries) {
+    QFile sidecar(QDir(dir).filePath(QStringLiteral("7.json")));
+    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
+    QJsonObject meta = QJsonDocument::fromJson(sidecar.readAll()).object();
+    sidecar.close();
+    meta.insert(QStringLiteral("recoveries"), recoveries);
+    ASSERT_TRUE(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    sidecar.write(QJsonDocument(meta).toJson());
+}
+
+/// The recovery count in the one sidecar in `dir`, or -1.
+int recoveriesIn(const QString& dir) {
+    const QStringList sidecars = QDir(dir).entryList({QStringLiteral("*.json")}, QDir::Files);
+    if (sidecars.size() != 1) return -1;
+    QFile sidecar(QDir(dir).filePath(sidecars.front()));
+    if (!sidecar.open(QIODevice::ReadOnly)) return -1;
+    return QJsonDocument::fromJson(sidecar.readAll()).object().value("recoveries").toInt();
 }
 
 }  // namespace
@@ -151,9 +173,111 @@ TEST(RecoveryManagerTest, ACrashedSessionWithNothingToRecoverIsCleanedUp) {
     EXPECT_FALSE(QFileInfo::exists(empty));
 }
 
+// A recovery that does not finish (opening the document stops the
+// application) is counted in the snapshot it was reading, for the next start.
+TEST(RecoveryManagerTest, ARecoveryThatDidNotFinishIsCountedNextTime) {
+    QTemporaryDir root;
+    leaveCrashedSession(root.path(), QStringLiteral("Plan"), QString());
+    {
+        RecoveryManager first(root.path());
+        const auto orphans = first.claimOrphans();
+        ASSERT_EQ(orphans.size(), 1u);
+        EXPECT_EQ(orphans[0].recoveries, 0);
+        first.noteRecoveryAttempt();
+        // Opening it stops the application here: nothing is discarded.
+    }
+    RecoveryManager second(root.path());
+    const auto orphans = second.claimOrphans();
+    ASSERT_EQ(orphans.size(), 1u);
+    EXPECT_EQ(orphans[0].recoveries, 1);
+}
+
+TEST(RecoveryManagerTest, ASessionThatCannotStartSaysWhy) {
+    QTemporaryDir dir;
+    const QString notADirectory = QDir(dir.path()).filePath(QStringLiteral("file"));
+    QFile file(notADirectory);
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+    file.close();
+    RecoveryManager recovery(notADirectory);
+    EXPECT_FALSE(recovery.isActive());
+    EXPECT_TRUE(recovery.problem().contains(QStringLiteral("cannot create")))
+        << recovery.problem().toStdString();
+}
+
 // ---------------------------------------------------------------------------
 // MainWindow autosave and recovery
 // ---------------------------------------------------------------------------
+
+// An autosave that cannot be written is shown, until one can be again. It
+// used to go to the log alone, and a crash then found nothing to recover.
+TEST(RecoveryWindowTest, AFailedAutosaveIsShown) {
+    MainWindow w;
+    auto* warning = w.findChild<QLabel*>(QStringLiteral("autosaveWarning"));
+    ASSERT_NE(warning, nullptr);
+    EXPECT_TRUE(warning->isHidden());
+    addLine(*w.activeDocument());
+
+    const QString session = w.recovery().sessionDirectory();
+    const QFileDevice::Permissions writable = QFile::permissions(session);
+    QFile::setPermissions(session, QFileDevice::ReadOwner | QFileDevice::ExeOwner);
+    QFile probe(QDir(session).filePath(QStringLiteral("probe")));
+    if (probe.open(QIODevice::WriteOnly)) {
+        probe.close();
+        probe.remove();
+        QFile::setPermissions(session, writable);
+        GTEST_SKIP() << "a read-only directory is still writable here (root, or Windows)";
+    }
+    w.autosave();
+    const bool shown = !warning->isHidden();
+    const QString text = warning->text();
+    // Applying the preferences (any change) is not a write: the failure stands.
+    w.applyPreferences(hz::ui::Preferences::current());
+    const bool stillShown = !warning->isHidden();
+    QFile::setPermissions(session, writable);
+    EXPECT_TRUE(shown);
+    EXPECT_EQ(text, QStringLiteral("Autosave failed"));
+    EXPECT_TRUE(stillShown) << "hidden by applying the preferences";
+
+    w.autosave();
+    EXPECT_TRUE(warning->isHidden()) << "gone once autosave works again";
+}
+
+// A document recovered before, whose session then stopped too, may be what
+// stops Horizon CAD: Recover is no longer the default, so pressing Enter at
+// every start does not repeat it.
+TEST(RecoveryWindowTest, ADocumentThatStoppedTheLastRecoveryIsNotRecoveredByDefault) {
+    QString crashed;
+    {
+        MainWindow w;
+        const QString root = QFileInfo(w.recovery().sessionDirectory()).path();
+        crashed = leaveCrashedSession(root, QStringLiteral("Plan"), QString());
+        setRecoveries(crashed, 1);
+        DialogResponder later(QMessageBox::Cancel, QStringLiteral("Recover Documents"), 5000);
+        w.offerRecovery();
+        ASSERT_TRUE(later.seen());
+        EXPECT_EQ(later.defaultButton(), QMessageBox::Cancel);
+        EXPECT_TRUE(later.informativeText().contains(QStringLiteral("Plan")))
+            << later.informativeText().toStdString();
+    }
+    EXPECT_TRUE(QFileInfo::exists(crashed)) << "kept, for when the user chooses";
+    QDir(crashed).removeRecursively();
+}
+
+// Recovered documents are in this session's snapshots before the crashed
+// session's are deleted, and counted: a crash from here on still finds them.
+TEST(RecoveryWindowTest, RecoveredDocumentsAreSnapshotAtOnceAndCounted) {
+    MainWindow w;
+    const QString root = QFileInfo(w.recovery().sessionDirectory()).path();
+    const QString crashed = leaveCrashedSession(root, QStringLiteral("Plan"), QString());
+    DialogResponder recover(QMessageBox::Yes, QStringLiteral("Recover Documents"), 5000);
+    w.offerRecovery();
+    ASSERT_TRUE(recover.seen());
+    EXPECT_EQ(recover.defaultButton(), QMessageBox::Yes) << "never stopped one before";
+    EXPECT_FALSE(QFileInfo::exists(crashed));
+    EXPECT_EQ(recoveriesIn(w.recovery().sessionDirectory()), 1);
+    DialogResponder discard(QMessageBox::Discard);
+    w.close();
+}
 
 TEST(RecoveryWindowTest, AutosaveWritesOnlyModifiedDocuments) {
     MainWindow w;

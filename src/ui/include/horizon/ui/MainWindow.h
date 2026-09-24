@@ -233,6 +233,9 @@ private:
         bool snapshotStale = true;
         /// Reopened from a crashed session and not saved since.
         bool recovered = false;
+        /// Times it has been recovered without being saved since, this time
+        /// included (RecoveryManager::Entry::recoveries, plus one).
+        int recoveries = 0;
         /// How long its last model rebuild took, in milliseconds.
         qint64 lastBuildMs = 0;
         /// Its model is out of date: a rebuild for it was dropped while
@@ -272,7 +275,7 @@ private:
         io::ImportReport report;
         std::string error;  ///< why nothing was read (lastError is per thread)
     };
-    static StepLoad loadStep(const std::string& path);
+    static StepLoad loadStep(const std::string& path, const std::atomic<bool>* cancelled = nullptr);
     void finishStepImport(const QString& fileName, StepLoad load);
     void onImportFinished();
     void showInterference(const doc::AssemblyDocument& assembly,
@@ -354,6 +357,10 @@ private:
     void watchDocument(const std::shared_ptr<doc::Document>& document);
     /// Drop the tab's snapshot once its document is saved or closed.
     void forgetSnapshot(DocTab& tab);
+    /// Show in the status bar that autosave is off (it could not start) or
+    /// that its last write failed, with @p failure saying why; else nothing.
+    /// Autosave turned off in the preferences shows nothing either.
+    void showAutosaveState(const QString& failure = {});
 
     /// Tell the user a file operation failed and why, and log it.
     /// `summary` is e.g. "Could not open".
@@ -402,6 +409,7 @@ private:
     QLabel* m_statusSnap = nullptr;
     QLabel* m_statusSelection = nullptr;
     QLabel* m_statusTool = nullptr;
+    QLabel* m_autosaveWarning = nullptr;
 };
 
 }  // namespace hz::ui

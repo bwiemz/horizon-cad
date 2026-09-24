@@ -19,7 +19,7 @@ void FilletTool::activate(ViewportWidget* viewport) {
     Tool::activate(viewport);
     m_state = State::SelectFirstLine;
     m_firstEntityId = 0;
-    m_radiusInput.clear();
+    m_radius.clear();
     m_hasPreview = false;
 }
 
@@ -70,10 +70,10 @@ bool FilletTool::computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint6
     if ((midClick - corner).dot(n2) < 0) n2 = -n2;
 
     // Offset lines by radius R.
-    math::Vec2 offA1 = lineA->start() + n1 * m_filletRadius;
-    math::Vec2 offA2 = lineA->end() + n1 * m_filletRadius;
-    math::Vec2 offB1 = lineB->start() + n2 * m_filletRadius;
-    math::Vec2 offB2 = lineB->end() + n2 * m_filletRadius;
+    math::Vec2 offA1 = lineA->start() + n1 * m_radius.value();
+    math::Vec2 offA2 = lineA->end() + n1 * m_radius.value();
+    math::Vec2 offB1 = lineB->start() + n2 * m_radius.value();
+    math::Vec2 offB2 = lineB->end() + n2 * m_radius.value();
 
     // Intersect offset lines to find arc center.
     math::Vec2 offD1 = offA2 - offA1;
@@ -83,7 +83,7 @@ bool FilletTool::computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint6
 
     double offT = (offB1 - offA1).cross(offD2) / offDenom;
     arcCenter = offA1 + offD1 * offT;
-    arcRadius = m_filletRadius;
+    arcRadius = m_radius.value();
 
     // Tangent points: project arc center onto each line.
     auto projectOnLine = [](const math::Vec2& center, const math::Vec2& lineStart,
@@ -248,39 +248,15 @@ bool FilletTool::keyPressEvent(QKeyEvent* event) {
         return true;
     }
 
-    // Capture numeric input for radius.
-    if (event->key() >= Qt::Key_0 && event->key() <= Qt::Key_9) {
-        m_radiusInput += static_cast<char>('0' + (event->key() - Qt::Key_0));
-        return true;
-    }
-    if (event->key() == Qt::Key_Period) {
-        m_radiusInput += '.';
-        return true;
-    }
-    if (event->key() == Qt::Key_Backspace && !m_radiusInput.empty()) {
-        m_radiusInput.pop_back();
-        return true;
-    }
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        if (!m_radiusInput.empty()) {
-            try {
-                double r = std::stod(m_radiusInput);
-                if (r > 0.0) m_filletRadius = r;
-            } catch (...) {
-            }
-            m_radiusInput.clear();
-        }
-        return true;
-    }
-
-    return false;
+    // A radius typed while the tool runs.
+    return m_radius.key(event->key());
 }
 
 void FilletTool::cancel() {
     m_state = State::SelectFirstLine;
     m_firstEntityId = 0;
     m_hasPreview = false;
-    m_radiusInput.clear();
+    m_radius.clear();
 }
 
 std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
@@ -309,13 +285,16 @@ std::vector<Tool::ArcPreview> FilletTool::getPreviewArcs() const {
 }
 
 std::string FilletTool::promptText() const {
+    std::string base;
     switch (m_state) {
         case State::SelectFirstLine:
-            return "Select first line for fillet";
+            base = "Select first line for fillet";
+            break;
         case State::SelectSecondLine:
-            return "Select second line for fillet";
+            base = "Select second line for fillet";
+            break;
     }
-    return "";
+    return base + m_radius.prompt("radius");
 }
 
 bool FilletTool::wantsCrosshair() const {

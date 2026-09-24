@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cmath>
 #include <deque>
 #include <memory>
@@ -88,6 +89,19 @@ TEST(InterferenceCheckerTest, CheckFindsOnlyRealPairs) {
     // Overlap region is [2,4]^3.
     EXPECT_NEAR(pairs[0].overlapBounds.min().x, 2.0, 1e-6);
     EXPECT_NEAR(pairs[0].overlapBounds.max().x, 4.0, 1e-6);
+}
+
+// Cancelling an interference check stops it before the next pair. The check
+// on a worker ran to its end whatever Cancel said.
+TEST(InterferenceCheckerTest, ACancelledCheckStopsBeforeTheNextPair) {
+    auto a = PrimitiveFactory::makeBox(4, 4, 4);
+    auto b = PrimitiveFactory::makeBox(4, 4, 4);
+    translate(*b, Vec3(2, 2, 2));
+    const std::vector<const hz::topo::Solid*> solids = {a.get(), b.get()};
+    std::atomic<bool> cancelled{true};
+    EXPECT_TRUE(InterferenceChecker::check(solids, &cancelled).empty());
+    cancelled = false;
+    EXPECT_EQ(InterferenceChecker::check(solids, &cancelled).size(), 1u);
 }
 
 TEST(InterferenceCheckerTest, EmptyAndSingleInputs) {

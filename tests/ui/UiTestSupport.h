@@ -17,6 +17,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QString>
 #include <QStringList>
@@ -51,6 +52,8 @@ public:
     bool seen() const { return m_seen; }
     const QString& text() const { return m_text; }
     const QString& informativeText() const { return m_informativeText; }
+    /// The button Enter would have pressed.
+    QMessageBox::StandardButton defaultButton() const { return m_default; }
 
     /// Run the event loop until a dialog has been answered or `ms` elapse.
     void waitForDialog(int ms) {
@@ -70,6 +73,7 @@ private:
             m_seen = true;
             m_text = box->text();
             m_informativeText = box->informativeText();
+            m_default = box->standardButton(box->defaultButton());
             button->click();
             return;
         }
@@ -84,6 +88,7 @@ private:
     bool m_seen = false;
     QString m_text;
     QString m_informativeText;
+    QMessageBox::StandardButton m_default = QMessageBox::NoButton;
 };
 
 /// What to put in a feature form before accepting it, built up by chaining:

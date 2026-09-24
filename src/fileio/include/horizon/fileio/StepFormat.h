@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -51,12 +52,18 @@ public:
     /// millimetres whatever the file's length unit. A solid that cannot be
     /// rebuilt is left out and named in @p report; the others still come in.
     /// Returns an empty vector when none can be read (see lastError()).
-    static std::vector<std::unique_ptr<topo::Solid>> load(const std::string& filePath,
-                                                          ImportReport* report = nullptr);
+    ///
+    /// @p cancelled, when given, is looked at all the way through: once it
+    /// is set, reading stops and nothing is returned (lastError() is
+    /// "cancelled"). An import on a worker thread passes its Cancel flag.
+    static std::vector<std::unique_ptr<topo::Solid>> load(
+        const std::string& filePath, ImportReport* report = nullptr,
+        const std::atomic<bool>* cancelled = nullptr);
 
     /// Parse Part-21 text and reconstruct the solids it holds, as load().
-    static std::vector<std::unique_ptr<topo::Solid>> fromString(const std::string& text,
-                                                                ImportReport* report = nullptr);
+    static std::vector<std::unique_ptr<topo::Solid>> fromString(
+        const std::string& text, ImportReport* report = nullptr,
+        const std::atomic<bool>* cancelled = nullptr);
 
     /// Human-readable description of the most recent load/save failure on this
     /// thread's last call (empty when the call succeeded).
