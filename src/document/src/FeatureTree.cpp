@@ -28,6 +28,12 @@ namespace hz::doc {
 
 namespace {
 
+/// Report `why` through a feature's optional reason out-parameter, and fail.
+std::unique_ptr<topo::Solid> failWith(std::string* reason, std::string why) {
+    if (reason) *reason = std::move(why);
+    return nullptr;
+}
+
 /// A count parameter as an int. False for NaN, infinity or a value below
 /// `min`; clamped to `max` above it. static_cast<int> of a double outside the
 /// range of int is undefined behaviour, and a file can hold any double.
@@ -127,12 +133,12 @@ void ExtrudeFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "extrude_");
 }
 
-std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
-    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                     std::string* reason) const {
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
     return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
-                                   m_featureID, m_segments, m_chordTolerance);
+                                   m_featureID, m_segments, m_chordTolerance, reason);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,10 +200,10 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "revolve_");
 }
 
-std::unique_ptr<topo::Solid> RevolveFeature::execute(
-    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                     std::string* reason) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID, segments(), m_chordTolerance);
+                                   m_angle, m_featureID, segments(), m_chordTolerance, reason);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,15 +229,17 @@ void LoftFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "loft_");
 }
 
-std::unique_ptr<topo::Solid> LoftFeature::execute(
-    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+std::unique_ptr<topo::Solid> LoftFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                  std::string* reason) const {
     std::vector<model::LoftSection> sections;
     sections.reserve(m_sections.size());
     for (const auto& sk : m_sections) {
-        if (!sk) return nullptr;
+        if (!sk) return failWith(reason, "a section's sketch is missing");
         sections.push_back({sk->entities(), sk->plane()});
     }
-    return model::Loft::execute(sections, m_featureID);
+    auto solid = model::Loft::execute(sections, m_featureID);
+    if (!solid) return failWith(reason, "the sections could not be lofted into a solid");
+    return solid;
 }
 
 // ---------------------------------------------------------------------------
@@ -354,12 +362,18 @@ bool SweepFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> SweepFeature::execute(
-    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
-    if (!m_profile || !m_path) return nullptr;
+std::unique_ptr<topo::Solid> SweepFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                   std::string* reason) const {
+    if (!m_profile || !m_path) return failWith(reason, "the profile or path sketch is missing");
     std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments, m_chordTolerance);
-    return model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints, m_featureID,
-                                 m_segments, m_chordTolerance);
+    auto solid = model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
+                                       m_featureID, m_segments, m_chordTolerance);
+    if (!solid) {
+        return failWith(reason,
+                        "the profile cannot follow the path: it may turn more tightly than the "
+                        "profile allows, double back, or cross itself");
+    }
+    return solid;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,9 +414,12 @@ bool DraftFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
-    if (!inputSolid) return nullptr;
-    return model::Draft::execute(std::move(inputSolid), m_pullDir, m_neutralPoint, m_angle);
+std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                   std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to draft");
+    auto solid = model::Draft::execute(std::move(inputSolid), m_pullDir, m_neutralPoint, m_angle);
+    if (!solid) return failWith(reason, "the draft could not be applied");
+    return solid;
 }
 
 // ---------------------------------------------------------------------------
@@ -442,10 +459,12 @@ bool ShellFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
-    if (!inputSolid) return nullptr;
+std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                   std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to shell");
     auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
-    return result.ok ? std::move(result.solid) : nullptr;
+    if (!result.ok) return failWith(reason, result.message);
+    return std::move(result.solid);
 }
 
 // ---------------------------------------------------------------------------
@@ -501,11 +520,16 @@ int FilletFeature::arcSegments() const {
                : m_arcSegments;
 }
 
-std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
-    if (!inputSolid) return nullptr;
+std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                    std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to fillet");
     auto result =
         model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID, arcSegments());
-    return result.solid ? std::move(result.solid) : nullptr;
+    if (!result.solid) {
+        return failWith(reason, result.errorMessage.empty() ? "the fillet could not be built"
+                                                            : result.errorMessage);
+    }
+    return std::move(result.solid);
 }
 
 // ---------------------------------------------------------------------------
@@ -545,11 +569,15 @@ bool ChamferFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> ChamferFeature::execute(
-    std::unique_ptr<topo::Solid> inputSolid) const {
-    if (!inputSolid) return nullptr;
+std::unique_ptr<topo::Solid> ChamferFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                     std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to chamfer");
     auto result = model::ChamferOp::executeEqual(*inputSolid, m_edgeIds, m_distance, m_featureID);
-    return result.solid ? std::move(result.solid) : nullptr;
+    if (!result.solid) {
+        return failWith(reason, result.errorMessage.empty() ? "the chamfer could not be built"
+                                                            : result.errorMessage);
+    }
+    return std::move(result.solid);
 }
 
 // ---------------------------------------------------------------------------
@@ -598,8 +626,8 @@ bool BooleanFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> BooleanFeature::execute(
-    std::unique_ptr<topo::Solid> inputSolid) const {
+std::unique_ptr<topo::Solid> BooleanFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                     std::string* /*reason*/) const {
     // A Boolean needs two or more operands; the single-solid build() path only
     // has the running solid, so this is a no-op there. Multi-body combination
     // happens in executeMulti() when driven by buildBodies().
@@ -692,13 +720,15 @@ bool PatternFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
-std::unique_ptr<topo::Solid> PatternFeature::execute(
-    std::unique_ptr<topo::Solid> inputSolid) const {
-    if (!inputSolid) return nullptr;
-    if (m_kind == Kind::Linear) {
-        return model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed);
-    }
-    return model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count, m_suppressed);
+std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                     std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to pattern");
+    auto solid = m_kind == Kind::Linear
+                     ? model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed)
+                     : model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count,
+                                                m_suppressed);
+    if (!solid) return failWith(reason, "overlapping instances could not be merged into one body");
+    return solid;
 }
 
 // ---------------------------------------------------------------------------
@@ -853,22 +883,33 @@ int PrimitiveFeature::segments() const {
     return model::PrimitiveFactory::segmentsForTolerance(radius, m_chordTolerance);
 }
 
-std::unique_ptr<topo::Solid> PrimitiveFeature::execute(
-    std::unique_ptr<topo::Solid> /*inputSolid*/) const {
+std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                       std::string* reason) const {
     const int n = segments();
+    std::unique_ptr<topo::Solid> solid;
     switch (m_kind) {
         case Kind::Box:
-            return model::PrimitiveFactory::makeBox(m_p0, m_p1, m_p2);
+            solid = model::PrimitiveFactory::makeBox(m_p0, m_p1, m_p2);
+            break;
         case Kind::Cylinder:
-            return model::PrimitiveFactory::makeCylinder(m_p0, m_p1, n);
+            solid = model::PrimitiveFactory::makeCylinder(m_p0, m_p1, n);
+            break;
         case Kind::Sphere:
-            return model::PrimitiveFactory::makeSphere(m_p0, n);
+            solid = model::PrimitiveFactory::makeSphere(m_p0, n);
+            break;
         case Kind::Cone:
-            return model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2, n);
+            solid = model::PrimitiveFactory::makeCone(m_p0, m_p1, m_p2, n);
+            break;
         case Kind::Torus:
-            return model::PrimitiveFactory::makeTorus(m_p0, m_p1, n);
+            solid = model::PrimitiveFactory::makeTorus(m_p0, m_p1, n);
+            break;
     }
-    return nullptr;
+    if (!solid) {
+        return failWith(reason,
+                        "these dimensions do not make a solid: they must be positive (a cone may "
+                        "have one zero radius, a torus's tube must be thinner than its ring)");
+    }
+    return solid;
 }
 
 int DatumFeature::s_nextID = 1;
@@ -934,7 +975,8 @@ model::DatumPoint DatumFeature::asPoint() const {
     return model::DatumPoint{m_origin};
 }
 
-std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> inputSolid) const {
+std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                   std::string* /*reason*/) const {
     // Non-geometric: pass the body through unchanged. The feature tree skips
     // construction features when building, so this is only reached if called
     // directly.
@@ -982,7 +1024,7 @@ std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
                                               std::unique_ptr<topo::Solid> input,
                                               std::string* reason = nullptr) {
     try {
-        return feat.execute(std::move(input));
+        return feat.execute(std::move(input), reason);
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -1023,21 +1065,15 @@ std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<to
                                         ? model::BooleanType::Subtract
                                         : model::BooleanType::Intersect;
     std::unique_ptr<topo::Solid> result;
+    std::string booleanReason;
     try {
-        result = model::BooleanOp::execute(*part, *tool, type);
+        result = model::BooleanOp::execute(*part, *tool, type, &booleanReason);
     } catch (const std::exception& e) {
         if (reason) *reason = std::string("the Boolean failed: ") + e.what();
         return nullptr;
     }
-    if (result) return result;
-    switch (operation) {
-        case BodyOperation::Cut:
-            return fail("the cut would leave nothing, or its Boolean could not be computed");
-        case BodyOperation::Intersect:
-            return fail("the bodies do not overlap, or their Boolean could not be computed");
-        default:
-            return fail("the join's Boolean could not be computed");
-    }
+    if (!result && reason) *reason = booleanReason;
+    return result;
 }
 
 /// One step of the regeneration rule every build path shares: a creating

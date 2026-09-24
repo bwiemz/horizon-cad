@@ -9,7 +9,22 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness, Milestone 2 (Phase 102)
+## Unreleased — Production readiness, Milestone 2 (Phases 102–103)
+
+- **A failed feature said "failed to execute" (103).** Extrude, Revolve,
+  Loft, Sweep, Draft, the primitives, patterns and `BooleanOp` returned a bare
+  null pointer; Shell, Fillet and Chamfer produced messages that their
+  features then dropped; `ProfileValidator` explained a bad profile and
+  Extrude threw the explanation away; and the Extrude command guessed "profile
+  is not a closed loop" for every failure. `Feature::execute` now takes an
+  optional reason, and every feature fills it, so the feature tree and status
+  bar say, for example, "the profile is open: its ends at (0, 0) and (0, 10)
+  do not meet", "Edge not found: box/no_such_edge", or "the cut removes the
+  whole body". Boolean failures now distinguish an empty result (a cut
+  through everything, an intersection of bodies that do not touch) from one
+  that could not be sewn. Extrude also refuses two inputs it used to turn
+  into zero-volume solids without complaint: a zero distance, and a direction
+  lying in the sketch plane.
 
 - **A part could hold only one feature's geometry (102).** The rebuild
   threaded a single solid through the feature tree, and every feature that

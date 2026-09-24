@@ -1,6 +1,10 @@
 #include "horizon/modeling/ProfileValidator.h"
 
 #include <cmath>
+#include <iomanip>
+#include <locale>
+#include <sstream>
+#include <string>
 
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -38,6 +42,14 @@ static bool pointsMatch(const Vec2& a, const Vec2& b, double tolerance) {
     return (dx * dx + dy * dy) <= tolerance * tolerance;
 }
 
+/// "(3, 4.5)" — a point for a message, as a user would read it off the grid.
+static std::string describePoint(const Vec2& p) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << '(' << std::setprecision(6) << p.x << ", " << p.y << ')';
+    return out.str();
+}
+
 // ---------------------------------------------------------------------------
 // ProfileValidator::validate
 // ---------------------------------------------------------------------------
@@ -47,7 +59,7 @@ ProfileValidationResult ProfileValidator::validate(
     ProfileValidationResult result;
 
     if (entities.empty()) {
-        result.errorMessage = "Empty profile";
+        result.errorMessage = "the profile is empty";
         return result;
     }
 
@@ -68,7 +80,7 @@ ProfileValidationResult ProfileValidator::validate(
     EndpointPair firstEP = getEndpoints(entities[0]);
     if (!firstEP.valid) {
         result.errorMessage =
-            "First entity has no start/end points (circle in multi-entity profile?)";
+            "a circle cannot be joined to other curves in a profile; extrude it on its own";
         return result;
     }
 
@@ -105,7 +117,7 @@ ProfileValidationResult ProfileValidator::validate(
         }
         if (!found) {
             result.errorMessage =
-                "Cannot chain entity " + std::to_string(iter) + "; gap in profile";
+                "the profile has a gap: nothing continues from " + describePoint(chainEnd);
             return result;
         }
     }
@@ -114,7 +126,8 @@ ProfileValidationResult ProfileValidator::validate(
     if (pointsMatch(chainEnd, chainStart, tolerance)) {
         result.isClosed = true;
     } else {
-        result.errorMessage = "Profile is not closed (gap between last and first endpoint)";
+        result.errorMessage = "the profile is open: its ends at " + describePoint(chainStart) +
+                              " and " + describePoint(chainEnd) + " do not meet";
     }
 
     return result;

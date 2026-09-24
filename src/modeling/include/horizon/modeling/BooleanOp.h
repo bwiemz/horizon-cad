@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "horizon/topology/Solid.h"
 
@@ -42,10 +43,12 @@ enum class BooleanType { Union, Subtract, Intersect };
 class BooleanOp {
 public:
     /// Execute a Boolean operation on two solids.
+    /// @param reason  When given, receives why there is no result.
     /// @return The result solid, or nullptr when the result is empty
     ///         (e.g. disjoint Intersect, A−A) or the inputs degenerate.
     static std::unique_ptr<topo::Solid> execute(const topo::Solid& solidA,
-                                                const topo::Solid& solidB, BooleanType type);
+                                                const topo::Solid& solidB, BooleanType type,
+                                                std::string* reason = nullptr);
 };
 
 }  // namespace hz::model
