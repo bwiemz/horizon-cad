@@ -2740,20 +2740,35 @@ void MainWindow::onCreateBlock() {
     }
     if (filteredIds.empty()) return;
 
-    bool ok = false;
-    QString name = QInputDialog::getText(this, tr("Create Block"), tr("Block name:"),
-                                         QLineEdit::Normal, QString(), &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
+    // The base point, where the block is inserted from: by default the centre
+    // of what was selected, or typed.
+    math::BoundingBox bounds;
+    for (uint64_t id : filteredIds) {
+        if (const auto* e = m_document->draftDocument().findEntity(id)) {
+            const auto bb = e->boundingBox();
+            if (bb.isValid()) bounds.expand(bb);
+        }
+    }
+    const math::Vec3 centre = bounds.isValid() ? bounds.center() : math::Vec3(0, 0, 0);
+    FeatureForm form(this, tr("Create Block"));
+    auto* nameField = form.text(QStringLiteral("blockName"), tr("Block name:"));
+    auto* baseX = form.number(QStringLiteral("baseX"), tr("Base point X:"), centre.x, -1e9, 1e9, 4);
+    auto* baseY = form.number(QStringLiteral("baseY"), tr("Base point Y:"), centre.y, -1e9, 1e9, 4);
+    if (!form.exec()) return;
+    const QString name = nameField->text().trimmed();
+    if (name.isEmpty()) return;
 
-    std::string blockName = name.trimmed().toStdString();
+    std::string blockName = name.toStdString();
     if (m_document->draftDocument().blockTable().findBlock(blockName)) {
         QMessageBox::warning(this, tr("Create Block"),
                              tr("A block with that name already exists."));
         return;
     }
 
+    const math::Vec2 base(baseX->value(), baseY->value());
     auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->draftDocument(), blockName,
-                                                         filteredIds);
+                                                         filteredIds, base,
+                                                         m_document->layerManager().currentLayer());
     auto* rawCmd = cmd.get();
     m_document->undoStack().push(std::move(cmd));
 

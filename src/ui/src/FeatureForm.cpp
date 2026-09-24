@@ -5,6 +5,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QSpinBox>
 
@@ -26,6 +27,13 @@ QDoubleSpinBox* FeatureForm::number(const QString& name, const QString& label, d
     spin->setValue(value);
     m_form->addRow(label, spin);
     return spin;
+}
+
+QLineEdit* FeatureForm::text(const QString& name, const QString& label, const QString& value) {
+    auto* edit = new QLineEdit(value, &m_dialog);
+    edit->setObjectName(name);
+    m_form->addRow(label, edit);
+    return edit;
 }
 
 QSpinBox* FeatureForm::count(const QString& name, const QString& label, int value, int min,

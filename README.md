@@ -5,17 +5,18 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 ## Features
 
 ### Drawing Tools
-- **Line**, **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polyline** (multi-click, open or closed)
+- **Line** (chaining), **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polyline** (multi-click; closed with Polyline Edit)
 - **Ellipse** (center + semi-axes), **Spline** (cubic B-spline with control points)
 - **Text** (standalone text entities with height, rotation, alignment)
-- **Hatch** (boundary-fill with ANSI line, cross, and custom patterns)
-- Snap-to-geometry engine with endpoint, midpoint, center, and intersection snapping
+- **Hatch** (boundary fill: solid, parallel lines, or cross-hatch)
+- Snapping to endpoints, midpoints, centers, quadrants, intersections and the grid, each switchable (F3, F9); ortho (F8) and polar tracking (F10)
+- Points typed while drawing: `x,y`, `@dx,dy`, `@length<angle`, or a length toward the cursor
 
 ### Editing Tools
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
 - **Entity grouping** (Ctrl+G / Ctrl+Shift+G) — lightweight selection groups without block overhead
 - Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale
-- Copy/Paste with clipboard support (Ctrl+C/X/V)
+- Copy, cut and paste within Horizon CAD (Ctrl+C/X/V; not the system clipboard)
 - Rectangular and Polar array operations
 - Polyline editing (add/remove vertices, toggle closed, join polylines)
 - Grip editing for direct point manipulation
@@ -26,7 +27,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - **Angular** dimensions measuring the angle between two lines
 - **Leader** annotations with custom text
 - Text override support on all dimension types
-- Configurable dimension style (text height, arrow size, precision)
+- A dimension style (text height, arrow size, precision) kept with the drawing; it has no editor yet
 
 ### Measurement Tools
 - **Distance** measurement between two points
@@ -39,7 +40,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Constraint solver with real-time visual indicators
 
 ### Blocks & Components
-- Create reusable block definitions from selected entities
+- Create reusable block definitions from selected entities, at a base point you choose
 - Insert block references with position, rotation, and scale
 - Explode block references back to individual entities
 
@@ -47,21 +48,21 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Layer management with visibility, lock, color, line width, and line type
 - **Line types**: Continuous, Dashed, Dotted, DashDot, Center, Hidden, Phantom — rendered via GPU shader
 - ByLayer property inheritance — entities can inherit color, line width, and line type from their layer
-- Property panel for inspecting and editing selected entities
-- Layer panel with add, remove, rename, and per-layer controls
+- Property panel for inspecting and editing selected entities, including a line's, circle's or arc's geometry
+- Layer panel with add, remove, rename, current layer, and per-layer visibility, lock, color, line weight and line type
 
 ### Document System
 - Full undo/redo with composite command support
-- Native JSON file format (`.hcad`/`.hzpart`, format v16) with backward-compatible versioning
+- Native JSON file format (`.hcad`/`.hzpart`, format v18) with backward-compatible versioning
 - DXF import/export (LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT)
 - New, Open, Save, Save As workflow
 
 ### Modern UI
 - **Dark theme** with Fusion style, custom palette, and QSS stylesheet
-- **Ribbon toolbar** with tabbed categories (Home, Draw, Modify, Annotate, Constrain, Measure, Blocks, View)
+- **Ribbon toolbar** with tabbed categories (Home, Draw, Modify, Annotate, Constrain, Block, 3D)
 - **Programmatic icons** — 45+ vector-style icons generated via QPainter (no external assets)
-- **Keyboard shortcuts** for all tools (single-key access: L=Line, C=Circle, etc.)
-- **Enhanced status bar** showing coordinates, active tool, snap mode, selection count, and tool prompts
+- **Keyboard shortcuts** for the common tools (single-key access: L=Line, C=Circle, etc.)
+- **Enhanced status bar** showing coordinates, active tool, the drafting aids (as toggles), selection count, tool prompts and what is typed
 - **Viewport overlays** — crosshair cursor, snap markers, axis indicator (all GL-rendered)
 - **Styled panels** — consistent dark theme across property and layer panels
 
@@ -357,6 +358,7 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 125 | Done | Background work that stops: Cancel now stops a STEP import and an interference check on their workers (they used to run to the end, and quitting waited for them); a job whose worker thread could not start is done on the calling thread instead of being waited for forever; an autosave that cannot be written, or cannot start, is shown in the status bar instead of only the log; a document whose recovery was followed by another crash is no longer recovered by default at every start; recovered documents are snapshotted before the crashed session's copies are deleted; an OpenGL context older than 3.3 no longer gets OpenGL 3 calls; typed fillet and chamfer sizes such as "1.2.3" are refused, not read as 1.2; the seven empty catch blocks are gone |
 | 126 | Done | A safety net that catches: CI gains a ThreadSanitizer job (a worker now rebuilds while the window edits), a coverage job with a table by module in each run's summary, and a libFuzzer job that fuzzes every reader of untrusted input for a minute each (it only replayed seeds before), with new targets for the binary format, plugin manifests and the PDM's archive and locks; the Windows build reports its /W4 warnings by code; packages must carry the translations (compiled with any lrelease, and checked in every build), which the release build could not compile before; the vcpkg cache is kept when a later step fails; every job has a time limit, tests run in parallel, and the workflow only reads the repository |
 | 128 | Done | Precise input: points typed at the keyboard in the drawing tools (x,y; @dx,dy; @length<angle; or a length toward the cursor), refused whole when they are not a point; the line tool chains; object snap, grid snap, ortho and polar tracking switched from the status bar or F3/F9/F8/F10, and kept; a line's, circle's or arc's geometry typed into the property panel, one undo step each; selecting an entity no longer pushed edits of it onto the undo stack |
+| 130 | Done | Layers and blocks: layers can be renamed (carrying their entities, in blocks too, and the current layer) and their line weight set; Create Block takes a base point, puts the entities back in their drawing order on undo, and restores the same block reference on redo; the README's feature list now says only what the product does |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

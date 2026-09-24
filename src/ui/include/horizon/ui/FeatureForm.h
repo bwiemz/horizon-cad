@@ -11,13 +11,14 @@
 class QComboBox;
 class QDoubleSpinBox;
 class QFormLayout;
+class QLineEdit;
 class QListWidget;
 class QSpinBox;
 
 namespace hz::ui {
 
-/// A modal form asking for a feature's inputs: labelled number fields,
-/// choices and checklists above OK / Cancel. Every field carries the object
+/// A modal form asking for a feature's inputs: labelled number and text
+/// fields, choices and checklists above OK / Cancel. Every field carries the object
 /// name it is given, so tests and automation can fill it.
 class FeatureForm {
 public:
@@ -28,6 +29,7 @@ public:
 
     QDoubleSpinBox* number(const QString& name, const QString& label, double value, double min,
                            double max, int decimals = 3);
+    QLineEdit* text(const QString& name, const QString& label, const QString& value = {});
     QSpinBox* count(const QString& name, const QString& label, int value, int min, int max);
     QComboBox* choice(const QString& name, const QString& label, const QStringList& items);
 

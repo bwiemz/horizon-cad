@@ -100,6 +100,11 @@ struct FormAnswers {
         numbers[name] = value;
         return *this;
     }
+    /// A text field (QLineEdit) by object name.
+    FormAnswers& text(const QString& name, const QString& value) {
+        texts[name] = value;
+        return *this;
+    }
     /// A choice (QComboBox) by object name: the item text to pick.
     FormAnswers& choose(const QString& name, const QString& text) {
         choices[name] = text;
@@ -123,6 +128,7 @@ struct FormAnswers {
     }
 
     std::map<QString, double> numbers;
+    std::map<QString, QString> texts;
     std::map<QString, QString> choices;
     std::map<QString, QStringList> checks;
     std::optional<doc::BodyOperation> operation;
@@ -194,6 +200,14 @@ private:
                 ADD_FAILURE() << "no number field " << name.toStdString();
                 return false;
             }
+        }
+        for (const auto& [name, value] : m_answers.texts) {
+            auto* edit = dialog.findChild<QLineEdit*>(name);
+            if (edit == nullptr) {
+                ADD_FAILURE() << "no text field " << name.toStdString();
+                return false;
+            }
+            edit->setText(value);
         }
         for (const auto& [name, text] : m_answers.choices) {
             auto* combo = dialog.findChild<QComboBox*>(name);

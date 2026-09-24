@@ -24,6 +24,7 @@ private slots:
     void onItemDoubleClicked(QTreeWidgetItem* item, int column);
     void onItemChanged(QTreeWidgetItem* item, int column);
     void onColorClicked();
+    void onRenameLayer();
 
 private:
     void createWidgets();
@@ -32,6 +33,7 @@ private:
     QTreeWidget* m_tree = nullptr;
     QPushButton* m_addBtn = nullptr;
     QPushButton* m_deleteBtn = nullptr;
+    QPushButton* m_renameBtn = nullptr;
     bool m_refreshing = false;
 };
 

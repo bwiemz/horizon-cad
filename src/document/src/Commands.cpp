@@ -1,6 +1,7 @@
 #include "horizon/document/Commands.h"
 
 #include <unordered_map>
+#include <utility>
 
 #include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/drafting/DraftBlockRef.h"
@@ -575,6 +576,40 @@ std::string ModifyLayerCommand::description() const {
     return "Modify Layer";
 }
 
+// --- RenameLayerCommand ---
+
+RenameLayerCommand::RenameLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
+                                       std::string from, std::string to)
+    : m_mgr(mgr), m_doc(doc), m_from(std::move(from)), m_to(std::move(to)) {}
+
+void RenameLayerCommand::execute() {
+    m_applied = m_mgr.renameLayer(m_from, m_to);
+    m_moved.clear();
+    if (!m_applied) return;
+    const auto carry = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
+        if (entity && entity->layer() == m_from) {
+            entity->setLayer(m_to);
+            m_moved.push_back(entity);
+        }
+    };
+    for (const auto& entity : m_doc.entities()) carry(entity);
+    for (const auto& name : m_doc.blockTable().blockNames()) {
+        if (const auto block = m_doc.blockTable().findBlock(name)) {
+            for (const auto& entity : block->entities) carry(entity);
+        }
+    }
+}
+
+void RenameLayerCommand::undo() {
+    if (!m_applied) return;
+    m_mgr.renameLayer(m_to, m_from);
+    for (const auto& entity : m_moved) entity->setLayer(m_from);
+}
+
+std::string RenameLayerCommand::description() const {
+    return "Rename Layer";
+}
+
 // --- SetCurrentLayerCommand ---
 
 SetCurrentLayerCommand::SetCurrentLayerCommand(draft::LayerManager& mgr,
@@ -597,57 +632,44 @@ std::string SetCurrentLayerCommand::description() const {
 // --- CreateBlockCommand ---
 
 CreateBlockCommand::CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
-                                       const std::vector<uint64_t>& entityIds)
-    : m_doc(doc), m_blockName(blockName), m_entityIds(entityIds) {}
+                                       const std::vector<uint64_t>& entityIds,
+                                       std::optional<math::Vec2> basePoint, std::string layer)
+    : m_doc(doc),
+      m_blockName(blockName),
+      m_entityIds(entityIds),
+      m_basePoint(basePoint),
+      m_layer(std::move(layer)) {}
 
 void CreateBlockCommand::execute() {
-    // Gather the source entities.
-    m_savedEntities.clear();
-    math::Vec2 centroid;
-    for (uint64_t id : m_entityIds) {
-        if (const auto e = m_doc.sharedEntity(id)) {
-            m_savedEntities.push_back(e);
-            auto bb = e->boundingBox();
-            if (bb.isValid()) {
-                auto c = bb.center();
-                centroid += math::Vec2(c.x, c.y);
+    if (!m_definition) {
+        // The first time: the block, from copies of the entities, and a
+        // reference to it at its base point.
+        m_definition = std::make_shared<draft::BlockDefinition>();
+        m_definition->name = m_blockName;
+        math::BoundingBox bounds;
+        for (uint64_t id : m_entityIds) {
+            if (const auto e = m_doc.sharedEntity(id)) {
+                m_definition->entities.push_back(e->clone());
+                const auto bb = e->boundingBox();
+                if (bb.isValid()) bounds.expand(bb);
             }
         }
-    }
-    if (!m_savedEntities.empty()) {
-        centroid = centroid * (1.0 / static_cast<double>(m_savedEntities.size()));
-    }
-
-    // Create block definition with cloned entities.
-    m_definition = std::make_shared<draft::BlockDefinition>();
-    m_definition->name = m_blockName;
-    m_definition->basePoint = centroid;
-    for (const auto& e : m_savedEntities) {
-        m_definition->entities.push_back(e->clone());
+        math::Vec2 centre(0, 0);
+        if (bounds.isValid()) centre = math::Vec2(bounds.center().x, bounds.center().y);
+        m_definition->basePoint = m_basePoint.value_or(centre);
+        const math::Vec2 at = m_definition->basePoint;
+        m_blockRef = std::make_shared<draft::DraftBlockRef>(m_definition, at);
+        m_blockRef->setLayer(m_layer);
     }
     m_doc.blockTable().addBlock(m_definition);
-
-    // Remove originals from document.
-    for (uint64_t id : m_entityIds) {
-        m_doc.removeEntity(id);
-    }
-
-    // Insert a block reference at the centroid.
-    m_blockRef = std::make_shared<draft::DraftBlockRef>(m_definition, centroid);
+    m_removed = m_doc.removeEntities(m_entityIds);
     m_doc.addEntity(m_blockRef);
 }
 
 void CreateBlockCommand::undo() {
-    // Remove the block reference.
-    if (m_blockRef) {
-        m_doc.removeEntity(m_blockRef->id());
-    }
-    // Remove the block definition.
+    m_doc.removeEntity(m_blockRef->id());
     m_doc.blockTable().removeBlock(m_blockName);
-    // Restore original entities.
-    for (const auto& e : m_savedEntities) {
-        m_doc.addEntity(e);
-    }
+    m_doc.restoreEntities(m_removed);  // where they were in the drawing order
 }
 
 std::string CreateBlockCommand::description() const {

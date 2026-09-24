@@ -22,6 +22,11 @@ public:
 
     void addLayer(const LayerProperties& props);
     void removeLayer(const std::string& name);
+
+    /// Rename a layer, keeping its properties; the current layer follows it.
+    /// False, and nothing changed, for the default layer "0", a layer that
+    /// does not exist, or a name that is empty or already taken.
+    bool renameLayer(const std::string& from, const std::string& to);
     LayerProperties* getLayer(const std::string& name);
     const LayerProperties* getLayer(const std::string& name) const;
     std::vector<std::string> layerNames() const;
