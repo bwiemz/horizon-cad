@@ -284,6 +284,7 @@ static json serializeEntity(const draft::DraftEntity& entity) {
         obj["insertPos"] = {{"x", bref->insertPos().x}, {"y", bref->insertPos().y}};
         obj["rotation"] = bref->rotation();
         obj["scale"] = bref->uniformScale();
+        if (bref->mirrored()) obj["mirrored"] = true;
     } else if (auto* txt = dynamic_cast<const draft::DraftText*>(&entity)) {
         obj["type"] = "text";
         obj["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
@@ -840,7 +841,13 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
                                       obj.at("insertPos").at("y").get<double>());
                 double rot = obj.value("rotation", 0.0);
                 double scl = obj.value("scale", 1.0);
-                entity = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
+                auto ref = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
+                // Absent before a reference could be mirrored.
+                const auto mirrored = obj.find("mirrored");
+                if (mirrored != obj.end() && mirrored->is_boolean()) {
+                    ref->setMirrored(mirrored->get<bool>());
+                }
+                entity = ref;
             }
         }
     } else if (type == "text") {

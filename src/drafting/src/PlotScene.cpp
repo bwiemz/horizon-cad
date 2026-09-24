@@ -21,6 +21,7 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
 
@@ -100,17 +101,19 @@ public:
     /// The contents of @p ref, placed, with @p refStyle as their ByBlock.
     void blockContents(const DraftBlockRef& ref, const Style& refStyle, int depth) {
         if (depth >= kMaxDepth || !ref.definition()) return;
-        const BlockDefinition& def = *ref.definition();
-        for (const auto& child : def.entities) {
-            if (!child) continue;
-            // Placed as the reference places it: scaled and turned about the
-            // base point, then moved to the insertion point.
-            const auto placed = child->clone();
-            placed->scale(def.basePoint, ref.uniformScale());
-            placed->rotate(def.basePoint, ref.rotation());
-            placed->translate(ref.insertPos() - def.basePoint);
-            entity(*placed, &refStyle, depth + 1);
+        // Plotted where the block has them, then placed as the reference
+        // places them, point by point (DraftBlockRef::transformPoint), a
+        // block inside this one placed by its own reference first. The
+        // viewport draws blocks with this every frame, so nothing is copied.
+        const size_t firstStroke = m_out.strokes.size();
+        const size_t firstText = m_out.texts.size();
+        for (const auto& child : ref.definition()->entities) {
+            if (child) entity(*child, &refStyle, depth + 1);
         }
+        for (size_t i = firstStroke; i < m_out.strokes.size(); ++i) {
+            for (auto& point : m_out.strokes[i].points) point = ref.transformPoint(point);
+        }
+        for (size_t i = firstText; i < m_out.texts.size(); ++i) place(ref, m_out.texts[i]);
     }
 
 private:
@@ -130,9 +133,31 @@ private:
         return s;
     }
 
+    /// @p text, from where its block has it to where @p ref puts it.
+    static void place(const DraftBlockRef& ref, PlotText& text) {
+        const math::Vec2 at = ref.transformPoint(text.position);
+        const math::Vec2 along =
+            ref.transformPoint(text.position +
+                               math::Vec2(std::cos(text.rotation), std::sin(text.rotation))) -
+            at;
+        text.position = at;
+        text.height *= std::abs(ref.uniformScale());
+        text.rotation = std::atan2(along.y, along.x);
+        if (ref.mirrored()) {
+            // Readable, not mirrored: the other way along, from its other
+            // end, over the same place.
+            text.rotation += math::kPi;
+            if (text.alignment == TextAlignment::Left) {
+                text.alignment = TextAlignment::Right;
+            } else if (text.alignment == TextAlignment::Right) {
+                text.alignment = TextAlignment::Left;
+            }
+        }
+        text.rotation = math::normalizeAngle(text.rotation);
+    }
+
     void stroke(std::vector<math::Vec2> points, bool closed, const Style& s) {
         if (points.size() < 2) return;
-        for (const auto& p : points) m_out.bounds.expand(math::Vec3(p.x, p.y, 0.0));
         m_out.strokes.push_back({std::move(points), closed, s.color, s.width, s.lineType});
     }
 
@@ -143,18 +168,6 @@ private:
     void addText(const math::Vec2& at, const std::string& text, double height, double rotation,
                  TextAlignment alignment, const Style& s) {
         if (text.empty() || !(height > 0.0)) return;
-        // Its extent, near enough for the bounds: characters about 0.6 of the
-        // height wide, placed by the alignment, turned by the rotation.
-        const double width = 0.6 * height * static_cast<double>(text.size());
-        const double left = alignment == TextAlignment::Left     ? 0.0
-                            : alignment == TextAlignment::Center ? -width / 2.0
-                                                                 : -width;
-        const double c = std::cos(rotation);
-        const double sn = std::sin(rotation);
-        for (const auto& [x, y] : {std::pair{left, 0.0}, std::pair{left + width, 0.0},
-                                   std::pair{left, height}, std::pair{left + width, height}}) {
-            m_out.bounds.expand(math::Vec3(at.x + x * c - y * sn, at.y + x * sn + y * c, 0.0));
-        }
         m_out.texts.push_back({at, text, height, rotation, alignment, s.color});
     }
 
@@ -162,6 +175,29 @@ private:
     const DimensionStyle& m_dims;
     PlotScene& m_out;
 };
+
+/// The bounds of everything in @p scene: each stroke's points, and each
+/// text's extent, near enough: characters about 0.6 of the height wide,
+/// placed by the alignment, turned by the rotation.
+void addBounds(PlotScene& scene) {
+    for (const auto& stroke : scene.strokes) {
+        for (const auto& p : stroke.points) scene.bounds.expand(math::Vec3(p.x, p.y, 0.0));
+    }
+    for (const auto& text : scene.texts) {
+        const double width = 0.6 * text.height * static_cast<double>(text.text.size());
+        const double left = text.alignment == TextAlignment::Left     ? 0.0
+                            : text.alignment == TextAlignment::Center ? -width / 2.0
+                                                                      : -width;
+        const double c = std::cos(text.rotation);
+        const double sn = std::sin(text.rotation);
+        const math::Vec2& at = text.position;
+        for (const auto& [x, y] :
+             {std::pair{left, 0.0}, std::pair{left + width, 0.0}, std::pair{left, text.height},
+              std::pair{left + width, text.height}}) {
+            scene.bounds.expand(math::Vec3(at.x + x * c - y * sn, at.y + x * sn + y * c, 0.0));
+        }
+    }
+}
 
 }  // namespace
 
@@ -172,6 +208,7 @@ PlotScene buildPlotScene(const DraftDocument& drawing, const LayerManager& layer
     for (const auto& entity : drawing.entities()) {
         if (entity) builder.entity(*entity, nullptr, 0);
     }
+    addBounds(scene);
     return scene;
 }
 
@@ -190,6 +227,7 @@ PlotScene plotBlockReference(const DraftBlockRef& ref, const LayerManager& layer
     PlotScene scene;
     Builder builder(layers, style, scene);
     builder.blockContents(ref, Style{color, width, lineType}, 0);
+    addBounds(scene);
     return scene;
 }
 
