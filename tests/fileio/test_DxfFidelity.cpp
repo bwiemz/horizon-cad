@@ -58,6 +58,15 @@ struct Loaded {
     }
 };
 
+/// The lines of the file at @p path. The file is closed on return: Windows
+/// will not remove a file that is still open.
+std::vector<std::string> linesOf(const std::filesystem::path& path) {
+    std::ifstream file(path);
+    std::vector<std::string> lines;
+    for (std::string l; std::getline(file, l);) lines.push_back(l);
+    return lines;
+}
+
 bool near(const Vec2& a, const Vec2& b, double tol = 1e-9) {
     return (a - b).length() <= tol;
 }
@@ -459,9 +468,7 @@ TEST(DxfFidelityTest, LineweightsAreOnesADxfReaderAccepts) {
     const auto path = std::filesystem::temp_directory_path() / "hz_dxf_lineweights.dxf";
     std::string error;
     ASSERT_TRUE(hz::io::DxfFormat::save(path.string(), doc, &error)) << error;
-    std::ifstream file(path);
-    std::vector<std::string> lines;
-    for (std::string l; std::getline(file, l);) lines.push_back(l);
+    const std::vector<std::string> lines = linesOf(path);
     static const std::vector<int> valid = {-3, -2, -1,  0,   5,   9,   13,  15,  18,
                                            20, 25, 30,  35,  40,  50,  53,  60,  70,
                                            80, 90, 100, 106, 120, 140, 158, 200, 211};
@@ -501,9 +508,7 @@ TEST(DxfFidelityTest, AThinWidthIsNotWrittenAsNoWidth) {
     const auto path = std::filesystem::temp_directory_path() / "hz_dxf_thin_width.dxf";
     std::string error;
     ASSERT_TRUE(hz::io::DxfFormat::save(path.string(), doc, &error)) << error;
-    std::ifstream file(path);
-    std::vector<std::string> lines;
-    for (std::string l; std::getline(file, l);) lines.push_back(l);
+    const std::vector<std::string> lines = linesOf(path);
     for (size_t k = 0; k + 1 < lines.size(); k += 2) {
         if (std::stoi(lines[k]) == 370) {
             EXPECT_NE(std::stoi(lines[k + 1]), 0);

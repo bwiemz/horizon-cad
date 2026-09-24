@@ -124,7 +124,7 @@ void ViewportInputHandler::handleKeyPress(QKeyEvent* event, ViewportWidget* view
     if (tool && tool->acceptsTypedPoints()) {
         if ((key == Qt::Key_Return || key == Qt::Key_Enter) && typed.typing()) {
             std::optional<math::Vec2> toward;
-            if (viewport->cursorWorld()) toward = viewport->snap(*viewport->cursorWorld()).point;
+            if (const auto cursor = viewport->cursorWorld()) toward = viewport->snap(*cursor).point;
             if (const auto point = typed.take(tool->basePoint(), toward)) {
                 viewport->applyTypedPoint(*point);
             }
