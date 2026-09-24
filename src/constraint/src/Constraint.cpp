@@ -12,9 +12,9 @@ namespace hz::cstr {
 // Constraint base
 // ---------------------------------------------------------------------------
 
-uint64_t Constraint::s_nextId = 1;
+math::IdCounter<uint64_t> Constraint::s_nextId{1};
 
-Constraint::Constraint() : m_id(s_nextId++) {}
+Constraint::Constraint() : m_id(s_nextId.next()) {}
 
 // ---------------------------------------------------------------------------
 // Helper: collect unique entity IDs from two refs

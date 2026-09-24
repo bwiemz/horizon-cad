@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <functional>
 #include <memory>
@@ -11,14 +12,19 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/topology/Solid.h"
+#include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/Preferences.h"
+#include "horizon/ui/RebuildJob.h"
 
 class QCloseEvent;
 class QTimer;
 class QLabel;
 class QTabBar;
 class QMenu;
+class QProgressBar;
+class QToolButton;
 
 namespace hz::ui {
 
@@ -59,6 +65,26 @@ public:
     /// Put @p prefs into effect: the autosave interval, the grid snap and the
     /// snap reach. The display unit is read where lengths are shown.
     void applyPreferences(const Preferences& prefs);
+
+    /// When long work — a model rebuild, a STEP import, an interference
+    /// check — runs on a worker thread: when it would freeze the window
+    /// (Auto), always, or never.
+    enum class RebuildMode { Auto, Always, Never };
+    void setRebuildMode(RebuildMode mode) { m_rebuildMode = mode; }
+
+    /// A rebuild is running on a worker.
+    bool rebuildRunning() const { return m_rebuildJob != nullptr; }
+    /// Anything is running on a worker.
+    bool backgroundWorkRunning() const {
+        return m_rebuildJob != nullptr || m_importTask != nullptr || m_interferenceTask != nullptr;
+    }
+
+    /// What goes to a worker in Auto: a rebuild after one that took longer
+    /// than this, a STEP file at least this big, an interference check of at
+    /// least this many faces.
+    static constexpr qint64 kWorkerRebuildMs = 300;
+    static constexpr qint64 kWorkerImportBytes = 1'000'000;
+    static constexpr std::size_t kWorkerInterferenceFaces = 2000;
 
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
@@ -207,6 +233,11 @@ private:
         bool snapshotStale = true;
         /// Reopened from a crashed session and not saved since.
         bool recovered = false;
+        /// How long its last model rebuild took, in milliseconds.
+        qint64 lastBuildMs = 0;
+        /// Its model is out of date: a rebuild for it was dropped while
+        /// another tab was shown.
+        bool modelStale = false;
     };
 
     void createMenus();
@@ -221,6 +252,32 @@ private:
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();
+
+    /// Show what the active document's last build gave: failures in the
+    /// feature tree panel, and the model in the viewport.
+    void showBuildResult();
+    /// Rebuild the active document on a worker (see RebuildJob). One runs at
+    /// a time: asked again, the running one stops and a new one starts from
+    /// the document as it is by then.
+    void startRebuild();
+    /// A worker's rebuild is done: apply it if the document is where it was.
+    void onRebuildFinished();
+    void updateRebuildProgress();
+    /// Show the progress bar and Cancel while anything runs on a worker.
+    void updateBusyIndicator();
+
+    /// A STEP file read into solids — on the GUI thread or a worker.
+    struct StepLoad {
+        std::vector<std::unique_ptr<topo::Solid>> solids;
+        io::ImportReport report;
+        std::string error;  ///< why nothing was read (lastError is per thread)
+    };
+    static StepLoad loadStep(const std::string& path);
+    void finishStepImport(const QString& fileName, StepLoad load);
+    void onImportFinished();
+    void showInterference(const doc::AssemblyDocument& assembly,
+                          const doc::InterferenceReport& report);
+    void onInterferenceFinished();
 
     /// The window's size and position and where its docks are, kept across
     /// sessions.
@@ -324,6 +381,20 @@ private:
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
     QMenu* m_recentMenu = nullptr;
+
+    // Model rebuilds on a worker thread (Phase 114).
+    RebuildMode m_rebuildMode = RebuildMode::Auto;
+    std::unique_ptr<RebuildJob> m_rebuildJob;
+    std::shared_ptr<doc::Document> m_rebuildDocument;  ///< what the job builds; kept alive
+    bool m_rebuildAgain = false;                       ///< the document changed while the job ran
+    QElapsedTimer m_rebuildClock;                      ///< since the job started (monotonic)
+    QProgressBar* m_rebuildProgress = nullptr;
+    QToolButton* m_rebuildCancel = nullptr;
+    QTimer* m_rebuildPoll = nullptr;
+    std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
+    QString m_importFile;
+    std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
+    std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

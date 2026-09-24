@@ -236,3 +236,21 @@ TEST(AssemblyDocumentTest, FindInterferenceSkipsSuppressedAndListsUnresolved) {
     ASSERT_EQ(report.unchecked.size(), 1u);
     EXPECT_EQ(report.unchecked.front(), light);
 }
+
+TEST(AssemblyDocumentTest, InterferenceIsMeasuredFromCopiesTheAssemblyCanChangeUnder) {
+    // Phase 114: the measuring runs on a worker, so it reads copies of the
+    // placed solids taken beforehand, not the assembly itself.
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    place(asmDoc, block, hz::math::Vec3(0, 0, 0));
+    const uint64_t moved = place(asmDoc, block, hz::math::Vec3(8, 0, 0));
+    const auto input = asmDoc.interferenceInput();
+    EXPECT_EQ(input.faceCount(), 12u);
+
+    // Moved clear after the input was taken: the measurement is of the input.
+    asmDoc.component(moved)->transform = hz::math::Mat4::translation(hz::math::Vec3(50, 0, 0));
+    const auto report = AssemblyDocument::measureInterference(input);
+    ASSERT_EQ(report.pairs.size(), 1u);
+    EXPECT_NEAR(report.pairs.front().volume, 200.0, 1e-9);
+    EXPECT_TRUE(asmDoc.findInterference().pairs.empty()) << "and the assembly as it is now";
+}

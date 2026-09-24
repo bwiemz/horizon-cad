@@ -330,6 +330,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 111 | Done | Application essentials: ten shortcuts that did nothing (bound to both menu and ribbon) now work; Open Recent; window and dock layout kept; Preferences (autosave, language, grid snap, snap reach, display units); Help ▸ About with version, revision and build; files open from the command line; every dock in View |
 | 112 | Done | UI test harness: a smoke test runs every one of the window's 166 commands on an empty drawing, part and assembly and on a selection; the drawing tools are driven through the viewport's own mouse handling (draw, select, delete, undo) |
 | 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
+| 114 | Done | Off-thread work: a model rebuild that would freeze the window runs on a worker, from a snapshot, with progress and cancel, applied only if the part has not changed; large STEP imports and interference checks run in the background; atomic ID counters. Milestone 4 complete |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

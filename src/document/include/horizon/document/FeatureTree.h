@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -8,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
@@ -172,7 +174,7 @@ private:
     double m_chordTolerance = 0.0;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Revolve feature: creates a solid by revolving a sketch profile around an axis.
@@ -217,7 +219,7 @@ private:
     double m_chordTolerance = 0.0;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Loft feature: creates a solid by interpolating through ordered sketch
@@ -239,7 +241,7 @@ private:
     std::vector<std::shared_ptr<Sketch>> m_sections;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Sweep feature: creates a solid by transporting a profile sketch along a
@@ -279,7 +281,7 @@ private:
     double m_chordTolerance = 0.0;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Draft feature: tapers the input solid's lateral faces about a neutral
@@ -306,7 +308,7 @@ private:
     double m_angle;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Shell feature: hollows the input solid to a thin wall, removing the given
@@ -331,7 +333,7 @@ private:
     std::vector<topo::TopologyID> m_removedFaceIds;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Fillet feature: rounds the given edges (by TopologyID) of the input solid
@@ -371,7 +373,7 @@ private:
     double m_chordTolerance = 0.0;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Chamfer feature: bevels the given edges (by TopologyID) of the input solid
@@ -396,7 +398,7 @@ private:
     double m_distance;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Boolean feature: combines the part's bodies into one by a Union, Subtract
@@ -428,7 +430,7 @@ private:
     model::BooleanType m_type;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Pattern feature: replicates the input solid linearly or circularly.
@@ -474,7 +476,7 @@ private:
     std::vector<int> m_suppressed;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Primitive feature: creates a solid primitive (box, cylinder, sphere, cone,
@@ -533,7 +535,7 @@ private:
     double m_chordTolerance = 0.0;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// A body brought in from another file (a STEP import): fixed geometry, with
@@ -560,7 +562,7 @@ private:
     std::string m_source;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Reference-geometry feature: a datum plane, axis, or point. Non-geometric —
@@ -600,7 +602,7 @@ private:
     math::Vec3 m_dirB;
     std::string m_featureID;
 
-    static int s_nextID;
+    static math::IdCounter<int> s_nextID;
 };
 
 /// Result of building the feature tree with diagnostics.
@@ -609,6 +611,16 @@ struct BuildResult {
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
+    bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
+};
+
+/// How a build running on another thread says how far it has got, and learns
+/// it should stop. The build looks between features: a feature already
+/// running finishes first.
+struct BuildControl {
+    std::atomic<bool> cancel{false};
+    std::atomic<int> done{0};   ///< features applied so far
+    std::atomic<int> total{0};  ///< features the build will apply
 };
 
 /// Ordered list of parametric features that can be replayed to rebuild a solid.
@@ -664,7 +676,7 @@ public:
 
     /// Rebuild with diagnostics: records which feature failed and why.
     /// Respects the rollback index (features beyond it are skipped).
-    BuildResult buildWithDiagnostics() const;
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr) const;
 
     /// Rollback index: features after this index are suppressed.
     /// -1 means no rollback (all features active).

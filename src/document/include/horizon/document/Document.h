@@ -87,6 +87,12 @@ public:
     /// with a null solid.
     bool rebuildModel();
 
+    /// Take the result of a build made elsewhere (a worker's, from a
+    /// snapshot of this document), as rebuildModel() takes its own. A
+    /// cancelled build leaves the model as it was. Returns true when no
+    /// feature failed.
+    bool applyBuild(BuildResult result);
+
     /// The solid produced by the last rebuildModel() call (may be null).
     const topo::Solid* solid() const { return m_solid.get(); }
     topo::Solid* solid() { return m_solid.get(); }

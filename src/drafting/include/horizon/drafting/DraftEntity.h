@@ -7,6 +7,7 @@
 
 #include "horizon/drafting/SnapPoint.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec2.h"
 
 namespace hz::draft {
@@ -22,9 +23,7 @@ public:
     void setId(uint64_t newId) { m_id = newId; }
 
     /// Ensure the next auto-generated ID is greater than the given value.
-    static void advanceIdCounter(uint64_t minId) {
-        if (s_nextId <= minId) s_nextId = minId + 1;
-    }
+    static void advanceIdCounter(uint64_t minId) { s_nextId.reserveThrough(minId); }
 
     const std::string& layer() const { return m_layer; }
     void setLayer(const std::string& layer) { m_layer = layer; }
@@ -74,7 +73,7 @@ private:
     int m_lineType;
     uint64_t m_groupId;
 
-    static uint64_t s_nextId;
+    static math::IdCounter<uint64_t> s_nextId;
 };
 
 }  // namespace hz::draft

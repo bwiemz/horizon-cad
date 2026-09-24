@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "horizon/geometry/MeshData.h"
+#include "horizon/math/IdCounter.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 
@@ -83,7 +84,7 @@ private:
     SceneNode* m_parent = nullptr;
     std::vector<std::shared_ptr<SceneNode>> m_children;
 
-    static uint32_t s_nextId;
+    static math::IdCounter<uint32_t> s_nextId;
 };
 
 /// Root container for the scene graph.

@@ -4,6 +4,7 @@ add_executable(hz_document_tests
     test_ExpressionEngine.cpp
     test_Sketch.cpp
     test_FeatureTree.cpp
+    test_BuildControl.cpp
     test_AssemblyDocument.cpp
     test_DocumentManager.cpp
     test_BillOfMaterials.cpp

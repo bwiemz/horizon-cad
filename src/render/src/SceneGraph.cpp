@@ -5,12 +5,12 @@
 namespace hz::render {
 
 // Static ID counter
-uint32_t SceneNode::s_nextId = 1;
+math::IdCounter<uint32_t> SceneNode::s_nextId{1};
 
 // --- SceneNode ---
 
 SceneNode::SceneNode(std::string name)
-    : m_name(std::move(name)), m_localTransform(math::Mat4::identity()), m_id(s_nextId++) {}
+    : m_name(std::move(name)), m_localTransform(math::Mat4::identity()), m_id(s_nextId.next()) {}
 
 SceneNode::~SceneNode() = default;
 
