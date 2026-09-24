@@ -2,8 +2,10 @@
 
 #include <QElapsedTimer>
 #include <QMainWindow>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -11,6 +13,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
@@ -25,6 +28,10 @@ class QTabBar;
 class QMenu;
 class QProgressBar;
 class QToolButton;
+
+namespace hz::doc {
+class Command;
+}  // namespace hz::doc
 
 namespace hz::ui {
 
@@ -76,14 +83,21 @@ public:
     bool rebuildRunning() const { return m_rebuildJob != nullptr; }
     /// Anything is running on a worker.
     bool backgroundWorkRunning() const {
-        return m_rebuildJob != nullptr || m_importTask != nullptr || m_interferenceTask != nullptr;
+        return m_rebuildJob != nullptr || m_importTask != nullptr ||
+               m_interferenceTask != nullptr || m_openTask != nullptr;
     }
 
     /// What goes to a worker in Auto: a rebuild after one that took longer
     /// than this, a STEP file at least this big, an interference check of at
     /// least this many faces.
     static constexpr qint64 kWorkerRebuildMs = 300;
-    static constexpr qint64 kWorkerImportBytes = 1'000'000;
+    /// A part's build time before it was first built here (opened, not
+    /// built): Auto builds it on a worker, as a slow one.
+    static constexpr qint64 kBuildTimeUnknown = -1;
+
+    /// How many times a model has been tessellated for the view (for tests).
+    std::uint64_t tessellations() const { return m_tessellations; }
+    static constexpr qint64 kWorkerImportBytes = 1'000'000;  ///< and a file opened
     static constexpr std::size_t kWorkerInterferenceFaces = 2000;
 
 public slots:
@@ -261,7 +275,12 @@ private:
         /// included (RecoveryManager::Entry::recoveries, plus one).
         int recoveries = 0;
         /// How long its last model rebuild took, in milliseconds.
-        qint64 lastBuildMs = 0;
+        qint64 lastBuildMs = 0;  ///< kBuildTimeUnknown before its first build here
+        /// Its model's mesh, tessellated from its build number meshBuild:
+        /// the scene is rebuilt for more than a new model (a sketch opened or
+        /// closed, the tab shown again), and tessellates only a new one.
+        std::shared_ptr<const geo::MeshData> mesh{};
+        std::uint64_t meshBuild = 0;
         /// Its model is out of date: a rebuild for it was dropped while
         /// another tab was shown.
         bool modelStale = false;
@@ -305,6 +324,24 @@ private:
         std::string error;  ///< why nothing was read (lastError is per thread)
     };
     static StepLoad loadStep(const std::string& path, const std::atomic<bool>* cancelled = nullptr);
+
+    /// A drawing or part file read into a document of its own, on a worker
+    /// when the file is large (openOnWorker).
+    struct FileOpen {
+        std::shared_ptr<doc::Document> document;  ///< null when it could not be read
+        io::ImportReport report;
+        std::string error;
+    };
+    static FileOpen readFile(const std::string& path, bool drawing);
+    bool openOnWorker(const QString& fileName) const;
+    /// Read @p fileName on a worker; its tab is added when it is read.
+    bool startOpen(const QString& fileName, bool drawing);
+    void onOpenFinished();
+    /// Show @p document, just opened from @p fileName: in the tab already
+    /// showing it if there is one, else a new tab; what could not be read of
+    /// it; and in the recent files.
+    void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
+                    const QString& fallbackTitle, io::ImportReport report);
     void finishStepImport(const QString& fileName, StepLoad load);
     void onImportFinished();
     void showInterference(const doc::AssemblyDocument& assembly,
@@ -359,13 +396,21 @@ private:
     bool askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
                            double min, double max, int decimals, doc::BodyOperation& operation);
     /// Add a feature at the end of the history, as one undoable step, and
-    /// rebuild. A feature that fails there itself (a Cut that would leave
-    /// nothing, a fillet too big for its edge) is not added: the part, and the
-    /// undo history, stay as they were, and false is returned with the reason
-    /// in the status bar. `wrapperSketch` is a profile sketch made for the
-    /// feature, added and undone with it.
+    /// build the model once, on a worker when builds are slow. A feature
+    /// that fails there itself (a Cut that would leave nothing, a fillet too
+    /// big for its edge) is refused when that build is shown: the step is
+    /// withdrawn, so the part and the undo history are as they were, with
+    /// the reason in the status bar. Returns false when it was refused at
+    /// once (a build here); true when it was added, or its build is still
+    /// running. `wrapperSketch` is a profile sketch made for the feature,
+    /// added and undone with it.
     bool addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
                          const std::shared_ptr<doc::Sketch>& wrapperSketch = nullptr);
+    /// A build of @p document is shown or applied: if it was the one made
+    /// for a feature just added, and nothing changed since, and the feature
+    /// failed itself, withdraw it and build the part as it was. Returns
+    /// whether it did.
+    bool settlePendingAdd(doc::Document& document);
 
     /// False, with a word in the status bar, when the active tab is not a
     /// part (`verb` names the command).
@@ -443,12 +488,27 @@ private:
     std::unique_ptr<RebuildJob> m_rebuildJob;
     std::shared_ptr<doc::Document> m_rebuildDocument;  ///< what the job builds; kept alive
     bool m_rebuildAgain = false;                       ///< the document changed while the job ran
-    QElapsedTimer m_rebuildClock;                      ///< since the job started (monotonic)
+    /// A feature just added, whose build is yet to be seen (addModelFeature):
+    /// the step, as long as the history is where the add left it.
+    struct PendingAdd {
+        std::weak_ptr<doc::Document> document;
+        const doc::Command* step = nullptr;
+        const doc::Feature* feature = nullptr;
+        std::uint64_t history = 0;  ///< the undo revision the add left
+        QString verb;
+    };
+    std::optional<PendingAdd> m_pendingAdd;
+    bool m_addRefused = false;  ///< the last add was refused at once
+    std::uint64_t m_tessellations = 0;
+    QElapsedTimer m_rebuildClock;  ///< since the job started (monotonic)
     QProgressBar* m_rebuildProgress = nullptr;
     QToolButton* m_rebuildCancel = nullptr;
     QTimer* m_rebuildPoll = nullptr;
     std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
     QString m_importFile;
+    std::unique_ptr<BackgroundTask<FileOpen>> m_openTask;
+    QString m_openFile;
+    bool m_openDrawing = false;
     std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
     std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;
 

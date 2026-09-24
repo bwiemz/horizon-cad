@@ -33,6 +33,12 @@ public:
 
     void undo();
     void redo();
+    /// Undo @p command and forget it, when it is the newest step: a step
+    /// refused once it was taken (a feature whose build failed), which
+    /// leaves the history as it was before it, with nothing to redo. A saved
+    /// state that had the command in it can no longer be reached. Returns
+    /// false, changing nothing, for any other command.
+    bool withdraw(const Command* command);
 
     bool canUndo() const;
     bool canRedo() const;

@@ -78,6 +78,7 @@ bool Document::rebuildModel() {
 
 bool Document::applyBuild(BuildResult result) {
     if (result.cancelled) return m_failedFeatureIndex < 0;
+    ++m_builds;
     m_solid = std::move(result.solid);
     m_lastBuildMessage = result.failureMessage;
     m_failedFeatureIndex = result.failedFeatureIndex;

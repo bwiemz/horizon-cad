@@ -40,6 +40,18 @@ work, not "post-1.0".
     - Choosing another tool in the middle of a drag left what was dragged
       moved, with nothing to undo it.
 
+- **The window stays free (137).**
+  - Adding a feature builds the part once, and on a worker when builds are
+    slow. It was built twice, the first time always while the window
+    waited. A feature that fails, such as a cut that would leave nothing, is
+    still refused and leaves nothing to undo or redo.
+  - A part you open is built in the background, so a large part no longer
+    freezes the window as it opens.
+  - A part or DXF file of 1 MB or more is read in the background, and its
+    tab appears when it has been read.
+  - Opening or closing a sketch, or switching tabs, no longer tessellates
+    the part again.
+
 ## Unreleased — Product completeness, Milestone 9 (Phases 131–135)
 
 - **Sketches on planes (131).**

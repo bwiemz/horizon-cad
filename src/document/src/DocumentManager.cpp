@@ -42,13 +42,27 @@ std::shared_ptr<Document> DocumentManager::openPart(const std::string& path) {
 
     auto doc = std::make_shared<Document>();
     if (!m_partLoader(path, *doc)) return nullptr;
-    doc->setFilePath(path);
-    doc->setDirty(false);
+    return adoptPart(path, std::move(doc));
+}
 
-    m_documents.push_back(doc);
-    m_documentsByPath[key] = doc;
+std::shared_ptr<Document> DocumentManager::adoptPart(const std::string& path,
+                                                     std::shared_ptr<Document> loaded) {
+    const std::string key = canonicalPath(path);
+    if (auto it = m_documentsByPath.find(key); it != m_documentsByPath.end()) {
+        if (auto existing = it->second.lock()) return existing;
+        m_documentsByPath.erase(it);
+    }
+    if (!loaded) return nullptr;
+    loaded->setFilePath(path);
+    loaded->setDirty(false);
+    m_documents.push_back(loaded);
+    m_documentsByPath[key] = loaded;
     watchFile(key);
-    return doc;
+    return loaded;
+}
+
+void DocumentManager::adoptDocument(std::shared_ptr<Document> document) {
+    if (document) m_documents.push_back(std::move(document));
 }
 
 std::shared_ptr<AssemblyDocument> DocumentManager::openAssembly(const std::string& path) {
