@@ -9,7 +9,10 @@
 
 namespace hz::draft {
 
-/// A reference (instance) of a BlockDefinition with position, rotation, and uniform scale.
+/// A reference (instance) of a BlockDefinition with position, rotation, and uniform scale,
+/// and mirrored or not. Its content is placed as DXF places an INSERT's: taken from the
+/// block's base point, mirrored (x to -x) when it is, scaled, turned, and moved to the
+/// insertion point. A negative scale turns it half round; it does not mirror it.
 class DraftBlockRef : public DraftEntity {
 public:
     DraftBlockRef(std::shared_ptr<BlockDefinition> definition, const math::Vec2& insertPos,
@@ -32,10 +35,13 @@ public:
     const math::Vec2& insertPos() const { return m_insertPos; }
     double rotation() const { return m_rotation; }
     double uniformScale() const { return m_uniformScale; }
+    /// Whether the content is mirrored in the block's own y axis (x to -x).
+    bool mirrored() const { return m_mirrored; }
 
     void setInsertPos(const math::Vec2& pos) { m_insertPos = pos; }
     void setRotation(double radians) { m_rotation = radians; }
     void setUniformScale(double s) { m_uniformScale = s; }
+    void setMirrored(bool mirrored) { m_mirrored = mirrored; }
 
     /// Transform a point from definition space to world space.
     math::Vec2 transformPoint(const math::Vec2& defPt) const;
@@ -48,6 +54,7 @@ private:
     math::Vec2 m_insertPos;
     double m_rotation;
     double m_uniformScale;
+    bool m_mirrored = false;
 };
 
 }  // namespace hz::draft

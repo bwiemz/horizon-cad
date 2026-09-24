@@ -175,7 +175,7 @@ TEST(DxfFidelityTest, InsertsKeepTheirScalesExactly) {
     // Unequal scales (2, 1): exploded, the line stretched and the circle an
     // ellipse — the scales used to be averaged to 1.5.
     const auto lines = in.all<hz::draft::DraftLine>();
-    ASSERT_EQ(lines.size(), 2u);
+    ASSERT_EQ(lines.size(), 1u);
     EXPECT_TRUE(near(lines[0]->start(), Vec2(10, 0)));
     EXPECT_TRUE(near(lines[0]->end(), Vec2(12, 1)));
     const auto ellipses = in.all<hz::draft::DraftEllipse>();
@@ -184,18 +184,20 @@ TEST(DxfFidelityTest, InsertsKeepTheirScalesExactly) {
     EXPECT_NEAR(ellipses[0]->semiMajor(), 2.0, 1e-12);
     EXPECT_NEAR(ellipses[0]->semiMinor(), 1.0, 1e-12);
 
-    // Mirrored (-1, 1): exploded, mirrored — it used to lose the mirror.
-    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 10)));
-    EXPECT_TRUE(near(lines[1]->end(), Vec2(-1, 11)));
-    const auto circles = in.all<hz::draft::DraftCircle>();
-    ASSERT_EQ(circles.size(), 1u);
-    EXPECT_TRUE(near(circles[0]->center(), Vec2(-3, 10)));
-
-    // Equal positive scales stay a block reference.
+    // Mirrored (-1, 1): a mirrored block reference, its content placed
+    // mirrored — it was once read without the mirror, then exploded.
     const auto refs = in.all<hz::draft::DraftBlockRef>();
-    ASSERT_EQ(refs.size(), 1u);
-    EXPECT_DOUBLE_EQ(refs[0]->uniformScale(), 2.0);
-    EXPECT_TRUE(contains(in.report.approximated, "2 INSERT entities: unequal or mirrored scales"));
+    ASSERT_EQ(refs.size(), 2u);
+    EXPECT_TRUE(refs[0]->mirrored());
+    EXPECT_DOUBLE_EQ(refs[0]->uniformScale(), 1.0);
+    EXPECT_TRUE(near(refs[0]->transformPoint(Vec2(0, 0)), Vec2(0, 10)));
+    EXPECT_TRUE(near(refs[0]->transformPoint(Vec2(1, 1)), Vec2(-1, 11)));
+    EXPECT_TRUE(near(refs[0]->transformPoint(Vec2(3, 0)), Vec2(-3, 10)));
+
+    // Equal positive scales stay a block reference, as they were.
+    EXPECT_FALSE(refs[1]->mirrored());
+    EXPECT_DOUBLE_EQ(refs[1]->uniformScale(), 2.0);
+    EXPECT_TRUE(contains(in.report.approximated, "1 INSERT entity: unequal scales"));
 }
 
 TEST(DxfFidelityTest, ABlockInsideABlockIsFlattenedIntoIt) {

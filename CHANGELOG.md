@@ -28,6 +28,15 @@ work, not "post-1.0".
     before anything is cut off. Printing waits on adding Qt's print support.
   - Blocks now draw everything they hold, on screen too: text, hatches,
     dimensions and blocks inside blocks were left out.
+  - Mirroring a block reference mirrors it. It was turned half round
+    instead, so a door mirrored to swing the other way could come out
+    unchanged. The mirror is kept in saved drawings and in DXF, where a
+    mirrored INSERT now comes in as a block reference rather than exploded.
+    Explode puts the pieces where the mirrored block drew them.
+  - A block scaled by a negative number draws its arcs and text turned with
+    it; they kept their angles.
+  - Mirrored text reads left to right over the place its mirror image
+    covers. It came out upside down, on the wrong side of its point.
 - **Drawing to exact sizes (128).**
   - While a drawing tool waits for a point, type one and press Enter:
     `x,y`; `@dx,dy` from the last point; `@length<angle`; or a length alone,

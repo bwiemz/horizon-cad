@@ -7,9 +7,11 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DimensionStyle.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
@@ -108,6 +110,74 @@ TEST(PlotSceneTest, BlocksAreExpandedWithTheirReferencesStyle) {
     EXPECT_EQ(scene.texts[0].text, "TAG");
     EXPECT_NEAR(scene.texts[0].height, 2.0, 1e-9) << "scaled with the block";
     EXPECT_NEAR(scene.texts[0].rotation, hz::math::kPi / 2, 1e-9);
+}
+
+namespace {
+
+/// A door: its leaf from the hinge (the base point) up to (0, 10), its swing
+/// a quarter round from (10, 0) to the leaf, and a tag right of the hinge.
+std::shared_ptr<hz::draft::BlockDefinition> door() {
+    auto def = std::make_shared<hz::draft::BlockDefinition>();
+    def->name = "Door";
+    def->entities.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    def->entities.push_back(
+        std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 10.0, 0.0, hz::math::kPi / 2));
+    auto tag = std::make_shared<hz::draft::DraftText>(Vec2(2, 1), "D", 1.0);
+    tag->setAlignment(hz::draft::TextAlignment::Left);
+    def->entities.push_back(tag);
+    return def;
+}
+
+/// Every point of the scene's strokes, which is only the door's here.
+std::vector<Vec2> allPoints(const PlotScene& scene) {
+    std::vector<Vec2> out;
+    for (const auto& stroke : scene.strokes) {
+        out.insert(out.end(), stroke.points.begin(), stroke.points.end());
+    }
+    return out;
+}
+
+}  // namespace
+
+// A door mirrored to swing the other way plots swinging the other way, its tag
+// readable, from its other end. It was drawn as it was, since a mirror was
+// stored as a negative scale, which the arc and the text ignored.
+TEST(PlotSceneTest, AMirroredBlockPlotsMirrored) {
+    DraftDocument d;
+    LayerManager layers;
+    auto ref = std::make_shared<hz::draft::DraftBlockRef>(door(), Vec2(0, 0));
+    ref->mirror(Vec2(0, 0), Vec2(0, 1));
+    d.addEntity(ref);
+    const PlotScene scene = hz::draft::buildPlotScene(d, layers, DimensionStyle{});
+    ASSERT_EQ(scene.strokes.size(), 2u);
+    for (const Vec2& p : allPoints(scene)) {
+        EXPECT_LE(p.x, 1e-9) << "all of it left of the hinge";
+        EXPECT_GE(p.y, -1e-9);
+    }
+    EXPECT_TRUE(near(scene.strokes[1].points.front(), Vec2(-10, 0), 1e-9)) << "the swing's start";
+    ASSERT_EQ(scene.texts.size(), 1u);
+    EXPECT_TRUE(near(scene.texts[0].position, Vec2(-2, 1), 1e-9));
+    EXPECT_NEAR(std::cos(scene.texts[0].rotation), 1.0, 1e-9) << "reads left to right";
+    EXPECT_EQ(scene.texts[0].alignment, hz::draft::TextAlignment::Right) << "ends where it began";
+    EXPECT_LE(scene.bounds.max().x, 1e-9) << "the tag's bounds too";
+}
+
+// A negative scale turns the block half round: the swing goes below and
+// left, the tag upside down.
+TEST(PlotSceneTest, ABlockScaledNegativeIsTurnedHalfRound) {
+    DraftDocument d;
+    LayerManager layers;
+    d.addEntity(std::make_shared<hz::draft::DraftBlockRef>(door(), Vec2(0, 0), 0.0, -1.0));
+    const PlotScene scene = hz::draft::buildPlotScene(d, layers, DimensionStyle{});
+    ASSERT_EQ(scene.strokes.size(), 2u);
+    for (const Vec2& p : allPoints(scene)) {
+        EXPECT_LE(p.x, 1e-9);
+        EXPECT_LE(p.y, 1e-9);
+    }
+    ASSERT_EQ(scene.texts.size(), 1u);
+    EXPECT_TRUE(near(scene.texts[0].position, Vec2(-2, -1), 1e-9));
+    EXPECT_NEAR(std::cos(scene.texts[0].rotation), -1.0, 1e-9);
+    EXPECT_EQ(scene.texts[0].alignment, hz::draft::TextAlignment::Left);
 }
 
 TEST(PlotSceneTest, ADimensionPlotsItsLinesAndValue) {

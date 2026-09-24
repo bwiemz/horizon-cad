@@ -7,6 +7,7 @@
 #include "horizon/document/Commands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
@@ -239,4 +240,46 @@ TEST(EntityCommandsTest, CreatingABlockKeepsOrderAndIdentity) {
     EXPECT_EQ(create.blockRefId(), ref);
     EXPECT_NE(d.findEntity(ref), nullptr);
     EXPECT_EQ(d.blockTable().findBlock("Pair"), block);
+}
+
+// Exploding a mirrored or half-turned block reference leaves its pieces where
+// it drew them. The mirror was ignored, and arcs kept their angles under the
+// half turn.
+TEST(EntityCommandsTest, ExplodingPutsThePiecesWhereTheBlockDrewThem) {
+    auto door = std::make_shared<hz::draft::BlockDefinition>();
+    door->name = "Door";
+    door->entities.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 10)));
+    door->entities.push_back(
+        std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 10.0, 0.0, 1.5707963267948966));
+    door->entities.push_back(std::make_shared<DraftText>(Vec2(2, 1), "D", 1.0));
+
+    for (const bool mirrored : {true, false}) {
+        SCOPED_TRACE(mirrored ? "mirrored" : "scaled by -1");
+        DraftDocument d;
+        d.blockTable().addBlock(door);
+        auto ref = std::make_shared<hz::draft::DraftBlockRef>(door, Vec2(5, 5), 0.0,
+                                                              mirrored ? 1.0 : -1.0);
+        if (mirrored) ref->mirror(Vec2(5, 0), Vec2(5, 1));
+        d.addEntity(ref);
+        const hz::draft::DraftBlockRef placed = *ref;
+        hz::doc::ExplodeBlockCommand explode(d, ref->id());
+        explode.execute();
+        ASSERT_EQ(d.entities().size(), 3u);
+
+        const auto* line = dynamic_cast<const DraftLine*>(d.entities()[0].get());
+        const auto* arc = dynamic_cast<const hz::draft::DraftArc*>(d.entities()[1].get());
+        const auto* text = dynamic_cast<const DraftText*>(d.entities()[2].get());
+        ASSERT_TRUE(line && arc && text);
+        const auto near = [](const Vec2& a, const Vec2& b) { return (a - b).length() < 1e-9; };
+        EXPECT_TRUE(near(line->end(), placed.transformPoint(Vec2(0, 10))));
+        // The arc's ends, whichever way round it now runs.
+        const Vec2 from = placed.transformPoint(Vec2(10, 0));
+        const Vec2 to = placed.transformPoint(Vec2(0, 10));
+        EXPECT_TRUE((near(arc->startPoint(), from) && near(arc->endPoint(), to)) ||
+                    (near(arc->startPoint(), to) && near(arc->endPoint(), from)));
+        EXPECT_TRUE(near(arc->midPoint(),
+                         placed.transformPoint(Vec2(7.0710678118654755, 7.0710678118654755))))
+            << "the swing on the side the block drew it";
+        EXPECT_TRUE(near(text->position(), placed.transformPoint(Vec2(2, 1))));
+    }
 }

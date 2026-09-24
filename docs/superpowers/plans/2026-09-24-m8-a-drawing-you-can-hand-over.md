@@ -64,10 +64,40 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
   `pdftoppm` and `rsvg-convert`, came out the same and right. It had lines,
   a dashed red line, a circle, an arc, text, a dimension, and a turned,
   scaled block with text.
+- **Found in review:**
+  - **Negative scale.** A block copied its content, moved and scaled it
+    (`clone`, then `scale`, `rotate` and `translate`) to plot it. An arc and
+    a text kept their angles under a negative scale, which is a half turn,
+    so in a block scaled by -1 the arc was drawn on the wrong side of its
+    moved centre. That went for the screen too. `DraftArc::scale` and
+    `DraftText::scale` now turn them half round, which Explode needed as
+    well.
+  - **Copies each frame.** The copies were made on every frame: an
+    allocation per entity per block reference per frame. The content is
+    now plotted where the block has it, and each point is placed by
+    `DraftBlockRef::transformPoint`. Text is turned by where its direction
+    lands.
+  - **Mirroring a block did not mirror it**, and had not before this
+    phase. A mirror was stored as a negated scale, which is a half turn: a
+    block mirrored in an upright axis through its insertion point came out
+    unchanged. A reflection is not a turn and a scale, so a reference now
+    has a mirror flag. Its content is mirrored in the block's y axis before
+    it is scaled and turned, as a DXF INSERT with a negative x scale is.
+    - `mirror()` toggles the flag.
+    - Explode mirrors the pieces.
+    - The native format saves the flag as `mirrored`.
+    - DXF writes it as that negative x scale, and reads such an INSERT as a
+      mirrored reference rather than exploding it.
+    - Text in a mirrored block plots readable, over its mirror image's
+      place, and ends where it began.
+  - **`DraftText::mirror` turned text half a turn too far.** It both
+    reflected the reading direction and flipped the alignment, so a text
+    mirrored in an upright axis came out upside down, on the wrong side of
+    its point. It now covers its mirror image's place, readable.
 
 ### Tests
 
-10 new.
+17 new, 1 changed.
 - Plot scene:
   - layer styles, and hidden and locked layers;
   - blocks expanded, nested, with ByBlock and text;
@@ -81,6 +111,19 @@ PrintSupport, since printing needs it. PDF (`QPdfWriter`, in QtGui) and SVG
 - Window:
   - a drawing plots to PDF and to SVG from the menu;
   - a plot that does not fit is warned about, and Cancel writes nothing.
+- From the review:
+  - a negative scale turns arcs and text half round;
+  - a mirrored reference is mirrored, in four axes, and back;
+  - a mirrored text covers its mirror image;
+  - a mirrored door plots swinging the other way, and one scaled by -1
+    turned;
+  - Explode puts the pieces where the block drew them, mirrored and
+    half-turned;
+  - mirrored and half-turned references round-trip through the native
+    format and DXF;
+  - the DXF insert test now expects a mirrored reference, not exploded
+    pieces.
+  All of them fail on the code before the fix.
 
 ### Not done
 

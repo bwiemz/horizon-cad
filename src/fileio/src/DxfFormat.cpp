@@ -349,7 +349,8 @@ void writeInsert(std::ostream& out, const draft::DraftBlockRef& ref) {
     writeGroup(out, 10, ref.insertPos().x);
     writeGroup(out, 20, ref.insertPos().y);
     writeGroup(out, 30, 0.0);
-    writeGroup(out, 41, ref.uniformScale());
+    // A mirrored reference is an INSERT with its x scale negated.
+    writeGroup(out, 41, ref.mirrored() ? -ref.uniformScale() : ref.uniformScale());
     writeGroup(out, 42, ref.uniformScale());
     writeGroup(out, 43, ref.uniformScale());
     if (ref.rotation() != 0.0) {
@@ -1310,8 +1311,9 @@ Entities placeEntity(const draft::DraftEntity& e, const math::Vec2& base, const 
     ++im.placedPieces;
     if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(&e)) {
         // A block within the block: place its pieces, then these.
-        Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(),
-                                    ref->uniformScale(), ref->uniformScale(), im, depth + 1);
+        const double sx = ref->mirrored() ? -ref->uniformScale() : ref->uniformScale();
+        Entities inner = placeBlock(*ref->definition(), ref->insertPos(), ref->rotation(), sx,
+                                    ref->uniformScale(), im, depth + 1);
         Entities out;
         for (const auto& piece : inner) {
             auto placed = placeEntity(*piece, base, at, rotation, sx, sy, im, depth + 1);
@@ -1499,19 +1501,26 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         const double sx = toDouble(findGroup(g, 41, "1.0"));
         const double sy = toDouble(findGroup(g, 42, "1.0"));
         const double rotation = toDouble(findGroup(g, 50, "0")) * math::kDegToRad;
-        const bool plainRef = !inBlock && ocs == Ocs::Plane && sx > 0.0 &&
-                              std::abs(sx - sy) <= 1e-12 * std::max(sx, 1.0);
+        // Equal scales, of either sign, are a block reference: mirrored when
+        // one of them is negative, and turned half round when y's is (x
+        // negated then is the same as y negated and a half turn).
+        const bool plainRef =
+            !inBlock && ocs == Ocs::Plane && std::abs(sy) > 0.0 && std::isfinite(sx) &&
+            std::isfinite(sy) &&
+            std::abs(std::abs(sx) - std::abs(sy)) <= 1e-12 * std::max(std::abs(sy), 1.0);
         if (plainRef) {
-            out.push_back(std::make_shared<draft::DraftBlockRef>(def, at, rotation, sx));
+            auto ref = std::make_shared<draft::DraftBlockRef>(
+                def, at, sy < 0.0 ? rotation + math::kPi : rotation, std::abs(sy));
+            ref->setMirrored((sx < 0.0) != (sy < 0.0));
+            out.push_back(ref);
         } else {
-            // A block reference here has one positive scale: an insert with
-            // two, or a mirrored one, or one inside a block, is placed piece
-            // by piece.
+            // A block reference here has one scale: an insert with two, or
+            // one inside a block, is placed piece by piece.
             out = placeBlock(*def, at, rotation, sx, sy, im, 0);
             if (inBlock) {
                 ++im.notes.approximated[{type, "inside a block, flattened into it"}];
             } else {
-                ++im.notes.approximated[{type, "unequal or mirrored scales, exploded"}];
+                ++im.notes.approximated[{type, "unequal scales, exploded"}];
             }
             // Block content on layer 0 takes the insert's layer and, when it
             // has no colour of its own, the insert's colour. Content on a
