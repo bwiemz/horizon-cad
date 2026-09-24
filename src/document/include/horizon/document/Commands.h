@@ -380,9 +380,11 @@ private:
 /// same block and reference, so what names the reference's ID still finds it.
 class CreateBlockCommand : public Command {
 public:
+    /// The reference goes on @p layer, as every new entity goes on the
+    /// current layer.
     CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
                        const std::vector<uint64_t>& entityIds,
-                       std::optional<math::Vec2> basePoint = std::nullopt);
+                       std::optional<math::Vec2> basePoint = std::nullopt, std::string layer = "0");
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -394,6 +396,7 @@ private:
     std::string m_blockName;
     std::vector<uint64_t> m_entityIds;
     std::optional<math::Vec2> m_basePoint;
+    std::string m_layer;
     // Made on the first execute, kept for undo and redo.
     std::vector<draft::PlacedEntity> m_removed;
     std::shared_ptr<draft::DraftEntity> m_blockRef;

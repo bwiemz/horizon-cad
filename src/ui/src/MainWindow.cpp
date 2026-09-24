@@ -2864,7 +2864,8 @@ void MainWindow::onCreateBlock() {
 
     const math::Vec2 base(baseX->value(), baseY->value());
     auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->draftDocument(), blockName,
-                                                         filteredIds, base);
+                                                         filteredIds, base,
+                                                         m_document->layerManager().currentLayer());
     auto* rawCmd = cmd.get();
     m_document->undoStack().push(std::move(cmd));
 

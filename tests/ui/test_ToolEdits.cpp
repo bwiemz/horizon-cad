@@ -21,6 +21,7 @@
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/Tool.h"
@@ -394,6 +395,10 @@ TEST(ToolEditsTest, CreateBlockTakesItsBasePoint) {
     trigger(w, "tool_select");
     drive.click(Vec2(2, 0));
 
+    hz::draft::LayerProperties walls;
+    walls.name = "Walls";
+    w.activeDocument()->layerManager().addLayer(walls);
+    w.activeDocument()->layerManager().setCurrentLayer("Walls");
     hz::test::FormFiller filler(QStringLiteral("Create Block"),
                                 hz::test::FormAnswers()
                                     .text(QStringLiteral("blockName"), QStringLiteral("Bar"))
@@ -408,6 +413,7 @@ TEST(ToolEditsTest, CreateBlockTakesItsBasePoint) {
     const auto refs = all<hz::draft::DraftBlockRef>(w);
     ASSERT_EQ(refs.size(), 1u);
     EXPECT_TRUE(near(refs[0]->insertPos(), Vec2(0, 0)));
+    EXPECT_EQ(refs[0]->layer(), "Walls") << "on the current layer, as Insert Block puts it";
 }
 
 // The ellipse's last point, typed, is the one it takes. It used the cursor's
