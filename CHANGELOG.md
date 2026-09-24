@@ -9,7 +9,7 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness (Phases 97–100)
+## Unreleased — Production readiness (Phases 97–101) — Milestone 1 complete
 
 Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
 
@@ -139,6 +139,17 @@ Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-2
     as corpus replays registered with CTest, so the seed corpus — real
     documents from the real writers, plus every crashing input above — runs
     in every build, including the sanitizer job.
+- **A crash lost everything since the last save (101).** Every two minutes
+  (`autosave/intervalSeconds` in the settings; 0 turns it off) each modified
+  document that changed since its last snapshot is written — atomically, in
+  native format even for a DXF drawing — to a recovery directory owned by the
+  running session and removed when it exits cleanly. After a crash, the next
+  start finds the session whose lock's process is gone and offers its
+  documents back: Recover reopens them modified, pointing at where they were
+  saved and marked "(recovered)" until saved again; Discard deletes them;
+  Later keeps them for the next start. A second instance running at the same
+  time is never mistaken for a crashed one, and two instances starting
+  together cannot both recover the same documents.
 
 ## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 

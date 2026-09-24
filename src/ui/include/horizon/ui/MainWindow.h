@@ -11,6 +11,7 @@
 #include "horizon/ui/Clipboard.h"
 
 class QCloseEvent;
+class QTimer;
 class QLabel;
 class QTabBar;
 
@@ -22,6 +23,7 @@ class PropertyPanel;
 class LayerPanel;
 class RibbonBar;
 class FeatureTreePanel;
+class RecoveryManager;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -34,6 +36,19 @@ public:
     /// The document shown in the active tab (the blank backing document for
     /// an assembly tab).
     doc::Document* activeDocument() const { return m_document.get(); }
+
+    /// Autosave and crash recovery for this window's documents.
+    const RecoveryManager& recovery() const { return *m_recovery; }
+
+public slots:
+    /// Write a recovery snapshot of every modified document that changed since
+    /// its last one, and drop the snapshots of documents no longer modified.
+    /// Runs on a timer (the "autosave/intervalSeconds" setting, default 120).
+    void autosave();
+
+    /// If an earlier session crashed, offer to reopen the documents it left
+    /// modified. Called once the window is on screen.
+    void offerRecovery();
 
 protected:
     /// Offers to save every modified document; ignores the close if the user
@@ -151,6 +166,12 @@ private:
         std::shared_ptr<doc::AssemblyDocument> assembly;
         /// Tab caption without the modified marker.
         QString title;
+        /// Identifies this document's autosave snapshot.
+        quint64 recoveryKey = 0;
+        /// Changed since its last snapshot (or never snapshotted).
+        bool snapshotStale = true;
+        /// Reopened from a crashed session and not saved since.
+        bool recovered = false;
     };
 
     void createMenus();
@@ -178,6 +199,11 @@ private:
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
 
+    /// Route a document's change notifications to the markers and autosave.
+    void watchDocument(const std::shared_ptr<doc::Document>& document);
+    /// Drop the tab's snapshot once its document is saved or closed.
+    void forgetSnapshot(DocTab& tab);
+
     /// Tell the user a file operation failed and why, and log it.
     /// `summary` is e.g. "Could not open".
     void reportFileError(const QString& summary, const std::string& path,
@@ -190,6 +216,9 @@ private:
     doc::DocumentManager m_docManager;
     /// Why the document manager's last part/assembly load failed.
     std::string m_lastLoadError;
+    std::unique_ptr<RecoveryManager> m_recovery;
+    QTimer* m_autosaveTimer = nullptr;
+    quint64 m_nextRecoveryKey = 1;
     std::vector<DocTab> m_tabs;
     std::shared_ptr<doc::Document> m_document;
     std::shared_ptr<doc::AssemblyDocument> m_assembly;
