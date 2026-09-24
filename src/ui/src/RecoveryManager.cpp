@@ -75,8 +75,7 @@ bool RecoveryManager::snapshot(quint64 key, const doc::Document& doc, const QStr
 }
 
 bool RecoveryManager::snapshot(quint64 key, const doc::AssemblyDocument& assembly,
-                               const QString& title, const QString& originalPath,
-                               int recoveries) {
+                               const QString& title, const QString& originalPath, int recoveries) {
     // Component paths are kept as they are in memory, not made relative to
     // the snapshot's own directory.
     return writeSnapshot(key, io::NativeFormat::assemblyToJson(assembly, std::string()),
@@ -194,8 +193,7 @@ void RecoveryManager::noteRecoveryAttempt() {
             std::string error;
             if (!io::writeFileAtomically(
                     toPath(sidecar.absoluteFilePath()),
-                    std::string_view(json.constData(), static_cast<size_t>(json.size())),
-                    &error)) {
+                    std::string_view(json.constData(), static_cast<size_t>(json.size())), &error)) {
                 spdlog::warn("Could not mark {} as being recovered: {}",
                              sidecar.absoluteFilePath().toStdString(), error);
             }
