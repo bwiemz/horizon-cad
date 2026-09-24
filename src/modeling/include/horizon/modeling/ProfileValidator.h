@@ -24,7 +24,12 @@ public:
     /// Supported entity types:
     ///   - DraftLine: uses start() / end()
     ///   - DraftArc: uses startPoint() / endPoint()
+    ///   - DraftRectangle, DraftPolyline: taken as their line segments (a
+    ///     closed polyline includes its closing segment), so a shape drawn
+    ///     with the Rectangle or Polyline tool is a profile like any other;
+    ///     `orderedEdges` then holds those segments as DraftLines
     ///   - DraftCircle: always forms a closed loop by itself
+    /// Anything else (an ellipse, a spline, text) is reported by name.
     ///
     /// @param entities  The profile entities to validate.
     /// @param tolerance Maximum gap between consecutive endpoints.

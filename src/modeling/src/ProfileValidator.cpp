@@ -3,12 +3,19 @@
 #include <cmath>
 #include <iomanip>
 #include <locale>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftSpline.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/math/Vec2.h"
 
 namespace hz::model {
@@ -36,6 +43,44 @@ static EndpointPair getEndpoints(const std::shared_ptr<draft::DraftEntity>& enti
     return {{}, {}, false};
 }
 
+/// What kind of entity this is, for a message about one that a profile cannot
+/// use.
+static const char* kindOf(const draft::DraftEntity& entity) {
+    if (dynamic_cast<const draft::DraftCircle*>(&entity)) return "a circle";
+    if (dynamic_cast<const draft::DraftEllipse*>(&entity)) return "an ellipse";
+    if (dynamic_cast<const draft::DraftSpline*>(&entity)) return "a spline";
+    if (dynamic_cast<const draft::DraftText*>(&entity)) return "text";
+    return "an entity of this kind";
+}
+
+/// Rectangles and polylines as the line segments they are drawn with; every
+/// other entity as itself.
+static std::vector<std::shared_ptr<draft::DraftEntity>> asCurves(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
+    std::vector<std::shared_ptr<draft::DraftEntity>> curves;
+    curves.reserve(entities.size());
+    const auto addSegment = [&](const Vec2& a, const Vec2& b) {
+        curves.push_back(std::make_shared<draft::DraftLine>(a, b));
+    };
+    for (const auto& entity : entities) {
+        if (const auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
+            const Vec2 c1 = rect->corner1();
+            const Vec2 c2 = rect->corner2();
+            addSegment(c1, {c2.x, c1.y});
+            addSegment({c2.x, c1.y}, c2);
+            addSegment(c2, {c1.x, c2.y});
+            addSegment({c1.x, c2.y}, c1);
+        } else if (const auto* poly = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
+            const auto& pts = poly->points();
+            for (size_t i = 0; i + 1 < pts.size(); ++i) addSegment(pts[i], pts[i + 1]);
+            if (poly->closed() && pts.size() > 2) addSegment(pts.back(), pts.front());
+        } else {
+            curves.push_back(entity);
+        }
+    }
+    return curves;
+}
+
 static bool pointsMatch(const Vec2& a, const Vec2& b, double tolerance) {
     const double dx = a.x - b.x;
     const double dy = a.y - b.y;
@@ -55,8 +100,9 @@ static std::string describePoint(const Vec2& p) {
 // ---------------------------------------------------------------------------
 
 ProfileValidationResult ProfileValidator::validate(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities, double tolerance) {
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& input, double tolerance) {
     ProfileValidationResult result;
+    const std::vector<std::shared_ptr<draft::DraftEntity>> entities = asCurves(input);
 
     if (entities.empty()) {
         result.errorMessage = "the profile is empty";
@@ -76,13 +122,22 @@ ProfileValidationResult ProfileValidator::validate(
     // Start with the first entity; chain by matching endpoints.
     std::vector<bool> used(entities.size(), false);
 
-    // Find first usable entity.
-    EndpointPair firstEP = getEndpoints(entities[0]);
-    if (!firstEP.valid) {
+    // Every curve in a chain must have two ends; a circle has none, so it is a
+    // profile only on its own (handled above).
+    for (const auto& entity : entities) {
+        if (getEndpoints(entity).valid) continue;
         result.errorMessage =
-            "a circle cannot be joined to other curves in a profile; extrude it on its own";
+            dynamic_cast<const draft::DraftCircle*>(entity.get())
+                ? std::string(
+                      "a circle cannot be joined to other curves in a profile; use it on "
+                      "its own")
+                : std::string(kindOf(*entity)) +
+                      " cannot be used in a profile yet; profiles are made of lines, arcs, "
+                      "rectangles, polylines, or a single circle";
         return result;
     }
+
+    EndpointPair firstEP = getEndpoints(entities[0]);
 
     result.orderedEdges.push_back(entities[0]);
     used[0] = true;

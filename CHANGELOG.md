@@ -26,6 +26,14 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
   into zero-volume solids without complaint: a zero distance, and a direction
   lying in the sketch plane.
 
+  Writing those messages turned up a larger gap: the profile reader
+  understood lines, arcs and a lone circle only, so **a shape drawn with the
+  Rectangle or Polyline tool — the usual way to draw one — could not be
+  extruded, revolved, lofted or swept**, and was reported as a circle
+  problem. Rectangles and polylines (and so imported LWPOLYLINEs) now count as
+  the line segments they are drawn with; anything still unsupported is named
+  ("an ellipse cannot be used in a profile yet").
+
 - **A part could hold only one feature's geometry (102).** The rebuild
   threaded a single solid through the feature tree, and every feature that
   builds geometry — Extrude, Revolve, Loft, Sweep, the primitives — ignored the

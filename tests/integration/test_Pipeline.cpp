@@ -164,15 +164,16 @@ TEST(PipelineTest, ExtrudeLargeProfile) {
     EXPECT_TRUE(solid->isValid()) << solid->validationReport();
 }
 
-TEST(PipelineTest, ExtrudeZeroDistanceProducesDegenerate) {
+TEST(PipelineTest, ExtrudeZeroDistanceIsRefused) {
+    // A zero distance used to produce a flat solid with every vertex coplanar
+    // — structurally valid, geometrically nothing. It is refused, with a reason.
     auto profile = makeRectProfile(5.0, 3.0);
     SketchPlane plane;
-    auto solid = Extrude::execute(profile, plane, Vec3::UnitZ, 0.0, "ext_zero");
-    // Zero distance may produce a degenerate solid (all vertices coplanar)
-    // but the topology may still be structurally valid.
-    if (solid) {
-        EXPECT_EQ(solid->faceCount(), 6u);
-    }
+    std::string why;
+    auto solid = Extrude::execute(profile, plane, Vec3::UnitZ, 0.0, "ext_zero",
+                                  Extrude::kDefaultSegments, 0.0, &why);
+    EXPECT_EQ(solid, nullptr);
+    EXPECT_NE(why.find("distance"), std::string::npos) << why;
 }
 
 TEST(PipelineTest, ExtrudeOpenProfileFails) {

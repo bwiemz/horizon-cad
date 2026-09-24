@@ -17,6 +17,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/MainWindow.h"
@@ -125,4 +126,21 @@ TEST(BodyFeatureCommandsTest, ExtrudeAsksForTheOperationAndRefusesACutThatLeaves
     EXPECT_EQ(doc.featureTree().featureCount(), 2u);
     EXPECT_NEAR(partVolume(doc), 200.0 - 8.0, 1e-6);
     EXPECT_TRUE(doc.isDirty());
+}
+
+TEST(BodyFeatureCommandsTest, AShapeFromTheRectangleToolExtrudes) {
+    // The Rectangle tool commits one DraftRectangle, not four lines; the
+    // profile reader used to reject it (blaming a circle).
+    MainWindow w;
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftRectangle>(Vec2(0, 0), Vec2(6, 4)));
+    auto* extrude = w.findChild<QAction*>(QStringLiteral("action_extrude"));
+    ASSERT_NE(extrude, nullptr);
+    FeatureDialogFiller filler(QStringLiteral("Extrude"), 5.0, std::nullopt);
+    extrude->trigger();
+    ASSERT_TRUE(filler.seen());
+    ASSERT_EQ(doc.featureTree().featureCount(), 1u)
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_NEAR(partVolume(doc), 120.0, 1e-6);
 }
