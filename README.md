@@ -189,7 +189,7 @@ the application, so users cannot reach it yet. Ratings:
 | render — OpenGL path | stable | The shipping viewport |
 | render — Vulkan / GPU tessellation / path tracer | experimental | Staged bring-up, opt-in |
 | simulation (FEA) | prototype, library-only | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench. Meshes a solid's bounding box, so only boxes are analysed correctly |
-| pdm / sync / collaboration | experimental, library-only | Deliberately conservative: append-only, hash-verified, pessimistic locks, no merges. Lock acquisition is not yet atomic across processes (Phase 119) |
+| pdm / sync / collaboration | experimental, library-only | Deliberately conservative: append-only, pessimistic locks, no merges. A check-out is one exclusive file creation, so two users cannot both win it; content is verified against its SHA-256 on every read and push; an archive or lock that cannot be read fails closed instead of reading as empty or free |
 | kinematics | prototype, library-only | Serial chains only |
 | cam | prototype, library-only | Contour/drill/rect-pocket slices; no offsetting engine, gouge checking, or post-processor architecture yet. Not safe to run on a machine (Phase 121) |
 | plugin registry | experimental, library-only | Fail-closed validation without code execution; the execution bridge is future work |
@@ -331,6 +331,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 112 | Done | UI test harness: a smoke test runs every one of the window's 166 commands on an empty drawing, part and assembly and on a selection; the drawing tools are driven through the viewport's own mouse handling (draw, select, delete, undo) |
 | 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
 | 114 | Done | Off-thread work: a model rebuild that would freeze the window runs on a worker, from a snapshot, with progress and cancel, applied only if the part has not changed; large STEP imports and interference checks run in the background; atomic ID counters. Milestone 4 complete |
+| 119 | Done | PDM integrity: a check-out is one exclusive file creation, so two users racing for a document cannot both get it (with the old lock file, both did); a damaged lock or archive fails closed, where an archive used to read as empty and its next commit overwrote the history; SHA-256 content hashes, verified on every read and push, with old FNV-1a archives still readable |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

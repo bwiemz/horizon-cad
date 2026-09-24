@@ -12,17 +12,14 @@ namespace {
 
 constexpr char kArchiveSuffix[] = ".hzarchive";
 
-/// docIds become filesystem path components: restrict them to a safe
-/// character set so endpoint- or caller-supplied ids cannot escape the
-/// vault root ("..", separators, drive letters).
-bool isValidDocId(const std::string& docId) {
-    if (docId.empty() || docId == "." || docId == "..") return false;
-    for (const char c : docId) {
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                        (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
-        if (!ok) return false;
-    }
-    return true;
+/// Whether a local and a remote revision hold the same content. Hashes of one
+/// kind are compared directly. When one side still has the FNV-1a hash of a
+/// pre-Phase-119 archive, the remote bytes must match both hashes.
+bool sameContent(const std::string& localHash, const std::string& remoteHash,
+                 const std::string& remoteContent) {
+    if (localHash.size() == remoteHash.size()) return localHash == remoteHash;
+    return RevisionArchive::hashMatches(remoteContent, localHash) &&
+           RevisionArchive::hashMatches(remoteContent, remoteHash);
 }
 
 /// docIds of `<docId>.hzarchive` directories under @p root.
@@ -61,6 +58,7 @@ std::vector<std::string> FileSystemEndpoint::listDocuments() {
 int FileSystemEndpoint::revisionCount(const std::string& docId) {
     RevisionArchive archive(archiveDir(docId));
     archive.load();
+    if (archive.isCorrupt()) return -1;
     return archive.latestIndex() + 1;
 }
 
@@ -70,16 +68,30 @@ bool FileSystemEndpoint::fetchRevision(const std::string& docId, int index, Revi
     archive.load();
     if (index < 0 || index > archive.latestIndex()) return false;
     info = archive.history()[static_cast<size_t>(index)];
-    return archive.contentAt(index, content);
+    // Bytes that do not match their hash are still returned: the engine
+    // checks them, and reports corruption rather than a transport failure.
+    return archive.read(index, content) != RevisionArchive::ReadStatus::Missing;
 }
 
 bool FileSystemEndpoint::pushRevision(const std::string& docId, const RevisionInfo& info,
                                       const std::string& content) {
+    if (!RevisionArchive::hashMatches(content, info.contentHash)) return false;
+
     std::error_code ec;
     fs::create_directories(m_root, ec);
     RevisionArchive archive(archiveDir(docId));
     archive.load();
-    return archive.commit(content, info.author, info.message) >= 0;
+    if (archive.isCorrupt()) return false;
+
+    // The revision must land as the next one: commit() skips content equal
+    // to the head, and another writer may have appended meanwhile.
+    const int expected = archive.latestIndex() + 1;
+    if (archive.commit(content, info.author, info.message) != expected) return false;
+
+    // Read it back, so a write the share tore or dropped is not reported as
+    // pushed.
+    std::string stored;
+    return archive.read(expected, stored) == RevisionArchive::ReadStatus::Ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +134,12 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
     local.load();
     const int localCount = local.latestIndex() + 1;
     const int remoteCount = m_endpoint.revisionCount(docId);
+    // A history that cannot be trusted on either side is left alone: it
+    // would read as empty, and replicating into it would overwrite it.
+    if (local.isCorrupt() || remoteCount < 0) {
+        report.conflicts.push_back("corrupt:" + docId);
+        return;
+    }
 
     // Histories must agree on their shared prefix (append-only invariant):
     // any shared index with a different content hash is a divergence, and the
@@ -134,7 +152,8 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
             report.ok = false;
             return;
         }
-        if (remoteInfo.contentHash != local.history()[static_cast<size_t>(i)].contentHash) {
+        if (!sameContent(local.history()[static_cast<size_t>(i)].contentHash,
+                         remoteInfo.contentHash, remoteContent)) {
             report.conflicts.push_back(docId);
             return;
         }
@@ -157,8 +176,14 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
                 report.conflicts.push_back("raced:" + docId);
                 return;
             }
+            // Only content that matches its hash leaves this machine.
             std::string content;
-            if (!local.contentAt(i, content) ||
+            const RevisionArchive::ReadStatus status = local.read(i, content);
+            if (status == RevisionArchive::ReadStatus::Corrupt) {
+                report.conflicts.push_back("corrupt:" + docId);
+                return;
+            }
+            if (status != RevisionArchive::ReadStatus::Ok ||
                 !m_endpoint.pushRevision(docId, local.history()[static_cast<size_t>(i)], content)) {
                 report.ok = false;
                 return;
@@ -178,7 +203,7 @@ void SyncEngine::syncOne(const std::string& docId, SyncReport& report) {
             // A torn/partial remote read must not enter local history:
             // the fetched bytes have to hash to what the remote manifest
             // declared.
-            if (RevisionArchive::hashContent(content) != info.contentHash) {
+            if (!RevisionArchive::hashMatches(content, info.contentHash)) {
                 report.conflicts.push_back("corrupt:" + docId);
                 return;
             }

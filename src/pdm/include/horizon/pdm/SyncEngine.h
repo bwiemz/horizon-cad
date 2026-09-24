@@ -19,14 +19,19 @@ public:
     /// Document ids present on the endpoint.
     virtual std::vector<std::string> listDocuments() = 0;
 
-    /// Number of revisions stored for @p docId (0 when absent).
+    /// Number of revisions stored for @p docId (0 when absent), or -1 when
+    /// the endpoint holds a history for it that cannot be read or trusted.
     virtual int revisionCount(const std::string& docId) = 0;
 
-    /// Fetch revision @p index of @p docId. False when absent/unreadable.
+    /// Fetch revision @p index of @p docId: its metadata and its content as
+    /// stored. False when absent or unreadable. The engine checks @p content
+    /// against info.contentHash, so an endpoint need not.
     virtual bool fetchRevision(const std::string& docId, int index, RevisionInfo& info,
                                std::string& content) = 0;
 
-    /// Append one revision to @p docId's history. False on failure.
+    /// Append one revision to @p docId's history. Refuses (returns false)
+    /// content that does not match info.contentHash, and returns false on
+    /// failure.
     virtual bool pushRevision(const std::string& docId, const RevisionInfo& info,
                               const std::string& content) = 0;
 };
@@ -51,10 +56,14 @@ private:
 
 /// Result of one sync pass.
 struct SyncReport {
-    int pushed = 0;                      ///< revisions uploaded
-    int fetched = 0;                     ///< revisions downloaded
-    std::vector<std::string> conflicts;  ///< docIds left untouched
-    bool ok = true;                      ///< false on transport failure
+    int pushed = 0;   ///< revisions uploaded
+    int fetched = 0;  ///< revisions downloaded
+    /// docIds left untouched, most with the reason as a prefix: "locked:",
+    /// "raced:", "corrupt:" (content that does not match its hash, or a
+    /// history that cannot be trusted) or "invalid:" (an unusable id). A
+    /// divergence is the bare id.
+    std::vector<std::string> conflicts;
+    bool ok = true;  ///< false on transport failure
 };
 
 /// Local-first vault synchronization (Phase 69).
@@ -62,11 +71,11 @@ struct SyncReport {
 /// Horizon stays fully functional offline; sync replicates whole revision
 /// histories between the local vault (a directory of `<docId>.hzarchive`
 /// stores) and an endpoint. Replication is append-only and hash-verified:
-/// histories may only extend one another. A divergence — the same revision
-/// index carrying different content hashes on the two sides — is reported as
-/// a conflict and that document is left untouched on BOTH sides; sync never
-/// merges (pessimistic check-out locking is the mechanism that prevents
-/// divergence in the first place).
+/// histories may only extend one another, and content is checked against its
+/// SHA-256 hash when it is read to be pushed and when it is fetched. A divergence — the same
+/// revision index carrying different content hashes on the two sides — is reported as a conflict
+/// and that document is left untouched on BOTH sides; sync never merges (pessimistic check-out
+/// locking is the mechanism that prevents divergence in the first place).
 ///
 /// When a remote VaultManifest is provided, pushes honour its locks: a
 /// document checked out by another user is skipped and reported.

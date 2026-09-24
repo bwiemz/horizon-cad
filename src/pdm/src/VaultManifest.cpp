@@ -7,6 +7,8 @@
 #include <sstream>
 #include <utility>
 
+#include "horizon/fileio/AtomicFile.h"
+
 namespace hz::pdm {
 
 namespace {
@@ -26,49 +28,66 @@ std::string utcNow() {
     return buf;
 }
 
-/// Read the whole manifest as a JSON object (empty object if absent/malformed).
-nlohmann::json readManifest(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return nlohmann::json::object();
+LockState unreadableLock() {
+    LockState s;
+    s.locked = true;
+    s.unreadable = true;
+    return s;
+}
+
+/// The lock of @p docId in @p dir, read from disk. Anything that is present
+/// but cannot be read as a lock is an unreadable lock, never a free document.
+LockState readLock(const fs::path& dir, const std::string& docId) {
+    std::error_code ec;
+    const fs::file_type dirType = fs::status(dir, ec).type();
+    if (dirType == fs::file_type::not_found) return {};  // no lock ever taken
+    if (dirType != fs::file_type::directory) return unreadableLock();
+
+    const fs::path file = dir / (docId + ".lock");
+    const fs::file_type type = fs::status(file, ec).type();
+    if (type == fs::file_type::not_found) return {};  // free
+    if (type != fs::file_type::regular) return unreadableLock();
+
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return unreadableLock();
     std::ostringstream ss;
     ss << in.rdbuf();
-    try {
-        nlohmann::json j = nlohmann::json::parse(ss.str());
-        if (j.is_object()) return j;
-    } catch (const nlohmann::json::exception&) {
-    }
-    return nlohmann::json::object();
-}
 
-bool writeManifest(const std::string& path, const nlohmann::json& j) {
-    const fs::path p(path);
-    if (p.has_parent_path()) {
-        std::error_code ec;
-        fs::create_directories(p.parent_path(), ec);
-    }
-    std::ofstream out(path, std::ios::binary);
-    if (!out) return false;
-    out << j.dump(2);
-    return static_cast<bool>(out);
-}
-
-LockState stateFromEntry(const nlohmann::json& manifest, const std::string& docId) {
     LockState s;
-    auto it = manifest.find(docId);
-    if (it != manifest.end() && it->is_object()) {
-        s.owner = it->value("owner", "");
-        s.timestamp = it->value("timestamp", "");
-        s.locked = !s.owner.empty();
+    s.locked = true;
+    try {
+        const nlohmann::json j = nlohmann::json::parse(ss.str());
+        s.owner = j.at("owner").get<std::string>();
+        s.timestamp = j.value("timestamp", "");
+    } catch (const nlohmann::json::exception&) {
+        // Empty (a lock being written this instant) or damaged.
+        return unreadableLock();
     }
+    if (s.owner.empty()) return unreadableLock();
     return s;
 }
 
 }  // namespace
 
-VaultManifest::VaultManifest(std::string manifestPath) : m_path(std::move(manifestPath)) {}
+bool isValidDocId(const std::string& docId) {
+    if (docId.empty() || docId == "." || docId == "..") return false;
+    for (const char c : docId) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+VaultManifest::VaultManifest(std::string lockDir) : m_dir(std::move(lockDir)) {}
+
+std::string VaultManifest::lockPath(const std::string& docId) const {
+    return (fs::path(m_dir) / (docId + ".lock")).string();
+}
 
 LockState VaultManifest::status(const std::string& docId) const {
-    return stateFromEntry(readManifest(m_path), docId);
+    if (!isValidDocId(docId)) return unreadableLock();
+    return readLock(fs::path(m_dir), docId);
 }
 
 std::string VaultManifest::lockOwner(const std::string& docId) const {
@@ -77,33 +96,47 @@ std::string VaultManifest::lockOwner(const std::string& docId) const {
 
 bool VaultManifest::isLockedByOther(const std::string& docId, const std::string& user) const {
     const LockState s = status(docId);
-    return s.locked && s.owner != user;
+    return s.locked && (s.unreadable || s.owner != user);
 }
 
 bool VaultManifest::checkOut(const std::string& docId, const std::string& user) {
-    nlohmann::json manifest = readManifest(m_path);
-    const LockState s = stateFromEntry(manifest, docId);
-    if (s.locked && s.owner != user) return false;  // held by someone else
+    if (!isValidDocId(docId) || user.empty()) return false;
 
-    manifest[docId] = {{"owner", user}, {"timestamp", utcNow()}};
-    return writeManifest(m_path, manifest);
+    std::error_code ec;
+    fs::create_directories(m_dir, ec);  // a failure shows up as Failed below
+
+    const nlohmann::json lock = {{"owner", user}, {"timestamp", utcNow()}};
+    switch (io::createFileExclusively(fs::path(lockPath(docId)), lock.dump(2))) {
+        case io::ExclusiveCreate::Created:
+            return true;
+        case io::ExclusiveCreate::Exists: {
+            // Checking out a document one already holds is idempotent.
+            const LockState s = status(docId);
+            return s.locked && !s.unreadable && s.owner == user;
+        }
+        case io::ExclusiveCreate::Failed:
+            break;
+    }
+    return false;
 }
 
 bool VaultManifest::checkIn(const std::string& docId, const std::string& user) {
-    nlohmann::json manifest = readManifest(m_path);
-    const LockState s = stateFromEntry(manifest, docId);
-    if (!s.locked || s.owner != user) return false;  // not the holder
+    if (!isValidDocId(docId) || user.empty()) return false;
+    const LockState s = status(docId);
+    if (!s.locked || s.unreadable || s.owner != user) return false;  // not the holder
 
-    manifest.erase(docId);
-    return writeManifest(m_path, manifest);
+    // Reading the owner and removing the file are two steps. Only a lock that
+    // is broken and taken by someone else in between is lost: an
+    // administrator's override racing the holder's own release.
+    std::error_code ec;
+    return fs::remove(fs::path(lockPath(docId)), ec) && !ec;
 }
 
-void VaultManifest::breakLock(const std::string& docId) {
-    nlohmann::json manifest = readManifest(m_path);
-    if (manifest.contains(docId)) {
-        manifest.erase(docId);
-        writeManifest(m_path, manifest);
-    }
+bool VaultManifest::breakLock(const std::string& docId) {
+    if (!isValidDocId(docId)) return false;
+    std::error_code ec;
+    fs::remove(fs::path(lockPath(docId)), ec);
+    return !ec && !status(docId).locked;
 }
 
 }  // namespace hz::pdm

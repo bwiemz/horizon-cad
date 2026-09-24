@@ -34,4 +34,24 @@ std::string whyUnreadable(const std::filesystem::path& path);
 bool writeFileAtomically(const std::filesystem::path& path, std::string_view data,
                          std::string* error = nullptr);
 
+/// What createFileExclusively() did.
+enum class ExclusiveCreate {
+    Created,  ///< nothing was at the path; a file holding the data is now
+    Exists,   ///< something already exists at the path, and is untouched
+    Failed,   ///< the file could not be created or written (see `error`)
+};
+
+/// Create the file at `path` holding `data`, only if nothing exists there.
+///
+/// Checking that the path is free and claiming it are one step (O_EXCL,
+/// CREATE_NEW), so of several processes racing to create the same file, one
+/// gets Created and the others Exists. That holds on a network file system
+/// that honours exclusive creation (NFS v3 and later, SMB), which makes the
+/// file usable as a lock.
+///
+/// The data is written after the file is claimed, so another process can
+/// briefly see it empty. A write that fails removes the file again.
+ExclusiveCreate createFileExclusively(const std::filesystem::path& path, std::string_view data,
+                                      std::string* error = nullptr);
+
 }  // namespace hz::io

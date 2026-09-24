@@ -203,4 +203,38 @@ bool writeFileAtomically(const fs::path& path, std::string_view data, std::strin
     return true;
 }
 
+ExclusiveCreate createFileExclusively(const fs::path& path, std::string_view data,
+                                      std::string* error) {
+    const int fd = openExclusive(path);
+    if (fd < 0) {
+        const int err = errno;
+        if (err == EEXIST) return ExclusiveCreate::Exists;
+        setError(error, describe("cannot create", path, err));
+        return ExclusiveCreate::Failed;
+    }
+
+    // The file is ours: a write that fails must not leave it claimed.
+    const auto fail = [&](const char* what, int err) {
+        setError(error, describe(what, path, err));
+        std::error_code ignored;
+        fs::remove(path, ignored);
+        return ExclusiveCreate::Failed;
+    };
+
+    if (!writeAll(fd, data)) {
+        const int err = errno;
+        (void)closeFile(fd);
+        return fail("cannot write", err);
+    }
+    if (!syncFile(fd)) {
+        const int err = errno;
+        (void)closeFile(fd);
+        return fail("cannot flush", err);
+    }
+    if (!closeFile(fd)) return fail("cannot finish writing", errno);
+
+    syncDirectory(path.parent_path());
+    return ExclusiveCreate::Created;
+}
+
 }  // namespace hz::io

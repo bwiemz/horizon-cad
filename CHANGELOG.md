@@ -9,6 +9,23 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
+
+- **The vault could give one document to two users, and lose a history
+  (119).**
+  - A check-out rewrote a shared lock file, so two users checking out at the
+    same moment were both given the lock. Each lock is now a file of its own,
+    created exclusively, and exactly one user wins.
+  - A lock file that could not be read made every document look free. A
+    revision archive that could not be read looked empty, and the next
+    commit wrote over its history. Both now fail closed: an unreadable lock
+    counts as held, and an unreadable archive refuses commits.
+  - Revisions are hashed with SHA-256, and content is checked against its
+    hash whenever it is read, pushed or fetched. Archives written with the
+    old FNV-1a hash still load, verify and sync.
+  - A second handle on an archive appends after the first's commit instead
+    of overwriting it.
+
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 
 - **Ten common shortcuts did nothing (111).** Ctrl+Z, Ctrl+Y, Ctrl+S,
