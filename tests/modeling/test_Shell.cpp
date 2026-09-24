@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <string>
 
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Shell.h"
 #include "horizon/topology/Solid.h"
@@ -125,4 +127,17 @@ TEST(ShellTest, RemoveBottomAlsoWorks) {
     ASSERT_TRUE(r.ok) << r.message;
     EXPECT_TRUE(r.solid->checkManifold());
     EXPECT_GT(r.solid->faceCount(), 6u);
+}
+
+TEST(ShellTest, APartWithSeveralBodiesIsRefusedNotTruncated) {
+    // The cup is rebuilt from one body's caps; every other body used to be
+    // dropped without a word.
+    auto a = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto b = Pattern::transformed(*PrimitiveFactory::makeBox(10.0, 10.0, 10.0),
+                                  hz::math::Mat4::translation(Vec3(50, 0, 0)));
+    auto part = Pattern::collect(*a, *b);
+    ShellResult r = Shell::execute(std::move(part), 1.0, {TopologyID::make("box", "top")});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.solid, nullptr);
+    EXPECT_NE(r.message.find("several bodies"), std::string::npos) << r.message;
 }

@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 
 #include "horizon/modeling/Draft.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -119,4 +121,38 @@ TEST(DraftTest, NeutralAtTopKeepsTopFixed) {
     BBox2D bottom = bboxAtZ(*drafted, 0.0);
     EXPECT_NEAR(bottom.width(), 8.0, 1e-6);
     EXPECT_NEAR(bottom.minX, 1.0, 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// Several bodies: each drafts as it would alone
+// ---------------------------------------------------------------------------
+
+TEST(DraftTest, EachBodyOfAMultiBodyPartDraftsOutward) {
+    // Two boxes 100 apart: the average of all their vertices lies between
+    // them, outside both, and orienting faces against it drafted the inner
+    // sides of each box the wrong way.
+    auto left = PrimitiveFactory::makeBox(10.0, 10.0, 5.0);
+    auto right = Pattern::transformed(*PrimitiveFactory::makeBox(10.0, 10.0, 5.0),
+                                      hz::math::Mat4::translation(Vec3(100, 0, 0)));
+    auto part = Pattern::collect(*left, *right);
+    ASSERT_EQ(part->shells().size(), 2u);
+
+    const double tanA = 0.1;
+    auto drafted = Draft::execute(std::move(part), Vec3(0, 0, 1), Vec3(0, 0, 0), std::atan(tanA));
+    ASSERT_NE(drafted, nullptr);
+
+    // Each box's top grows by 0.5 on every side, including the sides that
+    // face the other box.
+    BBox2D top = bboxAtZ(*drafted, 5.0);
+    EXPECT_NEAR(top.minX, -0.5, 1e-6);
+    EXPECT_NEAR(top.maxX, 110.5, 1e-6);
+    double innerLeft = -1e9;
+    double innerRight = 1e9;
+    for (const auto& v : drafted->vertices()) {
+        if (std::abs(v.point.z - 5.0) > 1e-9) continue;
+        if (v.point.x < 50.0) innerLeft = std::max(innerLeft, v.point.x);
+        if (v.point.x > 50.0) innerRight = std::min(innerRight, v.point.x);
+    }
+    EXPECT_NEAR(innerLeft, 10.5, 1e-6) << "the left box's inner side drafts outward";
+    EXPECT_NEAR(innerRight, 99.5, 1e-6) << "the right box's inner side drafts outward";
 }

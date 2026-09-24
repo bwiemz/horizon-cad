@@ -414,6 +414,7 @@ void MainWindow::createRibbonBar() {
     auto addAction = [](QToolBar* tb, const QString& iconName, const QString& tooltip,
                         auto* receiver, auto slot, const QKeySequence& shortcut = {}) -> QAction* {
         auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, receiver, slot);
+        act->setObjectName(QStringLiteral("action_") + iconName);  // for tests and automation
         act->setToolTip(
             shortcut.isEmpty()
                 ? tooltip
@@ -2230,10 +2231,11 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
-    bool ok;
-    double distance =
-        QInputDialog::getDouble(this, tr("Extrude"), tr("Distance:"), 10.0, 0.01, 1e6, 2, &ok);
-    if (!ok) return;
+    double distance = 10.0;
+    doc::BodyOperation operation = doc::BodyOperation::Join;
+    if (!askForBodyFeature(tr("Extrude"), tr("Distance:"), distance, 0.01, 1e6, 2, operation)) {
+        return;
+    }
 
     math::Vec3 direction = sketch->plane().normal();
 
@@ -2248,21 +2250,15 @@ void MainWindow::onExtrudeSketch() {
 
     if (createdWrapper) m_document->addSketch(sketch);
 
-    // New features always go to the end of the active history.
-    m_document->featureTree().setRollbackIndex(-1);
-    m_document->featureTree().addFeature(
-        std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance));
-    m_document->setDirty(true);
-    rebuildFeatureTree();
+    auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
+    feature->setOperation(operation);
+    if (!addBodyFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
+        return;
+    }
 
     if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
     m_viewport->camera().setIsometricView();
     m_viewport->update();
-    if (m_document->failedFeatureIndex() >= 0) {
-        statusBar()->showMessage(tr("Extrude added, but an earlier feature fails to rebuild"));
-    } else {
-        m_statusPrompt->setText(tr("Extruded successfully."));
-    }
 }
 
 void MainWindow::onRevolveSketch() {
@@ -2275,10 +2271,12 @@ void MainWindow::onRevolveSketch() {
         return;
     }
 
-    bool ok;
-    double angleDeg = QInputDialog::getDouble(this, tr("Revolve"), tr("Angle (degrees):"), 360.0,
-                                              1.0, 360.0, 1, &ok);
-    if (!ok) return;
+    double angleDeg = 360.0;
+    doc::BodyOperation operation = doc::BodyOperation::Join;
+    if (!askForBodyFeature(tr("Revolve"), tr("Angle (degrees):"), angleDeg, 1.0, 360.0, 1,
+                           operation)) {
+        return;
+    }
 
     const double angle = angleDeg * std::numbers::pi / 180.0;
 
@@ -2297,20 +2295,82 @@ void MainWindow::onRevolveSketch() {
 
     if (createdWrapper) m_document->addSketch(sketch);
 
-    m_document->featureTree().setRollbackIndex(-1);
-    m_document->featureTree().addFeature(
-        std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle));
-    m_document->setDirty(true);
-    rebuildFeatureTree();
+    auto feature = std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
+    feature->setOperation(operation);
+    if (!addBodyFeature(std::move(feature), tr("Revolve"), createdWrapper ? sketch : nullptr)) {
+        return;
+    }
 
     if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
     m_viewport->camera().setIsometricView();
     m_viewport->update();
-    if (m_document->failedFeatureIndex() >= 0) {
-        statusBar()->showMessage(tr("Revolve added, but an earlier feature fails to rebuild"));
-    } else {
-        m_statusPrompt->setText(tr("Revolved successfully."));
+}
+
+bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
+                                   double min, double max, int decimals,
+                                   doc::BodyOperation& operation) {
+    QDialog dialog(this);
+    dialog.setWindowTitle(title);
+    auto* form = new QFormLayout(&dialog);
+
+    auto* size = new QDoubleSpinBox(&dialog);
+    size->setRange(min, max);
+    size->setDecimals(decimals);
+    size->setValue(value);
+    form->addRow(valueLabel, size);
+
+    auto* result = new QComboBox(&dialog);
+    result->setObjectName(QStringLiteral("bodyOperation"));
+    result->addItem(tr("Join the part"), static_cast<int>(doc::BodyOperation::Join));
+    result->addItem(tr("Cut from the part"), static_cast<int>(doc::BodyOperation::Cut));
+    result->addItem(tr("Keep the intersection"), static_cast<int>(doc::BodyOperation::Intersect));
+    result->addItem(tr("New body"), static_cast<int>(doc::BodyOperation::NewBody));
+    // Joining is what a second feature usually means; the first body has
+    // nothing to join, so it starts one.
+    const bool hasBody = m_document->solid() != nullptr;
+    result->setCurrentIndex(result->findData(
+        static_cast<int>(hasBody ? doc::BodyOperation::Join : doc::BodyOperation::NewBody)));
+    form->addRow(tr("Result:"), result);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) return false;
+    value = size->value();
+    operation = static_cast<doc::BodyOperation>(result->currentData().toInt());
+    return true;
+}
+
+bool MainWindow::addBodyFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                                const std::shared_ptr<doc::Sketch>& wrapperSketch) {
+    // New features always go to the end of the active history.
+    auto& tree = m_document->featureTree();
+    tree.setRollbackIndex(-1);
+    tree.addFeature(std::move(feature));
+    const auto index = static_cast<int>(tree.featureCount()) - 1;
+    m_document->rebuildModel();
+
+    if (m_document->failedFeatureIndex() == index) {
+        // The new feature itself fails (a Cut that would leave nothing, an
+        // Intersect of bodies that do not touch): leave the part as it was.
+        const QString reason = QString::fromStdString(m_document->lastBuildMessage());
+        tree.removeFeature(static_cast<size_t>(index));
+        if (wrapperSketch) m_document->removeSketch(wrapperSketch->id());
+        rebuildFeatureTree();
+        statusBar()->showMessage(tr("%1 not added: %2").arg(verb, reason));
+        return false;
     }
+
+    m_document->setDirty(true);
+    rebuildFeatureTree();
+    if (m_document->failedFeatureIndex() >= 0) {
+        statusBar()->showMessage(tr("%1 added, but an earlier feature fails to rebuild").arg(verb));
+    } else {
+        m_statusPrompt->setText(tr("%1 added.").arg(verb));
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

@@ -129,8 +129,8 @@ void ExtrudeFeature::restoreFeatureID(const std::string& id) {
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/) const {
-    // For now, extrude always creates a new solid from the sketch.
-    // Boolean combination with inputSolid comes in a future phase.
+    // The extrusion alone; the tree combines it with the part according to
+    // operation() (see applyFeature), as for every body-creating feature.
     return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
                                    m_featureID, m_segments, m_chordTolerance);
 }
@@ -1000,7 +1000,80 @@ std::vector<std::unique_ptr<topo::Solid>> executeMultiContained(
     }
 }
 
+/// Combine the body a creating feature built (`tool`) with the part so far,
+/// as the feature's operation says. nullptr, with `reason` set, when the
+/// operation cannot be carried out — never an empty part passed off as a
+/// result.
+std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<topo::Solid> part,
+                                     std::unique_ptr<topo::Solid> tool, std::string* reason) {
+    const auto fail = [reason](const char* why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = why;
+        return nullptr;
+    };
+    if (!part) {
+        if (operation == BodyOperation::Cut) return fail("there is no body to cut from");
+        if (operation == BodyOperation::Intersect)
+            return fail("there is no body to intersect with");
+        return tool;  // the first body, whatever it was asked to join
+    }
+    if (operation == BodyOperation::NewBody) return model::Pattern::collect(*part, *tool);
+
+    const model::BooleanType type = operation == BodyOperation::Join ? model::BooleanType::Union
+                                    : operation == BodyOperation::Cut
+                                        ? model::BooleanType::Subtract
+                                        : model::BooleanType::Intersect;
+    std::unique_ptr<topo::Solid> result;
+    try {
+        result = model::BooleanOp::execute(*part, *tool, type);
+    } catch (const std::exception& e) {
+        if (reason) *reason = std::string("the Boolean failed: ") + e.what();
+        return nullptr;
+    }
+    if (result) return result;
+    switch (operation) {
+        case BodyOperation::Cut:
+            return fail("the cut would leave nothing, or its Boolean could not be computed");
+        case BodyOperation::Intersect:
+            return fail("the bodies do not overlap, or their Boolean could not be computed");
+        default:
+            return fail("the join's Boolean could not be computed");
+    }
+}
+
+/// One step of the regeneration rule every build path shares: a creating
+/// feature builds a tool body, combined with the part by its operation; any
+/// other feature transforms the part.
+std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
+                                          std::string* reason) {
+    if (!feature.createsNewBody()) return executeContained(feature, std::move(part), reason);
+    auto tool = executeContained(feature, nullptr, reason);
+    if (!tool) return nullptr;
+    return combine(feature.operation(), std::move(part), std::move(tool), reason);
+}
+
 }  // namespace
+
+const char* bodyOperationName(BodyOperation operation) {
+    switch (operation) {
+        case BodyOperation::NewBody:
+            return "new";
+        case BodyOperation::Join:
+            return "join";
+        case BodyOperation::Cut:
+            return "cut";
+        case BodyOperation::Intersect:
+            return "intersect";
+    }
+    return "new";
+}
+
+std::optional<BodyOperation> bodyOperationFromName(std::string_view name) {
+    for (const BodyOperation op : {BodyOperation::NewBody, BodyOperation::Join, BodyOperation::Cut,
+                                   BodyOperation::Intersect}) {
+        if (name == bodyOperationName(op)) return op;
+    }
+    return std::nullopt;
+}
 
 std::unique_ptr<topo::Solid> FeatureTree::build() const {
     if (m_features.empty()) {
@@ -1010,7 +1083,7 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
     std::unique_ptr<topo::Solid> solid;
     for (const auto& feat : m_features) {
         if (feat->isConstruction()) continue;  // reference geometry: no solid effect
-        solid = executeContained(*feat, std::move(solid));
+        solid = applyFeature(*feat, std::move(solid), nullptr);
         if (!solid) {
             return nullptr;  // Feature failed
         }
@@ -1026,6 +1099,15 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
             bodies = executeMultiContained(*feat, std::move(bodies));
+        } else if (feat->createsNewBody() && feat->operation() != BodyOperation::NewBody &&
+                   !bodies.empty()) {
+            // Join / Cut / Intersect the active body, as the product path does.
+            auto tool = executeContained(*feat, nullptr);
+            if (!tool) continue;
+            auto combined =
+                combine(feat->operation(), std::move(bodies.back()), std::move(tool), nullptr);
+            bodies.pop_back();
+            if (combined) bodies.push_back(std::move(combined));
         } else if (feat->createsNewBody() || bodies.empty()) {
             // Start a fresh body. Create features ignore any input solid; a
             // transform with no active body (bodies.empty()) has nothing to act
@@ -1066,7 +1148,7 @@ BuildResult FeatureTree::buildWithDiagnostics() const {
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason;
-        auto next = executeContained(feature, std::move(solid), &reason);
+        auto next = applyFeature(feature, std::move(solid), &reason);
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()

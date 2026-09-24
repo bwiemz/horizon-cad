@@ -680,6 +680,12 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             if (prim->chordTolerance() > 0.0) fObj["chordTolerance"] = prim->chordTolerance();
         }
 
+        // How a created body combines with the part (Phase 102).
+        // ("operation" is taken: the Boolean feature's own type.)
+        if (feat->createsNewBody()) {
+            fObj["bodyOperation"] = doc::bodyOperationName(feat->operation());
+        }
+
         featureTreeArray.push_back(fObj);
     }
     root["featureTree"] = featureTreeArray;
@@ -1231,6 +1237,21 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 std::string ftype = fObj.value("type", "");
                 std::string persistedId = fObj.value("featureID", "");
 
+                // How a created body combines with the part. Files written
+                // before operations existed rebuilt every created body on its
+                // own, so they load as separate bodies.
+                doc::BodyOperation operation = doc::BodyOperation::NewBody;
+                if (fObj.contains("bodyOperation")) {
+                    const auto parsed =
+                        doc::bodyOperationFromName(fObj.at("bodyOperation").get<std::string>());
+                    if (!parsed) throw std::invalid_argument("unknown feature operation");
+                    operation = *parsed;
+                }
+                auto addLoaded = [&](std::unique_ptr<doc::Feature> feature) {
+                    if (feature->createsNewBody()) feature->setOperation(operation);
+                    doc.featureTree().addFeature(std::move(feature));
+                };
+
                 auto findSketch = [&](uint64_t id) -> std::shared_ptr<doc::Sketch> {
                     for (const auto& sk : doc.sketches()) {
                         if (sk->id() == id) return sk;
@@ -1250,7 +1271,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     if (sections.size() >= 2) {
                         auto feat = std::make_unique<doc::LoftFeature>(std::move(sections));
                         feat->restoreFeatureID(persistedId);
-                        doc.featureTree().addFeature(std::move(feat));
+                        addLoaded(std::move(feat));
                     }
                     continue;
                 }
@@ -1272,7 +1293,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                                fObj.at("chordTolerance").get<double>());
                         }
                         feat->restoreFeatureID(persistedId);
-                        doc.featureTree().addFeature(std::move(feat));
+                        addLoaded(std::move(feat));
                     }
                     continue;
                 }
@@ -1294,7 +1315,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     double angle = fObj.value("angle", 0.0);
                     auto feat = std::make_unique<doc::DraftFeature>(pullDir, neutralPoint, angle);
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "shell") {
@@ -1308,7 +1329,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     }
                     auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "fillet") {
@@ -1331,7 +1352,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                            fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "chamfer") {
@@ -1344,7 +1365,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     }
                     auto feat = std::make_unique<doc::ChamferFeature>(std::move(edges), distance);
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "boolean") {
@@ -1357,7 +1378,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                     }
                     auto feat = std::make_unique<doc::BooleanFeature>(type);
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "pattern") {
@@ -1395,7 +1416,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                                                std::move(suppressed));
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "datum") {
@@ -1421,7 +1442,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                         feat = doc::DatumFeature::makePlane(model::DatumPlane{origin, dirA, dirB});
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
                 if (ftype == "primitive") {
@@ -1450,7 +1471,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                            fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                     continue;
                 }
 
@@ -1486,7 +1507,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                            fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                 } else if (ftype == "revolve") {
                     double angle = fObj.value("angle", 6.283185307179586);
                     math::Vec3 axisPoint = hz::math::Vec3::Zero;
@@ -1512,7 +1533,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                                            fObj.at("chordTolerance").get<double>());
                     }
                     feat->restoreFeatureID(persistedId);
-                    doc.featureTree().addFeature(std::move(feat));
+                    addLoaded(std::move(feat));
                 }
             } catch (const std::exception&) {
                 continue;  // Skip malformed features.

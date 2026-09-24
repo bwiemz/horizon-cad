@@ -9,6 +9,35 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Production readiness, Milestone 2 (Phase 102)
+
+- **A part could hold only one feature's geometry (102).** The rebuild
+  threaded a single solid through the feature tree, and every feature that
+  builds geometry — Extrude, Revolve, Loft, Sweep, the primitives — ignored the
+  solid it was handed: a second extrude *replaced* the first, and a hole could
+  not be cut. `buildBodies()` knew about separate bodies but only the tests
+  called it, and the Boolean feature was a no-op on the product path.
+
+  Each creating feature now has a body operation. *Join*, *Cut* and
+  *Intersect* combine its body with the part through `BooleanOp`; *New body*
+  keeps it as a separate shell of the part's solid, which rendering, the
+  tessellation cache, mates and mass properties already handle. A cut or
+  intersect with nothing to act on, a cut that would leave nothing, and a
+  Boolean that fails are feature failures with a reason, never an empty part.
+  All three build paths share one rule. The Extrude and Revolve commands ask
+  for the operation (Join once the part has a body, New body for the first)
+  and refuse — rather than add — a feature that fails on the spot. Stored as
+  `"bodyOperation"`; files written before load every body as its own, so a
+  part that showed only its last extrude now shows all of them.
+
+  Two transforms assumed one body, which a spaced pattern could already
+  break and New body now makes routine. Shell rebuilt its cup from one body's
+  caps and dropped every other body without a word; it now refuses a part
+  with several bodies. Draft oriented every face against the centroid of the
+  whole solid, which for two bodies lies between them, outside both — so the
+  sides facing each other were drafted the wrong way; each face is now
+  oriented against its own body.
+
 ## Unreleased — Production readiness (Phases 97–101) — Milestone 1 complete
 
 Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
