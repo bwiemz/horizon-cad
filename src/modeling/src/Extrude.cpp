@@ -269,7 +269,8 @@ static void tagArcIdeals(const ringstack::SampledProfile& sampled, const draft::
 std::unique_ptr<topo::Solid> Extrude::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& direction, double distance,
-    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason,
+    NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
@@ -306,6 +307,30 @@ std::unique_ptr<topo::Solid> Extrude::execute(
         return fail("the profile has fewer than three distinct points");
     }
 
+    // The side face over chord i -> i+1: by position, or after the sketch
+    // entity the chord was cut from (and which of its chords it is).
+    const auto sideRole = [&](size_t i) -> std::string {
+        if (naming == NamingScheme::Positional) return "lateral_" + std::to_string(i);
+        const int source = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
+        if (source < 0) return "side:closing";
+        std::string role = "side:" + validation.edgeSources[static_cast<size_t>(source)];
+        if (sampled.sourceFacets[static_cast<size_t>(source)] > 1) {
+            role += ".f" + std::to_string(sampled.edgeFacet[i]);
+        }
+        return role;
+    };
+    const auto nameEdges = [&](topo::Solid& solid) {
+        if (naming == NamingScheme::FromGeometry) {
+            nameEdgesByFaces(solid);
+            return;
+        }
+        int idx = 0;
+        for (auto& e : solid.edges()) {
+            e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
+            ++idx;
+        }
+    };
+
     // Transform to 3D and compute top vertices.
     std::vector<Vec3> bottomPts(N);
     std::vector<Vec3> topPts(N);
@@ -328,20 +353,14 @@ std::unique_ptr<topo::Solid> Extrude::execute(
 
         bb.bottom->topoId = TopologyID::make(featureID, "cap_bottom");
         bb.top->topoId = TopologyID::make(featureID, "cap_top");
-        bb.front->topoId = TopologyID::make(featureID, "lateral_0");
-        bb.right->topoId = TopologyID::make(featureID, "lateral_1");
-        bb.back->topoId = TopologyID::make(featureID, "lateral_2");
-        bb.left->topoId = TopologyID::make(featureID, "lateral_3");
+        // front(0-1), right(1-2), back(2-3), left(3-0): the chords in order.
+        bb.front->topoId = TopologyID::make(featureID, sideRole(0));
+        bb.right->topoId = TopologyID::make(featureID, sideRole(1));
+        bb.back->topoId = TopologyID::make(featureID, sideRole(2));
+        bb.left->topoId = TopologyID::make(featureID, sideRole(3));
+        nameEdges(*solid);
 
-        {
-            int idx = 0;
-            for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-                e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
-                ++idx;
-            }
-        }
-
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
+        for (auto& e : solid->edges()) {
             assignEdgeCurve(&e);
         }
 
@@ -383,19 +402,12 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     pb.bottomFace->topoId = TopologyID::make(featureID, "cap_bottom");
     pb.topFace->topoId = TopologyID::make(featureID, "cap_top");
     for (size_t i = 0; i < N; ++i) {
-        pb.lateralFaces[i]->topoId = TopologyID::make(featureID, "lateral_" + std::to_string(i));
+        pb.lateralFaces[i]->topoId = TopologyID::make(featureID, sideRole(i));
     }
-
-    {
-        int idx = 0;
-        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
-            e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
-            ++idx;
-        }
-    }
+    nameEdges(*solid);
 
     // Edge curves
-    for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
+    for (auto& e : solid->edges()) {
         assignEdgeCurve(&e);
     }
 

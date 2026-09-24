@@ -123,9 +123,17 @@ public:
     bool isSuppressed() const { return m_suppressed; }
     void setSuppressed(bool suppressed) { m_suppressed = suppressed; }
 
+    /// How the faces and edges this feature builds — or the Join / Cut /
+    /// Intersect it makes — are named. A new feature names them from what
+    /// generated them; one loaded from a file saved before persistent naming
+    /// keeps the positional names its references were made against.
+    model::NamingScheme naming() const { return m_naming; }
+    void setNaming(model::NamingScheme naming) { m_naming = naming; }
+
 private:
     BodyOperation m_operation = BodyOperation::NewBody;
     bool m_suppressed = false;
+    model::NamingScheme m_naming = model::NamingScheme::FromGeometry;
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.

@@ -197,14 +197,18 @@ ShellResult Shell::execute(std::unique_ptr<topo::Solid> solid, double thickness,
     solidCentroid = solidCentroid * (1.0 / static_cast<double>(vc));
 
     // Locate the removed cap → shell axis.
+    // The face itself, or — if an operation split it — its first piece.
     const Face* removedFace = nullptr;
-    for (const auto& face : solid->faces()) {
-        for (const auto& id : removedFaceIds) {
+    for (const auto& id : removedFaceIds) {
+        const Face* piece = nullptr;
+        for (const auto& face : solid->faces()) {
             if (face.topoId == id) {
                 removedFace = &face;
                 break;
             }
+            if (piece == nullptr && face.topoId.isDescendantOf(id)) piece = &face;
         }
+        if (!removedFace) removedFace = piece;
         if (removedFace) break;
     }
     if (!removedFace) {

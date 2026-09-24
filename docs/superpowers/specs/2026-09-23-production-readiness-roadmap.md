@@ -107,6 +107,7 @@ save and reopen it — through the UI, with every failure explained.
 | 104c | Sketches on planes | A *sketch on a plane* command (the three principal planes, an offset, a datum plane or a planar face), editing it in place in the viewport, and the Loft and Sweep commands that need one — deferred from 104, since the window can only sketch on XY. | M |
 | 105 | Topology correctness gates | Euler–Poincaré with ring and genus terms (valid iff `V−E+F−R` is even and ≤ 2S); `GeometryValidator` gates every solid-producing op, not just Fillet/Chamfer/Sweep; profile validation rejects self-intersection and zero-length extrudes. | M |
 | 106 | Persistent naming, first cut | Replace positional `featureID/edgeN` naming with names derived from generating geometry (source profile segment + side), so upstream edits that add a vertex do not silently retarget downstream fillets; wire `TopologyID::resolve` into feature execution; unique face IDs after Booleans. | L |
+| 106b | Boolean fragments merged | The BSP CSG leaves every face split along the other operand's planes, even where the cut never reaches (a groove across a block: 30 faces for about 10). Merge each source face's coplanar fragments, and drop the collinear vertices they leave, so names survive unrelated Booleans and Fillet / Chamfer accept Boolean results, which today fail with "non box-like corner". | M |
 
 ### Milestone 3 — Interoperability & 2D fidelity (Phases 107–110)
 

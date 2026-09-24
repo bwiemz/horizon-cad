@@ -40,6 +40,13 @@ public:
     const std::deque<Face>& faces() const;
     const std::deque<Shell>& shells() const;
 
+    // -- Mutable views: for naming and binding geometry to entities already
+    //    allocated. Adding or removing through them breaks the pools'
+    //    pointer stability; use the allocators. ---------------------------
+
+    std::deque<Edge>& edges() { return m_edges; }
+    std::deque<Face>& faces() { return m_faces; }
+
     size_t vertexCount() const;
     size_t edgeCount() const;
     size_t faceCount() const;

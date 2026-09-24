@@ -12,6 +12,11 @@ namespace hz::model {
 struct ProfileValidationResult {
     bool isClosed = false;
     std::vector<std::shared_ptr<draft::DraftEntity>> orderedEdges;
+    /// Where each ordered edge came from, for naming what it builds:
+    /// "e<id>" for a sketch entity, "e<id>.<k>" for side k of a rectangle or
+    /// polyline. Entity ids are saved with the document, so these survive
+    /// reopening it, and an edit elsewhere in the sketch leaves them alone.
+    std::vector<std::string> edgeSources;
     std::string errorMessage;
 };
 

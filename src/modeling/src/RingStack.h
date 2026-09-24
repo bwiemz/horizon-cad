@@ -77,6 +77,15 @@ struct SampledProfile {
     /// when it approximates an arc or circle, and is -1 for a straight edge.
     std::vector<int> edgeArc;
     std::vector<ProfileArc> arcs;
+    /// edgeSource[i] indexes the ordered edge the chord vertices[i] ->
+    /// vertices[i+1] was cut from (-1 for the implicit closing chord of an
+    /// open chain), and edgeFacet[i] says which of that edge's chords it is,
+    /// counted along the edge's own direction — so the numbering does not
+    /// depend on which way round the loop happens to be chained.
+    std::vector<int> edgeSource;
+    std::vector<int> edgeFacet;
+    /// Chords cut from each ordered edge.
+    std::vector<int> sourceFacets;
 };
 
 /// Facet an ordered closed profile of lines, arcs, or a single circle.  Arcs

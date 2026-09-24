@@ -56,7 +56,11 @@ static std::string dumpJson(const json& root, int indent) {
 /// 17: features carry "bodyOperation" (Phase 102) and "featureSuppressed"
 /// (Phase 104). An older build would ignore both and build a different part
 /// — every body separate, suppressed features back in — without a word.
-static constexpr int kFormatVersion = 17;
+/// 18: a feature may carry "naming": 2 (Phase 106). An older build would name
+/// its faces and edges, and its Booleans' results, by position, and every
+/// reference made against the new names — a fillet's edges, a mate's faces —
+/// would miss.
+static constexpr int kFormatVersion = 18;
 
 /// Store `message` in `error` (when given) and report failure.
 static bool fail(std::string* error, std::string message) {
@@ -691,6 +695,10 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         }
         // Phase 104. ("suppressed" is taken: a pattern's skipped instances.)
         if (feat->isSuppressed()) fObj["featureSuppressed"] = true;
+        // Phase 106. Absent: positional names, as every file before it.
+        if (feat->naming() != model::NamingScheme::Positional) {
+            fObj["naming"] = static_cast<int>(feat->naming());
+        }
 
         featureTreeArray.push_back(fObj);
     }
@@ -1255,9 +1263,18 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc) {
                 }
                 const bool suppressed =
                     fObj.contains("featureSuppressed") && fObj.at("featureSuppressed").get<bool>();
+                // A file from before persistent naming made its fillets,
+                // chamfers and mates against positional names: keep them.
+                const int namingCode = fObj.contains("naming") ? fObj.at("naming").get<int>() : 1;
+                if (namingCode != static_cast<int>(model::NamingScheme::Positional) &&
+                    namingCode != static_cast<int>(model::NamingScheme::FromGeometry)) {
+                    throw std::invalid_argument("unknown naming scheme");
+                }
+                const auto naming = static_cast<model::NamingScheme>(namingCode);
                 auto addLoaded = [&](std::unique_ptr<doc::Feature> feature) {
                     if (feature->createsNewBody()) feature->setOperation(operation);
                     feature->setSuppressed(suppressed);
+                    feature->setNaming(naming);
                     doc.featureTree().addFeature(std::move(feature));
                 };
 

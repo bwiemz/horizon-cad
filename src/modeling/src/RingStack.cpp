@@ -201,17 +201,21 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
             if (!(circle->radius() > 0.0)) return out;
             const int n = std::max(3, resolution.stepsFor(circle->radius(), math::kTwoPi));
             out.arcs.push_back({circle->center(), circle->radius()});
+            out.sourceFacets.push_back(n);
             for (int k = 0; k < n; ++k) {
                 const double a = math::kTwoPi * static_cast<double>(k) / n;
                 out.vertices.emplace_back(circle->center().x + circle->radius() * std::cos(a),
                                           circle->center().y + circle->radius() * std::sin(a));
                 out.edgeArc.push_back(0);
+                out.edgeSource.push_back(0);
+                out.edgeFacet.push_back(k);
             }
             return out;
         }
     }
 
-    for (const auto& ent : orderedEdges) {
+    for (size_t source = 0; source < orderedEdges.size(); ++source) {
+        const auto& ent = orderedEdges[source];
         Vec2 s, e;
         std::vector<Vec2> run;  // points after s, ending at e
         int arcIndex = -1;
@@ -234,9 +238,11 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
             arcIndex = static_cast<int>(out.arcs.size());
             out.arcs.push_back({arc->center(), arc->radius()});
         } else {
+            out.sourceFacets.push_back(0);
             continue;
         }
 
+        bool reversed = false;
         if (out.vertices.empty()) {
             out.vertices.push_back(s);
         } else {
@@ -247,11 +253,16 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
                 run.pop_back();
                 std::reverse(run.begin(), run.end());
                 run.push_back(s);
+                reversed = true;
             }
         }
-        for (const auto& p : run) {
-            out.vertices.push_back(p);
+        const int facets = static_cast<int>(run.size());
+        out.sourceFacets.push_back(facets);
+        for (int m = 0; m < facets; ++m) {
+            out.vertices.push_back(run[static_cast<size_t>(m)]);
             out.edgeArc.push_back(arcIndex);
+            out.edgeSource.push_back(static_cast<int>(source));
+            out.edgeFacet.push_back(reversed ? facets - 1 - m : m);
         }
     }
 
@@ -264,6 +275,8 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
     } else {
         // An open chain: the implicit closing edge is straight.
         out.edgeArc.push_back(-1);
+        out.edgeSource.push_back(-1);
+        out.edgeFacet.push_back(0);
     }
     return out;
 }

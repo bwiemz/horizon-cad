@@ -223,3 +223,51 @@ Names derived from generating geometry (source profile segment + side) rather
 than storage order, so an upstream edit that adds a vertex does not retarget a
 downstream fillet; `TopologyID::resolve` wired into feature execution; unique
 face IDs after Booleans.
+
+### The defect
+
+An Extrude named its side faces `lateral_0 … lateral_n` in profile order, and
+its edges `edge0 … edgeN` in storage order. A fillet stores the name of its
+edge, so any upstream edit that changes the count retargets it silently:
+another vertex, or an arc's facet count. The fillet then rounds whichever edge
+now carries the old number. Fillet and Chamfer look their edges up by exact
+name only. A Boolean gives every piece of a split face the same name.
+
+### Design (first cut)
+
+- **Versioned naming.** `ExtrudeFeature` records the scheme it names with:
+  `Positional` (the old rule) or `FromGeometry`.
+  - Files written before this load as Positional, so every saved fillet, chamfer and mate keeps its reference. New features use FromGeometry.
+  - The feature stores `"naming": 2`, and the format goes to **version 18**, so an older build refuses a file it would misname.
+- **Faces from their source.** Each side face is named after the sketch entity that made it:
+  - `side:e<entity id>` for a line or arc;
+  - `side:e<id>.<k>` for side k of a rectangle or polyline;
+  - `.f<j>` appended for facet j of an arc or circle.
+
+  Caps stay `cap_bottom` / `cap_top`. Entity ids are saved with the document, so the names survive reopening. `ProfileValidator` reports each ordered edge's source, and `sampleProfile` reports each chord's.
+- **Edges from their faces.** An edge is named after the two faces it separates, as `edge:<a>|<b>` with the face roles sorted. Editing another part of the sketch leaves it alone.
+- **Resolution.** Fillet, Chamfer and Shell take an exact match first, else every descendant (`TopologyID::resolveAll`). A reference to a face or edge that an operation split or patterned still finds its pieces.
+- **Unique pieces after a Boolean.** When a face comes out in several pieces, each is named `<face>/piece:<k>`, and references to the face resolve to all of them.
+
+Revolve, Loft, Sweep and the primitives keep their names for now. Each needs the same source mapping, and Extrude is where sketch edits happen most.
+
+### Tests
+
+- Inserting a vertex in the sketch (splitting a line) leaves a fillet on an untouched vertical edge on the same edge. Under Positional naming, the same edit moves the fillet.
+- Names survive a save and reload.
+- A version-17 file keeps Positional naming, and its fillet still resolves.
+- The side faces of a rectangle and an arc are named as above.
+- A face split by a Cut gets unique pieces, and a Shell referencing the unsplit name removes all of them.
+
+**As built.**
+- **Every feature records its scheme.** `Feature::naming()` is saved as `"naming": 2`. New features use `NamingScheme::FromGeometry`, and a file without the key loads every feature as `Positional`. The format is at version 18.
+  - Extrude names its own faces and edges by the scheme.
+  - BooleanOp renames its result only when the feature doing the Join / Cut / Intersect (or Combine) is FromGeometry.
+  - The review caught an earlier draft that renamed every Boolean result. That broke references saved against the sewer's numbering in files from Phase 102 onward.
+- **Edge-naming rule.** `nameEdgesByFaces` gives `<src>/edge:<a>|<b>` when both faces come from the same feature, and `edge:<faceA>|<faceB>` otherwise. The rule is shared, so an edge between the same two faces has the same name whether Extrude built it or a Boolean re-sewed it.
+- **Where the new names apply.** Boolean results made by FromGeometry features are named by faces and pieces (`nameFacePieces`). The sewer's own positional edge names stay for the other ops that sew: cylinders, spheres, cones, tori, Revolve, Loft and Chamfer. Documents saved with fillets on those parts made their references against those names.
+- **Resolution.** Fillet and Chamfer resolve a reference to the edge itself or all of its pieces, counted once each. Shell takes the face or its first piece, and mates already did the same.
+- **Found, not fixed: Boolean fragmentation.** The BSP CSG splits faces along the other operand's planes even where the cut never reaches, and does not merge the fragments back. A groove across a 10 × 10 × 5 block leaves 30 faces where about 10 would do; the bottom face, which the cut never touches, comes out in two pieces.
+  - So an edge next to such a face is renamed by an unrelated Boolean, even though both faces are still there.
+  - The extra vertices on those edges are very likely why Fillet refuses Boolean results ("non box-like corner", Phase 105).
+  - Merging each face's coplanar fragments after the CSG would fix both. It is added to the roadmap as **106b**.

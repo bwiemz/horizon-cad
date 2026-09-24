@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -43,12 +44,15 @@ public:
     /// @param segments   Chords per full turn of profile arcs (>= 3).
     /// @param chordTolerance  When positive, overrides @p segments per arc.
     /// @param reason     When given, receives why the extrusion failed.
+    /// @param naming     How the side faces and edges are named (see
+    ///                   NamingScheme): by position, as before persistent
+    ///                   naming, or from the sketch entities they come from.
     /// @return The extruded solid, or nullptr if the profile is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
         const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0,
-        std::string* reason = nullptr);
+        std::string* reason = nullptr, NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model

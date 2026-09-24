@@ -21,14 +21,15 @@ using hz::math::Vec3;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Find the Edge in the solid whose topoId matches the given id.
-static const Edge* findEdge(const Solid& solid, const TopologyID& id) {
+/// The edges a reference names: the edge itself, or — once an operation has
+/// split it into pieces — every piece (its descendants).
+static std::vector<const Edge*> findEdges(const Solid& solid, const TopologyID& id) {
+    std::vector<const Edge*> pieces;
     for (const auto& e : solid.edges()) {
-        if (e.topoId == id) {
-            return &e;
-        }
+        if (e.topoId == id) return {&e};
+        if (e.topoId.isDescendantOf(id)) pieces.push_back(&e);
     }
-    return nullptr;
+    return pieces;
 }
 
 /// Face normal derived from the loop winding (Newell). Unlike the surface
@@ -1085,12 +1086,22 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
 
     std::vector<FilletEdgeInfo> filletEdges;
     filletEdges.reserve(edgeIds.size());
+    std::vector<std::pair<const Edge*, const TopologyID*>> chosen;
     for (const auto& eid : edgeIds) {
-        const Edge* edge = findEdge(inputSolid, eid);
-        if (!edge) {
+        const auto edges = findEdges(inputSolid, eid);
+        if (edges.empty()) {
             result.errorMessage = "Edge not found: " + eid.tag();
             return result;
         }
+        for (const Edge* edge : edges) {
+            // Once each, however many references reach it.
+            const bool listed = std::any_of(chosen.begin(), chosen.end(),
+                                            [edge](const auto& c) { return c.first == edge; });
+            if (!listed) chosen.emplace_back(edge, &eid);
+        }
+    }
+    for (const auto& [edge, idPtr] : chosen) {
+        const TopologyID& eid = *idPtr;
         FilletEdgeInfo info;
         if (!computeFilletFrame(edge, outwardSign, info)) {
             result.errorMessage = "Cannot compute fillet geometry for edge: " + eid.tag();
@@ -1128,11 +1139,15 @@ FilletResult FilletOp::executeVariable(const Solid& inputSolid, const TopologyID
         return result;
     }
 
-    const Edge* edge = findEdge(inputSolid, edgeId);
-    if (!edge) {
-        result.errorMessage = "Edge not found: " + edgeId.tag();
+    const auto edges = findEdges(inputSolid, edgeId);
+    if (edges.size() != 1) {
+        result.errorMessage = edges.empty()
+                                  ? "Edge not found: " + edgeId.tag()
+                                  : "A variable fillet needs one edge; " + edgeId.tag() +
+                                        " is now in " + std::to_string(edges.size()) + " pieces";
         return result;
     }
+    const Edge* edge = edges.front();
     FilletEdgeInfo info;
     const double outwardSign = signedLoopVolume(inputSolid) >= 0.0 ? 1.0 : -1.0;
     if (!computeFilletFrame(edge, outwardSign, info)) {
