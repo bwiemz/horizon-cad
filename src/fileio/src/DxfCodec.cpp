@@ -259,9 +259,11 @@ size_t signAt(std::string_view text, size_t i, char* letter) {
 // ===========================================================================
 
 uint32_t aciToArgb(int aci) {
-    if (aci < 0) aci = -aci;
-    if (aci == 0 || aci > 255) return 0x00000000;  // ByBlock, ByLayer
-    const Rgb& e = aciTable()[static_cast<size_t>(aci)];
+    // Negated in a wider type: -INT_MIN overflows an int, stays negative,
+    // and would index far outside the table.
+    const long long index = aci < 0 ? -static_cast<long long>(aci) : aci;
+    if (index == 0 || index > 255) return 0x00000000;  // ByBlock, ByLayer
+    const Rgb& e = aciTable()[static_cast<size_t>(index)];
     return 0xFF000000u | (static_cast<uint32_t>(e.r) << 16) | (static_cast<uint32_t>(e.g) << 8) |
            static_cast<uint32_t>(e.b);
 }

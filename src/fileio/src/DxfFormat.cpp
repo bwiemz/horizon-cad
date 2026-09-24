@@ -664,7 +664,8 @@ void parseLayerTable(DxfStream& in, doc::Document& doc) {
                         std::string ltName = findGroup(groups, 6, "CONTINUOUS");
                         draft::LayerProperties props;
                         props.name = name;
-                        props.color = aciToArgb(std::abs(aci));
+                        props.color =
+                            aciToArgb(aci);  // a negative index (layer off) reads as its colour
                         if (const std::string rgb = findGroup(groups, 420, ""); !rgb.empty()) {
                             props.color = dxf::trueColorToArgb(toInt(rgb));
                         }

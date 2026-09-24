@@ -291,6 +291,20 @@ TEST(DxfTextTest, EveryColourIndexHasItsColour) {
     EXPECT_EQ(colorOf(254), 0xFFBEBEBEu);
 }
 
+TEST(DxfTextTest, AnOutOfRangeColourIndexInheritsInsteadOfCrashing) {
+    // -2147483648 cannot be negated as an int: it used to index the colour
+    // table far out of range.
+    for (const char* index : {"-2147483648", "2147483647", "256", "-300"}) {
+        Loaded in(dxf("0\nLINE\n8\n0\n62\n" + std::string(index) + "\n10\n0\n20\n0\n11\n1\n21\n0\n",
+                      "", "",
+                      "0\nTABLE\n2\nLAYER\n70\n1\n0\nLAYER\n2\nOdd\n70\n0\n62\n" +
+                          std::string(index) + "\n6\nCONTINUOUS\n0\nENDTAB\n"));
+        ASSERT_TRUE(in.ok) << in.error;
+        EXPECT_EQ(in.firstColor(), 0u) << index;
+        ASSERT_NE(in.doc.layerManager().getLayer("Odd"), nullptr) << index;
+    }
+}
+
 TEST(DxfTextTest, TrueColourWinsOverTheIndex) {
     for (const std::string& groups :
          {std::string("62\n1\n420\n1193046\n"), std::string("420\n1193046\n62\n1\n")}) {
