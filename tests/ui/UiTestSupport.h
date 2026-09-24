@@ -16,8 +16,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QPushButton>
 #include <QMouseEvent>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QString>
 #include <QStringList>
