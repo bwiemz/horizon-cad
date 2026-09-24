@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "horizon/document/Document.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -44,15 +45,16 @@ bool MeasureDistanceTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
         double dy = snappedPos.y - m_firstPoint.y;
         double dist = std::sqrt(dx * dx + dy * dy);
 
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4) << "Distance: " << dist << "  (dx=" << dx
-            << ", dy=" << dy << ")";
+        const Preferences& prefs = Preferences::current();
+        const QString message =
+            QObject::tr("Distance: %1  (dx=%2, dy=%3)")
+                .arg(prefs.formatLength(dist), prefs.formatLength(dx), prefs.formatLength(dy));
 
         // Display in status bar.
         if (m_viewport) {
             auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());
             if (mainWin && mainWin->statusBar()) {
-                mainWin->statusBar()->showMessage(QString::fromStdString(oss.str()), 10000);
+                mainWin->statusBar()->showMessage(message, 10000);
             }
         }
 

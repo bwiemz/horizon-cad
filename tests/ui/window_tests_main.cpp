@@ -3,7 +3,9 @@
 #include <gtest/gtest.h>
 
 #include <QDir>
+#include <QSettings>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 
 #include "horizon/ui/Application.h"
 
@@ -20,6 +22,11 @@ int main(int argc, char** argv) {
     // give each test process its own directory: CTest runs them in parallel,
     // and one test's "crashed session" must not be recovered by another.
     QStandardPaths::setTestModeEnabled(true);
+    // Settings (recent files, the window layout) go to a directory of this
+    // run's own, removed when it ends.
+    QTemporaryDir settingsDir;
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QCoreApplication::setOrganizationName(QStringLiteral("HorizonCadTests"));
     QCoreApplication::setApplicationName(
         QStringLiteral("hz_ui_window_tests-%1").arg(QCoreApplication::applicationPid()));

@@ -83,12 +83,18 @@ public:
     draft::SnapEngine& snapEngine() { return m_snapEngine; }
     void setLastSnapResult(const draft::SnapResult& result) { m_lastSnapResult = result; }
 
-    /// How near the cursor, on screen, a snap or a pick reaches.
+    /// How near the cursor, on screen, a snap (by default) or a pick reaches.
     static constexpr double kSnapPixels = 10.0;
     static constexpr double kPickPixels = 10.0;
 
+    /// How far a snap reaches on screen (Edit ▸ Preferences).
+    double snapPixels() const { return m_snapPixels; }
+    void setSnapPixels(double pixels) {
+        if (pixels > 0.0) m_snapPixels = pixels;
+    }
+
     /// The snap for a cursor at @p worldPos: to what is drawn on visible,
-    /// unlocked layers, within kSnapPixels of it on screen at any zoom.
+    /// unlocked layers, within snapPixels() of it on screen at any zoom.
     draft::SnapResult snap(const math::Vec2& worldPos);
 
     /// The world distance @p pixels screen pixels span at the current zoom:
@@ -183,6 +189,7 @@ private:
     /// The last finite, positive pixelToWorldScale(): what a viewport with no
     /// size reports.
     mutable double m_lastPixelScale = 0.01;
+    double m_snapPixels = kSnapPixels;
     draft::SnapResult m_lastSnapResult;
 
     // 3D scene graph

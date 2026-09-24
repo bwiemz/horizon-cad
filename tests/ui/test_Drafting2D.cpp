@@ -66,7 +66,7 @@ TEST(Drafting2DTest, ASnapReachesTheSameDistanceOnScreenAtAnyZoom) {
     d.line(Vec2(0.3, 0.3), Vec2(100.3, 0.3));
     for (const bool in : {true, false}) {
         zoomTo(d.viewport, in ? 1e-4 : 1.0, in);
-        const double reach = hz::ui::ViewportWidget::kSnapPixels * d.viewport.pixelToWorldScale();
+        const double reach = d.viewport.snapPixels() * d.viewport.pixelToWorldScale();
         const Vec2 end(0.3, 0.3);
         EXPECT_EQ(d.viewport.snap(end + Vec2(0, 0.5 * reach)).type, SnapType::Endpoint)
             << "half the reach away, zoomed " << (in ? "in" : "out");

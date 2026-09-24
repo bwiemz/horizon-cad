@@ -12,11 +12,13 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/Preferences.h"
 
 class QCloseEvent;
 class QTimer;
 class QLabel;
 class QTabBar;
+class QMenu;
 
 namespace hz::ui {
 
@@ -46,6 +48,18 @@ public:
     /// Autosave and crash recovery for this window's documents.
     const RecoveryManager& recovery() const { return *m_recovery; }
 
+    /// Open @p fileName (a drawing, part, assembly or DXF) in a tab of its
+    /// own, or show its tab if it is already open, and remember it in File ▸
+    /// Open Recent. Reports a failure to the user and returns false.
+    bool openPath(const QString& fileName);
+
+    /// Open each of @p fileNames, as from the command line.
+    void openFiles(const QStringList& fileNames);
+
+    /// Put @p prefs into effect: the autosave interval, the grid snap and the
+    /// snap reach. The display unit is read where lengths are shown.
+    void applyPreferences(const Preferences& prefs);
+
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
     /// its last one, and drop the snapshots of documents no longer modified.
@@ -67,6 +81,8 @@ private slots:
     void onNewPart();
     void onNewAssembly();
     void onOpenFile();
+    void onPreferences();
+    void onAbout();
     void onSaveFile();
     void onSaveFileAs();
     void onImportStep();
@@ -202,6 +218,14 @@ private:
 
     DocTab* activeTab();
     bool saveActiveDocument();
+
+    /// File ▸ Open Recent, rebuilt each time it opens.
+    void rebuildRecentMenu();
+
+    /// The window's size and position and where its docks are, kept across
+    /// sessions.
+    void saveWindowLayout() const;
+    void restoreWindowLayout();
     std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
     bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
@@ -299,6 +323,7 @@ private:
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
+    QMenu* m_recentMenu = nullptr;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;
