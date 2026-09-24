@@ -140,7 +140,8 @@ TEST(DraftDocumentTest, BoundsUpdateMovesTheEntityInTheIndex) {
 // each time: undoing a 20,000-entity import took minutes.
 TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
 #ifdef HZ_UNDER_TSAN
-    GTEST_SKIP() << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
+    GTEST_SKIP()
+        << "a time limit means nothing under ThreadSanitizer, which runs code 5-15x slower";
 #endif
     DraftDocument d;
     std::vector<uint64_t> added;
