@@ -118,21 +118,45 @@ TEST(DxfTextTest, MtextChunksComeInTheOrderWritten) {
     EXPECT_EQ(texts[0]->text(), "AAABBBCCC");
 }
 
-TEST(DxfTextTest, MtextParagraphsBecomeOneTextPerLine) {
+TEST(DxfTextTest, MtextParagraphsBecomeOneTextOfSeveralLines) {
     // Top left (71 = 1): the first line hangs below the point, and each
-    // next line is 5/3 of the height lower.
+    // next line is 5/3 of the height lower, as a text's own lines are.
     Loaded in(dxf(mtext(10, 20, 2, "71\n1\n1\nFirst\\PSecond\n")));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto texts = in.texts();
+    ASSERT_EQ(texts.size(), 1u);
+    EXPECT_EQ(texts[0]->text(), "First\nSecond");
+    EXPECT_TRUE(near(texts[0]->lineBaseline(0), Vec2(10, 18)));
+    EXPECT_TRUE(near(texts[0]->lineBaseline(1), Vec2(10, 18 - 10.0 / 3.0)));
+    EXPECT_EQ(texts[0]->alignment(), TextAlignment::Left);
+    EXPECT_TRUE(in.report.approximated.empty()) << "nothing about it was changed";
+}
+
+// Blank lines at either end are not part of the text; the first line with
+// something on it is where it starts. Blank lines between are kept.
+TEST(DxfTextTest, MtextBlankLinesAtTheEndsAreDropped) {
+    Loaded in(dxf(mtext(0, 0, 3, "71\n1\n1\n\\P  \\PA\\P\\PB\\P\n")));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto texts = in.texts();
+    ASSERT_EQ(texts.size(), 1u);
+    EXPECT_EQ(texts[0]->text(), "A\n\nB");
+    EXPECT_TRUE(near(texts[0]->position(), Vec2(0, -3 - 2 * 5.0)));
+}
+
+// Lines spaced other than a text's own are placed where the file has them,
+// one text each, grouped, and the report says so.
+TEST(DxfTextTest, MtextWithOtherSpacingBecomesOneTextPerLine) {
+    Loaded in(dxf(mtext(10, 20, 2, "71\n1\n44\n1.5\n1\nFirst\\PSecond\n")));
     ASSERT_TRUE(in.ok) << in.error;
     const auto texts = in.texts();
     ASSERT_EQ(texts.size(), 2u);
     EXPECT_EQ(texts[0]->text(), "First");
     EXPECT_EQ(texts[1]->text(), "Second");
     EXPECT_TRUE(near(texts[0]->position(), Vec2(10, 18)));
-    EXPECT_TRUE(near(texts[1]->position(), Vec2(10, 18 - 10.0 / 3.0)));
-    EXPECT_EQ(texts[0]->alignment(), TextAlignment::Left);
+    EXPECT_TRUE(near(texts[1]->position(), Vec2(10, 18 - 5.0)));
     EXPECT_NE(texts[0]->groupId(), 0u) << "the lines stay together";
     EXPECT_EQ(texts[0]->groupId(), texts[1]->groupId());
-    EXPECT_TRUE(contains(in.report.approximated, "1 MTEXT entity: several lines"));
+    EXPECT_TRUE(contains(in.report.approximated, "1 MTEXT entity: lines spaced other than usual"));
 }
 
 TEST(DxfTextTest, MtextFormattingCodesAreReadNotShown) {
@@ -160,10 +184,10 @@ TEST(DxfTextTest, MtextAttachmentPointPlacesItsLines) {
     Loaded bottom(dxf(mtext(0, 0, 3, "71\n9\n1\nUp\\PDown\n")));
     ASSERT_TRUE(bottom.ok) << bottom.error;
     const auto texts = bottom.texts();
-    ASSERT_EQ(texts.size(), 2u);
-    EXPECT_TRUE(near(texts[0]->position(), Vec2(0, 5)));
-    EXPECT_TRUE(near(texts[1]->position(), Vec2(0, 0)));
-    EXPECT_EQ(texts[1]->alignment(), TextAlignment::Right);
+    ASSERT_EQ(texts.size(), 1u);
+    EXPECT_TRUE(near(texts[0]->lineBaseline(0), Vec2(0, 5)));
+    EXPECT_TRUE(near(texts[0]->lineBaseline(1), Vec2(0, 0)));
+    EXPECT_EQ(texts[0]->alignment(), TextAlignment::Right);
 }
 
 TEST(DxfTextTest, MtextTakesItsDirectionOrItsAngleInDegrees) {
@@ -372,6 +396,53 @@ TEST(DxfTextTest, TextIsWrittenSoItReadsBack) {
     const auto texts = in.texts();
     ASSERT_EQ(texts.size(), samples.size());
     for (size_t k = 0; k < samples.size(); ++k) EXPECT_EQ(texts[k]->text(), samples[k]);
+}
+
+// A text of several lines is written as one MTEXT and reads back as the same
+// text, where it was, turned and aligned as it was; MTEXT's own escapes and a
+// value too long for one group come back too.
+TEST(DxfTextTest, TextOfSeveralLinesIsWrittenAsMtextAndReadsBack) {
+    const std::string longLine(300, 'x');
+    const std::vector<std::string> samples = {
+        "First\nSecond\nThird",
+        "back\\slash\n{braces}\n" + std::string(kDiameter) + "12",
+        "a\n\nafter a blank line",
+        longLine + "\nend",
+    };
+    const std::vector<TextAlignment> aligned = {TextAlignment::Left, TextAlignment::Center,
+                                                TextAlignment::Right, TextAlignment::Left};
+    hz::doc::Document doc;
+    std::vector<std::shared_ptr<DraftText>> written;
+    for (size_t k = 0; k < samples.size(); ++k) {
+        auto text =
+            std::make_shared<DraftText>(Vec2(3.0, 40.0 * static_cast<double>(k)), samples[k], 2.5);
+        text->setRotation(0.25 * static_cast<double>(k));
+        text->setAlignment(aligned[k]);
+        written.push_back(text);
+        doc.draftDocument().addEntity(text);
+    }
+    const std::string file = saved(doc);
+    size_t mtexts = 0;
+    for (size_t at = file.find("\nMTEXT\n"); at != std::string::npos;
+         at = file.find("\nMTEXT\n", at + 1)) {
+        ++mtexts;
+    }
+    EXPECT_EQ(mtexts, samples.size());
+
+    Loaded in(file);
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_TRUE(in.report.approximated.empty());
+    const auto texts = in.texts();
+    ASSERT_EQ(texts.size(), samples.size());
+    for (size_t k = 0; k < samples.size(); ++k) {
+        SCOPED_TRACE(k);
+        EXPECT_EQ(texts[k]->text(), samples[k]);
+        EXPECT_TRUE(near(texts[k]->position(), written[k]->position(), 1e-6));
+        EXPECT_TRUE(near(texts[k]->lineBaseline(2), written[k]->lineBaseline(2), 1e-6));
+        EXPECT_NEAR(texts[k]->rotation(), written[k]->rotation(), 1e-6);
+        EXPECT_EQ(texts[k]->alignment(), aligned[k]);
+        EXPECT_DOUBLE_EQ(texts[k]->textHeight(), 2.5);
+    }
 }
 
 TEST(DxfTextTest, ALineBreakInANameCannotShiftTheFile) {

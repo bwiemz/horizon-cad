@@ -367,9 +367,13 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRende
                                       text.rotation, static_cast<int>(text.alignment)});
             }
         } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
-            // Text entity — collect for QPainter overlay.
-            m_dimTexts.push_back({txt->position(), txt->text(), resolvedColor, txt->textHeight(),
-                                  txt->rotation(), static_cast<int>(txt->alignment())});
+            // Text entity — collect for QPainter overlay, a line at a time.
+            const auto lines = txt->lines();
+            for (size_t i = 0; i < lines.size(); ++i) {
+                m_dimTexts.push_back({txt->lineBaseline(i), lines[i], resolvedColor,
+                                      txt->textHeight(), txt->rotation(),
+                                      static_cast<int>(txt->alignment())});
+            }
         }
     }
 

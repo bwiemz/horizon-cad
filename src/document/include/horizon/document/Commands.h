@@ -333,6 +333,20 @@ private:
     draft::LayerProperties m_oldProps;
 };
 
+/// Command to change the drawing's dimension style (Dimension > Style).
+class ChangeDimensionStyleCommand : public Command {
+public:
+    ChangeDimensionStyleCommand(draft::DraftDocument& doc, const draft::DimensionStyle& style);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    draft::DimensionStyle m_new;
+    draft::DimensionStyle m_old;
+};
+
 /// Command to rename a layer, with every entity on it, in the drawing and in
 /// block definitions. The current layer follows. A rename the layer manager
 /// refuses (see LayerManager::renameLayer) changes nothing: applied() says.

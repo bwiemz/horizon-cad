@@ -3,6 +3,7 @@ add_executable(hz_drafting_tests
     test_EntityTransforms.cpp
     test_Snapping.cpp
     test_PlotScene.cpp
+    test_DimensionsAndText.cpp
     test_SpatialIndexPerf.cpp
     test_SketchPlane.cpp
     test_SketchPlaneEdgeCases.cpp

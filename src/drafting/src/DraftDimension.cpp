@@ -12,10 +12,7 @@ DraftDimension::DraftDimension() = default;
 
 std::string DraftDimension::displayText(const DimensionStyle& style) const {
     if (hasTextOverride()) return m_textOverride;
-
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(style.precision) << computedValue();
-    return oss.str();
+    return style.formatLength(computedValue());
 }
 
 std::vector<std::pair<math::Vec2, math::Vec2>> DraftDimension::makeArrowhead(

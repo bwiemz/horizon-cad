@@ -38,6 +38,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_RenderEfficiency.cpp
         test_RebuildJob.cpp
         test_TypedLength.cpp
+        test_DimensionsAndText.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

@@ -7,6 +7,7 @@
 class QLabel;
 class QComboBox;
 class QLineEdit;
+class QPlainTextEdit;
 class QPushButton;
 class QDoubleSpinBox;
 class QListWidget;
@@ -24,6 +25,10 @@ public:
 
     void updateForSelection(const std::vector<uint64_t>& selectedIds);
     void refreshLayerList();
+
+protected:
+    /// Takes a text's content when its field loses the focus.
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private slots:
     void onLayerChanged(int index);
@@ -82,7 +87,7 @@ private:
 
     // Text entity specific
     QWidget* m_textPropsWidget = nullptr;
-    QLineEdit* m_textContentEdit = nullptr;
+    QPlainTextEdit* m_textContentEdit = nullptr;  ///< several lines; taken on leaving it
     QDoubleSpinBox* m_textHeightSpin = nullptr;
     QDoubleSpinBox* m_textRotationSpin = nullptr;
     QComboBox* m_textAlignCombo = nullptr;

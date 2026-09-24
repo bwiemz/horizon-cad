@@ -150,6 +150,32 @@ TEST(MalformedInputTest, BadDocumentLevelFieldIsDamaged) {
     EXPECT_TRUE(contains(error, "precision")) << error;
 }
 
+// The dimension style's unit is saved; a file from before it had one, or
+// with a unit nothing knows, shows millimetres.
+TEST(MalformedInputTest, TheDimensionUnitIsKeptAndAnUnknownOneIsMillimetres) {
+    Document doc;
+    auto style = doc.draftDocument().dimensionStyle();
+    style.unit = "in";
+    style.showUnits = true;
+    doc.draftDocument().setDimensionStyle(style);
+    Document back;
+    std::string error;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(doc, false), back, &error))
+        << error;
+    EXPECT_EQ(back.draftDocument().dimensionStyle().unit, "in");
+    EXPECT_TRUE(back.draftDocument().dimensionStyle().showUnits);
+
+    for (const char* unit : {R"("furlong")", "7", "null"}) {
+        Document odd;
+        ASSERT_TRUE(NativeFormat::documentFromJson(
+            std::string(R"({"version":16,"entities":[],"dimensionStyle":{"unit":)") + unit + "}}",
+            odd, &error))
+            << error;
+        EXPECT_EQ(odd.draftDocument().dimensionStyle().unit, "mm") << unit;
+    }
+}
+
 TEST(MalformedInputTest, AbsurdPatternCountIsClamped) {
     Document doc;
     doc.setType(hz::doc::DocumentType::Part);

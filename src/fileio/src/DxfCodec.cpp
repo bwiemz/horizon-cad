@@ -545,6 +545,20 @@ std::string encodeText(std::string_view text) {
     return out;
 }
 
+std::string encodeMText(const std::vector<std::string>& lines) {
+    std::string out;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (i > 0) out += "\\P";
+        for (const char c : encodeText(lines[i])) {
+            // encodeText writes no backslash or brace of its own, so each one
+            // here is the text's, and MTEXT would read it as a code.
+            if (c == '\\' || c == '{' || c == '}') out += '\\';
+            out += c;
+        }
+    }
+    return out;
+}
+
 // ===========================================================================
 // Units
 // ===========================================================================

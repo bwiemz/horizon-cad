@@ -576,6 +576,25 @@ std::string ModifyLayerCommand::description() const {
     return "Modify Layer";
 }
 
+// --- ChangeDimensionStyleCommand ---
+
+ChangeDimensionStyleCommand::ChangeDimensionStyleCommand(draft::DraftDocument& doc,
+                                                         const draft::DimensionStyle& style)
+    : m_doc(doc), m_new(style) {}
+
+void ChangeDimensionStyleCommand::execute() {
+    m_old = m_doc.dimensionStyle();
+    m_doc.setDimensionStyle(m_new);
+}
+
+void ChangeDimensionStyleCommand::undo() {
+    m_doc.setDimensionStyle(m_old);
+}
+
+std::string ChangeDimensionStyleCommand::description() const {
+    return "Dimension Style";
+}
+
 // --- RenameLayerCommand ---
 
 RenameLayerCommand::RenameLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,

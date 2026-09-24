@@ -67,6 +67,7 @@
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/ArcTool.h"
 #include "horizon/ui/BreakTool.h"
+#include "horizon/ui/ChainDimensionTool.h"
 #include "horizon/ui/ChamferTool.h"
 #include "horizon/ui/CircleTool.h"
 #include "horizon/ui/Clipboard.h"
@@ -550,8 +551,17 @@ void MainWindow::createMenus() {
     dimMenu->addAction(tr("&Linear"), this, &MainWindow::onLinearDimTool);
     dimMenu->addAction(tr("&Radial"), this, &MainWindow::onRadialDimTool);
     dimMenu->addAction(tr("&Angular"), this, &MainWindow::onAngularDimTool);
+    QAction* dimContinue =
+        dimMenu->addAction(tr("&Continue"), this, [this] { activateTool("Continue Dimension"); });
+    dimContinue->setObjectName(QStringLiteral("action_dim_continue"));
+    QAction* dimBaseline =
+        dimMenu->addAction(tr("&Baseline"), this, [this] { activateTool("Baseline Dimension"); });
+    dimBaseline->setObjectName(QStringLiteral("action_dim_baseline"));
     dimMenu->addSeparator();
     dimMenu->addAction(tr("L&eader"), this, &MainWindow::onLeaderTool);
+    dimMenu->addSeparator();
+    QAction* dimStyle = dimMenu->addAction(tr("&Style..."), this, &MainWindow::onDimensionStyle);
+    dimStyle->setObjectName(QStringLiteral("action_dim_style"));
 
     // ---- Constraint ----
     QMenu* cstrMenu = menuBar()->addMenu(tr("&Constraint"));
@@ -932,6 +942,10 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<ScaleTool>());
     m_toolManager->registerTool(std::make_unique<PasteTool>(&m_clipboard));
     m_toolManager->registerTool(std::make_unique<LinearDimensionTool>());
+    m_toolManager->registerTool(
+        std::make_unique<ChainDimensionTool>(ChainDimensionTool::Mode::Continue));
+    m_toolManager->registerTool(
+        std::make_unique<ChainDimensionTool>(ChainDimensionTool::Mode::Baseline));
     m_toolManager->registerTool(std::make_unique<RadialDimensionTool>());
     m_toolManager->registerTool(std::make_unique<AngularDimensionTool>());
     m_toolManager->registerTool(std::make_unique<LeaderTool>());
@@ -2683,6 +2697,12 @@ void MainWindow::onPolarArray() {
 // Slots -- Dimension tools
 // ---------------------------------------------------------------------------
 
+void MainWindow::activateTool(const std::string& name) {
+    m_toolManager->setActiveTool(name);
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
 void MainWindow::onLinearDimTool() {
     m_toolManager->setActiveTool("Linear Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
@@ -2699,6 +2719,60 @@ void MainWindow::onAngularDimTool() {
     m_toolManager->setActiveTool("Angular Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
+}
+
+void MainWindow::onDimensionStyle() {
+    draft::DraftDocument& drawing = m_document->draftDocument();
+    const draft::DimensionStyle& now = drawing.dimensionStyle();
+    const QStringList units = {QStringLiteral("mm"), QStringLiteral("cm"), QStringLiteral("m"),
+                               QStringLiteral("in"), QStringLiteral("ft")};
+
+    FeatureForm form(this, tr("Dimension Style"));
+    auto* height = form.number(QStringLiteral("textHeight"), tr("Text height:"), now.textHeight,
+                               0.01, 1000.0, 3);
+    auto* arrow =
+        form.number(QStringLiteral("arrowSize"), tr("Arrow size:"), now.arrowSize, 0.0, 1000.0, 3);
+    auto* angle = form.number(QStringLiteral("arrowAngle"), tr("Arrow half-angle (degrees):"),
+                              now.arrowAngle * math::kRadToDeg, 1.0, 89.0, 1);
+    auto* gap = form.number(QStringLiteral("extensionGap"), tr("Extension gap:"), now.extensionGap,
+                            0.0, 1000.0, 3);
+    auto* overshoot = form.number(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
+                                  now.extensionOvershoot, 0.0, 1000.0, 3);
+    auto* precision =
+        form.count(QStringLiteral("precision"), tr("Decimal places:"), now.precision, 0, 12);
+    auto* unit = form.choice(QStringLiteral("unit"), tr("Unit:"), units);
+    unit->setCurrentIndex(
+        std::max(0, static_cast<int>(units.indexOf(QString::fromStdString(now.unit)))));
+    auto* showUnit =
+        form.choice(QStringLiteral("showUnits"), tr("Show the unit:"), {tr("No"), tr("Yes")});
+    showUnit->setCurrentIndex(now.showUnits ? 1 : 0);
+    // A field shows its value rounded to its decimals (the arrow's 0.3 radians
+    // as 17.2 degrees); left as shown, it keeps the value exactly.
+    const auto field = [](QDoubleSpinBox* spin, double was, double scale = 1.0) {
+        return [spin, was, scale, shown = spin->value()] {
+            return spin->value() == shown ? was : spin->value() * scale;
+        };
+    };
+    const auto newHeight = field(height, now.textHeight);
+    const auto newArrow = field(arrow, now.arrowSize);
+    const auto newAngle = field(angle, now.arrowAngle, math::kDegToRad);
+    const auto newGap = field(gap, now.extensionGap);
+    const auto newOvershoot = field(overshoot, now.extensionOvershoot);
+    if (!form.exec()) return;
+
+    draft::DimensionStyle style = now;
+    style.textHeight = newHeight();
+    style.arrowSize = newArrow();
+    style.arrowAngle = newAngle();
+    style.extensionGap = newGap();
+    style.extensionOvershoot = newOvershoot();
+    style.precision = precision->value();
+    style.unit = unit->currentText().toStdString();
+    style.showUnits = showUnit->currentIndex() == 1;
+    if (style == now) return;  // OK with nothing changed is not a step to undo
+    m_document->undoStack().push(
+        std::make_unique<doc::ChangeDimensionStyleCommand>(drawing, style));
+    m_viewport->update();
 }
 
 void MainWindow::onLeaderTool() {
