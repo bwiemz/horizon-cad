@@ -126,7 +126,8 @@ TEST(Era3PipelineTest, ModelFeedsFiniteElementAnalysis) {
     const double F = 2.0e6;
     std::vector<sim::NodalLoad> loads;
     for (int n : loaded) {
-        loads.push_back(sim::NodalLoad{n, math::Vec3(F / loaded.size(), 0.0, 0.0)});
+        loads.push_back(
+            sim::NodalLoad{n, math::Vec3(F / static_cast<double>(loaded.size()), 0.0, 0.0)});
     }
 
     const sim::StaticResult r = sim::LinearStaticSolver::solve(mesh, mat, fixed, loads);

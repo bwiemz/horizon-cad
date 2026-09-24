@@ -216,7 +216,9 @@ MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
 // killEdgeVertex (KEV) — reverse of MEV
 // ---------------------------------------------------------------------------
 
-void killEdgeVertex(Solid& solid, Edge* edge) {
+// Killed elements are tombstoned (their links nulled) rather than erased from
+// the solid's storage, so the solid itself is not touched.
+void killEdgeVertex(Solid& /*solid*/, Edge* edge) {
     assert(edge != nullptr);
 
     HalfEdge* heA = edge->halfEdge;
@@ -337,7 +339,8 @@ void killEdgeVertex(Solid& solid, Edge* edge) {
 // killEdgeFace (KEF) — reverse of MEF
 // ---------------------------------------------------------------------------
 
-void killEdgeFace(Solid& solid, Edge* edge) {
+// Tombstones the removed face like killEdgeVertex; see there.
+void killEdgeFace(Solid& /*solid*/, Edge* edge) {
     assert(edge != nullptr);
 
     HalfEdge* heA = edge->halfEdge;

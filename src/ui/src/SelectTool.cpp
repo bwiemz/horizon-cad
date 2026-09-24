@@ -61,7 +61,6 @@ bool SelectTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     auto& sel = m_viewport->selectionManager();
 
     double pixelScale = m_viewport->pixelToWorldScale();
-    const double tolerance = std::max(10.0 * pixelScale, 0.15);
 
     // --- Check for grip hit first (only when entities are selected) ---
     auto selectedIds = sel.selectedIds();

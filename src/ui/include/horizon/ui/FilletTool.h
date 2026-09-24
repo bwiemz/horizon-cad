@@ -42,10 +42,6 @@ private:
     // Preview state.
     math::Vec2 m_currentPos;
     mutable bool m_hasPreview = false;
-    mutable math::Vec2 m_previewArcCenter;
-    mutable double m_previewArcRadius = 0.0;
-    mutable double m_previewArcStart = 0.0;
-    mutable double m_previewArcEnd = 0.0;
 
     bool computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint64_t lineBId,
                        const math::Vec2& clickB, math::Vec2& arcCenter, double& arcRadius,

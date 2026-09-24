@@ -90,8 +90,6 @@ bool DraftEllipse::hitTest(const math::Vec2& point, double tolerance) const {
     if (d < 1e-12) return tolerance >= std::min(m_semiMajor, m_semiMinor);
 
     // Approximate distance to the nearest point on the ellipse.
-    double px = lx / d;  // project onto approximate closest point
-    double py = ly / d;
     double ex = m_semiMajor * nx / d;
     double ey = m_semiMinor * ny / d;
     double dist = std::sqrt((lx - ex) * (lx - ex) + (ly - ey) * (ly - ey));

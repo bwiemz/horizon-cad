@@ -127,7 +127,9 @@ TEST(RTreeTest, DeepTreeMultiLevelSplits) {
     BoundingBox small(Vec3(100, -1, -1e9), Vec3(101.5, 2, 1e9));
     auto few = tree.query(small);
     EXPECT_EQ(few.size(), 1u);
-    if (!few.empty()) EXPECT_EQ(few[0], 50u);
+    if (!few.empty()) {
+        EXPECT_EQ(few[0], 50u);
+    }
 }
 
 // ---------------------------------------------------------------------------

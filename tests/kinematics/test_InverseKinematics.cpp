@@ -76,6 +76,8 @@ TEST(InverseKinematicsTest, AlreadyAtTargetIsNoOp) {
     const bool ok = solveInverseKinematics(Mat4::identity(), joints, target);
     EXPECT_TRUE(ok);
     for (const auto& j : joints) {
-        if (j.type == JointType::Revolute) EXPECT_NEAR(j.value, 0.0, 1e-9);
+        if (j.type == JointType::Revolute) {
+            EXPECT_NEAR(j.value, 0.0, 1e-9);
+        }
     }
 }

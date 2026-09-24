@@ -87,15 +87,6 @@ static std::shared_ptr<Sketch> makeRectSketch(double w, double h) {
     return sketch;
 }
 
-static std::shared_ptr<Sketch> makeOffsetRectSketch() {
-    auto sketch = std::make_shared<Sketch>();
-    sketch->addEntity(std::make_shared<DraftLine>(Vec2(5, 0), Vec2(10, 0)));
-    sketch->addEntity(std::make_shared<DraftLine>(Vec2(10, 0), Vec2(10, 5)));
-    sketch->addEntity(std::make_shared<DraftLine>(Vec2(10, 5), Vec2(5, 5)));
-    sketch->addEntity(std::make_shared<DraftLine>(Vec2(5, 5), Vec2(5, 0)));
-    return sketch;
-}
-
 /// Offset all vertices AND surface control points of a solid by a translation.
 static void offsetSolid(Solid& solid, const Vec3& offset) {
     for (auto& v : const_cast<std::deque<Vertex>&>(solid.vertices())) {

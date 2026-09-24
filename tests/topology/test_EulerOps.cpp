@@ -115,7 +115,7 @@ TEST(EulerOpsTest, MEVGeneralCaseExtends) {
     HalfEdge* heFromV1 = e01->halfEdge->twin;  // origin = v1
     ASSERT_EQ(heFromV1->origin, v1);
 
-    auto [e12, v2] = euler::makeEdgeVertex(solid, heFromV1, f, Vec3(1, 1, 0));
+    [[maybe_unused]] auto [e12, v2] = euler::makeEdgeVertex(solid, heFromV1, f, Vec3(1, 1, 0));
 
     EXPECT_EQ(solid.vertexCount(), 3u);
     EXPECT_EQ(solid.edgeCount(), 2u);
@@ -134,7 +134,7 @@ TEST(EulerOpsTest, MEVChainFormsCorrectLoop) {
 
     // MEV: v1 → v2
     HalfEdge* heFromV1 = e01->halfEdge->twin;
-    auto [e12, v2] = euler::makeEdgeVertex(solid, heFromV1, f, Vec3(1, 1, 0));
+    [[maybe_unused]] auto [e12, v2] = euler::makeEdgeVertex(solid, heFromV1, f, Vec3(1, 1, 0));
 
     // The loop should be:
     // v0→v1 (heOut01), v1→v2 (heOut12), v2→v1 (heIn12), v1→v0 (heIn01)
@@ -199,7 +199,7 @@ TEST(EulerOpsTest, BuildTriangle) {
     ASSERT_EQ(heAtV0->origin, v0);
 
     // MEF: close the triangle.
-    auto [e20, f2] = euler::makeEdgeFace(solid, heAtV2, heAtV0);
+    [[maybe_unused]] auto [e20, f2] = euler::makeEdgeFace(solid, heAtV2, heAtV0);
 
     EXPECT_EQ(solid.vertexCount(), 3u);
     EXPECT_EQ(solid.edgeCount(), 3u);
@@ -265,7 +265,7 @@ TEST(EulerOpsTest, BuildQuad) {
     ASSERT_EQ(heAtV3->origin, v3);
     ASSERT_EQ(heAtV0->origin, v0);
 
-    auto [e30, f2] = euler::makeEdgeFace(solid, heAtV3, heAtV0);
+    [[maybe_unused]] auto [e30, f2] = euler::makeEdgeFace(solid, heAtV3, heAtV0);
 
     EXPECT_EQ(solid.vertexCount(), 4u);
     EXPECT_EQ(solid.edgeCount(), 4u);

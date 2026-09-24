@@ -42,7 +42,7 @@ public:
     virtual bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) = 0;
 
     /// Handle a key press.  Returns true if the event was consumed.
-    virtual bool keyPressEvent(QKeyEvent* event) { return false; }
+    virtual bool keyPressEvent(QKeyEvent* /*event*/) { return false; }
 
     /// Cancel the current operation (e.g. when Escape is pressed).
     virtual void cancel() {}

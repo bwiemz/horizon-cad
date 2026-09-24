@@ -785,7 +785,9 @@ TEST(FeatureTreeTest, ChordToleranceHoldsAtEveryRadius) {
         EXPECT_LE(sagitta(radius, n), tolerance * 1.0000001) << "radius " << radius;
         EXPECT_GT(n, previous) << "a wider circle needs more facets for the same sag";
         previous = n;
-        if (radius >= 10.0) EXPECT_GT(fixedSag, tolerance);
+        if (radius >= 10.0) {
+            EXPECT_GT(fixedSag, tolerance);
+        }
 
         auto solid = cylinder->execute(nullptr);
         ASSERT_NE(solid, nullptr);

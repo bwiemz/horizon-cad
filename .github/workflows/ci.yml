@@ -18,12 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Warnings fail the Linux build. MSVC's /W4 backlog has not been
+          # measured yet, so Windows reports warnings without failing on them.
           - os: windows-latest
             preset: ci-windows
             triplet: x64-windows
+            werror: 'OFF'
           - os: ubuntu-22.04
             preset: linux-debug
             triplet: x64-linux
+            werror: 'ON'
 
     env:
       VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
@@ -108,7 +112,7 @@ jobs:
             pkg-config
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }}
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }} --config Debug
@@ -121,6 +125,9 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
+      # UBSan is built non-recoverable (see cmake/Sanitizers.cmake); print the
+      # stack so a failure names its source.
+      UBSAN_OPTIONS: print_stacktrace=1
 
     steps:
       - name: Checkout
@@ -183,8 +190,8 @@ jobs:
             ninja-build \
             pkg-config
 
-      - name: Configure with ASan
-        run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON
+      - name: Configure with ASan + UBSan
+        run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON -DHZ_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build/linux-debug --config Debug
@@ -288,6 +295,12 @@ jobs:
           #    materialize during the full app/ui build, which this job does
           #    not run — analyzing them yields "file not found". Drop anything
           #    under build/ (real sources never live there).
+          #
+          # The compile commands carry GCC's -Wconversion. Clang reads that flag
+          # as also enabling -Wsign-conversion and -Wshorten-64-to-32, which
+          # the GCC build deliberately leaves off (a tracked backlog; see
+          # cmake/CompilerWarnings.cmake), so the extra args keep the policy
+          # the same under both compilers.
           set -o pipefail
           jq -r '.[].file' build/linux-debug/compile_commands.json \
             | grep -vE '/build/' \
@@ -296,6 +309,8 @@ jobs:
           xargs clang-tidy-15 \
               -p build/linux-debug \
               --checks='-*,bugprone-*,performance-*' \
+              --extra-arg=-Wno-sign-conversion \
+              --extra-arg=-Wno-shorten-64-to-32 \
               --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
               < tidy-files.txt 2>&1 | tee clang-tidy-output.txt
           echo "::notice::clang-tidy gate passed (excluded-check warnings above are the advisory backlog)."

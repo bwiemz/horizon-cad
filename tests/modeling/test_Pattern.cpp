@@ -203,6 +203,8 @@ TEST(PatternTest, InstancesKeepTheIdealTheyApproximate) {
     for (const auto& e : pattern->edges()) {
         const Vec3 a = e.halfEdge->origin->point;
         const Vec3 b = e.halfEdge->twin->origin->point;
-        if (std::abs(a.z - b.z) < 1e-12) EXPECT_NE(e.analyticCurve, nullptr) << "rim chord";
+        if (std::abs(a.z - b.z) < 1e-12) {
+            EXPECT_NE(e.analyticCurve, nullptr) << "rim chord";
+        }
     }
 }

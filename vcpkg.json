@@ -3,19 +3,29 @@
   "version": "0.1.0",
   "description": "Open-source parametric 2D/3D CAD software",
   "dependencies": [
-    {
-      "name": "qtbase",
-      "default-features": false,
-      "features": [
-        "widgets",
-        "opengl"
-      ]
-    },
     "spdlog",
     "nlohmann-json",
     "gtest",
     "eigen3",
     "flatbuffers"
   ],
+  "default-features": [
+    "qt"
+  ],
+  "features": {
+    "qt": {
+      "description": "Build Qt 6 with vcpkg. Turn off (VCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON, or the linux-system-qt preset) to build against an installed Qt 6.",
+      "dependencies": [
+        {
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "widgets",
+            "opengl"
+          ]
+        }
+      ]
+    }
+  },
   "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35"
 }

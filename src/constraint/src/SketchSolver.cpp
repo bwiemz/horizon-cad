@@ -67,7 +67,7 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
             // Check degrees of freedom
             Eigen::MatrixXd J = buildJacobian(params, constraints);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
-            int rank = qr.rank();
+            const int rank = static_cast<int>(qr.rank());
             result.degreesOfFreedom = n - rank;
 
             if (result.degreesOfFreedom > 0) {
@@ -121,7 +121,7 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
     // Did not converge — check if over-constrained
     Eigen::MatrixXd J = buildJacobian(params, constraints);
     Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
-    int rank = qr.rank();
+    const int rank = static_cast<int>(qr.rank());
     result.degreesOfFreedom = n - rank;
 
     if (m > rank) {

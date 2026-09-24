@@ -9,6 +9,42 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Production readiness (Phase 97)
+
+Work against the [production-readiness roadmap](docs/superpowers/specs/2026-09-23-production-readiness-roadmap.md).
+
+- **The warning and sanitizer gates did not gate (97).** `cmake/CompilerWarnings.cmake`
+  and `cmake/Sanitizers.cmake` defined `hz_set_warnings()` and
+  `hz_enable_sanitizers()`, and nothing called either. The whole project built
+  with no warning flags, and the CI job named "AddressSanitizer" configured
+  `-DHZ_ENABLE_SANITIZERS=ON` into a plain Debug build — its log contains no
+  `-fsanitize` at all. Both functions are now applied from the root
+  `CMakeLists.txt` to every first-party target, so a new module is covered
+  without opting in. GCC/Clang build with `-Wall -Wextra -Wpedantic
+  -Wconversion` (MSVC `/W4 /permissive-`), and `HZ_WARNINGS_AS_ERRORS` fails
+  the Linux CI jobs on any warning. UBSan is built with
+  `-fno-sanitize-recover`, since by default it reports and carries on, which
+  lets a test pass straight over undefined behaviour. The full suite is clean
+  under ASan + UBSan + LeakSanitizer. `-Wsign-conversion` (about 560 size/index
+  sites) is left off as a tracked burn-down rather than suppressed site by
+  site, and clang-tidy is told the same, because Clang reads GCC's
+  `-Wconversion` as including it.
+
+  The warnings found about 25 sites, mostly dead code: unused variables, a
+  lambda nothing called, an unused `flipped` flag in the angular dimension's
+  arrowheads, `Eigen::Index` narrowed to `int`, a Qt signal deprecated in 6.9,
+  and `Solid` forward-declared as a `struct` but defined as a `class` — legal,
+  but the tag is part of the MSVC-mangled name.
+- **Building on Linux without compiling Qt.** Qt is now a default-on `qt`
+  feature of the vcpkg manifest; the new `linux-system-qt` preset turns it off,
+  so vcpkg provides only the small libraries and the build uses an installed
+  Qt 6. C++20 module scanning is off (no modules are used), which also stops
+  CMake ≥ 3.28 with GCC ≥ 14 writing flags into `compile_commands.json` that
+  clang-tidy cannot parse.
+- **Line endings.** A checkout copied from Windows to Linux showed all 559
+  files as modified — CRLF in the working tree, LF in the index.
+  `.gitattributes` now pins LF everywhere.
+
 ## Unreleased — Post-1.0 kernel work, continued (Phases 89–96)
 
 Continues against the "Not yet addressed" list in the

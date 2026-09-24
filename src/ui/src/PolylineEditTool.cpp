@@ -73,7 +73,9 @@ void PolylineEditTool::finishEditing() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-void PolylineEditTool::pushSnapshot(const std::string& desc) {
+// The per-action label is accepted for call-site clarity, but GripMoveCommand
+// carries a fixed "Grip Edit" label, so it is not recorded yet.
+void PolylineEditTool::pushSnapshot(const std::string& /*desc*/) {
     if (!m_viewport || !m_viewport->document() || !m_beforeClone) return;
     auto& doc = m_viewport->document()->draftDocument();
 

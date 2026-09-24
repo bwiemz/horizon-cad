@@ -20,7 +20,7 @@ public:
     double centerY() const;
 
 private slots:
-    void onFillFullCircleChanged(int state);
+    void onFillFullCircleChanged(Qt::CheckState state);
 
 private:
     QSpinBox* m_count;

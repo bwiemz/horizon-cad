@@ -61,7 +61,6 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
     }
 
     if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(m_sourceEntity.get())) {
-        math::Vec2 center = (rect->corner1() + rect->corner2()) * 0.5;
         // Simple: use distance from cursor to nearest edge.
         auto segs = draft::extractSegments(*rect);
         double minDist = 1e18;
