@@ -2286,9 +2286,9 @@ void MainWindow::onRevolveSketch() {
     math::Vec3 axisDir = math::Vec3::UnitY;
 
     std::string why;
-    auto probe = model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir,
-                                         angle, "probe", model::Revolve::kDefaultSegments, 0.0,
-                                         &why);
+    auto probe =
+        model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir, angle,
+                                "probe", model::Revolve::kDefaultSegments, 0.0, &why);
     if (!probe) {
         statusBar()->showMessage(tr("Revolve failed: %1").arg(QString::fromStdString(why)));
         return;
