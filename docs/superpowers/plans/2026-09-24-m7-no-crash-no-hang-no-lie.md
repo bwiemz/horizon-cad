@@ -269,9 +269,99 @@ without it.
 
 ## Phase 125: Background work that stops
 
-Cooperative cancel for STEP import and interference; wedged-job and
-trial-build exception safety; autosave failures shown to the user; a
-recovery crash-loop guard; a GL version guard; swallowed errors logged.
+### What the audit found
+
+- **Cancel did not cancel.** A STEP import and an interference check ran on
+  workers whose work ignored the flag they were given (C8). Cancel dropped
+  the result, but the work ran to its end, and quitting waited for it.
+- **A worker that could not start wedged its job.** `BackgroundTask::start`
+  and `RebuildJob::start` let `std::thread`'s `std::system_error` escape.
+  The job was never finished:
+  - an import said "already running" until restart;
+  - every rebuild queued behind the first one.
+- **The trial build could leave a feature behind.** `addModelFeature` puts
+  the new feature into the tree to try it, then takes it out. An exception
+  in between left the feature in the tree but not in the undo history, where
+  it could never be undone. Combining a feature's body with the part (`combine`)
+  was not contained.
+- **Autosave failed silently (C11).** An unwritable recovery folder, or a
+  full disk, turned autosave off, and only the log said so.
+- **Recovery could loop (C11).** A recovered document that crashed the
+  application was offered again at every start, with Recover as the
+  default. Recovered documents were not snapshotted until the next autosave,
+  but the crashed session's copies were deleted at once, so a crash in
+  between lost them.
+- **An old OpenGL context got OpenGL 3 calls (C10).** Below 3.3 the
+  viewport recorded the problem, then built its renderer and drew every
+  frame with functions the context may not have.
+- **Seven empty `catch (...)` blocks (N7):**
+  - Fillet and Chamfer typed input: `std::stod` read "1.2.3" as 1.2, and
+    dropped "." without a word.
+  - Four in the constraint tool's preview, which could not otherwise tell a
+    ref that no longer fits its entity.
+  - One around the constraint labels, dead since Phase 122's lookup.
+
+### As built
+
+- **Cooperative cancel.**
+  - `StepFormat::load`/`fromString` take the flag. It is checked every
+    1,024 instances while parsing, per face while building, and per solid.
+    A cancelled read returns nothing, with `lastError()` "cancelled".
+  - `InterferenceChecker::check` and
+    `AssemblyDocument::measureInterference` take it too, checked before
+    each candidate pair.
+  - The window passes its task's flag to both.
+- **`startWorker`** (`WorkerThread.h`) starts a job's thread. When none can
+  be had, it runs the work on the caller's thread and logs it. Both job
+  types use it.
+- **The trial build** restores the tree however it ends. `applyFeature`
+  contains everything, so no build path can throw.
+- **Autosave state in the status bar.** `RecoveryManager::problem()` says
+  why a session could not start or why the last write failed. A status-bar
+  label shows "Autosave off" or "Autosave failed", with the reason in its
+  tooltip, until a write succeeds. It shows nothing when autosave is off in
+  the preferences.
+- **Recovery counts.**
+  - Each snapshot's sidecar carries `recoveries`.
+  - Before opening anything, `noteRecoveryAttempt()` counts one more in
+    each claimed sidecar.
+  - A recovered tab keeps the count in its own snapshots until it is saved.
+  - When any offered document has a count, Later is the default and the
+    message names it.
+  - Recovered documents are snapshotted in the new session before the old
+    copies are deleted.
+- **The GL guard.** Below 3.3, or when the shaders fail, `initializeGL`
+  stops. `paintGL` then only clears (GL 1.0), and `resizeGL` leaves the
+  renderer alone. Checked by hand on a Mesa context forced to 2.1: the
+  viewport reports the problem and draws the background. CI's offscreen
+  platform has no OpenGL at all.
+- **The empty catches.**
+  - `TypedLength` reads a typed length whole or refuses it, and says so in
+    the prompt. Fillet now shows its radius in its prompt, as Chamfer
+    showed its distance.
+  - `cstr::pointOf`/`lineOf` return nothing for a ref that does not fit.
+    The preview and constraint creation use them.
+  - The dead block is removed.
+  - `executeMultiContained` keeps its catch-all, now with a comment:
+    `buildBodies()`, which only tests call, has no way to report a reason.
+- **Tests:** 12 new.
+  - `TypedLength`:
+    - what is a length;
+    - Enter takes or refuses;
+    - Chamfer and Fillet refuse "1.2.3" and ".".
+  - Refs: one that does not fit gives nothing.
+  - STEP read and interference check: each stops when cancelled.
+  - With `RLIMIT_NPROC` at 0, `startWorker`, a `BackgroundTask` and a
+    `RebuildJob` all finish on the calling thread.
+  - Recovery:
+    - an unfinished recovery is counted next time;
+    - a session that cannot start says why;
+    - a failed autosave is shown, then cleared;
+    - a document recovered before is not recovered by default;
+    - recovered documents are snapshotted at once, counted.
+- **Not done:**
+  - A STEP import still reads the whole file into memory before parsing.
+  - The trial build still runs on the GUI thread (S2, Phase 137).
 
 ## Phase 126: A safety net that catches
 

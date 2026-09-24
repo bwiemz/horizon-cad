@@ -58,7 +58,7 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
 }
 
 std::vector<InterferencePair> InterferenceChecker::check(
-    const std::vector<const topo::Solid*>& solids) {
+    const std::vector<const topo::Solid*>& solids, const std::atomic<bool>* cancelled) {
     std::vector<InterferencePair> pairs;
 
     // Broad phase: index every valid solid's AABB in an R*-tree.
@@ -74,6 +74,7 @@ std::vector<InterferencePair> InterferenceChecker::check(
     for (size_t i = 0; i < solids.size(); ++i) {
         if (!solids[i] || !bounds[i].isValid()) continue;
         for (size_t j : tree.query(bounds[i])) {
+            if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return pairs;
             if (j == i || !solids[j]) continue;
             const auto key = std::minmax(i, j);
             if (!tested.insert({key.first, key.second}).second) continue;  // dedup

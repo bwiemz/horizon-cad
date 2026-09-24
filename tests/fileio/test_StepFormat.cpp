@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <clocale>
 #include <cmath>
@@ -90,6 +91,19 @@ TEST(StepFormat, SaveWritesFileAndLoadReadsIt) {
     auto solids = StepFormat::load(path.string());
     EXPECT_EQ(solids.size(), 1u) << StepFormat::lastError();
     std::filesystem::remove(path);
+}
+
+// Cancelling a STEP import stops the reading. The import on a worker ran to
+// its end whatever Cancel said, and quitting waited for it.
+TEST(StepFormat, ACancelledReadStopsAndGivesNothing) {
+    auto box = PrimitiveFactory::makeBox(5.0, 5.0, 5.0);
+    const std::string text = StepFormat::toString(refs(*box));
+    std::atomic<bool> cancelled{true};
+    EXPECT_TRUE(StepFormat::fromString(text, nullptr, &cancelled).empty());
+    EXPECT_EQ(StepFormat::lastError(), "cancelled");
+    cancelled = false;
+    EXPECT_EQ(StepFormat::fromString(text, nullptr, &cancelled).size(), 1u)
+        << "a flag that is not set changes nothing";
 }
 
 TEST(StepFormat, SaveEmptyFails) {

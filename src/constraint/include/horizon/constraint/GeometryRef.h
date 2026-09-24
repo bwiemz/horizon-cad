@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "horizon/math/Vec2.h"
@@ -33,10 +35,20 @@ struct GeometryRef {
     bool isValid() const { return entityId != 0; }
 };
 
+/// The world-space position of a Point feature on an entity, or nothing when
+/// the ref does not fit it (another kind of entity, an index out of range).
+std::optional<math::Vec2> pointOf(const GeometryRef& ref, const draft::DraftEntity& entity);
+
+/// Line endpoints (start, end) of a Line feature, or nothing, as pointOf().
+std::optional<std::pair<math::Vec2, math::Vec2>> lineOf(const GeometryRef& ref,
+                                                        const draft::DraftEntity& entity);
+
 /// Extract the world-space position of a Point feature from an entity.
+/// Throws std::runtime_error when the ref does not fit it.
 math::Vec2 extractPoint(const GeometryRef& ref, const draft::DraftEntity& entity);
 
-/// Extract line endpoints (start, end) for a Line feature.
+/// Extract line endpoints (start, end) for a Line feature. Throws
+/// std::runtime_error when the ref does not fit the entity.
 std::pair<math::Vec2, math::Vec2> extractLine(const GeometryRef& ref,
                                               const draft::DraftEntity& entity);
 

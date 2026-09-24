@@ -183,14 +183,21 @@ void ViewportWidget::initializeGL() {
     spdlog::info("OpenGL {}.{} context: {} on {}", format.majorVersion(), format.minorVersion(),
                  version ? version : "unknown version", device ? device : "unknown device");
 
-    m_renderer = std::make_unique<render::GLRenderer>();
-    m_renderer->initialize(gl);
+    // Everything past this point is OpenGL 3.3, whose functions an older
+    // context may not have at all: calling one was a crash. Without it the
+    // viewport only clears (paintGL), and checkGraphics() says why.
+    m_glReady = false;
     if (format.version() < qMakePair(3, 3)) {
         m_graphicsProblem = tr("The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.")
                                 .arg(format.majorVersion())
                                 .arg(format.minorVersion());
-    } else if (!m_renderer->isInitialized()) {
+        return;
+    }
+    m_renderer = std::make_unique<render::GLRenderer>();
+    m_renderer->initialize(gl);
+    if (!m_renderer->isInitialized()) {
         m_graphicsProblem = tr("The graphics driver could not compile Horizon CAD's shaders.");
+        return;
     }
     // Deep canvas — darker than the panel chrome so the viewport reads as the
     // focal surface (panels #2d–#32, data surfaces #1e, viewport ~#1c1d21).
@@ -198,6 +205,7 @@ void ViewportWidget::initializeGL() {
 
     // Set up GL resources for text overlay (QImage -> texture -> quad).
     m_viewportRenderer.initTextOverlayGL(gl);
+    m_glReady = true;
 }
 
 void ViewportWidget::showEvent(QShowEvent* event) {
@@ -230,7 +238,7 @@ void ViewportWidget::resizeGL(int w, int h) {
 
     // The framebuffer is in device pixels; w and h are logical ones.
     const qreal dpr = devicePixelRatioF();
-    m_renderer->resize(gl, qRound(w * dpr), qRound(h * dpr));
+    if (m_glReady) m_renderer->resize(gl, qRound(w * dpr), qRound(h * dpr));
 
     double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
     m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
@@ -238,6 +246,12 @@ void ViewportWidget::resizeGL(int w, int h) {
 
 void ViewportWidget::paintGL() {
     auto* gl = QOpenGLContext::currentContext()->extraFunctions();
+    if (!m_glReady) {
+        // Only what every OpenGL has: the background.
+        gl->glClearColor(0.11f, 0.115f, 0.13f, 1.0f);
+        gl->glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
 
     // The constraint analysis behind the DOF colours: only when the document
     // changed, not on every frame.

@@ -40,7 +40,8 @@ public:
     RebuildJob& operator=(const RebuildJob&) = delete;
 
     /// Run on a worker thread. @p onFinished is called on the worker when
-    /// the build is done; post from it to the GUI thread.
+    /// the build is done; post from it to the GUI thread. When no worker
+    /// thread can be had, the build runs here instead (startWorker).
     void start(std::function<void()> onFinished = {});
 
     /// Ask the build to stop at the next feature.
