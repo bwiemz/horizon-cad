@@ -109,8 +109,12 @@ can insert one defined after it.
     a circle becomes an exact ellipse, while arcs and ellipses become
     polylines and text keeps its proportions.
 
-  Pieces on layer 0 take the insert's layer, and ByBlock colour takes its
+  Pieces on layer 0 take the insert's layer and, when they have no colour
+  of their own, its colour. Pieces on a named layer keep that layer's
   colour.
+- **ELLIPSE** centre and major axis are in world coordinates, as the DXF
+  reference defines them; a reversed extrusion only reverses the direction
+  its parameter runs.
 - **Nested INSERTs** are flattened into their block. A block that contains
   itself is refused.
 - **POINT** is reported as not read: there is no point entity yet.
