@@ -15,6 +15,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEllipse.h"
@@ -407,4 +408,59 @@ TEST(ToolEditsTest, CreateBlockTakesItsBasePoint) {
     const auto refs = all<hz::draft::DraftBlockRef>(w);
     ASSERT_EQ(refs.size(), 1u);
     EXPECT_TRUE(near(refs[0]->insertPos(), Vec2(0, 0)));
+// The ellipse's last point, typed, is the one it takes. It used the cursor's
+// last position, which a typed point never moves.
+TEST(ToolEditsTest, AnEllipseTakesItsTypedLastPoint) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_ellipse");
+    type(drive, "0,0");
+    type(drive, "@6,0");
+    drive.move(Vec2(1, 1));
+    type(drive, "@0,2");
+    const auto ellipses = all<hz::draft::DraftEllipse>(w);
+    ASSERT_EQ(ellipses.size(), 1u);
+    EXPECT_NEAR(ellipses[0]->semiMajor(), 6.0, 1e-9);
+    EXPECT_NEAR(ellipses[0]->semiMinor(), 2.0, 1e-9) << "not the cursor's (1, 1)";
+}
+
+namespace {
+
+/// Select @p id as a click would, so the property panel shows it.
+void selectOnly(MainWindow& w, uint64_t id) {
+    auto& viewport = viewportOf(w);
+    viewport.selectionManager().clearSelection();
+    viewport.selectionManager().select(id);
+    emit viewport.selectionChanged();
+}
+
+}  // namespace
+
+// An arc's angles typed into the panel are kept in [0, 360): -10 is 350.
+TEST(ToolEditsTest, AnArcsAnglesStayInRangeWhenEdited) {
+    MainWindow w;
+    auto arc = std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 5.0, 0.5, 2.0);
+    w.activeDocument()->draftDocument().addEntity(arc);
+    selectOnly(w, arc->id());
+    auto* start = w.findChild<QDoubleSpinBox*>(QStringLiteral("arcStartAngle"));
+    ASSERT_NE(start, nullptr);
+    start->setValue(-10.0);
+    const auto arcs = all<hz::draft::DraftArc>(w);
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_NEAR(arcs[0]->startAngle(), 350.0 * 3.14159265358979323846 / 180.0, 1e-9);
+}
+
+// A line with no length (a grip dragged onto its other end) takes a length
+// typed into the panel along its angle field; it used to take nothing.
+TEST(ToolEditsTest, ALineWithNoLengthTakesOneFromThePanel) {
+    MainWindow w;
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(3, 3), Vec2(3, 3));
+    w.activeDocument()->draftDocument().addEntity(line);
+    selectOnly(w, line->id());
+    auto* length = w.findChild<QDoubleSpinBox*>(QStringLiteral("lineLength"));
+    ASSERT_NE(length, nullptr);
+    length->setValue(5.0);
+    const auto lines = all<hz::draft::DraftLine>(w);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(8, 3)));
 }

@@ -89,10 +89,20 @@ PrintSupport decision.
   - the change goes through `GripMoveCommand`, as a grip drag does: one undo
     step, with constraints solved after.
 - **The panel's guard** is restored, not cleared, by `refreshLayerList()`.
+- **Found in review:**
+  - The ellipse tool's last click used the cursor's last position, not the
+    point given. A typed minor axis was lost, since a typed point does not
+    move the cursor.
+  - A Length or Angle entered for a line of no length (a grip dragged onto
+    its other end) did nothing. It now takes its direction, or its length,
+    from the other field.
+  - Arc angles entered in the panel are normalized to [0, 2π) where they
+    are set. The arc placed in the drawing was already normalized, being a
+    copy.
 
 ### Tests
 
-11 new.
+14 new.
 - `TypedPoint`:
   - the four ways to type a point;
   - what is refused, with reasons;
@@ -107,7 +117,10 @@ PrintSupport decision.
   - snaps switched off do not pull a click that they reached a moment
     before;
   - geometry edited in the panel, one undo step each;
-  - selecting shows and does not edit. This one fails on the old guard.
+  - selecting shows and does not edit. This one fails on the old guard;
+  - an ellipse takes its typed last point;
+  - a line with no length takes one from the panel;
+  - an arc's angles stay in range when edited.
 
 ### Not done
 
