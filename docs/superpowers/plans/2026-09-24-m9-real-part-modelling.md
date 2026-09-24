@@ -118,10 +118,15 @@ definitions choose directions and faces with. 135 is independent and last.
   so Shell's list opened the wrong face of anything not symmetric, and a
   sketch "on the top face" went on the bottom. Normals now face out of the
   part (by the sign of its volume).
+- **Found in review:** a tool mid-way through something (a line's first
+  click) kept its point when an undo took the sketch away, so its next click
+  made a line from a point in the sketch's frame to one in the drawing's.
+  The tool now starts again whenever the frame changes, not only for Edit
+  and Finish Sketch.
 
 ### Tests
 
-29 new, 2 changed.
+30 new, 2 changed.
 - Profile regions:
   - holes and islands;
   - separate regions;
@@ -142,7 +147,7 @@ definitions choose directions and faces with. 135 is independent and last.
   - a plate with a hole from a sketch, with a note on it;
   - a note in the drawing no longer stops Extrude;
   - a boss on a box's top face;
-  - undoing a new sketch leaves it;
+  - undoing a new sketch leaves it, and a line begun in it starts again;
   - editing again from the list, with undo in the sketch;
   - a revolve about the sketch's own axis.
 - Shell opens the face that faces up: it opened the bottom. This and the

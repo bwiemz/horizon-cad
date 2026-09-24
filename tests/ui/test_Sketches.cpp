@@ -195,6 +195,30 @@ TEST(SketchesTest, UndoingANewSketchLeavesIt) {
     EXPECT_FALSE(w.findChild<QAction*>(QStringLiteral("action_sketch_finish"))->isEnabled());
 }
 
+// A line begun in a sketch is not finished in the drawing when undo takes the
+// sketch away: its first point was in the sketch's frame. The tool started
+// again only for Edit and Finish Sketch, so the next click made a line from a
+// point in one frame to a point in the other.
+TEST(SketchesTest, UndoingASketchMidLineStartsTheLineAgain) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    trigger(w, "action_sketch_xz");
+    trigger(w, "tool_line");
+    drive.click(Vec2(3, 4));
+    trigger(w, "action_undo");
+    ASSERT_EQ(doc.editedSketch(), nullptr);
+    drive.click(Vec2(10, 10));
+    EXPECT_TRUE(doc.draftDocument().entities().empty()) << "that click begins a line";
+    drive.click(Vec2(12, 10));
+    ASSERT_EQ(doc.draftDocument().entities().size(), 1u);
+    const auto* line =
+        dynamic_cast<const hz::draft::DraftLine*>(doc.draftDocument().entities()[0].get());
+    ASSERT_NE(line, nullptr);
+    EXPECT_NEAR(line->start().x, 10.0, 1e-9);
+    EXPECT_NEAR(line->start().y, 10.0, 1e-9);
+}
+
 // A finished sketch is edited again from the sketch list, where what is drawn
 // goes into it, and undo takes it back out of it.
 TEST(SketchesTest, ASketchIsEditedAgainFromTheList) {

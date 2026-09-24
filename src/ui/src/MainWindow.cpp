@@ -3417,8 +3417,6 @@ void MainWindow::onFinishSketch() {
 }
 
 void MainWindow::editSketch(const std::shared_ptr<doc::Sketch>& sketch) {
-    // A tool mid-way through something holds points of the drawing it began in.
-    if (m_viewport->activeTool()) m_viewport->activeTool()->cancel();
     if (sketch) m_profileSketchId = sketch->id();
     m_document->editSketch(sketch);
     syncSketchView();
@@ -3428,6 +3426,10 @@ void MainWindow::syncSketchView() {
     if (!m_document || !m_viewport) return;
     doc::Sketch* editing = m_document->editedSketch().get();
     if (m_viewport->activeSketch() != editing) {
+        // A tool mid-way through something holds points in the frame it
+        // began in; however the frame changes (Edit or Finish Sketch, or an
+        // undo that takes the sketch away), it starts again.
+        if (m_viewport->activeTool()) m_viewport->activeTool()->cancel();
         m_viewport->setActiveSketch(editing);
         rebuildScene();
         refreshAllPanels();
