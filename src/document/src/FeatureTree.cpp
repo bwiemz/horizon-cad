@@ -627,11 +627,24 @@ bool BooleanFeature::setParameter(const std::string& name, double value) {
 }
 
 std::unique_ptr<topo::Solid> BooleanFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
-                                                     std::string* /*reason*/) const {
-    // A Boolean needs two or more operands; the single-solid build() path only
-    // has the running solid, so this is a no-op there. Multi-body combination
-    // happens in executeMulti() when driven by buildBodies().
-    return inputSolid;
+                                                     std::string* reason) const {
+    // The part's bodies are its shells (see BodyOperation::NewBody). Fewer
+    // than two leave nothing to combine, and the part passes through.
+    if (!inputSolid) return failWith(reason, "there are no bodies to combine");
+    auto bodies = model::Pattern::separate(*inputSolid);
+    if (bodies.size() < 2) return inputSolid;
+
+    // Fold in body order: for Subtract the first body is the one cut from.
+    auto result = std::move(bodies[0]);
+    for (size_t i = 1; i < bodies.size(); ++i) {
+        std::string why;
+        auto combined = model::BooleanOp::execute(*result, *bodies[i], m_type, &why);
+        if (!combined) {
+            return failWith(reason, "combining body " + std::to_string(i + 1) + " failed: " + why);
+        }
+        result = std::move(combined);
+    }
+    return result;
 }
 
 std::vector<std::unique_ptr<topo::Solid>> BooleanFeature::executeMulti(

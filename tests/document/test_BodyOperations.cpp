@@ -151,3 +151,58 @@ TEST(BodyOperationsTest, NamesRoundTrip) {
     }
     EXPECT_FALSE(hz::doc::bodyOperationFromName("union").has_value());
 }
+
+// ---------------------------------------------------------------------------
+// Combining bodies (Phase 104b): the Boolean feature on the product path
+// ---------------------------------------------------------------------------
+
+TEST(BodyOperationsTest, CombiningBodiesFoldsThemInOrder) {
+    // Two New-body blocks overlapping by half: 1000 each, 500 shared.
+    struct Case {
+        hz::model::BooleanType type;
+        double volume;
+    };
+    for (const Case c : {Case{hz::model::BooleanType::Union, 1500.0},
+                         Case{hz::model::BooleanType::Subtract, 500.0},
+                         Case{hz::model::BooleanType::Intersect, 500.0}}) {
+        Document doc;
+        doc.featureTree().addFeature(
+            extrude(rectangle(0, 0, 10, 10), 10.0, BodyOperation::NewBody));
+        doc.featureTree().addFeature(
+            extrude(rectangle(5, 0, 15, 10), 10.0, BodyOperation::NewBody));
+        ASSERT_EQ(rebuilt(doc).shells().size(), 2u);
+
+        doc.featureTree().addFeature(std::make_unique<hz::doc::BooleanFeature>(c.type));
+        const hz::topo::Solid& part = rebuilt(doc);
+        EXPECT_EQ(part.shells().size(), 1u);
+        EXPECT_NEAR(volumeOf(part), c.volume, 1e-6);
+
+        // The other build paths agree.
+        const auto built = doc.featureTree().build();
+        ASSERT_NE(built, nullptr);
+        EXPECT_NEAR(volumeOf(*built), c.volume, 1e-6);
+        const auto bodies = doc.featureTree().buildBodies();
+        ASSERT_EQ(bodies.size(), 1u);
+        EXPECT_NEAR(volumeOf(*bodies[0]), c.volume, 1e-6);
+    }
+}
+
+TEST(BodyOperationsTest, CombiningOneBodyLeavesIt) {
+    Document doc;
+    doc.featureTree().addFeature(extrude(rectangle(0, 0, 10, 10), 3.0, BodyOperation::NewBody));
+    doc.featureTree().addFeature(
+        std::make_unique<hz::doc::BooleanFeature>(hz::model::BooleanType::Subtract));
+    EXPECT_NEAR(volumeOf(rebuilt(doc)), 300.0, 1e-6);
+}
+
+TEST(BodyOperationsTest, CombiningWhatDoesNotOverlapSaysSo) {
+    Document doc;
+    doc.featureTree().addFeature(extrude(rectangle(0, 0, 1, 1), 1.0, BodyOperation::NewBody));
+    doc.featureTree().addFeature(extrude(rectangle(5, 0, 6, 1), 1.0, BodyOperation::NewBody));
+    doc.featureTree().addFeature(
+        std::make_unique<hz::doc::BooleanFeature>(hz::model::BooleanType::Intersect));
+    EXPECT_FALSE(doc.rebuildModel());
+    EXPECT_EQ(doc.failedFeatureIndex(), 2);
+    EXPECT_NE(doc.lastBuildMessage().find("do not overlap"), std::string::npos)
+        << doc.lastBuildMessage();
+}

@@ -391,13 +391,13 @@ private:
     static int s_nextID;
 };
 
-/// Boolean feature: combines all currently live bodies into one via a Union,
-/// Subtract, or Intersect. It needs two or more operands, so it acts on the
-/// whole body list produced by `buildBodies()` rather than a single solid:
-/// bodies are folded left-to-right (for Subtract, the first body is the target
-/// and every later body is cut from it). In the single-solid `build()` path it
-/// is a no-op (returns its input unchanged), since Booleans are only meaningful
-/// with multiple bodies.
+/// Boolean feature: combines the part's bodies into one by a Union, Subtract
+/// or Intersect, folded in body order (for Subtract, the first body is the
+/// one cut from and every later body is cut from it). On the product path the
+/// bodies are the separate shells of the part's solid (see
+/// `BodyOperation::NewBody`); `buildBodies()` drives the same fold through
+/// `executeMulti()`. With fewer than two bodies there is nothing to combine
+/// and the part passes through unchanged.
 class BooleanFeature : public Feature {
 public:
     explicit BooleanFeature(model::BooleanType type);

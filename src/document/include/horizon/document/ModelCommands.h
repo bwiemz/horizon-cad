@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/FeatureTree.h"
@@ -84,8 +85,22 @@ private:
     int m_rollbackBefore = -1;
 };
 
+/// Set several of a feature's parameters, in an order that holds: a facet
+/// count set explicitly returns a faceted feature to count mode, clearing its
+/// chord tolerance, so the tolerance is set after everything else. Returns the
+/// names the feature refused (a zero distance, too few segments).
+std::vector<std::string> setParameters(Feature& feature,
+                                       const std::map<std::string, double>& values);
+
+/// The names among `values` that the feature would refuse. It tries them,
+/// then puts every parameter back as it was.
+std::vector<std::string> refusedParameters(Feature& feature,
+                                           const std::map<std::string, double>& values);
+
 /// Change a feature's parameters and, for a feature that builds a body, how
-/// that body combines with the part.
+/// that body combines with the part. Undo puts back every parameter, not only
+/// the edited ones: setting one can change another (a facet count clears a
+/// chord tolerance).
 class EditFeatureCommand : public Command {
 public:
     EditFeatureCommand(Document& doc, const Feature* feature,

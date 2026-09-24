@@ -153,6 +153,20 @@ replaces the demo ribbon commands with ones that add features.
   inputs (edges and faces by name until the viewport can pick them) and add
   features. The demos and their scene-graph side channel are removed.
 
+**As built.** One form builder (`FeatureForm`) serves every command. Edges are
+listed by their end points and faces by which way they face and where their
+middle is (the TopologyID in the tooltip), until the viewport can pick them.
+Combine splits the part into its bodies (`Pattern::separate`, one solid per
+shell) and folds them in body order; with one body the ribbon command refuses,
+and the feature passes the part through. New commands: Shell, Draft, Linear
+and Circular Pattern, with icons.
+
+**Deferred: Loft and Sweep commands.** Both need sketches on more than one
+plane — a loft's sections, a sweep's profile across its path — and the window
+has no way to make one: every profile is the top-level drawing on XY, wrapped
+in a sketch. They wait for a *sketch on a plane* command (XY / YZ / XZ, an
+offset, a datum or a planar face), added to the roadmap as Phase 104c.
+
 ### Requirement → task map
 
 | Roadmap requirement | Where |
@@ -166,7 +180,8 @@ replaces the demo ribbon commands with ones that add features.
 | Retire `setDirty(true)` for these edits | 104a (the undo stack's clean index carries it) |
 | Primitive commands create features | 104b |
 | Boolean commands create features | 104b |
-| Fillet / Chamfer / Shell / Pattern / Loft / Sweep commands create features | 104b |
+| Fillet / Chamfer / Shell / Pattern commands create features | 104b (plus Draft) |
+| Loft / Sweep commands create features | 104c — needs sketches on planes |
 
 ### Tests (104a)
 

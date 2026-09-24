@@ -173,6 +173,11 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         // 3D — modify
         {"fillet-3d", drawFillet3d},
         {"chamfer-3d", drawChamfer3d},
+        {"shell", drawShell},
+        {"draft", drawDraft},
+        // 3D — pattern
+        {"pattern-linear", drawPatternLinear},
+        {"pattern-circular", drawPatternCircular},
     };
 
     const int s = size > 0 ? size : kRenderSize;
@@ -1611,6 +1616,81 @@ QIcon IconGenerator::drawChamfer3d(int s) {
     // Bevel the near top vertex (A) with a straight cut and highlight it.
     p.setPen(accentPen(2.2));
     p.drawLine(QPointF(8, 6), QPointF(16, 6));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawShell(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    drawIsoCube(p, primaryPen(1.6));
+    // The open top face, hollowed: its wall-thickness inset in accent.
+    p.setPen(accentPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    QPolygonF inset;
+    inset << QPointF(12, 6.2) << QPointF(16.4, 8.4) << QPointF(12, 10.6) << QPointF(7.6, 8.4);
+    p.drawPolygon(inset);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawDraft(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A block whose sides taper toward the top.
+    p.setPen(primaryPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    QPolygonF block;
+    block << QPointF(8, 5) << QPointF(16, 5) << QPointF(19, 20) << QPointF(5, 20);
+    p.drawPolygon(block);
+    // The pull direction, and the vertical the sides are drafted from.
+    p.setPen(dashedPen(kSecondary, 1.0));
+    p.drawLine(QPointF(5, 20), QPointF(5, 5));
+    p.setPen(accentPen(1.6));
+    p.drawLine(QPointF(12, 17), QPointF(12, 2));
+    p.drawLine(QPointF(12, 2), QPointF(10, 5));
+    p.drawLine(QPointF(12, 2), QPointF(14, 5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawPatternLinear(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // The seed and two copies along the direction.
+    p.setPen(primaryPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(QRectF(2, 9, 5, 5));
+    p.setPen(secondaryPen(1.4));
+    p.drawRect(QRectF(9.5, 9, 5, 5));
+    p.drawRect(QRectF(17, 9, 5, 5));
+    p.setPen(accentPen(1.4));
+    p.drawLine(QPointF(3, 18.5), QPointF(21, 18.5));
+    p.drawLine(QPointF(21, 18.5), QPointF(18.5, 16.5));
+    p.drawLine(QPointF(21, 18.5), QPointF(18.5, 20.5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawPatternCircular(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // Copies set around an axis.
+    p.setPen(dashedPen(kSecondary, 1.0));
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(QPointF(12, 12), 7.0, 7.0);
+    p.setPen(accentPen(1.6));
+    p.drawPoint(QPointF(12, 12));
+    p.setPen(primaryPen(1.6));
+    p.drawRect(QRectF(9.5, 2.5, 5, 5));
+    p.setPen(secondaryPen(1.4));
+    p.drawRect(QRectF(16.5, 9.5, 5, 5));
+    p.drawRect(QRectF(9.5, 16.5, 5, 5));
+    p.drawRect(QRectF(2.5, 9.5, 5, 5));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

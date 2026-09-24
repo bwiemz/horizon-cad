@@ -21,6 +21,7 @@
 #include <string>
 #include <utility>
 
+#include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
@@ -37,108 +38,9 @@ using hz::ui::MainWindow;
 
 namespace {
 
-/// Answers the next modal dialog titled `title`: sets the spin boxes named in
-/// `values`, picks `operation` in the "bodyOperation" combo when given, and
-/// accepts. With `cancel`, rejects it instead.
-class FormFiller {
-public:
-    FormFiller(QString title, std::map<QString, double> values,
-               std::optional<BodyOperation> operation = std::nullopt, bool cancel = false)
-        : m_title(std::move(title)),
-          m_values(std::move(values)),
-          m_operation(operation),
-          m_cancel(cancel) {
-        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
-        m_timer.start(5);
-        m_clock.start();
-    }
-    bool seen() const { return m_seen; }
-
-private:
-    void poll() {
-        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
-        if (dialog == nullptr || dialog->windowTitle() != m_title) {
-            if (m_clock.elapsed() > 5000) m_timer.stop();
-            return;
-        }
-        m_timer.stop();
-        m_seen = true;
-        if (m_cancel) {
-            dialog->reject();
-            return;
-        }
-        for (const auto& [name, value] : m_values) {
-            auto* spin = dialog->findChild<QDoubleSpinBox*>(name);
-            if (spin == nullptr) {
-                ADD_FAILURE() << "no field " << name.toStdString();
-                dialog->reject();
-                return;
-            }
-            spin->setValue(value);
-        }
-        if (m_operation) {
-            auto* combo = dialog->findChild<QComboBox*>(QStringLiteral("bodyOperation"));
-            if (combo == nullptr) {
-                ADD_FAILURE() << "no body operation choice";
-                dialog->reject();
-                return;
-            }
-            combo->setCurrentIndex(combo->findData(static_cast<int>(*m_operation)));
-        }
-        dialog->accept();
-    }
-
-    QString m_title;
-    std::map<QString, double> m_values;
-    std::optional<BodyOperation> m_operation;
-    bool m_cancel;
-    bool m_seen = false;
-    QTimer m_timer;
-    QElapsedTimer m_clock;
-};
-
-/// Picks `path` in the next file dialog by typing it into the file name box.
-/// (QFileDialog::selectFile() leaves that box alone while it has focus, which
-/// a shown dialog gives it — the accept then finds no file and does nothing.)
-/// Gives up — rejecting the dialog — rather than hang the test.
-class FilePicker {
-public:
-    explicit FilePicker(QString path) : m_path(std::move(path)) {
-        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
-        m_timer.start(20);
-        m_clock.start();
-    }
-
-private:
-    void poll() {
-        auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
-        if (dialog == nullptr) {
-            if (m_seen || m_clock.elapsed() > 10'000) m_timer.stop();
-            return;
-        }
-        m_seen = true;
-        if (m_clock.elapsed() > 10'000) {
-            ADD_FAILURE() << "the file dialog would not take " << m_path.toStdString();
-            dialog->reject();
-            m_timer.stop();
-            return;
-        }
-        auto* name = dialog->findChild<QLineEdit*>(QStringLiteral("fileNameEdit"));
-        if (name == nullptr) {
-            ADD_FAILURE() << "the file dialog has no file name box";
-            dialog->reject();
-            m_timer.stop();
-            return;
-        }
-        name->setText(m_path);
-        static_cast<QDialog*>(dialog)->accept();  // QFileDialog's own accept() is protected
-    }
-
-    QString m_path;
-    bool m_seen = false;
-    QTimer m_timer;
-    QElapsedTimer m_clock;
-};
+using hz::test::FilePicker;
+using hz::test::FormAnswers;
+using hz::test::FormFiller;
 
 QAction* action(QObject& owner, const char* name) {
     auto* found = owner.findChild<QAction*>(QString::fromLatin1(name));
@@ -164,7 +66,8 @@ void drawRectangle(hz::doc::Document& doc, double x0, double y0, double x1, doub
 }
 
 void extrude(MainWindow& w, double distance, std::optional<BodyOperation> operation) {
-    FormFiller filler(QStringLiteral("Extrude"), {{QString(), distance}}, operation);
+    FormFiller filler(QStringLiteral("Extrude"),
+                      FormAnswers().number({}, distance).combine(operation));
     action(w, "action_extrude")->trigger();
     ASSERT_TRUE(filler.seen());
 }
@@ -207,7 +110,8 @@ TEST(FeatureEditingTest, AnEditIsOneUndoableChange) {
     // Make the plate 5 thick. The pocket still cuts 2 deep.
     panel.select(0);
     {
-        FormFiller filler(QStringLiteral("Edit Extrude"), {{QStringLiteral("distance"), 5.0}});
+        FormFiller filler(QStringLiteral("Edit Extrude"),
+                          FormAnswers().number(QStringLiteral("distance"), 5.0));
         action(*panel.panel, "editFeature")->trigger();
         ASSERT_TRUE(filler.seen());
     }
@@ -224,7 +128,7 @@ TEST(FeatureEditingTest, AnEditIsOneUndoableChange) {
     // Cancelling changes nothing and adds no undo step.
     const auto history = doc.undoStack().revision();
     {
-        FormFiller filler(QStringLiteral("Edit Extrude"), {}, std::nullopt, /*cancel=*/true);
+        FormFiller filler(QStringLiteral("Edit Extrude"), FormAnswers().reject());
         action(*panel.panel, "editFeature")->trigger();
         ASSERT_TRUE(filler.seen());
     }
@@ -240,8 +144,9 @@ TEST(FeatureEditingTest, TheEditDialogChangesHowABodyCombines) {
     {
         // The pocket becomes a 2 x 2 boss, 4 high: 2 of it stands above the
         // plate.
-        FormFiller filler(QStringLiteral("Edit Extrude"), {{QStringLiteral("distance"), 4.0}},
-                          BodyOperation::Join);
+        FormFiller filler(
+            QStringLiteral("Edit Extrude"),
+            FormAnswers().number(QStringLiteral("distance"), 4.0).combine(BodyOperation::Join));
         action(*panel.panel, "editFeature")->trigger();
         ASSERT_TRUE(filler.seen());
     }
@@ -337,7 +242,7 @@ TEST(FeatureEditingTest, OkWithoutChangesIsNotAnEdit) {
     hz::doc::Document& doc = *w.activeDocument();
     drawRectangle(doc, 2, 0, 4, 5);
     {
-        FormFiller filler(QStringLiteral("Revolve"), {{QString(), 360.0}});
+        FormFiller filler(QStringLiteral("Revolve"), FormAnswers().number({}, 360.0));
         action(w, "action_revolve")->trigger();
         ASSERT_TRUE(filler.seen());
     }
@@ -349,7 +254,7 @@ TEST(FeatureEditingTest, OkWithoutChangesIsNotAnEdit) {
     Panel panel(w);
     panel.select(0);
     {
-        FormFiller filler(QStringLiteral("Edit Revolve"), {});
+        FormFiller filler(QStringLiteral("Edit Revolve"), FormAnswers());
         action(*panel.panel, "editFeature")->trigger();
         ASSERT_TRUE(filler.seen());
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -149,6 +150,11 @@ private slots:
 
     void onFillet();
     void onChamfer();
+    void onShell();
+    void onDraft();
+
+    void onLinearPattern();
+    void onCircularPattern();
 
     void onCreateBlock();
     void onInsertBlock();
@@ -216,12 +222,38 @@ private:
     /// combines with the part. False when cancelled.
     bool askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
                            double min, double max, int decimals, doc::BodyOperation& operation);
-    /// Add a body-creating feature at the end of the history and rebuild. If
-    /// that feature is the one that fails (a Cut that would leave nothing), it
-    /// is taken out again — with `wrapperSketch`, if one was created for it —
-    /// and false returned with the reason in the status bar.
-    bool addBodyFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
-                        const std::shared_ptr<doc::Sketch>& wrapperSketch);
+    /// Add a feature at the end of the history, as one undoable step, and
+    /// rebuild. A feature that fails there itself (a Cut that would leave
+    /// nothing, a fillet too big for its edge) is not added: the part, and the
+    /// undo history, stay as they were, and false is returned with the reason
+    /// in the status bar. `wrapperSketch` is a profile sketch made for the
+    /// feature, added and undone with it.
+    bool addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                         const std::shared_ptr<doc::Sketch>& wrapperSketch = nullptr);
+
+    /// False, with a word in the status bar, when the active tab is not a
+    /// part (`verb` names the command).
+    bool requirePart(const QString& verb);
+    /// The part's solid, or null — with a word in the status bar — when there
+    /// is no part or it has no body yet.
+    const topo::Solid* requireBody(const QString& verb);
+    /// Join once the part has a body; a new body for the first.
+    doc::BodyOperation proposedOperation() const;
+
+    struct PrimitiveField {
+        QString label;
+        double value;
+        double min;
+    };
+    /// Ask for a primitive's sizes (`fields`) and body operation, then add it.
+    void addPrimitive(
+        const QString& verb, const std::vector<PrimitiveField>& fields,
+        const std::function<std::unique_ptr<doc::PrimitiveFeature>(const std::vector<double>&)>&
+            make);
+    /// Add a feature combining the part's bodies.
+    void combineBodies(model::BooleanType type, const QString& verb);
+    /// Ask for edges and a size, then add a fillet (or chamfer) on them.
+    void addEdgeFeature(bool fillet);
 
     /// Route a document's change notifications to the markers and autosave.
     void watchDocument(const std::shared_ptr<doc::Document>& document);

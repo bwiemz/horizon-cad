@@ -33,19 +33,26 @@ public:
                                                const math::Vec3& direction, double spacing,
                                                int count, const std::vector<int>& suppressed = {});
 
-    /// Circular pattern: @p count instances rotated @p angleStepRad apart
-    /// about the axis through @p axisPoint along @p axisDir.
-    /// A deep copy of @p source moved by the rigid transform @p xform, with
-    /// every carrier and ideal moved with it and every TopologyID kept.  This
-    /// is how a component is placed in an assembly's world space.
     /// Both solids' shells in one solid, as separate bodies: no Boolean, so
     /// shared material is not merged (use BooleanOp for that). Topology IDs
     /// are kept.
     static std::unique_ptr<topo::Solid> collect(const topo::Solid& a, const topo::Solid& b);
 
+    /// The reverse of `collect`: each body of @p solid as a solid of its own,
+    /// with its TopologyIDs. A body is an outer shell together with the
+    /// cavities it encloses — an enclosed void is a second shell of the same
+    /// body, facing into the void, and stays with it. Bodies come in shell
+    /// order.
+    static std::vector<std::unique_ptr<topo::Solid>> separate(const topo::Solid& solid);
+
+    /// A deep copy of @p source moved by the rigid transform @p xform, with
+    /// every carrier and ideal moved with it and every TopologyID kept.  This
+    /// is how a component is placed in an assembly's world space.
     static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
                                                     const math::Mat4& xform);
 
+    /// Circular pattern: @p count instances rotated @p angleStepRad apart
+    /// about the axis through @p axisPoint along @p axisDir.
     static std::unique_ptr<topo::Solid> circular(const topo::Solid& source,
                                                  const math::Vec3& axisPoint,
                                                  const math::Vec3& axisDir, double angleStepRad,

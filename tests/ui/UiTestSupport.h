@@ -2,14 +2,29 @@
 
 // Helpers for tests that drive real widgets under hz_ui_window_tests.
 
+#include <gtest/gtest.h>
+
 #include <QAbstractButton>
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
+#include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFileDialog>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
+#include <QSpinBox>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
+#include <limits>
+#include <map>
+#include <optional>
 #include <utility>
+
+#include "horizon/document/FeatureTree.h"
 
 namespace hz::test {
 
@@ -60,6 +75,197 @@ private:
     QElapsedTimer m_clock;
     bool m_seen = false;
     QString m_text;
+};
+
+/// What to put in a feature form before accepting it, built up by chaining:
+/// `FormAnswers().number("size", 2).check("edges", {"(0, 0, 0)"})`.
+struct FormAnswers {
+    /// A number field (QDoubleSpinBox or QSpinBox) by object name; the empty
+    /// name is the first number field, whatever it is called.
+    FormAnswers& number(const QString& name, double value) {
+        numbers[name] = value;
+        return *this;
+    }
+    /// A choice (QComboBox) by object name: the item text to pick.
+    FormAnswers& choose(const QString& name, const QString& text) {
+        choices[name] = text;
+        return *this;
+    }
+    /// A checklist (QListWidget) by object name: check every item whose text
+    /// contains one of `parts`.
+    FormAnswers& check(const QString& name, const QStringList& parts) {
+        checks[name] = parts;
+        return *this;
+    }
+    /// How the body combines, in the "bodyOperation" choice.
+    FormAnswers& combine(std::optional<doc::BodyOperation> how) {
+        operation = how;
+        return *this;
+    }
+    /// Reject the form instead.
+    FormAnswers& reject() {
+        cancel = true;
+        return *this;
+    }
+
+    std::map<QString, double> numbers;
+    std::map<QString, QString> choices;
+    std::map<QString, QStringList> checks;
+    std::optional<doc::BodyOperation> operation;
+    bool cancel = false;
+};
+
+/// Answers the next modal dialog titled `title` with `answers`. Records
+/// whether one came, what its "bodyOperation" choice proposed and what each
+/// checklist offered. A field it was told to fill but cannot find is a test
+/// failure, and the dialog is rejected.
+class FormFiller {
+public:
+    FormFiller(QString title, FormAnswers answers)
+        : m_title(std::move(title)), m_answers(std::move(answers)) {
+        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
+        m_timer.start(5);
+        m_clock.start();
+    }
+    bool seen() const { return m_seen; }
+    std::optional<doc::BodyOperation> proposed() const { return m_proposed; }
+    QStringList offered(const QString& list) const {
+        const auto it = m_offered.find(list);
+        return it == m_offered.end() ? QStringList{} : it->second;
+    }
+    /// What a number field showed when the form opened (NaN if none).
+    double shown(const QString& field) const {
+        const auto it = m_shown.find(field);
+        return it == m_shown.end() ? std::numeric_limits<double>::quiet_NaN() : it->second;
+    }
+
+private:
+    void poll() {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr || dialog->windowTitle() != m_title) {
+            if (m_clock.elapsed() > 5000) m_timer.stop();
+            return;
+        }
+        m_timer.stop();
+        m_seen = true;
+        if (auto* combo = dialog->findChild<QComboBox*>(QStringLiteral("bodyOperation"))) {
+            m_proposed = static_cast<doc::BodyOperation>(combo->currentData().toInt());
+        }
+        for (auto* spin : dialog->findChildren<QDoubleSpinBox*>()) {
+            m_shown[spin->objectName()] = spin->value();
+        }
+        for (auto* list : dialog->findChildren<QListWidget*>()) {
+            QStringList items;
+            for (int i = 0; i < list->count(); ++i) items << list->item(i)->text();
+            m_offered[list->objectName()] = items;
+        }
+        if (m_answers.cancel) {
+            dialog->reject();
+            return;
+        }
+        if (!fill(*dialog)) {
+            dialog->reject();
+            return;
+        }
+        dialog->accept();
+    }
+
+    bool fill(QDialog& dialog) {
+        for (const auto& [name, value] : m_answers.numbers) {
+            if (auto* spin = dialog.findChild<QDoubleSpinBox*>(name)) {
+                spin->setValue(value);
+            } else if (auto* count = dialog.findChild<QSpinBox*>(name)) {
+                count->setValue(static_cast<int>(value));
+            } else {
+                ADD_FAILURE() << "no number field " << name.toStdString();
+                return false;
+            }
+        }
+        for (const auto& [name, text] : m_answers.choices) {
+            auto* combo = dialog.findChild<QComboBox*>(name);
+            const int index = combo ? combo->findText(text) : -1;
+            if (index < 0) {
+                ADD_FAILURE() << "no choice " << text.toStdString() << " in " << name.toStdString();
+                return false;
+            }
+            combo->setCurrentIndex(index);
+        }
+        for (const auto& [name, wanted] : m_answers.checks) {
+            auto* list = dialog.findChild<QListWidget*>(name);
+            if (list == nullptr) {
+                ADD_FAILURE() << "no list " << name.toStdString();
+                return false;
+            }
+            for (int i = 0; i < list->count(); ++i) {
+                for (const QString& part : wanted) {
+                    if (list->item(i)->text().contains(part)) {
+                        list->item(i)->setCheckState(Qt::Checked);
+                    }
+                }
+            }
+        }
+        if (m_answers.operation) {
+            auto* combo = dialog.findChild<QComboBox*>(QStringLiteral("bodyOperation"));
+            if (combo == nullptr) {
+                ADD_FAILURE() << "no body operation choice";
+                return false;
+            }
+            combo->setCurrentIndex(combo->findData(static_cast<int>(*m_answers.operation)));
+        }
+        return true;
+    }
+
+    QString m_title;
+    FormAnswers m_answers;
+    bool m_seen = false;
+    std::optional<doc::BodyOperation> m_proposed;
+    std::map<QString, QStringList> m_offered;
+    std::map<QString, double> m_shown;
+    QTimer m_timer;
+    QElapsedTimer m_clock;
+};
+
+/// Picks `path` in the next file dialog by typing it into the file name box.
+/// (QFileDialog::selectFile() leaves that box alone while it has focus, which
+/// a shown dialog gives it — the accept then finds no file and does nothing.)
+/// Gives up — rejecting the dialog — rather than hang the test.
+class FilePicker {
+public:
+    explicit FilePicker(QString path) : m_path(std::move(path)) {
+        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
+        m_timer.start(20);
+        m_clock.start();
+    }
+
+private:
+    void poll() {
+        auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr) {
+            if (m_seen || m_clock.elapsed() > 10'000) m_timer.stop();
+            return;
+        }
+        m_seen = true;
+        if (m_clock.elapsed() > 10'000) {
+            ADD_FAILURE() << "the file dialog would not take " << m_path.toStdString();
+            dialog->reject();
+            m_timer.stop();
+            return;
+        }
+        auto* name = dialog->findChild<QLineEdit*>(QStringLiteral("fileNameEdit"));
+        if (name == nullptr) {
+            ADD_FAILURE() << "the file dialog has no file name box";
+            dialog->reject();
+            m_timer.stop();
+            return;
+        }
+        name->setText(m_path);
+        static_cast<QDialog*>(dialog)->accept();  // QFileDialog's own accept() is protected
+    }
+
+    QString m_path;
+    bool m_seen = false;
+    QTimer m_timer;
+    QElapsedTimer m_clock;
 };
 
 }  // namespace hz::test
