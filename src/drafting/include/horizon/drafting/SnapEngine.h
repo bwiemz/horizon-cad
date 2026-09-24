@@ -33,6 +33,14 @@ public:
     void setSnapTolerance(double tolerance);
     double snapTolerance() const { return m_snapTolerance; }
 
+    /// Snapping to points on entities (endpoints, midpoints, centres,
+    /// quadrants, intersections), and to the grid, each switched on or off.
+    /// Both are on by default; with both off the cursor is taken as it is.
+    void setObjectSnapEnabled(bool enabled) { m_objectSnap = enabled; }
+    bool objectSnapEnabled() const { return m_objectSnap; }
+    void setGridSnapEnabled(bool enabled) { m_gridSnap = enabled; }
+    bool gridSnapEnabled() const { return m_gridSnap; }
+
     /// The object snap nearest the cursor within the tolerance (on a tie, the
     /// more specific kind: an endpoint before an intersection, a midpoint, a
     /// centre, a quadrant); else the nearest grid point within it; else the
@@ -59,6 +67,8 @@ private:
 
     double m_gridSpacing;
     double m_snapTolerance;
+    bool m_objectSnap = true;
+    bool m_gridSnap = true;
 };
 
 }  // namespace hz::draft

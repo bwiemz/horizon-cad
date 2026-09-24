@@ -12,6 +12,8 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <cmath>
+#include <utility>
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
@@ -250,6 +252,66 @@ void PropertyPanel::createWidgets() {
 
     m_ellipsePropsWidget->hide();
 
+    // Geometry: lines, circles and arcs. Keyboard tracking is off, so a
+    // value is taken when it is entered (Enter, or leaving the field), not at
+    // each keystroke: typing 12.5 is one edit, not four.
+    const auto number = [this](QFormLayout* form, const QString& label, double low, double high) {
+        auto* spin = new QDoubleSpinBox(form->parentWidget());
+        spin->setRange(low, high);
+        spin->setDecimals(4);
+        spin->setKeyboardTracking(false);
+        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+                &PropertyPanel::onGeometryEdited);
+        form->addRow(label, spin);
+        return spin;
+    };
+    constexpr double kFar = 1e9;
+    const QString degrees = QString::fromUtf8("\xC2\xB0");
+
+    m_lineGeomWidget = new QWidget(this);
+    auto* lineForm = new QFormLayout(m_lineGeomWidget);
+    lineForm->setContentsMargins(0, 0, 0, 0);
+    m_lineStartX = number(lineForm, tr("Start X:"), -kFar, kFar);
+    m_lineStartY = number(lineForm, tr("Start Y:"), -kFar, kFar);
+    m_lineEndX = number(lineForm, tr("End X:"), -kFar, kFar);
+    m_lineEndY = number(lineForm, tr("End Y:"), -kFar, kFar);
+    m_lineLength = number(lineForm, tr("Length:"), 0.0001, kFar);
+    m_lineAngle = number(lineForm, tr("Angle:"), -360.0, 360.0);
+    m_lineAngle->setSuffix(degrees);
+    m_lineGeomWidget->hide();
+
+    m_circleGeomWidget = new QWidget(this);
+    auto* circleForm = new QFormLayout(m_circleGeomWidget);
+    circleForm->setContentsMargins(0, 0, 0, 0);
+    m_circleCenterX = number(circleForm, tr("Center X:"), -kFar, kFar);
+    m_circleCenterY = number(circleForm, tr("Center Y:"), -kFar, kFar);
+    m_circleRadius = number(circleForm, tr("Radius:"), 0.0001, kFar);
+    m_circleGeomWidget->hide();
+
+    m_arcGeomWidget = new QWidget(this);
+    auto* arcForm = new QFormLayout(m_arcGeomWidget);
+    arcForm->setContentsMargins(0, 0, 0, 0);
+    m_arcCenterX = number(arcForm, tr("Center X:"), -kFar, kFar);
+    m_arcCenterY = number(arcForm, tr("Center Y:"), -kFar, kFar);
+    m_arcRadius = number(arcForm, tr("Radius:"), 0.0001, kFar);
+    m_arcStartAngle = number(arcForm, tr("Start Angle:"), -360.0, 360.0);
+    m_arcEndAngle = number(arcForm, tr("End Angle:"), -360.0, 360.0);
+    m_arcStartAngle->setSuffix(degrees);
+    m_arcEndAngle->setSuffix(degrees);
+    m_arcGeomWidget->hide();
+    const std::pair<QDoubleSpinBox*, const char*> names[] = {
+        {m_lineStartX, "lineStartX"},       {m_lineStartY, "lineStartY"},
+        {m_lineEndX, "lineEndX"},           {m_lineEndY, "lineEndY"},
+        {m_lineLength, "lineLength"},       {m_lineAngle, "lineAngle"},
+        {m_circleCenterX, "circleCenterX"}, {m_circleCenterY, "circleCenterY"},
+        {m_circleRadius, "circleRadius"},   {m_arcCenterX, "arcCenterX"},
+        {m_arcCenterY, "arcCenterY"},       {m_arcRadius, "arcRadius"},
+        {m_arcStartAngle, "arcStartAngle"}, {m_arcEndAngle, "arcEndAngle"},
+    };
+    for (const auto& [spin, name] : names) {
+        spin->setObjectName(QString::fromLatin1(name));  // for tests and automation
+    }
+
     // Constraint info (hidden by default).
     m_constraintWidget = new QWidget(this);
     auto* cstrLayout = new QVBoxLayout(m_constraintWidget);
@@ -273,6 +335,9 @@ void PropertyPanel::createWidgets() {
     layout->addWidget(m_splinePropsWidget);
     layout->addWidget(m_hatchPropsWidget);
     layout->addWidget(m_ellipsePropsWidget);
+    layout->addWidget(m_lineGeomWidget);
+    layout->addWidget(m_circleGeomWidget);
+    layout->addWidget(m_arcGeomWidget);
     layout->addWidget(m_constraintWidget);
     layout->addStretch();
 
@@ -327,7 +392,10 @@ void PropertyPanel::refreshLayerList() {
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    m_updatingUI = true;
+    // As it was: updateForSelection() calls this halfway through, and
+    // clearing the flag there let every field it set after this push an
+    // edit of its own.
+    const bool wasUpdating = std::exchange(m_updatingUI, true);
     QString currentText = m_layerCombo->currentText();
     m_layerCombo->clear();
     for (const auto& name : viewport->document()->layerManager().layerNames()) {
@@ -335,7 +403,7 @@ void PropertyPanel::refreshLayerList() {
     }
     int idx = m_layerCombo->findText(currentText);
     if (idx >= 0) m_layerCombo->setCurrentIndex(idx);
-    m_updatingUI = false;
+    m_updatingUI = wasUpdating;
 }
 
 void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds) {
@@ -530,10 +598,104 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
         m_ellipsePropsWidget->hide();
     }
 
+    // Geometry (single line, circle or arc).
+    const bool one = selectedIds.size() == 1;
+    const auto* lineEnt = one ? dynamic_cast<const draft::DraftLine*>(first) : nullptr;
+    const auto* circleEnt = one ? dynamic_cast<const draft::DraftCircle*>(first) : nullptr;
+    const auto* arcEnt = one ? dynamic_cast<const draft::DraftArc*>(first) : nullptr;
+    if (lineEnt) {
+        const math::Vec2 d = lineEnt->end() - lineEnt->start();
+        m_lineStartX->setValue(lineEnt->start().x);
+        m_lineStartY->setValue(lineEnt->start().y);
+        m_lineEndX->setValue(lineEnt->end().x);
+        m_lineEndY->setValue(lineEnt->end().y);
+        m_lineLength->setValue(d.length());
+        m_lineAngle->setValue(std::atan2(d.y, d.x) * math::kRadToDeg);
+    }
+    if (circleEnt) {
+        m_circleCenterX->setValue(circleEnt->center().x);
+        m_circleCenterY->setValue(circleEnt->center().y);
+        m_circleRadius->setValue(circleEnt->radius());
+    }
+    if (arcEnt) {
+        m_arcCenterX->setValue(arcEnt->center().x);
+        m_arcCenterY->setValue(arcEnt->center().y);
+        m_arcRadius->setValue(arcEnt->radius());
+        m_arcStartAngle->setValue(arcEnt->startAngle() * math::kRadToDeg);
+        m_arcEndAngle->setValue(arcEnt->endAngle() * math::kRadToDeg);
+    }
+    m_lineGeomWidget->setVisible(lineEnt != nullptr);
+    m_circleGeomWidget->setVisible(circleEnt != nullptr);
+    m_arcGeomWidget->setVisible(arcEnt != nullptr);
+
     // Constraint info.
     updateConstraintList();
 
     m_updatingUI = false;
+}
+
+void PropertyPanel::onGeometryEdited() {
+    if (m_updatingUI || m_currentIds.size() != 1) return;
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+    doc::Document& document = *viewport->document();
+    draft::DraftDocument& drawing = document.draftDocument();
+    const auto current = drawing.sharedEntity(m_currentIds.front());
+    if (!current) return;
+
+    // The entity with the one field that was entered changed. The others are
+    // taken from the entity, not from their fields, which show only four
+    // decimals: an untouched value is never rounded by an edit of another.
+    std::shared_ptr<draft::DraftEntity> after = current->clone();
+    after->setId(current->id());
+    const QObject* changed = sender();
+    const auto entered = [changed](const QDoubleSpinBox* spin, double actual) {
+        return changed == spin ? spin->value() : actual;
+    };
+    if (auto* line = dynamic_cast<draft::DraftLine*>(after.get())) {
+        const math::Vec2 start(entered(m_lineStartX, line->start().x),
+                               entered(m_lineStartY, line->start().y));
+        math::Vec2 end(entered(m_lineEndX, line->end().x), entered(m_lineEndY, line->end().y));
+        const math::Vec2 d = line->end() - line->start();
+        if (changed == m_lineLength && d.length() > 0.0) {
+            end = start + d * (m_lineLength->value() / d.length());  // along the line
+        } else if (changed == m_lineAngle) {
+            const double a = m_lineAngle->value() * math::kDegToRad;
+            end = start + math::Vec2(std::cos(a), std::sin(a)) * d.length();
+        }
+        if (end.distanceTo(start) < 1e-9) return;  // a line has length
+        line->setStart(start);
+        line->setEnd(end);
+    } else if (auto* circle = dynamic_cast<draft::DraftCircle*>(after.get())) {
+        circle->setCenter(math::Vec2(entered(m_circleCenterX, circle->center().x),
+                                     entered(m_circleCenterY, circle->center().y)));
+        circle->setRadius(entered(m_circleRadius, circle->radius()));
+    } else if (auto* arc = dynamic_cast<draft::DraftArc*>(after.get())) {
+        arc->setCenter(math::Vec2(entered(m_arcCenterX, arc->center().x),
+                                  entered(m_arcCenterY, arc->center().y)));
+        arc->setRadius(entered(m_arcRadius, arc->radius()));
+        if (changed == m_arcStartAngle) {
+            arc->setStartAngle(m_arcStartAngle->value() * math::kDegToRad);
+        }
+        if (changed == m_arcEndAngle) arc->setEndAngle(m_arcEndAngle->value() * math::kDegToRad);
+    } else {
+        return;
+    }
+
+    // As a grip drag does it: the change is made, then the command records
+    // before and after, and solves the constraints on what moved.
+    std::shared_ptr<draft::DraftEntity> before = current->clone();
+    before->setId(current->id());
+    std::shared_ptr<draft::DraftEntity> placed = after->clone();
+    placed->setId(current->id());
+    drawing.replaceEntity(current->id(), placed);
+    auto& parameters = document.parameterRegistry();
+    document.undoStack().push(std::make_unique<doc::GripMoveCommand>(
+        drawing, current->id(), before, after, document.constraintSystem(),
+        [&parameters](const std::string& name) { return parameters.get(name); }));
+    viewport->update();
+    // The constraints may have moved it on: show where it is.
+    updateForSelection(m_currentIds);
 }
 
 void PropertyPanel::onLayerChanged(int index) {

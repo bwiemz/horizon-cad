@@ -101,3 +101,20 @@ TEST(SnappingTest, ABlocksContentSnapsWithItsKinds) {
     EXPECT_TRUE(at(snapper.snap(Vec2(12.1, 0.1), doc.spatialIndex(), doc.entities()),
                    SnapType::Quadrant, Vec2(12, 0)));
 }
+
+// Object snaps and the grid snap can each be switched off (F3 and F9): the
+// cursor is then taken where it is, not pulled to a point it was not aimed at.
+TEST(SnappingTest, ObjectAndGridSnapsCanBeSwitchedOff) {
+    DraftDocument doc;
+    doc.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    SnapEngine snapper = engine();
+    const auto snapAt = [&](double x, double y) { return snapper.snap(Vec2(x, y), doc); };
+
+    snapper.setObjectSnapEnabled(false);
+    EXPECT_TRUE(at(snapAt(0.1, 0.1), SnapType::Grid, Vec2(0, 0))) << "the grid still";
+    snapper.setGridSnapEnabled(false);
+    EXPECT_TRUE(at(snapAt(0.1, 0.1), SnapType::None, Vec2(0.1, 0.1))) << "nothing";
+    snapper.setObjectSnapEnabled(true);
+    EXPECT_TRUE(at(snapAt(0.1, 0.1), SnapType::Endpoint, Vec2(0, 0)));
+    EXPECT_TRUE(at(snapAt(3.3, 2.2), SnapType::None, Vec2(3.3, 2.2))) << "no grid point either";
+}

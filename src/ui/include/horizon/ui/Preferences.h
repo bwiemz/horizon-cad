@@ -13,6 +13,11 @@ struct Preferences {
     QString language;                           ///< "" follows the system; applies on restart
     double gridSpacing = 1.0;                   ///< the grid snap's spacing, in millimetres
     int snapPixels = 10;                        ///< how far on screen a snap reaches
+    bool objectSnap = true;                     ///< snap to points on entities (F3)
+    bool gridSnap = true;                       ///< snap to the grid (F9)
+    bool ortho = false;                         ///< ortho (F8); never with polarTracking
+    bool polarTracking = false;                 ///< polar tracking (F10)
+    double polarAngle = 15.0;                   ///< polar tracking's step, in degrees
     QString lengthUnit = QStringLiteral("mm");  ///< mm, cm, m, in or ft
     int decimals = 3;
 

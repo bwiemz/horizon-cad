@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,6 +47,17 @@ public:
 
     /// Cancel the current operation (e.g. when Escape is pressed).
     virtual void cancel() {}
+
+    /// Whether the tool places points, so a point typed at the keyboard
+    /// (TypedPoint) can be given to it as a click. A tool that reads digits
+    /// itself (a fillet radius) returns false.
+    virtual bool acceptsTypedPoints() const { return false; }
+
+    /// The point the next one is measured from, if there is one: the start
+    /// of the line being drawn, a circle's centre. Relative input
+    /// ("@dx,dy"), a length typed alone, and ortho and polar tracking all
+    /// work from it.
+    virtual std::optional<math::Vec2> basePoint() const { return std::nullopt; }
 
     /// Return preview line segments (start, end) to draw while the tool is active.
     virtual std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const { return {}; }

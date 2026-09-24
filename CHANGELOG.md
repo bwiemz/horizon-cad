@@ -17,6 +17,29 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
+
+- **Drawing to exact sizes (128).**
+  - While a drawing tool waits for a point, type one and press Enter:
+    `x,y`; `@dx,dy` from the last point; `@length<angle`; or a length alone,
+    which goes toward the cursor. The status bar shows what is typed, and
+    says why when it is not a point. Escape drops the typing, then the tool.
+    Line, polyline, rectangle, circle, arc, ellipse and spline take them.
+  - The line tool chains: each line starts where the last ended, until Enter
+    or Escape.
+  - Object snap (F3), grid snap (F9), ortho (F8) and polar tracking (F10)
+    can be switched on and off, from Tools ▸ Drafting Aids or the status bar,
+    and are kept between sessions. The status bar used to say "SNAP GRID"
+    whatever was on.
+  - A selected line's ends, length and angle, a circle's centre and radius,
+    and an arc's centre, radius and angles can be typed into the property
+    panel. Each is one undo step.
+  - Selecting one ellipse (or text, spline or hatch) after another pushed
+    "edits" of it onto the undo stack and marked the drawing modified. It no
+    longer does.
+  - Choosing a tool from the ribbon now puts the keyboard on the drawing, so
+    typing reaches the tool.
+
 ## Unreleased — Product completeness, Milestone 7 (Phases 122–126)
 
 The [product-completeness roadmap](docs/superpowers/specs/2026-09-24-product-completeness-roadmap.md)

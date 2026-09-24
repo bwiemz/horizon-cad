@@ -246,6 +246,11 @@ private:
     void createMenus();
     void createRibbonBar();
     void createStatusBar();
+    /// A drafting aid was switched: keep it, with ortho and polar tracking
+    /// never on together, and put it into effect.
+    void onDraftingAidToggled(QAction* changed);
+    /// The active tool's prompt, with what is typed for it.
+    QString toolPrompt() const;
     void registerTools();
     void updateStatusBar();
     void rebuildFeatureTree();
@@ -407,7 +412,10 @@ private:
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;
     QLabel* m_statusPrompt = nullptr;
-    QLabel* m_statusSnap = nullptr;
+    QAction* m_actObjectSnap = nullptr;
+    QAction* m_actGridSnap = nullptr;
+    QAction* m_actOrtho = nullptr;
+    QAction* m_actPolar = nullptr;
     QLabel* m_statusSelection = nullptr;
     QLabel* m_statusTool = nullptr;
     QLabel* m_autosaveWarning = nullptr;

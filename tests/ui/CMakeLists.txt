@@ -1,5 +1,6 @@
 add_executable(hz_ui_tests
     test_LocaleManager.cpp
+    test_TypedPoint.cpp
     test_Workers.cpp
 )
 
