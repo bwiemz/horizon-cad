@@ -24,4 +24,13 @@ target_link_libraries(hz_scripting
         Horizon::Cam
 )
 
+# pybind11 declares its types with hidden visibility; code holding them (e.g.
+# ScriptEngine::Impl's py::dict) must be hidden too, or GCC warns that the
+# class has greater visibility than its members. pybind11 documents
+# -fvisibility=hidden for exactly this. Static library: nothing is exported.
+set_target_properties(hz_scripting PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(Horizon::Scripting ALIAS hz_scripting)
