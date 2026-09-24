@@ -128,6 +128,10 @@ private:
     static QIcon drawBooleanIntersect(int s);
     static QIcon drawFillet3d(int s);
     static QIcon drawChamfer3d(int s);
+    static QIcon drawShell(int s);
+    static QIcon drawDraft(int s);
+    static QIcon drawPatternLinear(int s);
+    static QIcon drawPatternCircular(int s);
 };
 
 }  // namespace hz::ui

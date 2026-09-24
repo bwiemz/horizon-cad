@@ -44,11 +44,9 @@
 #include "horizon/math/MathUtils.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
-#include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Extrude.h"
-#include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/MateGeometry.h"
-#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/SceneGraph.h"
@@ -63,6 +61,7 @@
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
+#include "horizon/ui/FeatureForm.h"
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/FilletTool.h"
 #include "horizon/ui/HatchTool.h"
@@ -104,19 +103,87 @@ namespace hz::ui {
 
 namespace {
 
-/// Add the "how does this body combine with the part" choice to a feature
-/// dialog, showing `initial`.
-QComboBox* addOperationChoice(QDialog& dialog, QFormLayout& form, doc::BodyOperation initial) {
-    auto* combo = new QComboBox(&dialog);
-    combo->setObjectName(QStringLiteral("bodyOperation"));
-    combo->addItem(MainWindow::tr("Join the part"), static_cast<int>(doc::BodyOperation::Join));
-    combo->addItem(MainWindow::tr("Cut from the part"), static_cast<int>(doc::BodyOperation::Cut));
-    combo->addItem(MainWindow::tr("Keep the intersection"),
-                   static_cast<int>(doc::BodyOperation::Intersect));
-    combo->addItem(MainWindow::tr("New body"), static_cast<int>(doc::BodyOperation::NewBody));
-    combo->setCurrentIndex(combo->findData(static_cast<int>(initial)));
-    form.addRow(MainWindow::tr("Result:"), combo);
+/// A point or direction as the dialogs show it: "(10, 0, 2.5)".
+QString formatPoint(const math::Vec3& p) {
+    const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
+    return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
+}
+
+/// Edges or faces of the part to choose from in a dialog, until the viewport
+/// can pick them: each one's name, and how it is listed ({text, tooltip}).
+struct PickList {
+    std::vector<topo::TopologyID> ids;
+    std::vector<std::pair<QString, QString>> items;
+};
+
+/// The part's edges, listed by their end points.
+PickList edgesOf(const topo::Solid& solid) {
+    PickList list;
+    for (const auto& edge : solid.edges()) {
+        const topo::HalfEdge* he = edge.halfEdge;
+        if (!edge.topoId.isValid() || !he || !he->origin || !he->next || !he->next->origin) {
+            continue;
+        }
+        list.ids.push_back(edge.topoId);
+        list.items.emplace_back(formatPoint(he->origin->point) + QStringLiteral(" – ") +
+                                    formatPoint(he->next->origin->point),
+                                QString::fromStdString(edge.topoId.tag()));
+    }
+    return list;
+}
+
+/// The part's faces, listed by which way they face and where their middle is.
+PickList facesOf(const topo::Solid& solid) {
+    PickList list;
+    for (const auto& face : solid.faces()) {
+        if (!face.topoId.isValid() || !face.outerLoop || !face.outerLoop->halfEdge) continue;
+        // Newell's normal and the vertex average of the outer loop.
+        math::Vec3 normal, centre;
+        int count = 0;
+        const topo::HalfEdge* start = face.outerLoop->halfEdge;
+        const topo::HalfEdge* he = start;
+        do {
+            if (!he->origin || !he->next || !he->next->origin) break;
+            const math::Vec3& a = he->origin->point;
+            const math::Vec3& b = he->next->origin->point;
+            normal.x += (a.y - b.y) * (a.z + b.z);
+            normal.y += (a.z - b.z) * (a.x + b.x);
+            normal.z += (a.x - b.x) * (a.y + b.y);
+            centre = centre + a;
+            ++count;
+            he = he->next;
+        } while (he && he != start && count < 100000);
+        if (count == 0 || normal.length() < 1e-12) continue;
+        list.ids.push_back(face.topoId);
+        list.items.emplace_back(
+            MainWindow::tr("facing %1 at %2")
+                .arg(formatPoint(normal.normalized()), formatPoint(centre / count)),
+            QString::fromStdString(face.topoId.tag()));
+    }
+    return list;
+}
+
+/// Directions offered for a pull or a pattern: the six axis directions.
+const std::vector<std::pair<QString, math::Vec3>>& axisDirections() {
+    static const std::vector<std::pair<QString, math::Vec3>> directions = {
+        {QStringLiteral("+X"), math::Vec3(1, 0, 0)}, {QStringLiteral("−X"), math::Vec3(-1, 0, 0)},
+        {QStringLiteral("+Y"), math::Vec3(0, 1, 0)}, {QStringLiteral("−Y"), math::Vec3(0, -1, 0)},
+        {QStringLiteral("+Z"), math::Vec3(0, 0, 1)}, {QStringLiteral("−Z"), math::Vec3(0, 0, -1)},
+    };
+    return directions;
+}
+
+QComboBox* directionChoice(FeatureForm& form, const QString& name, const QString& label,
+                           const QString& initial) {
+    QStringList names;
+    for (const auto& [text, direction] : axisDirections()) names << text;
+    auto* combo = form.choice(name, label, names);
+    combo->setCurrentText(initial);
     return combo;
+}
+
+math::Vec3 chosenDirection(const QComboBox* combo) {
+    return axisDirections().at(static_cast<size_t>(combo->currentIndex())).second;
 }
 
 }  // namespace
@@ -572,7 +639,7 @@ void MainWindow::createRibbonBar() {
     addAction(g, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
     addAction(g, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
 
-    g = group(tr("3D"), tr("Boolean"));
+    g = group(tr("3D"), tr("Combine Bodies"));
     addAction(g, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
     addAction(g, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
     addAction(g, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
@@ -580,6 +647,12 @@ void MainWindow::createRibbonBar() {
     g = group(tr("3D"), tr("Modify"));
     addAction(g, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
     addAction(g, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
+    addAction(g, "shell", tr("Shell"), this, &MainWindow::onShell);
+    addAction(g, "draft", tr("Draft"), this, &MainWindow::onDraft);
+
+    g = group(tr("3D"), tr("Pattern"));
+    addAction(g, "pattern-linear", tr("Linear"), this, &MainWindow::onLinearPattern);
+    addAction(g, "pattern-circular", tr("Circular"), this, &MainWindow::onCircularPattern);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
     auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);
@@ -2179,74 +2252,81 @@ void MainWindow::onSelectionChanged() {
 // Slots -- 3D Primitives
 // ---------------------------------------------------------------------------
 
+bool MainWindow::requirePart(const QString& verb) {
+    if (m_assembly) {
+        statusBar()->showMessage(tr("%1 works on a part; open or create one").arg(verb));
+        return false;
+    }
+    return true;
+}
+
+doc::BodyOperation MainWindow::proposedOperation() const {
+    // Joining is what a second body usually means; the first has nothing to
+    // join, so it starts one.
+    return m_document->solid() ? doc::BodyOperation::Join : doc::BodyOperation::NewBody;
+}
+
+void MainWindow::addPrimitive(
+    const QString& verb, const std::vector<PrimitiveField>& fields,
+    const std::function<std::unique_ptr<doc::PrimitiveFeature>(const std::vector<double>&)>& make) {
+    if (!requirePart(verb)) return;
+    FeatureForm form(this, verb);
+    std::vector<QDoubleSpinBox*> sizes;
+    sizes.reserve(fields.size());
+    for (size_t i = 0; i < fields.size(); ++i) {
+        sizes.push_back(form.number(QStringLiteral("size%1").arg(i), fields[i].label,
+                                    fields[i].value, fields[i].min, 1e6));
+    }
+    auto* result = form.operationChoice(proposedOperation());
+    if (!form.exec()) return;
+
+    std::vector<double> values;
+    values.reserve(sizes.size());
+    for (const auto* spin : sizes) values.push_back(spin->value());
+    auto feature = make(values);
+    feature->setOperation(FeatureForm::operation(result));
+    addModelFeature(std::move(feature), verb);
+}
+
 void MainWindow::onPrimitiveBox() {
-    auto solid = model::PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-
-    auto node = std::make_shared<render::SceneNode>("Box");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Box primitive added."));
+    // From the origin to (width, height, depth).
+    addPrimitive(tr("Box"),
+                 {{tr("Width (X):"), 10.0, 0.001},
+                  {tr("Height (Y):"), 10.0, 0.001},
+                  {tr("Depth (Z):"), 10.0, 0.001}},
+                 [](const std::vector<double>& v) {
+                     return doc::PrimitiveFeature::makeBox(v[0], v[1], v[2]);
+                 });
 }
 
 void MainWindow::onPrimitiveCylinder() {
-    auto solid = model::PrimitiveFactory::makeCylinder(5.0, 10.0);
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-
-    auto node = std::make_shared<render::SceneNode>("Cylinder");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.55}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Cylinder primitive added."));
+    addPrimitive(tr("Cylinder"), {{tr("Radius:"), 5.0, 0.001}, {tr("Height:"), 10.0, 0.001}},
+                 [](const std::vector<double>& v) {
+                     return doc::PrimitiveFeature::makeCylinder(v[0], v[1]);
+                 });
 }
 
 void MainWindow::onPrimitiveSphere() {
-    auto solid = model::PrimitiveFactory::makeSphere(5.0);
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-
-    auto node = std::make_shared<render::SceneNode>("Sphere");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.55, 0.8, 0.55}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Sphere primitive added."));
+    addPrimitive(tr("Sphere"), {{tr("Radius:"), 5.0, 0.001}}, [](const std::vector<double>& v) {
+        return doc::PrimitiveFeature::makeSphere(v[0]);
+    });
 }
 
 void MainWindow::onPrimitiveCone() {
-    auto solid = model::PrimitiveFactory::makeCone(5.0, 0.0, 10.0);
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-
-    auto node = std::make_shared<render::SceneNode>("Cone");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.85, 0.75, 0.4}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Cone primitive added."));
+    // A top radius of 0 is a pointed cone.
+    addPrimitive(tr("Cone"),
+                 {{tr("Bottom radius:"), 5.0, 0.0},
+                  {tr("Top radius:"), 0.0, 0.0},
+                  {tr("Height:"), 10.0, 0.001}},
+                 [](const std::vector<double>& v) {
+                     return doc::PrimitiveFeature::makeCone(v[0], v[1], v[2]);
+                 });
 }
 
 void MainWindow::onPrimitiveTorus() {
-    auto solid = model::PrimitiveFactory::makeTorus(6.0, 2.0);
-    auto meshData = model::SolidTessellator::tessellate(*solid, 0.1);
-
-    auto node = std::make_shared<render::SceneNode>("Torus");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.7, 0.55, 0.8}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Torus primitive added."));
+    addPrimitive(
+        tr("Torus"), {{tr("Ring radius:"), 6.0, 0.001}, {tr("Tube radius:"), 2.0, 0.001}},
+        [](const std::vector<double>& v) { return doc::PrimitiveFeature::makeTorus(v[0], v[1]); });
 }
 
 // ---------------------------------------------------------------------------
@@ -2312,7 +2392,7 @@ void MainWindow::onExtrudeSketch() {
 
     auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
     feature->setOperation(operation);
-    if (!addBodyFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
+    if (!addModelFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
         return;
     }
 
@@ -2355,7 +2435,7 @@ void MainWindow::onRevolveSketch() {
 
     auto feature = std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
     feature->setOperation(operation);
-    if (!addBodyFeature(std::move(feature), tr("Revolve"), createdWrapper ? sketch : nullptr)) {
+    if (!addModelFeature(std::move(feature), tr("Revolve"), createdWrapper ? sketch : nullptr)) {
         return;
     }
 
@@ -2367,35 +2447,17 @@ void MainWindow::onRevolveSketch() {
 bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
                                    double min, double max, int decimals,
                                    doc::BodyOperation& operation) {
-    QDialog dialog(this);
-    dialog.setWindowTitle(title);
-    auto* form = new QFormLayout(&dialog);
-
-    auto* size = new QDoubleSpinBox(&dialog);
-    size->setRange(min, max);
-    size->setDecimals(decimals);
-    size->setValue(value);
-    form->addRow(valueLabel, size);
-
-    // Joining is what a second feature usually means; the first body has
-    // nothing to join, so it starts one.
-    const bool hasBody = m_document->solid() != nullptr;
-    auto* result = addOperationChoice(
-        dialog, *form, hasBody ? doc::BodyOperation::Join : doc::BodyOperation::NewBody);
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    form->addRow(buttons);
-
-    if (dialog.exec() != QDialog::Accepted) return false;
+    FeatureForm form(this, title);
+    auto* size = form.number(QStringLiteral("size"), valueLabel, value, min, max, decimals);
+    auto* result = form.operationChoice(proposedOperation());
+    if (!form.exec()) return false;
     value = size->value();
-    operation = static_cast<doc::BodyOperation>(result->currentData().toInt());
+    operation = FeatureForm::operation(result);
     return true;
 }
 
-bool MainWindow::addBodyFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
-                                const std::shared_ptr<doc::Sketch>& wrapperSketch) {
+bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                                 const std::shared_ptr<doc::Sketch>& wrapperSketch) {
     // Try the feature at the end of the active history first. One that fails
     // there itself (a Cut that would leave nothing, an Intersect of bodies
     // that do not touch) is refused, leaving the part — and the undo
@@ -2433,142 +2495,159 @@ bool MainWindow::addBodyFeature(std::unique_ptr<doc::Feature> feature, const QSt
 // ---------------------------------------------------------------------------
 
 void MainWindow::onBooleanUnion() {
-    // Demo: union of two overlapping boxes.
-    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
-    auto boxB = model::PrimitiveFactory::makeBox(10, 10, 10);
-    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
-        v.point.x += 5.0;
-    }
-
-    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Union);
-    if (!result) {
-        statusBar()->showMessage(tr("Boolean union failed"));
-        return;
-    }
-
-    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Boolean Union");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.4, 0.75, 0.55}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Boolean union completed."));
+    combineBodies(model::BooleanType::Union, tr("Union"));
 }
 
 void MainWindow::onBooleanSubtract() {
-    // Demo: box with a rectangular channel cut through it.
-    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
-    auto boxB = model::PrimitiveFactory::makeBox(4, 4, 20);
-    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
-        v.point.x += 3.0;
-        v.point.y += 3.0;
-        v.point.z -= 5.0;
-    }
-
-    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Subtract);
-    if (!result) {
-        statusBar()->showMessage(tr("Boolean subtract failed"));
-        return;
-    }
-
-    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Boolean Subtract");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.85, 0.45, 0.45}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Boolean subtract completed."));
+    combineBodies(model::BooleanType::Subtract, tr("Subtract"));
 }
 
 void MainWindow::onBooleanIntersect() {
-    // Demo: intersection of two overlapping boxes.
-    auto boxA = model::PrimitiveFactory::makeBox(10, 10, 10);
-    auto boxB = model::PrimitiveFactory::makeBox(10, 10, 10);
-    for (auto& v : const_cast<std::deque<topo::Vertex>&>(boxB->vertices())) {
-        v.point.x += 5.0;
-        v.point.y += 5.0;
-        v.point.z += 5.0;
-    }
+    combineBodies(model::BooleanType::Intersect, tr("Intersect"));
+}
 
-    auto result = model::BooleanOp::execute(*boxA, *boxB, model::BooleanType::Intersect);
-    if (!result) {
-        statusBar()->showMessage(tr("Boolean intersect failed"));
+void MainWindow::combineBodies(model::BooleanType type, const QString& verb) {
+    if (!requirePart(verb)) return;
+    // Bodies, not shells: a cavity is a shell of the body around it.
+    const topo::Solid* solid = m_document->solid();
+    if (!solid || model::Pattern::separate(*solid).size() < 2) {
+        statusBar()->showMessage(
+            tr("%1 combines the part's bodies, and it has fewer than two (make one with "
+               "Result: New body)")
+                .arg(verb));
         return;
     }
-
-    auto meshData = model::SolidTessellator::tessellate(*result, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Boolean Intersect");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.55, 0.55, 0.85}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Boolean intersect completed."));
+    addModelFeature(std::make_unique<doc::BooleanFeature>(type), verb);
 }
 
 // ---------------------------------------------------------------------------
-// Slots -- Fillet / Chamfer (3D solid operations)
+// Slots -- Fillet, Chamfer, Shell, Draft (3D solid operations)
 // ---------------------------------------------------------------------------
 
+const topo::Solid* MainWindow::requireBody(const QString& verb) {
+    if (!requirePart(verb)) return nullptr;
+    const topo::Solid* solid = m_document->solid();
+    if (!solid) {
+        statusBar()->showMessage(tr("%1 works on a body: make one first").arg(verb));
+    }
+    return solid;
+}
+
 void MainWindow::onFillet() {
-    // Demo: fillet one edge of a box.
-    auto box = model::PrimitiveFactory::makeBox(10, 10, 10);
-    auto& edges = box->edges();
-    if (edges.empty()) {
-        statusBar()->showMessage(tr("No edges to fillet"));
-        return;
-    }
-    std::vector<topo::TopologyID> edgeIds = {edges.front().topoId};
-
-    auto result = model::FilletOp::execute(*box, edgeIds, 1.0, "fillet_demo");
-    if (!result.solid || !result.errorMessage.empty()) {
-        statusBar()->showMessage(
-            tr("Fillet failed: %1").arg(QString::fromStdString(result.errorMessage)));
-        return;
-    }
-
-    auto meshData = model::SolidTessellator::tessellate(*result.solid, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Fillet Demo");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.85, 0.65, 0.35}, 0.15f, 0.5f, 32.0f});
-
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Fillet completed."));
+    addEdgeFeature(true);
 }
 
 void MainWindow::onChamfer() {
-    // Demo: chamfer one edge of a box.
-    auto box = model::PrimitiveFactory::makeBox(10, 10, 10);
-    auto& edges = box->edges();
-    if (edges.empty()) {
-        statusBar()->showMessage(tr("No edges to chamfer"));
+    addEdgeFeature(false);
+}
+
+void MainWindow::addEdgeFeature(bool fillet) {
+    const QString verb = fillet ? tr("Fillet") : tr("Chamfer");
+    const topo::Solid* solid = requireBody(verb);
+    if (!solid) return;
+    const PickList edges = edgesOf(*solid);
+
+    FeatureForm form(this, verb);
+    auto* size = form.number(QStringLiteral("size"), fillet ? tr("Radius:") : tr("Distance:"), 1.0,
+                             0.001, 1e6);
+    auto* list = form.checklist(QStringLiteral("edges"), tr("Edges:"), edges.items);
+    if (!form.exec()) return;
+
+    std::vector<topo::TopologyID> chosen;
+    for (const int row : FeatureForm::checkedRows(list)) {
+        chosen.push_back(edges.ids[static_cast<size_t>(row)]);
+    }
+    if (chosen.empty()) {
+        statusBar()->showMessage(tr("%1 not added: no edges were chosen").arg(verb));
         return;
     }
-    std::vector<topo::TopologyID> edgeIds = {edges.front().topoId};
-
-    auto result = model::ChamferOp::executeEqual(*box, edgeIds, 1.0, "chamfer_demo");
-    if (!result.solid || !result.errorMessage.empty()) {
-        statusBar()->showMessage(
-            tr("Chamfer failed: %1").arg(QString::fromStdString(result.errorMessage)));
-        return;
+    std::unique_ptr<doc::Feature> feature;
+    if (fillet) {
+        feature = std::make_unique<doc::FilletFeature>(std::move(chosen), size->value());
+    } else {
+        feature = std::make_unique<doc::ChamferFeature>(std::move(chosen), size->value());
     }
+    addModelFeature(std::move(feature), verb);
+}
 
-    auto meshData = model::SolidTessellator::tessellate(*result.solid, 0.1);
-    auto node = std::make_shared<render::SceneNode>("Chamfer Demo");
-    node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
-    node->setMaterial(render::Material{math::Vec3{0.35, 0.65, 0.85}, 0.15f, 0.5f, 32.0f});
+void MainWindow::onShell() {
+    const QString verb = tr("Shell");
+    const topo::Solid* solid = requireBody(verb);
+    if (!solid) return;
+    const PickList faces = facesOf(*solid);
 
-    m_viewport->sceneGraph().addNode(node);
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Chamfer completed."));
+    FeatureForm form(this, verb);
+    auto* thickness =
+        form.number(QStringLiteral("thickness"), tr("Wall thickness:"), 1.0, 0.001, 1e6);
+    auto* list = form.checklist(QStringLiteral("faces"), tr("Faces to open:"), faces.items);
+    if (!form.exec()) return;
+
+    std::vector<topo::TopologyID> open;
+    for (const int row : FeatureForm::checkedRows(list)) {
+        open.push_back(faces.ids[static_cast<size_t>(row)]);
+    }
+    addModelFeature(std::make_unique<doc::ShellFeature>(thickness->value(), std::move(open)), verb);
+}
+
+void MainWindow::onDraft() {
+    const QString verb = tr("Draft");
+    if (!requireBody(verb)) return;
+
+    FeatureForm form(this, verb);
+    auto* pull =
+        directionChoice(form, QStringLiteral("pull"), tr("Pull direction:"), QStringLiteral("+Z"));
+    auto* neutral = form.number(QStringLiteral("neutral"), tr("Neutral plane at:"), 0.0, -1e6, 1e6);
+    auto* angle = form.number(QStringLiteral("angle"), tr("Angle (degrees):"), 3.0, 0.01, 89.0, 2);
+    if (!form.exec()) return;
+
+    // The neutral plane is square to the pull, at that distance along it.
+    const math::Vec3 direction = chosenDirection(pull);
+    addModelFeature(std::make_unique<doc::DraftFeature>(direction, direction * neutral->value(),
+                                                        angle->value() * std::numbers::pi / 180.0),
+                    verb);
+}
+
+// ---------------------------------------------------------------------------
+// Slots -- Patterns
+// ---------------------------------------------------------------------------
+
+void MainWindow::onLinearPattern() {
+    const QString verb = tr("Linear Pattern");
+    if (!requireBody(verb)) return;
+
+    FeatureForm form(this, verb);
+    auto* direction =
+        directionChoice(form, QStringLiteral("direction"), tr("Direction:"), QStringLiteral("+X"));
+    auto* spacing = form.number(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
+    auto* count =
+        form.count(QStringLiteral("count"), tr("Instances:"), 3, 2, doc::kMaxPatternCount);
+    if (!form.exec()) return;
+
+    addModelFeature(doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
+                                                    count->value()),
+                    verb);
+}
+
+void MainWindow::onCircularPattern() {
+    const QString verb = tr("Circular Pattern");
+    if (!requireBody(verb)) return;
+
+    FeatureForm form(this, verb);
+    auto* axis =
+        directionChoice(form, QStringLiteral("axis"), tr("About the axis:"), QStringLiteral("+Z"));
+    auto* count =
+        form.count(QStringLiteral("count"), tr("Instances:"), 4, 2, doc::kMaxPatternCount);
+    auto* total = form.number(QStringLiteral("angle"), tr("Over (degrees):"), 360.0, 1.0, 360.0, 2);
+    if (!form.exec()) return;
+
+    // A full turn spaces the instances evenly around it; a partial one puts
+    // the first and last at its ends.
+    const int n = count->value();
+    const double degrees = total->value();
+    const double step = degrees >= 360.0 ? 360.0 / n : degrees / (n - 1);
+    addModelFeature(doc::PatternFeature::makeCircular(math::Vec3::Zero, chosenDirection(axis),
+                                                      step * std::numbers::pi / 180.0, n),
+                    verb);
 }
 
 // ---------------------------------------------------------------------------
@@ -2597,39 +2676,46 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Edit %1").arg(QString::fromStdString(feat->name())));
-    auto* form = new QFormLayout(&dialog);
-    // What each box showed: a spin box rounds what it is given to its
-    // decimals (a 360° revolve's 2π shows as 6.2832), so an untouched box is
-    // one that still shows that, not one equal to the stored value.
+    FeatureForm form(this, tr("Edit %1").arg(QString::fromStdString(feat->name())));
+    // Each box shows the stored value as it is — a floor would turn a legal 0
+    // (a pointed cone's radius, a Union's operation code) into something else
+    // before anyone touched it. The feature refuses a value it cannot use.
+    // What each box showed is the baseline: a spin box rounds what it is given
+    // to its decimals (a 360° revolve's 2π shows as 6.2832), so an untouched
+    // box is one that still shows that, not one equal to the stored value.
     std::map<std::string, std::pair<QDoubleSpinBox*, double>> spins;
     for (const auto& [name, value] : params) {
-        auto* spin = new QDoubleSpinBox(&dialog);
-        spin->setObjectName(QString::fromStdString(name));
-        // A chord tolerance of 0 means "use the facet count"; a 0.001 floor
-        // would silently switch it on for anyone clicking through the dialog.
-        spin->setRange(name == "chordTolerance" ? 0.0 : 0.001, 1e6);
-        spin->setDecimals(4);
-        spin->setValue(value);
-        form->addRow(QString::fromStdString(name) + QStringLiteral(":"), spin);
+        auto* spin =
+            form.number(QString::fromStdString(name),
+                        QString::fromStdString(name) + QStringLiteral(":"), value, -1e9, 1e9, 4);
         spins[name] = {spin, spin->value()};
     }
-    QComboBox* result = buildsBody ? addOperationChoice(dialog, *form, feat->operation()) : nullptr;
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    form->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) return;
+    QComboBox* result = buildsBody ? form.operationChoice(feat->operation()) : nullptr;
+    if (!form.exec()) return;
 
     std::map<std::string, double> changed;
     for (const auto& [name, box] : spins) {
         const auto& [spin, shown] = box;
         if (spin->value() != shown) changed[name] = spin->value();
     }
+    // Leave out what the feature refuses (a zero distance, too few segments),
+    // and say so.
+    QStringList refused;
+    if (doc::Feature* target =
+            m_document->featureTree().feature(static_cast<size_t>(featureIndex))) {
+        for (const std::string& name : doc::refusedParameters(*target, changed)) {
+            refused << QString::fromStdString(name);
+            changed.erase(name);
+        }
+    }
+    if (!refused.isEmpty()) {
+        statusBar()->showMessage(
+            tr("%1 cannot use the value given for: %2")
+                .arg(QString::fromStdString(feat->name()), refused.join(QStringLiteral(", "))));
+    }
     std::optional<doc::BodyOperation> operation;
     if (result) {
-        const auto chosen = static_cast<doc::BodyOperation>(result->currentData().toInt());
+        const auto chosen = FeatureForm::operation(result);
         if (chosen != feat->operation()) operation = chosen;
     }
     if (changed.empty() && !operation) return;

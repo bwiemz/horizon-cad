@@ -54,12 +54,14 @@ add_library(hz_ui STATIC
     include/horizon/ui/ViewportInputHandler.h
     include/horizon/ui/ViewportRenderer.h
     include/horizon/ui/FeatureTreePanel.h
+    include/horizon/ui/FeatureForm.h
     include/horizon/ui/LocaleManager.h
     include/horizon/ui/CommandPalette.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
     src/MainWindow.cpp
+    src/FeatureForm.cpp
     src/LocaleManager.cpp
     src/CommandPalette.cpp
     src/ViewportWidget.cpp

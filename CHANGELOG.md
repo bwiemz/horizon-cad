@@ -11,6 +11,32 @@ in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findin
 
 ## Unreleased — Production readiness, Milestone 2 (Phases 102–104)
 
+- **Most 3D ribbon commands were demos (104b).** Box, Cylinder, Sphere, Cone,
+  Torus, Union, Subtract, Intersect, Fillet and Chamfer each dropped a fixed
+  mesh into the viewport, outside the document: the mesh was never saved or
+  undone, and it ignored the part entirely. (A fillet was always "one edge of
+  a 10 mm box".) Shell, Draft and Pattern had no command at all.
+
+  Each command now asks for its inputs and adds a feature to the part, as one
+  undoable step:
+  - **Primitives** ask for their sizes and how the body combines with the
+    part.
+  - **Union / Subtract / Intersect** combine the part's separate bodies.
+  - **Fillet and Chamfer** take the edges you choose. **Shell** takes the
+    faces to open and a wall thickness. Until the viewport can pick edges and
+    faces, they are chosen from lists: edges by their end points, faces by
+    which way they face and where their middle is.
+  - **Draft** takes a pull direction, a neutral plane and an angle.
+  - **Linear and Circular Pattern** take a direction or axis, a spacing or
+    angle, and a count.
+
+  A feature that fails on the spot, such as a fillet too big for its edge,
+  is refused with its reason rather than added.
+
+  **Loft and Sweep have no command yet.** They need sketches on more than one
+  plane, and the window can sketch only on XY; that is the next step
+  (Phase 104c).
+
 - **Changes to a part's history could not be undone, and one was not even
   saved (104a).** Undo covered 2D drawing only. Adding, reordering and editing
   features went around the undo stack, and **editing a feature's values

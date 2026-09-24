@@ -4,6 +4,7 @@
 #include <numbers>
 #include <set>
 
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
@@ -207,4 +208,67 @@ TEST(PatternTest, InstancesKeepTheIdealTheyApproximate) {
             EXPECT_NE(e.analyticCurve, nullptr) << "rim chord";
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// separate — each body of a multi-body solid on its own (Phase 104b)
+// ---------------------------------------------------------------------------
+
+TEST(PatternTest, SeparateUndoesCollect) {
+    auto small = PrimitiveFactory::makeBox(1, 1, 1);
+    auto large = Pattern::transformed(*PrimitiveFactory::makeBox(2, 2, 2),
+                                      hz::math::Mat4::translation(Vec3(10, 0, 0)));
+    auto both = Pattern::collect(*small, *large);
+    ASSERT_EQ(both->shellCount(), 2u);
+
+    const auto bodies = Pattern::separate(*both);
+    ASSERT_EQ(bodies.size(), 2u);
+    for (const auto& body : bodies) {
+        EXPECT_EQ(body->shellCount(), 1u);
+        EXPECT_TRUE(body->isValid()) << body->validationReport();
+        EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*body))
+            << hz::topo::GeometryValidator::report(*body);
+    }
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[0]).volume, 1.0, 1e-9);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[1]).volume, 8.0, 1e-9);
+    EXPECT_EQ(bodies[0]->faceCount(), 6u);
+    EXPECT_EQ(bodies[0]->edgeCount(), 12u) << "only the body's own edges";
+    EXPECT_EQ(bodies[0]->vertexCount(), 8u);
+    EXPECT_EQ(bodies[1]->faces().front().topoId, large->faces().front().topoId) << "names are kept";
+}
+
+TEST(PatternTest, SeparatingOneBodyGivesItBack) {
+    auto box = PrimitiveFactory::makeCylinder(2.0, 3.0);
+    const auto bodies = Pattern::separate(*box);
+    ASSERT_EQ(bodies.size(), 1u);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[0]).volume,
+                MassPropertiesCalculator::compute(*box).volume, 1e-9);
+    EXPECT_EQ(bodies[0]->faceCount(), box->faceCount());
+}
+
+TEST(PatternTest, ACavityStaysWithTheBodyAroundIt) {
+    // A box with a closed void inside: the void is a second shell of the same
+    // body, facing into it. Separating must not make it a body of its own.
+    auto outer = PrimitiveFactory::makeBox(10, 10, 10);
+    auto core = Pattern::transformed(*PrimitiveFactory::makeBox(4, 4, 4),
+                                     hz::math::Mat4::translation(Vec3(3, 3, 3)));
+    auto hollow = BooleanOp::execute(*outer, *core, BooleanType::Subtract);
+    ASSERT_NE(hollow, nullptr);
+    ASSERT_EQ(hollow->shellCount(), 2u) << "outside and cavity";
+    const double volume = MassPropertiesCalculator::compute(*hollow).volume;
+    ASSERT_NEAR(volume, 1000.0 - 64.0, 1e-6);
+
+    auto bodies = Pattern::separate(*hollow);
+    ASSERT_EQ(bodies.size(), 1u);
+    EXPECT_EQ(bodies[0]->shellCount(), 2u);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[0]).volume, volume, 1e-6);
+
+    // Beside a second, separate body, each keeps what is its own.
+    auto apart = Pattern::transformed(*PrimitiveFactory::makeBox(2, 2, 2),
+                                      hz::math::Mat4::translation(Vec3(20, 0, 0)));
+    auto both = Pattern::collect(*hollow, *apart);
+    bodies = Pattern::separate(*both);
+    ASSERT_EQ(bodies.size(), 2u);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[0]).volume, volume, 1e-6);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[1]).volume, 8.0, 1e-9);
 }

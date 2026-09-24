@@ -306,3 +306,34 @@ TEST(ModelCommandsTest, AMoveAcrossTheRollbackBarLeavesTheOthersWhereTheyWere) {
     tree.moveFeature(1, 2);                                        // [first, third, second]
     EXPECT_EQ(tree.rollbackIndex(), 0) << "only first stays active";
 }
+
+TEST(ModelCommandsTest, UndoingACountEditRestoresTheChordTolerance) {
+    // Setting a facet count returns a feature to count mode, clearing its
+    // chord tolerance. Undo must put the tolerance back, not only the count.
+    Document doc;
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.01));
+    const Feature* feature = cylinder.get();
+    doc.featureTree().addFeature(std::move(cylinder));
+    const auto before = feature->parameters();
+
+    doc.undoStack().push(std::make_unique<hz::doc::EditFeatureCommand>(
+        doc, feature, std::map<std::string, double>{{"segments", 12.0}}));
+    EXPECT_DOUBLE_EQ(feature->parameters().at("chordTolerance"), 0.0);
+    EXPECT_DOUBLE_EQ(feature->parameters().at("segments"), 12.0);
+
+    doc.undoStack().undo();
+    EXPECT_EQ(feature->parameters(), before);
+}
+
+TEST(ModelCommandsTest, RefusedParametersLeaveTheFeatureAlone) {
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("chordTolerance", 0.01));
+    const auto before = cylinder->parameters();
+
+    // Two facets bound no volume; the radius and height are fine.
+    const auto refused = hz::doc::refusedParameters(
+        *cylinder, {{"segments", 2.0}, {"height", 4.0}, {"radius", 3.0}});
+    EXPECT_EQ(refused, std::vector<std::string>{"segments"});
+    EXPECT_EQ(cylinder->parameters(), before) << "trying does not change it";
+}

@@ -116,6 +116,31 @@ std::string MoveFeatureCommand::description() const {
     return "Reorder " + nameOf(m_feature);
 }
 
+// --- Parameters ---
+
+std::vector<std::string> setParameters(Feature& feature,
+                                       const std::map<std::string, double>& values) {
+    std::vector<std::string> refused;
+    const auto set = [&](const std::string& name, double value) {
+        if (!feature.setParameter(name, value)) refused.push_back(name);
+    };
+    for (const auto& [name, value] : values) {
+        if (name != "chordTolerance") set(name, value);
+    }
+    if (const auto it = values.find("chordTolerance"); it != values.end()) {
+        set(it->first, it->second);
+    }
+    return refused;
+}
+
+std::vector<std::string> refusedParameters(Feature& feature,
+                                           const std::map<std::string, double>& values) {
+    const auto before = feature.parameters();
+    auto refused = setParameters(feature, values);
+    setParameters(feature, before);
+    return refused;
+}
+
 // --- EditFeatureCommand ---
 
 EditFeatureCommand::EditFeatureCommand(Document& doc, const Feature* feature,
@@ -126,13 +151,9 @@ EditFeatureCommand::EditFeatureCommand(Document& doc, const Feature* feature,
 void EditFeatureCommand::execute() {
     Feature* feature = inTree(m_doc, m_feature);
     if (!feature) return;
-    // What the edit replaces, read now: it is what undo must restore.
-    const auto current = feature->parameters();
-    m_old.clear();
-    for (const auto& [name, value] : m_new) {
-        const auto it = current.find(name);
-        if (it != current.end()) m_old[name] = it->second;
-    }
+    // What the edit replaces, read now — all of it, since setting one
+    // parameter can change another. It is what undo restores.
+    m_old = feature->parameters();
     m_oldOperation = feature->operation();
     apply(m_new, m_newOperation.value_or(m_oldOperation));
 }
@@ -145,7 +166,7 @@ void EditFeatureCommand::apply(const std::map<std::string, double>& parameters,
                                BodyOperation operation) {
     Feature* feature = inTree(m_doc, m_feature);
     if (!feature) return;
-    for (const auto& [name, value] : parameters) feature->setParameter(name, value);
+    setParameters(*feature, parameters);
     feature->setOperation(operation);
     m_doc.featureTree().markChanged();
 }
