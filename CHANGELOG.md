@@ -17,6 +17,26 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 7 (Phases 122–126)
+
+The [product-completeness roadmap](docs/superpowers/specs/2026-09-24-product-completeness-roadmap.md)
+continues from a fresh audit after Phase 121.
+
+- **Crashes and hangs in 2D (122).**
+  - Starting Insert Block while it was already active destroyed the running
+    tool and then called it. It no longer does.
+  - Removing an entity rebuilt the whole spatial index, so undoing a large
+    DXF import could take minutes, and deleting a big selection seconds.
+    Entities are now removed from the index in place.
+  - Undoing a deletion put the entities back at the end of the drawing,
+    drawn over everything else. They now go back where they were.
+  - Finding an entity by its id meant scanning the whole drawing. Box
+    selection, the grips drawn every frame, most editing commands and
+    snapping did it once per entity. It is now a direct lookup.
+  - Changing a text's height, content or alignment, closing a spline, or
+    changing an ellipse left picking and box selection working from the old
+    outline.
+
 ## Unreleased — Production readiness, Milestone 6 (Phases 119–121)
 
 - **The vault could give one document to two users, and lose a history

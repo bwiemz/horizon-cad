@@ -10,6 +10,12 @@ ToolManager::~ToolManager() = default;
 void ToolManager::registerTool(std::unique_ptr<Tool> tool) {
     if (!tool) return;
     std::string toolName = tool->name();
+    // Replacing the active tool destroys it: stop pointing at it first, or the
+    // next switch deactivates freed memory (Insert Block started twice did).
+    const auto existing = m_tools.find(toolName);
+    if (existing != m_tools.end() && existing->second.get() == m_activeTool) {
+        m_activeTool = nullptr;
+    }
     m_tools[toolName] = std::move(tool);
 }
 

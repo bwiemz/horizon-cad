@@ -329,6 +329,16 @@ public:
         send(QEvent::MouseMove, world, Qt::NoButton, Qt::NoButton);
     }
 
+    /// Press at @p from, move to @p to with the button held, release there:
+    /// a box selection with the select tool.
+    void drag(const hz::math::Vec2& from, const hz::math::Vec2& to) {
+        send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+        const hz::math::Vec2 mid{(from.x + to.x) / 2.0, (from.y + to.y) / 2.0};
+        send(QEvent::MouseMove, mid, Qt::NoButton, Qt::LeftButton);
+        send(QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+    }
+
     void key(Qt::Key key) {
         QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
         QCoreApplication::sendEvent(m_viewport, &press);

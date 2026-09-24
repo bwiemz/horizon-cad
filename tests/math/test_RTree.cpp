@@ -1,5 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <random>
+#include <vector>
+
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/RTree.h"
 
@@ -186,4 +192,108 @@ TEST(RTreeTest, QueryAllReturnsEverything) {
     BoundingBox everything(Vec3(-1, -1, -1e9), Vec3(200, 200, 1e9));
     auto results = tree.query(everything);
     EXPECT_EQ(results.size(), 100u);
+}
+
+// ---------------------------------------------------------------------------
+// Removal without rebuilding (Phase 122)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+BoundingBox boxAt(double x, double y, double w = 1.0, double h = 1.0) {
+    return BoundingBox(Vec3(x, y, 0), Vec3(x + w, y + h, 0));
+}
+
+std::vector<uint64_t> sorted(std::vector<uint64_t> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+}
+
+}  // namespace
+
+// Random inserts, removals (with right, wrong and no box hints) and queries,
+// checked against a brute-force list after every step.
+TEST(RTreeTest, RemovalMatchesBruteForceUnderRandomChurn) {
+    RTree<uint64_t> tree;
+    std::map<uint64_t, BoundingBox> truth;
+    std::mt19937 rng(12345);
+    std::uniform_real_distribution<double> coord(0.0, 500.0);
+    std::uniform_real_distribution<double> size(0.1, 20.0);
+    uint64_t nextId = 1;
+
+    for (int step = 0; step < 6000; ++step) {
+        const int op = static_cast<int>(rng() % 10);
+        if (op < 5 || truth.empty()) {
+            const BoundingBox b = boxAt(coord(rng), coord(rng), size(rng), size(rng));
+            tree.insert(nextId, b);
+            truth[nextId++] = b;
+        } else if (op < 8) {
+            auto it = truth.begin();
+            std::advance(it, static_cast<long>(rng() % truth.size()));
+            const int hint = static_cast<int>(rng() % 3);
+            if (hint == 0) {
+                EXPECT_TRUE(tree.remove(it->first, it->second));  // the right box
+            } else if (hint == 1) {
+                EXPECT_TRUE(tree.remove(it->first, boxAt(-900, -900)));  // a wrong box
+            } else {
+                tree.remove(it->first);  // no box
+            }
+            truth.erase(it);
+        } else {
+            const BoundingBox q = boxAt(coord(rng), coord(rng), 60.0, 60.0);
+            std::vector<uint64_t> expected;
+            for (const auto& [id, b] : truth) {
+                if (b.intersects(q)) expected.push_back(id);
+            }
+            ASSERT_EQ(sorted(tree.query(q)), sorted(expected)) << "step " << step;
+        }
+        ASSERT_EQ(tree.size(), truth.size()) << "step " << step;
+    }
+
+    // Everything left is still found, and removing it all empties the tree.
+    const BoundingBox all(Vec3(-1e9, -1e9, -1e9), Vec3(1e9, 1e9, 1e9));
+    EXPECT_EQ(tree.query(all).size(), truth.size());
+    for (const auto& [id, b] : truth) EXPECT_TRUE(tree.remove(id, b));
+    EXPECT_TRUE(tree.empty());
+    EXPECT_TRUE(tree.query(all).empty());
+    EXPECT_EQ(tree.nodeCount(), 1u);
+}
+
+// Removing and inserting over and over reuses nodes instead of growing.
+TEST(RTreeTest, ChurnDoesNotGrowTheTree) {
+    RTree<uint64_t> tree;
+    for (uint64_t i = 0; i < 2000; ++i) {
+        tree.insert(i, boxAt(static_cast<double>(i % 50) * 2.0, static_cast<double>(i / 50) * 2.0));
+    }
+    const size_t nodesAfterFill = tree.nodeCount();
+    for (int round = 0; round < 20; ++round) {
+        for (uint64_t i = 0; i < 2000; i += 2) {
+            ASSERT_TRUE(tree.remove(
+                i, boxAt(static_cast<double>(i % 50) * 2.0, static_cast<double>(i / 50) * 2.0)));
+        }
+        for (uint64_t i = 0; i < 2000; i += 2) {
+            tree.insert(
+                i, boxAt(static_cast<double>(i % 50) * 2.0, static_cast<double>(i / 50) * 2.0));
+        }
+    }
+    EXPECT_EQ(tree.size(), 2000u);
+    EXPECT_LE(tree.nodeCount(), nodesAfterFill * 2) << "freed nodes are not being reused";
+}
+
+// A value inserted twice is removed twice by remove(value, box), once each,
+// and entirely by remove(value).
+TEST(RTreeTest, DuplicateValuesAreRemovedOneAtATimeOrAllAtOnce) {
+    RTree<uint64_t> tree;
+    tree.insert(7, boxAt(0, 0));
+    tree.insert(7, boxAt(50, 50));
+    tree.insert(8, boxAt(10, 10));
+    EXPECT_TRUE(tree.remove(7, boxAt(50, 50)));
+    EXPECT_EQ(tree.size(), 2u);
+    EXPECT_EQ(tree.query(boxAt(50, 50)).size(), 0u);
+    EXPECT_EQ(tree.query(boxAt(0, 0)).size(), 1u);
+
+    tree.insert(7, boxAt(50, 50));
+    tree.remove(7);
+    EXPECT_EQ(tree.size(), 1u);
+    EXPECT_FALSE(tree.remove(7, boxAt(0, 0)));
 }

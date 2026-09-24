@@ -151,11 +151,11 @@ draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
     m_snapEngine.setSnapTolerance(m_snapPixels * pixelToWorldScale());
     const auto& layers = m_document->layerManager();
     const auto& drawing = m_document->draftDocument();
-    return m_snapEngine.snap(worldPos, drawing.spatialIndex(), drawing.entities(),
-                             [&layers](const draft::DraftEntity& entity) {
-                                 const auto* layer = layers.getLayer(entity.layer());
-                                 return layer != nullptr && layer->visible && !layer->locked;
-                             });
+    const auto snappable = [&layers](const draft::DraftEntity& entity) {
+        const auto* layer = layers.getLayer(entity.layer());
+        return layer != nullptr && layer->visible && !layer->locked;
+    };
+    return m_snapEngine.snap(worldPos, drawing, snappable);
 }
 
 QPointF ViewportWidget::worldToScreen(const math::Vec2& wp) const {
