@@ -1254,7 +1254,12 @@ void MainWindow::onAbout() {
                     .arg(version.toHtmlEscaped()));
     box.setInformativeText(
         tr("<p>Source revision %1, %2 build.<br>Built with %3 against Qt %4; running on Qt %5, "
-           "%6.</p><p>Licence: see the LICENSE file distributed with Horizon CAD.</p>")
+           "%6.</p>"
+           "<p>Copyright &copy; 2026 the Horizon CAD contributors.</p>"
+           "<p>Horizon CAD is free software: you can redistribute it and/or modify it under the "
+           "terms of the GNU General Public License, version 3 or (at your option) any later "
+           "version. It comes with ABSOLUTELY NO WARRANTY. The full licence is in the LICENSE "
+           "file distributed with Horizon CAD.</p>")
             .arg(QString::fromLatin1(hz::version::kRevision), QStringLiteral(HZ_BUILD_TYPE),
                  compiler.toHtmlEscaped(), QStringLiteral(QT_VERSION_STR), qVersion(),
                  QSysInfo::prettyProductName().toHtmlEscaped()));

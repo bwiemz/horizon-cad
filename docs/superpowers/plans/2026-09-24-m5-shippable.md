@@ -148,7 +148,7 @@ A release someone can install:
 ## Phase 118: Governance
 
 - The licence resolved (**owner decision**: LICENSE is GPL v3 text while
-  the README says MIT).
+  the README says MIT). **Decided: the GNU GPL v3 or later.**
 - SECURITY.md, CODE_OF_CONDUCT, issue and PR templates, a CONTRIBUTING
   refresh.
 - Branch protection on `master` (**owner action**).
@@ -186,9 +186,19 @@ A release someone can install:
     one.
 - **README** Contributing links all three documents.
 - **Left for the owner:**
-  - **The licence.** `LICENSE` is the GPL v3 and the README says MIT. Which
-    one applies is the owner's call. Until it is made, the AppStream
-    metadata declares no project licence.
+  - **The licence** was decided as the GNU GPL v3 or later, following the
+    notice already in `LICENSE`. `LICENSE` held only a fragment: the
+    heading, two paragraphs of the preamble and that notice. It now holds
+    the full text, byte for byte the GNU `COPYING` (MD5
+    d32239bcb673463ab874e80d47fae504), taken from a copy installed on the
+    build machine. The licence is also stated in:
+    - the README's notice;
+    - the About box, which now carries the GPL's "Appropriate Legal Notices"
+      for an interactive program: the licence, that there is no warranty,
+      and where the text is;
+    - the AppStream metadata (`GPL-3.0-or-later`);
+    - THIRD_PARTY_NOTICES;
+    - CONTRIBUTING, where a contribution comes in under the same licence.
   - **Branch protection** on `master`: require the CI checks to pass
     before a merge.
   - **Private vulnerability reporting** has to be turned on in the

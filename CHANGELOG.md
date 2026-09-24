@@ -58,6 +58,9 @@ work, not "post-1.0".
     with the CI gates as a checklist.
   - CONTRIBUTING describes the current build, tool API and tests, and how to
     pass every CI gate locally.
+  - The licence is the GNU GPL v3 or later. `LICENSE` held only a fragment
+    of it and now holds the full text; the README said MIT and now states
+    the GPL. The About box and the Linux desktop metadata say so too.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

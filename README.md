@@ -334,7 +334,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 115 | Done | One version: set only in `project()`, generated into a header for the About box, `--version` and the log, and into the installer through CPack; the source revision is kept current on every build. The CPack settings file shadowed CMake's CPack module, so no installer configuration had ever been written. The CHANGELOG's "1.0.0" is 0.1.0 |
 | 116 | Done | Packaging: an application icon (window, executable, installer, Linux desktop); Linux desktop entry, AppStream metadata and MIME types (validated); install rules for translations, licences, third-party notices and every bundled library's licence text, and on Windows the Qt runtime; an AppImage script (linuxdeploy); a test of the install tree |
 | 117 | Done | Release pipeline: a tag `vX.Y.Z` builds, tests and packages Windows (NSIS) and Linux (AppImage, tarball) with SHA-256 checksums into a draft release; a Linux Release CI job with `-Werror`; the vcpkg binary cache works (it restored nothing, so Qt was rebuilt from source in every job); Dependabot for actions; [docs/RELEASING.md](docs/RELEASING.md) |
-| 118 | Done | Governance: a [security policy](SECURITY.md) (private reporting; scripts and plugins are not sandboxed), a [code of conduct](CODE_OF_CONDUCT.md), issue forms, a pull request template with the CI gates, and a current [CONTRIBUTING](docs/CONTRIBUTING.md). Whether the licence is GPL v3 or MIT is left to the owner. Milestone 5 complete |
+| 118 | Done | Governance: a [security policy](SECURITY.md) (private reporting; scripts and plugins are not sandboxed), a [code of conduct](CODE_OF_CONDUCT.md), issue forms, a pull request template with the CI gates, and a current [CONTRIBUTING](docs/CONTRIBUTING.md). The licence is the GNU GPL v3 or later: `LICENSE` holds its full text (it held a fragment), and the README, the About box and the AppStream metadata say so. Milestone 5 complete |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
@@ -351,4 +351,12 @@ follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT
+Horizon CAD is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. The full text is in [LICENSE](LICENSE).
+
+The libraries it is built on keep their own licences; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,5 +1,8 @@
 # Third-party notices
 
+Horizon CAD itself is licensed under the GNU General Public License, version 3
+or (at your option) any later version; see [LICENSE](LICENSE).
+
 Horizon CAD is built on the libraries below. Each is used under its own
 licence. A package of Horizon CAD carries the full licence text of every
 library in it, in `third-party/<library>/copyright` next to this file (taken

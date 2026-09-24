@@ -212,6 +212,9 @@ ctest --test-dir build/debug -C Debug --output-on-failure
 
 ## Before you open a pull request
 
+Horizon CAD is licensed under the GNU GPL v3 or later, and a contribution is
+licensed under the same terms.
+
 CI runs these checks on every pull request, and a pull request should pass
 all of them locally first:
 

@@ -263,6 +263,13 @@ TEST(AppEssentialsTest, AboutSaysWhatIsRunning) {
     EXPECT_TRUE(about.text().contains(QStringLiteral("Horizon CAD"))) << about.text().toStdString();
     EXPECT_TRUE(about.text().contains(QString::fromLatin1(hz::version::kString)))
         << "the version from project(): " << about.text().toStdString();
+    // The GPL's "Appropriate Legal Notices" for an interactive program: the
+    // licence, that there is no warranty, and where its text is.
+    const QString notices = about.informativeText();
+    EXPECT_TRUE(notices.contains(QStringLiteral("GNU General Public License, version 3")))
+        << notices.toStdString();
+    EXPECT_TRUE(notices.contains(QStringLiteral("NO WARRANTY"))) << notices.toStdString();
+    EXPECT_TRUE(notices.contains(QStringLiteral("LICENSE"))) << notices.toStdString();
 }
 
 TEST(AppEssentialsTest, TheVersionIsOneNumberEverywhere) {
