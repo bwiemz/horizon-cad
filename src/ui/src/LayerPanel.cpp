@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTreeWidget>
@@ -54,6 +55,11 @@ void LayerPanel::createWidgets() {
     m_deleteBtn = new QPushButton(tr("Delete"), this);
     connect(m_deleteBtn, &QPushButton::clicked, this, &LayerPanel::onDeleteLayer);
     btnLayout->addWidget(m_deleteBtn);
+
+    m_renameBtn = new QPushButton(tr("Rename..."), this);
+    m_renameBtn->setObjectName(QStringLiteral("renameLayer"));
+    connect(m_renameBtn, &QPushButton::clicked, this, &LayerPanel::onRenameLayer);
+    btnLayout->addWidget(m_renameBtn);
 
     auto* colorBtn = new QPushButton(tr("Color..."), this);
     connect(colorBtn, &QPushButton::clicked, this, &LayerPanel::onColorClicked);
@@ -172,6 +178,23 @@ void LayerPanel::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
             viewport->document()->layerManager(), name);
         viewport->document()->undoStack().push(std::move(cmd));
         refresh();
+    } else if (column == 4) {
+        // The layer's line weight, which entities on it drawn ByLayer take.
+        const auto* lp = viewport->document()->layerManager().getLayer(name);
+        if (!lp) return;
+        bool ok = false;
+        const QString title = tr("Layer Line Weight");
+        const QString label = tr("Line weight:");
+        const double width =
+            QInputDialog::getDouble(this, title, label, lp->lineWidth, 0.1, 10.0, 2, &ok);
+        if (!ok) return;
+        draft::LayerProperties newProps = *lp;
+        newProps.lineWidth = width;
+        auto cmd = std::make_unique<doc::ModifyLayerCommand>(viewport->document()->layerManager(),
+                                                             name, newProps);
+        viewport->document()->undoStack().push(std::move(cmd));
+        refresh();
+        viewport->update();
     } else if (column == 5) {
         // Cycle through line types 1-7 (skip 0/ByLayer — layers always have a concrete type).
         const auto* lp = viewport->document()->layerManager().getLayer(name);
@@ -239,6 +262,42 @@ void LayerPanel::onColorClicked() {
     auto cmd = std::make_unique<doc::ModifyLayerCommand>(viewport->document()->layerManager(), name,
                                                          newProps);
     viewport->document()->undoStack().push(std::move(cmd));
+    refresh();
+    viewport->update();
+}
+
+void LayerPanel::onRenameLayer() {
+    auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
+    if (!viewport || !viewport->document()) return;
+    auto* item = m_tree->currentItem();
+    if (!item) return;
+    const QString from = item->data(0, Qt::UserRole).toString();
+    if (from == QStringLiteral("0")) {
+        QMessageBox::warning(this, tr("Rename Layer"), tr("The default layer 0 keeps its name."));
+        return;
+    }
+    bool ok = false;
+    const QString to = QInputDialog::getText(this, tr("Rename Layer"), tr("New name:"),
+                                             QLineEdit::Normal, from, &ok)
+                           .trimmed();
+    if (!ok || to.isEmpty() || to == from) return;
+    // Characters DXF does not allow in a layer name: the drawing would not
+    // export as it is.
+    static const QString kNotInNames = QStringLiteral("<>/\\\":;?*|=`");
+    for (const QChar c : to) {
+        if (kNotInNames.contains(c)) {
+            QMessageBox::warning(this, tr("Rename Layer"),
+                                 tr("A layer name cannot contain %1").arg(c));
+            return;
+        }
+    }
+    auto& document = *viewport->document();
+    if (document.layerManager().getLayer(to.toStdString())) {
+        QMessageBox::warning(this, tr("Rename Layer"), tr("Layer '%1' already exists.").arg(to));
+        return;
+    }
+    document.undoStack().push(std::make_unique<doc::RenameLayerCommand>(
+        document.layerManager(), document.draftDocument(), from.toStdString(), to.toStdString()));
     refresh();
     viewport->update();
 }

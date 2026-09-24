@@ -28,6 +28,18 @@ void LayerManager::removeLayer(const std::string& name) {
     m_layers.erase(name);
 }
 
+bool LayerManager::renameLayer(const std::string& from, const std::string& to) {
+    if (from == "0" || to.empty() || m_layers.count(to) != 0) return false;
+    auto it = m_layers.find(from);
+    if (it == m_layers.end()) return false;
+    LayerProperties props = it->second;
+    props.name = to;
+    m_layers.erase(it);
+    m_layers.emplace(to, props);
+    if (m_currentLayer == from) m_currentLayer = to;
+    return true;
+}
+
 LayerProperties* LayerManager::getLayer(const std::string& name) {
     auto it = m_layers.find(name);
     if (it != m_layers.end()) {

@@ -40,6 +40,18 @@ work, not "post-1.0".
   - Choosing a tool from the ribbon now puts the keyboard on the drawing, so
     typing reaches the tool.
 
+- **Layers and blocks (130).**
+  - Layers can be renamed from the layer panel. Everything on the layer,
+    inside blocks too, goes with it, as does the current layer. A layer's
+    line weight can be set by double-clicking its Width.
+  - Create Block asks for the base point, offering the centre of the
+    selection. Undoing it puts the entities back where they were in the
+    drawing order (they went to the end), and redoing it brings back the
+    same block reference rather than a new one.
+  - The README's feature list claimed a few things the product does not do
+    (custom hatch patterns, the system clipboard, a dimension style editor,
+    shortcuts for every tool). It now says what it does.
+
 ## Unreleased — Product completeness, Milestone 7 (Phases 122–126)
 
 The [product-completeness roadmap](docs/superpowers/specs/2026-09-24-product-completeness-roadmap.md)

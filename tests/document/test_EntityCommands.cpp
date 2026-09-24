@@ -5,9 +5,12 @@
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/math/BoundingBox.h"
 
 using hz::doc::ChangeTextHeightCommand;
@@ -105,4 +108,96 @@ TEST(EntityCommandsTest, ChangingTextHeightReindexesIt) {
     EXPECT_TRUE(indexedAt(d, text->id(), big.center().x, big.max().y - 0.5));
     grow.undo();
     EXPECT_FALSE(indexedAt(d, text->id(), big.center().x, big.max().y - 0.5));
+}
+
+// Renaming a layer carries everything on it, in the drawing and in block
+// definitions, and the current layer; undo takes it all back.
+TEST(EntityCommandsTest, RenamingALayerCarriesItsEntities) {
+    DraftDocument d;
+    hz::draft::LayerManager layers;
+    hz::draft::LayerProperties walls;
+    walls.name = "Walls";
+    walls.lineWidth = 2.0;
+    layers.addLayer(walls);
+    layers.setCurrentLayer("Walls");
+    const auto all = fill(d, 3);
+    d.findEntity(all[0])->setLayer("Walls");
+    d.findEntity(all[2])->setLayer("Walls");
+    auto block = std::make_shared<hz::draft::BlockDefinition>();
+    block->name = "Door";
+    block->entities.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(1, 0)));
+    block->entities.back()->setLayer("Walls");
+    d.blockTable().addBlock(block);
+
+    hz::doc::RenameLayerCommand rename(layers, d, "Walls", "Exterior");
+    rename.execute();
+    ASSERT_TRUE(rename.applied());
+    EXPECT_EQ(layers.getLayer("Walls"), nullptr);
+    ASSERT_NE(layers.getLayer("Exterior"), nullptr);
+    EXPECT_DOUBLE_EQ(layers.getLayer("Exterior")->lineWidth, 2.0) << "its properties go with it";
+    EXPECT_EQ(layers.currentLayer(), "Exterior");
+    EXPECT_EQ(d.findEntity(all[0])->layer(), "Exterior");
+    EXPECT_EQ(d.findEntity(all[1])->layer(), "0");
+    EXPECT_EQ(d.findEntity(all[2])->layer(), "Exterior");
+    EXPECT_EQ(block->entities.front()->layer(), "Exterior") << "inside a block too";
+
+    rename.undo();
+    ASSERT_NE(layers.getLayer("Walls"), nullptr);
+    EXPECT_EQ(layers.getLayer("Exterior"), nullptr);
+    EXPECT_EQ(layers.currentLayer(), "Walls");
+    EXPECT_EQ(d.findEntity(all[0])->layer(), "Walls");
+    EXPECT_EQ(block->entities.front()->layer(), "Walls");
+}
+
+TEST(EntityCommandsTest, ARenameTheLayersRefuseChangesNothing) {
+    DraftDocument d;
+    hz::draft::LayerManager layers;
+    hz::draft::LayerProperties a;
+    a.name = "A";
+    layers.addLayer(a);
+    a.name = "B";
+    layers.addLayer(a);
+    const std::pair<const char*, const char*> refused[] = {
+        {"0", "Base"},
+        {"A", "B"},
+        {"A", ""},
+        {"Missing", "C"},
+    };
+    for (const auto& [from, to] : refused) {
+        hz::doc::RenameLayerCommand rename(layers, d, from, to);
+        rename.execute();
+        EXPECT_FALSE(rename.applied()) << from << " -> " << to;
+        rename.undo();
+    }
+    EXPECT_NE(layers.getLayer("0"), nullptr);
+    EXPECT_NE(layers.getLayer("A"), nullptr);
+    EXPECT_NE(layers.getLayer("B"), nullptr);
+}
+
+// A block made from entities is inserted at the base point given; undo puts
+// the entities back where they were in the drawing order, and redo brings
+// back the same reference, under the same ID.
+TEST(EntityCommandsTest, CreatingABlockKeepsOrderAndIdentity) {
+    DraftDocument d;
+    const auto all = fill(d, 5);
+    hz::doc::CreateBlockCommand create(d, "Pair", {all[1], all[3]}, Vec2(10, 10));
+    create.execute();
+    const uint64_t ref = create.blockRefId();
+    const auto block = d.blockTable().findBlock("Pair");
+    ASSERT_NE(block, nullptr);
+    EXPECT_EQ(block->entities.size(), 2u);
+    EXPECT_DOUBLE_EQ(block->basePoint.x, 10.0);
+    const auto* inserted = dynamic_cast<const hz::draft::DraftBlockRef*>(d.findEntity(ref));
+    ASSERT_NE(inserted, nullptr);
+    EXPECT_DOUBLE_EQ(inserted->insertPos().y, 10.0);
+    EXPECT_EQ(ids(d), (std::vector<uint64_t>{all[0], all[2], all[4], ref}));
+
+    create.undo();
+    EXPECT_EQ(ids(d), all) << "the originals back in their places";
+    EXPECT_EQ(d.blockTable().findBlock("Pair"), nullptr);
+
+    create.execute();  // redo
+    EXPECT_EQ(create.blockRefId(), ref);
+    EXPECT_NE(d.findEntity(ref), nullptr);
+    EXPECT_EQ(d.blockTable().findBlock("Pair"), block);
 }

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -332,6 +333,28 @@ private:
     draft::LayerProperties m_oldProps;
 };
 
+/// Command to rename a layer, with every entity on it, in the drawing and in
+/// block definitions. The current layer follows. A rename the layer manager
+/// refuses (see LayerManager::renameLayer) changes nothing: applied() says.
+class RenameLayerCommand : public Command {
+public:
+    RenameLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc, std::string from,
+                       std::string to);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    bool applied() const { return m_applied; }
+
+private:
+    draft::LayerManager& m_mgr;
+    draft::DraftDocument& m_doc;
+    std::string m_from;
+    std::string m_to;
+    bool m_applied = false;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_moved;  ///< entities that were on it
+};
+
 /// Command to set the current drawing layer.
 class SetCurrentLayerCommand : public Command {
 public:
@@ -351,11 +374,15 @@ private:
 // ---------------------------------------------------------------------------
 
 /// Command to create a block definition from selected entities.
-/// Removes originals and inserts a block reference at the centroid.
+/// Removes the originals and inserts a reference to the block at its base
+/// point: @p basePoint, or the centre of the entities' bounds. Undo puts the
+/// originals back where they were in the drawing order; redo brings back the
+/// same block and reference, so what names the reference's ID still finds it.
 class CreateBlockCommand : public Command {
 public:
     CreateBlockCommand(draft::DraftDocument& doc, const std::string& blockName,
-                       const std::vector<uint64_t>& entityIds);
+                       const std::vector<uint64_t>& entityIds,
+                       std::optional<math::Vec2> basePoint = std::nullopt);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -366,8 +393,9 @@ private:
     draft::DraftDocument& m_doc;
     std::string m_blockName;
     std::vector<uint64_t> m_entityIds;
-    // Saved for undo.
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_savedEntities;
+    std::optional<math::Vec2> m_basePoint;
+    // Made on the first execute, kept for undo and redo.
+    std::vector<draft::PlacedEntity> m_removed;
     std::shared_ptr<draft::DraftEntity> m_blockRef;
     std::shared_ptr<draft::BlockDefinition> m_definition;
 };

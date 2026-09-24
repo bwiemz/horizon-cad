@@ -15,6 +15,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftLine.h"
@@ -379,4 +380,31 @@ TEST(ToolEditsTest, SelectingOnlyShowsItDoesNotEdit) {
     drive.click(Vec2(4, 0));
     EXPECT_EQ(doc.undoStack().revision(), steps) << "nothing was pushed";
     EXPECT_FALSE(doc.undoStack().canUndo());
+}
+
+// Create Block asks for the base point, offering the centre of the selection.
+TEST(ToolEditsTest, CreateBlockTakesItsBasePoint) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 0));
+    drive.click(Vec2(4, 0));
+    drive.key(Qt::Key_Return);
+    trigger(w, "tool_select");
+    drive.click(Vec2(2, 0));
+
+    hz::test::FormFiller filler(QStringLiteral("Create Block"),
+                                hz::test::FormAnswers()
+                                    .text(QStringLiteral("blockName"), QStringLiteral("Bar"))
+                                    .number(QStringLiteral("baseX"), 0.0)
+                                    .number(QStringLiteral("baseY"), 0.0));
+    trigger(w, "action_block-create");
+    ASSERT_TRUE(filler.seen());
+    EXPECT_NEAR(filler.shown(QStringLiteral("baseX")), 2.0, 1e-9) << "the selection's centre";
+    const auto block = w.activeDocument()->draftDocument().blockTable().findBlock("Bar");
+    ASSERT_NE(block, nullptr);
+    EXPECT_TRUE(near(block->basePoint, Vec2(0, 0)));
+    const auto refs = all<hz::draft::DraftBlockRef>(w);
+    ASSERT_EQ(refs.size(), 1u);
+    EXPECT_TRUE(near(refs[0]->insertPos(), Vec2(0, 0)));
 }

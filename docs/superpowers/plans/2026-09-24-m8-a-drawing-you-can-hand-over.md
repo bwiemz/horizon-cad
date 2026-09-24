@@ -126,5 +126,64 @@ dimensions; multi-line text.
 
 ## Phase 130: Layers and blocks
 
-Layer rename and line weight; block base point; README claims matched to the
-product.
+### What the audit found
+
+- **A layer could not be renamed**, though the README said it could, and its
+  line weight could not be changed from the panel.
+- **Create Block had four problems:**
+  - It put the block's base point at the average of its entities' centres,
+    with no way to choose it.
+  - Undo put the entities back at the end of the drawing order.
+  - Redo built a new block reference, under a new ID, so whatever named the
+    old one no longer found it.
+  - The originals were removed one at a time.
+- **The README claimed things the product did not do:**
+  - custom hatch patterns;
+  - polylines closed by the tool;
+  - the system clipboard;
+  - a configurable dimension style;
+  - shortcuts for all tools;
+  - format v16 (it is v18);
+  - a list of ribbon tabs that has changed.
+
+### As built
+
+- **Layer rename:**
+  - `LayerManager::renameLayer`, and `RenameLayerCommand`, which carries the
+    entities on the layer, in the drawing and in block definitions, and the
+    current layer.
+  - It refuses the default layer 0, a name already taken, and an empty
+    name, changing nothing (`applied()`).
+  - The layer panel has Rename…, which also refuses characters DXF does not
+    allow in a layer name.
+- **Layer line weight:** a double-click on the layer's Width column sets it
+  (`ModifyLayerCommand`).
+- **Create Block:**
+  - It asks for the name and the base point in one form. The base point
+    defaults to the centre of the selection's bounds (`FeatureForm::text` is
+    new).
+  - `CreateBlockCommand` takes the base point.
+  - It removes the originals in one pass, and undo puts them back where
+    they were (`removeEntities`/`restoreEntities`).
+  - The block and its reference are made once, so redo restores the same
+    reference under the same ID.
+- **The README's Features** now say what the product does, including Phase
+  128's input and this phase's layers and blocks.
+
+### Tests
+
+4 new.
+- Document:
+  - a rename carries entities (drawing and block), properties and the
+    current layer, and undoes;
+  - refused renames change nothing;
+  - Create Block keeps drawing order on undo and the reference's ID on
+    redo.
+- Window: Create Block offers the selection's centre and takes the base
+  point typed.
+
+### Not done
+
+- Picking the base point in the viewport. The form takes typed
+  coordinates.
+- Explode still recreates its entities on redo.
