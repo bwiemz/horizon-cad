@@ -319,8 +319,9 @@ without it.
 - **Autosave state in the status bar.** `RecoveryManager::problem()` says
   why a session could not start or why the last write failed. A status-bar
   label shows "Autosave off" or "Autosave failed", with the reason in its
-  tooltip, until a write succeeds. It shows nothing when autosave is off in
-  the preferences.
+  tooltip, until a write succeeds. Applying the preferences keeps a failure
+  standing (found in review: it used to hide it). It shows nothing when
+  autosave is off in the preferences.
 - **Recovery counts.**
   - Each snapshot's sidecar carries `recoveries`.
   - Before opening anything, `noteRecoveryAttempt()` counts one more in
@@ -356,7 +357,8 @@ without it.
   - Recovery:
     - an unfinished recovery is counted next time;
     - a session that cannot start says why;
-    - a failed autosave is shown, then cleared;
+    - a failed autosave is shown, survives applying the preferences, then
+      clears;
     - a document recovered before is not recovered by default;
     - recovered documents are snapshotted at once, counted.
 - **Not done:**

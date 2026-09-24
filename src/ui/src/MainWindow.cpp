@@ -1291,7 +1291,8 @@ void MainWindow::onNewAssembly() {
 void MainWindow::applyPreferences(const Preferences& prefs) {
     m_autosaveTimer->stop();
     if (prefs.autosaveSeconds > 0) m_autosaveTimer->start(prefs.autosaveSeconds * 1000);
-    showAutosaveState();
+    // As the last write left it: a failure still stands until a write works.
+    showAutosaveState(m_recovery->problem());
     m_viewport->snapEngine().setGridSpacing(prefs.gridSpacing);
     m_viewport->setSnapPixels(prefs.snapPixels);
 }
