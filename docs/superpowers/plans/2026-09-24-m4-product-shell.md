@@ -90,6 +90,31 @@ Under `QT_QPA_PLATFORM=offscreen`:
 The harness exists already (`hz_ui_window_tests`, `UiTestSupport.h`: form
 fillers, dialog responders, file pickers). This phase fills the gaps.
 
+**As built.**
+- **`UiTestSupport.h`** gains two helpers:
+  - `ToolDriver` presses, moves and releases at world points through the
+    viewport's own mouse handling (`worldToScreen`, then the viewport's
+    event handlers), so a tool sees what a real click gives it. The window is
+    never shown, so no OpenGL is needed.
+  - `ModalCloser` dismisses any modal that opens, and records its title.
+- **Ribbon tool actions** now have object names (`tool_line`, `tool_select`…)
+  that tests can find.
+- **`test_ToolEdits.cpp`** drives the tools:
+  - Line: draw a line, then undo and redo it;
+  - Circle and Rectangle: the geometry clicked;
+  - Select: click a line, press Delete, undo.
+- **`test_Smoke.cpp`** triggers every command (166 menu and ribbon actions,
+  all but Exit) on:
+  - an empty drawing;
+  - an empty part;
+  - an empty assembly;
+  - a drawing with a selection.
+
+  Every dialog they open is dismissed, and none may crash. It passes under
+  ASan as well.
+- The modified-state and close-prompt tests were already there
+  (`MainWindowDocumentsTest`), and the shortcut test landed in 111.
+
 ## Phase 113: Render efficiency and high DPI
 
 - Constraint analysis only when the sketch changes.

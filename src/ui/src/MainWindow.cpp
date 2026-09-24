@@ -561,6 +561,7 @@ void MainWindow::createRibbonBar() {
     auto addToolAction = [&](QToolBar* tb, const QString& iconName, const QString& tooltip,
                              auto slot, const QKeySequence& shortcut = {}) -> QAction* {
         auto* act = tb->addAction(IconGenerator::icon(iconName), tooltip, this, slot);
+        act->setObjectName(QStringLiteral("tool_") + iconName);  // for tests and automation
         act->setCheckable(true);
         act->setToolTip(
             shortcut.isEmpty()

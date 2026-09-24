@@ -328,6 +328,7 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 109 | Done | STEP fidelity: solids scaled into millimetres from the file's LENGTH_UNIT (SI prefixes and conversion-based units such as the inch); a solid that cannot be read is reported and the rest come in; faces with holes are drawn, measured and cut with their holes |
 | 110 | Done | 2D correctness: snaps and picks reach 10 screen pixels at any zoom; hidden and locked layers are not snapped to or trimmed at; typed snaps (endpoint, midpoint, centre, quadrant) and a new intersection snap, with object snaps before the grid; Trim, Break, Extend, Chamfer and Fillet keep line type and group. Milestone 3 complete |
 | 111 | Done | Application essentials: ten shortcuts that did nothing (bound to both menu and ribbon) now work; Open Recent; window and dock layout kept; Preferences (autosave, language, grid snap, snap reach, display units); Help ▸ About with version, revision and build; files open from the command line; every dock in View |
+| 112 | Done | UI test harness: a smoke test runs every one of the window's 166 commands on an empty drawing, part and assembly and on a selection; the drawing tools are driven through the viewport's own mouse handling (draw, select, delete, undo) |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),
