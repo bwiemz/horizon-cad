@@ -25,7 +25,7 @@ if(WIN32)
         "Delete '$DESKTOP\\\\Horizon CAD.lnk'"
     )
 else()
-    # NSIS exists only on Windows. Elsewhere a tarball of the install tree
-    # until Phase 116 adds an AppImage.
+    # NSIS exists only on Windows. Elsewhere a tarball of the install tree;
+    # the AppImage is made from the same tree by packaging/linux.
     set(CPACK_GENERATOR "TGZ")
 endif()
