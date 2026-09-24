@@ -330,6 +330,168 @@ static json serializeEntity(const draft::DraftEntity& entity) {
 /// Build the complete document JSON envelope. Shared by save() and by
 /// BinaryFormat, which stores the same envelope inside a FlatBuffers container
 /// (without the tessellation cache — that lives in typed binary vectors).
+/// The constraints of @p system, as the file holds them.
+static json constraintsToJson(const cstr::ConstraintSystem& system) {
+    json constraintsArray = json::array();
+    for (const auto& c : system.constraints()) {
+        json cObj;
+        cObj["id"] = c->id();
+        cObj["type"] = constraintTypeToString(c->type());
+
+        switch (c->type()) {
+            case cstr::ConstraintType::Coincident: {
+                auto* cc = dynamic_cast<const cstr::CoincidentConstraint*>(c.get());
+                cObj["refA"] = serializeRef(cc->pointA());
+                cObj["refB"] = serializeRef(cc->pointB());
+                break;
+            }
+            case cstr::ConstraintType::Horizontal: {
+                auto* hc = dynamic_cast<const cstr::HorizontalConstraint*>(c.get());
+                cObj["refA"] = serializeRef(hc->refA());
+                cObj["refB"] = serializeRef(hc->refB());
+                break;
+            }
+            case cstr::ConstraintType::Vertical: {
+                auto* vc = dynamic_cast<const cstr::VerticalConstraint*>(c.get());
+                cObj["refA"] = serializeRef(vc->refA());
+                cObj["refB"] = serializeRef(vc->refB());
+                break;
+            }
+            case cstr::ConstraintType::Perpendicular: {
+                auto* pc = dynamic_cast<const cstr::PerpendicularConstraint*>(c.get());
+                cObj["refA"] = serializeRef(pc->lineA());
+                cObj["refB"] = serializeRef(pc->lineB());
+                break;
+            }
+            case cstr::ConstraintType::Parallel: {
+                auto* pc = dynamic_cast<const cstr::ParallelConstraint*>(c.get());
+                cObj["refA"] = serializeRef(pc->lineA());
+                cObj["refB"] = serializeRef(pc->lineB());
+                break;
+            }
+            case cstr::ConstraintType::Tangent: {
+                auto* tc = dynamic_cast<const cstr::TangentConstraint*>(c.get());
+                cObj["refA"] = serializeRef(tc->lineRef());
+                cObj["refB"] = serializeRef(tc->circleRef());
+                break;
+            }
+            case cstr::ConstraintType::Equal: {
+                auto* ec = dynamic_cast<const cstr::EqualConstraint*>(c.get());
+                cObj["refA"] = serializeRef(ec->refA());
+                cObj["refB"] = serializeRef(ec->refB());
+                break;
+            }
+            case cstr::ConstraintType::Fixed: {
+                auto* fc = dynamic_cast<const cstr::FixedConstraint*>(c.get());
+                cObj["ref"] = serializeRef(fc->pointRef());
+                cObj["position"] = {{"x", fc->position().x}, {"y", fc->position().y}};
+                break;
+            }
+            case cstr::ConstraintType::Distance: {
+                auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
+                cObj["refA"] = serializeRef(dc->refA());
+                cObj["refB"] = serializeRef(dc->refB());
+                cObj["value"] = dc->dimensionalValue();
+                break;
+            }
+            case cstr::ConstraintType::Angle: {
+                auto* ac = dynamic_cast<const cstr::AngleConstraint*>(c.get());
+                cObj["refA"] = serializeRef(ac->lineA());
+                cObj["refB"] = serializeRef(ac->lineB());
+                cObj["value"] = ac->dimensionalValue();
+                break;
+            }
+        }
+
+        // Variable reference (v13+)
+        if (c->hasVariableReference()) {
+            cObj["variableName"] = c->variableReference();
+        }
+
+        constraintsArray.push_back(cObj);
+    }
+    return constraintsArray;
+}
+
+/// Read @p array's constraints into @p system, dropping any that name an
+/// entity @p drawing does not have (a corrupted or hand-edited file).
+static void constraintsFromJson(const json& array, const draft::DraftDocument& drawing,
+                                cstr::ConstraintSystem& system) {
+    for (const auto& cObj : array) {
+        std::string ctype = cObj.value("type", "");
+        std::shared_ptr<cstr::Constraint> constraint;
+
+        if (ctype == "coincident") {
+            constraint = std::make_shared<cstr::CoincidentConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+        } else if (ctype == "horizontal") {
+            constraint = std::make_shared<cstr::HorizontalConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+        } else if (ctype == "vertical") {
+            constraint = std::make_shared<cstr::VerticalConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+        } else if (ctype == "perpendicular") {
+            constraint = std::make_shared<cstr::PerpendicularConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+        } else if (ctype == "parallel") {
+            constraint = std::make_shared<cstr::ParallelConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+        } else if (ctype == "tangent") {
+            constraint = std::make_shared<cstr::TangentConstraint>(deserializeRef(cObj.at("refA")),
+                                                                   deserializeRef(cObj.at("refB")));
+        } else if (ctype == "equal") {
+            constraint = std::make_shared<cstr::EqualConstraint>(deserializeRef(cObj.at("refA")),
+                                                                 deserializeRef(cObj.at("refB")));
+        } else if (ctype == "fixed") {
+            auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
+                                  cObj.at("position").at("y").get<double>());
+            constraint =
+                std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
+        } else if (ctype == "distance") {
+            double val = cObj.value("value", 0.0);
+            constraint = std::make_shared<cstr::DistanceConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+        } else if (ctype == "angle") {
+            double val = cObj.value("value", 0.0);
+            constraint = std::make_shared<cstr::AngleConstraint>(
+                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+        }
+
+        if (constraint) {
+            // Restore the original constraint ID from the file.
+            if (cObj.contains("id")) {
+                uint64_t savedId = cObj.at("id").get<uint64_t>();
+                constraint->setId(savedId);
+                cstr::Constraint::advanceIdCounter(savedId);
+            }
+            // Variable reference (v13+)
+            if (cObj.contains("variableName")) {
+                constraint->setVariableReference(cObj.at("variableName").get<std::string>());
+            }
+            system.addConstraint(constraint);
+        }
+    }
+
+    // Validate constraint entity references — remove any that reference
+    // non-existent entities (corrupted or manually-edited files).
+    std::set<uint64_t> entityIds;
+    for (const auto& e : drawing.entities()) {
+        entityIds.insert(e->id());
+    }
+    std::vector<uint64_t> invalidConstraints;
+    for (const auto& c : system.constraints()) {
+        for (uint64_t eid : c->referencedEntityIds()) {
+            if (entityIds.find(eid) == entityIds.end()) {
+                invalidConstraints.push_back(c->id());
+                break;
+            }
+        }
+    }
+    for (uint64_t cid : invalidConstraints) {
+        system.removeConstraint(cid);
+    }
+}
+
 static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
     json root;
     root["version"] = kFormatVersion;
@@ -451,85 +613,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
     root["entities"] = entitiesArray;
 
     // --- Constraints ---
-    json constraintsArray = json::array();
-    for (const auto& c : doc.constraintSystem().constraints()) {
-        json cObj;
-        cObj["id"] = c->id();
-        cObj["type"] = constraintTypeToString(c->type());
-
-        switch (c->type()) {
-            case cstr::ConstraintType::Coincident: {
-                auto* cc = dynamic_cast<const cstr::CoincidentConstraint*>(c.get());
-                cObj["refA"] = serializeRef(cc->pointA());
-                cObj["refB"] = serializeRef(cc->pointB());
-                break;
-            }
-            case cstr::ConstraintType::Horizontal: {
-                auto* hc = dynamic_cast<const cstr::HorizontalConstraint*>(c.get());
-                cObj["refA"] = serializeRef(hc->refA());
-                cObj["refB"] = serializeRef(hc->refB());
-                break;
-            }
-            case cstr::ConstraintType::Vertical: {
-                auto* vc = dynamic_cast<const cstr::VerticalConstraint*>(c.get());
-                cObj["refA"] = serializeRef(vc->refA());
-                cObj["refB"] = serializeRef(vc->refB());
-                break;
-            }
-            case cstr::ConstraintType::Perpendicular: {
-                auto* pc = dynamic_cast<const cstr::PerpendicularConstraint*>(c.get());
-                cObj["refA"] = serializeRef(pc->lineA());
-                cObj["refB"] = serializeRef(pc->lineB());
-                break;
-            }
-            case cstr::ConstraintType::Parallel: {
-                auto* pc = dynamic_cast<const cstr::ParallelConstraint*>(c.get());
-                cObj["refA"] = serializeRef(pc->lineA());
-                cObj["refB"] = serializeRef(pc->lineB());
-                break;
-            }
-            case cstr::ConstraintType::Tangent: {
-                auto* tc = dynamic_cast<const cstr::TangentConstraint*>(c.get());
-                cObj["refA"] = serializeRef(tc->lineRef());
-                cObj["refB"] = serializeRef(tc->circleRef());
-                break;
-            }
-            case cstr::ConstraintType::Equal: {
-                auto* ec = dynamic_cast<const cstr::EqualConstraint*>(c.get());
-                cObj["refA"] = serializeRef(ec->refA());
-                cObj["refB"] = serializeRef(ec->refB());
-                break;
-            }
-            case cstr::ConstraintType::Fixed: {
-                auto* fc = dynamic_cast<const cstr::FixedConstraint*>(c.get());
-                cObj["ref"] = serializeRef(fc->pointRef());
-                cObj["position"] = {{"x", fc->position().x}, {"y", fc->position().y}};
-                break;
-            }
-            case cstr::ConstraintType::Distance: {
-                auto* dc = dynamic_cast<const cstr::DistanceConstraint*>(c.get());
-                cObj["refA"] = serializeRef(dc->refA());
-                cObj["refB"] = serializeRef(dc->refB());
-                cObj["value"] = dc->dimensionalValue();
-                break;
-            }
-            case cstr::ConstraintType::Angle: {
-                auto* ac = dynamic_cast<const cstr::AngleConstraint*>(c.get());
-                cObj["refA"] = serializeRef(ac->lineA());
-                cObj["refB"] = serializeRef(ac->lineB());
-                cObj["value"] = ac->dimensionalValue();
-                break;
-            }
-        }
-
-        // Variable reference (v13+)
-        if (c->hasVariableReference()) {
-            cObj["variableName"] = c->variableReference();
-        }
-
-        constraintsArray.push_back(cObj);
-    }
-    root["constraints"] = constraintsArray;
+    root["constraints"] = constraintsToJson(doc.constraintSystem());
 
     // --- Design variables (v14: nested objects with optional expressions) ---
     json designVars = json::object();
@@ -561,6 +645,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             skEntities.push_back(serializeEntity(*entity));
         }
         skObj["entities"] = skEntities;
+        skObj["constraints"] = constraintsToJson(sketch->constraintSystem());
 
         sketchesArray.push_back(skObj);
     }
@@ -1138,79 +1223,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
 
     // --- Load constraints (v5+) ---
     if (root.contains("constraints")) {
-        for (const auto& cObj : root.at("constraints")) {
-            std::string ctype = cObj.value("type", "");
-            std::shared_ptr<cstr::Constraint> constraint;
-
-            if (ctype == "coincident") {
-                constraint = std::make_shared<cstr::CoincidentConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "horizontal") {
-                constraint = std::make_shared<cstr::HorizontalConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "vertical") {
-                constraint = std::make_shared<cstr::VerticalConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "perpendicular") {
-                constraint = std::make_shared<cstr::PerpendicularConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "parallel") {
-                constraint = std::make_shared<cstr::ParallelConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "tangent") {
-                constraint = std::make_shared<cstr::TangentConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "equal") {
-                constraint = std::make_shared<cstr::EqualConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-            } else if (ctype == "fixed") {
-                auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
-                                      cObj.at("position").at("y").get<double>());
-                constraint =
-                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
-            } else if (ctype == "distance") {
-                double val = cObj.value("value", 0.0);
-                constraint = std::make_shared<cstr::DistanceConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-            } else if (ctype == "angle") {
-                double val = cObj.value("value", 0.0);
-                constraint = std::make_shared<cstr::AngleConstraint>(
-                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-            }
-
-            if (constraint) {
-                // Restore the original constraint ID from the file.
-                if (cObj.contains("id")) {
-                    uint64_t savedId = cObj.at("id").get<uint64_t>();
-                    constraint->setId(savedId);
-                    cstr::Constraint::advanceIdCounter(savedId);
-                }
-                // Variable reference (v13+)
-                if (cObj.contains("variableName")) {
-                    constraint->setVariableReference(cObj.at("variableName").get<std::string>());
-                }
-                doc.constraintSystem().addConstraint(constraint);
-            }
-        }
-
-        // Validate constraint entity references — remove any that reference
-        // non-existent entities (corrupted or manually-edited files).
-        std::set<uint64_t> entityIds;
-        for (const auto& e : doc.draftDocument().entities()) {
-            entityIds.insert(e->id());
-        }
-        std::vector<uint64_t> invalidConstraints;
-        for (const auto& c : doc.constraintSystem().constraints()) {
-            for (uint64_t eid : c->referencedEntityIds()) {
-                if (entityIds.find(eid) == entityIds.end()) {
-                    invalidConstraints.push_back(c->id());
-                    break;
-                }
-            }
-        }
-        for (uint64_t cid : invalidConstraints) {
-            doc.constraintSystem().removeConstraint(cid);
-        }
+        constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem());
     }
 
     // --- Load design variables (v13+, v14 nested format) ---
@@ -1236,7 +1249,6 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
 
     // --- Load sketches ---
     if (root.contains("sketches")) {
-        // Clear the default sketch collection — we'll rebuild from file data.
         doc.sketches().clear();
 
         size_t sketchIndex = 0;
@@ -1289,32 +1301,17 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     }
                 }
 
+                // Its constraints (saved since Phase 131; before, they were lost).
+                if (skObj.contains("constraints")) {
+                    constraintsFromJson(skObj.at("constraints"), sketch->drawing(),
+                                        sketch->constraintSystem());
+                }
+
                 doc.sketches().push_back(sketch);
             } catch (const std::exception& e) {
                 noteSkipped(report, "sketch", thisSketch, skObj, jsonMessage(e));
                 continue;  // Skip malformed sketches.
             }
-        }
-
-        // Ensure a default sketch pointer is valid: pick the first sketch if named
-        // "Default Sketch", otherwise create one.
-        bool hasDefault = false;
-        for (const auto& sk : doc.sketches()) {
-            if (sk->name() == "Default Sketch") {
-                hasDefault = true;
-                break;
-            }
-        }
-        if (!hasDefault) {
-            auto defSk = std::make_shared<doc::Sketch>();
-            defSk->setName("Default Sketch");
-            doc.sketches().insert(doc.sketches().begin(), defSk);
-        }
-    } else {
-        // Pre-sketch file (v14 and earlier): load top-level entities into the
-        // default sketch as well so that defaultSketch() contains them.
-        for (const auto& entity : doc.draftDocument().entities()) {
-            doc.defaultSketch().addEntity(entity);
         }
     }
 
@@ -1670,6 +1667,18 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
             }
         }
     }
+
+    // Files saved before Phase 131 carry an empty "Default Sketch" that every
+    // document used to have. One nothing uses (the document's list is its
+    // only owner: no feature holds it) is dropped, so it does not stand in
+    // the feature tree as a sketch nobody made.
+    auto& sketches = doc.sketches();
+    sketches.erase(std::remove_if(sketches.begin(), sketches.end(),
+                                  [](const std::shared_ptr<doc::Sketch>& sketch) {
+                                      return sketch->name() == "Default Sketch" &&
+                                             sketch->entities().empty() && sketch.use_count() == 1;
+                                  }),
+                   sketches.end());
 
     return true;
 }

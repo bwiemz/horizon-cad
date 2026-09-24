@@ -200,6 +200,14 @@ private slots:
     void onExtrudeSketch();
     void onRevolveSketch();
 
+    // Sketches (Phase 131): a new one on a principal plane (0 XY, 1 XZ,
+    // 2 YZ), a face or a datum plane; editing one, and finishing it.
+    void onNewSketchOnPlane(int which);
+    void onNewSketchOnFace();
+    void onNewSketchOnDatum();
+    void onEditSketch();
+    void onFinishSketch();
+
     void onBooleanUnion();
     void onBooleanSubtract();
     void onBooleanIntersect();
@@ -299,6 +307,15 @@ private:
     void saveWindowLayout() const;
     void restoreWindowLayout();
     std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
+    /// Add a sketch on @p plane (one undo step) and start editing it.
+    void newSketchOn(const draft::SketchPlane& plane, const QString& where);
+    /// Edit @p sketch (null: stop editing), and show it.
+    void editSketch(const std::shared_ptr<doc::Sketch>& sketch);
+    /// Show what the document is editing: the sketch view, with the solids
+    /// placed in its frame, or the model; and the Finish Sketch action and
+    /// the sketch list as they are.
+    void syncSketchView();
+    void refreshSketchList();
     bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
@@ -399,6 +416,11 @@ private:
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
+    QAction* m_finishSketchAction = nullptr;
+    /// The sketch Extrude and Revolve take when none is being edited: the
+    /// one chosen in the sketch list, or last made or finished. Sketch ids
+    /// are unique across documents, so another document's is simply not found.
+    uint64_t m_profileSketchId = 0;
     QMenu* m_recentMenu = nullptr;
 
     // Model rebuilds on a worker thread (Phase 114).

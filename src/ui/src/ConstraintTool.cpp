@@ -90,7 +90,7 @@ bool ConstraintTool::isCompatibleFeature(cstr::FeatureType ft) const {
 cstr::GeometryRef ConstraintTool::detectFeature(const math::Vec2& worldPos) const {
     if (!m_viewport || !m_viewport->document()) return {};
 
-    const auto& doc = m_viewport->document()->draftDocument();
+    const auto& doc = m_viewport->document()->activeDrawing();
     const auto& layerMgr = m_viewport->document()->layerManager();
     double tolerance = m_viewport->pickTolerance(10.0);
 
@@ -245,8 +245,8 @@ void ConstraintTool::commitConstraint() {
     if (!m_viewport || !m_viewport->document()) return;
 
     auto& doc = *m_viewport->document();
-    auto& csys = doc.constraintSystem();
-    auto& draftDoc = doc.draftDocument();
+    auto& csys = doc.activeConstraints();
+    auto& draftDoc = doc.activeDrawing();
     const auto& entities = draftDoc.entities();
 
     std::shared_ptr<cstr::Constraint> constraint;
@@ -352,7 +352,7 @@ void ConstraintTool::commitConstraint() {
 std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines() const {
     std::vector<std::pair<math::Vec2, math::Vec2>> lines;
     if (!m_viewport || !m_viewport->document()) return lines;
-    const auto& draft = m_viewport->document()->draftDocument();
+    const auto& draft = m_viewport->document()->activeDrawing();
     // A ref that no longer fits its entity (edited meanwhile) highlights
     // nothing: this is only a preview.
     const auto show = [&](const cstr::GeometryRef& ref) {
@@ -369,7 +369,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines()
 std::vector<std::pair<math::Vec2, double>> ConstraintTool::getPreviewCircles() const {
     std::vector<std::pair<math::Vec2, double>> circles;
     if (!m_viewport || !m_viewport->document()) return circles;
-    const auto& draft = m_viewport->document()->draftDocument();
+    const auto& draft = m_viewport->document()->activeDrawing();
     const double ptRadius = 5.0 * m_viewport->pixelToWorldScale();
     const auto show = [&](const cstr::GeometryRef& ref) {
         if (!ref.isValid() || ref.featureType != cstr::FeatureType::Point) return;

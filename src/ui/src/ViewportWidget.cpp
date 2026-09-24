@@ -10,6 +10,7 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QWheelEvent>
+#include <algorithm>
 #include <cmath>
 
 #include "horizon/document/Document.h"
@@ -85,20 +86,22 @@ void ViewportWidget::setActiveTool(Tool* tool) {
 }
 
 void ViewportWidget::setActiveSketch(doc::Sketch* sketch) {
+    if (sketch == m_activeSketch) return;
     if (sketch && !m_activeSketch) {
         // Entering sketch mode -- save current camera state.
         m_savedCameraState = CameraState{m_camera.eye(), m_camera.target(), m_camera.up()};
     }
 
     m_activeSketch = sketch;
+    m_selectionManager.clearSelection();  // what was selected is in another drawing
 
     if (sketch) {
-        // Align camera to the sketch plane.
-        const auto& plane = sketch->plane();
-        math::Vec3 center = plane.origin();
-        double distance = 100.0;
-        math::Vec3 eye = center + plane.normal() * distance;
-        m_camera.lookAt(eye, center, plane.yAxis());
+        // The view works in the sketch's own coordinates: its plane is the
+        // view's XY, and the solids are placed in that frame (MainWindow).
+        // Look straight down on it, as far away as the view was.
+        const double distance = std::max((m_camera.eye() - m_camera.target()).length(), 20.0);
+        m_camera.lookAt(math::Vec3(0.0, 0.0, distance), math::Vec3(0.0, 0.0, 0.0),
+                        math::Vec3(0.0, 1.0, 0.0));
     } else if (m_savedCameraState) {
         // Exiting sketch mode -- restore saved camera.
         m_camera.lookAt(m_savedCameraState->eye, m_savedCameraState->target,
@@ -118,17 +121,8 @@ math::Vec2 ViewportWidget::worldPositionAtCursor(int screenX, int screenY) const
     auto [rayOrigin, rayDir] = m_camera.screenToRay(
         static_cast<double>(screenX), static_cast<double>(screenY), width(), height());
 
-    // If a sketch is active, project onto its plane (returns local 2D coordinates).
-    if (m_activeSketch) {
-        math::Vec2 local;
-        if (m_activeSketch->plane().rayIntersect(rayOrigin, rayDir, local)) {
-            return local;
-        }
-        // Fallback if ray is parallel to the sketch plane.
-        return m_activeSketch->plane().worldToLocal(rayOrigin);
-    }
-
-    // Default: intersect with the XY plane (Z = 0).
+    // Intersect with the XY plane (Z = 0): the drawing's, or, while a sketch
+    // is edited, the sketch's own, since the view then works in its frame.
     if (std::abs(rayDir.z) < 1e-12) {
         return {rayOrigin.x, rayOrigin.y};
     }
@@ -189,7 +183,7 @@ draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
     if (m_document == nullptr) return {worldPos, draft::SnapType::None};
     m_snapEngine.setSnapTolerance(m_snapPixels * pixelToWorldScale());
     const auto& layers = m_document->layerManager();
-    const auto& drawing = m_document->draftDocument();
+    const auto& drawing = m_document->activeDrawing();
     const auto snappable = [&layers](const draft::DraftEntity& entity) {
         const auto* layer = layers.getLayer(entity.layer());
         return layer != nullptr && layer->visible && !layer->locked;

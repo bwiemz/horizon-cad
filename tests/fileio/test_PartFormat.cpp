@@ -7,6 +7,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -964,4 +966,61 @@ TEST(PartFormatTest, AFeatureSuppressionOfTheWrongTypeSkipsOnlyThatFeature) {
     std::string error;
     ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), loaded, &error)) << error;
     EXPECT_EQ(loaded.featureTree().featureCount(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// Sketches keep their constraints; the old empty default sketch goes
+// ---------------------------------------------------------------------------
+
+// A sketch's constraints are saved with it. They were lost: only the
+// top-level drawing's were written.
+TEST(PartFormatTest, ASketchKeepsItsConstraints) {
+    Document doc;
+    auto sketch = std::make_shared<Sketch>();
+    sketch->setName("Bracket");
+    auto a = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(5, 0.1));
+    sketch->addEntity(a);
+    hz::cstr::GeometryRef ref{a->id(), hz::cstr::FeatureType::Line, 0};
+    sketch->constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::HorizontalConstraint>(ref, ref));
+    doc.addSketch(sketch);
+
+    Document back;
+    std::string error;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(doc, false), back, &error))
+        << error;
+    ASSERT_EQ(back.sketches().size(), 1u);
+    EXPECT_EQ(back.sketches()[0]->name(), "Bracket");
+    EXPECT_EQ(back.sketches()[0]->constraintSystem().constraints().size(), 1u);
+    EXPECT_TRUE(back.constraintSystem().empty()) << "not moved to the top level";
+}
+
+// Every document used to have an empty "Default Sketch", saved in every file.
+// One nothing uses is dropped on reading; one a feature uses, or with
+// entities, stays.
+TEST(PartFormatTest, AnOldEmptyDefaultSketchIsDropped) {
+    const auto load = [](const std::string& sketchEntities, const std::string& features) {
+        auto doc = std::make_unique<Document>();
+        std::string error;
+        EXPECT_TRUE(NativeFormat::documentFromJson(
+            R"({"version": 18, "type": "hcad", "entities": [], "sketches": [{"id": 900,)"
+            R"( "name": "Default Sketch", "plane": {"origin": [0,0,0], "normal": [0,0,1],)"
+            R"( "xAxis": [1,0,0]}, "entities": [)" +
+                sketchEntities + R"(]}], "featureTree": [)" + features + "]}",
+            *doc, &error))
+            << error;
+        return doc;
+    };
+    EXPECT_TRUE(load("", "")->sketches().empty());
+    EXPECT_EQ(load(R"({"type": "line", "layer": "0", "start": {"x":0,"y":0},)"
+                   R"( "end": {"x":4,"y":0}})",
+                   "")
+                  ->sketches()
+                  .size(),
+              1u)
+        << "a default sketch with something in it is kept";
+    const auto used = load("", R"({"featureID": "extrude_1", "type": "extrude", "distance": 2.0,)"
+                               R"( "sketchId": 900})");
+    EXPECT_EQ(used->sketches().size(), 1u) << "one a feature uses is kept";
 }

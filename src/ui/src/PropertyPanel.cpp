@@ -422,7 +422,7 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    auto& doc = viewport->document()->draftDocument();
+    auto& doc = viewport->document()->activeDrawing();
 
     // Find first selected entity.
     const draft::DraftEntity* first = nullptr;
@@ -644,7 +644,7 @@ void PropertyPanel::onGeometryEdited() {
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
     doc::Document& document = *viewport->document();
-    draft::DraftDocument& drawing = document.draftDocument();
+    draft::DraftDocument& drawing = document.activeDrawing();
     const auto current = drawing.sharedEntity(m_currentIds.front());
     if (!current) return;
 
@@ -708,7 +708,7 @@ void PropertyPanel::onGeometryEdited() {
     drawing.replaceEntity(current->id(), placed);
     auto& parameters = document.parameterRegistry();
     document.undoStack().push(std::make_unique<doc::GripMoveCommand>(
-        drawing, current->id(), before, after, document.constraintSystem(),
+        drawing, current->id(), before, after, document.activeConstraints(),
         [&parameters](const std::string& name) { return parameters.get(name); }));
     viewport->update();
     // The constraints may have moved it on: show where it is.
@@ -723,7 +723,7 @@ void PropertyPanel::onLayerChanged(int index) {
 
     std::string newLayer = m_layerCombo->itemText(index).toStdString();
     auto cmd = std::make_unique<doc::ChangeEntityLayerCommand>(
-        viewport->document()->draftDocument(), m_currentIds, newLayer);
+        viewport->document()->activeDrawing(), m_currentIds, newLayer);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -736,7 +736,7 @@ void PropertyPanel::onColorClicked() {
 
     QColor initial(Qt::white);
     // Find current color of first entity.
-    if (const auto e = viewport->document()->draftDocument().sharedEntity(m_currentIds.front())) {
+    if (const auto e = viewport->document()->activeDrawing().sharedEntity(m_currentIds.front())) {
         uint32_t c = e->color();
         if (c != 0x00000000) {
             initial = QColor((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
@@ -751,7 +751,7 @@ void PropertyPanel::onColorClicked() {
                     static_cast<uint32_t>(color.blue());
 
     auto cmd = std::make_unique<doc::ChangeEntityColorCommand>(
-        viewport->document()->draftDocument(), m_currentIds, argb);
+        viewport->document()->activeDrawing(), m_currentIds, argb);
     viewport->document()->undoStack().push(std::move(cmd));
 
     m_colorButton->setStyleSheet(QString("background-color: rgb(%1,%2,%3); border: 1px solid #555;")
@@ -768,7 +768,7 @@ void PropertyPanel::onByLayerColorClicked() {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeEntityColorCommand>(
-        viewport->document()->draftDocument(), m_currentIds, 0x00000000u);
+        viewport->document()->activeDrawing(), m_currentIds, 0x00000000u);
     viewport->document()->undoStack().push(std::move(cmd));
 
     m_colorButton->setStyleSheet("background-color: #808080; border: 1px solid #555;");
@@ -782,7 +782,7 @@ void PropertyPanel::onLineWidthChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeEntityLineWidthCommand>(
-        viewport->document()->draftDocument(), m_currentIds, value);
+        viewport->document()->activeDrawing(), m_currentIds, value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -795,7 +795,7 @@ void PropertyPanel::onLineTypeChanged(int index) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeEntityLineTypeCommand>(
-        viewport->document()->draftDocument(), m_currentIds, index);
+        viewport->document()->activeDrawing(), m_currentIds, index);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -808,7 +808,7 @@ void PropertyPanel::onTextOverrideChanged() {
 
     std::string newText = m_textOverrideEdit->text().toStdString();
     auto cmd = std::make_unique<doc::ChangeTextOverrideCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), newText);
+        viewport->document()->activeDrawing(), m_currentIds.front(), newText);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -823,7 +823,7 @@ void PropertyPanel::updateConstraintList() {
         return;
     }
 
-    auto& cstrSys = viewport->document()->constraintSystem();
+    auto& cstrSys = viewport->document()->activeConstraints();
     bool hasConstraints = false;
 
     for (uint64_t entityId : m_currentIds) {
@@ -867,7 +867,7 @@ void PropertyPanel::onDeleteConstraint() {
 
     uint64_t constraintId = item->data(Qt::UserRole).toULongLong();
     auto cmd = std::make_unique<doc::RemoveConstraintCommand>(
-        viewport->document()->constraintSystem(), constraintId);
+        viewport->document()->activeConstraints(), constraintId);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 
@@ -883,7 +883,7 @@ void PropertyPanel::onBlockRotationChanged(double value) {
 
     double radians = value * math::kDegToRad;
     auto cmd = std::make_unique<doc::ChangeBlockRefRotationCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+        viewport->document()->activeDrawing(), m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -896,7 +896,7 @@ void PropertyPanel::onBlockScaleChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeBlockRefScaleCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), value);
+        viewport->document()->activeDrawing(), m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -917,10 +917,10 @@ void PropertyPanel::onTextContentChanged() {
     std::string newText = m_textContentEdit->toPlainText().toStdString();
     // Leaving the field is not an edit: only a changed text is.
     const auto* current = dynamic_cast<const draft::DraftText*>(
-        viewport->document()->draftDocument().findEntity(m_currentIds.front()));
+        viewport->document()->activeDrawing().findEntity(m_currentIds.front()));
     if (current == nullptr || current->text() == newText) return;
     auto cmd = std::make_unique<doc::ChangeTextContentCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), newText);
+        viewport->document()->activeDrawing(), m_currentIds.front(), newText);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -931,7 +931,7 @@ void PropertyPanel::onTextHeightChanged(double value) {
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
 
-    auto cmd = std::make_unique<doc::ChangeTextHeightCommand>(viewport->document()->draftDocument(),
+    auto cmd = std::make_unique<doc::ChangeTextHeightCommand>(viewport->document()->activeDrawing(),
                                                               m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
@@ -945,7 +945,7 @@ void PropertyPanel::onTextRotationChanged(double value) {
 
     double radians = value * math::kDegToRad;
     auto cmd = std::make_unique<doc::ChangeTextRotationCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+        viewport->document()->activeDrawing(), m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -958,7 +958,7 @@ void PropertyPanel::onTextAlignmentChanged(int index) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeTextAlignmentCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), index);
+        viewport->document()->activeDrawing(), m_currentIds.front(), index);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -972,7 +972,7 @@ void PropertyPanel::onSplineClosedChanged(int index) {
 
     bool closed = (index == 1);
     auto cmd = std::make_unique<doc::ChangeSplineClosedCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), closed);
+        viewport->document()->activeDrawing(), m_currentIds.front(), closed);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -985,7 +985,7 @@ void PropertyPanel::onHatchPatternChanged(int index) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeHatchPatternCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), index);
+        viewport->document()->activeDrawing(), m_currentIds.front(), index);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -997,7 +997,7 @@ void PropertyPanel::onHatchAngleChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     double radians = value * math::kDegToRad;
-    auto cmd = std::make_unique<doc::ChangeHatchAngleCommand>(viewport->document()->draftDocument(),
+    auto cmd = std::make_unique<doc::ChangeHatchAngleCommand>(viewport->document()->activeDrawing(),
                                                               m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
@@ -1011,7 +1011,7 @@ void PropertyPanel::onHatchSpacingChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeHatchSpacingCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), value);
+        viewport->document()->activeDrawing(), m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -1024,7 +1024,7 @@ void PropertyPanel::onEllipseSemiMajorChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeEllipseSemiMajorCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), value);
+        viewport->document()->activeDrawing(), m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -1037,7 +1037,7 @@ void PropertyPanel::onEllipseSemiMinorChanged(double value) {
     if (!viewport || !viewport->document()) return;
 
     auto cmd = std::make_unique<doc::ChangeEllipseSemiMinorCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), value);
+        viewport->document()->activeDrawing(), m_currentIds.front(), value);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }
@@ -1050,7 +1050,7 @@ void PropertyPanel::onEllipseRotationChanged(double value) {
 
     double radians = value * math::kDegToRad;
     auto cmd = std::make_unique<doc::ChangeEllipseRotationCommand>(
-        viewport->document()->draftDocument(), m_currentIds.front(), radians);
+        viewport->document()->activeDrawing(), m_currentIds.front(), radians);
     viewport->document()->undoStack().push(std::move(cmd));
     viewport->update();
 }

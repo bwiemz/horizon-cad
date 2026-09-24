@@ -59,7 +59,7 @@ bool HatchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
     // Hit-test to find a closed entity under the cursor.

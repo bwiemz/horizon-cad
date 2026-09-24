@@ -39,7 +39,7 @@ bool RotateTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
     if (event->button() != Qt::LeftButton) return false;
     if (!m_viewport || !m_viewport->document()) return false;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     if (m_state == State::SelectCenter) {
         auto& sel = m_viewport->selectionManager();
@@ -132,7 +132,7 @@ bool RotateTool::keyPressEvent(QKeyEvent* event) {
                     double angleDeg = std::stod(m_angleInput);
                     double angleRad = math::degToRad(angleDeg);
 
-                    auto& doc = m_viewport->document()->draftDocument();
+                    auto& doc = m_viewport->document()->activeDrawing();
                     auto& sel = m_viewport->selectionManager();
                     const auto& layerMgr = m_viewport->document()->layerManager();
                     std::vector<uint64_t> idVec;
@@ -191,7 +191,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> RotateTool::getPreviewLines() con
 
     double angle = std::atan2(m_currentPos.y - m_center.y, m_currentPos.x - m_center.x);
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     auto& sel = m_viewport->selectionManager();
     for (const auto& entity : doc.entities()) {
         if (!sel.isSelected(entity->id())) continue;

@@ -158,8 +158,8 @@ void LayerPanel::onDeleteLayer() {
         return;
     }
 
-    auto cmd = std::make_unique<doc::RemoveLayerCommand>(
-        viewport->document()->layerManager(), viewport->document()->draftDocument(), name);
+    auto cmd = std::make_unique<doc::RemoveLayerCommand>(viewport->document()->layerManager(),
+                                                         viewport->document()->drawings(), name);
     viewport->document()->undoStack().push(std::move(cmd));
     refresh();
     viewport->update();
@@ -300,7 +300,7 @@ void LayerPanel::onRenameLayer() {
         return;
     }
     document.undoStack().push(std::make_unique<doc::RenameLayerCommand>(
-        document.layerManager(), document.draftDocument(), from.toStdString(), to.toStdString()));
+        document.layerManager(), document.drawings(), from.toStdString(), to.toStdString()));
     refresh();
     viewport->update();
 }

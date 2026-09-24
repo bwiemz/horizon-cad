@@ -156,9 +156,30 @@ PickList edgesOf(const topo::Solid& solid) {
     return list;
 }
 
+/// +1 when the solid's face loops wind counterclockwise seen from outside, -1
+/// when they wind the other way: its volume by the divergence theorem, over
+/// each loop fanned from its first vertex, has that sign. A solid's loops all
+/// wind one way, but which way depends on how it was built.
+double outwardSign(const topo::Solid& solid) {
+    double sixVolume = 0.0;
+    for (const auto& face : solid.faces()) {
+        if (!face.outerLoop || !face.outerLoop->halfEdge) continue;
+        const topo::HalfEdge* start = face.outerLoop->halfEdge;
+        if (!start->origin || !start->next) continue;
+        const math::Vec3& p0 = start->origin->point;
+        for (const topo::HalfEdge* he = start->next; he && he->next && he->next != start;
+             he = he->next) {
+            if (!he->origin || !he->next->origin) break;
+            sixVolume += p0.dot(he->origin->point.cross(he->next->origin->point));
+        }
+    }
+    return sixVolume < 0.0 ? -1.0 : 1.0;
+}
+
 /// The part's faces, listed by which way they face and where their middle is.
 PickList facesOf(const topo::Solid& solid) {
     PickList list;
+    const double outward = outwardSign(solid);
     for (const auto& face : solid.faces()) {
         if (!face.topoId.isValid() || !face.outerLoop || !face.outerLoop->halfEdge) continue;
         // Newell's normal and the vertex average of the outer loop.
@@ -181,10 +202,58 @@ PickList facesOf(const topo::Solid& solid) {
         list.ids.push_back(face.topoId);
         list.items.emplace_back(
             MainWindow::tr("facing %1 at %2")
-                .arg(formatPoint(normal.normalized()), formatPoint(centre / count)),
+                .arg(formatPoint(normal.normalized() * outward), formatPoint(centre / count)),
             QString::fromStdString(face.topoId.tag()));
     }
     return list;
+}
+
+/// A plane to sketch on, and how it is listed.
+struct PlaneChoice {
+    QString text;
+    draft::SketchPlane plane;
+};
+
+/// The part's flat faces as planes to sketch on: through the middle of the
+/// face, facing out of the part, x along the world's x (or y, for a face
+/// that faces along x). A face that is not flat (a loft's or a fillet's can
+/// be twisted) is left out.
+std::vector<PlaneChoice> planarFacesOf(const topo::Solid& solid) {
+    std::vector<PlaneChoice> out;
+    const double outward = outwardSign(solid);
+    for (const auto& face : solid.faces()) {
+        if (!face.outerLoop || !face.outerLoop->halfEdge) continue;
+        std::vector<math::Vec3> points;
+        math::Vec3 normal, centre;
+        const topo::HalfEdge* start = face.outerLoop->halfEdge;
+        const topo::HalfEdge* he = start;
+        do {
+            if (!he->origin || !he->next || !he->next->origin) break;
+            const math::Vec3& a = he->origin->point;
+            const math::Vec3& b = he->next->origin->point;
+            normal.x += (a.y - b.y) * (a.z + b.z);
+            normal.y += (a.z - b.z) * (a.x + b.x);
+            normal.z += (a.x - b.x) * (a.y + b.y);
+            centre = centre + a;
+            points.push_back(a);
+            he = he->next;
+        } while (he && he != start && points.size() < 100000);
+        if (points.size() < 3 || normal.length() < 1e-12) continue;
+        normal = normal.normalized() * outward;
+        centre = centre / static_cast<double>(points.size());
+        double size = 0.0;
+        for (const auto& q : points) size = std::max(size, (q - centre).length());
+        const bool flat = std::all_of(points.begin(), points.end(), [&](const math::Vec3& q) {
+            return std::abs((q - centre).dot(normal)) <= 1e-7 * std::max(size, 1.0);
+        });
+        if (!flat) continue;
+        const math::Vec3 across =
+            std::abs(normal.dot(math::Vec3::UnitX)) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
+        out.push_back(
+            {MainWindow::tr("facing %1 at %2").arg(formatPoint(normal), formatPoint(centre)),
+             draft::SketchPlane(centre, normal, across)});
+    }
+    return out;
 }
 
 /// Directions offered for a pull or a pattern: the six axis directions.
@@ -301,6 +370,11 @@ MainWindow::MainWindow(QWidget* parent)
             &MainWindow::onPrimitiveBox);
     connect(m_featureTreePanel, &FeatureTreePanel::openFileRequested, this,
             &MainWindow::onOpenFile);
+    connect(m_featureTreePanel, &FeatureTreePanel::sketchEditRequested, this, [this](uint64_t id) {
+        if (auto sketch = m_document->findSketch(id)) editSketch(sketch);
+    });
+    connect(m_featureTreePanel, &FeatureTreePanel::sketchSelected, this,
+            [this](uint64_t id) { m_profileSketchId = id; });
 
     // Build UI chrome.
     createMenus();
@@ -490,6 +564,32 @@ void MainWindow::createMenus() {
     viewMenu->addAction(m_featureTreePanel->toggleViewAction());
     viewMenu->addAction(m_propertyPanel->toggleViewAction());
     viewMenu->addAction(m_layerPanel->toggleViewAction());
+
+    // ---- Model ----
+    QMenu* modelMenu = menuBar()->addMenu(tr("&Model"));
+    QMenu* newSketchMenu = modelMenu->addMenu(tr("New &Sketch"));
+    const auto sketchAction = [](QMenu* menu, const QString& text, const char* name, auto slot) {
+        QAction* action = menu->addAction(text);
+        action->setObjectName(QString::fromLatin1(name));
+        QObject::connect(action, &QAction::triggered, slot);
+        return action;
+    };
+    sketchAction(newSketchMenu, tr("On the &XY Plane"), "action_sketch_xy",
+                 [this] { onNewSketchOnPlane(0); });
+    sketchAction(newSketchMenu, tr("On the X&Z Plane"), "action_sketch_xz",
+                 [this] { onNewSketchOnPlane(1); });
+    sketchAction(newSketchMenu, tr("On the &YZ Plane"), "action_sketch_yz",
+                 [this] { onNewSketchOnPlane(2); });
+    newSketchMenu->addSeparator();
+    sketchAction(newSketchMenu, tr("On a &Face..."), "action_sketch_face",
+                 [this] { onNewSketchOnFace(); });
+    sketchAction(newSketchMenu, tr("On a &Datum Plane..."), "action_sketch_datum",
+                 [this] { onNewSketchOnDatum(); });
+    sketchAction(modelMenu, tr("&Edit Sketch..."), "action_sketch_edit",
+                 [this] { onEditSketch(); });
+    m_finishSketchAction = sketchAction(modelMenu, tr("&Finish Sketch"), "action_sketch_finish",
+                                        [this] { onFinishSketch(); });
+    m_finishSketchAction->setEnabled(false);
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1001,6 +1101,10 @@ void MainWindow::activateTabDocument() {
 
     m_viewport->setActiveSketch(nullptr);
     m_viewport->setDocument(m_document.get());
+    m_viewport->setActiveSketch(m_document->editedSketch().get());
+    if (m_finishSketchAction) {
+        m_finishSketchAction->setEnabled(m_document->editedSketch() != nullptr);
+    }
     if (tab->modelStale) {
         rebuildFeatureTree();
     } else {
@@ -1071,6 +1175,10 @@ void MainWindow::rebuildScene() {
             auto meshData = model::SolidTessellator::tessellate(*m_document->solid(), 0.1);
             auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
             node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+            // While a sketch is edited the view works in its frame.
+            if (const auto& sketch = m_document->editedSketch()) {
+                node->setLocalTransform(sketch->plane().worldToLocalMatrix());
+            }
             node->setMaterial(render::Material{math::Vec3{0.55, 0.75, 0.85}, 0.15f, 0.5f, 32.0f});
             m_viewport->sceneGraph().addNode(node);
         }
@@ -1087,6 +1195,7 @@ void MainWindow::refreshAllPanels() {
 
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
+    refreshSketchList();
     if (m_document->failedFeatureIndex() >= 0) {
         m_featureTreePanel->markFailed(m_document->failedFeatureIndex(),
                                        m_document->lastBuildMessage());
@@ -1170,6 +1279,7 @@ void MainWindow::watchDocument(const std::shared_ptr<doc::Document>& document) {
             if (tab.document.get() == changed) tab.snapshotStale = true;
         }
         refreshModifiedIndicators();
+        if (changed == m_document.get()) syncSketchView();
     });
 }
 
@@ -2356,7 +2466,7 @@ void MainWindow::onDuplicate() {
     // Filter out entities on hidden/locked layers.
     const auto& layerMgr = m_document->layerManager();
     std::vector<uint64_t> idVec;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
@@ -2366,7 +2476,7 @@ void MainWindow::onDuplicate() {
 
     math::Vec2 offset(1.0, -1.0);
     auto cmd =
-        std::make_unique<doc::DuplicateEntityCommand>(m_document->draftDocument(), idVec, offset);
+        std::make_unique<doc::DuplicateEntityCommand>(m_document->activeDrawing(), idVec, offset);
     auto* rawCmd = cmd.get();
     m_document->undoStack().push(std::move(cmd));
 
@@ -2385,7 +2495,7 @@ void MainWindow::onCopy() {
     if (ids.empty()) return;
 
     std::vector<std::shared_ptr<draft::DraftEntity>> entities;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (sel.isSelected(entity->id())) {
             entities.push_back(entity);
         }
@@ -2402,7 +2512,7 @@ void MainWindow::onCut() {
 
     // Only remove entities on visible/unlocked layers.
     const auto& layerMgr = m_document->layerManager();
-    auto& drawing = m_document->draftDocument();
+    auto& drawing = m_document->activeDrawing();
     std::vector<uint64_t> removable;
     removable.reserve(ids.size());
     for (uint64_t id : ids) {
@@ -2457,7 +2567,7 @@ void MainWindow::onViewIsometric() {
 
 void MainWindow::onFitAll() {
     math::BoundingBox bbox;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         auto entityBBox = entity->boundingBox();
         if (entityBBox.isValid()) {
             bbox.expand(entityBBox);
@@ -2591,7 +2701,7 @@ void MainWindow::onRectangularArray() {
     // Filter out entities on hidden/locked layers.
     const auto& layerMgr = m_document->layerManager();
     std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
@@ -2616,19 +2726,19 @@ void MainWindow::onRectangularArray() {
             if (r == 0 && c == 0) continue;  // Skip original position.
             math::Vec2 offset(c * sx, r * sy);
             for (uint64_t id : filteredIds) {
-                if (const auto entity = m_document->draftDocument().sharedEntity(id)) {
+                if (const auto entity = m_document->activeDrawing().sharedEntity(id)) {
                     auto clone = entity->clone();
                     clone->translate(offset);
                     newIds.push_back(clone->id());
                     allClones.push_back(clone);
                     composite->addCommand(std::make_unique<doc::AddEntityCommand>(
-                        m_document->draftDocument(), clone));
+                        m_document->activeDrawing(), clone));
                 }
             }
         }
     }
 
-    doc::remapCloneGroupIds(m_document->draftDocument(), allClones);
+    doc::remapCloneGroupIds(m_document->activeDrawing(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -2647,7 +2757,7 @@ void MainWindow::onPolarArray() {
     // Filter out entities on hidden/locked layers.
     const auto& layerMgr = m_document->layerManager();
     std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
@@ -2671,18 +2781,18 @@ void MainWindow::onPolarArray() {
     for (int i = 1; i < count; ++i) {
         double angle = step * i;
         for (uint64_t id : filteredIds) {
-            if (const auto entity = m_document->draftDocument().sharedEntity(id)) {
+            if (const auto entity = m_document->activeDrawing().sharedEntity(id)) {
                 auto clone = entity->clone();
                 clone->rotate(center, angle);
                 newIds.push_back(clone->id());
                 allClones.push_back(clone);
                 composite->addCommand(
-                    std::make_unique<doc::AddEntityCommand>(m_document->draftDocument(), clone));
+                    std::make_unique<doc::AddEntityCommand>(m_document->activeDrawing(), clone));
             }
         }
     }
 
-    doc::remapCloneGroupIds(m_document->draftDocument(), allClones);
+    doc::remapCloneGroupIds(m_document->activeDrawing(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -2722,7 +2832,7 @@ void MainWindow::onAngularDimTool() {
 }
 
 void MainWindow::onDimensionStyle() {
-    draft::DraftDocument& drawing = m_document->draftDocument();
+    draft::DraftDocument& drawing = m_document->activeDrawing();
     const draft::DimensionStyle& now = drawing.dimensionStyle();
     const QStringList units = {QStringLiteral("mm"), QStringLiteral("cm"), QStringLiteral("m"),
                                QStringLiteral("in"), QStringLiteral("ft")};
@@ -2903,7 +3013,7 @@ void MainWindow::onCreateBlock() {
     // Filter to visible/unlocked layers.
     const auto& layerMgr = m_document->layerManager();
     std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
@@ -2915,7 +3025,7 @@ void MainWindow::onCreateBlock() {
     // of what was selected, or typed.
     math::BoundingBox bounds;
     for (uint64_t id : filteredIds) {
-        if (const auto* e = m_document->draftDocument().findEntity(id)) {
+        if (const auto* e = m_document->activeDrawing().findEntity(id)) {
             const auto bb = e->boundingBox();
             if (bb.isValid()) bounds.expand(bb);
         }
@@ -2930,14 +3040,14 @@ void MainWindow::onCreateBlock() {
     if (name.isEmpty()) return;
 
     std::string blockName = name.toStdString();
-    if (m_document->draftDocument().blockTable().findBlock(blockName)) {
+    if (m_document->activeDrawing().blockTable().findBlock(blockName)) {
         QMessageBox::warning(this, tr("Create Block"),
                              tr("A block with that name already exists."));
         return;
     }
 
     const math::Vec2 base(baseX->value(), baseY->value());
-    auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->draftDocument(), blockName,
+    auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->activeDrawing(), blockName,
                                                          filteredIds, base,
                                                          m_document->layerManager().currentLayer());
     auto* rawCmd = cmd.get();
@@ -2950,7 +3060,7 @@ void MainWindow::onCreateBlock() {
 }
 
 void MainWindow::onInsertBlock() {
-    auto names = m_document->draftDocument().blockTable().blockNames();
+    auto names = m_document->activeDrawing().blockTable().blockNames();
     if (names.empty()) {
         QMessageBox::information(this, tr("Insert Block"),
                                  tr("No blocks defined. Create a block first."));
@@ -2960,7 +3070,7 @@ void MainWindow::onInsertBlock() {
     InsertBlockDialog dlg(names, this);
     if (dlg.exec() != QDialog::Accepted) return;
 
-    auto def = m_document->draftDocument().blockTable().findBlock(dlg.selectedBlock());
+    auto def = m_document->activeDrawing().blockTable().findBlock(dlg.selectedBlock());
     if (!def) return;
 
     // A new InsertBlockTool replaces the previous one, which may be the active
@@ -2981,7 +3091,7 @@ void MainWindow::onExplode() {
 
     // Find block refs among the selection.
     std::vector<uint64_t> blockRefIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         if (dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
             blockRefIds.push_back(entity->id());
@@ -2996,7 +3106,7 @@ void MainWindow::onExplode() {
     auto composite = std::make_unique<doc::CompositeCommand>("Explode");
     std::vector<doc::ExplodeBlockCommand*> explodeCmds;
     for (uint64_t id : blockRefIds) {
-        auto cmd = std::make_unique<doc::ExplodeBlockCommand>(m_document->draftDocument(), id);
+        auto cmd = std::make_unique<doc::ExplodeBlockCommand>(m_document->activeDrawing(), id);
         explodeCmds.push_back(cmd.get());
         composite->addCommand(std::move(cmd));
     }
@@ -3025,7 +3135,7 @@ void MainWindow::onGroupEntities() {
     // Filter to visible/unlocked layers.
     const auto& layerMgr = m_document->layerManager();
     std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
@@ -3034,7 +3144,7 @@ void MainWindow::onGroupEntities() {
     if (filteredIds.size() < 2) return;
 
     auto cmd =
-        std::make_unique<doc::GroupEntitiesCommand>(m_document->draftDocument(), filteredIds);
+        std::make_unique<doc::GroupEntitiesCommand>(m_document->activeDrawing(), filteredIds);
     m_document->undoStack().push(std::move(cmd));
     m_viewport->update();
 }
@@ -3046,7 +3156,7 @@ void MainWindow::onUngroupEntities() {
 
     // Collect groupIds from selected entities.
     std::set<uint64_t> groupIds;
-    for (const auto& entity : m_document->draftDocument().entities()) {
+    for (const auto& entity : m_document->activeDrawing().entities()) {
         if (!sel.isSelected(entity->id())) continue;
         if (entity->groupId() != 0) {
             groupIds.insert(entity->groupId());
@@ -3056,7 +3166,7 @@ void MainWindow::onUngroupEntities() {
 
     std::vector<uint64_t> groupIdVec(groupIds.begin(), groupIds.end());
     auto cmd =
-        std::make_unique<doc::UngroupEntitiesCommand>(m_document->draftDocument(), groupIdVec);
+        std::make_unique<doc::UngroupEntitiesCommand>(m_document->activeDrawing(), groupIdVec);
     m_document->undoStack().push(std::move(cmd));
     m_viewport->update();
 }
@@ -3169,30 +3279,192 @@ void MainWindow::onPrimitiveTorus() {
 std::shared_ptr<doc::Sketch> MainWindow::resolveProfileSketch(bool& createdWrapper) {
     createdWrapper = false;
 
-    // The active sketch, when one is being edited.
-    if (auto* activeSketch = m_viewport->activeSketch()) {
-        for (const auto& sk : m_document->sketches()) {
-            if (sk.get() == activeSketch) return sk;
-        }
+    // The sketch being edited, finished; else the one chosen in the list, or
+    // last made or finished.
+    if (auto edited = m_document->editedSketch()) {
+        onFinishSketch();
+        return edited;
+    }
+    if (auto chosen = m_document->findSketch(m_profileSketchId);
+        chosen && !chosen->entities().empty()) {
+        return chosen;
     }
 
-    const auto& topEntities = m_document->draftDocument().entities();
-    if (topEntities.empty()) return nullptr;
+    // Otherwise the drawing itself, as it is shown: what is on a hidden
+    // layer is not part of it. (Notes on it are passed over by the profile.)
+    std::vector<std::shared_ptr<draft::DraftEntity>> shown;
+    for (const auto& entity : m_document->draftDocument().entities()) {
+        const auto* layer = m_document->layerManager().getLayer(entity->layer());
+        if (layer == nullptr || layer->visible) shown.push_back(entity);
+    }
+    if (shown.empty()) return nullptr;
 
     // Reuse an existing wrapper sketch when the top-level profile has not
     // changed — repeated extrudes must not accumulate duplicate sketches.
     for (const auto& sk : m_document->sketches()) {
-        if (sk->entities() == topEntities) return sk;
+        if (sk->entities() == shown) return sk;
     }
 
     // Wrap the top-level profile in a sketch so the feature is replayable
     // (parametric history requires a sketch reference). The caller must add
     // it to the document only once the operation is validated.
     auto sketch = std::make_shared<doc::Sketch>();
-    sketch->setName(tr("Profile %1").arg(m_document->sketches().size()).toStdString());
-    for (const auto& entity : topEntities) sketch->addEntity(entity);
+    sketch->setName(tr("Profile %1").arg(m_document->sketches().size() + 1).toStdString());
+    for (const auto& entity : shown) sketch->addEntity(entity);
     createdWrapper = true;
     return sketch;
+}
+
+void MainWindow::newSketchOn(const draft::SketchPlane& plane, const QString& where) {
+    if (m_assembly) {
+        statusBar()->showMessage(tr("An assembly has no sketches: sketch in a part"));
+        return;
+    }
+    auto sketch = std::make_shared<doc::Sketch>(plane);
+    sketch->setName(tr("Sketch %1").arg(m_document->sketches().size() + 1).toStdString());
+    m_document->undoStack().push(std::make_unique<doc::AddSketchCommand>(*m_document, sketch));
+    editSketch(sketch);
+    statusBar()->showMessage(
+        tr("Sketching on %1: draw the profile, then Model > Finish Sketch").arg(where));
+}
+
+void MainWindow::onNewSketchOnPlane(int which) {
+    using math::Vec3;
+    // Each seen from outside the part's positive octant: XY from above, XZ
+    // from the front, YZ from the right; x across and y up the screen.
+    switch (which) {
+        case 1:
+            newSketchOn(draft::SketchPlane(Vec3::Zero, Vec3(0, -1, 0), Vec3::UnitX),
+                        tr("the XZ plane"));
+            break;
+        case 2:
+            newSketchOn(draft::SketchPlane(Vec3::Zero, Vec3::UnitX, Vec3::UnitY),
+                        tr("the YZ plane"));
+            break;
+        default:
+            newSketchOn(draft::SketchPlane(), tr("the XY plane"));
+            break;
+    }
+}
+
+void MainWindow::onNewSketchOnFace() {
+    if (m_assembly || !m_document->solid()) {
+        statusBar()->showMessage(tr("There is no part to sketch on a face of"));
+        return;
+    }
+    const std::vector<PlaneChoice> faces = planarFacesOf(*m_document->solid());
+    if (faces.empty()) {
+        statusBar()->showMessage(tr("The part has no flat face to sketch on"));
+        return;
+    }
+    QStringList names;
+    for (const auto& face : faces) names << face.text;
+    FeatureForm form(this, tr("Sketch on a Face"));
+    auto* choice = form.choice(QStringLiteral("face"), tr("Face:"), names);
+    if (!form.exec()) return;
+    const auto& picked = faces[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
+    newSketchOn(picked.plane, tr("a face"));
+}
+
+void MainWindow::onNewSketchOnDatum() {
+    std::vector<draft::SketchPlane> planes;
+    QStringList names;
+    const auto& tree = m_document->featureTree();
+    for (size_t i = 0; i < tree.featureCount(); ++i) {
+        const auto* datum = dynamic_cast<const doc::DatumFeature*>(tree.feature(i));
+        if (!datum || datum->datumKind() != doc::DatumFeature::DatumKind::Plane) continue;
+        planes.push_back(datum->asPlane().toSketchPlane());
+        names << QString::fromStdString(datum->name());
+    }
+    if (m_assembly || planes.empty()) {
+        statusBar()->showMessage(tr("The part has no datum plane to sketch on"));
+        return;
+    }
+    FeatureForm form(this, tr("Sketch on a Datum Plane"));
+    auto* choice = form.choice(QStringLiteral("datum"), tr("Datum plane:"), names);
+    if (!form.exec()) return;
+    const int index = std::max(choice->currentIndex(), 0);
+    newSketchOn(planes[static_cast<size_t>(index)], names[index]);
+}
+
+void MainWindow::onEditSketch() {
+    const auto& sketches = m_document->sketches();
+    if (m_assembly || sketches.empty()) {
+        statusBar()->showMessage(
+            tr("There is no sketch to edit: make one with Model > New Sketch"));
+        return;
+    }
+    QStringList names;
+    int current = 0;
+    for (size_t i = 0; i < sketches.size(); ++i) {
+        names << QString::fromStdString(sketches[i]->name());
+        if (sketches[i]->id() == m_profileSketchId) current = static_cast<int>(i);
+    }
+    FeatureForm form(this, tr("Edit Sketch"));
+    auto* choice = form.choice(QStringLiteral("sketch"), tr("Sketch:"), names);
+    choice->setCurrentIndex(current);
+    if (!form.exec()) return;
+    editSketch(sketches[static_cast<size_t>(std::max(choice->currentIndex(), 0))]);
+}
+
+void MainWindow::onFinishSketch() {
+    const auto edited = m_document->editedSketch();
+    if (!edited) return;
+    m_profileSketchId = edited->id();
+    editSketch(nullptr);
+    statusBar()->showMessage(
+        tr("%1 finished: Extrude or Revolve takes it").arg(QString::fromStdString(edited->name())));
+}
+
+void MainWindow::editSketch(const std::shared_ptr<doc::Sketch>& sketch) {
+    if (sketch) m_profileSketchId = sketch->id();
+    m_document->editSketch(sketch);
+    syncSketchView();
+}
+
+void MainWindow::syncSketchView() {
+    if (!m_document || !m_viewport) return;
+    doc::Sketch* editing = m_document->editedSketch().get();
+    if (m_viewport->activeSketch() != editing) {
+        // A tool mid-way through something holds points in the frame it
+        // began in; however the frame changes (Edit or Finish Sketch, or an
+        // undo that takes the sketch away), it starts again.
+        if (m_viewport->activeTool()) m_viewport->activeTool()->cancel();
+        m_viewport->setActiveSketch(editing);
+        rebuildScene();
+        refreshAllPanels();
+    }
+    if (m_finishSketchAction) m_finishSketchAction->setEnabled(editing != nullptr);
+    refreshSketchList();
+}
+
+void MainWindow::refreshSketchList() {
+    if (!m_featureTreePanel || !m_document) return;
+    std::vector<FeatureTreePanel::SketchRow> rows;
+    const auto& tree = m_document->featureTree();
+    for (const auto& sketch : m_document->sketches()) {
+        FeatureTreePanel::SketchRow row;
+        row.id = sketch->id();
+        row.name = sketch->name();
+        row.editing = sketch == m_document->editedSketch();
+        for (size_t i = 0; i < tree.featureCount() && row.usedBy.empty(); ++i) {
+            const doc::Feature* feature = tree.feature(i);
+            bool uses = false;
+            if (const auto* e = dynamic_cast<const doc::ExtrudeFeature*>(feature)) {
+                uses = e->sketch() == sketch;
+            } else if (const auto* r = dynamic_cast<const doc::RevolveFeature*>(feature)) {
+                uses = r->sketch() == sketch;
+            } else if (const auto* w = dynamic_cast<const doc::SweepFeature*>(feature)) {
+                uses = w->profile() == sketch || w->path() == sketch;
+            } else if (const auto* l = dynamic_cast<const doc::LoftFeature*>(feature)) {
+                const auto& sections = l->sections();
+                uses = std::find(sections.begin(), sections.end(), sketch) != sections.end();
+            }
+            if (uses) row.usedBy = feature->name();
+        }
+        rows.push_back(std::move(row));
+    }
+    m_featureTreePanel->refreshSketches(rows, m_profileSketchId);
 }
 
 void MainWindow::onExtrudeSketch() {
@@ -3229,7 +3501,7 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
-    if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
+    refreshSketchList();
     m_viewport->camera().setIsometricView();
     m_viewport->update();
 }
@@ -3244,18 +3516,21 @@ void MainWindow::onRevolveSketch() {
         return;
     }
 
-    double angleDeg = 360.0;
-    doc::BodyOperation operation = doc::BodyOperation::Join;
-    if (!askForBodyFeature(tr("Revolve"), tr("Angle (degrees):"), angleDeg, 1.0, 360.0, 1,
-                           operation)) {
-        return;
-    }
+    FeatureForm form(this, tr("Revolve"));
+    auto* size = form.number(QStringLiteral("size"), tr("Angle (degrees):"), 360.0, 1.0, 360.0, 1);
+    // About one of the sketch's own axes, through its origin: on the XY
+    // plane, the world's Y or X.
+    auto* axis =
+        form.choice(QStringLiteral("axis"), tr("Axis:"),
+                    {tr("The sketch's vertical axis (Y)"), tr("The sketch's horizontal axis (X)")});
+    auto* result = form.operationChoice(proposedOperation());
+    if (!form.exec()) return;
+    const double angle = size->value() * std::numbers::pi / 180.0;
+    const doc::BodyOperation operation = FeatureForm::operation(result);
 
-    const double angle = angleDeg * std::numbers::pi / 180.0;
-
-    // Default revolve axis: Y axis through origin (world space)
-    math::Vec3 axisPoint = math::Vec3::Zero;
-    math::Vec3 axisDir = math::Vec3::UnitY;
+    const auto& plane = sketch->plane();
+    const math::Vec3 axisPoint = plane.origin();
+    const math::Vec3 axisDir = axis->currentIndex() == 1 ? plane.xAxis() : plane.yAxis();
 
     std::string why;
     auto probe =
@@ -3272,7 +3547,7 @@ void MainWindow::onRevolveSketch() {
         return;
     }
 
-    if (m_viewport->activeSketch()) m_viewport->setActiveSketch(nullptr);
+    refreshSketchList();
     m_viewport->camera().setIsometricView();
     m_viewport->update();
 }
@@ -3623,6 +3898,7 @@ void MainWindow::rebuildFeatureTree() {
 void MainWindow::showBuildResult() {
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
+    refreshSketchList();
 
     if (m_document->failedFeatureIndex() >= 0) {
         m_featureTreePanel->markFailed(m_document->failedFeatureIndex(),

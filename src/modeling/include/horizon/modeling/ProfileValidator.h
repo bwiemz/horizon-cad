@@ -20,6 +20,23 @@ struct ProfileValidationResult {
     std::string errorMessage;
 };
 
+/// A region of a profile: its outer loop and the loops of the holes in it,
+/// each a closed loop as ProfileValidator::validate() gives one.
+struct ProfileRegion {
+    ProfileValidationResult outer;
+    std::vector<ProfileValidationResult> holes;
+};
+
+/// The regions a sketch's curves bound, or why they bound none.
+struct ProfileRegions {
+    std::vector<ProfileRegion> regions;
+    std::string errorMessage;
+
+    bool ok() const { return errorMessage.empty() && !regions.empty(); }
+    /// One region with no holes: a profile as validate() accepts it.
+    bool isSingleLoop() const { return regions.size() == 1 && regions.front().holes.empty(); }
+};
+
 /// Validates that a set of 2D draft entities forms a single closed loop
 /// suitable for extrusion or revolution operations.
 class ProfileValidator {
@@ -41,6 +58,15 @@ public:
     /// @return Validation result with ordered edges if closed.
     static ProfileValidationResult validate(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& entities, double tolerance = 1e-6);
+
+    /// The regions @p entities bound: every closed loop they make, loops
+    /// nested in one another read by the even-odd rule (a loop inside one
+    /// region's outer loop is a hole in it; a loop inside that hole starts a
+    /// region of its own). Text, dimensions, leaders and hatches are notes on
+    /// the sketch, not its shape, and are passed over. Everything else must
+    /// close into loops that neither cross themselves nor each other.
+    static ProfileRegions regions(const std::vector<std::shared_ptr<draft::DraftEntity>>& entities,
+                                  double tolerance = 1e-6);
 };
 
 }  // namespace hz::model

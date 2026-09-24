@@ -99,7 +99,7 @@ void LeaderTool::finishLeader() {
     leader->setLayer(m_viewport->document()->layerManager().currentLayer());
 
     auto cmd =
-        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(), leader);
+        std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(), leader);
     m_viewport->document()->undoStack().push(std::move(cmd));
 
     m_points.clear();

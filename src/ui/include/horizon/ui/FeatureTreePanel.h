@@ -1,9 +1,13 @@
 #pragma once
 
 #include <QDockWidget>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 class QAction;
+class QLabel;
+class QListWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QStackedWidget;
@@ -28,6 +32,17 @@ public:
 
     /// Rebuild the tree widget contents from the given FeatureTree.
     void refresh(const doc::FeatureTree& tree);
+
+    /// A sketch as the panel lists it.
+    struct SketchRow {
+        uint64_t id = 0;
+        std::string name;
+        std::string usedBy;  ///< the feature that uses it, or empty
+        bool editing = false;
+    };
+    /// List the document's sketches, above the features (hidden when there
+    /// are none). @p selected is the sketch Extrude and Revolve would use.
+    void refreshSketches(const std::vector<SketchRow>& rows, uint64_t selected);
 
     /// Mark a feature row as failed with a red background and error tooltip.
     void markFailed(int featureIndex, const std::string& errorMessage);
@@ -55,6 +70,10 @@ signals:
     void featureSuppressRequested(int featureIndex, bool suppress);
     void rollbackChanged(int newIndex);
 
+    /// Edit the sketch (double-click, or Edit Sketch in its menu).
+    void sketchEditRequested(uint64_t sketchId);
+    /// The sketch chosen in the list, for Extrude and Revolve to use.
+    void sketchSelected(uint64_t sketchId);
     /// Emitted by the empty-state action buttons so the owner can start work.
     void createBoxRequested();
     void openFileRequested();
@@ -68,6 +87,8 @@ private:
     /// Enable the actions for the current feature, and name the suppress one.
     void updateActions();
 
+    QLabel* m_sketchTitle = nullptr;
+    QListWidget* m_sketchList = nullptr;
     QStackedWidget* m_stack = nullptr;  ///< page 0 = tree, page 1 = empty state
     QTreeWidget* m_treeWidget = nullptr;
     QAction* m_editAction = nullptr;

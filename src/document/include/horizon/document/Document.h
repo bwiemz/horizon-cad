@@ -66,13 +66,44 @@ public:
     // --- Sketch management ---
 
     void addSketch(std::shared_ptr<Sketch> sketch);
+    /// Take the sketch out of the document. If it was being edited, editing
+    /// stops.
     std::shared_ptr<Sketch> removeSketch(uint64_t sketchId);
     const std::vector<std::shared_ptr<Sketch>>& sketches() const { return m_sketches; }
     std::vector<std::shared_ptr<Sketch>>& sketches() { return m_sketches; }
+    /// The sketch with @p sketchId, or null.
+    std::shared_ptr<Sketch> findSketch(uint64_t sketchId) const;
 
-    /// The default sketch (XY plane at origin). Always exists.
-    Sketch& defaultSketch() { return *m_defaultSketch; }
-    const Sketch& defaultSketch() const { return *m_defaultSketch; }
+    // --- The drawing being edited ---
+
+    /// Edit @p sketch (one of sketches()): activeDrawing() and
+    /// activeConstraints() become its own. Null stops editing. Editing is a
+    /// mode of the window, not a change to the document: it is not undone.
+    void editSketch(std::shared_ptr<Sketch> sketch);
+    /// The sketch being edited, or null.
+    const std::shared_ptr<Sketch>& editedSketch() const { return m_editedSketch; }
+
+    /// What the drawing tools draw into and edit: the sketch being edited, in
+    /// its plane's coordinates, or else the top-level drawing. File formats,
+    /// plotting and export use draftDocument(), the top level, whatever is
+    /// being edited.
+    draft::DraftDocument& activeDrawing() {
+        return m_editedSketch ? m_editedSketch->drawing() : m_draftDoc;
+    }
+    const draft::DraftDocument& activeDrawing() const {
+        return m_editedSketch ? m_editedSketch->drawing() : m_draftDoc;
+    }
+    /// Every drawing of the document: the top level, then each sketch's.
+    /// What they share (the layers) is changed in all of them.
+    std::vector<draft::DraftDocument*> drawings();
+
+    /// The constraints of activeDrawing().
+    cstr::ConstraintSystem& activeConstraints() {
+        return m_editedSketch ? m_editedSketch->constraintSystem() : m_constraintSystem;
+    }
+    const cstr::ConstraintSystem& activeConstraints() const {
+        return m_editedSketch ? m_editedSketch->constraintSystem() : m_constraintSystem;
+    }
 
     // --- Feature tree (parametric history) ---
 
@@ -152,7 +183,7 @@ private:
     std::function<void()> m_onChange;
     std::string m_filePath;
     std::vector<std::shared_ptr<Sketch>> m_sketches;
-    std::shared_ptr<Sketch> m_defaultSketch;
+    std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;
     std::unique_ptr<topo::Solid> m_solid;
     std::string m_lastBuildMessage;

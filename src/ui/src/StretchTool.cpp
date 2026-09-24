@@ -254,7 +254,7 @@ void StretchTool::collectStretchEntities() {
     m_stretchEntities.clear();
     if (!m_viewport || !m_viewport->document()) return;
 
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
     const auto& layerMgr = m_viewport->document()->layerManager();
 
     // Normalize window to min/max.
@@ -301,7 +301,7 @@ void StretchTool::collectStretchEntities() {
 
 void StretchTool::applyCurrentStretch() {
     if (!m_viewport || !m_viewport->document()) return;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     math::Vec2 disp{m_currentPos.x - m_basePoint.x, m_currentPos.y - m_basePoint.y};
 
@@ -325,7 +325,7 @@ void StretchTool::applyCurrentStretch() {
 
 void StretchTool::restoreAllEntities() {
     if (!m_viewport || !m_viewport->document()) return;
-    auto& doc = m_viewport->document()->draftDocument();
+    auto& doc = m_viewport->document()->activeDrawing();
 
     for (const auto& se : m_stretchEntities) {
         for (const auto& entity : doc.entities()) {
@@ -383,7 +383,7 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
 
         case State::Dragging: {
             // Finalize the stretch.
-            auto& doc = m_viewport->document()->draftDocument();
+            auto& doc = m_viewport->document()->activeDrawing();
             auto result = m_viewport->snap(worldPos);
             m_currentPos = result.point;
             m_viewport->setLastSnapResult(result);
@@ -408,7 +408,7 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
                     auto afterClone = entity->clone();
                     restoreEntityState(*se.beforeClone, *entity);
 
-                    auto& cstrSys = m_viewport->document()->constraintSystem();
+                    auto& cstrSys = m_viewport->document()->activeConstraints();
                     composite->addCommand(std::make_unique<doc::GripMoveCommand>(
                         doc, se.entityId, se.beforeClone, afterClone, cstrSys));
                     break;

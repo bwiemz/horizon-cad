@@ -22,6 +22,10 @@ namespace hz::doc {
 class Document;
 }  // namespace hz::doc
 
+namespace hz::draft {
+class DraftDocument;
+}  // namespace hz::draft
+
 namespace hz::ui {
 
 class Tool;
@@ -110,8 +114,9 @@ private:
     // DOF visualization
     cstr::DOFAnalysis m_dofAnalysis;
     bool m_dofDirty = true;
-    const doc::Document* m_dofDocument = nullptr;  ///< what the analysis is of
-    std::uint64_t m_dofRevision = 0;               ///< its undo revision then
+    const doc::Document* m_dofDocument = nullptr;        ///< what the analysis is of
+    std::uint64_t m_dofRevision = 0;                     ///< its undo revision then
+    const draft::DraftDocument* m_dofDrawing = nullptr;  ///< ...and drawing
     std::uint64_t m_dofComputations = 0;
 
     // Top-right orientation gizmo, drawn in the text-overlay QImage.

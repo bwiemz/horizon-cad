@@ -110,6 +110,12 @@ struct FormAnswers {
         choices[name] = text;
         return *this;
     }
+    /// A choice (QComboBox) by object name: the first item whose text
+    /// contains `part`.
+    FormAnswers& chooseContaining(const QString& name, const QString& part) {
+        choicesContaining[name] = part;
+        return *this;
+    }
     /// A checklist (QListWidget) by object name: check every item whose text
     /// contains one of `parts`.
     FormAnswers& check(const QString& name, const QStringList& parts) {
@@ -130,6 +136,7 @@ struct FormAnswers {
     std::map<QString, double> numbers;
     std::map<QString, QString> texts;
     std::map<QString, QString> choices;
+    std::map<QString, QString> choicesContaining;
     std::map<QString, QStringList> checks;
     std::optional<doc::BodyOperation> operation;
     bool cancel = false;
@@ -214,6 +221,19 @@ private:
             const int index = combo ? combo->findText(text) : -1;
             if (index < 0) {
                 ADD_FAILURE() << "no choice " << text.toStdString() << " in " << name.toStdString();
+                return false;
+            }
+            combo->setCurrentIndex(index);
+        }
+        for (const auto& [name, part] : m_answers.choicesContaining) {
+            auto* combo = dialog.findChild<QComboBox*>(name);
+            int index = -1;
+            for (int i = 0; combo && i < combo->count() && index < 0; ++i) {
+                if (combo->itemText(i).contains(part)) index = i;
+            }
+            if (index < 0) {
+                ADD_FAILURE() << "no choice containing " << part.toStdString() << " in "
+                              << name.toStdString();
                 return false;
             }
             combo->setCurrentIndex(index);

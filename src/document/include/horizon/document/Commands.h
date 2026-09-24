@@ -304,16 +304,20 @@ class RemoveLayerCommand : public Command {
 public:
     RemoveLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc,
                        const std::string& layerName);
+    /// Layers are shared by every drawing of a document (the top level and
+    /// each sketch's): what is on the layer in any of @p drawings moves to 0.
+    RemoveLayerCommand(draft::LayerManager& mgr, std::vector<draft::DraftDocument*> drawings,
+                       const std::string& layerName);
     void execute() override;
     void undo() override;
     std::string description() const override;
 
 private:
     draft::LayerManager& m_mgr;
-    draft::DraftDocument& m_doc;
+    std::vector<draft::DraftDocument*> m_drawings;
     std::string m_name;
     draft::LayerProperties m_savedProps;
-    std::vector<std::pair<uint64_t, std::string>> m_movedEntities;
+    std::vector<std::shared_ptr<draft::DraftEntity>> m_movedEntities;  ///< were on it
     bool m_wasCurrentLayer = false;
 };
 
@@ -354,6 +358,10 @@ class RenameLayerCommand : public Command {
 public:
     RenameLayerCommand(draft::LayerManager& mgr, draft::DraftDocument& doc, std::string from,
                        std::string to);
+    /// The layer's entities in every one of @p drawings (the top level and
+    /// each sketch's, which share the layers) carry the new name.
+    RenameLayerCommand(draft::LayerManager& mgr, std::vector<draft::DraftDocument*> drawings,
+                       std::string from, std::string to);
     void execute() override;
     void undo() override;
     std::string description() const override;
@@ -362,7 +370,7 @@ public:
 
 private:
     draft::LayerManager& m_mgr;
-    draft::DraftDocument& m_doc;
+    std::vector<draft::DraftDocument*> m_drawings;
     std::string m_from;
     std::string m_to;
     bool m_applied = false;

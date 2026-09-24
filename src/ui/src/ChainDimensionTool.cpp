@@ -50,7 +50,7 @@ std::optional<ChainDimensionTool::Chain> ChainDimensionTool::chainFrom(
     // A line and a half of text apart, as drafting standards space them.
     double textHeight = 2.5;
     if (m_viewport && m_viewport->document()) {
-        textHeight = m_viewport->document()->draftDocument().dimensionStyle().textHeight;
+        textHeight = m_viewport->document()->activeDrawing().dimensionStyle().textHeight;
     }
     chain.step = 1.5 * textHeight;
     chain.from = m_mode == Mode::Continue ? base.defPoint2() : base.defPoint1();
@@ -76,7 +76,7 @@ std::optional<math::Vec2> ChainDimensionTool::basePoint() const {
 const draft::DraftLinearDimension* ChainDimensionTool::lastDimension() const {
     if (!m_viewport || !m_viewport->document()) return nullptr;
     const doc::Document& doc = *m_viewport->document();
-    const auto& entities = doc.draftDocument().entities();
+    const auto& entities = doc.activeDrawing().entities();
     for (auto it = entities.rbegin(); it != entities.rend(); ++it) {
         const auto* dim = dynamic_cast<const draft::DraftLinearDimension*>(it->get());
         if (dim && dim->orientation() != Orientation::Aligned && usable(doc, *dim)) return dim;
@@ -90,9 +90,9 @@ const draft::DraftLinearDimension* ChainDimensionTool::dimensionAt(const math::V
     const double reach = m_viewport->pickTolerance();
     const math::BoundingBox around(math::Vec3(point.x - reach, point.y - reach, -1.0),
                                    math::Vec3(point.x + reach, point.y + reach, 1.0));
-    for (const uint64_t id : doc.draftDocument().spatialIndex().query(around)) {
+    for (const uint64_t id : doc.activeDrawing().spatialIndex().query(around)) {
         const auto* dim =
-            dynamic_cast<const draft::DraftLinearDimension*>(doc.draftDocument().findEntity(id));
+            dynamic_cast<const draft::DraftLinearDimension*>(doc.activeDrawing().findEntity(id));
         if (dim && dim->orientation() != Orientation::Aligned && usable(doc, *dim) &&
             dim->hitTest(point, reach)) {
             return dim;
@@ -114,7 +114,7 @@ bool ChainDimensionTool::mousePressEvent(QMouseEvent* event, const math::Vec2& w
     auto dim = next(result.point);
     doc::Document& doc = *m_viewport->document();
     dim->setLayer(doc.layerManager().currentLayer());
-    doc.undoStack().push(std::make_unique<doc::AddEntityCommand>(doc.draftDocument(), dim));
+    doc.undoStack().push(std::make_unique<doc::AddEntityCommand>(doc.activeDrawing(), dim));
 
     // The next one continues from this one's end, or steps further out.
     if (m_mode == Mode::Continue) {
@@ -154,7 +154,7 @@ std::vector<std::pair<math::Vec2, math::Vec2>> ChainDimensionTool::getPreviewLin
     if (!m_chain || !m_viewport || !m_viewport->document()) return {};
     if (m_cursor.distanceTo(m_chain->from) < 1e-9) return {};
     const auto dim = next(m_cursor);
-    const auto& style = m_viewport->document()->draftDocument().dimensionStyle();
+    const auto& style = m_viewport->document()->activeDrawing().dimensionStyle();
     auto lines = dim->extensionLines(style);
     for (const auto& line : dim->dimensionLines(style)) lines.push_back(line);
     return lines;

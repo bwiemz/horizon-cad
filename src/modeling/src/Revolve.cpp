@@ -10,6 +10,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/TopologyID.h"
@@ -174,14 +175,17 @@ double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEnti
         return 0.0;
     }
     const Vec3 axisDir = axisDirection.normalized();
-    auto validation = ProfileValidator::validate(profile);
-    if (!validation.isClosed) {
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (!found.ok()) {
         return 0.0;
     }
     double maxRadius = 0.0;
-    for (const auto& v : ringstack::extractProfileVertices(validation.orderedEdges, 1e-6)) {
-        const Vec3 rel = plane.localToWorld(v) - axisPoint;
-        maxRadius = std::max(maxRadius, (rel - axisDir * rel.dot(axisDir)).length());
+    for (const auto& region : found.regions) {
+        // The outer loops reach furthest; a hole lies inside one.
+        for (const auto& v : ringstack::extractProfileVertices(region.outer.orderedEdges, 1e-6)) {
+            const Vec3 rel = plane.localToWorld(v) - axisPoint;
+            maxRadius = std::max(maxRadius, (rel - axisDir * rel.dot(axisDir)).length());
+        }
     }
     return maxRadius;
 }
@@ -190,27 +194,19 @@ double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEnti
 // execute
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> Revolve::execute(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
-    const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+namespace {
+
+/// One closed loop, revolved: the solid execute() builds for a profile that
+/// is a single loop. @p axisDir is a unit vector.
+std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validation,
+                                         const draft::SketchPlane& plane, const Vec3& axisPoint,
+                                         const Vec3& axisDir, double angle,
+                                         const std::string& featureID, int segments,
+                                         double chordTolerance, std::string* reason) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
     };
-    if (segments < 3) return fail("a revolve needs at least 3 steps per turn");
-    if (!(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
-        return fail("the revolve angle must be more than 0 and at most 360 degrees");
-    }
-    if (axisDirection.length() <= 0.0) {
-        return fail("the revolve axis has no direction");
-    }
-    const Vec3 axisDir = axisDirection.normalized();
-
-    auto validation = ProfileValidator::validate(profile);
-    if (!validation.isClosed) {
-        return fail(validation.errorMessage);
-    }
     const ringstack::SampledProfile sampled = ringstack::sampleProfile(
         validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
     const std::vector<Vec2>& verts2D = sampled.vertices;
@@ -344,6 +340,76 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     }
 
     return solid;
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> Revolve::execute(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+    if (segments < 3) return fail("a revolve needs at least 3 steps per turn");
+    if (!(angle > 0.0) || angle > 2.0 * math::kPi + 1e-9) {
+        return fail("the revolve angle must be more than 0 and at most 360 degrees");
+    }
+    if (axisDirection.length() <= 0.0) {
+        return fail("the revolve axis has no direction");
+    }
+    const Vec3 axisDir = axisDirection.normalized();
+
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (!found.ok()) return fail(found.errorMessage);
+    if (found.isSingleLoop()) {
+        return revolveLoop(found.regions.front().outer, plane, axisPoint, axisDir, angle, featureID,
+                           segments, chordTolerance, reason);
+    }
+
+    // Holes and separate regions, as Extrude builds them: each region less
+    // its holes, the regions joined. A hole's cutter turns a twentieth
+    // further at each end, so no face of it lies in an end face; through a
+    // full turn it is a ring inside the solid, a cavity.
+    const bool fullTurn = std::abs(angle - 2.0 * math::kPi) <= 1e-9;
+    const double extra = fullTurn ? 0.0 : 0.05 * angle;
+    const double cutterAngle = std::min(angle + 2.0 * extra, 2.0 * math::kPi);
+    const auto turned = [&](const Vec3& v) {
+        return rotateAroundAxis(axisPoint + v, axisPoint, axisDir, -extra) - axisPoint;
+    };
+    const draft::SketchPlane cutterPlane(
+        rotateAroundAxis(plane.origin(), axisPoint, axisDir, -extra), turned(plane.normal()),
+        turned(plane.xAxis()));
+    std::unique_ptr<topo::Solid> result;
+    int holeCount = 0;
+    for (size_t r = 0; r < found.regions.size(); ++r) {
+        const ProfileRegion& region = found.regions[r];
+        const std::string regionID = r == 0 ? featureID : featureID + "~region" + std::to_string(r);
+        std::string why;
+        auto solid = revolveLoop(region.outer, plane, axisPoint, axisDir, angle, regionID, segments,
+                                 chordTolerance, &why);
+        if (!solid) return fail(why);
+        for (const auto& hole : region.holes) {
+            auto cutter = revolveLoop(hole, cutterPlane, axisPoint, axisDir, cutterAngle,
+                                      featureID + "~hole" + std::to_string(holeCount++), segments,
+                                      chordTolerance, &why);
+            if (!cutter) return fail("a hole in the profile: " + why);
+            auto cut = BooleanOp::execute(*solid, *cutter, BooleanType::Subtract, &why,
+                                          NamingScheme::FromGeometry);
+            if (!cut) return fail("a hole in the profile could not be cut: " + why);
+            solid = std::move(cut);
+        }
+        if (!result) {
+            result = std::move(solid);
+            continue;
+        }
+        auto joined = BooleanOp::execute(*result, *solid, BooleanType::Union, &why,
+                                         NamingScheme::FromGeometry);
+        if (!joined) return fail("the profile's regions could not be joined: " + why);
+        result = std::move(joined);
+    }
+    return result;
 }
 
 }  // namespace hz::model

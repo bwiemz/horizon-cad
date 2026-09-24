@@ -183,6 +183,17 @@ TEST(SolidCommandsTest, ShellOpensTheChosenFace) {
         << w.statusBar()->currentMessage().toStdString();
     // An open-topped cup: the 8 x 8 x 9 inside is hollow.
     EXPECT_NEAR(partVolume(doc), 1000.0 - 8.0 * 8.0 * 9.0, 1e-6);
+    // Open at the top: the inner rim is at z = 10. The list named each face
+    // by the way its loop wound, and a box's loops wind inwards, so "facing
+    // (0, 0, 1)" was the bottom (the same volume, open underneath).
+    bool rimAtTop = false;
+    for (const auto& v : doc.solid()->vertices()) {
+        if (std::abs(v.point.x - 1.0) < 1e-9 && std::abs(v.point.y - 1.0) < 1e-9 &&
+            std::abs(v.point.z - 10.0) < 1e-9) {
+            rimAtTop = true;
+        }
+    }
+    EXPECT_TRUE(rimAtTop) << "the face that faces up is the one opened";
 }
 
 TEST(SolidCommandsTest, DraftTapersTheSides) {

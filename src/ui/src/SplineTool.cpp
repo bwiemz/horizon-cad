@@ -91,7 +91,7 @@ void SplineTool::finishSpline() {
     if (m_controlPoints.size() >= 4 && m_viewport && m_viewport->document()) {
         auto spline = std::make_shared<draft::DraftSpline>(m_controlPoints);
         spline->setLayer(m_viewport->document()->layerManager().currentLayer());
-        auto cmd = std::make_unique<doc::AddEntityCommand>(m_viewport->document()->draftDocument(),
+        auto cmd = std::make_unique<doc::AddEntityCommand>(m_viewport->document()->activeDrawing(),
                                                            spline);
         m_viewport->document()->undoStack().push(std::move(cmd));
     }

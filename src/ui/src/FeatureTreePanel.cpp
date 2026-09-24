@@ -5,8 +5,10 @@
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QLabel>
+#include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QTimer>
 #include <QTreeWidget>
@@ -124,7 +126,31 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     m_stack->addWidget(empty);
 
     m_stack->setCurrentWidget(empty);  // start empty until features exist
-    setWidget(m_stack);
+
+    // The sketches, above the features: a sketch is edited from here, and the
+    // one chosen here is what Extrude and Revolve take.
+    auto* page = new QWidget(this);
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(2);
+    m_sketchTitle = new QLabel(tr("Sketches"), page);
+    m_sketchTitle->setContentsMargins(4, 4, 4, 0);
+    pageLayout->addWidget(m_sketchTitle);
+    m_sketchList = new QListWidget(page);
+    m_sketchList->setObjectName(QStringLiteral("sketchList"));
+    m_sketchList->setMaximumHeight(120);
+    pageLayout->addWidget(m_sketchList);
+    pageLayout->addWidget(m_stack, 1);
+    m_sketchTitle->hide();
+    m_sketchList->hide();
+    setWidget(page);
+    connect(m_sketchList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        emit sketchEditRequested(item->data(Qt::UserRole).toULongLong());
+    });
+    connect(m_sketchList, &QListWidget::currentItemChanged, this,
+            [this](QListWidgetItem* item, QListWidgetItem* /*previous*/) {
+                if (item) emit sketchSelected(item->data(Qt::UserRole).toULongLong());
+            });
 
     connect(m_treeWidget, &QTreeWidget::itemDoubleClicked, this,
             &FeatureTreePanel::onItemDoubleClicked);
@@ -198,6 +224,24 @@ void FeatureTreePanel::refresh(const doc::FeatureTree& tree) {
         m_treeWidget->setCurrentItem(m_treeWidget->topLevelItem(current));
     }
     updateActions();
+}
+
+void FeatureTreePanel::refreshSketches(const std::vector<SketchRow>& rows, uint64_t selected) {
+    const QSignalBlocker quiet(m_sketchList);  // listing is not choosing
+    m_sketchList->clear();
+    for (const SketchRow& row : rows) {
+        QString text = QString::fromStdString(row.name);
+        if (row.editing) {
+            text += tr(" (editing)");
+        } else if (!row.usedBy.empty()) {
+            text += tr(" (used by %1)").arg(QString::fromStdString(row.usedBy));
+        }
+        auto* item = new QListWidgetItem(text, m_sketchList);
+        item->setData(Qt::UserRole, QVariant::fromValue<qulonglong>(row.id));
+        if (row.id == selected) m_sketchList->setCurrentItem(item);
+    }
+    m_sketchTitle->setVisible(!rows.empty());
+    m_sketchList->setVisible(!rows.empty());
 }
 
 int FeatureTreePanel::currentRow() const {

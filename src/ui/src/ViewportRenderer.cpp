@@ -151,9 +151,16 @@ void ViewportRenderer::destroyGL(QOpenGLExtraFunctions* gl) {
 
 void ViewportRenderer::recomputeDOF(doc::Document* doc) {
     const std::uint64_t revision = doc ? doc->undoStack().revision() : 0;
-    if (!m_dofDirty && doc == m_dofDocument && revision == m_dofRevision) return;
+    // The drawing too: editing a sketch changes what is drawn, not the
+    // document's revision.
+    const draft::DraftDocument* drawing = doc ? &doc->activeDrawing() : nullptr;
+    if (!m_dofDirty && doc == m_dofDocument && revision == m_dofRevision &&
+        drawing == m_dofDrawing) {
+        return;
+    }
     m_dofDocument = doc;
     m_dofRevision = revision;
+    m_dofDrawing = drawing;
     ++m_dofComputations;
     if (!doc) {
         m_dofAnalysis = {};
@@ -161,14 +168,14 @@ void ViewportRenderer::recomputeDOF(doc::Document* doc) {
         return;
     }
 
-    const auto& csys = doc->constraintSystem();
+    const auto& csys = doc->activeConstraints();
     if (csys.empty()) {
         m_dofAnalysis = {};
         m_dofDirty = false;
         return;
     }
 
-    auto params = cstr::ParameterTable::buildFromEntities(doc->draftDocument().entities(), csys);
+    auto params = cstr::ParameterTable::buildFromEntities(doc->activeDrawing().entities(), csys);
     cstr::SketchSolver solver;
     m_dofAnalysis = solver.analyzeDOF(params, csys);
     m_dofDirty = false;
@@ -183,7 +190,7 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRende
                                       const render::SelectionManager& selection) {
     m_dimTexts.clear();
 
-    const auto& entities = doc.draftDocument().entities();
+    const auto& entities = doc.activeDrawing().entities();
     if (entities.empty()) return;
 
     const auto& layerMgr = doc.layerManager();
@@ -332,7 +339,7 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRende
             auto& verts = findOrCreateBatch(key);
             emitPointSeq(verts, ellipse->evaluate(), false);
         } else if (auto* dim = dynamic_cast<const draft::DraftDimension*>(entity.get())) {
-            const auto& style = doc.draftDocument().dimensionStyle();
+            const auto& style = doc.activeDrawing().dimensionStyle();
             auto& verts = findOrCreateBatch(key);
 
             auto addSegments = [&](const std::vector<std::pair<math::Vec2, math::Vec2>>& segs) {
@@ -355,7 +362,7 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRende
             // within blocks too. What they leave ByBlock is the reference's,
             // as resolved above, the selection's colour included.
             const draft::PlotScene contents =
-                draft::plotBlockReference(*bref, layerMgr, doc.draftDocument().dimensionStyle(),
+                draft::plotBlockReference(*bref, layerMgr, doc.activeDrawing().dimensionStyle(),
                                           resolvedColor, resolvedWidth, resolvedLineType);
             for (const auto& stroke : contents.strokes) {
                 auto& v = findOrCreateBatch(
@@ -464,7 +471,7 @@ void ViewportRenderer::renderGrips(QOpenGLExtraFunctions* gl, render::GLRenderer
     std::vector<float> verts;
     math::Vec3 green{0.0, 1.0, 0.3};
 
-    const auto& draftDoc = doc.draftDocument();
+    const auto& draftDoc = doc.activeDrawing();
     for (uint64_t id : selectedIds) {
         const draft::DraftEntity* e = draftDoc.findEntity(id);
         if (e == nullptr) continue;
@@ -664,7 +671,7 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
 
     // --- Dimension + text entity text ---
     if (!m_dimTexts.empty() && doc) {
-        const auto& style = doc->draftDocument().dimensionStyle();
+        const auto& style = doc->activeDrawing().dimensionStyle();
         double pxPerWorld = 1.0 / pixelToWorldScale;
         int defaultFontSize =
             std::max(8, std::min(48, static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
@@ -680,7 +687,7 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
 
     // --- Constraint annotation indicators ---
     if (doc) {
-        const auto& csys = doc->constraintSystem();
+        const auto& csys = doc->activeConstraints();
         if (!csys.empty()) {
             // Yellow annotation color: QColor(255, 200, 0) = 0xFFFFC800
             constexpr uint32_t kAnnotationColor = 0xFFFFC800;
@@ -753,12 +760,12 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
 
                 // Compute indicator position: midpoint of referenced features.
                 if (!refIds.empty()) {
-                    const auto* e1 = doc->draftDocument().findEntity(refIds[0]);
+                    const auto* e1 = doc->activeDrawing().findEntity(refIds[0]);
                     if (e1) {
                         auto snaps = e1->snapPoints();
                         if (!snaps.empty()) pos = snaps[0];
                         if (refIds.size() > 1) {
-                            const auto* e2 = doc->draftDocument().findEntity(refIds.back());
+                            const auto* e2 = doc->activeDrawing().findEntity(refIds.back());
                             if (e2) {
                                 auto snaps2 = e2->snapPoints();
                                 if (!snaps2.empty()) {
