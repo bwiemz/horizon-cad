@@ -74,6 +74,7 @@ bool MoveTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& worldPos
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
         entity->translate(delta);
+        doc.updateEntityBounds(entity->id());  // picked, snapped and drawn where it is
     }
 
     m_dragCurrent = snappedPos;
@@ -100,6 +101,7 @@ bool MoveTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /*worldPo
         const auto* lp = layerMgr.getLayer(entity->layer());
         if (!lp || !lp->visible || lp->locked) continue;
         entity->translate(neg);
+        doc.updateEntityBounds(entity->id());
     }
 
     if (std::abs(m_totalDelta.x) > 1e-10 || std::abs(m_totalDelta.y) > 1e-10) {
@@ -144,6 +146,7 @@ void MoveTool::cancel() {
             const auto* lp = layerMgr.getLayer(entity->layer());
             if (!lp || !lp->visible || lp->locked) continue;
             entity->translate(neg);
+            doc.updateEntityBounds(entity->id());
         }
     }
     m_dragging = false;

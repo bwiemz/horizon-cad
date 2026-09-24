@@ -368,6 +368,16 @@ public:
         send(QEvent::MouseMove, world, Qt::NoButton, Qt::NoButton);
     }
 
+    /// The button pressed at @p world, and held.
+    void press(const hz::math::Vec2& world) {
+        send(QEvent::MouseButtonPress, world, Qt::LeftButton, Qt::LeftButton);
+    }
+
+    /// The cursor moved to @p world with the button held.
+    void dragTo(const hz::math::Vec2& world) {
+        send(QEvent::MouseMove, world, Qt::NoButton, Qt::LeftButton);
+    }
+
     /// Press at @p from, move to @p to with the button held, release there:
     /// a box selection with the select tool.
     void drag(const hz::math::Vec2& from, const hz::math::Vec2& to) {

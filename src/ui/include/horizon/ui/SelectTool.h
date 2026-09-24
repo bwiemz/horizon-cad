@@ -24,6 +24,9 @@ public:
     bool mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPos) override;
     bool keyPressEvent(QKeyEvent* event) override;
     void cancel() override;
+    /// Another tool chosen: a grip drag not finished is put back, as Escape
+    /// puts it back.
+    void deactivate() override;
 
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
 

@@ -439,6 +439,13 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
     return true;
 }
 
+void SelectTool::deactivate() {
+    // Left as it was, the dragged entity stayed changed with no command to
+    // undo it.
+    cancel();
+    Tool::deactivate();
+}
+
 void SelectTool::cancel() {
     if (m_draggingBox) {
         m_draggingBox = false;

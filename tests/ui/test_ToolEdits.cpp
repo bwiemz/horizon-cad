@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "UiTestSupport.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
@@ -20,6 +21,7 @@
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/ui/MainWindow.h"
@@ -117,6 +119,67 @@ TEST(ToolEditsTest, ALineClickedAndDeletedCanBeUndone) {
 
 // Starting Insert Block while it is already active used to destroy the active
 // tool and then deactivate it: a use after free (AddressSanitizer reports it).
+// A stretch is kept once it is made. It was put back at once and shown only
+// after an undo and a redo, so Stretch seemed to do nothing.
+TEST(ToolEditsTest, AStretchIsKeptAndUndone) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 0));
+    drive.move(Vec2(10, 0));
+    drive.click(Vec2(10, 0));
+    trigger(w, "tool_stretch");
+    drive.click(Vec2(8, -2));  // a window round the line's end
+    drive.move(Vec2(12, 2));
+    drive.click(Vec2(12, 2));
+    drive.click(Vec2(10, 0));  // from the end
+    drive.move(Vec2(15, 3));
+    drive.click(Vec2(15, 3));  // to here
+
+    auto lines = all<hz::draft::DraftLine>(w);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(0, 0))) << "outside the window: stays";
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(15, 3))) << "inside it: moved";
+    trigger(w, "action_undo");
+    EXPECT_TRUE(near(all<hz::draft::DraftLine>(w)[0]->end(), Vec2(10, 0)));
+    trigger(w, "action_redo");
+    EXPECT_TRUE(near(all<hz::draft::DraftLine>(w)[0]->end(), Vec2(15, 3)));
+}
+
+// Another tool chosen in the middle of a drag puts back what was dragged, as
+// Escape does. It was left moved, with no command to undo it: the Select
+// tool's grips and Polyline Edit's vertices.
+TEST(ToolEditsTest, AnotherToolMidDragPutsTheDragBack) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 0));
+    drive.move(Vec2(10, 0));
+    drive.click(Vec2(10, 0));
+    trigger(w, "tool_select");
+    drive.click(Vec2(5, 0));  // chosen: its grips show
+    drive.press(Vec2(10, 0));
+    drive.dragTo(Vec2(14, 4));
+    ASSERT_TRUE(near(all<hz::draft::DraftLine>(w)[0]->end(), Vec2(14, 4))) << "being dragged";
+    trigger(w, "tool_circle");
+    EXPECT_TRUE(near(all<hz::draft::DraftLine>(w)[0]->end(), Vec2(10, 0))) << "put back";
+
+    auto& doc = *w.activeDocument();
+    doc.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(
+        doc.draftDocument(), std::make_shared<hz::draft::DraftPolyline>(
+                                 std::vector<Vec2>{Vec2(20, 0), Vec2(30, 0), Vec2(30, 10)})));
+    trigger(w, "tool_polyline-edit");
+    drive.click(Vec2(25, 0));  // this one to edit
+    drive.press(Vec2(30, 10));
+    drive.dragTo(Vec2(34, 12));
+    ASSERT_TRUE(near(all<hz::draft::DraftPolyline>(w)[0]->points()[2], Vec2(34, 12)));
+    trigger(w, "tool_line");
+    EXPECT_TRUE(near(all<hz::draft::DraftPolyline>(w)[0]->points()[2], Vec2(30, 10)));
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(all<hz::draft::DraftPolyline>(w).empty()) << "nothing else to undo first";
+}
+
 TEST(ToolEditsTest, InsertBlockCanBeStartedAgainWhileItIsActive) {
     MainWindow w;
     auto bolt = std::make_shared<hz::draft::BlockDefinition>();
