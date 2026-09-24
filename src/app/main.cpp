@@ -3,6 +3,7 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
 #include <QLocale>
 #include <QPalette>
 #include <QSettings>
@@ -12,6 +13,8 @@
 #include <QSysInfo>
 #include <QTimer>
 
+#include "horizon/Revision.h"
+#include "horizon/Version.h"
 #include "horizon/ui/Application.h"
 #include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/Logging.h"
@@ -78,14 +81,17 @@ static int run(int argc, char* argv[]) {
     hz::ui::Application app(argc, argv);
     app.setApplicationName("Horizon CAD");
     app.setOrganizationName("Horizon CAD Project");
-    app.setApplicationVersion(QStringLiteral(HZ_VERSION));
+    app.setApplicationVersion(QString::fromLatin1(hz::version::kString));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/horizon-cad.png")));
+    // Wayland and X11 match the window to its .desktop entry by this name.
+    app.setDesktopFileName(QStringLiteral("io.github.bwiemz.HorizonCAD"));
 
     // Logging comes first so everything after it — including Qt's own
     // warnings — lands in the log file.
     const QString logFile = hz::ui::initializeLogging(
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/logs");
-    spdlog::info("Horizon CAD {} starting (Qt {}, {})", HZ_VERSION, qVersion(),
-                 QSysInfo::prettyProductName().toStdString());
+    spdlog::info("Horizon CAD {} ({}) starting (Qt {}, {})", hz::version::kString,
+                 hz::version::kRevision, qVersion(), QSysInfo::prettyProductName().toStdString());
     if (!logFile.isEmpty()) spdlog::info("Log file: {}", logFile.toStdString());
 
     applyDarkTheme(app);

@@ -268,7 +268,7 @@ Horizon is under active development. Completed and planned work:
 | 78 | Done | Era 4 — Large-assembly optimization (data path): content-hash instance batching (identical parts collapse to one batch — per-instance transforms/materials, deterministic order, collision-guarded FNV identity) + Gribb–Hartmann view-frustum culling of instanced batches (conservative positive-vertex AABB test, world-space boxes per instance, verified on a 10,000-part grid); occlusion culling/progressive loading staged behind the GPU instanced draw wiring |
 | 77 | Done | Era 4 — Localization (i18n slice): UI strings already `tr()`-wrapped project-wide; LocaleManager loads `horizon_<locale>.qm` catalogs with BCP-47 fallback (de_DE→de), replace/uninstall semantics, and system-locale/QSettings startup wiring; starter `.ts` catalogs shipped for DE/FR/ES/JA/ZH/KO (roadmap §7.13), compiled via Qt Linguist tools when present (quiet CMake gating); loading tested against a spec-built `.qm` so no qttools dependency; accessibility/high-contrast/F1 help staged |
 | 79 | Done | Era 4 — Plugin system (registry slice): `hz::plugin` manifest discovery/validation with zero code execution — `plugin.json` schema (name/semver/entry/permissions), fail-closed explicit permission model per roadmap §7.15 sandboxing (unknown permission = invalid manifest), entry-script containment (relative-only; absolute/drive-relative/root-relative/`..`/symlink escapes rejected via canonicalization), duplicate rejection, disabled-by-default enablement, minAppVersion gating; Python-free so CI always tests it — the hz::scripting execution bridge + marketplace staged |
-| 80 | Done | Era 4 — 1.0 release prep: full roadmap swept to Done, [CHANGELOG.md](CHANGELOG.md) authored era-by-era, ~900 automated regression tests green across Windows/Ubuntu/AddressSanitizer CI, honest per-phase scope + documented deviations (OpenCAMLib, Embree, STEPcode) in the [findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md); installers/marketplace/published-benchmarks are post-1.0 productization, not code slices |
+| 80 | Done | Era 4 — release prep: full roadmap swept to Done, [CHANGELOG.md](CHANGELOG.md) authored era-by-era, ~900 automated regression tests green across Windows/Ubuntu/AddressSanitizer CI, honest per-phase scope + documented deviations (OpenCAMLib, Embree, STEPcode) in the [findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md); installers/marketplace/published-benchmarks are later productization, not code slices |
 
 All 80 roadmap phases plus the 61b sheet-metal insert have delivered their
 core slices — see [Feature Maturity](#feature-maturity) above for what that
@@ -278,7 +278,7 @@ of Phase 80 — signed installers, the hosted plugin marketplace,
 SolidWorks/FreeCAD benchmark publication) are called out in the per-phase
 notes and remain future work beyond the code kernel.
 
-### Post-1.0 kernel work
+### Post-roadmap kernel work
 
 With the roadmap's 80 phases delivered, work continues against the gaps the
 Feature Maturity table names rather than a fixed phase list. Landed so far:
@@ -331,6 +331,10 @@ sets out six milestones from Phase 97 on, starting with data safety.
 | 112 | Done | UI test harness: a smoke test runs every one of the window's 166 commands on an empty drawing, part and assembly and on a selection; the drawing tools are driven through the viewport's own mouse handling (draw, select, delete, undo) |
 | 113 | Done | Render efficiency: the GL mesh cache drops meshes that left the scene (every edit used to leak the model's GPU buffers); the constraint analysis runs when the document changes, not every frame; the unread per-frame picking pass is gone; the renderer and text overlay work at device pixels, so text is sharp on high-DPI screens |
 | 114 | Done | Off-thread work: a model rebuild that would freeze the window runs on a worker, from a snapshot, with progress and cancel, applied only if the part has not changed; large STEP imports and interference checks run in the background; atomic ID counters. Milestone 4 complete |
+| 115 | Done | One version: set only in `project()`, generated into a header for the About box, `--version` and the log, and into the installer through CPack; the source revision is kept current on every build. The CPack settings file shadowed CMake's CPack module, so no installer configuration had ever been written. The CHANGELOG's "1.0.0" is 0.1.0 |
+| 116 | Done | Packaging: an application icon (window, executable, installer, Linux desktop); Linux desktop entry, AppStream metadata and MIME types (validated); install rules for translations, licences, third-party notices and every bundled library's licence text, and on Windows the Qt runtime; an AppImage script (linuxdeploy); a test of the install tree |
+| 117 | Done | Release pipeline: a tag `vX.Y.Z` builds, tests and packages Windows (NSIS) and Linux (AppImage, tarball) with SHA-256 checksums into a draft release; a Linux Release CI job with `-Werror`; the vcpkg binary cache works (it restored nothing, so Qt was rebuilt from source in every job); Dependabot for actions; [docs/RELEASING.md](docs/RELEASING.md) |
+| 118 | Done | Governance: a [security policy](SECURITY.md) (private reporting; scripts and plugins are not sandboxed), a [code of conduct](CODE_OF_CONDUCT.md), issue forms, a pull request template with the CI gates, and a current [CONTRIBUTING](docs/CONTRIBUTING.md). The licence is the GNU GPL v3 or later: `LICENSE` holds its full text (it held a fragment), and the README, the About box and the AppStream metadata say so. Milestone 5 complete |
 | 119 | Done | PDM integrity: a check-out is one exclusive file creation, so two users racing for a document cannot both get it (with the old lock file, both did); a damaged lock or archive fails closed, where an archive used to read as empty and its next commit overwrote the history; SHA-256 content hashes, verified on every read and push, with old FNV-1a archives still readable |
 
 The full multi-year design is in
@@ -340,8 +344,20 @@ with per-phase implementation plans under
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss changes before submitting a pull request.
+Contributions are welcome. Please open an issue to discuss a change before
+submitting a pull request, and see [CONTRIBUTING](docs/CONTRIBUTING.md) for
+how the code is laid out and what CI checks. Security problems go through the
+[security policy](SECURITY.md), not public issues. Everyone taking part
+follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT
+Horizon CAD is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. The full text is in [LICENSE](LICENSE).
+
+The libraries it is built on keep their own licences; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

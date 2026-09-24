@@ -1,22 +1,30 @@
-# Version information
+# The version: set once, in project(). It reaches the code through a generated
+# header (Horizon::Version) and the installer through CPack.
 set(HZ_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(HZ_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(HZ_VERSION_PATCH ${PROJECT_VERSION_PATCH})
-set(HZ_VERSION_STRING "${HZ_VERSION_MAJOR}.${HZ_VERSION_MINOR}.${HZ_VERSION_PATCH}")
+set(HZ_VERSION_STRING "${PROJECT_VERSION}")
 
-# The source revision, for Help > About. Taken when CMake configures, so a
-# build made without reconfiguring shows the revision it was configured at.
-set(HZ_GIT_REVISION "unknown")
+set(HZ_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated/include")
+configure_file("${CMAKE_SOURCE_DIR}/cmake/Version.h.in"
+               "${HZ_GENERATED_INCLUDE_DIR}/horizon/Version.h" @ONLY)
+
+# The source revision, for Help > About. Written now, so the header exists as
+# soon as CMake has configured (the Static Analysis job never builds), and
+# again on every build, so a new commit shows without reconfiguring.
 find_package(Git QUIET)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE _hz_git_revision
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-        RESULT_VARIABLE _hz_git_result)
-    if(_hz_git_result EQUAL 0 AND _hz_git_revision)
-        set(HZ_GIT_REVISION "${_hz_git_revision}")
-    endif()
-endif()
+set(_hz_revision_args
+    -DGIT=${GIT_EXECUTABLE}
+    -DSRC=${CMAKE_SOURCE_DIR}
+    -DOUT=${HZ_GENERATED_INCLUDE_DIR}/horizon/Revision.h
+    -P ${CMAKE_SOURCE_DIR}/cmake/WriteRevision.cmake)
+execute_process(COMMAND ${CMAKE_COMMAND} ${_hz_revision_args})
+add_custom_target(hz_version_revision
+    COMMAND ${CMAKE_COMMAND} ${_hz_revision_args}
+    BYPRODUCTS ${HZ_GENERATED_INCLUDE_DIR}/horizon/Revision.h
+    COMMENT "")
+
+add_library(hz_version INTERFACE)
+target_include_directories(hz_version INTERFACE $<BUILD_INTERFACE:${HZ_GENERATED_INCLUDE_DIR}>)
+add_dependencies(hz_version hz_version_revision)
+add_library(Horizon::Version ALIAS hz_version)

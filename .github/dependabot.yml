@@ -1,0 +1,10 @@
+# Keeps the GitHub Actions the workflows use up to date (Phase 117).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
