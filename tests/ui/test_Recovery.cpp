@@ -21,6 +21,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/RecoveryManager.h"
 
 using hz::test::DialogResponder;
@@ -229,9 +230,13 @@ TEST(RecoveryWindowTest, AFailedAutosaveIsShown) {
     w.autosave();
     const bool shown = !warning->isHidden();
     const QString text = warning->text();
+    // Applying the preferences (any change) is not a write: the failure stands.
+    w.applyPreferences(hz::ui::Preferences::current());
+    const bool stillShown = !warning->isHidden();
     QFile::setPermissions(session, writable);
     EXPECT_TRUE(shown);
     EXPECT_EQ(text, QStringLiteral("Autosave failed"));
+    EXPECT_TRUE(stillShown) << "hidden by applying the preferences";
 
     w.autosave();
     EXPECT_TRUE(warning->isHidden()) << "gone once autosave works again";
