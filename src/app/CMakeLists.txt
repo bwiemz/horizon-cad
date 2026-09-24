@@ -8,10 +8,9 @@ add_executable(horizon WIN32
 target_link_libraries(horizon
     PRIVATE
         Horizon::UI
+        Horizon::Version
         spdlog::spdlog
 )
-
-target_compile_definitions(horizon PRIVATE HZ_VERSION="${PROJECT_VERSION}")
 
 # UTF-8 as the process code page, so UTF-8 paths survive narrow Windows APIs.
 # MSVC's linker merges a .manifest source into the executable's manifest.
