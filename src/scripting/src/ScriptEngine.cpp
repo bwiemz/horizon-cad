@@ -4,7 +4,11 @@
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
 
+#include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "horizon/cam/FeedsAndSpeeds.h"
 #include "horizon/cam/GcodeWriter.h"
@@ -30,6 +34,50 @@ void ensureInterpreter() {
     if (!Py_IsInitialized()) {
         py::initialize_interpreter();
     }
+}
+
+using hz::script::ScriptContext;
+
+/// What a script holds as `doc`: the context of the run it was given to, until
+/// that run ends.
+///
+/// The context belongs to the caller and may be destroyed as soon as run()
+/// returns, but a script can keep `doc` in a global (`saved = doc`) and use it
+/// in a later run. Every copy a script keeps is this one handle, so releasing
+/// it at the end of the run cuts them all off: a later use raises an error
+/// instead of reaching freed memory.
+class DocHandle {
+public:
+    explicit DocHandle(ScriptContext* context) : m_context(context) {}
+
+    ScriptContext& context() const {
+        if (m_context == nullptr) {
+            throw std::runtime_error(
+                "this document is no longer available: `doc` is only valid during the run it "
+                "was given to");
+        }
+        return *m_context;
+    }
+
+    void release() { m_context = nullptr; }
+
+private:
+    ScriptContext* m_context;
+};
+
+/// A binding for ScriptContext::method that goes through the handle.
+template <typename R, typename... Args>
+auto viaHandle(R (ScriptContext::*method)(Args...)) {
+    return [method](const DocHandle& handle, Args... args) -> R {
+        return (handle.context().*method)(std::forward<Args>(args)...);
+    };
+}
+
+template <typename R, typename... Args>
+auto viaHandle(R (ScriptContext::*method)(Args...) const) {
+    return [method](const DocHandle& handle, Args... args) -> R {
+        return (handle.context().*method)(std::forward<Args>(args)...);
+    };
 }
 
 }  // namespace
@@ -184,7 +232,22 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     m.def("cam_pocket_rect", &hz::cam::CamGenerator::pocketRect, py::arg("min"), py::arg("max"),
           py::arg("tool_radius"), py::arg("stepover"), py::arg("cut_depth"), py::arg("safe_z"),
           py::arg("feed"));
-    m.def("cam_gcode", &hz::cam::GcodeWriter::toGcode, py::arg("path"), py::arg("decimals") = 3);
+    // A program is written only when it is safe to start; otherwise the
+    // script gets the reason as a ValueError.
+    const auto camGcode = [](const hz::cam::Toolpath& path, double spindleRpm, int tool,
+                             bool coolant, int decimals) {
+        hz::cam::GcodeOptions options;
+        options.spindleRpm = spindleRpm;
+        options.toolNumber = tool;
+        options.coolant = coolant;
+        options.decimals = decimals;
+        std::string error;
+        std::optional<std::string> gcode = hz::cam::GcodeWriter::toGcode(path, options, &error);
+        if (!gcode) throw py::value_error(error);
+        return *gcode;
+    };
+    m.def("cam_gcode", camGcode, py::arg("path"), py::arg("spindle_rpm"), py::arg("tool") = 1,
+          py::arg("coolant") = false, py::arg("decimals") = 3);
     m.def("spindle_rpm", &hz::cam::spindleRpm, py::arg("surface_speed"), py::arg("diameter"));
     m.def("feed_rate", &hz::cam::feedRate, py::arg("rpm"), py::arg("flutes"), py::arg("chip_load"));
 
@@ -206,56 +269,63 @@ PYBIND11_EMBEDDED_MODULE(horizon, m) {
     py::class_<ScriptContext::StaticAnalysisResult>(m, "StaticAnalysisResult")
         .def_readonly("converged", &ScriptContext::StaticAnalysisResult::converged)
         .def_readonly("max_displacement", &ScriptContext::StaticAnalysisResult::maxDisplacement)
-        .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises);
+        .def_readonly("max_von_mises", &ScriptContext::StaticAnalysisResult::maxVonMises)
+        .def_readonly("error", &ScriptContext::StaticAnalysisResult::error);
 
     py::class_<ScriptContext::ModalAnalysisResult>(m, "ModalAnalysisResult")
         .def_readonly("converged", &ScriptContext::ModalAnalysisResult::converged)
         .def_readonly("natural_frequencies",
-                      &ScriptContext::ModalAnalysisResult::naturalFrequencies);
+                      &ScriptContext::ModalAnalysisResult::naturalFrequencies)
+        .def_readonly("error", &ScriptContext::ModalAnalysisResult::error);
 
     py::class_<ScriptContext::ThermalAnalysisResult>(m, "ThermalAnalysisResult")
         .def_readonly("converged", &ScriptContext::ThermalAnalysisResult::converged)
         .def_readonly("min_temperature", &ScriptContext::ThermalAnalysisResult::minTemperature)
         .def_readonly("max_temperature", &ScriptContext::ThermalAnalysisResult::maxTemperature)
-        .def_readonly("max_flux", &ScriptContext::ThermalAnalysisResult::maxFlux);
+        .def_readonly("max_flux", &ScriptContext::ThermalAnalysisResult::maxFlux)
+        .def_readonly("error", &ScriptContext::ThermalAnalysisResult::error);
 
-    py::class_<ScriptContext>(m, "Document")
-        .def("feature_count", &ScriptContext::featureCount)
-        .def("sketch_count", &ScriptContext::sketchCount)
-        .def("has_solid", &ScriptContext::hasSolid)
-        .def("solid_face_count", &ScriptContext::solidFaceCount)
-        .def("solid_shell_count", &ScriptContext::solidShellCount)
-        .def("last_error", &ScriptContext::lastError)
-        .def("add_box", &ScriptContext::addBox, py::arg("width"), py::arg("height"),
+    // The document is bound through DocHandle, never as a raw ScriptContext*,
+    // so a script cannot keep a pointer past its run.
+    py::class_<DocHandle, std::shared_ptr<DocHandle>>(m, "Document")
+        .def("feature_count", viaHandle(&ScriptContext::featureCount))
+        .def("sketch_count", viaHandle(&ScriptContext::sketchCount))
+        .def("has_solid", viaHandle(&ScriptContext::hasSolid))
+        .def("solid_face_count", viaHandle(&ScriptContext::solidFaceCount))
+        .def("solid_shell_count", viaHandle(&ScriptContext::solidShellCount))
+        .def("last_error", viaHandle(&ScriptContext::lastError))
+        .def("add_box", viaHandle(&ScriptContext::addBox), py::arg("width"), py::arg("height"),
              py::arg("depth"))
-        .def("add_cylinder", &ScriptContext::addCylinder, py::arg("radius"), py::arg("height"))
-        .def("add_sphere", &ScriptContext::addSphere, py::arg("radius"))
-        .def("add_cone", &ScriptContext::addCone, py::arg("bottom_radius"), py::arg("top_radius"),
+        .def("add_cylinder", viaHandle(&ScriptContext::addCylinder), py::arg("radius"),
              py::arg("height"))
-        .def("add_torus", &ScriptContext::addTorus, py::arg("major_radius"),
+        .def("add_sphere", viaHandle(&ScriptContext::addSphere), py::arg("radius"))
+        .def("add_cone", viaHandle(&ScriptContext::addCone), py::arg("bottom_radius"),
+             py::arg("top_radius"), py::arg("height"))
+        .def("add_torus", viaHandle(&ScriptContext::addTorus), py::arg("major_radius"),
              py::arg("minor_radius"))
-        .def("add_rectangle_sketch", &ScriptContext::addRectangleSketch, py::arg("w"), py::arg("h"))
-        .def("add_extrude", &ScriptContext::addExtrude, py::arg("sketch_index"),
+        .def("add_rectangle_sketch", viaHandle(&ScriptContext::addRectangleSketch), py::arg("w"),
+             py::arg("h"))
+        .def("add_extrude", viaHandle(&ScriptContext::addExtrude), py::arg("sketch_index"),
              py::arg("direction"), py::arg("distance"))
-        .def("add_linear_pattern", &ScriptContext::addLinearPattern, py::arg("direction"),
-             py::arg("spacing"), py::arg("count"))
-        .def("add_datum_plane", &ScriptContext::addDatumPlane, py::arg("origin"), py::arg("normal"),
-             py::arg("x_axis"))
-        .def("add_datum_axis", &ScriptContext::addDatumAxis, py::arg("origin"),
+        .def("add_linear_pattern", viaHandle(&ScriptContext::addLinearPattern),
+             py::arg("direction"), py::arg("spacing"), py::arg("count"))
+        .def("add_datum_plane", viaHandle(&ScriptContext::addDatumPlane), py::arg("origin"),
+             py::arg("normal"), py::arg("x_axis"))
+        .def("add_datum_axis", viaHandle(&ScriptContext::addDatumAxis), py::arg("origin"),
              py::arg("direction"))
-        .def("add_datum_point", &ScriptContext::addDatumPoint, py::arg("position"))
-        .def("mass_properties", &ScriptContext::massProperties, py::arg("density") = 1.0)
-        .def("static_analysis", &ScriptContext::staticAnalysis, py::arg("force"),
+        .def("add_datum_point", viaHandle(&ScriptContext::addDatumPoint), py::arg("position"))
+        .def("mass_properties", viaHandle(&ScriptContext::massProperties), py::arg("density") = 1.0)
+        .def("static_analysis", viaHandle(&ScriptContext::staticAnalysis), py::arg("force"),
              py::arg("youngs_modulus"), py::arg("poisson_ratio") = 0.3, py::arg("axis") = 0,
              py::arg("resolution") = 6)
-        .def("modal_analysis", &ScriptContext::modalAnalysis, py::arg("youngs_modulus"),
+        .def("modal_analysis", viaHandle(&ScriptContext::modalAnalysis), py::arg("youngs_modulus"),
              py::arg("poisson_ratio") = 0.3, py::arg("density") = 7850.0, py::arg("axis") = 0,
              py::arg("num_modes") = 6, py::arg("resolution") = 5)
-        .def("thermal_analysis", &ScriptContext::thermalAnalysis, py::arg("conductivity"),
-             py::arg("hot_temperature"), py::arg("cold_temperature") = 0.0, py::arg("axis") = 0,
-             py::arg("resolution") = 6)
-        .def("export_drawing_dxf", &ScriptContext::exportDrawingDxf, py::arg("path"))
-        .def("rebuild", &ScriptContext::rebuild);
+        .def("thermal_analysis", viaHandle(&ScriptContext::thermalAnalysis),
+             py::arg("conductivity"), py::arg("hot_temperature"), py::arg("cold_temperature") = 0.0,
+             py::arg("axis") = 0, py::arg("resolution") = 6)
+        .def("export_drawing_dxf", viaHandle(&ScriptContext::exportDrawingDxf), py::arg("path"))
+        .def("rebuild", viaHandle(&ScriptContext::rebuild));
 }
 
 namespace hz::script {
@@ -281,28 +351,64 @@ ScriptEngine::~ScriptEngine() = default;
 
 namespace {
 
-// Bind `doc`, redirect stdout to a buffer, run @p body, restore stdout and
-// collect captured output into @p res.
+/// For the length of one run: `doc` bound to the run's context, and stdout
+/// captured. Undone however the run ends, including by a C++ exception: stdout
+/// is restored, and `doc` is removed and its handle released, so nothing the
+/// script kept can reach the context after the caller destroys it.
+class RunScope {
+public:
+    RunScope(py::object& globals, ScriptContext* ctx) : m_globals(globals) {
+        py::object io = py::module_::import("io");
+        m_sys = py::module_::import("sys");
+        m_buffer = io.attr("StringIO")();
+        m_oldStdout = m_sys.attr("stdout");
+        m_sys.attr("stdout") = m_buffer;
+        if (ctx != nullptr) {
+            m_doc = std::make_shared<DocHandle>(ctx);
+            m_globals["doc"] = py::cast(m_doc);
+        }
+    }
+
+    // Through the C API, which reports failure instead of throwing: this may
+    // run while an exception unwinds.
+    ~RunScope() {
+        if (m_doc) {
+            m_doc->release();
+            // Failing to remove the name leaves a released handle, which is safe.
+            if (PyDict_DelItemString(m_globals.ptr(), "doc") != 0) PyErr_Clear();
+        }
+        if (PyObject_SetAttrString(m_sys.ptr(), "stdout", m_oldStdout.ptr()) != 0) PyErr_Clear();
+    }
+
+    RunScope(const RunScope&) = delete;
+    RunScope& operator=(const RunScope&) = delete;
+
+    std::string output() const { return m_buffer.attr("getvalue")().cast<std::string>(); }
+
+private:
+    py::object& m_globals;
+    py::object m_sys;
+    py::object m_buffer;
+    py::object m_oldStdout;
+    std::shared_ptr<DocHandle> m_doc;
+};
+
+// Run @p body in a RunScope and collect its outcome and captured output into
+// @p res.
 template <typename Body>
 void withCapture(py::object& globals, ScriptContext* ctx, ScriptEngine::Result& res, Body&& body) {
-    py::object sys = py::module_::import("sys");
-    py::object io = py::module_::import("io");
-    py::object buffer = io.attr("StringIO")();
-    py::object oldStdout = sys.attr("stdout");
-    sys.attr("stdout") = buffer;
-
-    if (ctx) globals["doc"] = py::cast(ctx, py::return_value_policy::reference);
-
+    RunScope scope(globals, ctx);
     try {
         body();
         res.ok = true;
     } catch (py::error_already_set& e) {
         res.ok = false;
         res.error = e.what();
+    } catch (const std::exception& e) {  // e.g. a result that does not convert
+        res.ok = false;
+        res.error = e.what();
     }
-
-    sys.attr("stdout") = oldStdout;
-    res.output = buffer.attr("getvalue")().cast<std::string>();
+    res.output = scope.output();
 }
 
 }  // namespace

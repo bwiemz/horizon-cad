@@ -126,8 +126,9 @@ jobs:
             ninja-build \
             pkg-config
 
+      # Scripting is off by default (it is not sandboxed); test it here.
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }}
+        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }} --config ${{ matrix.config || 'Debug' }}
@@ -213,8 +214,24 @@ jobs:
             ninja-build \
             pkg-config
 
+      # Scripting too: its tests catch a script reaching a destroyed
+      # document, a use after free that only a sanitizer sees reliably.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pybind11 and expose to CMake
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pybind11
+          echo "pybind11_DIR=$(python -c 'import pybind11; print(pybind11.get_cmake_dir())')" >> "$GITHUB_ENV"
+          echo "Python3_ROOT_DIR=$(python -c 'import sys; print(sys.prefix)')" >> "$GITHUB_ENV"
+          echo "Python3_EXECUTABLE=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+
       - name: Configure with ASan + UBSan
-        run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON -DHZ_WARNINGS_AS_ERRORS=ON
+        run: cmake --preset linux-debug -DHZ_ENABLE_SANITIZERS=ON -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=ON
 
       - name: Build
         run: cmake --build build/linux-debug --config Debug

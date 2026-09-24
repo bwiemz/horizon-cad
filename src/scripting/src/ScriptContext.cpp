@@ -1,6 +1,8 @@
 #include "horizon/scripting/ScriptContext.h"
 
+#include <cmath>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -23,6 +25,25 @@ using hz::math::Vec2;
 using hz::math::Vec3;
 
 namespace {
+
+/// Why the finite-element analyses cannot run on @p solid, or "" if they can.
+/// They mesh its bounding box, so they run only on a solid that fills it: its
+/// volume must be its box's, to within rounding.
+std::string analysisRefusal(const topo::Solid* solid) {
+    if (solid == nullptr) return "there is no solid; add a feature and rebuild";
+    const sim::Aabb box = sim::solidAabb(*solid);
+    const double boxVolume =
+        (box.max.x - box.min.x) * (box.max.y - box.min.y) * (box.max.z - box.min.z);
+    if (!box.valid || !(boxVolume > 0.0)) return "the solid has no volume";
+    const double volume = model::MassPropertiesCalculator::compute(*solid).volume;
+    if (std::abs(volume - boxVolume) > 1e-9 * boxVolume) {
+        const int percent = static_cast<int>(std::lround(100.0 * volume / boxVolume));
+        return "the analysis meshes the solid's bounding box, so it runs only on an axis-aligned "
+               "box; this solid fills " +
+               std::to_string(percent) + "% of its box";
+    }
+    return {};
+}
 
 /// A script's edits are undoable, and mark the document modified, like the
 /// same edits made in the window.
@@ -127,7 +148,8 @@ ScriptContext::StaticAnalysisResult ScriptContext::staticAnalysis(double force,
                                                                   int resolution) const {
     StaticAnalysisResult out;
     const auto* solid = m_document.solid();
-    if (!solid || axis < 0 || axis > 2 || resolution < 1) return out;
+    out.error = analysisRefusal(solid);
+    if (!out.error.empty() || axis < 0 || axis > 2 || resolution < 1) return out;
 
     sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
     if (mesh.elements.empty()) return out;
@@ -164,7 +186,8 @@ ScriptContext::ModalAnalysisResult ScriptContext::modalAnalysis(double youngsMod
                                                                 int resolution) const {
     ModalAnalysisResult out;
     const auto* solid = m_document.solid();
-    if (!solid || axis < 0 || axis > 2 || numModes < 1 || resolution < 1) return out;
+    out.error = analysisRefusal(solid);
+    if (!out.error.empty() || axis < 0 || axis > 2 || numModes < 1 || resolution < 1) return out;
 
     sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
     if (mesh.elements.empty()) return out;
@@ -193,7 +216,10 @@ ScriptContext::ThermalAnalysisResult ScriptContext::thermalAnalysis(double condu
                                                                     int resolution) const {
     ThermalAnalysisResult out;
     const auto* solid = m_document.solid();
-    if (!solid || axis < 0 || axis > 2 || resolution < 1 || conductivity <= 0.0) return out;
+    out.error = analysisRefusal(solid);
+    if (!out.error.empty() || axis < 0 || axis > 2 || resolution < 1 || conductivity <= 0.0) {
+        return out;
+    }
 
     sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
     if (mesh.elements.empty()) return out;

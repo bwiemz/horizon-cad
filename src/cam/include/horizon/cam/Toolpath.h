@@ -33,6 +33,10 @@ struct Toolpath {
 
 /// Generates 2.5-axis toolpaths (constant cutting depth, positioning at a safe
 /// Z plane). Profiles and hole locations are given in the XY plane.
+///
+/// Every generator returns an empty path for parameters that cannot make a
+/// safe one: a feed that is not positive, a cut depth that is not below the
+/// safe plane, or any value that is not a finite number.
 class CamGenerator {
 public:
     /// A contour (profile) toolpath: rapid to the first point at @p safeZ, plunge

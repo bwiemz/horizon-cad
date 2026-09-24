@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -8,6 +10,7 @@
 #include "horizon/cam/Toolpath.h"
 
 using hz::cam::CamGenerator;
+using hz::cam::GcodeOptions;
 using hz::cam::GcodeWriter;
 using hz::cam::Move;
 using hz::cam::MoveType;
@@ -134,27 +137,130 @@ TEST(ToolpathTest, PocketRectRejectsBadInput) {
 // A pocket path feeds through the G-code writer like any other toolpath.
 TEST(GcodeWriterTest, EmitsPocket) {
     const Toolpath p = CamGenerator::pocketRect({0, 0}, {40, 40}, 5.0, 10.0, -2.0, 5.0, 120.0);
-    const std::string g = GcodeWriter::toGcode(p);
-    EXPECT_NE(g.find("G21\n"), std::string::npos);
-    EXPECT_NE(g.find("M2\n"), std::string::npos);
-    EXPECT_EQ(countOccurrences(g, "G0 "), 2);        // rapid in + retract
-    EXPECT_GT(countOccurrences(g, "G1 "), 2);        // several cutting passes
-    EXPECT_EQ(countOccurrences(g, " F120.000"), 1);  // modal feed once
+    GcodeOptions options;
+    options.spindleRpm = 10000.0;
+    std::string error;
+    const auto g = GcodeWriter::toGcode(p, options, &error);
+    ASSERT_TRUE(g) << error;
+    EXPECT_EQ(countOccurrences(*g, "G0 "), 3);        // climb, cross, retract
+    EXPECT_GT(countOccurrences(*g, "G1 "), 2);        // several cutting passes
+    EXPECT_EQ(countOccurrences(*g, " F120.000"), 1);  // modal feed once
 }
 
-// G-code carries the metric/absolute preamble, G0/G1 words, a modal feed, and an
-// end-of-program marker.
-TEST(GcodeWriterTest, EmitsRs274) {
+// A contour program, line by line: a known modal state, the tool and spindle
+// before any motion, a first rapid that climbs before it crosses, and an end
+// that stops the spindle.
+TEST(GcodeWriterTest, WritesAProgramThatStartsSafely) {
     const std::vector<Vec2> square = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
     const Toolpath p = CamGenerator::contour(square, -2.0, 5.0, 100.0, true);
-    const std::string g = GcodeWriter::toGcode(p);
+    GcodeOptions options;
+    options.toolNumber = 3;
+    options.spindleRpm = 12000.0;
+    const auto g = GcodeWriter::toGcode(p, options);
+    ASSERT_TRUE(g);
+    EXPECT_EQ(*g,
+              "G21 G90 G94 G17 G40 G49 G80\n"
+              "T3 M6\n"
+              "S12000 M3\n"
+              "G0 G43 H3 Z5.000\n"
+              "G0 X0.000 Y0.000\n"
+              "G1 X0.000 Y0.000 Z-2.000 F100.000\n"
+              "G1 X10.000 Y0.000 Z-2.000\n"
+              "G1 X10.000 Y10.000 Z-2.000\n"
+              "G1 X0.000 Y10.000 Z-2.000\n"
+              "G1 X0.000 Y0.000 Z-2.000\n"
+              "G0 Z5.000\n"
+              "M5\n"
+              "M30\n");
+}
 
-    EXPECT_NE(g.find("G21\n"), std::string::npos);  // metric
-    EXPECT_NE(g.find("G90\n"), std::string::npos);  // absolute
-    EXPECT_NE(g.find("M2\n"), std::string::npos);   // end
-    EXPECT_EQ(countOccurrences(g, "G0 "), 2);       // two rapids
-    EXPECT_EQ(countOccurrences(g, "G1 "), 5);       // five feeds
-    // The feed word appears once (modal F, emitted on first Feed only).
-    EXPECT_EQ(countOccurrences(g, " F100.000"), 1);
-    EXPECT_NE(g.find("X10.000 Y0.000 Z-2.000"), std::string::npos);
+TEST(GcodeWriterTest, CoolantRunsWithTheSpindle) {
+    const Toolpath p = CamGenerator::drill({{1, 1}}, -3.0, 2.0, 50.0);
+    GcodeOptions options;
+    options.spindleRpm = 3000.0;
+    options.coolant = true;
+    const auto g = GcodeWriter::toGcode(p, options);
+    ASSERT_TRUE(g);
+    EXPECT_NE(g->find("S3000 M3\nM8\n"), std::string::npos) << *g;
+    EXPECT_NE(g->find("M9\nM5\nM30\n"), std::string::npos) << *g;
+}
+
+// A rapid that both climbs and crosses climbs first; one that descends and
+// crosses crosses first. Neither drags the tool through the part.
+TEST(GcodeWriterTest, RapidsClimbBeforeTheyCross) {
+    Toolpath p;
+    p.moves.push_back({MoveType::Rapid, {0, 0, 10}, 0.0});
+    p.moves.push_back({MoveType::Rapid, {0, 0, 1}, 0.0});    // approach
+    p.moves.push_back({MoveType::Feed, {0, 0, -1}, 60.0});   // plunge
+    p.moves.push_back({MoveType::Rapid, {20, 0, 10}, 0.0});  // up and across
+    p.moves.push_back({MoveType::Rapid, {30, 5, 2}, 0.0});   // across and down
+    GcodeOptions options;
+    options.spindleRpm = 1000.0;
+    options.decimals = 0;
+    const auto g = GcodeWriter::toGcode(p, options);
+    ASSERT_TRUE(g);
+    EXPECT_NE(g->find("G1 X0 Y0 Z-1 F60\nG0 Z10\nG0 X20 Y0\n"), std::string::npos) << *g;
+    EXPECT_NE(g->find("G0 X30 Y5\nG0 Z2\n"), std::string::npos) << *g;
+}
+
+// Programs that could hurt a machine are refused, with the reason.
+TEST(GcodeWriterTest, RefusesUnsafePrograms) {
+    const std::vector<Vec2> square = {{0, 0}, {10, 0}, {10, 10}};
+    const Toolpath good = CamGenerator::contour(square, -2.0, 5.0, 100.0, true);
+    GcodeOptions options;
+    options.spindleRpm = 12000.0;
+    ASSERT_TRUE(GcodeWriter::validate(good, options).empty());
+
+    const auto refused = [](const Toolpath& path, const GcodeOptions& o, const std::string& why) {
+        std::string error;
+        EXPECT_FALSE(GcodeWriter::toGcode(path, o, &error)) << why;
+        EXPECT_NE(error.find(why), std::string::npos) << error;
+    };
+
+    GcodeOptions noSpindle = options;
+    noSpindle.spindleRpm = 0.0;
+    refused(good, noSpindle, "spindle");
+    GcodeOptions badTool = options;
+    badTool.toolNumber = 0;
+    refused(good, badTool, "tool number");
+    GcodeOptions badDecimals = options;
+    badDecimals.decimals = 9;
+    refused(good, badDecimals, "decimals");
+
+    refused(Toolpath{}, options, "empty");
+
+    Toolpath cutsFirst = good;
+    cutsFirst.moves.erase(cutsFirst.moves.begin());
+    refused(cutsFirst, options, "start with a rapid");
+
+    Toolpath lowRapid = good;
+    lowRapid.moves.insert(lowRapid.moves.begin() + 2, {MoveType::Rapid, {5, 5, -2.0}, 0.0});
+    refused(lowRapid, options, "through material");
+
+    Toolpath noFeed = good;
+    noFeed.moves[1].feed = 0.0;
+    refused(noFeed, options, "feed");
+
+    Toolpath notANumber = good;
+    notANumber.moves[2].target.x = std::nan("");
+    refused(notANumber, options, "finite");
+}
+
+// The generators make no path from parameters that cannot make a safe one.
+TEST(ToolpathTest, GeneratorsRefuseUnsafeParameters) {
+    const std::vector<Vec2> square = {{0, 0}, {10, 0}, {10, 10}};
+    const double inf = std::numeric_limits<double>::infinity();
+    // The cut must be below the safe plane.
+    EXPECT_TRUE(CamGenerator::contour(square, 5.0, 5.0, 100.0, true).moves.empty());
+    EXPECT_TRUE(CamGenerator::contour(square, 6.0, 5.0, 100.0, true).moves.empty());
+    EXPECT_TRUE(CamGenerator::drill({{1, 1}}, 3.0, 2.0, 50.0).moves.empty());
+    EXPECT_TRUE(
+        CamGenerator::pocketRect({0, 0}, {40, 40}, 5.0, 10.0, 5.0, 5.0, 120.0).moves.empty());
+    // The feed must be positive and every number finite.
+    EXPECT_TRUE(CamGenerator::contour(square, -2.0, 5.0, 0.0, true).moves.empty());
+    EXPECT_TRUE(CamGenerator::drill({{1, 1}}, -3.0, 2.0, -1.0).moves.empty());
+    EXPECT_TRUE(CamGenerator::contour({{0, 0}, {inf, 0}}, -2.0, 5.0, 100.0, true).moves.empty());
+    EXPECT_TRUE(CamGenerator::drill({{1, 1}}, -3.0, inf, 50.0).moves.empty());
+    EXPECT_TRUE(
+        CamGenerator::pocketRect({0, 0}, {40, inf}, 5.0, 10.0, -2.0, 5.0, 120.0).moves.empty());
 }

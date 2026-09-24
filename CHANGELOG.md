@@ -33,6 +33,30 @@ work, not "post-1.0".
     old FNV-1a hash still load, verify and sync.
   - A second handle on an archive appends after the first's commit instead
     of overwriting it.
+- **A script could reach a document after it was gone (120).**
+  - The `doc` a script was given stayed in the interpreter after its run,
+    pointing at a document the caller might already have destroyed. It is
+    now removed when the run ends, and any copy the script kept raises an
+    error if used later.
+  - Scripting is off by default (`HZ_ENABLE_SCRIPTING`), because nothing
+    sandboxes a script.
+  - A plugin is checked again when it is loaded, not only when it is found.
+    One that changed since the user enabled it, such as by adding a
+    permission, has to be enabled again.
+- **G-code that could hurt a machine, and FEA that analysed the wrong shape
+  (121).**
+  - A program now starts from a known state, loads its tool, and starts the
+    spindle before it moves. Its first rapid climbs before it crosses. Every
+    later rapid climbs before it crosses, or crosses before it descends, so
+    none moves diagonally through the part. It stops the spindle at the end.
+  - A program that could rapid through the cut, cut with the spindle
+    stopped, or carries a feed of zero or a number that is not finite is
+    refused, with the reason. So are toolpath parameters that would make one.
+  - The analyses meshed a solid's bounding box, so a cylinder was analysed
+    as the bar around it. They now refuse any solid that is not an
+    axis-aligned box, and say why.
+  - The maturity table in the README says which modules the application
+    can reach.
 
 ## Unreleased — Production readiness, Milestone 5 (Phases 115–118)
 

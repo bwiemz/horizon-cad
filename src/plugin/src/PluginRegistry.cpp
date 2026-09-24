@@ -5,6 +5,8 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <system_error>
+#include <utility>
 
 namespace hz::plugin {
 
@@ -86,6 +88,31 @@ bool validEntry(const std::string& entry, const fs::path& pluginDir, std::string
         return fail(error, "entry script not found: " + entry);
     }
     return true;
+}
+
+/// Read a regular file whole. False for anything else (a directory, a
+/// missing file) or a read that fails.
+bool readRegularFile(const fs::path& path, std::string& out) {
+    std::error_code ec;
+    if (!fs::is_regular_file(path, ec)) return false;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::ostringstream text;
+    text << in.rdbuf();
+    out = text.str();
+    return true;
+}
+
+/// Whether two manifests say the same thing. Permissions are compared as
+/// sets: their order in the file does not matter.
+bool sameManifest(const PluginManifest& a, const PluginManifest& b) {
+    auto permsA = a.permissions;
+    auto permsB = b.permissions;
+    std::sort(permsA.begin(), permsA.end());
+    std::sort(permsB.begin(), permsB.end());
+    return a.name == b.name && a.version == b.version && a.entry == b.entry &&
+           a.description == b.description && a.author == b.author &&
+           a.minAppVersion == b.minAppVersion && permsA == permsB;
 }
 
 }  // namespace
@@ -249,6 +276,54 @@ bool PluginRegistry::isCompatible(const PluginManifest& manifest, const std::str
     const auto app = parseSemver(appVersion);
     if (!minimum || !app) return false;  // unparseable gates fail closed
     return *minimum <= *app;
+}
+
+std::optional<LoadablePlugin> PluginRegistry::prepareLoad(const std::string& name,
+                                                          const std::string& appVersion,
+                                                          std::string* error) const {
+    const PluginManifest* registered = find(name);
+    if (registered == nullptr) {
+        fail(error, "no plugin named '" + name + "'");
+        return std::nullopt;
+    }
+    if (!isEnabled(name)) {
+        fail(error, "plugin '" + name + "' is not enabled");
+        return std::nullopt;
+    }
+    if (!isCompatible(*registered, appVersion)) {
+        fail(error,
+             "plugin '" + name + "' needs version " + registered->minAppVersion + " or later");
+        return std::nullopt;
+    }
+
+    std::string text;
+    if (!readRegularFile(registered->rootDir / "plugin.json", text)) {
+        fail(error, "plugin '" + name + "': cannot read plugin.json");
+        return std::nullopt;
+    }
+    std::string why;
+    std::optional<PluginManifest> current = parseManifest(text, registered->rootDir, &why);
+    if (!current) {
+        fail(error, "plugin '" + name + "' is no longer valid: " + why);
+        return std::nullopt;
+    }
+    if (!sameManifest(*current, *registered)) {
+        fail(error, "plugin '" + name +
+                        "' changed after it was discovered; discover it and enable it again");
+        return std::nullopt;
+    }
+
+    // parseManifest has just checked that the entry resolves inside the
+    // plugin directory; read it through that resolved path.
+    std::error_code ec;
+    LoadablePlugin plugin;
+    plugin.entryPath = fs::weakly_canonical(registered->rootDir / current->entry, ec);
+    if (ec || !readRegularFile(plugin.entryPath, plugin.entrySource)) {
+        fail(error, "plugin '" + name + "': cannot read its entry script");
+        return std::nullopt;
+    }
+    plugin.manifest = std::move(*current);
+    return plugin;
 }
 
 }  // namespace hz::plugin
