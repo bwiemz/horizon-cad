@@ -180,6 +180,9 @@ private:
 
     // Snapping
     draft::SnapEngine m_snapEngine;
+    /// The last finite, positive pixelToWorldScale(): what a viewport with no
+    /// size reports.
+    mutable double m_lastPixelScale = 0.01;
     draft::SnapResult m_lastSnapResult;
 
     // 3D scene graph

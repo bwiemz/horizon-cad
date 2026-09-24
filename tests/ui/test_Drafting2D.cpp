@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <QMouseEvent>
+#include <cmath>
 #include <memory>
 
 #include "horizon/document/Document.h"
@@ -132,4 +133,17 @@ TEST(Drafting2DTest, APickReachesTheSameDistanceOnScreenAtAnyZoom) {
     EXPECT_EQ(d.doc.draftDocument().entities().size(), 2u);
     EXPECT_TRUE(click(trim, Vec2(8, 0.5 * reach)));
     EXPECT_EQ(d.doc.draftDocument().entities().size(), 2u) << "the clicked part is cut away";
+}
+
+TEST(Drafting2DTest, AViewportWithNoSizeStillReachesSomething) {
+    // Mid-layout a viewport can be 0 x 0, where the projection divides by
+    // zero. A pick used to have a world floor to hide that; now the last good
+    // scale stands in.
+    Drawing d;
+    const double sized = d.viewport.pixelToWorldScale();
+    d.viewport.resize(0, 0);
+    const double reach = d.viewport.pickTolerance();
+    EXPECT_TRUE(std::isfinite(reach));
+    EXPECT_GT(reach, 0.0);
+    EXPECT_DOUBLE_EQ(d.viewport.pixelToWorldScale(), sized);
 }
