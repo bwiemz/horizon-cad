@@ -97,4 +97,19 @@ SceneNode* SceneGraph::findByIdHelper(SceneNode* node, uint32_t id) const {
     return nullptr;
 }
 
+std::unordered_set<uint32_t> SceneGraph::nodeIds() const {
+    std::unordered_set<uint32_t> ids;
+    std::vector<const SceneNode*> pending;
+    pending.reserve(m_nodes.size());
+    for (const auto& node : m_nodes) pending.push_back(node.get());
+    while (!pending.empty()) {
+        const SceneNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        ids.insert(node->id());
+        for (const auto& child : node->children()) pending.push_back(child.get());
+    }
+    return ids;
+}
+
 }  // namespace hz::render

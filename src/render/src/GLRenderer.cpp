@@ -439,6 +439,10 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
                              const Camera& camera) {
     if (!m_initialized) return;
 
+    // The context is current here, so the gone nodes' GL buffers are freed
+    // with them.
+    eraseStaleEntries(m_meshCache, scene.nodeIds());
+
     auto visibleNodes = scene.collectVisibleMeshNodes();
     if (visibleNodes.empty()) return;
 

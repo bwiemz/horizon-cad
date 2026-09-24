@@ -33,6 +33,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_AppEssentials.cpp
         test_ToolEdits.cpp
         test_Smoke.cpp
+        test_RenderEfficiency.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

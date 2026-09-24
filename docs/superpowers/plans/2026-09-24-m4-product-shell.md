@@ -123,6 +123,34 @@ fillers, dialog responders, file pickers). This phase fills the gaps.
 - Overlay and picking viewport at device pixels.
 - An OpenGL capability check with a clear message.
 
+**As built.**
+- **Constraint analysis.** The DOF analysis ran the constraint solver on
+  every frame, and a frame is drawn on every mouse move. It now runs only
+  when the document or its undo revision changes (`recomputeDOF` keeps
+  both), or when the viewport is given a document (`invalidateDOF`). The
+  second case matters because a new document can reuse the address of one
+  just closed, with the same revision.
+- **Picking pass.** The per-frame picking pass is gone: nothing called
+  `pickAtPixel`. A pick that needs it can render one on demand.
+- **Mesh cache.** A scene is rebuilt with new node IDs on every model
+  change, and the GL mesh cache, keyed by node ID, never let go of the old
+  ones, so every edit leaked the model's GPU buffers. `renderNodes()` now
+  drops the entries whose node has left the scene (`eraseStaleEntries`,
+  `SceneGraph::nodeIds`), while the context is current.
+- **Device pixels.** `resizeGL` gets logical pixels; the renderer's
+  viewport and picking buffer are now sized in device pixels. The text
+  overlay is drawn into an image at the device pixel ratio, so dimension
+  text is sharp on a high-DPI screen instead of scaled up.
+- **OpenGL check.** It was already there from Phase 99: a context below
+  3.3, shaders that fail to compile, or no OpenGL at all is reported in
+  words.
+- **Tests.** Tests cover what does not need a GL context:
+  - the analysis runs once per change, not once per frame;
+  - `nodeIds` reaches every depth;
+  - stale cache entries are dropped.
+
+  The GL paths run only under the opt-in GL runtime tests.
+
 ## Phase 114: Off-thread regeneration
 
 - Rebuild, import and interference run on a worker, with progress and

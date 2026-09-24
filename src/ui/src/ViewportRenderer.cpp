@@ -15,6 +15,7 @@
 #include "horizon/constraint/ParameterTable.h"
 #include "horizon/constraint/SketchSolver.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -148,6 +149,11 @@ void ViewportRenderer::destroyGL(QOpenGLExtraFunctions* gl) {
 // ---------------------------------------------------------------------------
 
 void ViewportRenderer::recomputeDOF(doc::Document* doc) {
+    const std::uint64_t revision = doc ? doc->undoStack().revision() : 0;
+    if (!m_dofDirty && doc == m_dofDocument && revision == m_dofRevision) return;
+    m_dofDocument = doc;
+    m_dofRevision = revision;
+    ++m_dofComputations;
     if (!doc) {
         m_dofAnalysis = {};
         m_dofDirty = false;
@@ -877,18 +883,23 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
 void ViewportRenderer::blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
                                        doc::Document* doc,
                                        const render::SelectionManager& selection, int viewportWidth,
-                                       int viewportHeight, double pixelToWorldScale) {
+                                       int viewportHeight, double pixelToWorldScale,
+                                       qreal devicePixelRatio) {
     if (viewportWidth <= 0 || viewportHeight <= 0) return;
 
-    // 1. Render text to a QImage (QPainter on QImage is pure CPU).
-    QImage image(viewportWidth, viewportHeight, QImage::Format_RGBA8888_Premultiplied);
+    // 1. Render text to a QImage (QPainter on QImage is pure CPU), at device
+    // pixels: the painter keeps working in logical ones.
+    const qreal dpr = devicePixelRatio > 0.0 ? devicePixelRatio : 1.0;
+    QImage image(qRound(viewportWidth * dpr), qRound(viewportHeight * dpr),
+                 QImage::Format_RGBA8888_Premultiplied);
+    image.setDevicePixelRatio(dpr);
     image.fill(Qt::transparent);
     renderTextToImage(image, camera, doc, selection, viewportWidth, viewportHeight,
                       pixelToWorldScale);
 
     // 2. Upload QImage pixels to the GL texture.
     gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
-    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewportWidth, viewportHeight, 0, GL_RGBA,
+    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, image.constBits());
 
     // 3. Draw a fullscreen quad with alpha blending.
