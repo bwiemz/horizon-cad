@@ -50,6 +50,14 @@ work, not "post-1.0".
     AppImage and tarball), with SHA-256 checksums, into a draft release.
   - Dependabot keeps the workflows' actions current.
   - `docs/RELEASING.md` says how to cut a release.
+- **How to take part (118).**
+  - A security policy: vulnerabilities are reported privately, and the
+    policy says that scripts and plugins are not sandboxed.
+  - A code of conduct, the Contributor Covenant.
+  - Issue forms for bugs and feature requests, and a pull request template
+    with the CI gates as a checklist.
+  - CONTRIBUTING describes the current build, tool API and tests, and how to
+    pass every CI gate locally.
 
 ## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
 

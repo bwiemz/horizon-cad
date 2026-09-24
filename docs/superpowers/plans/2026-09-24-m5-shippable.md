@@ -149,3 +149,45 @@ A release someone can install:
 - SECURITY.md, CODE_OF_CONDUCT, issue and PR templates, a CONTRIBUTING
   refresh.
 - Branch protection on `master` (**owner action**).
+
+**As built.**
+- **`SECURITY.md`.**
+  - Reports go through GitHub's private vulnerability reporting, not public
+    issues and not an e-mail address in the repository.
+  - It names the attack surface: the file readers (native, DXF, STEP), the
+    only code that takes input from outside.
+  - It says plainly that scripts run with the user's full rights, and that
+    a plugin manifest's permissions are not enforced (the application does
+    not run plugins yet), so running either is trusting its author.
+  - Only the latest release is supported.
+- **`CODE_OF_CONDUCT.md`** adopts the Contributor Covenant 2.1 by reference;
+  reports go through the same private channel.
+- **Issue templates** (issue forms):
+  - a bug report asks for the version from Help ▸ About, the platform, steps,
+    and the log's location on each platform;
+  - a feature request asks for the problem before the solution;
+  - blank issues are off, and security reports are pointed at the private
+    channel.
+- **Pull request template:** what and why, how it was tested, and the CI
+  gates as a checklist.
+- **`docs/CONTRIBUTING.md`** was out of date:
+  - it gave the old Windows machine's CMake path;
+  - it showed tool handlers without the event and world position they take.
+
+  It now also covers:
+  - snapping and picking through the viewport;
+  - `copyStyleFrom` for pieces made from an entity;
+  - the window tests and their helpers;
+  - the five CI gates and how to run each locally;
+  - the three ways code passing a newer local toolchain fails CI's older
+    one.
+- **README** Contributing links all three documents.
+- **Left for the owner:**
+  - **The licence.** `LICENSE` is the GPL v3 and the README says MIT. Which
+    one applies is the owner's call. Until it is made, the AppStream
+    metadata declares no project licence.
+  - **Branch protection** on `master`: require the five CI gates to pass
+    before a merge.
+  - **Private vulnerability reporting** has to be turned on in the
+    repository's settings (Security ▸ Private vulnerability reporting) for
+    `SECURITY.md`'s channel to exist.
