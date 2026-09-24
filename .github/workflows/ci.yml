@@ -42,14 +42,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # vcpkg's built packages, kept between runs. The x-gha backend used
       # before restored nothing (GitHub retired the cache API it relied on),
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -81,7 +81,7 @@ jobs:
       # Embedded-Python scripting (Phase 47) uses the system Python + pybind11,
       # not a vcpkg CPython build. Provide both and point CMake at them.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -148,7 +148,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ASan-instrumented, statically-linked Qt test binaries are several
       # hundred MB each; with the full test suite they overran the runner's
@@ -167,7 +167,7 @@ jobs:
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -217,7 +217,7 @@ jobs:
       # Scripting too: its tests catch a script reaching a destroyed
       # document, a use after free that only a sanitizer sees reliably.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -244,7 +244,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install clang-format
         run: |
@@ -264,14 +264,14 @@ jobs:
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # vcpkg's built packages, kept between runs. The x-gha backend used
       # before restored nothing (GitHub retired the cache API it relied on),
       # and its setting reached only this step, not the configure step where
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
