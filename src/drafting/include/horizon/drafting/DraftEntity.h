@@ -25,6 +25,9 @@ public:
     /// Ensure the next auto-generated ID is greater than the given value.
     static void advanceIdCounter(uint64_t minId) { s_nextId.reserveThrough(minId); }
 
+    /// An ID no entity has had: for one loaded under an ID already in use.
+    static uint64_t newId() { return s_nextId.next(); }
+
     const std::string& layer() const { return m_layer; }
     void setLayer(const std::string& layer) { m_layer = layer; }
 
