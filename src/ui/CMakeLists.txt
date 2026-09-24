@@ -65,6 +65,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/WorkerThread.h
     include/horizon/ui/TypedLength.h
     include/horizon/ui/TypedPoint.h
+    include/horizon/ui/PdfExport.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
@@ -95,6 +96,7 @@ add_library(hz_ui STATIC
     src/ChamferTool.cpp
     src/TypedLength.cpp
     src/TypedPoint.cpp
+    src/PdfExport.cpp
     src/BreakTool.cpp
     src/ExtendTool.cpp
     src/StretchTool.cpp

@@ -28,6 +28,7 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
+#include "horizon/drafting/PlotScene.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
@@ -349,99 +350,21 @@ void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRende
             // Collect text for QPainter overlay.
             m_dimTexts.push_back({dim->textPosition(), dim->displayText(style), resolvedColor});
         } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
-            // Render each sub-entity of the block definition, transformed to world space.
-            for (const auto& subEnt : bref->definition()->entities) {
-                // ByBlock resolution: sub-entity value 0 → use block ref's resolved value.
-                uint32_t subColor = subEnt->color();
-                if (subColor == 0x00000000) subColor = resolvedColor;
-                float subWidth = static_cast<float>(subEnt->lineWidth());
-                if (subWidth == 0.0f) subWidth = resolvedWidth;
-                int subLineType = subEnt->lineType();
-                if (subLineType == 0) subLineType = resolvedLineType;
-                BatchKey subKey{subColor, subWidth, subLineType};
-
-                if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
-                    auto p1 = bref->transformPoint(ln->start());
-                    auto p2 = bref->transformPoint(ln->end());
-                    auto& v = findOrCreateBatch(subKey);
-                    double len = p1.distanceTo(p2);
-                    emitVert(v, p1.x, p1.y, 0.0f);
-                    emitVert(v, p2.x, p2.y, static_cast<float>(len));
-                } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
-                    auto wc = bref->transformPoint(ci->center());
-                    double wr = ci->radius() * std::abs(bref->uniformScale());
-                    auto cv = circleVertices(wc, wr);
-                    renderer.drawCircle(gl, camera, cv, argbToVec3(subColor), subWidth,
-                                        subLineType);
-                } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
-                    auto wc = bref->transformPoint(ar->center());
-                    double wr = ar->radius() * std::abs(bref->uniformScale());
-                    double sa = ar->startAngle() + bref->rotation();
-                    double ea = ar->endAngle() + bref->rotation();
-                    if (bref->uniformScale() < 0.0) {
-                        double tmp = sa;
-                        sa = -ea;
-                        ea = -tmp;
-                    }
-                    auto av = arcVertices(wc, wr, sa, ea);
-                    renderer.drawLines(gl, camera, av, argbToVec3(subColor), subWidth, subLineType);
-                } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
-                    auto c = re->corners();
-                    auto& v = findOrCreateBatch(subKey);
-                    double cumDist = 0.0;
-                    for (int i = 0; i < 4; ++i) {
-                        auto wp1 = bref->transformPoint(c[i]);
-                        auto wp2 = bref->transformPoint(c[(i + 1) % 4]);
-                        double segLen = wp1.distanceTo(wp2);
-                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
-                        cumDist += segLen;
-                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
-                    }
-                } else if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(subEnt.get())) {
-                    auto& v = findOrCreateBatch(subKey);
-                    const auto& pts = pl->points();
-                    double cumDist = 0.0;
-                    for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                        auto wp1 = bref->transformPoint(pts[i]);
-                        auto wp2 = bref->transformPoint(pts[i + 1]);
-                        double segLen = wp1.distanceTo(wp2);
-                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
-                        cumDist += segLen;
-                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
-                    }
-                    if (pl->closed() && pts.size() >= 2) {
-                        auto wp1 = bref->transformPoint(pts.back());
-                        auto wp2 = bref->transformPoint(pts[0]);
-                        double segLen = wp1.distanceTo(wp2);
-                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
-                        cumDist += segLen;
-                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
-                    }
-                } else if (auto* sp = dynamic_cast<const draft::DraftSpline*>(subEnt.get())) {
-                    auto& v = findOrCreateBatch(subKey);
-                    auto evalPts = sp->evaluate();
-                    double cumDist = 0.0;
-                    for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
-                        auto wp1 = bref->transformPoint(evalPts[i]);
-                        auto wp2 = bref->transformPoint(evalPts[i + 1]);
-                        double segLen = wp1.distanceTo(wp2);
-                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
-                        cumDist += segLen;
-                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
-                    }
-                } else if (auto* el = dynamic_cast<const draft::DraftEllipse*>(subEnt.get())) {
-                    auto& v = findOrCreateBatch(subKey);
-                    auto evalPts = el->evaluate();
-                    double cumDist = 0.0;
-                    for (size_t i = 0; i + 1 < evalPts.size(); ++i) {
-                        auto wp1 = bref->transformPoint(evalPts[i]);
-                        auto wp2 = bref->transformPoint(evalPts[i + 1]);
-                        double segLen = wp1.distanceTo(wp2);
-                        emitVert(v, wp1.x, wp1.y, static_cast<float>(cumDist));
-                        cumDist += segLen;
-                        emitVert(v, wp2.x, wp2.y, static_cast<float>(cumDist));
-                    }
-                }
+            // The block's contents placed, as a plot draws them: every kind of
+            // entity (text, hatches and dimensions were left out), blocks
+            // within blocks too. What they leave ByBlock is the reference's,
+            // as resolved above, the selection's colour included.
+            const draft::PlotScene contents =
+                draft::plotBlockReference(*bref, layerMgr, doc.draftDocument().dimensionStyle(),
+                                          resolvedColor, resolvedWidth, resolvedLineType);
+            for (const auto& stroke : contents.strokes) {
+                auto& v = findOrCreateBatch(
+                    BatchKey{stroke.color, static_cast<float>(stroke.width), stroke.lineType});
+                emitPointSeq(v, stroke.points, stroke.closed);
+            }
+            for (const auto& text : contents.texts) {
+                m_dimTexts.push_back({text.position, text.text, text.color, text.height,
+                                      text.rotation, static_cast<int>(text.alignment)});
             }
         } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
             // Text entity — collect for QPainter overlay.
