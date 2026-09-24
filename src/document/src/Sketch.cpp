@@ -7,16 +7,16 @@
 
 namespace hz::doc {
 
-uint64_t Sketch::s_nextId = 1;
+math::IdCounter<uint64_t> Sketch::s_nextId{1};
 
 Sketch::Sketch()
-    : m_id(s_nextId++),
+    : m_id(s_nextId.next()),
       m_name(),
       m_plane(),
       m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
 
 Sketch::Sketch(const draft::SketchPlane& plane)
-    : m_id(s_nextId++),
+    : m_id(s_nextId.next()),
       m_name(),
       m_plane(plane),
       m_constraints(std::make_unique<cstr::ConstraintSystem>()) {}
@@ -34,7 +34,7 @@ void Sketch::setId(uint64_t id) {
     m_id = id;
     // Keep the global counter ahead of loaded IDs so sketches created later
     // (possibly in another open document) never collide.
-    if (id >= s_nextId) s_nextId = id + 1;
+    s_nextId.reserveThrough(id);
 }
 
 const std::string& Sketch::name() const {

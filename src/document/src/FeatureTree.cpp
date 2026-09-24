@@ -62,12 +62,12 @@ bool setChordTolerance(double& target, double value) {
 
 // Keep the per-class ID counter ahead of restored IDs so future features
 // never collide with loaded ones (mirrors the Sketch ID counter fix).
-void bumpCounter(int& counter, const std::string& id, const std::string& prefix) {
+void bumpCounter(math::IdCounter<int>& counter, const std::string& id, const std::string& prefix) {
     if (id.rfind(prefix, 0) != 0) return;
     int n = 0;
     const char* digits = id.data() + prefix.size();
-    if (std::from_chars(digits, id.data() + id.size(), n).ec == std::errc() && n >= counter) {
-        counter = n + 1;
+    if (std::from_chars(digits, id.data() + id.size(), n).ec == std::errc()) {
+        counter.reserveThrough(n);
     }
 }
 
@@ -77,14 +77,14 @@ void bumpCounter(int& counter, const std::string& id, const std::string& prefix)
 // ExtrudeFeature
 // ---------------------------------------------------------------------------
 
-int ExtrudeFeature::s_nextID = 1;
+math::IdCounter<int> ExtrudeFeature::s_nextID{1};
 
 ExtrudeFeature::ExtrudeFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& direction,
                                double distance)
     : m_sketch(std::move(sketch)),
       m_direction(direction),
       m_distance(distance),
-      m_featureID("extrude_" + std::to_string(s_nextID++)) {}
+      m_featureID("extrude_" + std::to_string(s_nextID.next())) {}
 
 std::string ExtrudeFeature::name() const {
     return "Extrude";
@@ -150,7 +150,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid
 // RevolveFeature
 // ---------------------------------------------------------------------------
 
-int RevolveFeature::s_nextID = 1;
+math::IdCounter<int> RevolveFeature::s_nextID{1};
 
 RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& axisPoint,
                                const math::Vec3& axisDir, double angle)
@@ -158,7 +158,7 @@ RevolveFeature::RevolveFeature(std::shared_ptr<Sketch> sketch, const math::Vec3&
       m_axisPoint(axisPoint),
       m_axisDir(axisDir),
       m_angle(angle),
-      m_featureID("revolve_" + std::to_string(s_nextID++)) {}
+      m_featureID("revolve_" + std::to_string(s_nextID.next())) {}
 
 std::string RevolveFeature::name() const {
     return "Revolve";
@@ -215,10 +215,10 @@ std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid
 // LoftFeature
 // ---------------------------------------------------------------------------
 
-int LoftFeature::s_nextID = 1;
+math::IdCounter<int> LoftFeature::s_nextID{1};
 
 LoftFeature::LoftFeature(std::vector<std::shared_ptr<Sketch>> sections)
-    : m_sections(std::move(sections)), m_featureID("loft_" + std::to_string(s_nextID++)) {}
+    : m_sections(std::move(sections)), m_featureID("loft_" + std::to_string(s_nextID.next())) {}
 
 std::string LoftFeature::name() const {
     return "Loft";
@@ -251,12 +251,12 @@ std::unique_ptr<topo::Solid> LoftFeature::execute(std::unique_ptr<topo::Solid> /
 // SweepFeature
 // ---------------------------------------------------------------------------
 
-int SweepFeature::s_nextID = 1;
+math::IdCounter<int> SweepFeature::s_nextID{1};
 
 SweepFeature::SweepFeature(std::shared_ptr<Sketch> profile, std::shared_ptr<Sketch> path)
     : m_profile(std::move(profile)),
       m_path(std::move(path)),
-      m_featureID("sweep_" + std::to_string(s_nextID++)) {}
+      m_featureID("sweep_" + std::to_string(s_nextID.next())) {}
 
 std::string SweepFeature::name() const {
     return "Sweep";
@@ -385,13 +385,13 @@ std::unique_ptr<topo::Solid> SweepFeature::execute(std::unique_ptr<topo::Solid> 
 // DraftFeature
 // ---------------------------------------------------------------------------
 
-int DraftFeature::s_nextID = 1;
+math::IdCounter<int> DraftFeature::s_nextID{1};
 
 DraftFeature::DraftFeature(const math::Vec3& pullDir, const math::Vec3& neutralPoint, double angle)
     : m_pullDir(pullDir),
       m_neutralPoint(neutralPoint),
       m_angle(angle),
-      m_featureID("draft_" + std::to_string(s_nextID++)) {}
+      m_featureID("draft_" + std::to_string(s_nextID.next())) {}
 
 std::string DraftFeature::name() const {
     return "Draft";
@@ -431,12 +431,12 @@ std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> 
 // ShellFeature
 // ---------------------------------------------------------------------------
 
-int ShellFeature::s_nextID = 1;
+math::IdCounter<int> ShellFeature::s_nextID{1};
 
 ShellFeature::ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds)
     : m_thickness(thickness),
       m_removedFaceIds(std::move(removedFaceIds)),
-      m_featureID("shell_" + std::to_string(s_nextID++)) {}
+      m_featureID("shell_" + std::to_string(s_nextID.next())) {}
 
 std::string ShellFeature::name() const {
     return "Shell";
@@ -476,12 +476,12 @@ std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> 
 // FilletFeature
 // ---------------------------------------------------------------------------
 
-int FilletFeature::s_nextID = 1;
+math::IdCounter<int> FilletFeature::s_nextID{1};
 
 FilletFeature::FilletFeature(std::vector<topo::TopologyID> edgeIds, double radius)
     : m_edgeIds(std::move(edgeIds)),
       m_radius(radius),
-      m_featureID("fillet_" + std::to_string(s_nextID++)) {}
+      m_featureID("fillet_" + std::to_string(s_nextID.next())) {}
 
 std::string FilletFeature::name() const {
     return "Fillet";
@@ -541,12 +541,12 @@ std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid>
 // ChamferFeature
 // ---------------------------------------------------------------------------
 
-int ChamferFeature::s_nextID = 1;
+math::IdCounter<int> ChamferFeature::s_nextID{1};
 
 ChamferFeature::ChamferFeature(std::vector<topo::TopologyID> edgeIds, double distance)
     : m_edgeIds(std::move(edgeIds)),
       m_distance(distance),
-      m_featureID("chamfer_" + std::to_string(s_nextID++)) {}
+      m_featureID("chamfer_" + std::to_string(s_nextID.next())) {}
 
 std::string ChamferFeature::name() const {
     return "Chamfer";
@@ -589,10 +589,10 @@ std::unique_ptr<topo::Solid> ChamferFeature::execute(std::unique_ptr<topo::Solid
 // BooleanFeature
 // ---------------------------------------------------------------------------
 
-int BooleanFeature::s_nextID = 1;
+math::IdCounter<int> BooleanFeature::s_nextID{1};
 
 BooleanFeature::BooleanFeature(model::BooleanType type)
-    : m_type(type), m_featureID("boolean_" + std::to_string(s_nextID++)) {}
+    : m_type(type), m_featureID("boolean_" + std::to_string(s_nextID.next())) {}
 
 std::string BooleanFeature::name() const {
     switch (m_type) {
@@ -681,7 +681,7 @@ std::vector<std::unique_ptr<topo::Solid>> BooleanFeature::executeMulti(
 // PatternFeature
 // ---------------------------------------------------------------------------
 
-int PatternFeature::s_nextID = 1;
+math::IdCounter<int> PatternFeature::s_nextID{1};
 
 std::unique_ptr<PatternFeature> PatternFeature::makeLinear(const math::Vec3& direction,
                                                            double spacing, int count,
@@ -692,7 +692,7 @@ std::unique_ptr<PatternFeature> PatternFeature::makeLinear(const math::Vec3& dir
     f->m_scalar = spacing;
     f->m_count = std::clamp(count, 1, kMaxPatternCount);
     f->m_suppressed = std::move(suppressed);
-    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -707,7 +707,7 @@ std::unique_ptr<PatternFeature> PatternFeature::makeCircular(const math::Vec3& a
     f->m_scalar = angleStepRad;
     f->m_count = std::clamp(count, 1, kMaxPatternCount);
     f->m_suppressed = std::move(suppressed);
-    f->m_featureID = "pattern_" + std::to_string(s_nextID++);
+    f->m_featureID = "pattern_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -753,7 +753,7 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
 // PrimitiveFeature
 // ---------------------------------------------------------------------------
 
-int PrimitiveFeature::s_nextID = 1;
+math::IdCounter<int> PrimitiveFeature::s_nextID{1};
 
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double height,
                                                             double depth) {
@@ -762,7 +762,7 @@ std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double
     f->m_p0 = width;
     f->m_p1 = height;
     f->m_p2 = depth;
-    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    f->m_featureID = "primitive_" + std::to_string(s_nextID.next());
     return f;
 }
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCylinder(double radius, double height) {
@@ -770,14 +770,14 @@ std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCylinder(double radius, 
     f->m_kind = Kind::Cylinder;
     f->m_p0 = radius;
     f->m_p1 = height;
-    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    f->m_featureID = "primitive_" + std::to_string(s_nextID.next());
     return f;
 }
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeSphere(double radius) {
     std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
     f->m_kind = Kind::Sphere;
     f->m_p0 = radius;
-    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    f->m_featureID = "primitive_" + std::to_string(s_nextID.next());
     return f;
 }
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCone(double bottomRadius, double topRadius,
@@ -787,7 +787,7 @@ std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeCone(double bottomRadius
     f->m_p0 = bottomRadius;
     f->m_p1 = topRadius;
     f->m_p2 = height;
-    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    f->m_featureID = "primitive_" + std::to_string(s_nextID.next());
     return f;
 }
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeTorus(double majorRadius,
@@ -796,7 +796,7 @@ std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeTorus(double majorRadius
     f->m_kind = Kind::Torus;
     f->m_p0 = majorRadius;
     f->m_p1 = minorRadius;
-    f->m_featureID = "primitive_" + std::to_string(s_nextID++);
+    f->m_featureID = "primitive_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -930,7 +930,7 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
     return solid;
 }
 
-int DatumFeature::s_nextID = 1;
+math::IdCounter<int> DatumFeature::s_nextID{1};
 
 std::unique_ptr<DatumFeature> DatumFeature::makePlane(const model::DatumPlane& plane) {
     std::unique_ptr<DatumFeature> f(new DatumFeature());
@@ -938,7 +938,7 @@ std::unique_ptr<DatumFeature> DatumFeature::makePlane(const model::DatumPlane& p
     f->m_origin = plane.origin;
     f->m_dirA = plane.normal;
     f->m_dirB = plane.xAxis;
-    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    f->m_featureID = "datum_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -947,7 +947,7 @@ std::unique_ptr<DatumFeature> DatumFeature::makeAxis(const model::DatumAxis& axi
     f->m_kind = DatumKind::Axis;
     f->m_origin = axis.origin;
     f->m_dirA = axis.direction;
-    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    f->m_featureID = "datum_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -955,7 +955,7 @@ std::unique_ptr<DatumFeature> DatumFeature::makePoint(const model::DatumPoint& p
     std::unique_ptr<DatumFeature> f(new DatumFeature());
     f->m_kind = DatumKind::Point;
     f->m_origin = point.position;
-    f->m_featureID = "datum_" + std::to_string(s_nextID++);
+    f->m_featureID = "datum_" + std::to_string(s_nextID.next());
     return f;
 }
 
@@ -1005,13 +1005,13 @@ std::unique_ptr<topo::Solid> DatumFeature::execute(std::unique_ptr<topo::Solid> 
 // ImportedBodyFeature
 // ---------------------------------------------------------------------------
 
-int ImportedBodyFeature::s_nextID = 1;
+math::IdCounter<int> ImportedBodyFeature::s_nextID{1};
 
 ImportedBodyFeature::ImportedBodyFeature(std::shared_ptr<const topo::Solid> solid,
                                          std::string source)
     : m_solid(std::move(solid)),
       m_source(std::move(source)),
-      m_featureID("imported_" + std::to_string(s_nextID++)) {}
+      m_featureID("imported_" + std::to_string(s_nextID.next())) {}
 
 void ImportedBodyFeature::restoreFeatureID(const std::string& id) {
     m_featureID = id;

@@ -8,6 +8,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/drafting/SpatialIndex.h"
+#include "horizon/math/IdCounter.h"
 
 // Forward-declare ConstraintSystem to allow Sketch.h to be included in contexts
 // that don't necessarily link Horizon::Constraint. The full header is in Sketch.cpp.
@@ -66,7 +67,7 @@ private:
     std::unique_ptr<cstr::ConstraintSystem> m_constraints;
     draft::SpatialIndex m_spatialIndex;
 
-    static uint64_t s_nextId;
+    static math::IdCounter<uint64_t> s_nextId;
 };
 
 }  // namespace hz::doc

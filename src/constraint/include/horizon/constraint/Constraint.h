@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec2.h"
 
 namespace hz::cstr {
@@ -38,9 +39,7 @@ public:
     void setId(uint64_t newId) { m_id = newId; }
 
     /// Ensure the next auto-generated ID is greater than the given value.
-    static void advanceIdCounter(uint64_t minId) {
-        if (s_nextId <= minId) s_nextId = minId + 1;
-    }
+    static void advanceIdCounter(uint64_t minId) { s_nextId.reserveThrough(minId); }
 
     virtual ConstraintType type() const = 0;
     virtual std::string typeName() const = 0;
@@ -77,7 +76,7 @@ public:
 private:
     uint64_t m_id;
     std::string m_variableName;
-    static uint64_t s_nextId;
+    static math::IdCounter<uint64_t> s_nextId;
 };
 
 // ---------------------------------------------------------------------------
