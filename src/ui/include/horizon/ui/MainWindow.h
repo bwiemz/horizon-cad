@@ -12,6 +12,7 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/Preferences.h"
 
 class QCloseEvent;
 class QTimer;
@@ -55,6 +56,10 @@ public:
     /// Open each of @p fileNames, as from the command line.
     void openFiles(const QStringList& fileNames);
 
+    /// Put @p prefs into effect: the autosave interval, the grid snap and the
+    /// snap reach. The display unit is read where lengths are shown.
+    void applyPreferences(const Preferences& prefs);
+
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
     /// its last one, and drop the snapshots of documents no longer modified.
@@ -76,6 +81,8 @@ private slots:
     void onNewPart();
     void onNewAssembly();
     void onOpenFile();
+    void onPreferences();
+    void onAbout();
     void onSaveFile();
     void onSaveFileAs();
     void onImportStep();

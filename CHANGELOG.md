@@ -9,6 +9,26 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
+## Unreleased — Production readiness, Milestone 4 (Phases 111–114)
+
+- **Ten common shortcuts did nothing (111).** Ctrl+Z, Ctrl+Y, Ctrl+S,
+  Ctrl+O, Ctrl+N, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+G and Ctrl+Shift+G were each
+  bound twice, once to the menu and once to the ribbon, which Qt treats as
+  ambiguous and ignores. Each is now one action, and a test checks every
+  shortcut in the window.
+- **The application forgot everything between sessions (111):**
+  - File ▸ Open Recent lists the ten newest files;
+  - the window's size and dock layout are kept;
+  - Edit ▸ Preferences sets:
+    - the autosave interval;
+    - the language;
+    - the grid snap spacing;
+    - the snap reach;
+    - the unit coordinates and measurements are shown in.
+  - Help ▸ About shows the version, revision and build.
+  - `horizon file...` opens files from the command line.
+  - View reaches every dock.
+
 ## Unreleased — Production readiness, Milestone 3 (Phases 107–110)
 
 - **2D snapping and picking depended on zoom, and ignored hidden layers (110).**

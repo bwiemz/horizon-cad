@@ -145,7 +145,7 @@ double ViewportWidget::pixelToWorldScale() const {
 
 draft::SnapResult ViewportWidget::snap(const math::Vec2& worldPos) {
     if (m_document == nullptr) return {worldPos, draft::SnapType::None};
-    m_snapEngine.setSnapTolerance(kSnapPixels * pixelToWorldScale());
+    m_snapEngine.setSnapTolerance(m_snapPixels * pixelToWorldScale());
     const auto& layers = m_document->layerManager();
     const auto& drawing = m_document->draftDocument();
     return m_snapEngine.snap(worldPos, drawing.spatialIndex(), drawing.entities(),

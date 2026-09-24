@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "horizon/document/Document.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -104,13 +105,14 @@ void MeasureAreaTool::finishMeasure() {
         perimeter += m_points[i].distanceTo(m_points[j]);
     }
 
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(4) << "Area: " << area << "  Perimeter: " << perimeter;
+    const Preferences& prefs = Preferences::current();
+    const QString message = QObject::tr("Area: %1  Perimeter: %2")
+                                .arg(prefs.formatArea(area), prefs.formatLength(perimeter));
 
     if (m_viewport) {
         auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());
         if (mainWin && mainWin->statusBar()) {
-            mainWin->statusBar()->showMessage(QString::fromStdString(oss.str()), 10000);
+            mainWin->statusBar()->showMessage(message, 10000);
         }
     }
 

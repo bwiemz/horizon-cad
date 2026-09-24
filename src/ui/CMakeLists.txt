@@ -58,10 +58,14 @@ add_library(hz_ui STATIC
     include/horizon/ui/LocaleManager.h
     include/horizon/ui/CommandPalette.h
     include/horizon/ui/RecentFiles.h
+    include/horizon/ui/Preferences.h
+    include/horizon/ui/PreferencesDialog.h
     src/Application.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
     src/RecentFiles.cpp
+    src/Preferences.cpp
+    src/PreferencesDialog.cpp
     src/MainWindow.cpp
     src/FeatureForm.cpp
     src/LocaleManager.cpp
@@ -137,6 +141,12 @@ target_link_libraries(hz_ui
         Qt6::Widgets
         Qt6::OpenGLWidgets
         spdlog::spdlog
+)
+
+# Help > About: the revision and build type the library was built from.
+target_compile_definitions(hz_ui PRIVATE
+    HZ_GIT_REVISION="${HZ_GIT_REVISION}"
+    HZ_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>"
 )
 
 add_library(Horizon::UI ALIAS hz_ui)

@@ -3,15 +3,22 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QApplication>
+#include <QComboBox>
+#include <QDialog>
 #include <QDockWidget>
+#include <QDoubleSpinBox>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSpinBox>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <map>
 #include <memory>
 #include <string>
@@ -22,10 +29,13 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/RecentFiles.h"
+#include "horizon/ui/ViewportWidget.h"
 
 using hz::test::DialogResponder;
 using hz::ui::MainWindow;
+using hz::ui::Preferences;
 using hz::ui::RecentFiles;
 
 namespace {
@@ -168,4 +178,79 @@ TEST(AppEssentialsTest, TheWindowLayoutIsKeptForTheNextSession) {
         EXPECT_TRUE(tree->isHidden()) << "hidden as it was left";
     }
     QSettings().remove(QStringLiteral("window"));
+}
+
+TEST(AppEssentialsTest, PreferencesAreKeptAndPutIntoEffect) {
+    MainWindow w;
+    // Answer the dialog when it opens: a 5 mm grid, a 20 px snap, inches to
+    // two places, and autosave off.
+    bool answered = false;
+    QTimer poll;
+    QElapsedTimer clock;
+    clock.start();
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr || dialog->objectName() != QStringLiteral("preferencesDialog")) {
+            if (clock.elapsed() > 5000) poll.stop();
+            return;
+        }
+        poll.stop();
+        dialog->findChild<QSpinBox*>(QStringLiteral("autosaveMinutes"))->setValue(0);
+        dialog->findChild<QDoubleSpinBox*>(QStringLiteral("gridSpacing"))->setValue(5.0);
+        dialog->findChild<QSpinBox*>(QStringLiteral("snapPixels"))->setValue(20);
+        auto* unit = dialog->findChild<QComboBox*>(QStringLiteral("lengthUnit"));
+        unit->setCurrentIndex(unit->findData(QStringLiteral("in")));
+        dialog->findChild<QSpinBox*>(QStringLiteral("decimals"))->setValue(2);
+        answered = true;
+        dialog->accept();
+    });
+    poll.start(5);
+    w.findChild<QAction*>(QStringLiteral("action_preferences"))->trigger();
+    ASSERT_TRUE(answered);
+
+    const Preferences saved = Preferences::load();
+    EXPECT_DOUBLE_EQ(saved.gridSpacing, 5.0);
+    EXPECT_EQ(saved.snapPixels, 20);
+    EXPECT_EQ(saved.lengthUnit, QStringLiteral("in"));
+    EXPECT_EQ(Preferences::current().decimals, 2);
+
+    auto* viewport = w.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(viewport, nullptr);
+    EXPECT_DOUBLE_EQ(viewport->snapEngine().gridSpacing(), 5.0);
+    EXPECT_DOUBLE_EQ(viewport->snapPixels(), 20.0);
+    EXPECT_FALSE(w.findChild<QTimer*>(QStringLiteral("autosaveTimer"))->isActive())
+        << "autosave is off";
+
+    Preferences{}.save();  // back to the defaults for the tests after this one
+}
+
+TEST(AppEssentialsTest, LengthsAreShownInTheDisplayUnit) {
+    Preferences p;
+    EXPECT_EQ(p.formatLength(12.5), QStringLiteral("12.500 mm"));
+    p.lengthUnit = QStringLiteral("in");
+    EXPECT_EQ(p.formatLength(25.4), QStringLiteral("1.000 in"));
+    EXPECT_EQ(p.formatArea(25.4 * 25.4 * 2), QStringLiteral("2.000 in\u00B2"));
+    p.lengthUnit = QStringLiteral("m");
+    p.decimals = 1;
+    EXPECT_EQ(p.formatLength(1500.0), QStringLiteral("1.5 m"));
+}
+
+TEST(AppEssentialsTest, FollowingTheSystemLanguageStoresNoLanguage) {
+    // main.cpp reads "ui/language" with the system locale as its default: a
+    // stored empty string would force the source language instead.
+    Preferences p;
+    p.language = QStringLiteral("de");
+    p.save();
+    EXPECT_EQ(QSettings().value(QStringLiteral("ui/language")).toString(), QStringLiteral("de"));
+    p.language.clear();
+    p.save();
+    EXPECT_FALSE(QSettings().contains(QStringLiteral("ui/language")));
+}
+
+TEST(AppEssentialsTest, AboutSaysWhatIsRunning) {
+    MainWindow w;
+    DialogResponder about(QMessageBox::Ok, QStringLiteral("About Horizon CAD"));
+    w.findChild<QAction*>(QStringLiteral("action_about"))->trigger();
+    ASSERT_TRUE(about.seen());
+    EXPECT_TRUE(about.text().contains(QStringLiteral("Horizon CAD"))) << about.text().toStdString();
 }

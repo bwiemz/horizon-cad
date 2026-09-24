@@ -5,10 +5,12 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -23,6 +25,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QSysInfo>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolBar>
@@ -75,6 +78,7 @@
 #include "horizon/ui/LeaderTool.h"
 #include "horizon/ui/LineTool.h"
 #include "horizon/ui/LinearDimensionTool.h"
+#include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/MeasureAngleTool.h"
 #include "horizon/ui/MeasureAreaTool.h"
 #include "horizon/ui/MeasureDistanceTool.h"
@@ -85,6 +89,7 @@
 #include "horizon/ui/PolarArrayDialog.h"
 #include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/PolylineTool.h"
+#include "horizon/ui/PreferencesDialog.h"
 #include "horizon/ui/PropertyPanel.h"
 #include "horizon/ui/RadialDimensionTool.h"
 #include "horizon/ui/RecentFiles.h"
@@ -227,11 +232,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_recovery = std::make_unique<RecoveryManager>(
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/recovery");
     m_autosaveTimer = new QTimer(this);
-    const int autosaveSeconds = QSettings().value("autosave/intervalSeconds", 120).toInt();
-    if (autosaveSeconds > 0) {
-        connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
-        m_autosaveTimer->start(autosaveSeconds * 1000);
-    }
+    m_autosaveTimer->setObjectName(QStringLiteral("autosaveTimer"));
+    connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
 
     // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
@@ -318,6 +320,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Start with the Select tool active.
     onSelectTool();
 
+    applyPreferences(Preferences::current());
     restoreWindowLayout();
 }
 
@@ -446,6 +449,13 @@ void MainWindow::createMenus() {
         editMenu->addAction(tr("U&ngroup"), this, &MainWindow::onUngroupEntities);
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
+    editMenu->addSeparator();
+    QAction* prefsAction =
+        editMenu->addAction(tr("Pre&ferences..."), this, &MainWindow::onPreferences);
+    prefsAction->setObjectName(QStringLiteral("action_preferences"));
+    prefsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    prefsAction->setMenuRole(QAction::PreferencesRole);
+
     // ---- View ----
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
 
@@ -526,6 +536,15 @@ void MainWindow::createMenus() {
     blockMenu->addAction(tr("&Insert Block..."), this, &MainWindow::onInsertBlock);
     blockMenu->addSeparator();
     blockMenu->addAction(tr("&Explode"), this, &MainWindow::onExplode);
+
+    // ---- Help ----
+    QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction* aboutAction =
+        helpMenu->addAction(tr("&About Horizon CAD"), this, &MainWindow::onAbout);
+    aboutAction->setObjectName(QStringLiteral("action_about"));
+    aboutAction->setMenuRole(QAction::AboutRole);
+    helpMenu->addAction(tr("About &Qt"), qApp, &QApplication::aboutQt)
+        ->setMenuRole(QAction::AboutQtRole);
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,6 +1174,52 @@ void MainWindow::onNewAssembly() {
     auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
     addDocumentTab(std::move(backing), std::move(assembly),
                    tr("Assembly %1").arg(m_tabs.size() + 1));
+}
+
+void MainWindow::applyPreferences(const Preferences& prefs) {
+    m_autosaveTimer->stop();
+    if (prefs.autosaveSeconds > 0) m_autosaveTimer->start(prefs.autosaveSeconds * 1000);
+    m_viewport->snapEngine().setGridSpacing(prefs.gridSpacing);
+    m_viewport->setSnapPixels(prefs.snapPixels);
+}
+
+void MainWindow::onPreferences() {
+    const QString translations = QDir(QApplication::applicationDirPath()).filePath("translations");
+    PreferencesDialog dialog(Preferences::current(), LocaleManager::availableLocales(translations),
+                             this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const Preferences prefs = dialog.preferences();
+    prefs.save();
+    applyPreferences(prefs);
+}
+
+void MainWindow::onAbout() {
+    const QString version = QCoreApplication::applicationVersion().isEmpty()
+                                ? tr("development build")
+                                : QCoreApplication::applicationVersion();
+#if defined(_MSC_VER)
+    const QString compiler = QStringLiteral("MSVC %1").arg(_MSC_VER);
+#elif defined(__clang__)
+    const QString compiler = QStringLiteral("Clang %1").arg(QStringLiteral(__clang_version__));
+#elif defined(__GNUC__)
+    const QString compiler = QStringLiteral("GCC %1").arg(QStringLiteral(__VERSION__));
+#else
+    const QString compiler = tr("an unknown compiler");
+#endif
+    QMessageBox box(this);
+    box.setObjectName(QStringLiteral("aboutDialog"));
+    box.setWindowTitle(tr("About Horizon CAD"));
+    box.setIconPixmap(windowIcon().pixmap(64, 64));
+    box.setText(tr("<h3>Horizon CAD %1</h3><p>2D drafting and 3D parametric modelling.</p>")
+                    .arg(version.toHtmlEscaped()));
+    box.setInformativeText(
+        tr("<p>Source revision %1, %2 build.<br>Built with %3 against Qt %4; running on Qt %5, "
+           "%6.</p><p>Licence: see the LICENSE file distributed with Horizon CAD.</p>")
+            .arg(QStringLiteral(HZ_GIT_REVISION), QStringLiteral(HZ_BUILD_TYPE),
+                 compiler.toHtmlEscaped(), QStringLiteral(QT_VERSION_STR), qVersion(),
+                 QSysInfo::prettyProductName().toHtmlEscaped()));
+    box.setStandardButtons(QMessageBox::Ok);
+    box.exec();
 }
 
 void MainWindow::onOpenFile() {
@@ -2547,8 +2612,9 @@ void MainWindow::onUngroupEntities() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
+    const Preferences& prefs = Preferences::current();
     m_statusCoords->setText(
-        QString("X: %1  Y: %2").arg(worldPos.x, 0, 'f', 3).arg(worldPos.y, 0, 'f', 3));
+        tr("X: %1  Y: %2").arg(prefs.formatLength(worldPos.x), prefs.formatLength(worldPos.y)));
 
     // Update tool prompt dynamically as mouse moves.
     if (m_viewport && m_viewport->activeTool()) {
