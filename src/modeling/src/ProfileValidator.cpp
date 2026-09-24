@@ -57,14 +57,26 @@ static const char* kindOf(const draft::DraftEntity& entity) {
 
 /// Rectangles and polylines as the line segments they are drawn with; every
 /// other entity as itself.
-static std::vector<std::shared_ptr<draft::DraftEntity>> asCurves(
-    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
+/// The curves a profile is made of, each with the name of where it came from:
+/// "e<id>" for a sketch entity used as it is, "e<id>.<k>" for side k of a
+/// rectangle or polyline (which is read as its line segments, made anew each
+/// time — so their own ids mean nothing, and the source's must be used).
+struct Curves {
     std::vector<std::shared_ptr<draft::DraftEntity>> curves;
-    curves.reserve(entities.size());
-    const auto addSegment = [&](const Vec2& a, const Vec2& b) {
-        curves.push_back(std::make_shared<draft::DraftLine>(a, b));
-    };
+    std::vector<std::string> sources;
+};
+
+static Curves asCurves(const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
+    Curves out;
+    out.curves.reserve(entities.size());
+    out.sources.reserve(entities.size());
     for (const auto& entity : entities) {
+        const std::string name = "e" + std::to_string(entity->id());
+        int side = 0;
+        const auto addSegment = [&](const Vec2& a, const Vec2& b) {
+            out.curves.push_back(std::make_shared<draft::DraftLine>(a, b));
+            out.sources.push_back(name + "." + std::to_string(side++));
+        };
         if (const auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
             const Vec2 c1 = rect->corner1();
             const Vec2 c2 = rect->corner2();
@@ -77,10 +89,11 @@ static std::vector<std::shared_ptr<draft::DraftEntity>> asCurves(
             for (size_t i = 0; i + 1 < pts.size(); ++i) addSegment(pts[i], pts[i + 1]);
             if (poly->closed() && pts.size() > 2) addSegment(pts.back(), pts.front());
         } else {
-            curves.push_back(entity);
+            out.curves.push_back(entity);
+            out.sources.push_back(name);
         }
     }
-    return curves;
+    return out;
 }
 
 static bool pointsMatch(const Vec2& a, const Vec2& b, double tolerance) {
@@ -176,7 +189,8 @@ static std::optional<Vec2> selfCrossing(const std::vector<Vec2>& loop, double to
 ProfileValidationResult ProfileValidator::validate(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& input, double tolerance) {
     ProfileValidationResult result;
-    const std::vector<std::shared_ptr<draft::DraftEntity>> entities = asCurves(input);
+    const Curves curves = asCurves(input);
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities = curves.curves;
 
     if (entities.empty()) {
         result.errorMessage = "the profile is empty";
@@ -188,6 +202,7 @@ ProfileValidationResult ProfileValidator::validate(
         if (dynamic_cast<draft::DraftCircle*>(entities[0].get()) != nullptr) {
             result.isClosed = true;
             result.orderedEdges = entities;
+            result.edgeSources = curves.sources;
             return result;
         }
     }
@@ -214,6 +229,7 @@ ProfileValidationResult ProfileValidator::validate(
     EndpointPair firstEP = getEndpoints(entities[0]);
 
     result.orderedEdges.push_back(entities[0]);
+    result.edgeSources.push_back(curves.sources[0]);
     used[0] = true;
 
     Vec2 chainStart = firstEP.start;
@@ -230,6 +246,7 @@ ProfileValidationResult ProfileValidator::validate(
             if (pointsMatch(chainEnd, ep.start, tolerance)) {
                 // Append: entity goes start→end.
                 result.orderedEdges.push_back(entities[i]);
+                result.edgeSources.push_back(curves.sources[i]);
                 used[i] = true;
                 chainEnd = ep.end;
                 found = true;
@@ -238,6 +255,7 @@ ProfileValidationResult ProfileValidator::validate(
             if (pointsMatch(chainEnd, ep.end, tolerance)) {
                 // Append reversed: entity goes end→start.
                 result.orderedEdges.push_back(entities[i]);
+                result.edgeSources.push_back(curves.sources[i]);
                 used[i] = true;
                 chainEnd = ep.start;
                 found = true;

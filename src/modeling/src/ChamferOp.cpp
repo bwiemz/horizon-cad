@@ -21,13 +21,15 @@ using hz::math::Vec3;
 // Helpers (same as FilletOp — duplicated to keep each op self-contained)
 // ---------------------------------------------------------------------------
 
-static const Edge* findEdge(const Solid& solid, const TopologyID& id) {
+/// The edges a reference names: the edge itself, or — once an operation has
+/// split it into pieces — every piece (its descendants).
+static std::vector<const Edge*> findEdges(const Solid& solid, const TopologyID& id) {
+    std::vector<const Edge*> pieces;
     for (const auto& e : solid.edges()) {
-        if (e.topoId == id) {
-            return &e;
-        }
+        if (e.topoId == id) return {&e};
+        if (e.topoId.isDescendantOf(id)) pieces.push_back(&e);
     }
-    return nullptr;
+    return pieces;
 }
 
 static Vec3 faceNormal(const Face* face) {
@@ -263,12 +265,22 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
     std::vector<ChamferEdgeInfo> chamferEdges;
     chamferEdges.reserve(edgeIds.size());
 
+    std::vector<std::pair<const Edge*, const TopologyID*>> chosen;
     for (const auto& eid : edgeIds) {
-        const Edge* edge = findEdge(inputSolid, eid);
-        if (!edge) {
+        const auto edges = findEdges(inputSolid, eid);
+        if (edges.empty()) {
             result.errorMessage = "Edge not found: " + eid.tag();
             return result;
         }
+        for (const Edge* edge : edges) {
+            // Once each, however many references reach it.
+            const bool listed = std::any_of(chosen.begin(), chosen.end(),
+                                            [edge](const auto& c) { return c.first == edge; });
+            if (!listed) chosen.emplace_back(edge, &eid);
+        }
+    }
+    for (const auto& [edge, idPtr] : chosen) {
+        const TopologyID& eid = *idPtr;
         ChamferEdgeInfo info;
         if (!computeChamferGeometry(edge, distA, distB, info)) {
             result.errorMessage = "Cannot compute chamfer geometry for edge: " + eid.tag();

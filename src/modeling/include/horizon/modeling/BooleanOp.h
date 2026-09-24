@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -43,11 +44,16 @@ class BooleanOp {
 public:
     /// Execute a Boolean operation on two solids.
     /// @param reason  When given, receives why there is no result.
+    /// @param naming  `FromGeometry` names each piece of a split face and
+    ///                every edge after its faces (see Naming.h); `Positional`
+    ///                keeps the sewer's numbering, which references in files
+    ///                saved before persistent naming were made against.
     /// @return The result solid, or nullptr when the result is empty
     ///         (e.g. disjoint Intersect, A−A) or the inputs degenerate.
     static std::unique_ptr<topo::Solid> execute(const topo::Solid& solidA,
                                                 const topo::Solid& solidB, BooleanType type,
-                                                std::string* reason = nullptr);
+                                                std::string* reason = nullptr,
+                                                NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model

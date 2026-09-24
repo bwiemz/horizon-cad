@@ -12,6 +12,7 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SolidSewer.h"
 
 namespace hz::model {
@@ -119,7 +120,7 @@ std::unique_ptr<topo::Solid> sewChecked(const std::vector<SolidSewer::InputFace>
 
 std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
                                                 const topo::Solid& solidB, BooleanType type,
-                                                std::string* reason) {
+                                                std::string* reason, NamingScheme naming) {
     const auto fail = [reason](const char* why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = why;
         return nullptr;
@@ -129,6 +130,13 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     const auto sewn = [&](std::unique_ptr<topo::Solid> result) {
         if (!result) return fail("the result could not be joined into a valid solid");
         inheritEdgeIdeals(*result, solidA, solidB);
+        // Names that last: a face the operation split gets a name per piece,
+        // and an edge is named after the faces it separates — not numbered in
+        // sewing order, which any change to either operand reshuffles.
+        if (naming == NamingScheme::FromGeometry) {
+            nameFacePieces(*result);
+            nameEdgesByFaces(*result);
+        }
         return result;
     };
 

@@ -4,6 +4,7 @@ add_executable(hz_integration_tests
     test_AssemblyMates.cpp
     test_Era2Memory.cpp
     test_Era3Pipeline.cpp
+    test_PersistentNaming.cpp
 )
 
 target_link_libraries(hz_integration_tests

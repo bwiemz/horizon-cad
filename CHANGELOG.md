@@ -9,7 +9,32 @@ implementation was built instead to keep CI lean and the code testable
 headless. Those deviations (STEPcode/OCCT, Embree, OpenCAMLib) are documented
 in [the era findings note](docs/superpowers/notes/2026-07-03-era2-roadmap-findings.md).
 
-## Unreleased — Production readiness, Milestone 2 (Phases 102–105)
+## Unreleased — Production readiness, Milestone 2 (Phases 102–106)
+
+- **An edit to a sketch could move a fillet to a different edge (106).** An
+  extrusion numbered its side faces in profile order and its edges in storage
+  order, and a fillet stores the name of the edge it rounds. Adding a vertex
+  anywhere in the sketch renumbered the edges, so the fillet silently rounded
+  whichever edge now had its old number.
+
+  New extrusions name their side faces after the sketch entities they come
+  from (a line, a side of a rectangle, a facet of an arc) and their edges
+  after the two faces they separate. An edit elsewhere in the sketch leaves
+  those names alone.
+
+  Boolean results follow the same rule:
+  - A face a Boolean splits gets a name for each piece; pieces used to share
+    one name.
+  - Fillet, Chamfer, Shell and mates that refer to the whole face or edge find
+    its pieces.
+
+  Files saved before this keep the old names for every feature and every
+  Boolean result, since their references were made against those names. The
+  format moves to version 18, so older builds refuse the new files.
+
+  **Not fixed yet:** the Boolean splits faces the cut never reaches and
+  leaves the fragments separate, so an unrelated Boolean can still rename an
+  edge beside them. Merging those fragments is the next step (106b).
 
 - **Parts with a hole through them failed validation (105).** The
   Euler–Poincaré check read `V − E + F = 2(S − R)`: the face-hole count was on

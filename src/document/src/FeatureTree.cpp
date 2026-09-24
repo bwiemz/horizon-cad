@@ -142,7 +142,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
     return model::Extrude::execute(m_sketch->entities(), m_sketch->plane(), m_direction, m_distance,
-                                   m_featureID, m_segments, m_chordTolerance, reason);
+                                   m_featureID, m_segments, m_chordTolerance, reason, naming());
 }
 
 // ---------------------------------------------------------------------------
@@ -642,7 +642,7 @@ std::unique_ptr<topo::Solid> BooleanFeature::execute(std::unique_ptr<topo::Solid
     auto result = std::move(bodies[0]);
     for (size_t i = 1; i < bodies.size(); ++i) {
         std::string why;
-        auto combined = model::BooleanOp::execute(*result, *bodies[i], m_type, &why);
+        auto combined = model::BooleanOp::execute(*result, *bodies[i], m_type, &why, naming());
         if (!combined) {
             return failWith(reason, "combining body " + std::to_string(i + 1) + " failed: " + why);
         }
@@ -1142,7 +1142,8 @@ std::vector<std::unique_ptr<topo::Solid>> executeMultiContained(
 /// operation cannot be carried out — never an empty part passed off as a
 /// result.
 std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<topo::Solid> part,
-                                     std::unique_ptr<topo::Solid> tool, std::string* reason) {
+                                     std::unique_ptr<topo::Solid> tool, std::string* reason,
+                                     model::NamingScheme naming) {
     const auto fail = [reason](const char* why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = why;
         return nullptr;
@@ -1162,7 +1163,7 @@ std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<to
     std::unique_ptr<topo::Solid> result;
     std::string booleanReason;
     try {
-        result = model::BooleanOp::execute(*part, *tool, type, &booleanReason);
+        result = model::BooleanOp::execute(*part, *tool, type, &booleanReason, naming);
     } catch (const std::exception& e) {
         if (reason) *reason = std::string("the Boolean failed: ") + e.what();
         return nullptr;
@@ -1185,7 +1186,7 @@ std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_pt
     if (!feature.createsNewBody()) return executeContained(feature, std::move(part), reason);
     auto tool = executeContained(feature, nullptr, reason);
     if (!tool) return nullptr;
-    return combine(feature.operation(), std::move(part), std::move(tool), reason);
+    return combine(feature.operation(), std::move(part), std::move(tool), reason, feature.naming());
 }
 
 }  // namespace
@@ -1241,8 +1242,8 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
             // Join / Cut / Intersect the active body, as the product path does.
             auto tool = executeContained(*feat, nullptr);
             if (!tool) continue;
-            auto combined =
-                combine(feat->operation(), std::move(bodies.back()), std::move(tool), nullptr);
+            auto combined = combine(feat->operation(), std::move(bodies.back()), std::move(tool),
+                                    nullptr, feat->naming());
             bodies.pop_back();
             if (combined) bodies.push_back(std::move(combined));
         } else if (feat->createsNewBody() || bodies.empty()) {
