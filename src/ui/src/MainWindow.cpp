@@ -40,6 +40,8 @@
 #include <optional>
 #include <utility>
 
+#include "horizon/Revision.h"
+#include "horizon/Version.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
@@ -1234,9 +1236,7 @@ void MainWindow::onPreferences() {
 }
 
 void MainWindow::onAbout() {
-    const QString version = QCoreApplication::applicationVersion().isEmpty()
-                                ? tr("development build")
-                                : QCoreApplication::applicationVersion();
+    const QString version = QString::fromLatin1(hz::version::kString);
 #if defined(_MSC_VER)
     const QString compiler = QStringLiteral("MSVC %1").arg(_MSC_VER);
 #elif defined(__clang__)
@@ -1254,8 +1254,13 @@ void MainWindow::onAbout() {
                     .arg(version.toHtmlEscaped()));
     box.setInformativeText(
         tr("<p>Source revision %1, %2 build.<br>Built with %3 against Qt %4; running on Qt %5, "
-           "%6.</p><p>Licence: see the LICENSE file distributed with Horizon CAD.</p>")
-            .arg(QStringLiteral(HZ_GIT_REVISION), QStringLiteral(HZ_BUILD_TYPE),
+           "%6.</p>"
+           "<p>Copyright &copy; 2026 the Horizon CAD contributors.</p>"
+           "<p>Horizon CAD is free software: you can redistribute it and/or modify it under the "
+           "terms of the GNU General Public License, version 3 or (at your option) any later "
+           "version. It comes with ABSOLUTELY NO WARRANTY. The full licence is in the LICENSE "
+           "file distributed with Horizon CAD.</p>")
+            .arg(QString::fromLatin1(hz::version::kRevision), QStringLiteral(HZ_BUILD_TYPE),
                  compiler.toHtmlEscaped(), QStringLiteral(QT_VERSION_STR), qVersion(),
                  QSysInfo::prettyProductName().toHtmlEscaped()));
     box.setStandardButtons(QMessageBox::Ok);

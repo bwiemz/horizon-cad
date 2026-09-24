@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}${{ matrix.config && format(', {0}', matrix.config) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,27 +28,42 @@ jobs:
             preset: linux-debug
             triplet: x64-linux
             werror: 'ON'
+          # Release: the optimiser finds warnings (-Warray-bounds and the
+          # like) and behaviour a Debug build never shows.
+          - os: ubuntu-22.04
+            preset: linux-release
+            triplet: x64-linux
+            werror: 'ON'
+            config: Release
 
     env:
       VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Export GitHub Actions cache variables
-        uses: actions/github-script@v7
+      # vcpkg's built packages, kept between runs. The x-gha backend used
+      # before restored nothing (GitHub retired the cache API it relied on),
+      # and its setting reached only this step, not the configure step where
+      # vcpkg actually installs, so Qt was rebuilt from source in every job.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ matrix.triplet }}-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
       - name: Set up MSVC environment
         if: runner.os == 'Windows'
@@ -116,16 +131,17 @@ jobs:
         run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON
 
       - name: Build
-        run: cmake --build build/${{ matrix.preset }} --config Debug
+        run: cmake --build build/${{ matrix.preset }} --config ${{ matrix.config || 'Debug' }}
 
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} -C Debug --output-on-failure
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure
 
   asan:
     name: AddressSanitizer
     runs-on: ubuntu-22.04
     env:
       VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
       # UBSan is built non-recoverable (see cmake/Sanitizers.cmake); print the
       # stack so a failure names its source.
       UBSAN_OPTIONS: print_stacktrace=1
@@ -146,19 +162,26 @@ jobs:
           sudo docker image prune --all --force || true
           df -h /
 
-      - name: Export GitHub Actions cache variables
-        uses: actions/github-script@v7
+      # vcpkg's built packages, kept between runs. The x-gha backend used
+      # before restored nothing (GitHub retired the cache API it relied on),
+      # and its setting reached only this step, not the configure step where
+      # vcpkg actually installs, so Qt was rebuilt from source in every job.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
       - name: Install Linux dependencies
         run: |
@@ -236,23 +259,33 @@ jobs:
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-22.04
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Export GitHub Actions cache variables
-        uses: actions/github-script@v7
+      # vcpkg's built packages, kept between runs. The x-gha backend used
+      # before restored nothing (GitHub retired the cache API it relied on),
+      # and its setting reached only this step, not the configure step where
+      # vcpkg actually installs, so Qt was rebuilt from source in every job.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
       - name: Install dependencies
         run: |

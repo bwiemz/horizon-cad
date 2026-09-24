@@ -1,0 +1,31 @@
+# CPack installer settings, included before include(CPack) (see the top-level
+# CMakeLists.txt). Not named CPack.cmake: that shadows CMake's own module.
+set(CPACK_PACKAGE_NAME "HorizonCAD")
+set(CPACK_PACKAGE_VENDOR "Horizon CAD Project")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Open-source parametric 2D/3D CAD")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "HorizonCAD")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+
+if(WIN32)
+    # An NSIS installer, with a desktop shortcut.
+    set(CPACK_GENERATOR "NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "Horizon CAD ${PROJECT_VERSION}")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.ico")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.ico")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\horizon.exe")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA
+        "CreateShortCut '$DESKTOP\\\\Horizon CAD.lnk' '$INSTDIR\\\\bin\\\\horizon.exe'"
+    )
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA
+        "Delete '$DESKTOP\\\\Horizon CAD.lnk'"
+    )
+else()
+    # NSIS exists only on Windows. Elsewhere a tarball of the install tree;
+    # the AppImage is made from the same tree by packaging/linux.
+    set(CPACK_GENERATOR "TGZ")
+endif()

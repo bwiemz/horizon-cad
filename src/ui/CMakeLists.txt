@@ -146,9 +146,10 @@ target_link_libraries(hz_ui
         spdlog::spdlog
 )
 
-# Help > About: the revision and build type the library was built from.
+# Help > About: the version and revision (Horizon::Version) and the build type
+# the library was built from.
+target_link_libraries(hz_ui PRIVATE Horizon::Version)
 target_compile_definitions(hz_ui PRIVATE
-    HZ_GIT_REVISION="${HZ_GIT_REVISION}"
     HZ_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>"
 )
 

@@ -25,6 +25,8 @@
 #include <vector>
 
 #include "UiTestSupport.h"
+#include "horizon/Revision.h"
+#include "horizon/Version.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
@@ -259,4 +261,22 @@ TEST(AppEssentialsTest, AboutSaysWhatIsRunning) {
     w.findChild<QAction*>(QStringLiteral("action_about"))->trigger();
     ASSERT_TRUE(about.seen());
     EXPECT_TRUE(about.text().contains(QStringLiteral("Horizon CAD"))) << about.text().toStdString();
+    EXPECT_TRUE(about.text().contains(QString::fromLatin1(hz::version::kString)))
+        << "the version from project(): " << about.text().toStdString();
+    // The GPL's "Appropriate Legal Notices" for an interactive program: the
+    // licence, that there is no warranty, and where its text is.
+    const QString notices = about.informativeText();
+    EXPECT_TRUE(notices.contains(QStringLiteral("GNU General Public License, version 3")))
+        << notices.toStdString();
+    EXPECT_TRUE(notices.contains(QStringLiteral("NO WARRANTY"))) << notices.toStdString();
+    EXPECT_TRUE(notices.contains(QStringLiteral("LICENSE"))) << notices.toStdString();
+}
+
+TEST(AppEssentialsTest, TheVersionIsOneNumberEverywhere) {
+    // Phase 115: project() is the only place the version is set. The
+    // generated header spells out its parts and the whole the same way.
+    EXPECT_EQ(std::string(hz::version::kString), std::to_string(hz::version::kMajor) + "." +
+                                                     std::to_string(hz::version::kMinor) + "." +
+                                                     std::to_string(hz::version::kPatch));
+    EXPECT_STRNE(hz::version::kRevision, "") << "a revision, or \"unknown\" outside git";
 }

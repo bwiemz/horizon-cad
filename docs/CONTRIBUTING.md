@@ -33,20 +33,13 @@ math  -->  geometry  -->  drafting  -->  constraint  -->  document
 
 ### Windows (MSVC 2022 + vcpkg)
 
+From a Developer Command Prompt (or with `VCPKG_ROOT` set), using the CMake
+that ships with Visual Studio:
+
 ```bash
-# Use the VS2022-bundled cmake (NOT pip's cmake):
-CMAKE="C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
-
-# Configure
-"$CMAKE" --preset debug
-
-# Build
-"$CMAKE" --build build/debug --config Debug
-
-# Run tests
+cmake --preset debug
+cmake --build build/debug --config Debug
 ctest --test-dir build/debug -C Debug --output-on-failure
-
-# Run application
 build/debug/src/app/Debug/horizon.exe
 ```
 
@@ -58,6 +51,9 @@ cmake --build build/linux-debug
 ctest --test-dir build/linux-debug --output-on-failure
 ./build/linux-debug/src/app/horizon
 ```
+
+`linux-system-qt` builds against an installed Qt 6 instead of building Qt
+with vcpkg, which is much faster the first time.
 
 ---
 
@@ -92,12 +88,25 @@ ctest --test-dir build/linux-debug --output-on-failure
 
 Tools live in `src/ui/` and inherit from the `Tool` base class.
 
-1. **Inherit from `Tool`** and implement the state machine:
-   - `mousePressEvent(pos, button)` -- handle click
-   - `mouseMoveEvent(pos)` -- handle cursor movement
-   - `mouseReleaseEvent(pos, button)` -- handle release (optional)
-   - `keyPressEvent(key)` -- handle keyboard input (optional)
-   - `cancel()` -- reset state
+1. **Inherit from `Tool`** and implement the state machine. Each handler
+   gets the Qt event and the cursor's world position, and returns whether it
+   used the event:
+   - `mousePressEvent(QMouseEvent*, const math::Vec2& worldPos)`
+   - `mouseMoveEvent(QMouseEvent*, const math::Vec2& worldPos)`
+   - `mouseReleaseEvent(QMouseEvent*, const math::Vec2& worldPos)`
+   - `keyPressEvent(QKeyEvent*)` (optional)
+   - `cancel()`, to reset the state
+
+   **Snap and pick through the viewport**, never with a tolerance of your
+   own:
+   - `m_viewport->snap(worldPos)` snaps within a fixed distance on screen,
+     and never to hidden or locked layers;
+   - `m_viewport->pickTolerance()` is the pick distance in world units at
+     the current zoom.
+
+   A piece made from an entity, as Trim, Break or Extend make, takes its
+   style with `piece->copyStyleFrom(*original)`: layer, colour, width, line
+   type and group.
 
 2. **Provide rubber-band previews**:
    - Override `getPreviewLines()` and/or `getPreviewCircles()` to return
@@ -124,8 +133,10 @@ Tools live in `src/ui/` and inherit from the `Tool` base class.
 Constraints live in `src/constraint/` under the `hz::cstr` namespace.
 
 1. **Inherit from `Constraint`** and implement:
-   - `evaluate(table)` -- return residual vector
-   - `jacobian(table)` -- return partial derivatives
+   - `evaluate(params, residuals, offset)` -- write the residuals into
+     `residuals`, starting at row `offset`
+   - `jacobian(params, jacobian, offset)` -- write the partial derivatives
+     into `jacobian`, starting at row `offset`
    - `equationCount()` -- number of scalar equations
    - `clone()` -- deep copy
 
@@ -146,6 +157,10 @@ The project uses `.clang-format` (Google-based style):
 - 100-column line limit
 - `#pragma once` for header guards
 
+CI checks formatting with **clang-format 15**. Newer versions lay out a few
+things differently; the one met so far is a lambda passed before a call's
+last argument. Put such a lambda in a named local first.
+
 ### Conventions
 
 - **Entity IDs**: `uint64_t` everywhere.
@@ -163,16 +178,21 @@ The project uses `.clang-format` (Google-based style):
 
 ## Testing
 
-Tests use [Google Test](https://github.com/google/googletest) and live in `tests/`.
+Tests use [Google Test](https://github.com/google/googletest) and live in
+`tests/<module>/`, one directory per library.
 
-```
-tests/
-  math/          -- Vec2, Vec3, Mat4, BoundingBox, RTree, Expression
-  drafting/      -- SpatialIndex, SketchPlane, perf benchmarks
-  constraint/    -- Solver, individual constraint types
-  document/      -- Undo, ParameterRegistry
-  fileio/        -- NativeFormat round-trip, DXF import/export
-```
+- **The window.** `tests/ui` holds the `hz_ui_window_tests`, which drive a
+  real `MainWindow` under Qt's offscreen platform. `UiTestSupport.h` has:
+  - `FormFiller`, `DialogResponder` and `FilePicker`, which answer dialogs;
+  - `ToolDriver`, which clicks at world points through the viewport;
+  - `ModalCloser`, which dismisses any dialog.
+
+  `SmokeTest` runs every command in the window, so a new command is
+  exercised there as soon as it has an action.
+- **Files.** `tests/fileio` round-trips every format and feeds the readers
+  malformed input; STEP fixtures written to the standard are in
+  `tests/fileio/fixtures/step`. `-DHZ_BUILD_FUZZERS=ON` (Clang) builds
+  libFuzzer targets for the readers (`tests/fuzz`).
 
 ### Running tests
 
@@ -187,3 +207,34 @@ ctest --test-dir build/debug -C Debug --output-on-failure
 2. Add it to the corresponding `tests/<module>/CMakeLists.txt` source list.
 3. Link against the module library and `GTest::gtest GTest::gtest_main`.
 4. Use `gtest_discover_tests()` for automatic test registration.
+
+---
+
+## Before you open a pull request
+
+Horizon CAD is licensed under the GNU GPL v3 or later, and a contribution is
+licensed under the same terms.
+
+CI runs these checks on every pull request, and a pull request should pass
+all of them locally first:
+
+| Gate | What it runs | Locally |
+|---|---|---|
+| Build (Windows, Linux Debug, Linux Release) | MSVC; GCC 11 with `-Werror` | `cmake --preset linux-debug -DHZ_WARNINGS_AS_ERRORS=ON` and build |
+| AddressSanitizer | the whole suite under ASan and UBSan | `-DHZ_ENABLE_SANITIZERS=ON` |
+| Format Check | clang-format 15 | `clang-format --dry-run --Werror` on the files you changed |
+| Static Analysis | clang-tidy 15, `bugprone-*` and `performance-*` | `clang-tidy -p build/linux-debug --checks='-*,bugprone-*,performance-*' <file>` |
+
+Things that pass a newer local toolchain and fail CI's older one:
+- clang 15 cannot capture a structured binding in a lambda; copy it into a
+  plain local first;
+- clang-format 15 lays out a lambda passed before a call's last argument
+  differently (see Formatting above);
+- CI's GoogleTest is built as C++17 and cannot print `char8_t` strings, so
+  an `EXPECT_EQ` on two `std::u8string`s fails to link there; compare them
+  as `std::string`.
+
+Say in the CHANGELOG's Unreleased section what the change means for a user,
+and fill in the pull request template. See also the [code of
+conduct](../CODE_OF_CONDUCT.md), the [security policy](../SECURITY.md) and
+[how releases are made](RELEASING.md).
