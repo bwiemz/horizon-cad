@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # vcpkg's built packages, kept between runs. The x-gha backend used
       # before restored nothing (GitHub retired the cache API it relied on),
@@ -60,7 +60,7 @@ jobs:
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -92,7 +92,7 @@ jobs:
       # Embedded-Python scripting (Phase 47) uses the system Python + pybind11,
       # not a vcpkg CPython build. Provide both and point CMake at them.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -186,7 +186,7 @@ jobs:
       # everything (Configure succeeded), and not over an exact hit.
       - name: Save the vcpkg binary cache
         if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
@@ -204,7 +204,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ASan-instrumented, statically-linked Qt test binaries are several
       # hundred MB each; with the full test suite they overran the runner's
@@ -224,7 +224,7 @@ jobs:
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -274,7 +274,7 @@ jobs:
       # Scripting too: its tests catch a script reaching a destroyed
       # document, a use after free that only a sanitizer sees reliably.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -303,7 +303,7 @@ jobs:
       # everything (Configure succeeded), and not over an exact hit.
       - name: Save the vcpkg binary cache
         if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
@@ -314,7 +314,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install clang-format
         run: |
@@ -335,7 +335,7 @@ jobs:
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # vcpkg's built packages, kept between runs. The x-gha backend used
       # before restored nothing (GitHub retired the cache API it relied on),
@@ -343,7 +343,7 @@ jobs:
       # vcpkg actually installs, so Qt was rebuilt from source in every job.
       - name: Restore the vcpkg binary cache
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -444,7 +444,7 @@ jobs:
       # everything (Configure succeeded), and not over an exact hit.
       - name: Save the vcpkg binary cache
         if: always() && steps.configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
@@ -476,12 +476,12 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The vcpkg packages the other Linux jobs build and save; this job only
       # reads them.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -566,12 +566,12 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The vcpkg packages the other Linux jobs build and save; this job only
       # reads them.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -657,7 +657,7 @@ jobs:
 
       - name: Keep the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/
@@ -678,12 +678,12 @@ jobs:
       UBSAN_OPTIONS: print_stacktrace=1
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The vcpkg packages the other Linux jobs build and save; this job only
       # reads them.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -769,7 +769,7 @@ jobs:
 
       - name: Keep the failing inputs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
           path: fuzz-artifacts/

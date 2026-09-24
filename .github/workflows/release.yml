@@ -24,7 +24,7 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-linux
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The tag names the version project() already has: one version.
       - name: Check the tag matches the version
@@ -37,7 +37,7 @@ jobs:
           fi
 
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -123,7 +123,7 @@ jobs:
           packaging/linux/build-appimage.sh build/linux-release "${PWD}/dist"
 
       - name: Keep the packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -139,10 +139,10 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-windows-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -172,7 +172,7 @@ jobs:
       # vcpkg's Qt is built without its tools; PySide6 brings lrelease. A .qm
       # catalog does not depend on the Qt that compiled it.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -193,7 +193,7 @@ jobs:
         run: cpack --config build/ci-windows-release/CPackConfig.cmake -B dist -G NSIS
 
       - name: Keep the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*.exe
@@ -209,7 +209,7 @@ jobs:
       contents: write
     steps:
       - name: Collect the packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
