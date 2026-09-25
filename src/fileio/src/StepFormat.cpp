@@ -26,6 +26,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/Pattern.h"
 
 namespace hz::io {
@@ -693,8 +694,11 @@ private:
 class SolidBuilder {
 public:
     SolidBuilder(const StepParser& parser, int solidIndex,
-                 const std::atomic<bool>* cancelled = nullptr)
-        : m_parser(parser), m_solidIndex(solidIndex), m_cancelled(cancelled) {}
+                 const std::atomic<bool>* cancelled = nullptr, double radiansPerUnit = 1.0)
+        : m_parser(parser),
+          m_solidIndex(solidIndex),
+          m_cancelled(cancelled),
+          m_radiansPerUnit(radiansPerUnit) {}
 
     /// Build one topo::Solid from a group of MANIFOLD_SOLID_BREP instance ids
     /// (one shell per MSB — Horizon multi-shell solids export as siblings in
@@ -1046,6 +1050,62 @@ private:
             return std::make_shared<geo::NurbsSurface>(
                 geo::NurbsSurface::makeCylinder(origin + zAxis * hMin, zAxis, radius, height));
         }
+        if (const StepList* cone = inst->leaf("CONICAL_SURFACE")) {
+            // The radius at the placement, widening along its axis at the
+            // semi-angle: the apex is behind it.
+            if (cone->size() < 4 || !(*cone)[1].isRef() || loopPoints.empty()) return nullptr;
+            Vec3 origin;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (!readPlacement((*cone)[1].ref, origin, zAxis, xAxis)) return nullptr;
+            const double radius = (*cone)[2].num;
+            const double semi = (*cone)[3].num * m_radiansPerUnit;
+            if (!(radius >= 0.0) || !(semi > 0.0) || !(semi < math::kPi / 2)) return nullptr;
+            const Vec3 apex = origin - zAxis * (radius / std::tan(semi));
+            // The nappe the face is on, as far as it reaches.
+            double side = 0.0;
+            double reach = 0.0;
+            for (const Vec3& p : loopPoints) {
+                const double h = (p - apex).dot(zAxis);
+                side += h;
+                reach = std::max(reach, std::abs(h));
+            }
+            return std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
+                apex, side >= 0.0 ? zAxis : zAxis * -1.0, semi, std::max(reach, kMergeTol)));
+        }
+        if (const StepList* sphere = inst->leaf("SPHERICAL_SURFACE")) {
+            if (sphere->size() < 3 || !(*sphere)[1].isRef()) return nullptr;
+            Vec3 origin;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (!readPlacement((*sphere)[1].ref, origin, zAxis, xAxis)) return nullptr;
+            const double radius = (*sphere)[2].num;
+            if (!(radius > 0.0)) return nullptr;
+            // Turned into the placement's frame, so the file's poles are the
+            // surface's; and turned inside out, as NurbsSurface's sphere
+            // faces in and a STEP sphere out.
+            const auto unit = geo::NurbsSurface::makeSphere(Vec3(), radius);
+            const Vec3 yAxis = zAxis.cross(xAxis);
+            auto points = unit.controlPoints();
+            for (auto& row : points) {
+                for (auto& q : row) q = origin + xAxis * q.x + yAxis * q.y + zAxis * q.z;
+            }
+            const geo::NurbsSurface placed(std::move(points), unit.weights(), unit.knotsU(),
+                                           unit.knotsV(), unit.degreeU(), unit.degreeV());
+            return reverseSurfaceU(placed);
+        }
+        if (const StepList* torus = inst->leaf("TOROIDAL_SURFACE")) {
+            if (torus->size() < 4 || !(*torus)[1].isRef()) return nullptr;
+            Vec3 origin;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (!readPlacement((*torus)[1].ref, origin, zAxis, xAxis)) return nullptr;
+            const double major = (*torus)[2].num;
+            const double minor = (*torus)[3].num;
+            if (!(minor > 0.0) || !(major > minor)) return nullptr;
+            return std::make_shared<geo::NurbsSurface>(
+                geo::NurbsSurface::makeTorus(origin, zAxis, major, minor));
+        }
         return nullptr;
     }
 
@@ -1260,6 +1320,7 @@ private:
     const StepParser& m_parser;
     int m_solidIndex;
     const std::atomic<bool>* m_cancelled;
+    double m_radiansPerUnit;  ///< of the file's plane angle unit
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
@@ -1325,6 +1386,55 @@ double unitMillimetres(const StepParser& parser, int id, std::string* name, int 
         return value * base;
     }
     return 0.0;
+}
+
+/// Radians per unit of the plane angle unit instance `id`: an SI_UNIT of
+/// radians, or a CONVERSION_BASED_UNIT through its measure ('DEGREE' is
+/// 0.01745 of a radian). 0 when it cannot be read.
+double unitRadians(const StepParser& parser, int id, int depth = 0) {
+    const StepInstance* inst = depth > 8 ? nullptr : parser.find(id);
+    if (inst == nullptr) return 0.0;
+    if (const StepList* si = inst->leaf("SI_UNIT")) {
+        const bool radian =
+            si->size() >= 2 && (*si)[1].kind == StepValue::Enum && (*si)[1].text == "RADIAN";
+        return radian ? 1.0 : 0.0;
+    }
+    if (const StepList* cb = inst->leaf("CONVERSION_BASED_UNIT")) {
+        if (cb->size() < 2 || !(*cb)[1].isRef()) return 0.0;
+        const StepInstance* measure = parser.find((*cb)[1].ref);
+        const StepList* args = measure ? measure->leaf("PLANE_ANGLE_MEASURE_WITH_UNIT") : nullptr;
+        if (args == nullptr) args = measure ? measure->leaf("MEASURE_WITH_UNIT") : nullptr;
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isRef()) return 0.0;
+        double value = 0.0;
+        const StepValue& v = (*args)[0];
+        if (v.kind == StepValue::Real) {
+            value = v.num;
+        } else if (v.kind == StepValue::Typed && v.items && !v.items->empty() &&
+                   v.items->front().kind == StepValue::Real) {
+            value = v.items->front().num;
+        }
+        const double base = unitRadians(parser, (*args)[1].ref, depth + 1);
+        if (!(value > 0.0) || !(base > 0.0) || !std::isfinite(value * base)) return 0.0;
+        return value * base;
+    }
+    return 0.0;
+}
+
+/// Radians per plane angle unit in the representation context `contextId`:
+/// 1 when it names none, or one that cannot be read.
+double contextRadians(const StepParser& parser, int contextId) {
+    const StepInstance* ctx = parser.find(contextId);
+    const StepList* units = ctx ? ctx->leaf("GLOBAL_UNIT_ASSIGNED_CONTEXT") : nullptr;
+    if (units == nullptr || units->empty() || !(*units)[0].isList()) return 1.0;
+    for (const StepValue& u : *(*units)[0].items) {
+        if (!u.isRef()) continue;
+        const StepInstance* unit = parser.find(u.ref);
+        if (unit != nullptr && unit->hasType("PLANE_ANGLE_UNIT")) {
+            const double radians = unitRadians(parser, u.ref);
+            return radians > 0.0 ? radians : 1.0;
+        }
+    }
+    return 1.0;
 }
 
 /// Millimetres per length unit in the representation context `contextId`:
@@ -1507,7 +1617,8 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
         const Group& group = groups[index];
         const std::string which =
             "solid " + std::to_string(index + 1) + " (#" + std::to_string(group.msbs.front()) + ")";
-        SolidBuilder builder(parser, static_cast<int>(index), cancelled);
+        SolidBuilder builder(parser, static_cast<int>(index), cancelled,
+                             group.context != 0 ? contextRadians(parser, group.context) : 1.0);
         std::unique_ptr<topo::Solid> solid;
         try {
             solid = builder.build(group.msbs, error);
@@ -1537,6 +1648,22 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
             std::ostringstream factor;
             factor << std::setprecision(10) << mm;
             ++conversions["drawn in " + unit + ", scaled by " + factor.str() + " into millimetres"];
+        }
+        // Its curved faces go in as facets (ImportedBodyFeature): say where
+        // that falls short.
+        if (report) {
+            const auto faceted = model::facetCurved(*solid);
+            if (!faceted.solid) {
+                report->approximated.push_back(
+                    which + ": its curved faces could not be cut into facets (" + faceted.error +
+                    "), so its volume and Booleans follow its corners alone");
+            } else if (!faceted.outlined.empty()) {
+                const size_t n = faceted.outlined.size();
+                report->approximated.push_back(
+                    which + ": " + std::to_string(n) +
+                    (n == 1 ? " curved face is" : " curved faces are") +
+                    " not bounded by its surface's own edges, and is one facet, its outline");
+            }
         }
         out.push_back(std::move(solid));
     }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -56,6 +57,28 @@ NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
     }
     if (static_cast<int>(m_knotsV.size()) != expectedKnotsV) {
         throw std::invalid_argument("NurbsSurface knotsV length must be numV + degreeV + 1");
+    }
+
+    // Closed where the two edges coincide: sampled along them, to the
+    // control net's size.
+    double scale = 0.0;
+    for (const auto& row : m_controlPoints) {
+        for (const auto& p : row) scale = std::max(scale, (p - m_controlPoints[0][0]).length());
+    }
+    const double tol = 1e-12 * std::max(scale, 1.0);
+    constexpr int kSamples = 7;
+    m_closedU = true;
+    m_closedV = true;
+    for (int k = 0; k <= kSamples; ++k) {
+        const double s = static_cast<double>(k) / kSamples;
+        const double v = vMin() + (vMax() - vMin()) * s;
+        const double u = uMin() + (uMax() - uMin()) * s;
+        m_closedU = m_closedU && (evaluateWithDerivatives(uMin(), v).point -
+                                  evaluateWithDerivatives(uMax(), v).point)
+                                         .length() <= tol;
+        m_closedV = m_closedV && (evaluateWithDerivatives(u, vMin()).point -
+                                  evaluateWithDerivatives(u, vMax()).point)
+                                         .length() <= tol;
     }
 }
 
@@ -188,6 +211,201 @@ math::Vec3 NurbsSurface::normal(double u, double v) const {
         return math::Vec3::UnitZ;
     }
     return n * (1.0 / len);
+}
+
+// ---------------------------------------------------------------------------
+// evaluateWithDerivatives — the rational basis and its first derivatives
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr int kMaxOrder = 16;  // degree 15
+
+/// The span [knots[s], knots[s + 1]) holding @p t, for @p count control
+/// points of degree @p p (The NURBS Book, A2.1); the last span at the end.
+int findSpan(const std::vector<double>& knots, int count, int p, double t) {
+    if (t >= knots[static_cast<size_t>(count)]) {
+        // The last non-empty span.
+        int s = count - 1;
+        while (s > p && knots[static_cast<size_t>(s)] >= knots[static_cast<size_t>(s) + 1]) --s;
+        return s;
+    }
+    if (t <= knots[static_cast<size_t>(p)]) {
+        int s = p;
+        while (s < count - 1 && knots[static_cast<size_t>(s) + 1] <= t) ++s;
+        return s;
+    }
+    int low = p;
+    int high = count;
+    int mid = (low + high) / 2;
+    while (t < knots[static_cast<size_t>(mid)] || t >= knots[static_cast<size_t>(mid) + 1]) {
+        if (t < knots[static_cast<size_t>(mid)]) {
+            high = mid;
+        } else {
+            low = mid;
+        }
+        mid = (low + high) / 2;
+    }
+    return mid;
+}
+
+/// The p + 1 basis functions non-zero at @p t in @p span, and their first
+/// derivatives (The NURBS Book, A2.2 and A2.3 to the first derivative).
+void basisAndDerivatives(const std::vector<double>& knots, int span, int p, double t, double* n,
+                         double* dn) {
+    double ndu[kMaxOrder][kMaxOrder];
+    double left[kMaxOrder];
+    double right[kMaxOrder];
+    ndu[0][0] = 1.0;
+    for (int j = 1; j <= p; ++j) {
+        left[j] = t - knots[static_cast<size_t>(span + 1 - j)];
+        right[j] = knots[static_cast<size_t>(span + j)] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; ++r) {
+            ndu[j][r] = right[r + 1] + left[j - r];  // knot differences, below
+            const double temp = ndu[r][j - 1] / ndu[j][r];
+            ndu[r][j] = saved + right[r + 1] * temp;  // basis functions, above
+            saved = left[j - r] * temp;
+        }
+        ndu[j][j] = saved;
+    }
+    for (int r = 0; r <= p; ++r) {
+        n[r] = ndu[r][p];
+        double d = 0.0;
+        if (r >= 1) d += ndu[r - 1][p - 1] / ndu[p][r - 1];
+        if (r <= p - 1) d -= ndu[r][p - 1] / ndu[p][r];
+        dn[r] = d * p;
+    }
+}
+
+}  // namespace
+
+SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
+    if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
+        return {evaluate(u, v), derivativeU(u, v), derivativeV(u, v)};
+    }
+    u = std::clamp(u, uMin(), uMax());
+    v = std::clamp(v, vMin(), vMax());
+    const int p = m_degreeU;
+    const int q = m_degreeV;
+    const int spanU = findSpan(m_knotsU, controlPointCountU(), p, u);
+    const int spanV = findSpan(m_knotsV, controlPointCountV(), q, v);
+    double nu[kMaxOrder];
+    double dnu[kMaxOrder];
+    double nv[kMaxOrder];
+    double dnv[kMaxOrder];
+    basisAndDerivatives(m_knotsU, spanU, p, u, nu, dnu);
+    basisAndDerivatives(m_knotsV, spanV, q, v, nv, dnv);
+
+    // The homogeneous point A / W and its derivatives.
+    math::Vec3 a, au, av;
+    double w = 0.0, wu = 0.0, wv = 0.0;
+    for (int i = 0; i <= p; ++i) {
+        const auto& row = m_controlPoints[static_cast<size_t>(spanU - p + i)];
+        const auto& rowW = m_weights[static_cast<size_t>(spanU - p + i)];
+        for (int j = 0; j <= q; ++j) {
+            const size_t col = static_cast<size_t>(spanV - q + j);
+            const double weight = rowW[col];
+            const math::Vec3 wp = row[col] * weight;
+            const double b = nu[i] * nv[j];
+            const double bu = dnu[i] * nv[j];
+            const double bv = nu[i] * dnv[j];
+            a += wp * b;
+            au += wp * bu;
+            av += wp * bv;
+            w += weight * b;
+            wu += weight * bu;
+            wv += weight * bv;
+        }
+    }
+    const math::Vec3 point = a * (1.0 / w);
+    return {point, (au - point * wu) * (1.0 / w), (av - point * wv) * (1.0 / w)};
+}
+
+std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double u, double v) const {
+    const double u0 = uMin(), u1 = uMax();
+    const double v0 = vMin(), v1 = vMax();
+    // Round a seam, or stopped at an edge.
+    const auto keep = [](double t, double lo, double hi, bool closed) {
+        if (!closed) return std::clamp(t, lo, hi);
+        const double period = hi - lo;
+        t = lo + std::fmod(t - lo, period);
+        return t < lo ? t + period : t;
+    };
+    u = keep(u, u0, u1, m_closedU);
+    v = keep(v, v0, v1, m_closedV);
+    // A step that would leave the domain goes halfway to its edge instead:
+    // clamped onto an edge where the surface degenerates (a pole, an apex),
+    // the search stuck there, u no longer turning the point.
+    const auto shorten = [](double t, double d, double lo, double hi, bool closed, double& alpha) {
+        if (closed || d == 0.0) return;
+        if (t + d < lo && t > lo) alpha = std::min(alpha, 0.5 * (t - lo) / -d);
+        if (t + d > hi && t < hi) alpha = std::min(alpha, 0.5 * (hi - t) / d);
+    };
+    for (int iter = 0; iter < 100; ++iter) {
+        const SurfacePoint s = evaluateWithDerivatives(u, v);
+        const math::Vec3 r = s.point - point;
+        // Gauss-Newton on |S - point|^2, damped a little so a pole (where
+        // dS/du vanishes) does not make the system singular.
+        const double a = s.du.dot(s.du);
+        const double b = s.du.dot(s.dv);
+        const double c = s.dv.dot(s.dv);
+        const double damping = 1e-14 * (a + c) + 1e-300;
+        const double det = (a + damping) * (c + damping) - b * b;
+        if (!(det > 0.0)) break;
+        const double gu = r.dot(s.du);
+        const double gv = r.dot(s.dv);
+        double du = -((c + damping) * gu - b * gv) / det;
+        double dv = -((a + damping) * gv - b * gu) / det;
+        double alpha = 1.0;
+        shorten(u, du, u0, u1, m_closedU, alpha);
+        shorten(v, dv, v0, v1, m_closedV, alpha);
+        du *= alpha;
+        dv *= alpha;
+        // Still by the step, not by where it lands: on a seam a step of
+        // 1e-17 lands a period away.
+        const bool still = std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0);
+        u = keep(u + du, u0, u1, m_closedU);
+        v = keep(v + dv, v0, v1, m_closedV);
+        if (still) break;
+    }
+    return {u, v};
+}
+
+std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
+    constexpr int kGrid = 16;
+    constexpr size_t kStarts = 4;
+    struct Start {
+        double distance;
+        double u;
+        double v;
+    };
+    std::vector<Start> starts;
+    starts.reserve(static_cast<size_t>(kGrid * kGrid));
+    const double du = (uMax() - uMin()) / kGrid;
+    const double dv = (vMax() - vMin()) / kGrid;
+    for (int i = 0; i < kGrid; ++i) {
+        for (int j = 0; j < kGrid; ++j) {
+            const double u = uMin() + du * (i + 0.5);
+            const double v = vMin() + dv * (j + 0.5);
+            starts.push_back({(evaluateWithDerivatives(u, v).point - point).lengthSquared(), u, v});
+        }
+    }
+    std::partial_sort(starts.begin(), starts.begin() + static_cast<std::ptrdiff_t>(kStarts),
+                      starts.end(),
+                      [](const Start& a, const Start& b) { return a.distance < b.distance; });
+    std::pair<double, double> best{starts.front().u, starts.front().v};
+    double bestDistance = std::numeric_limits<double>::infinity();
+    for (size_t k = 0; k < kStarts; ++k) {
+        const auto uv = project(point, starts[k].u, starts[k].v);
+        const double d =
+            (evaluateWithDerivatives(uv.first, uv.second).point - point).lengthSquared();
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = uv;
+        }
+    }
+    return best;
 }
 
 // ---------------------------------------------------------------------------

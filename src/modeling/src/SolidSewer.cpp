@@ -73,6 +73,7 @@ private:
 
 struct IndexedFace {
     std::vector<size_t> loop;
+    std::vector<std::vector<size_t>> holes;
     topo::TopologyID topoId;
     std::shared_ptr<geo::NurbsSurface> surface;
     std::shared_ptr<geo::NurbsSurface> analyticSurface;
@@ -130,12 +131,12 @@ void eliminateTJunctions(std::vector<IndexedFace>& faces, const std::vector<Vec3
             .push_back(i);
     }
 
-    for (auto& face : faces) {
+    const auto fix = [&](std::vector<size_t>& loop) {
         std::vector<size_t> newLoop;
-        const size_t n = face.loop.size();
+        const size_t n = loop.size();
         for (size_t i = 0; i < n; ++i) {
-            const size_t ia = face.loop[i];
-            const size_t ib = face.loop[(i + 1) % n];
+            const size_t ia = loop[i];
+            const size_t ib = loop[(i + 1) % n];
             const Vec3& a = pts[ia];
             const Vec3& b = pts[ib];
             newLoop.push_back(ia);
@@ -179,7 +180,11 @@ void eliminateTJunctions(std::vector<IndexedFace>& faces, const std::vector<Vec3
             }
         }
         dedupeLoop(newLoop);
-        face.loop = std::move(newLoop);
+        loop = std::move(newLoop);
+    };
+    for (auto& face : faces) {
+        fix(face.loop);
+        for (auto& hole : face.holes) fix(hole);
     }
 }
 
@@ -251,6 +256,13 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         f.loop.reserve(face.points.size());
         for (const auto& p : face.points) f.loop.push_back(welder.index(p));
         dedupeLoop(f.loop);
+        for (const auto& hole : face.holes) {
+            std::vector<size_t> loop;
+            loop.reserve(hole.size());
+            for (const auto& p : hole) loop.push_back(welder.index(p));
+            dedupeLoop(loop);
+            if (loop.size() >= 3) f.holes.push_back(std::move(loop));
+        }
         f.topoId = face.topoId;
         f.surface = face.surface;
         f.analyticSurface = face.analyticSurface;
@@ -271,6 +283,11 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
     indexed.erase(std::remove_if(indexed.begin(), indexed.end(),
                                  [](const IndexedFace& f) { return f.loop.size() < 3; }),
                   indexed.end());
+    for (auto& f : indexed) {
+        f.holes.erase(std::remove_if(f.holes.begin(), f.holes.end(),
+                                     [](const std::vector<size_t>& h) { return h.size() < 3; }),
+                      f.holes.end());
+    }
     if (indexed.empty()) return nullptr;
 
     // 4. Build the half-edge structure.
@@ -286,10 +303,11 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         return v;
     };
 
+    /// A face's loops (outer first) and their half-edges, loop by loop.
     struct FaceBuild {
         Face* face = nullptr;
-        std::vector<HalfEdge*> hes;
-        std::vector<size_t> loop;
+        std::vector<std::vector<HalfEdge*>> hes;
+        std::vector<std::vector<size_t>> loops;
     };
     std::vector<FaceBuild> built;
     built.reserve(indexed.size());
@@ -303,24 +321,32 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         FaceBuild fb;
         fb.face = solid->allocFace();
         fb.face->topoId = f.topoId;
-        fb.loop = f.loop;
+        fb.loops.push_back(f.loop);
+        fb.loops.insert(fb.loops.end(), f.holes.begin(), f.holes.end());
 
-        Wire* wire = solid->allocWire();
-        fb.face->outerLoop = wire;
-
-        const size_t n = f.loop.size();
-        fb.hes.resize(n);
-        for (size_t i = 0; i < n; ++i) fb.hes[i] = solid->allocHalfEdge();
-        for (size_t i = 0; i < n; ++i) {
-            HalfEdge* he = fb.hes[i];
-            he->origin = vertexFor(f.loop[i]);
-            he->face = fb.face;
-            he->next = fb.hes[(i + 1) % n];
-            he->prev = fb.hes[(i + n - 1) % n];
-            if (he->origin->halfEdge == nullptr) he->origin->halfEdge = he;
-            directed[dirKey(f.loop[i], f.loop[(i + 1) % n])].push_back(he);
+        for (size_t l = 0; l < fb.loops.size(); ++l) {
+            const std::vector<size_t>& loop = fb.loops[l];
+            Wire* wire = solid->allocWire();
+            if (l == 0) {
+                fb.face->outerLoop = wire;
+            } else {
+                fb.face->innerLoops.push_back(wire);
+            }
+            const size_t n = loop.size();
+            std::vector<HalfEdge*> hes(n);
+            for (size_t i = 0; i < n; ++i) hes[i] = solid->allocHalfEdge();
+            for (size_t i = 0; i < n; ++i) {
+                HalfEdge* he = hes[i];
+                he->origin = vertexFor(loop[i]);
+                he->face = fb.face;
+                he->next = hes[(i + 1) % n];
+                he->prev = hes[(i + n - 1) % n];
+                if (he->origin->halfEdge == nullptr) he->origin->halfEdge = he;
+                directed[dirKey(loop[i], loop[(i + 1) % n])].push_back(he);
+            }
+            wire->halfEdge = hes[0];
+            fb.hes.push_back(std::move(hes));
         }
-        wire->halfEdge = fb.hes[0];
 
         // Surface: reuse the provided patch, else synthesize the planar
         // bounding-rectangle patch used throughout the kernel.
@@ -333,25 +359,28 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
     // 5. Twin pairing + edges.
     int edgeIndex = 0;
     for (auto& fb : built) {
-        const size_t n = fb.loop.size();
-        for (size_t i = 0; i < n; ++i) {
-            HalfEdge* he = fb.hes[i];
-            if (he->edge != nullptr) continue;  // already paired from the other side
+        for (size_t l = 0; l < fb.loops.size(); ++l) {
+            const std::vector<size_t>& loop = fb.loops[l];
+            const size_t n = loop.size();
+            for (size_t i = 0; i < n; ++i) {
+                HalfEdge* he = fb.hes[l][i];
+                if (he->edge != nullptr) continue;  // already paired from the other side
 
-            Edge* edge = solid->allocEdge();
-            edge->halfEdge = he;
-            edge->topoId = fb.face->topoId.child("edge", edgeIndex++);
-            edge->curve = makeLineCurve(he->origin->point, he->next->origin->point);
-            he->edge = edge;
+                Edge* edge = solid->allocEdge();
+                edge->halfEdge = he;
+                edge->topoId = fb.face->topoId.child("edge", edgeIndex++);
+                edge->curve = makeLineCurve(he->origin->point, he->next->origin->point);
+                he->edge = edge;
 
-            auto it = directed.find(dirKey(fb.loop[(i + 1) % n], fb.loop[i]));
-            if (it != directed.end()) {
-                for (HalfEdge* candidate : it->second) {
-                    if (candidate->twin == nullptr && candidate != he) {
-                        he->twin = candidate;
-                        candidate->twin = he;
-                        candidate->edge = edge;
-                        break;
+                auto it = directed.find(dirKey(loop[(i + 1) % n], loop[i]));
+                if (it != directed.end()) {
+                    for (HalfEdge* candidate : it->second) {
+                        if (candidate->twin == nullptr && candidate != he) {
+                            he->twin = candidate;
+                            candidate->twin = he;
+                            candidate->edge = edge;
+                            break;
+                        }
                     }
                 }
             }
@@ -372,12 +401,14 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         while (!stack.empty()) {
             const size_t cur = stack.back();
             stack.pop_back();
-            for (HalfEdge* he : built[cur].hes) {
-                if (he->twin == nullptr) continue;
-                auto it = faceIndex.find(he->twin->face);
-                if (it == faceIndex.end() || component[it->second] != -1) continue;
-                component[it->second] = comp;
-                stack.push_back(it->second);
+            for (const auto& loop : built[cur].hes) {
+                for (HalfEdge* he : loop) {
+                    if (he->twin == nullptr) continue;
+                    auto it = faceIndex.find(he->twin->face);
+                    if (it == faceIndex.end() || component[it->second] != -1) continue;
+                    component[it->second] = comp;
+                    stack.push_back(it->second);
+                }
             }
         }
     }

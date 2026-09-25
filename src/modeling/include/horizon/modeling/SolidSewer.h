@@ -47,7 +47,10 @@ public:
     static constexpr double kDefaultWeldTol = 1e-7;
 
     struct InputFace {
-        std::vector<math::Vec3> points;              ///< Planar loop, outward wound.
+        std::vector<math::Vec3> points;  ///< Planar loop, outward wound.
+        /// Inner loops, wound against @p points: the face's holes, each made
+        /// an inner wire (topo::Face::innerLoops).
+        std::vector<std::vector<math::Vec3>> holes;
         topo::TopologyID topoId;                     ///< Assigned to the created face.
         std::shared_ptr<geo::NurbsSurface> surface;  ///< Used if set; else synthesized.
         /// Copied to the created face's topo::Face::analyticSurface.
