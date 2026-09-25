@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <numbers>
 #include <regex>
@@ -12,7 +14,12 @@
 #include <string>
 #include <vector>
 
+#include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/StepAssemblyFiles.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/Faceting.h"
@@ -318,4 +325,57 @@ TEST(StepAssemblyTest, AssembliesThatMultiplyAreCutShort) {
     ASSERT_EQ(report.approximated.size(), 1u) << "one line for every use without a placement";
     EXPECT_NE(report.approximated[0].find("48 uses of parts"), std::string::npos)
         << report.approximated[0];
+}
+
+// Kept as Horizon files: a part file for each part, its bodies imported, and
+// an assembly placing them. A part file already there is not written over,
+// and a name no file system takes is made one.
+TEST(StepAssemblyTest, AnAssemblyIsKeptAsPartFilesAndAnAssemblyFile) {
+    const fs::path dir =
+        fs::temp_directory_path() /
+        ("hz_step_assembly_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const fs::path partsDir = dir / "Rig parts";
+    fs::create_directories(partsDir);
+    std::ofstream(partsDir / "Pin.hzpart") << "someone else's";
+
+    const Rig rig;
+    std::vector<StepWritePart> parts = rig.parts();
+    parts[0].name = "Bracket: left/right";
+    StepAssembly read = StepFormat::assemblyFromString(
+        StepFormat::assemblyToString("Rig", parts, Rig::occurrences()));
+    ASSERT_EQ(read.parts.size(), 2u) << StepFormat::lastError();
+    hz::io::StepAssemblyFiles files;
+    std::string error;
+    const fs::path assemblyPath = dir / "Rig.hzasm";
+    ASSERT_TRUE(hz::io::saveStepAssembly(read, assemblyPath.string(), partsDir.string(), "rig.step",
+                                         &files, &error))
+        << error;
+    ASSERT_EQ(files.parts.size(), 2u);
+    EXPECT_EQ(fs::path(files.parts[0]).filename(), "Bracket_ left_right.hzpart");
+    EXPECT_EQ(fs::path(files.parts[1]).filename(), "Pin 2.hzpart") << "Pin.hzpart was there";
+    std::ifstream kept(partsDir / "Pin.hzpart");
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(kept), {}), "someone else's");
+
+    hz::doc::AssemblyDocument assembly;
+    ASSERT_TRUE(hz::io::NativeFormat::loadAssembly(assemblyPath.string(), assembly, &error))
+        << error;
+    const auto occurrences = Rig::occurrences();
+    ASSERT_EQ(assembly.components().size(), occurrences.size());
+    for (std::size_t k = 0; k < occurrences.size(); ++k) {
+        const auto& component = assembly.components()[k];
+        EXPECT_EQ(component.name, occurrences[k].name);
+        EXPECT_EQ(fs::path(component.partPath), fs::path(files.parts[occurrences[k].part]));
+        expectSameTransform(component.transform, occurrences[k].transform, component.name);
+    }
+
+    hz::doc::Document bracket;
+    ASSERT_TRUE(hz::io::NativeFormat::load(files.parts[0], bracket, &error)) << error;
+    ASSERT_TRUE(bracket.rebuildModel());
+    ASSERT_EQ(bracket.featureTree().featureCount(), 1u);
+    EXPECT_NE(dynamic_cast<const hz::doc::ImportedBodyFeature*>(bracket.featureTree().feature(0)),
+              nullptr);
+    ASSERT_NE(bracket.solid(), nullptr);
+    EXPECT_NEAR(volumeOf(*bracket.solid()), volumeOf(*rig.bracket), 1e-6);
+    fs::remove_all(dir);
 }

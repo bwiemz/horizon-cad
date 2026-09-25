@@ -17,7 +17,7 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 15 (Phases 151–152)
+## Unreleased — Professional workflows, Milestone 15 (Phases 151–153) — complete
 
 - **STEP export as designed (151).**
   - A cylinder now reaches another CAD system as a cylinder. Its side is one
@@ -29,6 +29,14 @@ work, not "post-1.0".
   CAD system is built on its surface whatever its outline: a cylinder cut on
   a slant, a side with a pocket or a hole in it. Such faces used to come in
   as one flat facet, and measured wrong.
+- **STEP assemblies (153).**
+  - An assembly from another CAD system comes in with each part where the
+    assembly puts it, and as many times as it uses it. Every part used to
+    come in once, where it was drawn, whatever the assembly said.
+  - File ▸ Import ▸ STEP as an Assembly keeps it as an assembly: each part
+    a part file, in a folder beside it, and the assembly opened.
+  - An assembly exports to STEP as an assembly: each part once, and each
+    component a use of it where it is placed. It could not be exported.
 - **Moved parts keep their curved faces whole.** A part moved, patterned
   or placed in an assembly had each facet of a curved face on a surface of
   its own.

@@ -60,6 +60,7 @@
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/StepAssemblyFiles.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
@@ -626,6 +627,8 @@ void MainWindow::createMenus() {
     QMenu* importMenu = fileMenu->addMenu(tr("&Import"));
     importMenu->addAction(tr("&STEP as a New Part..."), this, &MainWindow::onImportStep)
         ->setObjectName(QStringLiteral("import_step"));
+    importMenu->addAction(tr("STEP as an &Assembly..."), this, &MainWindow::onImportStepAssembly)
+        ->setObjectName(QStringLiteral("import_step_assembly"));
     importMenu->addAction(tr("&DXF into This Drawing..."), this, &MainWindow::onImportDxf)
         ->setObjectName(QStringLiteral("import_dxf"));
 
@@ -647,6 +650,8 @@ void MainWindow::createMenus() {
     connect(exportMenu, &QMenu::aboutToShow, this, [=, this] {
         const bool hasBody = !m_assembly && m_document->solid() != nullptr;
         for (QAction* a : {exportStep, exportStl, exportGltf}) a->setEnabled(hasBody);
+        // An assembly goes out as a STEP assembly (Phase 153).
+        if (m_assembly && !m_assembly->components().empty()) exportStep->setEnabled(true);
         const bool hasDrawing = !m_assembly && !m_document->draftDocument().entities().empty();
         for (QAction* a : {exportDxf, exportPdf, exportSvg}) a->setEnabled(hasDrawing);
     });
@@ -2256,11 +2261,17 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     box.exec();
 }
 
-MainWindow::StepLoad MainWindow::loadStep(const std::string& path,
+MainWindow::StepLoad MainWindow::loadStep(const std::string& path, const std::string& assemblyPath,
                                           const std::atomic<bool>* cancelled) {
     StepLoad load;
-    load.solids = io::StepFormat::load(path, &load.report, cancelled);
-    if (load.solids.empty()) load.error = io::StepFormat::lastError();
+    load.assemblyPath = assemblyPath;
+    if (assemblyPath.empty()) {
+        load.solids = io::StepFormat::load(path, &load.report, cancelled);
+        if (load.solids.empty()) load.error = io::StepFormat::lastError();
+    } else {
+        load.assembly = io::StepFormat::loadAssembly(path, &load.report, cancelled);
+        if (load.assembly.parts.empty()) load.error = io::StepFormat::lastError();
+    }
     return load;
 }
 
@@ -2268,12 +2279,33 @@ void MainWindow::onImportStep() {
     const QString fileName = QFileDialog::getOpenFileName(
         this, tr("Import STEP"), QString(), tr("STEP Files (*.step *.stp);;All Files (*)"));
     if (fileName.isEmpty()) return;
+    startStepImport(fileName, QString());
+}
+
+void MainWindow::onImportStepAssembly() {
+    const QString fileName =
+        QFileDialog::getOpenFileName(this, tr("Import STEP as an Assembly"), QString(),
+                                     tr("STEP Files (*.step *.stp);;All Files (*)"));
+    if (fileName.isEmpty()) return;
+    // Where the assembly goes; its parts go in a folder beside it.
+    const QFileInfo step(fileName);
+    QString assemblyPath = QFileDialog::getSaveFileName(
+        this, tr("Save the Assembly As"),
+        step.dir().filePath(step.completeBaseName() + QStringLiteral(".hzasm")),
+        tr("Horizon Assemblies (*.hzasm)"));
+    if (assemblyPath.isEmpty()) return;
+    if (QFileInfo(assemblyPath).suffix().isEmpty()) assemblyPath += QStringLiteral(".hzasm");
+    startStepImport(fileName, assemblyPath);
+}
+
+void MainWindow::startStepImport(const QString& fileName, const QString& assemblyPath) {
     const std::string path = fileName.toStdString();
+    const std::string keptAt = assemblyPath.toStdString();
     const bool onWorker =
         m_rebuildMode == RebuildMode::Always ||
         (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
     if (!onWorker) {
-        finishStepImport(fileName, loadStep(path));
+        finishStepImport(fileName, loadStep(path, keptAt));
         return;
     }
     if (m_importTask) {
@@ -2282,7 +2314,9 @@ void MainWindow::onImportStep() {
     }
     m_importFile = fileName;
     m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
-        [path](const std::atomic<bool>& cancelled) { return loadStep(path, &cancelled); });
+        [path, keptAt](const std::atomic<bool>& cancelled) {
+            return loadStep(path, keptAt, &cancelled);
+        });
     m_importTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
     });
@@ -2305,6 +2339,10 @@ void MainWindow::onImportFinished() {
 }
 
 void MainWindow::finishStepImport(const QString& fileName, StepLoad load) {
+    if (!load.assemblyPath.empty()) {
+        finishStepAssemblyImport(fileName, std::move(load));
+        return;
+    }
     const std::string path = fileName.toStdString();
     if (load.solids.empty()) {
         reportFileError(tr("Could not import"), path, load.error);
@@ -2328,6 +2366,32 @@ void MainWindow::finishStepImport(const QString& fileName, StepLoad load) {
     m_viewport->update();
     showImportReport(QFileInfo(fileName).fileName(), load.report);
     m_statusPrompt->setText(tr("Imported %n bodies.", "", count));
+}
+
+void MainWindow::finishStepAssemblyImport(const QString& fileName, StepLoad load) {
+    if (load.assembly.parts.empty()) {
+        reportFileError(tr("Could not import"), fileName.toStdString(), load.error);
+        return;
+    }
+    // Each part a part file, in a folder named for the assembly beside it:
+    // the assembly refers to its parts by their files.
+    const QFileInfo kept(QString::fromStdString(load.assemblyPath));
+    const QString partsDir =
+        kept.dir().filePath(kept.completeBaseName() + QStringLiteral(" parts"));
+    const auto parts = static_cast<int>(load.assembly.parts.size());
+    const auto placed = static_cast<int>(load.assembly.occurrences.size());
+    io::StepAssemblyFiles files;
+    std::string error;
+    if (!io::saveStepAssembly(load.assembly, load.assemblyPath, partsDir.toStdString(),
+                              QFileInfo(fileName).fileName().toStdString(), &files, &error)) {
+        reportFileError(tr("Could not import"), load.assemblyPath, error);
+        return;
+    }
+    if (!openPath(QString::fromStdString(files.assembly))) return;
+    showImportReport(QFileInfo(fileName).fileName(), load.report);
+    m_statusPrompt->setText(
+        tr("Imported %n part(s) into \"%1\", ", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
+        tr("placed %n time(s).", "", placed));
 }
 
 void MainWindow::onImportDxf() {
@@ -2393,6 +2457,10 @@ QString MainWindow::askExportPath(const QString& format, const QString& filter,
 }
 
 void MainWindow::onExportStep() {
+    if (m_assembly) {
+        exportAssemblyStep();
+        return;
+    }
     const topo::Solid* solid = solidToExport(tr("STEP"));
     if (!solid) return;
     const QString fileName =
@@ -2405,21 +2473,70 @@ void MainWindow::onExportStep() {
         return;
     }
     m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+    showStepExportReport(report);
+}
+
+void MainWindow::exportAssemblyStep() {
+    // Each part once, and each component a use of it where it is placed.
+    const AssemblyWorkbench::StepExport gathered = m_assemblies->stepExport();
+    if (gathered.occurrences.empty()) {
+        statusBar()->showMessage(
+            tr("STEP export writes an assembly's components; none of this one's parts can be "
+               "read"));
+        return;
+    }
+    const QString fileName =
+        askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
+    if (fileName.isEmpty()) return;
+    const QString title =
+        m_assembly->filePath().empty()
+            ? tr("Assembly")
+            : QFileInfo(QString::fromStdString(m_assembly->filePath())).completeBaseName();
+    io::StepFormat::WriteReport report;
+    if (!io::StepFormat::saveAssembly(fileName.toStdString(), title.toStdString(), gathered.parts,
+                                      gathered.occurrences, {}, &report)) {
+        reportFileError(tr("Could not export"), fileName.toStdString(),
+                        io::StepFormat::lastError());
+        return;
+    }
+    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+    showStepExportReport(report, gathered.unread);
+}
+
+void MainWindow::showStepExportReport(const io::StepWriteReport& report,
+                                      const std::vector<std::string>& unread) {
     // Written as designed, but for faces that could not be: said, not
-    // left for the other system to find as a mesh of facets.
+    // left for the other system to find as a mesh of facets. And any
+    // component left out.
+    QStringList lines;
+    for (const std::string& name : unread) {
+        lines
+            << tr("Left out: \"%1\": its part could not be read").arg(QString::fromStdString(name));
+    }
+    for (const std::string& why : report.leftOut) {
+        lines << tr("Left out: %1").arg(QString::fromStdString(why));
+    }
+    for (const std::string& why : report.faceted) lines << QString::fromStdString(why);
+    if (lines.isEmpty()) return;
+    const auto leftOut = static_cast<int>(unread.size() + report.leftOut.size());
+    const QString faceted =
+        report.faceted.empty()
+            ? QString()
+            : tr("%n curved face(s) were written as their facets, not on their surfaces.", nullptr,
+                 static_cast<int>(report.faceted.size()));
+    QMessageBox box(leftOut > 0 ? QMessageBox::Warning : QMessageBox::Information,
+                    tr("Export STEP"),
+                    leftOut > 0 ? (tr("%n component(s) were not written.", nullptr, leftOut) +
+                                   (faceted.isEmpty() ? QString() : QStringLiteral(" ") + faceted))
+                                : faceted,
+                    QMessageBox::Ok, this);
     if (!report.faceted.empty()) {
-        QStringList lines;
-        for (const std::string& why : report.faceted) lines << QString::fromStdString(why);
-        QMessageBox box(QMessageBox::Information, tr("Export STEP"),
-                        tr("%n curved face(s) were written as their facets, not on their surfaces.",
-                           nullptr, static_cast<int>(report.faceted.size())),
-                        QMessageBox::Ok, this);
         box.setInformativeText(
             tr("The part is exact as modelled; other systems will see those "
                "faces as flat facets."));
-        box.setDetailedText(lines.join(QLatin1Char('\n')));
-        box.exec();
     }
+    box.setDetailedText(lines.join(QLatin1Char('\n')));
+    box.exec();
 }
 
 void MainWindow::onExportStl() {

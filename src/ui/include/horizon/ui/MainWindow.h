@@ -14,6 +14,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/modeling/MassProperties.h"
@@ -135,6 +136,8 @@ private slots:
     void onSaveFile();
     void onSaveFileAs();
     void onImportStep();
+    /// A STEP file kept as an assembly: its parts as part files (Phase 153).
+    void onImportStepAssembly();
     void onImportDxf();
     void onExportStep();
     void onExportStl();
@@ -323,13 +326,21 @@ private:
     /// Show the progress bar and Cancel while anything runs on a worker.
     void updateBusyIndicator();
 
-    /// A STEP file read into solids — on the GUI thread or a worker.
+    /// A STEP file read — on the GUI thread or a worker: into solids, or,
+    /// to be kept as an assembly at `assemblyPath`, into its parts and their
+    /// placements (Phase 153).
     struct StepLoad {
         std::vector<std::unique_ptr<topo::Solid>> solids;
+        io::StepAssembly assembly;
+        std::string assemblyPath;
         io::ImportReport report;
         std::string error;  ///< why nothing was read (lastError is per thread)
     };
-    static StepLoad loadStep(const std::string& path, const std::atomic<bool>* cancelled = nullptr);
+    static StepLoad loadStep(const std::string& path, const std::string& assemblyPath = {},
+                             const std::atomic<bool>* cancelled = nullptr);
+    /// Read @p fileName, on a worker when it is large; into a new part, or
+    /// kept as an assembly at @p assemblyPath when one is given.
+    void startStepImport(const QString& fileName, const QString& assemblyPath);
 
     /// A drawing or part file read into a document of its own, on a worker
     /// when the file is large (openOnWorker).
@@ -349,6 +360,16 @@ private:
     void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
                     const QString& fallbackTitle, io::ImportReport report);
     void finishStepImport(const QString& fileName, StepLoad load);
+    /// @p load's parts written as part files beside its assembly, and the
+    /// assembly opened (Phase 153).
+    void finishStepAssemblyImport(const QString& fileName, StepLoad load);
+    /// The active assembly written as a STEP assembly (Phase 153).
+    void exportAssemblyStep();
+    /// What a STEP export could not write as asked: the curved faces kept in
+    /// facets, and the components left out (@p unread, whose parts could
+    /// not be read, and those in @p report).
+    void showStepExportReport(const io::StepWriteReport& report,
+                              const std::vector<std::string>& unread = {});
     void onImportFinished();
     void onMassPropertiesFinished();
 
