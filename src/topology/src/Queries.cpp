@@ -128,10 +128,12 @@ int loopSize(const Wire* wire) {
 
 math::Vec3 loopNormal(const Face* face) {
     const auto verts = faceVertices(face);
+    // Newell's sum about the first point: its error then does not grow with
+    // the loop's distance from the origin.
     math::Vec3 n(0, 0, 0);
     for (size_t i = 0; i < verts.size(); ++i) {
-        const math::Vec3& a = verts[i]->point;
-        const math::Vec3& b = verts[(i + 1) % verts.size()]->point;
+        const math::Vec3 a = verts[i]->point - verts[0]->point;
+        const math::Vec3 b = verts[(i + 1) % verts.size()]->point - verts[0]->point;
         n.x += (a.y - b.y) * (a.z + b.z);
         n.y += (a.z - b.z) * (a.x + b.x);
         n.z += (a.x - b.x) * (a.y + b.y);
@@ -141,14 +143,24 @@ math::Vec3 loopNormal(const Face* face) {
 }
 
 double signedVolume(const Shell& shell) {
+    // About a point of the shell's own: about the origin, the rounding grows
+    // as the cube of the distance, and far out it outweighed the volume.
+    math::Vec3 o;
+    for (const Face* face : shell.faces) {
+        if (face && face->outerLoop && face->outerLoop->halfEdge &&
+            face->outerLoop->halfEdge->origin) {
+            o = face->outerLoop->halfEdge->origin->point;
+            break;
+        }
+    }
     double volume = 0.0;
-    const auto fan = [&volume](const Wire* wire) {
+    const auto fan = [&volume, &o](const Wire* wire) {
         if (!wire || !wire->halfEdge || !wire->halfEdge->origin) return;
         const HalfEdge* start = wire->halfEdge;
-        const math::Vec3& a = start->origin->point;
+        const math::Vec3 a = start->origin->point - o;
         for (const HalfEdge* he = start->next; he && he->next && he->next != start; he = he->next) {
             if (!he->origin || !he->next->origin) return;
-            volume += a.dot(he->origin->point.cross(he->next->origin->point)) / 6.0;
+            volume += a.dot((he->origin->point - o).cross(he->next->origin->point - o)) / 6.0;
         }
     };
     for (const Face* face : shell.faces) {

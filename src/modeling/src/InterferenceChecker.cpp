@@ -18,8 +18,10 @@ using hz::math::Vec3;
 
 namespace {
 
-/// Volume below which an intersection is treated as touching, not interfering.
-constexpr double kMinInterferenceVolume = 1e-9;
+/// Volume below which an intersection is treated as touching, not
+/// interfering, per cube of the parts' extent (Phase 142: it was 1e-9
+/// absolute, which is most of a hundredth-of-a-millimetre part).
+constexpr double kMinInterferenceFraction = 1e-12;
 
 BoundingBox overlapBox(const BoundingBox& a, const BoundingBox& b) {
     const Vec3 mn(std::max(a.min().x, b.min().x), std::max(a.min().y, b.min().y),
@@ -51,10 +53,15 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
     const auto polysB = BoundaryMesh::extractFacePolygons(b);
     if (polysA.empty() || polysB.empty()) return false;
 
-    const auto fragments =
-        csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), BooleanType::Intersect);
+    // The tolerances of the parts' size, as BooleanOp takes them.
+    BoundingBox both = ba;
+    both.expand(bb);
+    const CsgTolerance tol = CsgTolerance::of(both.min(), both.max());
+    const auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false),
+                                      BooleanType::Intersect, tol.plane);
     if (fragments.empty()) return false;
-    return std::abs(csgVolume(fragments)) > kMinInterferenceVolume;
+    const double extent = (both.max() - both.min()).length();
+    return std::abs(csgVolume(fragments)) > kMinInterferenceFraction * extent * extent * extent;
 }
 
 std::vector<InterferencePair> InterferenceChecker::check(

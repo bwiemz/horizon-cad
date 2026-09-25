@@ -18,6 +18,7 @@
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -148,6 +149,14 @@ TEST(PartFormatTest, TessellationCacheIsWrittenForBuiltParts) {
     EXPECT_FALSE(mesh->indices.empty());
     EXPECT_EQ(mesh->positions.size() % 3, 0u);
     EXPECT_EQ(mesh->indices.size() % 3, 0u);
+    // With its faces and edges by name (Phase 143), as the solid's own mesh
+    // has them: a component drawn from the cache can be clicked.
+    EXPECT_TRUE(mesh->hasFaces());
+    const auto own = hz::model::SolidTessellator::tessellate(*doc.solid());
+    EXPECT_EQ(mesh->faceTags, own.faceTags);
+    EXPECT_EQ(mesh->triangleFaces, own.triangleFaces);
+    EXPECT_EQ(mesh->edges.size(), own.edges.size());
+    EXPECT_FALSE(mesh->edges.empty());
 
     std::remove(path.c_str());
 }

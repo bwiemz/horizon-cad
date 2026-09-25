@@ -422,19 +422,25 @@ void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
                 gl->glDepthFunc(GL_LESS);
                 continue;
             }
-            if (!mesh.hasFaces()) continue;
+            // A pick with no face is the whole component (chosen in the
+            // assembly tree): every triangle of it.
+            const bool whole = pick.tag.empty();
+            if (!whole && !mesh.hasFaces()) continue;
             // Every facet of the face picked.
             std::vector<bool> picked(mesh.faceTags.size(), false);
-            bool any = false;
-            for (size_t f = 0; f < mesh.faceTags.size(); ++f) {
+            bool any = whole;
+            for (size_t f = 0; f < mesh.faceTags.size() && !whole; ++f) {
                 picked[f] = model::logicalFace(mesh.faceTags[f]) == pick.tag;
                 any = any || picked[f];
             }
             if (!any) continue;
             std::vector<float> triangles;
-            for (size_t t = 0; t < mesh.triangleFaces.size(); ++t) {
-                const uint32_t index = mesh.triangleFaces[t];
-                if (index >= picked.size() || !picked[index]) continue;
+            for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
+                if (!whole &&
+                    (t >= mesh.triangleFaces.size() || mesh.triangleFaces[t] >= picked.size() ||
+                     !picked[mesh.triangleFaces[t]])) {
+                    continue;
+                }
                 for (size_t c = 0; c < 3; ++c) {
                     const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
                     if (v + 2 >= mesh.positions.size()) continue;

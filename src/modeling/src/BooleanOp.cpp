@@ -144,6 +144,10 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     auto polysA = BoundaryMesh::extractFacePolygons(solidA);
     auto polysB = BoundaryMesh::extractFacePolygons(solidB);
     if (polysA.empty() || polysB.empty()) return fail("one of the bodies has no faces");
+    // The tolerances from the operands' size, not absolute (Phase 142).
+    BoundingBox both = boundsOf(polysA);
+    both.expand(boundsOf(polysB));
+    const CsgTolerance tol = CsgTolerance::of(both.min(), both.max());
 
     // Disjoint solids never interact — resolve without splitting so the
     // original face loops (and their surfaces) survive verbatim.  Weld at the
@@ -156,22 +160,23 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
             case BooleanType::Union: {
                 appendAsInputFaces(polysA, faces);
                 appendAsInputFaces(polysB, faces);
-                return sewn(sewChecked(faces, kSewerDefaultWeldTol));
+                return sewn(sewChecked(faces, std::min(kSewerDefaultWeldTol, tol.plane)));
             }
             case BooleanType::Subtract: {
                 appendAsInputFaces(polysA, faces);
-                return sewn(sewChecked(faces, kSewerDefaultWeldTol));
+                return sewn(sewChecked(faces, std::min(kSewerDefaultWeldTol, tol.plane)));
             }
             case BooleanType::Intersect:
                 return fail("the bodies do not overlap");
         }
     }
 
-    auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type);
+    auto fragments =
+        csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type, tol.plane);
     if (namesFromGeometry(naming) && !fragments.empty()) {
         // The CSG works on triangles and leaves every face in pieces, even a
         // face the cut never reached; put each face back together.
-        fragments = mergeFragments(std::move(fragments), kCsgPlaneEps);
+        fragments = mergeFragments(std::move(fragments), tol.plane);
     }
     if (fragments.empty()) {
         switch (type) {
@@ -204,7 +209,7 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     // Weld at the CSG plane epsilon: fragments carry split points the BSP
     // treated as on-plane coincident, so healing must reach that far.
     // sewChecked enforces the checkManifold() contract for this path too.
-    return sewn(sewChecked(faces, kCsgPlaneEps));
+    return sewn(sewChecked(faces, tol.plane));
 }
 
 }  // namespace hz::model

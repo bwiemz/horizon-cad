@@ -25,6 +25,7 @@
 #include "horizon/ui/RebuildJob.h"
 
 class QCloseEvent;
+class QComboBox;
 class QTimer;
 class QLabel;
 class QTabBar;
@@ -46,6 +47,8 @@ class LayerPanel;
 class RibbonBar;
 class FeatureTreePanel;
 class RecoveryManager;
+class AssemblyTreePanel;
+class FeatureForm;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -88,7 +91,8 @@ public:
     /// Anything is running on a worker.
     bool backgroundWorkRunning() const {
         return m_rebuildJob != nullptr || m_importTask != nullptr ||
-               m_interferenceTask != nullptr || m_openTask != nullptr || m_massTask != nullptr;
+               m_interferenceTask != nullptr || m_openTask != nullptr || m_massTask != nullptr ||
+               m_reloadTask != nullptr;
     }
 
     /// What goes to a worker in Auto: a rebuild after one that took longer
@@ -144,6 +148,19 @@ private slots:
     void onInsertComponent();
     void onAddMate();
     void onCheckInterference();
+    // Placing components (Phase 143): on the component clicked or chosen in
+    // the assembly tree, or one chosen in the form.
+    void onMoveComponent();
+    void onRotateComponent();
+    void onRemoveComponent();
+    void onSuppressComponent();
+    void onRenameComponent();
+    void onEditMate();
+    void onRemoveMate();
+    // Living assemblies (Phase 144): the clicked or chosen component's part
+    // opened in its tab; the assembly's bill of materials.
+    void onOpenPart();
+    void onBillOfMaterials();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -370,7 +387,53 @@ private:
     /// the sketch list as they are.
     void syncSketchView();
     void refreshSketchList();
-    bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
+    /// Place @p asmDoc's components by its mates. A failure is said in the
+    /// status bar, and a success too unless @p reportSuccess is false.
+    bool solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess = true);
+    /// Change the assembly by @p edit, as one undo step named @p verb: its
+    /// mates are solved again after it, and if they cannot be, or @p edit
+    /// declines (returns false), the assembly is left as it was.
+    bool editAssembly(const QString& verb, const std::function<bool()>& edit);
+    /// The component a command acts on: the first clicked, else the one
+    /// current in the assembly tree; 0 when neither.
+    uint64_t targetComponent() const;
+    /// A "component" choice on @p form, @p target chosen; @p ids its rows'.
+    QComboBox* componentChoice(FeatureForm& form, uint64_t target,
+                               std::vector<uint64_t>& ids) const;
+    /// A "mate" choice on @p form, @p target chosen; @p ids its rows'.
+    QComboBox* mateChoice(FeatureForm& form, uint64_t target, std::vector<uint64_t>& ids) const;
+    /// Show the part at @p path anew wherever a component places it: its
+    /// components' meshes and documents read again, their mates solved
+    /// again, and the scene rebuilt if the active assembly is one of them.
+    /// Called when a part is saved here, found changed on disk, or its tab
+    /// closed with its edits discarded. @p report: say so in the status bar
+    /// (not over a message about the part's tab that matters more).
+    void refreshComponentsOf(const std::string& path, bool report = true);
+    /// For every watched file changed on disk: its tabs read again, then
+    /// the components placing it refreshed.
+    void pollPartFiles();
+    /// Tabs showing @p path, changed on disk by another program: one without
+    /// unsaved changes is read again; one with them asks whether to read it
+    /// again, losing them, or keep its own. An assembly's tab says so only.
+    /// True when a reading took over refreshing the components placing it.
+    bool reloadTabsOf(const std::string& path);
+    /// Read tab @p index's file again, into a new document in place of its
+    /// own, and refresh the components placing it: here, or on a worker for
+    /// a file openOnWorker() would read there, when the reading is done.
+    /// @p asked: its unsaved changes were given up.
+    void reloadTab(size_t index, bool asked);
+    /// Put what was read of @p old's file in its tab's place. Refused, and
+    /// said why, when it could not be read, or its tab has gone or has been
+    /// changed meanwhile without @p asked.
+    bool replaceTabDocument(const std::shared_ptr<doc::Document>& old, FileOpen read, bool asked);
+    void onReloadFinished();
+    /// Open the part component @p id places, in its tab.
+    void openComponentPart(uint64_t id);
+    void removeComponent(uint64_t id);
+    void setComponentSuppressed(uint64_t id, bool suppressed);
+    void renameComponent(uint64_t id);
+    void editMate(uint64_t id);
+    void removeMate(uint64_t id);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
     void activateTabDocument();
@@ -469,6 +532,7 @@ private:
     io::ImportReport m_lastLoadReport;
     std::unique_ptr<RecoveryManager> m_recovery;
     QTimer* m_autosaveTimer = nullptr;
+    QTimer* m_partWatch = nullptr;  ///< polls the files open or placed for changes
     quint64 m_nextRecoveryKey = 1;
     std::vector<DocTab> m_tabs;
     std::shared_ptr<doc::Document> m_document;
@@ -478,6 +542,7 @@ private:
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
+    AssemblyTreePanel* m_assemblyTreePanel = nullptr;  ///< tabbed with the feature tree
     QAction* m_finishSketchAction = nullptr;
     QMenu* m_modelMenu = nullptr;
     QMenu* m_viewMenu = nullptr;
@@ -506,6 +571,14 @@ private:
     std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
     QString m_importFile;
     std::unique_ptr<BackgroundTask<FileOpen>> m_openTask;
+    /// A tab's file read again on a worker, the document it replaces and
+    /// whether that one's changes were given up. Files changed meanwhile
+    /// wait, each with the document whose changes were given up, if one's
+    /// were: that answer holds for that document only.
+    std::unique_ptr<BackgroundTask<FileOpen>> m_reloadTask;
+    std::shared_ptr<doc::Document> m_reloadDocument;
+    bool m_reloadAsked = false;
+    std::vector<std::pair<std::string, std::weak_ptr<doc::Document>>> m_reloadQueue;
     QString m_openFile;
     bool m_openDrawing = false;
     std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;

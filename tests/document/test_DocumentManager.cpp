@@ -395,3 +395,143 @@ TEST(DocumentManagerTest, ResolvedThenLightweightReleasesFeatureTree) {
 
     std::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// Living assemblies (Phase 144): a part changed on disk is read again.
+// ---------------------------------------------------------------------------
+
+TEST(DocumentManagerTest, SamePathSeesThroughSpelling) {
+    const std::string path = makeTempFile("hz_test_samepath.hzpart");
+    const fs::path file(path);
+    const std::string roundabout =
+        (file.parent_path() / "nowhere" / ".." / file.filename()).string();
+    EXPECT_TRUE(DocumentManager::samePath(path, roundabout));
+    EXPECT_FALSE(DocumentManager::samePath(path, path + ".other"));
+    EXPECT_FALSE(DocumentManager::samePath(path, ""));
+    std::remove(path.c_str());
+}
+
+TEST(DocumentManagerTest, AReleasedPartIsReadAgain) {
+    DocumentManager mgr;
+    int reads = 0;
+    mgr.setPartLoader([&reads](const std::string& path, Document& doc) {
+        ++reads;
+        return fakeBoxPartLoader(path, doc);
+    });
+    const std::string path = makeTempFile("hz_test_release.hzpart");
+
+    ComponentInstance first;
+    first.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(first, ComponentState::Resolved));
+    ComponentInstance second;
+    second.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(second, ComponentState::Resolved));
+    EXPECT_EQ(reads, 1) << "one read while a component holds it";
+
+    // Changed on disk: released, the next component reads the file again.
+    mgr.releasePart(path);
+    EXPECT_EQ(mgr.findByPath(path), nullptr);
+    ComponentInstance third;
+    third.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(third, ComponentState::Resolved));
+    EXPECT_EQ(reads, 2);
+    EXPECT_NE(third.resolvedPart, first.resolvedPart);
+    EXPECT_EQ(first.resolvedPart, second.resolvedPart) << "what they had, they keep";
+
+    std::remove(path.c_str());
+}
+
+TEST(DocumentManagerTest, APartOpenInATabIsNotReleased) {
+    DocumentManager mgr;
+    mgr.setPartLoader(fakeBoxPartLoader);
+    const std::string path = makeTempFile("hz_test_release_tab.hzpart");
+
+    const auto tab = mgr.openPart(path);
+    ASSERT_NE(tab, nullptr);
+    mgr.releasePart(path);
+    EXPECT_EQ(mgr.findByPath(path), tab) << "the tab's document is the part";
+
+    std::remove(path.c_str());
+}
+
+TEST(DocumentManagerTest, ALightweightComponentsFileIsWatched) {
+    DocumentManager mgr;
+    mgr.setMeshLoader([](const std::string&) {
+        auto mesh = std::make_shared<hz::geo::MeshData>();
+        mesh->positions = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+        mesh->normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+        mesh->indices = {0, 1, 2};
+        return mesh;
+    });
+    const std::string path = makeTempFile("hz_test_watch_light.hzpart");
+
+    ComponentInstance comp;
+    comp.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(comp, ComponentState::Lightweight));
+    EXPECT_TRUE(mgr.pollExternalChanges().empty());
+
+    fs::last_write_time(path, fs::last_write_time(path) + std::chrono::seconds(2));
+    const auto changed = mgr.pollExternalChanges();
+    ASSERT_EQ(changed.size(), 1u);
+    EXPECT_TRUE(DocumentManager::samePath(changed.front(), path));
+
+    std::remove(path.c_str());
+}
+
+TEST(DocumentManagerTest, APlacedPartStaysWatchedWhenItsTabCloses) {
+    DocumentManager mgr;
+    mgr.setPartLoader(fakeBoxPartLoader);
+    const std::string path = makeTempFile("hz_test_watch_placed.hzpart");
+
+    ComponentInstance comp;
+    comp.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(comp, ComponentState::Resolved));
+    const auto tab = mgr.openPart(path);
+    ASSERT_EQ(tab, comp.resolvedPart) << "the component's part, opened in a tab";
+    ASSERT_TRUE(mgr.closeDocument(tab));
+
+    fs::last_write_time(path, fs::last_write_time(path) + std::chrono::seconds(2));
+    EXPECT_EQ(mgr.pollExternalChanges().size(), 1u) << "the assembly still places it";
+
+    std::remove(path.c_str());
+}
+
+// A part read again after a change is tessellated again, even while an
+// older mesh of it is still held (an undo step holds one) and the new read
+// has been built as many times as the old one had.
+TEST(DocumentManagerTest, APartReadAgainIsNotShownWithItsOldMesh) {
+    DocumentManager mgr;
+    double depth = 3.0;
+    mgr.setPartLoader([&depth](const std::string&, Document& doc) {
+        auto sketch = makeRectSketch(10.0, 5.0);
+        doc.addSketch(sketch);
+        doc.featureTree().addFeature(
+            std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), depth));
+        doc.setType(DocumentType::Part);
+        return true;
+    });
+    const std::string path = makeTempFile("hz_test_reread_mesh.hzpart");
+    const auto height = [](const ComponentInstance& c) {
+        double high = 0.0;
+        for (size_t i = 2; c.cachedMesh && i < c.cachedMesh->positions.size(); i += 3) {
+            high = std::max(high, static_cast<double>(c.cachedMesh->positions[i]));
+        }
+        return high;
+    };
+
+    ComponentInstance before;
+    before.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(before, ComponentState::Resolved));
+    EXPECT_NEAR(height(before), 3.0, 1e-9);
+
+    depth = 7.0;  // the file changed
+    mgr.releasePart(path);
+    ComponentInstance after;
+    after.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(after, ComponentState::Resolved));
+    ASSERT_NE(after.resolvedPart, before.resolvedPart);
+    ASSERT_EQ(after.resolvedPart->builds(), before.resolvedPart->builds());
+    EXPECT_NEAR(height(after), 7.0, 1e-9) << "not the mesh of the part as it was";
+
+    std::remove(path.c_str());
+}

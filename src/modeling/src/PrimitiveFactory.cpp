@@ -443,12 +443,21 @@ std::vector<Vec3> ringPoints(double radius, double z, int segments) {
     return ring;
 }
 
-/// Signed volume of a closed polygon soup (divergence theorem, fan per face).
+/// Signed volume of a closed polygon soup (divergence theorem, fan per face),
+/// about a point of its own, so its rounding does not grow with the soup's
+/// distance from the origin.
 double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
+    Vec3 o;
+    for (const auto& f : faces) {
+        if (!f.points.empty()) {
+            o = f.points[0];
+            break;
+        }
+    }
     double vol6 = 0.0;
     for (const auto& f : faces) {
         for (size_t i = 1; i + 1 < f.points.size(); ++i) {
-            vol6 += f.points[0].dot(f.points[i].cross(f.points[i + 1]));
+            vol6 += (f.points[0] - o).dot((f.points[i] - o).cross(f.points[i + 1] - o));
         }
     }
     return vol6 / 6.0;
