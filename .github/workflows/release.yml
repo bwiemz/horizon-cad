@@ -98,7 +98,8 @@ jobs:
       # Scripting is not shipped until it is sandboxed (Phase 120). The
       # translations are: a package without them is refused at configure.
       - name: Configure
-        run: cmake --preset linux-release -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+        # Tests on: the preset turns them off, and the Test step below ran none.
+        run: cmake --preset linux-release -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build/linux-release --config Release

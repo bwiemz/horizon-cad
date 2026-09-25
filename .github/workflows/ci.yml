@@ -158,7 +158,9 @@ jobs:
       # Scripting is off by default (it is not sandboxed); test it here.
       - name: Configure
         id: configure
-        run: cmake --preset ${{ matrix.preset }} -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON -DHZ_REQUIRE_TRANSLATIONS=${{ matrix.translations || 'OFF' }}
+        # Tests on in every configuration: the linux-release preset turns them
+        # off (for a quick local build), and this job ran none in Release.
+        run: cmake --preset ${{ matrix.preset }} -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON -DHZ_REQUIRE_TRANSLATIONS=${{ matrix.translations || 'OFF' }}
 
       # The log is kept so the Windows warnings can be counted below.
       - name: Build
