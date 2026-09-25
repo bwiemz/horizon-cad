@@ -302,13 +302,16 @@ std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validati
         if (source < 0) return "side:closing";
         std::string role = "side:" + validation.edgeSources[static_cast<size_t>(source)];
         if (sampled.sourceFacets[static_cast<size_t>(source)] > 1) {
-            role += ".f" + std::to_string(sampled.edgeFacet[i]);
+            // A facet of the curved side the arc sweeps: part of it, under
+            // Stable names, so a reference to the side takes them all.
+            role += (naming == NamingScheme::Stable ? "/facet:" : ".f") +
+                    std::to_string(sampled.edgeFacet[i]);
         }
         return role;
     };
     const auto nameEdges = [&](topo::Solid& solid) {
-        if (naming == NamingScheme::FromGeometry) {
-            nameEdgesByFaces(solid);
+        if (namesFromGeometry(naming)) {
+            hz::model::nameEdges(solid, naming);
             return;
         }
         int idx = 0;

@@ -210,7 +210,7 @@ int findRoot(std::vector<int>& parent, int i) {
 }
 
 std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector<Mat4>& transforms,
-                                          const std::vector<int>& suppressed) {
+                                          const std::vector<int>& suppressed, NamingScheme naming) {
     std::unordered_set<int> skip(suppressed.begin(), suppressed.end());
 
     // Each instance as its own solid, so overlapping ones can be merged.
@@ -252,7 +252,8 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
             bodies[root] = std::move(instances[i]);
             continue;
         }
-        auto merged = BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union);
+        auto merged =
+            BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union, nullptr, naming);
         if (!merged) return nullptr;
         bodies[root] = std::move(merged);
     }
@@ -268,7 +269,8 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
 
 std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Vec3& direction,
                                              double spacing, int count,
-                                             const std::vector<int>& suppressed) {
+                                             const std::vector<int>& suppressed,
+                                             NamingScheme naming) {
     if (count < 1) return nullptr;
     Vec3 dir = direction.normalized();
     std::vector<Mat4> transforms;
@@ -276,7 +278,7 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     for (int k = 0; k < count; ++k) {
         transforms.push_back(Mat4::translation(dir * (spacing * k)));
     }
-    return buildPattern(source, transforms, suppressed);
+    return buildPattern(source, transforms, suppressed, naming);
 }
 
 std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
@@ -358,7 +360,8 @@ std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, con
 
 std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const Vec3& axisPoint,
                                                const Vec3& axisDir, double angleStepRad, int count,
-                                               const std::vector<int>& suppressed) {
+                                               const std::vector<int>& suppressed,
+                                               NamingScheme naming) {
     if (count < 1) return nullptr;
     Vec3 axis = axisDir.normalized();
     std::vector<Mat4> transforms;
@@ -369,7 +372,7 @@ std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const 
         Mat4 rot = Mat4::rotation(Quaternion::fromAxisAngle(axis, angleStepRad * k));
         transforms.push_back(fromOrigin * rot * toOrigin);
     }
-    return buildPattern(source, transforms, suppressed);
+    return buildPattern(source, transforms, suppressed, naming);
 }
 
 }  // namespace hz::model

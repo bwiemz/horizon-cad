@@ -13,6 +13,7 @@
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -206,4 +207,34 @@ TEST(PickingTest, ASketchGoesOnTheClickedFace) {
     EXPECT_NEAR((sketch->plane().origin() - Vec3(10, 5, 5)).length(), 0.0, 1e-9);
     EXPECT_NEAR((sketch->plane().normal() - Vec3(1, 0, 0)).length(), 0.0, 1e-9);
     EXPECT_TRUE(drive.viewport().modelSelection().empty()) << "sketching clears it";
+}
+
+// A click on a cylinder's rim picks the whole rim, one curve, not the chord
+// under the cursor (Phase 139); Fillet then rounds all of it.
+TEST(PickingTest, AClickOnARimPicksTheWholeCurve) {
+    MainWindow w;
+    ToolDriver drive(w);
+    run(w, "action_cylinder", QStringLiteral("Cylinder"),
+        FormAnswers().number(QStringLiteral("size0"), 5.0).number(QStringLiteral("size1"), 10.0));
+    auto& doc = *w.activeDocument();
+    ASSERT_EQ(doc.featureTree().featureCount(), 1u);
+    const std::string id = doc.featureTree().feature(0)->featureID();
+    auto& view = drive.viewport();
+    view.camera().lookAt(Vec3(30, -30, 35), Vec3(0, 0, 5), Vec3(0, 0, 1));
+    trigger(w, "tool_select");
+
+    const double a = -std::acos(-1.0) / 4.0;  // a vertex of the rim, toward the camera
+    drive.clickAt(view.projectToScreen(Vec3(5.0 * std::cos(a), 5.0 * std::sin(a), 10.0)));
+    ASSERT_EQ(view.modelSelection().size(), 1u);
+    EXPECT_TRUE(view.modelSelection()[0].edge);
+    EXPECT_EQ(view.modelSelection()[0].tag, id + "/edge:side|top") << "the rim, not a chord";
+
+    const double before = hz::model::MassPropertiesCalculator::compute(*doc.solid()).volume;
+    run(w, "action_fillet-3d", QStringLiteral("Fillet"),
+        FormAnswers().number(QStringLiteral("size"), 1.0));
+    ASSERT_EQ(doc.featureTree().featureCount(), 2u)
+        << w.statusBar()->currentMessage().toStdString();
+    ASSERT_NE(doc.solid(), nullptr);
+    EXPECT_LT(hz::model::MassPropertiesCalculator::compute(*doc.solid()).volume, before - 5.0)
+        << "all of the rim rounded, not a sliver of it";
 }

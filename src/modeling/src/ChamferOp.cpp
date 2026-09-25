@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
@@ -24,12 +25,16 @@ using hz::math::Vec3;
 /// The edges a reference names: the edge itself, or — once an operation has
 /// split it into pieces — every piece (its descendants).
 static std::vector<const Edge*> findEdges(const Solid& solid, const TopologyID& id) {
+    std::vector<const Edge*> chords;
     std::vector<const Edge*> pieces;
     for (const auto& e : solid.edges()) {
         if (e.topoId == id) return {&e};
+        // The chords of the curve it names (Stable names), not a pattern
+        // copy's, which are its descendants too.
+        if (logicalEdge(e.topoId.tag()) == id.tag()) chords.push_back(&e);
         if (e.topoId.isDescendantOf(id)) pieces.push_back(&e);
     }
-    return pieces;
+    return chords.empty() ? pieces : chords;
 }
 
 // ---------------------------------------------------------------------------

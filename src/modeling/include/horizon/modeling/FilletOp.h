@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -71,11 +72,15 @@ public:
     /// @param radius       Fillet radius (must be positive).
     /// @param featureID    Name used as the source in derived TopologyIDs.
     /// @param arcSegments  Chords across each blend arc (>= 1).
+    /// @param naming       Stable: edges it did not touch keep their names,
+    ///                     the rest are named after their faces. Otherwise
+    ///                     `<featureID>/edge<i>` in storage order, as older
+    ///                     documents' fillets were.
     /// @return A new solid with fillet faces, or an error message.
     static FilletResult execute(const topo::Solid& inputSolid,
                                 const std::vector<topo::TopologyID>& edgeIds, double radius,
-                                const std::string& featureID,
-                                int arcSegments = kDefaultArcSegments);
+                                const std::string& featureID, int arcSegments = kDefaultArcSegments,
+                                NamingScheme naming = NamingScheme::Positional);
 
     /// Fillet one edge with a radius that varies along it (Phase 61).
     /// @param stops  Radius table covering t = 0 and t = 1 in increasing

@@ -61,7 +61,10 @@ static std::string dumpJson(const json& root, int indent) {
 /// its faces and edges, and its Booleans' results, by position, and every
 /// reference made against the new names — a fillet's edges, a mate's faces —
 /// would miss.
-static constexpr int kFormatVersion = 18;
+/// 19: a feature may carry "naming": 3 (Phase 139), whose names are scoped to
+/// their feature and kept across fillets. An older build, which knows no 3,
+/// refuses the file rather than build it under other names.
+static constexpr int kFormatVersion = 19;
 
 /// Store `message` in `error` (when given) and report failure.
 static bool fail(std::string* error, std::string message) {
@@ -1360,7 +1363,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 // chamfers and mates against positional names: keep them.
                 const int namingCode = fObj.contains("naming") ? fObj.at("naming").get<int>() : 1;
                 if (namingCode != static_cast<int>(model::NamingScheme::Positional) &&
-                    namingCode != static_cast<int>(model::NamingScheme::FromGeometry)) {
+                    namingCode != static_cast<int>(model::NamingScheme::FromGeometry) &&
+                    namingCode != static_cast<int>(model::NamingScheme::Stable)) {
                     throw std::invalid_argument("unknown naming scheme");
                 }
                 const auto naming = static_cast<model::NamingScheme>(namingCode);

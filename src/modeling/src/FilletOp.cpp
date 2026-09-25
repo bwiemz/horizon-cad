@@ -9,6 +9,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
@@ -24,12 +25,16 @@ using hz::math::Vec3;
 /// The edges a reference names: the edge itself, or — once an operation has
 /// split it into pieces — every piece (its descendants).
 static std::vector<const Edge*> findEdges(const Solid& solid, const TopologyID& id) {
+    std::vector<const Edge*> chords;
     std::vector<const Edge*> pieces;
     for (const auto& e : solid.edges()) {
         if (e.topoId == id) return {&e};
+        // The chords of the curve it names (Stable names), not a pattern
+        // copy's, which are its descendants too.
+        if (logicalEdge(e.topoId.tag()) == id.tag()) chords.push_back(&e);
         if (e.topoId.isDescendantOf(id)) pieces.push_back(&e);
     }
-    return pieces;
+    return chords.empty() ? pieces : chords;
 }
 
 /// Face normal derived from the loop winding (Newell). Unlike the surface
@@ -1082,7 +1087,8 @@ int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
 }
 
 FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
-                               double radius, const std::string& featureID, int arcSegments) {
+                               double radius, const std::string& featureID, int arcSegments,
+                               NamingScheme naming) {
     FilletResult result;
 
     if (radius <= 0.0) {
@@ -1124,7 +1130,14 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
         filletEdges.push_back(std::move(info));
     }
 
-    return executeCore(inputSolid, filletEdges, featureID, arcSegments);
+    FilletResult built = executeCore(inputSolid, filletEdges, featureID, arcSegments);
+    // The edges it did not touch keep their names; it renamed every edge in
+    // storage order, so a second fillet on the part's edges lost them.
+    if (built.solid && naming == NamingScheme::Stable) {
+        nameBlendFaces(*built.solid, featureID + "/fillet/");
+        keepEdgeNames(*built.solid, inputSolid);
+    }
+    return built;
 }
 
 FilletResult FilletOp::executeVariable(const Solid& inputSolid, const TopologyID& edgeId,

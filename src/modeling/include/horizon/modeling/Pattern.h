@@ -6,6 +6,7 @@
 
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -29,9 +30,12 @@ public:
     /// Linear pattern: @p count instances spaced @p spacing apart along
     /// @p direction (instance 0 is the source at its original location).
     /// @p suppressed lists instance indices to skip.
+    /// Instances that meet are joined, at @p naming's names: Stable keeps
+    /// the instances' names; otherwise by position, as before.
     static std::unique_ptr<topo::Solid> linear(const topo::Solid& source,
                                                const math::Vec3& direction, double spacing,
-                                               int count, const std::vector<int>& suppressed = {});
+                                               int count, const std::vector<int>& suppressed = {},
+                                               NamingScheme naming = NamingScheme::Positional);
 
     /// Both solids' shells in one solid, as separate bodies: no Boolean, so
     /// shared material is not merged (use BooleanOp for that). Topology IDs
@@ -56,8 +60,8 @@ public:
     static std::unique_ptr<topo::Solid> circular(const topo::Solid& source,
                                                  const math::Vec3& axisPoint,
                                                  const math::Vec3& axisDir, double angleStepRad,
-                                                 int count,
-                                                 const std::vector<int>& suppressed = {});
+                                                 int count, const std::vector<int>& suppressed = {},
+                                                 NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model

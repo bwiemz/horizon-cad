@@ -17,6 +17,24 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 11 (Phases 139–142)
+
+- **Stable names (139).**
+  - A fillet, chamfer or mate stays on its edge or face through edits
+    elsewhere.
+    - Two boxes in one part no longer share names.
+    - A fillet or chamfer leaves the names of other edges as they were, so
+      a second fillet finds its edge.
+    - Revolve, Sweep and Loft faces are named after the profile element
+      they come from, and keep their names when the facet count changes.
+  - A curve is one edge and a curved face one face. Clicking a cylinder's
+    rim picks the whole rim, and filleting it rounds all of it. The edge
+    and face lists show one row for each, and no hidden seams.
+    - A rounded or chamfered rim is one face, and a cylinder a cut parts
+      in two is still one side.
+  - Documents saved before keep their names. A document saved now needs
+    this version or later (format 19).
+
 ## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
 
 - **A 2D view that scales (136).**

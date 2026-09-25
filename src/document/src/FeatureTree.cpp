@@ -331,7 +331,8 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
 std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
                                                      std::string* reason) const {
     return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID, segments(), m_chordTolerance, reason);
+                                   m_angle, m_featureID, segments(), m_chordTolerance, reason,
+                                   naming());
 }
 
 // ---------------------------------------------------------------------------
@@ -366,8 +367,8 @@ std::unique_ptr<topo::Solid> LoftFeature::execute(std::unique_ptr<topo::Solid> /
         sections.push_back({sk->entities(), sk->plane()});
     }
     std::string why;
-    auto solid =
-        model::Loft::execute(sections, m_featureID, model::Loft::kDefaultTwistSegments, &why);
+    auto solid = model::Loft::execute(sections, m_featureID, model::Loft::kDefaultTwistSegments,
+                                      &why, naming());
     if (!solid) return failWith(reason, why);
     return solid;
 }
@@ -498,7 +499,7 @@ std::unique_ptr<topo::Solid> SweepFeature::execute(std::unique_ptr<topo::Solid> 
     std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments, m_chordTolerance);
     std::string why;
     auto solid = model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
-                                       m_featureID, m_segments, m_chordTolerance, &why);
+                                       m_featureID, m_segments, m_chordTolerance, &why, naming());
     if (!solid) return failWith(reason, why);
     return solid;
 }
@@ -607,6 +608,12 @@ std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> 
     if (!inputSolid) return failWith(reason, "there is no body to shell");
     auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
     if (!result.ok) return failWith(reason, result.message);
+    if (naming() == model::NamingScheme::Stable && result.solid) {
+        // This shell's names, not every shell's (`shell/rim_0`); edges after
+        // their faces, not their storage order.
+        model::scopeToFeature(*result.solid, featureID());
+        model::nameEdgesLogically(*result.solid);
+    }
     return std::move(result.solid);
 }
 
@@ -666,8 +673,8 @@ int FilletFeature::arcSegments() const {
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                     std::string* reason) const {
     if (!inputSolid) return failWith(reason, "there is no body to fillet");
-    auto result =
-        model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID, arcSegments());
+    auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID,
+                                           arcSegments(), naming());
     if (!result.solid) {
         return failWith(reason, result.errorMessage.empty() ? "the fillet could not be built"
                                                             : result.errorMessage);
@@ -719,6 +726,12 @@ std::unique_ptr<topo::Solid> ChamferFeature::execute(std::unique_ptr<topo::Solid
     if (!result.solid) {
         return failWith(reason, result.errorMessage.empty() ? "the chamfer could not be built"
                                                             : result.errorMessage);
+    }
+    // The edges it did not touch keep their names (the sewer named them all
+    // afresh, in the order it met them).
+    if (naming() == model::NamingScheme::Stable) {
+        model::nameBlendFaces(*result.solid, m_featureID + "/chamfer/");
+        model::keepEdgeNames(*result.solid, *inputSolid);
     }
     return std::move(result.solid);
 }
@@ -903,10 +916,16 @@ bool PatternFeature::setVector(const std::string& name, const math::Vec3& value)
 std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                      std::string* reason) const {
     if (!inputSolid) return failWith(reason, "there is no body to pattern");
-    auto solid = m_kind == Kind::Linear
-                     ? model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed)
-                     : model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count,
-                                                m_suppressed);
+    // Instances that meet are joined at Stable names under Stable; older
+    // documents' patterns join by position, as their references expect.
+    const model::NamingScheme join = naming() == model::NamingScheme::Stable
+                                         ? model::NamingScheme::Stable
+                                         : model::NamingScheme::Positional;
+    auto solid =
+        m_kind == Kind::Linear
+            ? model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join)
+            : model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count, m_suppressed,
+                                       join);
     if (!solid) return failWith(reason, "overlapping instances could not be merged into one body");
     return solid;
 }
@@ -1088,6 +1107,14 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
         return failWith(reason,
                         "these dimensions do not make a solid: they must be positive (a cone may "
                         "have one zero radius, a torus's tube must be thinner than its ring)");
+    }
+    if (naming() == model::NamingScheme::Stable) {
+        // This feature's names, not the kind's: every box's top was
+        // `box/top`, so a second box's was the first's too. Edges after the
+        // faces they part, not their storage order.
+        model::scopeToFeature(*solid, featureID());
+        model::nameFacetsLogically(*solid);  // a cylinder's side is one face, in facets
+        model::nameEdgesLogically(*solid);
     }
     if (!isPlaced()) return solid;
     // Stood where it goes: its z axis turned onto the axis direction (the

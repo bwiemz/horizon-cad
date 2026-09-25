@@ -1,0 +1,220 @@
+# Milestone 11 — Kernel depth (Phases 139–142)
+
+The roadmap (`docs/superpowers/specs/2026-09-24-product-completeness-roadmap.md`,
+§1.5) lists the kernel's known limits:
+- Fillet and chamfer take only 90° convex edges between planar faces.
+- Names of edges after a fillet, and of Revolve, Loft, Sweep and Chamfer
+  faces, follow storage order.
+- Curved faces are measured and cut as vertex polygons.
+- Tolerances are fixed absolute values.
+
+This milestone takes them on. Each phase measures before and after, and
+refuses what it still cannot do (Principle 7).
+
+A survey of the kernel on 2026-09-24 set the baseline below. It also
+corrected two records:
+- The ChamferOp volume defect was fixed in Phase 82.
+- Booleans take torus and revolve operands since Phase 84's faceting.
+
+**Old files keep working.** A feature records its naming scheme. A file
+without one loads as `Positional` (NativeFormat.cpp), so every new name below
+applies to `Stable` features only, which is what new features are. A saved
+`"box/edge0"` still finds `box/edge0`.
+
+## Phase 139: Stable names
+
+### As built
+
+- **A new naming scheme, `Stable` (3), for new features.** Documents saved
+  with FromGeometry (2) or none (Positional) keep exactly the names their
+  references were made against.
+  - The file format is now version 19: an older build refuses a document
+    with naming 3, rather than build it under names nothing refers to.
+  - `namesFromGeometry` covers 2 and 3 wherever geometric naming applies.
+- **Primitives are named after their feature** (`scopeToFeature`):
+  `primitive_3/top`, where every box's top was `box/top`. Their edges are
+  named from their faces, not storage order.
+- **Fillet and chamfer keep the names of edges they did not touch**
+  (`keepEdgeNames`).
+  - An edge between two faces that exactly one input edge joined keeps that
+    edge's name. The rest are named from their faces.
+  - A second fillet on an edge named before the first now finds it.
+- **Shell's names are scoped to its feature**, not every shell's
+  `shell/…`. Its outer faces are still renamed by position (see Not done).
+- **Revolve, Sweep and Loft name each face after the profile element it
+  comes from**, in facets:
+  - `revolved:<source>/facet:<step>`;
+  - `swept:<source>/facet:<path segment>`;
+  - `lofted:<source>/facet:<level>`, from the first section.
+  A ring turned round, in Sweep and Loft, is mapped back to the profile's
+  own order. The names hold when the facet count changes.
+- **A curve is one logical edge, and a curved face one logical face.**
+  - Facets of one ideal surface are `<face>/facet:<k>`
+    (`nameFacetsLogically` for primitives).
+  - Edges are named logically (`nameEdgesLogically`): chords of one curve
+    are `<edge>/chord:<k>`, and seams between facets of one face are
+    `<face>/seam:<k>`.
+  - `logicalFace` and `logicalEdge` remove only the facet or chord
+    component, so a pattern copy's curve stays its own (`…/pattern:1`).
+  - Fillet, chamfer and mate lookups prefer a name's own chords or facets
+    over its descendants (a copy's).
+- **The viewport picks and highlights the whole curve or curved face.** The
+  fillet, chamfer and shell lists show one row per curve or face, and no
+  seams.
+- **A pattern whose copies meet joins them at Stable names.** It joined them
+  by position, which lost every name.
+- **After review:**
+  - A fillet's or chamfer's faces are one face for each curve they round
+    (`nameBlendFaces`), `<feature>/fillet/<curve>/facet:<k>`. Named after
+    each chord and band, a rounded cylinder rim was 256 faces. The edges
+    between them carried the chord's `/chord:`, and `logicalEdge` then cut
+    it from the wrong place: some names covered two or three edges.
+  - A piece of a facet that a Boolean split belongs to its face,
+    `<face>/facet:<k>/piece:<n>` as well as
+    `<face>/facet:<k>/pattern:<n>/piece:<j>`. The pieces were grouped by piece
+    number across facets, so a cylinder cut in two was two faces, each made
+    of halves from both sides.
+  - An older loft's twisted level has always been cut into triangles named
+    `<side>/facet:<k>`, in every scheme. The UI now groups them as their
+    side. That is kept: each triangle carries the side's ruled patch as its
+    ideal, so a mate on the side finds the same frame. Renaming them would
+    orphan references saved in older files.
+
+### Tests
+
+15 new, 1 changed:
+- Integration (PersistentNaming):
+  - two primitives named apart, with a fillet on the second by name;
+  - an older (positional) box keeps `box/top`;
+  - each scheme round-trips through a file;
+  - fillet and chamfer keep untouched edge names, and a second one finds
+    its edge;
+  - a shell named after its feature;
+  - a cylinder rim filleted whole by one name, its volume checked by
+    Pappus's theorem;
+  - revolve faces named after their profile, stable across the facet count;
+  - sweep and loft named after their profile, including a turned ring;
+  - a pattern copy's curves are its own;
+  - a rounded and a chamfered rim are one face, with one curve each side;
+  - a cylinder cut in two is one side, and so is a pattern copy's;
+  - an older loft's twisted side is one face, one ideal.
+- Window: a click on a cylinder's rim picks the whole curve, and Fillet
+  rounds all of it.
+- Changed: the sides-by-source test now checks both schemes' names.
+
+### Not done
+
+- A shell's outer faces are renamed by position (`outer_wall_<i>`), not
+  kept from its input: it rebuilds the part as a ring stack.
+- A flat face a Boolean splits into separate regions keeps a name for each,
+  `<face>/piece:<k>`, numbered in storage order.
+- Vertices are still unnamed.
+
+## Phase 140: Fillet and chamfer at any angle
+
+### Baseline
+- One inequality (FilletOp.cpp:173-183) refuses every dihedral that is not
+  90° and convex. Its message is generic: "Cannot compute fillet geometry".
+- The blend is exact only at a right angle: a rational quadratic with
+  weight cos 45°.
+- Chamfer says it is orthogonal-only and convex-only (ChamferOp.h:42-50).
+- Multi-body inputs are untested. Faces with inner loops are dropped (only
+  `outerLoop` is walked).
+
+### Plan
+1. **Convex edges at any dihedral θ between planar faces.**
+   - The ball's centre lies on the bisector, at r / sin(θ/2) from the edge.
+   - The setback along each face is r·cot(θ/2).
+   - The arc spans π − θ, with weight sin(θ/2).
+   - The capacity check and the chain miter use the setback.
+2. **Concave edges.** The blend adds material: the same frame, with the
+   ball outside the solid. Chamfer's concave case fills the wedge.
+3. **Chamfer at any angle.** Setbacks along each face at the dihedral.
+4. **Multi-body parts and faces with holes.** Faces are grouped by body
+   (the sewer already builds a shell per component), and inner loops are
+   carried.
+5. **Faceted faces on both sides, and multi-body parts** (found in 139): a
+   chain of chords that share no face, such as a revolve's rim where the
+   annulus is faceted too, is refused ("must share exactly one face"). A
+   fillet on a part of two bodies fails its Euler check. Both are to work.
+6. **Corners.** A three-edge corner off 90°, or a mixed convex/concave
+   corner, is refused by name ("an oblique corner blend is not supported
+   yet"), not with the generic message.
+7. **Tests:**
+   - exact volumes of a fillet on a 60°, a 120° and a 135° wedge, against
+     the closed-form section;
+   - a concave L-shape fillet and chamfer;
+   - two bodies, one filleted;
+   - a face with a hole next to the edge;
+   - refusals with their reasons.
+
+## Phase 141: Curved faces measured as curved
+
+### Baseline
+- Mass properties integrate the vertex polygons (MassProperties.cpp),
+  never the ideal surface. A cylinder of 32 facets reads 0.6 % low.
+- No "ideal" or "as modelled" report exists.
+- STEP import keeps no ideals. It reads cones, spheres and tori as
+  failures. An OCC-style cylinder (V=2, E=3, F=3) has one-vertex cap loops,
+  which the boundary mesh skips, so its volume and Booleans are wrong.
+
+### Plan
+1. **Ideal properties.**
+   - Each face with an ideal (`analyticSurface`) is refined against it:
+     subdivided in its (u, v) and its points put on the surface, at rising
+     resolution until the volume changes less than a tolerance. A
+     Richardson step then takes the limit.
+   - Faces without an ideal count as modelled.
+   - `MassProperties` gains `ideal` values and an `exact` flag: true when
+     every curved face has an ideal.
+2. **The dialog reports both.** "As modelled", which is what Booleans and
+   export use, and "ideal", which is the design intent. It says which faces
+   have no ideal.
+3. **STEP curved faces trimmed in (u, v).**
+   - An imported face's loop is built by sampling its edge curves, so a cap
+     bounded by one circle becomes a polygon.
+   - Its STEP surface becomes its ideal: plane, cylinder, cone, sphere,
+     torus or B-spline. Cone, sphere and torus are read (they failed).
+4. **Tests:**
+   - The ideal volume and area of a cylinder, cone, sphere, torus, a filleted
+     box and a revolve match the closed forms to 1e-9 relative.
+   - As modelled, they are unchanged.
+   - An OCC-style STEP cylinder has the right volume both ways.
+
+## Phase 142: Boolean robustness
+
+### Baseline
+- The BSP is fully recursive: build, clip, invert, allPolygons and the
+  node destructor. Its splitting plane is the first polygon's, so its depth
+  is O(triangles) for prismatic solids (MeshCsg.h:43-49).
+- Tolerances are absolute and inconsistent:
+  - `kCsgPlaneEps = 1e-6`;
+  - the weld tolerance, 1e-7;
+  - the T-junction tolerance, 8 × the weld tolerance;
+  - FragmentMerge gives up past 60 holes;
+  - only FeatureTree's `solidProblem` is relative to size.
+- Robustness tests pass at thresholds: 5 of 20 random transforms, 3 of 10
+  fuzzed Booleans. Nothing tests far-from-origin coordinates, very small or
+  large scales, exact face contact, or deep BSPs.
+
+### Plan
+1. **An iterative BSP.** Explicit stacks for build, clip, invert and
+   collect, and an iterative teardown. It is tested at 100,000 triangles
+   under a 1 MB stack, as on Windows.
+2. **A balanced split.** The plane is chosen from a sample of up to 16
+   candidates, to minimise splits plus the front/back imbalance.
+3. **One relative tolerance model.**
+   - A `Tolerance` taken from the operands' extent: plane, weld and area
+     tolerances in one place, relative with an absolute floor.
+   - It is passed through MeshCsg, FragmentMerge, SolidSewer and the
+     validators.
+4. **Strict robustness tests:**
+   - every one of the random transforms either succeeds with a valid,
+     volume-conserving result, or refuses with a reason (no silent null);
+   - the same at 1e6 from the origin, at 1e-3 and 1e5 scale, with exact
+     coplanar contact, and with shared faces.
+
+## Tracking
+
+Each phase is its own PR, stacked as before, with README rows and CHANGELOG
+entries. The phase's section here is replaced by "as built" when it lands.

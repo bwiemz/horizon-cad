@@ -6,6 +6,7 @@
 
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -44,11 +45,16 @@ public:
     /// @param sections   Ordered cross-sections (>= 2), each a closed loop.
     /// @param featureID  Base name for TopologyID generation (e.g. "loft_1").
     /// @param twistSegments  Strips per non-planar level (>= 1, rounded up to even).
+    /// @param naming     Stable: each side named after the first section's
+    ///                   profile element it starts from, `lofted:<source>`, a
+    ///                   facet for each level, and the edges logically.
+    ///                   Otherwise by position, as before.
     /// @return The lofted solid, or nullptr if the input is invalid.
     static std::unique_ptr<topo::Solid> execute(const std::vector<LoftSection>& sections,
                                                 const std::string& featureID,
                                                 int twistSegments = kDefaultTwistSegments,
-                                                std::string* reason = nullptr);
+                                                std::string* reason = nullptr,
+                                                NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model

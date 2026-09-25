@@ -134,9 +134,9 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
         // Names that last: a face the operation split gets a name per piece,
         // and an edge is named after the faces it separates — not numbered in
         // sewing order, which any change to either operand reshuffles.
-        if (naming == NamingScheme::FromGeometry) {
+        if (namesFromGeometry(naming)) {
             nameFacePieces(*result);
-            nameEdgesByFaces(*result);
+            nameEdges(*result, naming);
         }
         return result;
     };
@@ -168,7 +168,7 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     }
 
     auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type);
-    if (naming == NamingScheme::FromGeometry && !fragments.empty()) {
+    if (namesFromGeometry(naming) && !fragments.empty()) {
         // The CSG works on triangles and leaves every face in pieces, even a
         // face the cut never reached; put each face back together.
         fragments = mergeFragments(std::move(fragments), kCsgPlaneEps);

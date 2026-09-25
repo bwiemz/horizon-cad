@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -62,13 +63,16 @@ public:
     /// @param chordTolerance When positive, profile arcs are instead faceted at
     ///                      the count their own radius needs to keep every
     ///                      chord within it.
+    /// @param naming        Stable: each band is named after the profile element
+    ///                      it sweeps, `revolved:<source>`, in facets, and the
+    ///                      edges logically. Otherwise by position, as before.
     /// @return The revolved solid, or nullptr if the profile or angle is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
-        int segments = kDefaultSegments, double chordTolerance = 0.0,
-        std::string* reason = nullptr);
+        int segments = kDefaultSegments, double chordTolerance = 0.0, std::string* reason = nullptr,
+        NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model
