@@ -1134,6 +1134,7 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
     // The edges it did not touch keep their names; it renamed every edge in
     // storage order, so a second fillet on the part's edges lost them.
     if (built.solid && naming == NamingScheme::Stable) {
+        nameBlendFaces(*built.solid, featureID + "/fillet/");
         keepEdgeNames(*built.solid, inputSolid);
     }
     return built;

@@ -3,6 +3,7 @@
 #include <cctype>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -57,12 +58,17 @@ std::pair<std::string, std::string> facePair(const topo::Edge& edge) {
 
 namespace {
 
-/// @p tag without its `/<part>:<k>` component, if it has one: what follows
-/// it (a pattern copy's `/pattern:1`) is kept, so a copy's curve is its own.
+/// @p tag without its `/<part>:<k>` component, if it has one, and the
+/// `/piece:<n>` of a piece of it: what else follows it (a pattern copy's
+/// `/pattern:1`) is kept, so a copy's curve is its own.
 std::string without(const std::string& tag, const char* part) {
     const size_t at = tag.find(part);
     if (at == std::string::npos) return tag;
-    const size_t end = tag.find('/', at + 1);
+    static constexpr std::string_view kPiece = "/piece:";
+    size_t end = tag.find('/', at + 1);
+    while (end != std::string::npos && tag.compare(end, kPiece.size(), kPiece) == 0) {
+        end = tag.find('/', end + 1);
+    }
     return tag.substr(0, at) + (end == std::string::npos ? std::string() : tag.substr(end));
 }
 
@@ -174,6 +180,25 @@ void keepEdgeNames(topo::Solid& result, const topo::Solid& input) {
         const auto pair = facePair(edge);
         if (pair.first.empty() || countAfter[pair] != 1 || countBefore[pair] != 1) continue;
         edge.topoId = topo::TopologyID::fromTag(before[pair]);
+    }
+}
+
+void nameBlendFaces(topo::Solid& solid, const std::string& prefix) {
+    // In storage order, which the operation's input fixes.
+    std::map<std::string, std::vector<topo::Face*>> byCurve;
+    for (auto& face : solid.faces()) {
+        const std::string& tag = face.topoId.tag();
+        if (!face.topoId.isValid() || tag.compare(0, prefix.size(), prefix) != 0) continue;
+        const size_t colon = tag.rfind(':');
+        if (colon == std::string::npos || colon <= prefix.size()) continue;
+        byCurve[logicalEdge(tag.substr(prefix.size(), colon - prefix.size()))].push_back(&face);
+    }
+    for (auto& [curve, faces] : byCurve) {
+        const std::string name = prefix + curve;
+        for (size_t k = 0; k < faces.size(); ++k) {
+            faces[k]->topoId = topo::TopologyID::fromTag(
+                faces.size() == 1 ? name : name + "/facet:" + std::to_string(k));
+        }
     }
 }
 

@@ -693,3 +693,118 @@ TEST(PersistentNamingTest, APatternCopysCurvesAreItsOwn) {
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->topoId.tag().find("/pattern:"), std::string::npos) << "the original's";
 }
+
+namespace {
+
+/// The logical faces of @p solid, and its logical edges less the seams: what
+/// the Shell and Fillet dialogs list.
+std::pair<std::set<std::string>, std::set<std::string>> logicalNames(const hz::topo::Solid& solid) {
+    std::set<std::string> faces;
+    std::set<std::string> edges;
+    for (const auto& face : solid.faces()) faces.insert(hz::model::logicalFace(face.topoId.tag()));
+    for (const auto& edge : solid.edges()) {
+        if (edge.topoId.tag().find("/seam:") != std::string::npos) continue;
+        edges.insert(hz::model::logicalEdge(edge.topoId.tag()));
+    }
+    return {faces, edges};
+}
+
+}  // namespace
+
+// A rounded or chamfered rim is one face, and its two edges are one curve
+// each (Phase 139 review). The faces were named after the chords and bands
+// they round, 256 of them for a rim, and the edges between them took the
+// chords' `/chord:` into their names: hundreds of rows, some of them two
+// or three edges under one name.
+TEST(PersistentNamingTest, ARoundedRimIsOneFace) {
+    for (const bool fillet : {true, false}) {
+        hz::doc::FeatureTree tree;
+        auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+        const std::string id = cylinder->featureID();
+        tree.addFeature(std::move(cylinder));
+        const std::vector<TopologyID> rim{TopologyID::fromTag(id + "/edge:side|top")};
+        std::unique_ptr<hz::doc::Feature> round;
+        if (fillet) {
+            round = std::make_unique<hz::doc::FilletFeature>(rim, 1.0);
+        } else {
+            round = std::make_unique<hz::doc::ChamferFeature>(rim, 1.0);
+        }
+        const std::string blend =
+            round->featureID() + (fillet ? "/fillet/" : "/chamfer/") + id + "/edge:side|top";
+        tree.addFeature(std::move(round));
+        const auto built = tree.buildWithDiagnostics();
+        ASSERT_NE(built.solid, nullptr) << built.failureMessage;
+
+        const auto [faces, edges] = logicalNames(*built.solid);
+        const std::set<std::string> expected{id + "/bottom", id + "/top", id + "/side", blend};
+        EXPECT_EQ(faces, expected) << (fillet ? "fillet" : "chamfer");
+        const std::set<std::string> curves{id + "/edge:bottom|side",
+                                           "edge:" + blend + "|" + id + "/side",
+                                           "edge:" + blend + "|" + id + "/top"};
+        EXPECT_EQ(edges, curves) << (fillet ? "fillet" : "chamfer");
+    }
+}
+
+// A cylinder a cut parts in two is still one side (Phase 139 review): the
+// pieces of its facets, `side/facet:<k>/piece:<n>`, were grouped as
+// `side/piece:<n>`, each group the first or second piece of every facet,
+// whichever half of the cylinder that was.
+TEST(PersistentNamingTest, ACutCylinderIsStillOneSide) {
+    hz::doc::FeatureTree tree;
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+    const std::string id = cylinder->featureID();
+    tree.addFeature(std::move(cylinder));
+    auto notch = hz::doc::PrimitiveFeature::makeBox(10, 20, 2);  // x 3..13, z 4..6
+    ASSERT_TRUE(notch->setVector("basePoint", Vec3(3, -10, 4)));
+    notch->setOperation(BodyOperation::Cut);
+    tree.addFeature(std::move(notch));
+    const auto built = tree.buildWithDiagnostics();
+    ASSERT_NE(built.solid, nullptr) << built.failureMessage;
+
+    bool pieces = false;
+    std::set<std::string> sides;
+    for (const auto& face : built.solid->faces()) {
+        const std::string& tag = face.topoId.tag();
+        if (tag.rfind(id + "/side/", 0) != 0) continue;
+        pieces = pieces || tag.find("/piece:") != std::string::npos;
+        sides.insert(hz::model::logicalFace(tag));
+    }
+    EXPECT_TRUE(pieces) << "the notch parts the facets it crosses";
+    EXPECT_EQ(sides, std::set<std::string>{id + "/side"});
+    const hz::topo::Face* found =
+        hz::model::MateGeometry::findFace(*built.solid, TopologyID::fromTag(id + "/side"));
+    ASSERT_NE(found, nullptr);
+    EXPECT_NE(found->analyticSurface, nullptr) << "the cylinder, for a concentric mate";
+}
+
+// An older loft's twisted level, cut into triangles named `<side>/facet:<k>`
+// in every scheme, is grouped as its side (Phase 139 review): each triangle
+// carries the side's ruled patch as its ideal, so a reference to the side
+// finds one with the same ideal, and a mate on it the same frame.
+TEST(PersistentNamingTest, AnOlderLoftsTwistedSideIsOneFace) {
+    auto rect = std::make_shared<hz::draft::DraftRectangle>(Vec2(0, 0), Vec2(4, 4));
+    auto small = std::make_shared<hz::draft::DraftRectangle>(Vec2(1, 1), Vec2(3, 3));
+    const hz::draft::SketchPlane base;
+    const hz::draft::SketchPlane lifted(Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0.3, 0));  // twisted
+    std::string why;
+    auto solid = hz::model::Loft::execute({{{rect}, base}, {{small}, lifted}}, "loft_t",
+                                          hz::model::Loft::kDefaultTwistSegments, &why,
+                                          NamingScheme::FromGeometry);
+    ASSERT_NE(solid, nullptr) << why;
+    std::map<std::string, std::set<const hz::geo::NurbsSurface*>> ideals;
+    for (const auto& face : solid->faces()) {
+        const std::string& tag = face.topoId.tag();
+        if (tag.find("/facet:") == std::string::npos) continue;
+        ideals[hz::model::logicalFace(tag)].insert(face.analyticSurface.get());
+    }
+    ASSERT_EQ(ideals.size(), 4u) << "four twisted sides";
+    EXPECT_TRUE(ideals.count("loft_t/lateral_0_0")) << "the names they always had";
+    for (const auto& [side, surfaces] : ideals) {
+        ASSERT_EQ(surfaces.size(), 1u) << side;
+        ASSERT_NE(*surfaces.begin(), nullptr) << side;
+        const hz::topo::Face* found =
+            hz::model::MateGeometry::findFace(*solid, TopologyID::fromTag(side));
+        ASSERT_NE(found, nullptr) << side;
+        EXPECT_EQ(found->analyticSurface.get(), *surfaces.begin()) << side;
+    }
+}

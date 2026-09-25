@@ -30,6 +30,8 @@ work, not "post-1.0".
   - A curve is one edge and a curved face one face. Clicking a cylinder's
     rim picks the whole rim, and filleting it rounds all of it. The edge
     and face lists show one row for each, and no hidden seams.
+    - A rounded or chamfered rim is one face, and a cylinder a cut parts
+      in two is still one side.
   - Documents saved before keep their names. A document saved now needs
     this version or later (format 19).
 
