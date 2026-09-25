@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <exception>
+#include <optional>
 #include <string>
 #include <system_error>
 
@@ -46,6 +47,27 @@ bool countParameter(double value, int min, int max, int& out) {
     if (!std::isfinite(value) || value < min) return false;
     out = value >= max ? max : static_cast<int>(value);
     return true;
+}
+
+}  // namespace
+
+Feature::ParameterKind Feature::parameterKind(const std::string& name) const {
+    if (name == "angle") return ParameterKind::Angle;
+    if (name == "segments" || name == "arcSegments" || name == "count") return ParameterKind::Count;
+    if (name == "operation") return ParameterKind::Choice;
+    return ParameterKind::Length;
+}
+
+namespace {
+
+bool finite(const math::Vec3& v) {
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+/// @p value as a unit direction, if it is one: finite and of some length.
+std::optional<math::Vec3> unitDirection(const math::Vec3& value) {
+    if (!finite(value) || !(value.length() > 1e-12)) return std::nullopt;
+    return value.normalized();
 }
 
 }  // namespace
@@ -117,6 +139,20 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
+std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
+    return {{"direction", m_direction}};
+}
+
+bool ExtrudeFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name != "direction") return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    // Along the sketch's own plane it sweeps nothing.
+    if (m_sketch && std::abs(unit->dot(m_sketch->plane().normal())) < 1e-9) return false;
+    m_direction = *unit;
+    return true;
+}
+
 bool ExtrudeFeature::hasCurvedProfile() const {
     if (!m_sketch) return false;
     for (const auto& ent : m_sketch->entities()) {
@@ -186,6 +222,22 @@ bool RevolveFeature::setParameter(const std::string& name, double value) {
     return false;
 }
 
+std::map<std::string, math::Vec3> RevolveFeature::vectors() const {
+    return {{"axisPoint", m_axisPoint}, {"axisDirection", m_axisDir}};
+}
+
+bool RevolveFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name == "axisPoint" && finite(value)) {
+        m_axisPoint = value;
+        return true;
+    }
+    if (name != "axisDirection") return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    m_axisDir = *unit;
+    return true;
+}
+
 int RevolveFeature::segments() const {
     if (m_chordTolerance > 0.0 && m_sketch) {
         const double radius = model::Revolve::profileRadius(m_sketch->entities(), m_sketch->plane(),
@@ -242,8 +294,10 @@ std::unique_ptr<topo::Solid> LoftFeature::execute(std::unique_ptr<topo::Solid> /
         if (!sk) return failWith(reason, "a section's sketch is missing");
         sections.push_back({sk->entities(), sk->plane()});
     }
-    auto solid = model::Loft::execute(sections, m_featureID);
-    if (!solid) return failWith(reason, "the sections could not be lofted into a solid");
+    std::string why;
+    auto solid =
+        model::Loft::execute(sections, m_featureID, model::Loft::kDefaultTwistSegments, &why);
+    if (!solid) return failWith(reason, why);
     return solid;
 }
 
@@ -371,13 +425,10 @@ std::unique_ptr<topo::Solid> SweepFeature::execute(std::unique_ptr<topo::Solid> 
                                                    std::string* reason) const {
     if (!m_profile || !m_path) return failWith(reason, "the profile or path sketch is missing");
     std::vector<math::Vec3> pathPoints = extractPathPoints(*m_path, m_segments, m_chordTolerance);
+    std::string why;
     auto solid = model::Sweep::execute(m_profile->entities(), m_profile->plane(), pathPoints,
-                                       m_featureID, m_segments, m_chordTolerance);
-    if (!solid) {
-        return failWith(reason,
-                        "the profile cannot follow the path: it may turn more tightly than the "
-                        "profile allows, double back, or cross itself");
-    }
+                                       m_featureID, m_segments, m_chordTolerance, &why);
+    if (!solid) return failWith(reason, why);
     return solid;
 }
 
@@ -417,6 +468,22 @@ bool DraftFeature::setParameter(const std::string& name, double value) {
         return true;
     }
     return false;
+}
+
+std::map<std::string, math::Vec3> DraftFeature::vectors() const {
+    return {{"pullDirection", m_pullDir}, {"neutralPoint", m_neutralPoint}};
+}
+
+bool DraftFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name == "neutralPoint" && finite(value)) {
+        m_neutralPoint = value;
+        return true;
+    }
+    if (name != "pullDirection") return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    m_pullDir = *unit;
+    return true;
 }
 
 std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
@@ -736,6 +803,30 @@ bool PatternFeature::setParameter(const std::string& name, double value) {
         return true;
     }
     return false;
+}
+
+Feature::ParameterKind PatternFeature::parameterKind(const std::string& name) const {
+    // A circular pattern's step is the angle between copies.
+    if (name == "spacing" && m_kind == Kind::Circular) return ParameterKind::Angle;
+    return Feature::parameterKind(name);
+}
+
+std::map<std::string, math::Vec3> PatternFeature::vectors() const {
+    if (m_kind == Kind::Circular) return {{"axisPoint", m_vecA}, {"axisDirection", m_vecB}};
+    return {{"direction", m_vecA}};
+}
+
+bool PatternFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (m_kind == Kind::Circular && name == "axisPoint" && finite(value)) {
+        m_vecA = value;
+        return true;
+    }
+    const bool direction = m_kind == Kind::Circular ? name == "axisDirection" : name == "direction";
+    if (!direction) return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    (m_kind == Kind::Circular ? m_vecB : m_vecA) = *unit;
+    return true;
 }
 
 std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid> inputSolid,

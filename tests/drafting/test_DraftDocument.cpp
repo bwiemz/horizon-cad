@@ -149,6 +149,8 @@ TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
 #ifdef NDEBUG
     EXPECT_LT(ms, 500.0);
 #else
-    EXPECT_LT(ms, 10000.0);  // Debug builds; was minutes
+    // Debug builds: 12 s on CI's Windows runner with four tests at once. The
+    // quadratic removal this guards against took minutes.
+    EXPECT_LT(ms, 30000.0);
 #endif
 }

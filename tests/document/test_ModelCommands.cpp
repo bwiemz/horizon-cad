@@ -4,7 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -14,6 +17,8 @@
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 
 using hz::doc::AddFeatureCommand;
@@ -336,4 +341,87 @@ TEST(ModelCommandsTest, RefusedParametersLeaveTheFeatureAlone) {
         *cylinder, {{"segments", 2.0}, {"height", 4.0}, {"radius", 3.0}});
     EXPECT_EQ(refused, std::vector<std::string>{"segments"});
     EXPECT_EQ(cylinder->parameters(), before) << "trying does not change it";
+}
+
+// -- Editable definitions and rollback (Phase 133) ----------------------------
+
+TEST(ModelCommandsTest, ParametersSayWhatKindTheyAre) {
+    using Kind = Feature::ParameterKind;
+    const auto revolve = std::make_unique<hz::doc::RevolveFeature>(
+        rectangle(1, 0, 2, 1), Vec3(0, 0, 0), Vec3(0, 1, 0), 3.14159);
+    EXPECT_EQ(revolve->parameterKind("angle"), Kind::Angle);
+    EXPECT_EQ(revolve->parameterKind("segments"), Kind::Count);
+    EXPECT_EQ(revolve->parameterKind("chordTolerance"), Kind::Length);
+    const auto boolean = std::make_unique<hz::doc::BooleanFeature>(hz::model::BooleanType::Union);
+    EXPECT_EQ(boolean->parameterKind("operation"), Kind::Choice);
+    const auto circular =
+        hz::doc::PatternFeature::makeCircular(Vec3(0, 0, 0), Vec3(0, 0, 1), 0.5, 4);
+    EXPECT_EQ(circular->parameterKind("spacing"), Kind::Angle) << "the angle between copies";
+    const auto linear = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3);
+    EXPECT_EQ(linear->parameterKind("spacing"), Kind::Length);
+}
+
+// A direction can be set, but not one of no length or along the sketch.
+TEST(ModelCommandsTest, AnExtrusionsDirectionIsEditableWithinReason) {
+    auto feature = extrude(rectangle(0, 0, 2, 2), 3.0, BodyOperation::NewBody);
+    EXPECT_FALSE(feature->setVector("direction", Vec3(0, 0, 0)));
+    EXPECT_FALSE(feature->setVector("direction", Vec3(1, 0, 0))) << "along its own sketch";
+    EXPECT_TRUE(feature->setVector("direction", Vec3(0, 0, -5)));
+    EXPECT_NEAR(feature->vectors().at("direction").z, -1.0, 1e-12) << "kept as a unit vector";
+    EXPECT_TRUE(Feature::isPoint("axisPoint"));
+    EXPECT_FALSE(Feature::isPoint("axisDirection"));
+}
+
+// The edit command takes directions too, and undo puts them back.
+TEST(ModelCommandsTest, EditingADirectionUndoes) {
+    Document doc;
+    const Feature* plate = add(doc, extrude(rectangle(0, 0, 10, 10), 2.0, BodyOperation::NewBody));
+    ASSERT_TRUE(doc.rebuildModel());
+    doc.undoStack().push(std::make_unique<hz::doc::EditFeatureCommand>(
+        doc, plate, std::map<std::string, double>{}, std::nullopt,
+        std::map<std::string, Vec3>{{"direction", Vec3(0, 0, -1)}}));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    double lowest = 0.0;
+    for (const auto& v : doc.solid()->vertices()) lowest = std::min(lowest, v.point.z);
+    EXPECT_NEAR(lowest, -2.0, 1e-9) << "extruded downwards";
+    doc.undoStack().undo();
+    EXPECT_NEAR(plate->vectors().at("direction").z, 1.0, 1e-12);
+}
+
+// Rolling back is one undo step, and leaves the later features out of the
+// build until rolled forward.
+TEST(ModelCommandsTest, RollingBackIsAnUndoableStep) {
+    Plate p;
+    EXPECT_NEAR(volume(p.doc), 192.0, 1e-9);
+    p.doc.undoStack().push(std::make_unique<hz::doc::SetRollbackCommand>(p.doc, 0));
+    EXPECT_EQ(p.doc.featureTree().rollbackIndex(), 0);
+    EXPECT_NEAR(volume(p.doc), 200.0, 1e-9) << "the pocket left out";
+    p.doc.undoStack().undo();
+    EXPECT_EQ(p.doc.featureTree().rollbackIndex(), -1);
+    EXPECT_NEAR(volume(p.doc), 192.0, 1e-9);
+    p.doc.undoStack().push(std::make_unique<hz::doc::SetRollbackCommand>(p.doc, 1));
+    EXPECT_EQ(p.doc.featureTree().rollbackIndex(), -1) << "back to the last feature is no rollback";
+}
+
+// Loft and Sweep say why they fail: they returned nothing, and the part said
+// only that it could not be built.
+TEST(ModelCommandsTest, LoftAndSweepSayWhyTheyFail) {
+    auto square = rectangle(0, 0, 2, 2);
+    auto triangle = std::make_shared<Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    triangle->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(2, 0)));
+    triangle->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(2, 0), Vec2(1, 2)));
+    triangle->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(1, 2), Vec2(0, 0)));
+    hz::doc::LoftFeature loft({square, triangle});
+    std::string why;
+    EXPECT_EQ(loft.execute(nullptr, &why), nullptr);
+    EXPECT_NE(why.find("corners"), std::string::npos) << why;
+
+    // A path in the profile's own plane sweeps nothing.
+    auto path = std::make_shared<Sketch>();
+    path->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    hz::doc::SweepFeature sweep(rectangle(0, 0, 1, 1), path);
+    why.clear();
+    EXPECT_EQ(sweep.execute(nullptr, &why), nullptr);
+    EXPECT_NE(why.find("sweeps no volume"), std::string::npos) << why;
 }

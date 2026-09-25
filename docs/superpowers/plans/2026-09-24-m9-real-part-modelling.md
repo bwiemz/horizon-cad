@@ -243,32 +243,74 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ## Phase 133: The missing commands
 
-- **Loft, Sweep and datum commands.**
-  - Loft takes two or more sketches. Sweep takes a profile sketch and a
-    path sketch.
-  - Datums: a plane offset or at an angle, through three points, or a
-    midplane; an axis; a point.
-  - Datums are drawn, can be picked (132), and sketches can be placed on
-    them.
-  - Loft and Sweep failures say why. The kernel returns nullptr with no
-    reason today.
+### As built
+
+- **Loft, Sweep and datums in the Model menu:**
+  - Loft… takes two or more sketches from a checklist, in order.
+  - Sweep… takes a profile sketch and a path sketch.
+  - Datum ▸ Plane… is offset from XY, XZ, YZ or a clicked flat face, and
+    can be turned about its x axis.
+  - Datum ▸ Axis… runs along X, Y, Z or a clicked face or edge, through a
+    point.
+  - Datum ▸ Point… is at typed coordinates.
+  - The viewport draws datums dashed: a plane as a square, an axis as a
+    line, a point as a cross. Suppressed and rolled-back ones are not drawn.
+  - New Sketch ▸ On a Datum Plane (Phase 131) now has datums to use.
+- **Loft and Sweep say why they fail.** The kernels returned nullptr with
+  no reason, and the part said only that it could not be built. Now:
+  - a loft names the section and its corner count against the first's;
+  - a sweep names the path that doubles back, turns too sharply, sweeps
+    along the profile's plane, or runs into itself.
 - **Editable definitions:**
-  - Parameters carry a kind (length, angle, count, choice). The edit
-    dialog labels them and shows angles in degrees.
-  - Directions, axes and positions can be edited: Extrude's direction,
-    Revolve's axis, the pattern direction and axis. They are picked (132)
-    or chosen from the axes.
-- **Rollback bar:**
-  - The feature tree gets a draggable marker.
-  - Moving it is an undo step.
-  - It is saved in the file.
-  - The worker rebuild honours it.
-- **Tests:**
-  - loft and sweep from the menu;
-  - datum then sketch on it;
-  - angles shown and taken in degrees;
-  - a changed extrude direction;
-  - rollback undone, saved and reloaded.
+  - Each parameter has a kind (`Feature::parameterKind`): length, angle,
+    count or choice.
+  - The edit form labels the fields, shows angles in degrees (a circular
+    pattern's step too), counts as whole numbers, and a Boolean's operation
+    by name.
+  - Features have named vectors (`vectors()`/`setVector`): Extrude's
+    direction; Revolve's axis point and direction; Draft's pull direction
+    and neutral point; a pattern's direction or axis.
+  - The form offers each direction as it is, one of the six axes, or along
+    or against a face or edge clicked on the part. Each point is three
+    coordinates.
+  - `EditFeatureCommand` carries vectors, and undo puts them back. Refused
+    ones (no length, or along the sketch) are left out and named.
+- **Rollback:**
+  - The tree's menu has Roll Back to Here and Roll Forward to the End.
+  - Each is one undo step (`SetRollbackCommand`). It was written straight
+    to the tree.
+  - The rollback point is saved in the file, so the background rebuild,
+    which builds from a saved copy, honours it too.
+- **Found in review:** datums were drawn solid, not dashed as meant: every
+  vertex was given distance 0, and the line shader dashes by distance. Each
+  segment's end now carries its length.
+
+### Tests
+
+11 new, 1 changed.
+- Document:
+  - parameter kinds;
+  - a direction refused when it has no length or lies along the sketch,
+    and kept as a unit vector;
+  - a direction edit undone;
+  - rollback as an undo step;
+  - Loft and Sweep failure reasons.
+- Files: the rollback point is kept, and a stale one ignored.
+- Window:
+  - a revolve's angle edited in degrees;
+  - an extrusion reversed;
+  - a loft from XY to a sketch on a datum plane (a frustum, exactly);
+  - a sweep of a square along a line;
+  - rolling back from the tree, and undo.
+- Changed: a refusal now names the field's label ("Segments per turn"), not
+  its code name.
+
+### Not done
+
+- The rollback point is set from the tree's menu, not by dragging a bar.
+- A datum is its coordinates when made: it does not follow a face it was
+  made from.
+- Loft sections must still have as many corners each.
 
 ## Phase 134: Extrude and pattern options
 

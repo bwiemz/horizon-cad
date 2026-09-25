@@ -1024,3 +1024,31 @@ TEST(PartFormatTest, AnOldEmptyDefaultSketchIsDropped) {
                                R"( "sketchId": 900})");
     EXPECT_EQ(used->sketches().size(), 1u) << "one a feature uses is kept";
 }
+
+// Where the part is rolled back to is saved: a save used to roll it forward.
+TEST(PartFormatTest, TheRollbackPointIsKept) {
+    Document doc;
+    auto square = std::make_shared<Sketch>();
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(4, 0)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(4, 0), Vec2(4, 4)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(4, 4), Vec2(0, 4)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 4), Vec2(0, 0)));
+    doc.addSketch(square);
+    doc.featureTree().addFeature(std::make_unique<ExtrudeFeature>(square, Vec3(0, 0, 1), 2.0));
+    doc.featureTree().addFeature(std::make_unique<ExtrudeFeature>(square, Vec3(0, 0, 1), 5.0));
+    doc.featureTree().setRollbackIndex(0);
+
+    Document back;
+    std::string error;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(doc, false), back, &error))
+        << error;
+    EXPECT_EQ(back.featureTree().rollbackIndex(), 0);
+
+    // A rollback past the features read is no rollback.
+    Document odd;
+    ASSERT_TRUE(NativeFormat::documentFromJson(
+        R"({"version": 18, "type": "hzpart", "entities": [], "rollbackIndex": 7})", odd, &error))
+        << error;
+    EXPECT_EQ(odd.featureTree().rollbackIndex(), -1);
+}

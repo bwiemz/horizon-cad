@@ -48,6 +48,17 @@ work, not "post-1.0".
     two components.
   - The part now shows its own edges, not every triangle's, and a cylinder
     no longer shows a line between every facet.
+- **The missing commands (133).**
+  - Model ▸ Loft… and Sweep…, and Model ▸ Datum ▸ Plane, Axis and Point.
+    Datums are drawn, and sketches can go on datum planes.
+  - When a loft or sweep fails, you are told why: which section has too few
+    corners, or where the path turns too tightly.
+  - Editing a feature shows angles in degrees (a full revolve used to show
+    as 6.2832), counts as whole numbers, and labels in words. Directions and
+    axes can be changed too: an extrusion reversed, a revolve's axis moved,
+    or along the face or edge you clicked.
+  - Roll Back to Here and Roll Forward in the feature tree. Each is one undo
+    step, and a saved part keeps where it was rolled back to.
 
 ## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
 

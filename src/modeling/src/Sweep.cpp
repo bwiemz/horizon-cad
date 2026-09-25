@@ -45,32 +45,36 @@ constexpr double kParallelTol = 1e-9;
 std::unique_ptr<topo::Solid> Sweep::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const std::vector<math::Vec3>& pathPoints,
-    const std::string& featureID, int profileSegments, double chordTolerance) {
+    const std::string& featureID, int profileSegments, double chordTolerance, std::string* reason) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
     // -----------------------------------------------------------------------
     // 1. Validate the path (>= 2 distinct points, no zero-length segments).
     // -----------------------------------------------------------------------
-    if (pathPoints.size() < 2) return nullptr;
+    if (pathPoints.size() < 2) return fail("the path has no length");
     std::vector<Vec3> path;
     path.push_back(pathPoints[0]);
     for (size_t i = 1; i < pathPoints.size(); ++i) {
         if ((pathPoints[i] - path.back()).length() < 1e-9) continue;  // collapse duplicates
         path.push_back(pathPoints[i]);
     }
-    if (path.size() < 2) return nullptr;
+    if (path.size() < 2) return fail("the path has no length");
 
     // -----------------------------------------------------------------------
     // 2. Validate and extract the profile as a 3D ring.
     // -----------------------------------------------------------------------
     auto validation = ProfileValidator::validate(profile);
-    if (!validation.isClosed) return nullptr;
+    if (!validation.isClosed) return fail("the profile: " + validation.errorMessage);
 
-    if (profileSegments < 3) return nullptr;
+    if (profileSegments < 3) return fail("arcs need at least 3 segments per turn");
     const std::vector<Vec2> verts2D =
         ringstack::sampleProfile(validation.orderedEdges, 1e-6,
                                  ringstack::ProfileResolution{profileSegments, chordTolerance})
             .vertices;
     const size_t N = verts2D.size();
-    if (N < 3) return nullptr;
+    if (N < 3) return fail("the profile has fewer than three distinct points");
 
     std::vector<Vec3> profileRing;
     profileRing.reserve(N);
@@ -80,7 +84,7 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // the leading cap faces outward.
     const Vec3 sweepDir = (path[1] - path[0]).normalized();
     Vec3 profileNormal = newellNormal(profileRing);
-    if (profileNormal.length() < 1e-12) return nullptr;
+    if (profileNormal.length() < 1e-12) return fail("the profile encloses no area");
     profileNormal = profileNormal.normalized();
     if (profileNormal.dot(sweepDir) < 0.0) {
         std::reverse(profileRing.begin(), profileRing.end());
@@ -107,7 +111,9 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     for (size_t k = 0; k < S; ++k) dirs.push_back((path[k + 1] - path[k]).normalized());
 
     // A profile containing the sweep direction sweeps no volume.
-    if (std::abs(profileNormal.dot(sweepDir)) < kParallelTol) return nullptr;
+    if (std::abs(profileNormal.dot(sweepDir)) < kParallelTol) {
+        return fail("the path starts along the profile's plane, so it sweeps no volume");
+    }
 
     double scale = 0.0;
     for (const auto& p : profileRing) scale = std::max(scale, (p - path.front()).length());
@@ -123,7 +129,7 @@ std::unique_ptr<topo::Solid> Sweep::execute(
         if (k + 1 < S) {
             const Vec3 bisector = dirs[k] + dirs[k + 1];
             // A path that doubles back on itself has no miter plane.
-            if (bisector.length() < kParallelTol) return nullptr;
+            if (bisector.length() < kParallelTol) return fail("the path doubles back on itself");
             cutNormal = bisector.normalized();
             endNormal = minimalRotation(dirs[k], dirs[k + 1], endNormal);
         } else {
@@ -131,7 +137,7 @@ std::unique_ptr<topo::Solid> Sweep::execute(
         }
 
         const double denom = dirs[k].dot(cutNormal);
-        if (denom < kParallelTol) return nullptr;
+        if (denom < kParallelTol) return fail("the path turns too sharply for the profile");
 
         std::vector<Vec3> next;
         next.reserve(N);
@@ -140,7 +146,11 @@ std::unique_ptr<topo::Solid> Sweep::execute(
             // Every point must advance along the segment; one that does not
             // means the profile reaches past the inside of the turn and the
             // band folds through itself.
-            if (t <= lengthTol) return nullptr;
+            if (t <= lengthTol) {
+                return fail(
+                    "the profile reaches past the inside of a turn in the path: it would fold "
+                    "through itself");
+            }
             next.push_back(p + dirs[k] * t);
         }
         rings.push_back(std::move(next));
@@ -151,7 +161,9 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // -----------------------------------------------------------------------
     auto solid = std::make_unique<topo::Solid>();
     ringstack::RingStackBuild build = ringstack::build(*solid, rings);
-    if (build.bottomFace == nullptr || build.topFace == nullptr) return nullptr;
+    if (build.bottomFace == nullptr || build.topFace == nullptr) {
+        return fail("the swept shape could not be built");
+    }
 
     // -----------------------------------------------------------------------
     // 5. TopologyIDs.
@@ -193,7 +205,9 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // A path that crosses itself, or turns tightly enough elsewhere, can still
     // sew into a shell whose loops are not what the rings describe.  Refuse it
     // rather than return it.
-    if (!GeometryValidator::check(*solid).ok()) return nullptr;
+    if (!GeometryValidator::check(*solid).ok()) {
+        return fail("the path crosses itself or turns too tightly: the shape runs into itself");
+    }
 
     return solid;
 }

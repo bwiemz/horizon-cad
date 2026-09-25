@@ -70,8 +70,13 @@ size_t bestAlignmentOffset(const std::vector<Vec3>& ring, const std::vector<Vec3
 }  // namespace
 
 std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& sections,
-                                           const std::string& featureID, int twistSegments) {
-    if (sections.size() < 2) return nullptr;
+                                           const std::string& featureID, int twistSegments,
+                                           std::string* reason) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+    if (sections.size() < 2) return fail("a loft needs at least two sections");
 
     // -----------------------------------------------------------------------
     // 1. Validate and extract each section as a 3D ring.
@@ -79,18 +84,22 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
     std::vector<std::vector<Vec3>> rings;
     rings.reserve(sections.size());
     size_t N = 0;
-    for (const auto& section : sections) {
+    for (size_t k = 0; k < sections.size(); ++k) {
+        const auto& section = sections[k];
+        const std::string which = "section " + std::to_string(k + 1);
         auto validation = ProfileValidator::validate(section.profile);
-        if (!validation.isClosed) return nullptr;
+        if (!validation.isClosed) return fail(which + ": " + validation.errorMessage);
 
         std::vector<Vec2> verts2D =
             ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
-        if (verts2D.size() < 3) return nullptr;
+        if (verts2D.size() < 3) return fail(which + " has fewer than three corners");
         if (N == 0) {
             N = verts2D.size();
         } else if (verts2D.size() != N) {
             // Era-2 scope: sections must share a vertex count.
-            return nullptr;
+            return fail(which + " has " + std::to_string(verts2D.size()) +
+                        " corners and section 1 has " + std::to_string(N) +
+                        "; a loft joins sections corner to corner, so they must have as many");
         }
 
         std::vector<Vec3> ring;
@@ -221,7 +230,9 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
     ringstack::orientOutward(faces);
 
     auto solid = SolidSewer::sew(faces);
-    if (solid == nullptr || !solid->checkManifold()) return nullptr;
+    if (solid == nullptr || !solid->checkManifold()) {
+        return fail("the sections could not be joined into a closed shape");
+    }
 
     {
         int idx = 0;

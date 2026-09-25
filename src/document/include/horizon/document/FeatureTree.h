@@ -114,6 +114,34 @@ public:
         return false;
     }
 
+    /// How a parameter is read and shown.
+    enum class ParameterKind {
+        Length,  ///< a distance, in the model's millimetres
+        Angle,   ///< kept in radians; shown and typed in degrees
+        Count,   ///< a whole number
+        Choice,  ///< the code of one of a few named choices (a Boolean's operation)
+    };
+    /// The kind of parameter @p name: by default an "angle" is an angle,
+    /// "segments", "arcSegments" and "count" are counts, "operation" a
+    /// choice, and anything else a length.
+    virtual ParameterKind parameterKind(const std::string& name) const;
+
+    /// The directions and points that place the feature, in world
+    /// coordinates: an extrusion's direction, a revolve's axis. A point's
+    /// name ends in "Point"; every other one is a direction.
+    virtual std::map<std::string, math::Vec3> vectors() const { return {}; }
+    /// Set one. Returns false for a value the feature cannot use (a
+    /// direction of no length, an extrusion along its own sketch).
+    virtual bool setVector(const std::string& name, const math::Vec3& value) {
+        (void)name;
+        (void)value;
+        return false;
+    }
+    /// Whether vector @p name is a point (not a direction).
+    static bool isPoint(const std::string& name) {
+        return name.size() >= 5 && name.compare(name.size() - 5, 5, "Point") == 0;
+    }
+
     /// How the body this feature builds combines with the part so far.
     /// Meaningful only when `createsNewBody()`; a new feature starts a
     /// separate body.
@@ -149,6 +177,8 @@ public:
                                          std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
     bool createsNewBody() const override { return true; }
@@ -189,6 +219,8 @@ public:
                                          std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
     const math::Vec3& axisPoint() const { return m_axisPoint; }
@@ -296,6 +328,8 @@ public:
                                          std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
     void restoreFeatureID(const std::string& id) override;
 
     const math::Vec3& pullDir() const { return m_pullDir; }
@@ -454,6 +488,9 @@ public:
                                          std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
+    ParameterKind parameterKind(const std::string& name) const override;
     void restoreFeatureID(const std::string& id) override;
 
     Kind kind() const { return m_kind; }
