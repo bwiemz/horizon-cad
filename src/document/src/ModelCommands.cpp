@@ -264,6 +264,28 @@ std::string AddSketchCommand::description() const {
 
 // --- AssemblyEditCommand ---
 
+SetLengthUnitCommand::SetLengthUnitCommand(Document& document, math::LengthUnit unit,
+                                           AssemblyDocument* assembly)
+    : m_document(document), m_assembly(assembly), m_new(unit) {}
+
+void SetLengthUnitCommand::set(math::LengthUnit unit) {
+    m_document.setLengthUnit(unit);
+    if (m_assembly != nullptr) m_assembly->setLengthUnit(unit);
+}
+
+void SetLengthUnitCommand::execute() {
+    m_old = m_document.lengthUnit();
+    set(m_new);
+}
+
+void SetLengthUnitCommand::undo() {
+    set(m_old);
+}
+
+std::string SetLengthUnitCommand::description() const {
+    return "Document Units";
+}
+
 AssemblyEditCommand::AssemblyEditCommand(AssemblyDocument& assembly, AssemblyState before,
                                          AssemblyState after, std::string description)
     : m_assembly(assembly),

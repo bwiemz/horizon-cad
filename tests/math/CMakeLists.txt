@@ -9,6 +9,7 @@ add_executable(hz_math_tests
     test_Expression.cpp
     test_ExpressionEdgeCases.cpp
     test_IdCounter.cpp
+    test_Units.cpp
 )
 
 target_link_libraries(hz_math_tests

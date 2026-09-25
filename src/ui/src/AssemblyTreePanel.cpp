@@ -9,6 +9,7 @@
 #include <numbers>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/ui/Preferences.h"
 
 namespace hz::ui {
 
@@ -138,7 +139,10 @@ void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
                 ? tr("%1: %2").arg(mateName(m.type), nameOf(m.a.componentId))
                 : tr("%1: %2 and %3")
                       .arg(mateName(m.type), nameOf(m.a.componentId), nameOf(m.b.componentId));
-        if (m.type == doc::MateType::Distance) text += tr(", %1 mm").arg(m.value);
+        if (m.type == doc::MateType::Distance) {
+            text += QStringLiteral(", ") +
+                    Preferences::current().formatLength(m.value, assembly->lengthUnit());
+        }
         if (m.type == doc::MateType::Angle) {
             text += tr(", %1%2").arg(m.value * 180.0 / std::numbers::pi).arg(QChar(0x00B0));
         }

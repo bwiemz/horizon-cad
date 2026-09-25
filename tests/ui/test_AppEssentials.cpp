@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QKeySequence>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -31,12 +32,15 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/math/Constants.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RecentFiles.h"
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::test::DialogResponder;
+using hz::test::FormAnswers;
+using hz::test::FormFiller;
 using hz::ui::MainWindow;
 using hz::ui::Preferences;
 using hz::ui::RecentFiles;
@@ -236,15 +240,65 @@ TEST(AppEssentialsTest, PreferencesAreKeptAndPutIntoEffect) {
     Preferences{}.save();  // back to the defaults for the tests after this one
 }
 
-TEST(AppEssentialsTest, LengthsAreShownInTheDisplayUnit) {
+TEST(AppEssentialsTest, LengthsAreShownInTheDocumentsUnit) {
+    using hz::math::LengthUnit;
     Preferences p;
-    EXPECT_EQ(p.formatLength(12.5), QStringLiteral("12.500 mm"));
+    EXPECT_EQ(p.newDocumentUnit(), LengthUnit::Millimetre);
+    EXPECT_EQ(p.formatLength(12.5, LengthUnit::Millimetre), QStringLiteral("12.500 mm"));
+    EXPECT_EQ(p.formatLength(25.4, LengthUnit::Inch), QStringLiteral("1.000 in"));
+    EXPECT_EQ(p.formatArea(25.4 * 25.4 * 2, LengthUnit::Inch), QStringLiteral("2.000 in\u00B2"));
+    EXPECT_EQ(p.formatVolume(3000.0, LengthUnit::Centimetre), QStringLiteral("3.000 cm\u00B3"));
+    EXPECT_EQ(p.formatAngle(hz::math::kPi / 6), QStringLiteral("30.000\u00B0"));
+    EXPECT_EQ(p.formatLength(-0.0001, LengthUnit::Millimetre), QStringLiteral("0.000 mm"));
     p.lengthUnit = QStringLiteral("in");
-    EXPECT_EQ(p.formatLength(25.4), QStringLiteral("1.000 in"));
-    EXPECT_EQ(p.formatArea(25.4 * 25.4 * 2), QStringLiteral("2.000 in\u00B2"));
-    p.lengthUnit = QStringLiteral("m");
+    EXPECT_EQ(p.newDocumentUnit(), LengthUnit::Inch);
     p.decimals = 1;
-    EXPECT_EQ(p.formatLength(1500.0), QStringLiteral("1.5 m"));
+    EXPECT_EQ(p.formatLength(1500.0, LengthUnit::Metre), QStringLiteral("1.5 m"));
+}
+
+// Edit ▸ Document Units (Phase 154): the document's unit, one step to undo,
+// in the coordinates shown; the model left as it is.
+TEST(AppEssentialsTest, ADocumentsUnitIsChosenAndUndone) {
+    using hz::math::LengthUnit;
+    MainWindow w;
+    hz::doc::Document& document = *w.activeDocument();
+    ASSERT_EQ(document.lengthUnit(), LengthUnit::Millimetre);
+    {
+        FormFiller filler(
+            QStringLiteral("Document Units"),
+            FormAnswers().choose(QStringLiteral("unit"), QStringLiteral("Inches (in)")));
+        w.findChild<QAction*>(QStringLiteral("action_document_units"))->trigger();
+        ASSERT_TRUE(filler.seen());
+    }
+    EXPECT_EQ(document.lengthUnit(), LengthUnit::Inch);
+    EXPECT_TRUE(document.isDirty()) << "a change to save";
+
+    auto* viewport = w.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(viewport, nullptr);
+    emit viewport->mouseMoved(hz::math::Vec2(25.4, 50.8));
+    auto* coords = w.findChild<QLabel*>(QStringLiteral("statusCoords"));
+    ASSERT_NE(coords, nullptr);
+    EXPECT_EQ(coords->text(), QStringLiteral("X: 1.000 in  Y: 2.000 in"));
+
+    document.undoStack().undo();
+    EXPECT_EQ(document.lengthUnit(), LengthUnit::Millimetre);
+    EXPECT_FALSE(document.isDirty());
+}
+
+// A new document is made in the unit the preferences name; one already
+// open keeps its own.
+TEST(AppEssentialsTest, ANewDocumentIsMadeInThePreferredUnit) {
+    Preferences prefs;
+    prefs.lengthUnit = QStringLiteral("ft");
+    prefs.save();
+    MainWindow w;
+    EXPECT_EQ(w.activeDocument()->lengthUnit(), hz::math::LengthUnit::Foot);
+    w.findChild<QAction*>(QStringLiteral("action_new_assembly"))->trigger();
+    ASSERT_NE(w.activeAssembly(), nullptr);
+    EXPECT_EQ(w.activeAssembly()->lengthUnit(), hz::math::LengthUnit::Foot);
+    EXPECT_EQ(w.activeDocument()->lengthUnit(), hz::math::LengthUnit::Foot)
+        << "the view's tools read it from the assembly's backing document";
+    Preferences{}.save();  // back to the defaults for the tests after this one
 }
 
 TEST(AppEssentialsTest, FollowingTheSystemLanguageStoresNoLanguage) {

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/Units.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
@@ -76,6 +77,9 @@ struct DrawingDocumentSpec {
     std::shared_ptr<doc::Document> annotations;
     /// Where the views were when the annotations were saved.
     std::vector<DrawingViewFrame> frames;
+    /// The unit the sheet shows and takes lengths in (Phase 154);
+    /// millimetres when the file names none.
+    math::LengthUnit lengthUnit = math::LengthUnit::Millimetre;
     /// The format version it was read from: 1 lays out the standard views
     /// by the gap at 1:1, as version 1 did; 2 is the sheet layout; 3 adds
     /// sections and details.

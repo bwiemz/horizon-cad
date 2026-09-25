@@ -1,0 +1,159 @@
+# Milestone 16 — Units and design intent (Phases 154–157)
+
+Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-professional-workflows-roadmap.md).
+
+## Baseline (checked in the code)
+
+- **The model is in millimetres and radians, always.** That stays: a unit
+  is how lengths are shown and typed, never how they are kept.
+- **One display unit, an application preference.**
+  - It is `Preferences::lengthUnit`, a `QString` ("mm", "cm", "m", "in",
+    "ft"), stored in QSettings, with `decimals`.
+  - Three places read it:
+    - the cursor readout (`MainWindow::onMouseMoved`);
+    - Measure Distance;
+    - Measure Area.
+  - Measure Angle prints degrees to two places, whatever the setting.
+  - Mass Properties is hard-coded to mm, mm², mm³, cm³ and g.
+- **Four tables list the five units:**
+  - `Preferences.cpp`;
+  - `DimensionStyle.cpp` (`millimetresPerUnit`);
+  - the Dimension Style form's list in `MainWindow`;
+  - DXF's `$INSUNITS` map, which is a table of codes and stays.
+- **No file stores a unit**, except a dimension style's own.
+  - NativeFormat is at version 19.
+  - It reads older files by checking for each key and taking a default.
+  - It bumps the version only when an older build would misread new
+    content. An older build that ignores a unit misreads nothing, since
+    the model is in millimetres.
+- **Nothing typed accepts a unit.**
+  - `FeatureForm::number` is a plain `QDoubleSpinBox`. Angle fields are
+    `number` fields labelled "(degrees)", converted by each caller.
+  - `TypedPoint::key` refuses letters and spaces.
+  - `TypedLength` takes a bare number only.
+  - The property panel's spin boxes, the array and block dialogs, and the
+    constraint `QInputDialog`s take plain numbers.
+- **`math::Expression`** (+ − × ÷ ^, functions, variables; bounded) exists.
+  It has no units, and no form uses it. `ExpressionEngine` and
+  `ParameterRegistry` hold a document's design variables, which are saved,
+  but nothing lets a user make one (Phase 155).
+
+## Phase 154: Document units
+
+A unit per document, saved in the file. Every length field shows it and
+takes it, as do the readouts and typing in the view. A typed value may
+carry its own unit ("2 in", "1' 6\"", "30 deg", "0.5 rad"). Angles are
+shown in degrees.
+
+### 154a: the units, and the document's (as built)
+The model is unchanged, in millimetres. What changed:
+- **`math::Units`** (`Units.h`) is the one table.
+  - `formatLength` is locale-free.
+  - `parseLength` and `parseAngle` follow the grammar below.
+  - Preferences, DimensionStyle and the Dimension Style form use it. DXF's
+    `$INSUNITS` codes keep their own map.
+- **`Document::lengthUnit` and `AssemblyDocument::lengthUnit`**:
+  - Saved as `"units": {"length": "in"}` in NativeFormat's document and
+    assembly roots, and in `.hzdwg`.
+  - Read back by any version; millimetres when absent or not known.
+  - `DocumentManager::setNewDocumentUnit` gives new documents the
+    preference, "Unit for new documents".
+  - An assembly's backing document mirrors its unit, so the view's tools
+    read it there.
+- **Edit ▸ Document Units** pushes `SetLengthUnitCommand` (the document, and
+  its assembly if it backs one) as one undo step.
+- **Readouts in the document's unit:**
+  - the cursor readout;
+  - Measure Distance and Area;
+  - Measure Angle, with the decimals set;
+  - Mass Properties: volume, area and centre in the unit; inertia in
+    g·unit² (or unit⁵ per unit density); mass in g; density in g/cm³;
+  - the assembly tree's mate distances;
+  - interference volumes.
+
+The design, as planned:
+- **`math::Units`**, the one table:
+  - `LengthUnit` (mm, cm, m, in, ft), with symbols, and millimetres per
+    unit;
+  - `formatLength`, locale-free;
+  - `parseLength(text, unit)` into millimetres. One or more terms, each a
+    number with an optional unit ("25.4", "2in", "1' 6\"", "1 ft 6 in"),
+    under one sign. A bare number is in @p unit. A decimal point only, since
+    a comma separates a typed point's coordinates.
+  - `parseAngle(text)` into radians. A bare number is degrees; "°", "deg"
+    and "rad" are accepted.
+  - Refused: an unknown unit, an empty term, a non-finite value.
+  - Preferences and DimensionStyle use it. The Dimension Style form lists
+    it.
+- **The document's unit**:
+  - `Document::lengthUnit()` and `AssemblyDocument::lengthUnit()`.
+  - Saved in NativeFormat's document and assembly roots, and in a drawing
+    sheet's `.hzdwg`, as `"units": {"length": "in"}`.
+  - A file without it (every file so far) reads as millimetres. No version
+    bump.
+  - A new document takes the preference, now labelled "Unit for new
+    documents".
+- **Edit ▸ Document Units…** sets it, as one undo step, and marks the
+  document modified.
+- **Readouts in it**:
+  - the cursor readout;
+  - Measure Distance and Measure Area;
+  - Measure Angle, with the decimals setting;
+  - Mass Properties: lengths, areas and volumes in the unit; mass in g;
+    density in g/cm³; inertia in g·unit²;
+  - the assembly tree's mate distances;
+  - interference volumes.
+
+### 154b: fields that show and take it
+- **`QuantitySpinBox`**, a `QDoubleSpinBox`:
+  - Its `value()` stays in millimetres (or degrees, for an angle), so
+    callers keep reading what they read today.
+  - It shows the document's unit as a suffix, and accepts a typed unit.
+  - Internally it keeps enough decimals that 0.001 in survives the round
+    trip.
+- **`FeatureForm::length(...)`** and **`FeatureForm::angle(...)`**:
+  - Every length and angle field moves to them: primitives, Extrude,
+    Revolve, Fillet/Chamfer, Shell, Draft, patterns, datums, section plane,
+    block base, dimension style, assembly Move/Rotate/Mate, and drawing
+    sections.
+  - The generic Edit Feature form moves too.
+  - `number` stays for plain numbers.
+- **The property panel's spin boxes** (lengths and angles), the rectangular
+  and polar array dialogs, Insert Block, and the constraint value dialogs.
+- **Tests:** `FormAnswers::typed(name, text)` types text into a named number
+  field, so a test can enter "2 in".
+
+### 154c: typing in the view
+- **`TypedPoint`** accepts letters, spaces, quotes and "°". Each coordinate
+  or length may carry a unit ("2in,3in", "@50 mm<30 deg"). A bare number is
+  in the document's unit.
+- **`TypedLength`** (fillet and chamfer radius) the same.
+- **Rotate's typed angle** accepts "rad".
+- **The prompts** show the unit.
+
+### Done when
+- A part in inches shows and takes inches everywhere, keeps them when saved
+  and opened, and models exactly what the same part in millimetres models.
+- "2 in", "50.8 mm" and "5.08 cm" typed into any length give one value.
+- Older files open in millimetres, as they did.
+
+## Phase 155: Variables and equations (outline)
+- A design-variables dialog.
+- A feature parameter as an expression of variables, re-evaluated on
+  rebuild.
+- Cycles refused.
+- Expressions take units ("2 * wall + 1 mm").
+
+## Phase 156: Configurations (outline)
+- A design table of variable values per configuration, saved.
+- The active configuration chosen in the feature tree.
+
+## Phase 157: Sketches that follow (outline)
+- A sketch on a face follows the face by its stable name.
+- Part edges can be projected into a sketch.
+- Extrude up to a face.
+
+## Tracking
+
+Each phase is its own PR (154 as three), with README rows and CHANGELOG
+entries. A phase's section here is replaced by "as built" when it lands.

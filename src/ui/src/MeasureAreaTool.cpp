@@ -106,8 +106,12 @@ void MeasureAreaTool::finishMeasure() {
     }
 
     const Preferences& prefs = Preferences::current();
-    const QString message = QObject::tr("Area: %1  Perimeter: %2")
-                                .arg(prefs.formatArea(area), prefs.formatLength(perimeter));
+    const math::LengthUnit unit = m_viewport && m_viewport->document()
+                                      ? m_viewport->document()->lengthUnit()
+                                      : math::LengthUnit::Millimetre;
+    const QString message =
+        QObject::tr("Area: %1  Perimeter: %2")
+            .arg(prefs.formatArea(area, unit), prefs.formatLength(perimeter, unit));
 
     if (m_viewport) {
         auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());

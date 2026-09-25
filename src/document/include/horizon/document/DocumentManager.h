@@ -55,11 +55,18 @@ public:
 
     // --- Document lifecycle ---
 
-    /// Create a new, unsaved document of the given type (Drawing or Part).
+    /// Create a new, unsaved document of the given type (Drawing or Part),
+    /// in the unit for new documents.
     std::shared_ptr<Document> newDocument(DocumentType type);
 
-    /// Create a new, unsaved assembly document.
+    /// Create a new, unsaved assembly document, in the unit for new
+    /// documents.
     std::shared_ptr<AssemblyDocument> newAssembly();
+
+    /// The unit a new document or assembly is made in (Phase 154): the
+    /// user's preference. One read from a file is in the file's.
+    void setNewDocumentUnit(math::LengthUnit unit) { m_newUnit = unit; }
+    math::LengthUnit newDocumentUnit() const { return m_newUnit; }
 
     /// Open a part/drawing file. If the file is already open, returns the
     /// existing instance (deduplicated by canonical path). Returns nullptr
@@ -175,6 +182,7 @@ private:
         std::uint64_t version = 0;
     };
     std::map<std::string, SharedMesh> m_meshes;
+    math::LengthUnit m_newUnit = math::LengthUnit::Millimetre;
 };
 
 }  // namespace hz::doc

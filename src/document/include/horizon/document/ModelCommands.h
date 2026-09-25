@@ -180,6 +180,27 @@ private:
     std::shared_ptr<Sketch> m_sketch;
 };
 
+/// The unit a document shows and takes lengths in (Phase 154); with
+/// @p assembly, the assembly's too, whose tab @p document backs. Its model
+/// is not changed: it is in millimetres whatever the unit.
+class SetLengthUnitCommand : public Command {
+public:
+    SetLengthUnitCommand(Document& document, math::LengthUnit unit,
+                         AssemblyDocument* assembly = nullptr);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    void set(math::LengthUnit unit);
+
+    Document& m_document;
+    AssemblyDocument* m_assembly = nullptr;
+    math::LengthUnit m_new;
+    math::LengthUnit m_old = math::LengthUnit::Millimetre;
+};
+
 /// Any edit to an assembly's components and mates, as the states before and
 /// after it. The caller makes the edit (inserting, mating and solving), takes
 /// a snapshot, and pushes this, which leaves the assembly as it is.

@@ -3,19 +3,13 @@
 #include <QSettings>
 #include <algorithm>
 #include <cmath>
+#include <string_view>
+
+#include "horizon/math/Constants.h"
 
 namespace hz::ui {
 
 namespace {
-
-struct Unit {
-    const char* name;
-    double mm;
-};
-
-constexpr Unit kUnits[] = {
-    {"mm", 1.0}, {"cm", 10.0}, {"m", 1000.0}, {"in", 25.4}, {"ft", 304.8},
-};
 
 Preferences& cache() {
     static Preferences prefs = Preferences::load();
@@ -77,26 +71,50 @@ const Preferences& Preferences::current() {
 
 QStringList Preferences::lengthUnits() {
     QStringList names;
-    for (const Unit& u : kUnits) names << QString::fromLatin1(u.name);
+    for (const math::LengthUnit unit : math::kLengthUnits) {
+        const std::string_view symbol = math::symbolOf(unit);
+        names << QString::fromLatin1(symbol.data(), static_cast<qsizetype>(symbol.size()));
+    }
     return names;
 }
 
-double Preferences::millimetresPer(const QString& unit) {
-    for (const Unit& u : kUnits) {
-        if (unit == QLatin1String(u.name)) return u.mm;
-    }
-    return 1.0;
+math::LengthUnit Preferences::newDocumentUnit() const {
+    return math::lengthUnitFrom(lengthUnit.toStdString()).value_or(math::LengthUnit::Millimetre);
 }
 
-QString Preferences::formatLength(double mm) const {
-    return QStringLiteral("%1 %2")
-        .arg(mm / millimetresPer(lengthUnit), 0, 'f', decimals)
-        .arg(lengthUnit);
+namespace {
+
+QString symbol(math::LengthUnit unit) {
+    const std::string_view text = math::symbolOf(unit);
+    return QString::fromLatin1(text.data(), static_cast<qsizetype>(text.size()));
 }
 
-QString Preferences::formatArea(double mm2) const {
-    const double per = millimetresPer(lengthUnit);
-    return QStringLiteral("%1 %2²").arg(mm2 / (per * per), 0, 'f', decimals).arg(lengthUnit);
+/// @p value to @p decimals places, without "-0.000".
+QString fixed(double value, int decimals) {
+    if (std::abs(value) < 0.5 * std::pow(10.0, -decimals)) value = 0.0;
+    return QString::number(value, 'f', decimals);
+}
+
+}  // namespace
+
+QString Preferences::formatLength(double mm, math::LengthUnit unit) const {
+    return QStringLiteral("%1 %2").arg(fixed(mm / math::millimetresPer(unit), decimals),
+                                       symbol(unit));
+}
+
+QString Preferences::formatArea(double mm2, math::LengthUnit unit) const {
+    const double per = math::millimetresPer(unit);
+    return QStringLiteral("%1 %2\u00B2").arg(fixed(mm2 / (per * per), decimals), symbol(unit));
+}
+
+QString Preferences::formatVolume(double mm3, math::LengthUnit unit) const {
+    const double per = math::millimetresPer(unit);
+    return QStringLiteral("%1 %2\u00B3")
+        .arg(fixed(mm3 / (per * per * per), decimals), symbol(unit));
+}
+
+QString Preferences::formatAngle(double radians) const {
+    return QStringLiteral("%1\u00B0").arg(fixed(radians * math::kRadToDeg, decimals));
 }
 
 }  // namespace hz::ui

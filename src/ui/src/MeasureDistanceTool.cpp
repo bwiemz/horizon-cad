@@ -45,10 +45,15 @@ bool MeasureDistanceTool::mousePressEvent(QMouseEvent* event, const math::Vec2& 
         double dy = snappedPos.y - m_firstPoint.y;
         double dist = std::sqrt(dx * dx + dy * dy);
 
+        // In the document's unit.
         const Preferences& prefs = Preferences::current();
+        const math::LengthUnit unit = m_viewport && m_viewport->document()
+                                          ? m_viewport->document()->lengthUnit()
+                                          : math::LengthUnit::Millimetre;
         const QString message =
             QObject::tr("Distance: %1  (dx=%2, dy=%3)")
-                .arg(prefs.formatLength(dist), prefs.formatLength(dx), prefs.formatLength(dy));
+                .arg(prefs.formatLength(dist, unit), prefs.formatLength(dx, unit),
+                     prefs.formatLength(dy, unit));
 
         // Display in status bar.
         if (m_viewport) {

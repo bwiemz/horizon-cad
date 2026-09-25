@@ -472,6 +472,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Initial empty drawing document. The tab-bar signals are connected
     // AFTER the panels exist (below) — addTab would otherwise fire
     // currentChanged into slots that touch not-yet-created widgets.
+    m_docManager.setNewDocumentUnit(Preferences::current().newDocumentUnit());
     m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
     watchDocument(m_document);
     m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1"), m_nextRecoveryKey++});
@@ -697,6 +698,8 @@ void MainWindow::createMenus() {
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
     editMenu->addSeparator();
+    editMenu->addAction(tr("Document &Units..."), this, &MainWindow::onDocumentUnits)
+        ->setObjectName(QStringLiteral("action_document_units"));
     QAction* prefsAction =
         editMenu->addAction(tr("Pre&ferences..."), this, &MainWindow::onPreferences);
     prefsAction->setObjectName(QStringLiteral("action_preferences"));
@@ -1165,6 +1168,7 @@ void MainWindow::createStatusBar() {
 
     // Coordinates (left).
     m_statusCoords = new QLabel(tr("X: 0.000  Y: 0.000"), this);
+    m_statusCoords->setObjectName(QStringLiteral("statusCoords"));
     m_statusCoords->setMinimumWidth(180);
     m_statusCoords->setStyleSheet("QLabel { padding: 0 6px; }");
     sb->addWidget(m_statusCoords);
@@ -1343,6 +1347,8 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                const QString& title) {
     watchDocument(document);
     document->undoStack().setLimit(static_cast<std::size_t>(Preferences::current().undoLimit));
+    // An assembly's backing document shows its unit: the view's tools ask it.
+    if (assembly) document->setLengthUnit(assembly->lengthUnit());
     DocTab tab{std::move(document), std::move(assembly), title, m_nextRecoveryKey++};
     if (!tab.assembly && tab.document->needsBuild()) {
         // A part come in unbuilt (opened, recovered): how long its model
@@ -1806,6 +1812,7 @@ void MainWindow::applyPreferences(const Preferences& prefs) {
     showAutosaveState(m_recovery->problem());
     m_viewport->snapEngine().setGridSpacing(prefs.gridSpacing);
     m_viewport->setSnapPixels(prefs.snapPixels);
+    m_docManager.setNewDocumentUnit(prefs.newDocumentUnit());
     for (const DocTab& tab : m_tabs) {
         tab.document->undoStack().setLimit(static_cast<std::size_t>(prefs.undoLimit));
     }
@@ -1819,6 +1826,48 @@ void MainWindow::onPreferences() {
     const Preferences prefs = dialog.preferences();
     prefs.save();
     applyPreferences(prefs);
+}
+
+void MainWindow::onDocumentUnits() {
+    // Each unit by its name and symbol, in the order they are offered.
+    const auto nameOf = [](math::LengthUnit unit) {
+        switch (unit) {
+            case math::LengthUnit::Millimetre:
+                return tr("Millimetres (mm)");
+            case math::LengthUnit::Centimetre:
+                return tr("Centimetres (cm)");
+            case math::LengthUnit::Metre:
+                return tr("Metres (m)");
+            case math::LengthUnit::Inch:
+                return tr("Inches (in)");
+            case math::LengthUnit::Foot:
+                return tr("Feet (ft)");
+        }
+        return QString();
+    };
+    QStringList names;
+    int current = 0;
+    for (std::size_t k = 0; k < math::kLengthUnits.size(); ++k) {
+        names << nameOf(math::kLengthUnits[k]);
+        if (math::kLengthUnits[k] == m_document->lengthUnit()) current = static_cast<int>(k);
+    }
+    FeatureForm form(this, tr("Document Units"));
+    QComboBox* unit = form.choice(QStringLiteral("unit"), tr("Lengths in:"), names);
+    unit->setCurrentIndex(current);
+    auto* note = new QLabel(tr("The model is kept in millimetres: its unit changes only how its "
+                               "lengths are shown and typed, and is saved with it."),
+                            &form.dialog());
+    note->setWordWrap(true);
+    form.dialog().layout()->addWidget(note);
+    if (!form.exec()) return;
+    const math::LengthUnit chosen =
+        math::kLengthUnits[static_cast<std::size_t>(std::max(unit->currentIndex(), 0))];
+    if (chosen == m_document->lengthUnit()) return;
+    m_document->undoStack().push(
+        std::make_unique<doc::SetLengthUnitCommand>(*m_document, chosen, m_assembly.get()));
+    refreshAllPanels();
+    m_viewport->update();
+    m_statusPrompt->setText(tr("Lengths are in %1.").arg(nameOf(chosen).toLower()));
 }
 
 void MainWindow::onAbout() {
@@ -3289,8 +3338,7 @@ void MainWindow::onAngularDimTool() {
 void MainWindow::onDimensionStyle() {
     draft::DraftDocument& drawing = m_document->activeDrawing();
     const draft::DimensionStyle& now = drawing.dimensionStyle();
-    const QStringList units = {QStringLiteral("mm"), QStringLiteral("cm"), QStringLiteral("m"),
-                               QStringLiteral("in"), QStringLiteral("ft")};
+    const QStringList units = Preferences::lengthUnits();
 
     FeatureForm form(this, tr("Dimension Style"));
     auto* height = form.number(QStringLiteral("textHeight"), tr("Text height:"), now.textHeight,
@@ -3632,8 +3680,10 @@ void MainWindow::onUngroupEntities() {
 
 void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
     const Preferences& prefs = Preferences::current();
+    const math::LengthUnit unit = m_document->lengthUnit();
     m_statusCoords->setText(
-        tr("X: %1  Y: %2").arg(prefs.formatLength(worldPos.x), prefs.formatLength(worldPos.y)));
+        tr("X: %1  Y: %2")
+            .arg(prefs.formatLength(worldPos.x, unit), prefs.formatLength(worldPos.y, unit)));
 
     // Update tool prompt dynamically as mouse moves.
     if (m_viewport && m_viewport->activeTool()) m_statusPrompt->setText(toolPrompt());
@@ -3978,9 +4028,14 @@ void MainWindow::onMassProperties() {
     }
 
     const auto n = [](double v) { return QString::number(v, 'g', 7); };
-    // Superscripts by code point: the sources are not compiled as UTF-8.
-    const QString mm2 = QStringLiteral("mm") + QChar(0x00B2);
-    const QString mm3 = QStringLiteral("mm") + QChar(0x00B3);
+    // In the document's unit (Phase 154). Superscripts by code point: the
+    // sources are not compiled as UTF-8.
+    const math::LengthUnit lengthUnit = m_document->lengthUnit();
+    const double per = math::millimetresPer(lengthUnit);
+    const std::string_view symbol = math::symbolOf(lengthUnit);
+    const QString u = QString::fromLatin1(symbol.data(), static_cast<qsizetype>(symbol.size()));
+    const QString u2 = u + QChar(0x00B2);
+    const QString u3 = u + QChar(0x00B3);
     const QString cm3 = QStringLiteral("cm") + QChar(0x00B3);
     // The model is in millimetres and densities in kg/m3: a cubic millimetre
     // at 1 kg/m3 weighs a millionth of a gram, and the kernel's inertia,
@@ -3988,18 +4043,21 @@ void MainWindow::onMassProperties() {
     constexpr double kGramsPerUnit = 1e-6;
     const bool weighed = material.has_value();
     const auto measures = [=](const model::MassProperties& props) {
-        QString text = tr("Volume: %1 %2\nSurface area: %3 %4\nCentre of mass: %5")
-                           .arg(n(props.volume), mm3, n(props.surfaceArea), mm2,
-                                formatPoint(props.centerOfMass));
+        const math::Vec3& c = props.centerOfMass;
+        QString text =
+            tr("Volume: %1 %2\nSurface area: %3 %4\nCentre of mass: %5 %6")
+                .arg(n(props.volume / (per * per * per)), u3, n(props.surfaceArea / (per * per)),
+                     u2, formatPoint(math::Vec3{c.x / per, c.y / per, c.z / per}), u);
         if (weighed) text += tr("\nMass: %1 g").arg(n(props.mass * kGramsPerUnit));
         return text;
     };
     const auto inertia = [=](const model::MassProperties& props, const QString& which) {
         const auto& I = props.inertia;
-        const double scale = weighed ? kGramsPerUnit : 1.0;
+        // g mm2 into g unit2; per unit density, mm5 into unit5.
+        const double scale =
+            weighed ? kGramsPerUnit / (per * per) : 1.0 / (per * per * per * per * per);
         const QString unit =
-            weighed ? QStringLiteral("g ") + mm2
-                    : tr("per unit density, %1").arg(QStringLiteral("mm") + QChar(0x2075));
+            weighed ? QStringLiteral("g ") + u2 : tr("per unit density, %1").arg(u + QChar(0x2075));
         return tr("Inertia about the centre of mass (%1, %2):\n%3  %4  %5\n%6  %7  %8\n%9  %10  "
                   "%11")
             .arg(which, unit, n(I.at(0, 0) * scale), n(I.at(0, 1) * scale), n(I.at(0, 2) * scale),

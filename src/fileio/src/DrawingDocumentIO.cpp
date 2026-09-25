@@ -187,6 +187,7 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
     root["part"] = part;
     root["gap"] = spec.gap;
     root["scale"] = spec.scale;
+    root["units"] = {{"length", std::string(math::symbolOf(spec.lengthUnit))}};
 
     json sheet;
     sheet["paper"] = model::paperSizeName(spec.sheet.size);
@@ -274,6 +275,12 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
         std::error_code ec;
         part = (fs::absolute(pathFromUtf8(path), ec).parent_path() / part).lexically_normal();
         spec.partPath = part.string();
+    }
+
+    // Its unit (Phase 154): any version may name one; millimetres if not.
+    if (const auto units = root.find("units"); units != root.end() && units->is_object()) {
+        spec.lengthUnit =
+            math::lengthUnitFrom(text(*units, "length")).value_or(math::LengthUnit::Millimetre);
     }
 
     // Compared as a number: a version of 1e300 cast to int was undefined.

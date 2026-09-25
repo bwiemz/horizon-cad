@@ -10,6 +10,7 @@
 
 #include "horizon/document/Document.h"
 #include "horizon/math/Constants.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -59,15 +60,14 @@ bool MeasureAngleTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
             // Use the smaller angle.
             if (angle > math::kPi) angle = math::kTwoPi - angle;
 
-            double degrees = angle * math::kRadToDeg;
-
-            std::ostringstream oss;
-            oss << std::fixed << std::setprecision(2) << "Angle: " << degrees << "\xC2\xB0";
+            // In degrees, to the places set for lengths.
+            const QString message =
+                QObject::tr("Angle: %1").arg(Preferences::current().formatAngle(angle));
 
             if (m_viewport) {
                 auto* mainWin = qobject_cast<QMainWindow*>(m_viewport->window());
                 if (mainWin && mainWin->statusBar()) {
-                    mainWin->statusBar()->showMessage(QString::fromStdString(oss.str()), 10000);
+                    mainWin->statusBar()->showMessage(message, 10000);
                 }
             }
 

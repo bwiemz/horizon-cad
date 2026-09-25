@@ -36,6 +36,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/FeatureForm.h"
+#include "horizon/ui/Preferences.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
 
@@ -383,12 +384,14 @@ void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
         const std::string name = comp && !comp->name.empty() ? comp->name : "component";
         return QString("%1 (#%2)").arg(QString::fromStdString(name)).arg(id);
     };
+    const math::LengthUnit unit = assembly.lengthUnit();
 
     QStringList lines;
     for (const auto& pair : report.pairs) {
-        const QString amount = pair.volumeResolved
-                                   ? tr("%1 cubic units shared").arg(pair.volume, 0, 'g', 6)
-                                   : tr("overlap could not be measured");
+        const QString amount =
+            pair.volumeResolved
+                ? tr("%1 shared").arg(Preferences::current().formatVolume(pair.volume, unit))
+                : tr("overlap could not be measured");
         lines << tr("%1 and %2: %3").arg(nameOf(pair.componentA), nameOf(pair.componentB), amount);
     }
     for (uint64_t id : report.unchecked) {
