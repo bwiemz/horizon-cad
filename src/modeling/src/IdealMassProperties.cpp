@@ -563,8 +563,10 @@ private:
                 const std::vector<Vec3>& ab, const std::vector<Vec3>& bc,
                 const std::vector<Vec3>& ca, int m, detail::Measures& out) {
         const auto index = [m](int i, int j) {
-            // Row j of the grid holds m + 1 - j points.
-            return static_cast<size_t>(j * (m + 1) - j * (j - 1) / 2 + i);
+            // Row j of the grid holds m + 1 - j points: rows before it,
+            // j (m + 1) - j (j - 1) / 2 = j (2m + 3 - j) / 2 points, in size_t.
+            const auto row = static_cast<size_t>(j);
+            return row * (2 * static_cast<size_t>(m) + 3 - row) / 2 + static_cast<size_t>(i);
         };
         std::vector<Vec3>& grid = m_grid;
         grid.resize(index(0, m) + 1);
@@ -610,7 +612,9 @@ private:
     void refineFromApex(const geo::NurbsSurface& s, const Vec3& a, const Vec3& b, const Vec3& c,
                         const std::vector<Vec3>& ab, const std::vector<Vec3>& bc,
                         const std::vector<Vec3>& ca, int m, detail::Measures& out) {
-        const auto index = [m](int i, int j) { return static_cast<size_t>(j * (m + 1) + i); };
+        const auto index = [m](int i, int j) {
+            return static_cast<size_t>(j) * (static_cast<size_t>(m) + 1) + static_cast<size_t>(i);
+        };
         std::vector<Vec3>& grid = m_grid;
         grid.resize(index(m, m) + 1);
         const UV fromB = start(s, {&b, &c});
