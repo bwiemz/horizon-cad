@@ -62,6 +62,7 @@
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -143,18 +144,38 @@ struct PickList {
     std::vector<std::pair<QString, QString>> items;
 };
 
-/// The part's edges, listed by their end points.
+/// The part's edges, listed by their end points: a curve in chords once, as
+/// the curve (Stable names), and the seams between the facets of a curved
+/// face, which are no edge of the part, not at all.
 PickList edgesOf(const topo::Solid& solid) {
     PickList list;
+    std::map<std::string, size_t> rowOf;
+    std::vector<int> pieces;
     for (const auto& edge : solid.edges()) {
         const topo::HalfEdge* he = edge.halfEdge;
         if (!edge.topoId.isValid() || !he || !he->origin || !he->next || !he->next->origin) {
             continue;
         }
-        list.ids.push_back(edge.topoId);
+        if (edge.topoId.tag().find("/seam:") != std::string::npos) continue;
+        const std::string logical = model::logicalEdge(edge.topoId.tag());
+        const auto found = rowOf.find(logical);
+        if (found != rowOf.end()) {
+            ++pieces[found->second];
+            continue;
+        }
+        rowOf.emplace(logical, list.ids.size());
+        pieces.push_back(1);
+        list.ids.push_back(topo::TopologyID::fromTag(logical));
         list.items.emplace_back(formatPoint(he->origin->point) + QStringLiteral(" – ") +
                                     formatPoint(he->next->origin->point),
-                                QString::fromStdString(edge.topoId.tag()));
+                                QString::fromStdString(logical));
+    }
+    for (size_t row = 0; row < pieces.size(); ++row) {
+        if (pieces[row] < 2) continue;
+        auto& text = list.items[row].first;
+        text = MainWindow::tr("a curve of %1 pieces, from %2")
+                   .arg(pieces[row])
+                   .arg(text.section(QStringLiteral(" – "), 0, 0));
     }
     return list;
 }
@@ -183,6 +204,12 @@ double outwardSign(const topo::Solid& solid) {
 PickList facesOf(const topo::Solid& solid) {
     PickList list;
     const double outward = outwardSign(solid);
+    struct Curved {
+        int facets = 0;
+        math::Vec3 centre;  ///< the sum of its facets' middles
+    };
+    std::map<std::string, size_t> rowOf;
+    std::map<size_t, Curved> curvedRows;
     for (const auto& face : solid.faces()) {
         if (!face.topoId.isValid() || !face.outerLoop || !face.outerLoop->halfEdge) continue;
         // Newell's normal and the vertex average of the outer loop.
@@ -202,11 +229,28 @@ PickList facesOf(const topo::Solid& solid) {
             he = he->next;
         } while (he && he != start && count < 100000);
         if (count == 0 || normal.length() < 1e-12) continue;
-        list.ids.push_back(face.topoId);
+        // A curved face in facets once, as the face (Stable names).
+        const std::string logical = model::logicalFace(face.topoId.tag());
+        const auto found = rowOf.find(logical);
+        if (found != rowOf.end()) {
+            Curved& curved = curvedRows[found->second];
+            ++curved.facets;
+            curved.centre = curved.centre + centre / count;
+            continue;
+        }
+        rowOf.emplace(logical, list.ids.size());
+        curvedRows[list.ids.size()] = Curved{1, centre / count};
+        list.ids.push_back(topo::TopologyID::fromTag(logical));
         list.items.emplace_back(
             MainWindow::tr("facing %1 at %2")
                 .arg(formatPoint(normal.normalized() * outward), formatPoint(centre / count)),
-            QString::fromStdString(face.topoId.tag()));
+            QString::fromStdString(logical));
+    }
+    for (const auto& [row, curved] : curvedRows) {
+        if (curved.facets < 2) continue;
+        list.items[row].first = MainWindow::tr("a curved face of %1 facets, around %2")
+                                    .arg(curved.facets)
+                                    .arg(formatPoint(curved.centre / curved.facets));
     }
     return list;
 }

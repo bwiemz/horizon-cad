@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -21,14 +22,18 @@ MateFrame MateFrame::transformed(const math::Mat4& m) const {
 const topo::Face* MateGeometry::findFace(const topo::Solid& solid, const topo::TopologyID& id) {
     if (!id.isValid()) return nullptr;
 
+    const topo::Face* facet = nullptr;
     const topo::Face* descendant = nullptr;
     for (const auto& face : solid.faces()) {
         if (face.topoId == id) return &face;
+        // A facet of the curved face it names (Stable names): its ideal is
+        // the face's. Before a pattern copy's, which is a descendant too.
+        if (facet == nullptr && logicalFace(face.topoId.tag()) == id.tag()) facet = &face;
         if (descendant == nullptr && face.topoId.isDescendantOf(id)) {
             descendant = &face;
         }
     }
-    return descendant;
+    return facet != nullptr ? facet : descendant;
 }
 
 std::optional<MateFrame> MateGeometry::frameForFace(const topo::Face& face) {

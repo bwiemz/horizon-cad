@@ -186,7 +186,7 @@ public:
 private:
     BodyOperation m_operation = BodyOperation::NewBody;
     bool m_suppressed = false;
-    model::NamingScheme m_naming = model::NamingScheme::FromGeometry;
+    model::NamingScheme m_naming = model::NamingScheme::Stable;
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.

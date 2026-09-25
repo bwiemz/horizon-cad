@@ -71,7 +71,7 @@ size_t bestAlignmentOffset(const std::vector<Vec3>& ring, const std::vector<Vec3
 
 std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& sections,
                                            const std::string& featureID, int twistSegments,
-                                           std::string* reason) {
+                                           std::string* reason, NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
@@ -83,6 +83,11 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
     // -----------------------------------------------------------------------
     std::vector<std::vector<Vec3>> rings;
     rings.reserve(sections.size());
+    // The first section's chords and what they were cut from, for Stable
+    // names; and whether its ring was turned round.
+    ringstack::SampledProfile firstSampled;
+    std::vector<std::string> firstSources;
+    bool firstReversed = false;
     size_t N = 0;
     for (size_t k = 0; k < sections.size(); ++k) {
         const auto& section = sections[k];
@@ -90,8 +95,12 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
         auto validation = ProfileValidator::validate(section.profile);
         if (!validation.isClosed) return fail(which + ": " + validation.errorMessage);
 
-        std::vector<Vec2> verts2D =
-            ringstack::extractProfileVertices(validation.orderedEdges, 1e-6);
+        ringstack::SampledProfile sampled = ringstack::sampleProfile(validation.orderedEdges, 1e-6);
+        std::vector<Vec2> verts2D = sampled.vertices;
+        if (k == 0) {
+            firstSampled = std::move(sampled);
+            firstSources = validation.edgeSources;
+        }
         if (verts2D.size() < 3) return fail(which + " has fewer than three corners");
         if (N == 0) {
             N = verts2D.size();
@@ -113,10 +122,12 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
     // -----------------------------------------------------------------------
     const Vec3 loftAxis = (centroid(rings.back()) - centroid(rings.front())).normalized();
 
-    for (auto& ring : rings) {
+    for (size_t k = 0; k < rings.size(); ++k) {
+        auto& ring = rings[k];
         // Wind so the ring normal points along the loft axis (outward at top).
         if (newellNormal(ring).dot(loftAxis) < 0.0) {
             std::reverse(ring.begin(), ring.end());
+            if (k == 0) firstReversed = true;
         }
     }
     for (size_t L = 1; L < rings.size(); ++L) {
@@ -157,6 +168,23 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
         return std::abs((d - a).dot(n * (1.0 / len))) <= planarTol;
     };
 
+    // A side: by position, or (Stable) after the first section's profile
+    // element its column starts from, the level being its facet. The first
+    // ring may run the profile backwards, so its chord is found the other way.
+    const bool stable = naming == NamingScheme::Stable;
+    const auto sideRole = [&](size_t L, size_t i) -> std::string {
+        if (!stable) return "lateral_" + std::to_string(L) + "_" + std::to_string(i);
+        const size_t chord = firstReversed ? (2 * N - 2 - i) % N : i;
+        const int s = chord < firstSampled.edgeSource.size() ? firstSampled.edgeSource[chord] : -1;
+        std::string role =
+            "lofted:" + (s < 0 ? std::string("closing") : firstSources[static_cast<size_t>(s)]);
+        role += "/facet:";
+        if (s >= 0 && firstSampled.sourceFacets[static_cast<size_t>(s)] > 1) {
+            role += std::to_string(firstSampled.edgeFacet[chord]) + ".";
+        }
+        return role + std::to_string(L);
+    };
+
     std::vector<SolidSewer::InputFace> faces;
     for (size_t L = 0; L + 1 < rings.size(); ++L) {
         const auto& lower = rings[L];
@@ -172,8 +200,7 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
 
         for (size_t i = 0; i < N; ++i) {
             const size_t j = (i + 1) % N;
-            const auto id = TopologyID::make(
-                featureID, "lateral_" + std::to_string(L) + "_" + std::to_string(i));
+            const auto id = TopologyID::make(featureID, sideRole(L, i));
             auto patch = ringstack::makeBilinearPatch(lower[i], lower[j], upper[i], upper[j]);
             if (levelPlanar) {
                 SolidSewer::InputFace f;
@@ -204,7 +231,9 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
                 for (auto& loop : loops) {
                     SolidSewer::InputFace f;
                     f.points = std::move(loop);
-                    f.topoId = id.child("facet", facet++);
+                    f.topoId = stable
+                                   ? TopologyID::fromTag(id.tag() + "." + std::to_string(facet++))
+                                   : id.child("facet", facet++);
                     f.analyticSurface = patch;
                     faces.push_back(std::move(f));
                 }
@@ -234,7 +263,9 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
         return fail("the sections could not be joined into a closed shape");
     }
 
-    {
+    if (stable) {
+        nameEdgesLogically(*solid);
+    } else {
         int idx = 0;
         for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
             e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));

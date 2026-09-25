@@ -202,7 +202,8 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
                                          const draft::SketchPlane& plane, const Vec3& axisPoint,
                                          const Vec3& axisDir, double angle,
                                          const std::string& featureID, int segments,
-                                         double chordTolerance, std::string* reason) {
+                                         double chordTolerance, std::string* reason,
+                                         NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
@@ -281,6 +282,26 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     // the angular bisector with the axis, so the faces the sewer builds carry
     // the surface their loops really lie on.
     // -----------------------------------------------------------------------
+    // The band over chord i, at step k: by position, or (Stable) after the
+    // profile element the chord was cut from, as a facet of the surface it
+    // sweeps. A band is also found by the prefix its facets share
+    // (bandPrefix), for its ideal surface.
+    const bool stable = naming == NamingScheme::Stable;
+    const auto source = [&](size_t i) -> std::string {
+        const int s = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
+        return s < 0 ? std::string("closing") : validation.edgeSources[static_cast<size_t>(s)];
+    };
+    const auto bandPrefix = [&](size_t i) -> std::string {
+        if (!stable) return "revolved_" + std::to_string(i) + "_";
+        std::string prefix = "revolved:" + source(i) + "/facet:";
+        const int s = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
+        if (s >= 0 && sampled.sourceFacets[static_cast<size_t>(s)] > 1) {
+            prefix += std::to_string(sampled.edgeFacet[i]) + ".";
+        }
+        return prefix;
+    };
+    const auto bandRole = [&](size_t i, size_t k) { return bandPrefix(i) + std::to_string(k); };
+
     std::vector<SolidSewer::InputFace> faces;
     faces.reserve(ringCount * N + 2);
 
@@ -292,8 +313,7 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
         for (size_t i = 0; i < N; ++i) {
             const size_t j = (i + 1) % N;
             addQuad(faces, rings[k][i], rings[k][j], rings[kNext][j], rings[kNext][i],
-                    TopologyID::make(featureID,
-                                     "revolved_" + std::to_string(i) + "_" + std::to_string(k)));
+                    TopologyID::make(featureID, bandRole(i, k)));
         }
     }
 
@@ -326,12 +346,14 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
         // A chord of a profile arc sweeps a cone, but what it approximates is
         // the torus-like surface of the arc, so there is no cone to record.
         if (sampled.edgeArc[i] >= 0) continue;
-        tagAnalyticSurface(*solid, featureID + "/revolved_" + std::to_string(i) + "_",
+        tagAnalyticSurface(*solid, featureID + "/" + bandPrefix(i),
                            sweptSurface(cyl[i], cyl[j], axisPoint, axisDir, tol));
     }
     tagRimArcs(*solid, axisPoint, axisDir, tol);
 
-    {
+    if (stable) {
+        nameEdgesLogically(*solid);
+    } else {
         int idx = 0;
         for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
             e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));
@@ -347,7 +369,8 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
 std::unique_ptr<topo::Solid> Revolve::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
-    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason,
+    NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
@@ -365,7 +388,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     if (!found.ok()) return fail(found.errorMessage);
     if (found.isSingleLoop()) {
         return revolveLoop(found.regions.front().outer, plane, axisPoint, axisDir, angle, featureID,
-                           segments, chordTolerance, reason);
+                           segments, chordTolerance, reason, naming);
     }
 
     // Holes and separate regions, as Extrude builds them: each region less
@@ -381,6 +404,8 @@ std::unique_ptr<topo::Solid> Revolve::execute(
     const draft::SketchPlane cutterPlane(
         rotateAroundAxis(plane.origin(), axisPoint, axisDir, -extra), turned(plane.normal()),
         turned(plane.xAxis()));
+    const NamingScheme booleanNaming =
+        naming == NamingScheme::Stable ? NamingScheme::Stable : NamingScheme::FromGeometry;
     std::unique_ptr<topo::Solid> result;
     int holeCount = 0;
     for (size_t r = 0; r < found.regions.size(); ++r) {
@@ -388,15 +413,15 @@ std::unique_ptr<topo::Solid> Revolve::execute(
         const std::string regionID = r == 0 ? featureID : featureID + "~region" + std::to_string(r);
         std::string why;
         auto solid = revolveLoop(region.outer, plane, axisPoint, axisDir, angle, regionID, segments,
-                                 chordTolerance, &why);
+                                 chordTolerance, &why, naming);
         if (!solid) return fail(why);
         for (const auto& hole : region.holes) {
             auto cutter = revolveLoop(hole, cutterPlane, axisPoint, axisDir, cutterAngle,
                                       featureID + "~hole" + std::to_string(holeCount++), segments,
-                                      chordTolerance, &why);
+                                      chordTolerance, &why, naming);
             if (!cutter) return fail("a hole in the profile: " + why);
-            auto cut = BooleanOp::execute(*solid, *cutter, BooleanType::Subtract, &why,
-                                          NamingScheme::FromGeometry);
+            auto cut =
+                BooleanOp::execute(*solid, *cutter, BooleanType::Subtract, &why, booleanNaming);
             if (!cut) return fail("a hole in the profile could not be cut: " + why);
             solid = std::move(cut);
         }
@@ -404,8 +429,7 @@ std::unique_ptr<topo::Solid> Revolve::execute(
             result = std::move(solid);
             continue;
         }
-        auto joined = BooleanOp::execute(*result, *solid, BooleanType::Union, &why,
-                                         NamingScheme::FromGeometry);
+        auto joined = BooleanOp::execute(*result, *solid, BooleanType::Union, &why, booleanNaming);
         if (!joined) return fail("the profile's regions could not be joined: " + why);
         result = std::move(joined);
     }

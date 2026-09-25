@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -43,12 +44,17 @@ public:
     /// @param featureID   Base name for TopologyID generation (e.g. "sweep_1").
     /// @param profileSegments  Chords per full turn of profile arcs (>= 3).
     /// @param chordTolerance   When positive, overrides @p profileSegments per arc.
+    /// @param naming      Stable: each side named after the profile element it
+    ///                    sweeps, `swept:<source>`, in facets (one a path
+    ///                    segment), and the edges logically. Otherwise by
+    ///                    position, as before.
     /// @return The swept solid, or nullptr if the input is invalid.
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const std::vector<math::Vec3>& pathPoints,
         const std::string& featureID, int profileSegments = kDefaultArcSegments,
-        double chordTolerance = 0.0, std::string* reason = nullptr);
+        double chordTolerance = 0.0, std::string* reason = nullptr,
+        NamingScheme naming = NamingScheme::Positional);
 };
 
 }  // namespace hz::model

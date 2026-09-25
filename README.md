@@ -371,6 +371,7 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 136 | Done | A 2D view that scales: the drawing built once and kept until it changes, batched by pen (circles and arcs with the lines), only the chunks in view drawn, the text overlay painted only when it changes; the grid no longer hides the drawing, the overlay is the right way up, Stretch keeps what it stretches, and a tool changed mid-drag puts the drag back |
 | 137 | Done | The GUI thread stays free: a feature added is built once, on a worker when builds are slow, and one that fails itself is withdrawn; a part opened is built on a worker; a large part or DXF is read on a worker; the model is tessellated once for each build |
 | 138 | Done | Bounded memory: the DOF analysis sparse and by cluster, each with its own status, and off the paint path; an undo limit (Preferences); solves that keep only what they moved; one mesh for every instance of a part, one GPU buffer for each mesh; parts released when no component holds them |
+| 139 | Done | Stable names: primitives named after their feature; fillet and chamfer keep the names of edges they do not touch; Revolve, Sweep and Loft faces named after their profile; a curve is one edge and a curved face one face (picked, listed and filleted whole); older files keep their names (format 19) |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

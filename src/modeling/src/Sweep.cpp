@@ -45,7 +45,8 @@ constexpr double kParallelTol = 1e-9;
 std::unique_ptr<topo::Solid> Sweep::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
     const draft::SketchPlane& plane, const std::vector<math::Vec3>& pathPoints,
-    const std::string& featureID, int profileSegments, double chordTolerance, std::string* reason) {
+    const std::string& featureID, int profileSegments, double chordTolerance, std::string* reason,
+    NamingScheme naming) {
     const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
         if (reason) *reason = std::move(why);
         return nullptr;
@@ -69,10 +70,10 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     if (!validation.isClosed) return fail("the profile: " + validation.errorMessage);
 
     if (profileSegments < 3) return fail("arcs need at least 3 segments per turn");
-    const std::vector<Vec2> verts2D =
+    const ringstack::SampledProfile sampled =
         ringstack::sampleProfile(validation.orderedEdges, 1e-6,
-                                 ringstack::ProfileResolution{profileSegments, chordTolerance})
-            .vertices;
+                                 ringstack::ProfileResolution{profileSegments, chordTolerance});
+    const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) return fail("the profile has fewer than three distinct points");
 
@@ -86,7 +87,8 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     Vec3 profileNormal = newellNormal(profileRing);
     if (profileNormal.length() < 1e-12) return fail("the profile encloses no area");
     profileNormal = profileNormal.normalized();
-    if (profileNormal.dot(sweepDir) < 0.0) {
+    const bool reversed = profileNormal.dot(sweepDir) < 0.0;
+    if (reversed) {
         std::reverse(profileRing.begin(), profileRing.end());
         profileNormal = profileNormal * -1.0;
     }
@@ -168,15 +170,33 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     // -----------------------------------------------------------------------
     // 5. TopologyIDs.
     // -----------------------------------------------------------------------
+    // A side: by position, or (Stable) after the profile element its chord
+    // was cut from, the path segment being its facet. The ring may run the
+    // profile backwards, so the chord it names is found the other way round.
+    const auto sideRole = [&](size_t L, size_t i) -> std::string {
+        if (naming != NamingScheme::Stable) {
+            return "lateral_" + std::to_string(L) + "_" + std::to_string(i);
+        }
+        const size_t chord = reversed ? (2 * N - 2 - i) % N : i;
+        const int s = chord < sampled.edgeSource.size() ? sampled.edgeSource[chord] : -1;
+        std::string role = "swept:" + (s < 0 ? std::string("closing")
+                                             : validation.edgeSources[static_cast<size_t>(s)]);
+        role += "/facet:";
+        if (s >= 0 && sampled.sourceFacets[static_cast<size_t>(s)] > 1) {
+            role += std::to_string(sampled.edgeFacet[chord]) + ".";
+        }
+        return role + std::to_string(L);
+    };
     build.bottomFace->topoId = TopologyID::make(featureID, "cap_bottom");
     build.topFace->topoId = TopologyID::make(featureID, "cap_top");
     for (size_t L = 0; L < build.lateralFaces.size(); ++L) {
         for (size_t i = 0; i < build.lateralFaces[L].size(); ++i) {
-            build.lateralFaces[L][i]->topoId = TopologyID::make(
-                featureID, "lateral_" + std::to_string(L) + "_" + std::to_string(i));
+            build.lateralFaces[L][i]->topoId = TopologyID::make(featureID, sideRole(L, i));
         }
     }
-    {
+    if (naming == NamingScheme::Stable) {
+        nameEdgesLogically(*solid);
+    } else {
         int idx = 0;
         for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
             e.topoId = TopologyID::make(featureID, "edge" + std::to_string(idx));

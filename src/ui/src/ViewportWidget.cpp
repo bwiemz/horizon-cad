@@ -18,6 +18,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec4.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshPicker.h"
@@ -289,14 +290,19 @@ std::optional<ViewportWidget::ModelPick> ViewportWidget::pickModel(const QPointF
             edgeNode = node;
         }
     }
+    // What is picked is the whole curve or curved face a chord or facet is
+    // part of (Stable names, Phase 139): one pick for a rim, not one of its
+    // chords.
     if (edge && edgeNode) {
         const auto& edges = edgeNode->mesh().edges;
-        return ModelPick{edgeNode->ownerId(), edges[static_cast<size_t>(edge->edge)].tag, true};
+        return ModelPick{edgeNode->ownerId(),
+                         model::logicalEdge(edges[static_cast<size_t>(edge->edge)].tag), true};
     }
     if (face && faceNode && face->face >= 0) {
         const auto& tags = faceNode->mesh().faceTags;
         if (static_cast<size_t>(face->face) < tags.size()) {
-            return ModelPick{faceNode->ownerId(), tags[static_cast<size_t>(face->face)], false};
+            return ModelPick{faceNode->ownerId(),
+                             model::logicalFace(tags[static_cast<size_t>(face->face)]), false};
         }
     }
     return std::nullopt;
@@ -398,7 +404,7 @@ void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
             if (pick.edge) {
                 std::vector<float> lines;
                 for (const auto& edge : mesh.edges) {
-                    if (edge.tag != pick.tag) continue;
+                    if (model::logicalEdge(edge.tag) != pick.tag) continue;  // every chord
                     const auto& p = edge.points;
                     for (size_t k = 0; k + 5 < p.size(); k += 3) {
                         for (const size_t at : {k, k + 3}) {
@@ -417,12 +423,18 @@ void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
                 continue;
             }
             if (!mesh.hasFaces()) continue;
-            const auto face = std::find(mesh.faceTags.begin(), mesh.faceTags.end(), pick.tag);
-            if (face == mesh.faceTags.end()) continue;
-            const auto index = static_cast<uint32_t>(face - mesh.faceTags.begin());
+            // Every facet of the face picked.
+            std::vector<bool> picked(mesh.faceTags.size(), false);
+            bool any = false;
+            for (size_t f = 0; f < mesh.faceTags.size(); ++f) {
+                picked[f] = model::logicalFace(mesh.faceTags[f]) == pick.tag;
+                any = any || picked[f];
+            }
+            if (!any) continue;
             std::vector<float> triangles;
             for (size_t t = 0; t < mesh.triangleFaces.size(); ++t) {
-                if (mesh.triangleFaces[t] != index) continue;
+                const uint32_t index = mesh.triangleFaces[t];
+                if (index >= picked.size() || !picked[index]) continue;
                 for (size_t c = 0; c < 3; ++c) {
                     const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
                     if (v + 2 >= mesh.positions.size()) continue;
