@@ -51,6 +51,9 @@ std::optional<double> QuantitySpinBox::read(const QString& text) const {
 }
 
 double QuantitySpinBox::valueFromText(const QString& text) const {
+    // The value as shown is the value: Enter, or leaving the field, without
+    // an edit must not round it to the places shown (10 mm is "0.394 in").
+    if (text == textFromValue(value())) return value();
     return read(text).value_or(value());
 }
 

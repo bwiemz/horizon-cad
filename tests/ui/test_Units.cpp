@@ -79,6 +79,12 @@ TEST(UnitsFieldTest, ALengthIsShownInItsUnitAndTakenInAny) {
     type(field, QStringLiteral("-2 in"));
     EXPECT_DOUBLE_EQ(field.value(), 0.0254);
 
+    // Entered as shown, it keeps its value, not the places shown.
+    field.setValue(10.0);
+    EXPECT_EQ(field.text(), QStringLiteral("0.394 in"));
+    field.interpretText();
+    EXPECT_DOUBLE_EQ(field.value(), 10.0);
+
     field.setValue(19.05);
     field.setUnit(LengthUnit::Millimetre);
     EXPECT_EQ(field.text(), QStringLiteral("19.050 mm"));
@@ -102,11 +108,11 @@ TEST(UnitsFieldTest, AnAngleIsInDegreesAndTakesRadians) {
 TEST(UnitsFieldTest, ABoxIsTypedInTheDocumentsUnitOrAnother) {
     MainWindow w;
     inInches(w);
-    FormFiller box(QStringLiteral("Box"), FormAnswers()
-                                              .typed(QStringLiteral("size0"), QStringLiteral("1"))
-                                              .typed(QStringLiteral("size1"), QStringLiteral("2 in"))
-                                              .typed(QStringLiteral("size2"),
-                                                     QStringLiteral("50.8 mm")));
+    FormFiller box(QStringLiteral("Box"),
+                   FormAnswers()
+                       .typed(QStringLiteral("size0"), QStringLiteral("1"))
+                       .typed(QStringLiteral("size1"), QStringLiteral("2 in"))
+                       .typed(QStringLiteral("size2"), QStringLiteral("50.8 mm")));
     trigger(w, "action_box");
     ASSERT_TRUE(box.seen());
     EXPECT_NEAR(partVolume(*w.activeDocument()), 25.4 * 50.8 * 50.8, 1e-6);
