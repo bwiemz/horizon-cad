@@ -59,7 +59,9 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
     m_suppressAction = new QAction(tr("Suppress"), m_tree);
     m_renameAction = new QAction(tr("Rename..."), m_tree);
     m_editMateAction = new QAction(tr("Edit Value..."), m_tree);
-    m_tree->addActions({m_removeAction, m_suppressAction, m_renameAction, m_editMateAction});
+    m_openPartAction = new QAction(tr("Open Part"), m_tree);
+    m_tree->addActions(
+        {m_openPartAction, m_removeAction, m_suppressAction, m_renameAction, m_editMateAction});
 
     connect(m_removeAction, &QAction::triggered, this, [this] {
         if (const uint64_t id = currentComponent()) emit removeComponentRequested(id);
@@ -71,6 +73,9 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
     });
     connect(m_renameAction, &QAction::triggered, this, [this] {
         if (const uint64_t id = currentComponent()) emit renameRequested(id);
+    });
+    connect(m_openPartAction, &QAction::triggered, this, [this] {
+        if (const uint64_t id = currentComponent()) emit openPartRequested(id);
     });
     connect(m_editMateAction, &QAction::triggered, this, [this] {
         if (const uint64_t id = currentMate()) emit editMateRequested(id);
@@ -189,6 +194,7 @@ void AssemblyTreePanel::updateActions() {
     m_suppressAction->setEnabled(component);
     m_suppressAction->setText(m_currentSuppressed ? tr("Unsuppress") : tr("Suppress"));
     m_renameAction->setEnabled(component);
+    m_openPartAction->setEnabled(component);
     m_editMateAction->setEnabled(mate);
 }
 

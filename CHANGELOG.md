@@ -35,6 +35,20 @@ work, not "post-1.0".
     clicked cylinder's side used to be matched to whichever of its facets
     came first.
 
+- **Living assemblies (144).**
+  - A part saved in its tab, or changed on disk by another program, shows
+    changed in every open assembly that places it. The mates are solved
+    again, so what sits on it moves with it. Before, an assembly showed a
+    part as it was when the assembly opened it.
+  - A part edited in its tab and closed without saving leaves the
+    assemblies as its file is. Its unsaved edits used to stay in the
+    components that shared its document.
+  - An undo in an assembly keeps the parts as they are now, and only puts
+    back where they were.
+  - Open Part opens the clicked or chosen component's part in its tab.
+  - Bill of Materials lists each part with its count and exports CSV. A
+    file spelled two ways is one line.
+
 ## Unreleased — Product completeness, Milestone 11 (Phases 139–142)
 
 - **Stable names (139).**

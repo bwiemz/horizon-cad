@@ -156,6 +156,10 @@ private slots:
     void onRenameComponent();
     void onEditMate();
     void onRemoveMate();
+    // Living assemblies (Phase 144): the clicked or chosen component's part
+    // opened in its tab; the assembly's bill of materials.
+    void onOpenPart();
+    void onBillOfMaterials();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -395,6 +399,16 @@ private:
                                std::vector<uint64_t>& ids) const;
     /// A "mate" choice on @p form, @p target chosen; @p ids its rows'.
     QComboBox* mateChoice(FeatureForm& form, uint64_t target, std::vector<uint64_t>& ids) const;
+    /// Show the part at @p path anew wherever a component places it: its
+    /// components' meshes and documents read again, their mates solved
+    /// again, and the scene rebuilt if the active assembly is one of them.
+    /// Called when a part is saved here, found changed on disk, or its tab
+    /// closed with its edits discarded.
+    void refreshComponentsOf(const std::string& path);
+    /// Refresh the components of every watched file changed on disk.
+    void pollPartFiles();
+    /// Open the part component @p id places, in its tab.
+    void openComponentPart(uint64_t id);
     void removeComponent(uint64_t id);
     void setComponentSuppressed(uint64_t id, bool suppressed);
     void renameComponent(uint64_t id);
@@ -498,6 +512,7 @@ private:
     io::ImportReport m_lastLoadReport;
     std::unique_ptr<RecoveryManager> m_recovery;
     QTimer* m_autosaveTimer = nullptr;
+    QTimer* m_partWatch = nullptr;  ///< polls the files open or placed for changes
     quint64 m_nextRecoveryKey = 1;
     std::vector<DocTab> m_tabs;
     std::shared_ptr<doc::Document> m_document;

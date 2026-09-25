@@ -16,6 +16,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QHeaderView>
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
@@ -25,12 +26,14 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QSysInfo>
 #include <QTabBar>
+#include <QTableWidget>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -47,10 +50,12 @@
 
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/fileio/BomExport.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -185,6 +190,24 @@ QString mateTypeName(doc::MateType type) {
     }
     return {};
 }
+
+/// The folder an assembly's relative part paths are in: its file's; none
+/// while it is unsaved.
+std::string assemblyDir(const doc::AssemblyDocument& assembly) {
+    return assembly.filePath().empty()
+               ? std::string()
+               : std::filesystem::path(assembly.filePath()).parent_path().string();
+}
+
+/// The file @p comp places, found as DocumentManager::resolveComponent finds it.
+std::string partFile(const doc::ComponentInstance& comp, const std::string& dir) {
+    std::filesystem::path path(comp.partPath);
+    if (path.is_relative() && !dir.empty()) path = std::filesystem::path(dir) / path;
+    return path.string();
+}
+
+/// How often the files open or placed are looked at for changes on disk.
+constexpr int kPartWatchMs = 2000;
 
 QString formatPoint(const math::Vec3& p) {
     const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
@@ -487,6 +510,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_autosaveTimer = new QTimer(this);
     m_autosaveTimer->setObjectName(QStringLiteral("autosaveTimer"));
     connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
+    // A part changed on disk, by another program, reaches the assemblies
+    // that place it (Phase 144).
+    m_partWatch = new QTimer(this);
+    m_partWatch->setObjectName(QStringLiteral("partWatchTimer"));
+    connect(m_partWatch, &QTimer::timeout, this, &MainWindow::pollPartFiles);
+    m_partWatch->start(kPartWatchMs);
 
     // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
@@ -544,6 +573,8 @@ MainWindow::MainWindow(QWidget* parent)
             [this](uint64_t id, bool suppress) { setComponentSuppressed(id, suppress); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::renameRequested, this,
             [this](uint64_t id) { renameComponent(id); });
+    connect(m_assemblyTreePanel, &AssemblyTreePanel::openPartRequested, this,
+            [this](uint64_t id) { openComponentPart(id); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::editMateRequested, this,
             [this](uint64_t id) { editMate(id); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::removeMateRequested, this,
@@ -844,6 +875,7 @@ void MainWindow::createMenus() {
     QMenu* assemblyMenu = menuBar()->addMenu(tr("&Assembly"));
     sketchAction(assemblyMenu, tr("&Insert Component..."), "action_insert_component",
                  [this] { onInsertComponent(); });
+    sketchAction(assemblyMenu, tr("&Open Part"), "action_open_part", [this] { onOpenPart(); });
     sketchAction(assemblyMenu, tr("&Move Component..."), "action_move_component",
                  [this] { onMoveComponent(); });
     sketchAction(assemblyMenu, tr("R&otate Component..."), "action_rotate_component",
@@ -862,6 +894,8 @@ void MainWindow::createMenus() {
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("Check &Interference"), "action_check_interference",
                  [this] { onCheckInterference(); });
+    sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
+                 [this] { onBillOfMaterials(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1426,6 +1460,11 @@ void MainWindow::onTabCloseRequested(int index) {
         addDocumentTab(std::move(document), nullptr, tr("Drawing 1"));
     } else {
         activateTabDocument();
+    }
+    // A part closed with its edits discarded: components that shared its
+    // document, or its model's mesh, had them. They show its file again.
+    if (!tab.assembly && tab.document->isDirty() && !tab.document->filePath().empty()) {
+        refreshComponentsOf(tab.document->filePath());
     }
 }
 
@@ -2119,6 +2158,8 @@ bool MainWindow::saveActiveDocument() {
         RecentFiles::add(QString::fromStdString(path));
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
+        // The assemblies placing it show it as saved.
+        refreshComponentsOf(path);
         return true;
     }
     reportFileError(tr("Could not save"), path, error);
@@ -3154,6 +3195,143 @@ void MainWindow::onRemoveMate() {
     auto* which = mateChoice(form, m_assemblyTreePanel->currentMate(), ids);
     if (!form.exec()) return;
     removeMate(ids[static_cast<size_t>(std::max(which->currentIndex(), 0))]);
+}
+
+// ---------------------------------------------------------------------------
+// Living assemblies (Phase 144)
+// ---------------------------------------------------------------------------
+
+void MainWindow::refreshComponentsOf(const std::string& path) {
+    if (path.empty()) return;
+    // What was read of the file is out of date: the next component to
+    // resolve it reads it again. (A part open in a tab stays: it is the part.)
+    m_docManager.releasePart(path);
+    int refreshed = 0;
+    bool solved = true;
+    bool moved = false;
+    bool shown = false;
+    for (DocTab& tab : m_tabs) {
+        if (!tab.assembly) continue;
+        const std::string dir = assemblyDir(*tab.assembly);
+        bool places = false;
+        for (auto& comp : tab.assembly->components()) {
+            if (!doc::DocumentManager::samePath(partFile(comp, dir), path)) continue;
+            comp.cachedMesh.reset();
+            comp.resolvedPart.reset();
+            comp.state = doc::ComponentState::Lightweight;
+            places = true;
+        }
+        if (!places) continue;
+        ++refreshed;
+        // Its faces may be elsewhere now: the mates place the components
+        // again. That is a change to the assembly, to be saved.
+        const doc::AssemblyState placed = tab.assembly->snapshot();
+        solved = solveAssemblyMates(*tab.assembly) && solved;
+        if (placementsDiffer(placed, *tab.assembly)) {
+            tab.assembly->setDirty(true);
+            moved = true;
+        }
+        shown = shown || tab.assembly == m_assembly;
+    }
+    if (refreshed == 0) return;
+    if (shown) rebuildScene();  // reads the meshes again
+    if (moved) refreshModifiedIndicators();
+    // A mate the part no longer has a face for is reported by the solve.
+    if (solved) {
+        statusBar()->showMessage(
+            tr("\"%1\" changed: the assemblies placing it show it as it is now")
+                .arg(QFileInfo(QString::fromStdString(path)).fileName()),
+            10000);
+    }
+}
+
+void MainWindow::pollPartFiles() {
+    // Not under a dialog: one may be choosing among the components' faces.
+    if (QApplication::activeModalWidget() != nullptr) return;
+    for (const std::string& path : m_docManager.pollExternalChanges()) {
+        refreshComponentsOf(path);
+    }
+}
+
+void MainWindow::openComponentPart(uint64_t id) {
+    const auto* comp = m_assembly ? m_assembly->component(id) : nullptr;
+    if (comp == nullptr) {
+        statusBar()->showMessage(
+            tr("Open Part: click a component, or choose one in the assembly tree"));
+        return;
+    }
+    if (comp->partPath.empty()) {
+        statusBar()->showMessage(tr("Open Part: the component has no part file"));
+        return;
+    }
+    openPath(QString::fromStdString(partFile(*comp, assemblyDir(*m_assembly))));
+}
+
+void MainWindow::onOpenPart() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Open Part is only available in an assembly document"));
+        return;
+    }
+    openComponentPart(targetComponent());
+}
+
+void MainWindow::onBillOfMaterials() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Bill of Materials is only available in an assembly document"));
+        return;
+    }
+    const doc::BillOfMaterials bom = doc::BomGenerator::generate(*m_assembly);
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Bill of Materials"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* table = new QTableWidget(static_cast<int>(bom.lines.size()), 3, &dialog);
+    table->setObjectName(QStringLiteral("bom"));
+    table->setHorizontalHeaderLabels({tr("Item"), tr("Part"), tr("Quantity")});
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->verticalHeader()->hide();
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    for (size_t i = 0; i < bom.lines.size(); ++i) {
+        const doc::BomLine& line = bom.lines[i];
+        const int row = static_cast<int>(i);
+        table->setItem(row, 0, new QTableWidgetItem(QString::number(line.item)));
+        auto* part = new QTableWidgetItem(QString::fromStdString(line.partName));
+        part->setToolTip(QString::fromStdString(line.partPath));
+        table->setItem(row, 1, part);
+        table->setItem(row, 2, new QTableWidgetItem(QString::number(line.quantity)));
+    }
+    layout->addWidget(table);
+    layout->addWidget(new QLabel(
+        tr("%n component(s) in all; suppressed ones are left out.", "", bom.totalQuantity()),
+        &dialog));
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    QPushButton* exportButton =
+        buttons->addButton(tr("Export CSV..."), QDialogButtonBox::ActionRole);
+    exportButton->setObjectName(QStringLiteral("exportBom"));
+    exportButton->setEnabled(!bom.lines.empty());
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    const QString assemblyPath = QString::fromStdString(m_assembly->filePath());
+    connect(exportButton, &QPushButton::clicked, &dialog, [this, &dialog, &bom, assemblyPath] {
+        const QFileInfo from(assemblyPath);
+        const QString suggested = assemblyPath.isEmpty()
+                                      ? QStringLiteral("bom.csv")
+                                      : from.dir().filePath(from.completeBaseName() + "-bom.csv");
+        const QString file =
+            QFileDialog::getSaveFileName(&dialog, tr("Export Bill of Materials"), suggested,
+                                         tr("CSV Files (*.csv);;All Files (*)"));
+        if (file.isEmpty()) return;
+        if (!io::BomExport::toCsv(file.toStdString(), bom)) {
+            reportFileError(tr("Could not export"), file.toStdString(),
+                            "the file could not be written");
+            return;
+        }
+        statusBar()->showMessage(
+            tr("Bill of materials exported to \"%1\"").arg(QFileInfo(file).fileName()));
+    });
+    layout->addWidget(buttons);
+    dialog.resize(480, 320);
+    dialog.exec();
 }
 
 // ---------------------------------------------------------------------------

@@ -130,8 +130,11 @@ public:
     /// The components and mates as they are now.
     AssemblyState snapshot() const { return {m_components, m_mates}; }
 
-    /// Put back a snapshot. Leaves the dirty flag alone: an undo stack that
-    /// restores snapshots tracks modification itself.
+    /// Put back a snapshot: its components, placements and mates. A
+    /// component still present keeps the geometry loaded for it now (mesh,
+    /// resolved part), which may be newer than the snapshot's. Leaves the
+    /// dirty flag alone: an undo stack that restores snapshots tracks
+    /// modification itself.
     void restore(AssemblyState state);
 
     // --- Analysis ---

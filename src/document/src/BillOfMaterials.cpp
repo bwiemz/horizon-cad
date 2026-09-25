@@ -37,7 +37,18 @@ BillOfMaterials BomGenerator::generate(const AssemblyDocument& assembly) {
     for (const ComponentInstance& c : assembly.components()) {
         if (c.suppressed) continue;
 
-        const std::string key = c.partPath.empty() ? ("@" + c.name) : c.partPath;
+        // One line per file, however its path is spelled: a relative one is
+        // the assembly's folder's, as the component resolves it.
+        std::string key = "@" + c.name;
+        if (!c.partPath.empty()) {
+            std::filesystem::path file(c.partPath);
+            if (file.is_relative() && !assembly.filePath().empty()) {
+                file = std::filesystem::path(assembly.filePath()).parent_path() / file;
+            }
+            std::error_code ec;
+            const auto canonical = std::filesystem::weakly_canonical(file, ec);
+            key = ec ? file.lexically_normal().string() : canonical.string();
+        }
         auto it = lineByKey.find(key);
         if (it == lineByKey.end()) {
             BomLine line;
