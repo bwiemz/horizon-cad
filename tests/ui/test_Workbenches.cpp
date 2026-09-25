@@ -617,3 +617,43 @@ TEST(WorkbenchesTest, ANoteFollowsItsViewAcrossAChangeWhileTheSheetWasClosed) {
     EXPECT_NEAR(found[0]->position().x, after.x, 1e-9) << "at Front's centre, where it is now";
     EXPECT_NEAR(found[0]->position().y, after.y, 1e-9);
 }
+
+// A sheet keeps what it was drawn from: an edit draws it again from that,
+// without reading its part again (an assembly's parts were all read, and
+// rebuilt, on every edit). It is read again when the part changes.
+TEST(WorkbenchesTest, ASheetKeepsWhatItWasDrawnFromUntilItChanges) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    hz::doc::Document& sheet = *host.tabs.back().first;
+    const hz::math::Vec2 front = centreOf(cubeLayout(cube).views[0]);
+
+    // The part's file gone: a view still moves, drawn from what the sheet keeps.
+    ASSERT_TRUE(QFile::remove(cube));
+    workbench.onMoveView();
+    ASSERT_NE(host.tool, nullptr);
+    for (const hz::math::Vec2& at : {front, hz::math::Vec2{front.x + 5.0, front.y}}) {
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton,
+                          Qt::LeftButton, Qt::NoModifier);
+        host.tool->mousePressEvent(&press, at);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(0, 0), QPointF(0, 0),
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        host.tool->mouseReleaseEvent(&release, at);
+    }
+    QCoreApplication::processEvents();
+    EXPECT_TRUE(sheet.isDirty()) << "moved, and drawn again";
+    EXPECT_TRUE(host.fileErrors.empty());
+
+    // Its part changed (here: gone): read again, and said.
+    workbench.refreshDrawingsOf(cube.toStdString());
+    ASSERT_FALSE(host.statuses.empty());
+    EXPECT_TRUE(host.statuses.back().contains(QStringLiteral("could not be drawn again")))
+        << host.statuses.back().toStdString();
+}

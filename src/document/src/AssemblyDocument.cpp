@@ -37,7 +37,8 @@ std::string AssemblyDocument::namePrefix(uint64_t id) {
 std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
     const std::function<const topo::Solid*(const ComponentInstance&)>& partOf,
     std::vector<uint64_t>* missing) const {
-    std::unique_ptr<topo::Solid> gathered;
+    auto gathered = std::make_unique<topo::Solid>();
+    bool any = false;
     for (const auto& comp : m_components) {
         if (comp.suppressed) continue;
         const topo::Solid* part = partOf(comp);
@@ -45,23 +46,24 @@ std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
             if (missing != nullptr) missing->push_back(comp.id);
             continue;
         }
-        auto placed = model::Pattern::transformed(*part, comp.transform);
-        if (!placed) {
-            if (missing != nullptr) missing->push_back(comp.id);
-            continue;
-        }
+        // Placed straight into the one solid: each part copied once.
+        const std::size_t facesBefore = gathered->faces().size();
+        const std::size_t edgesBefore = gathered->edges().size();
+        model::Pattern::append(*gathered, *part, comp.transform);
         // Its names its own: a balloon or dimension on one instance of a
         // part names that instance, not every instance of the part.
         const std::string prefix = namePrefix(comp.id);
-        for (topo::Face& f : placed->faces()) {
-            f.topoId = topo::TopologyID::fromTag(prefix + f.topoId.tag());
+        auto& faces = gathered->faces();
+        for (std::size_t i = facesBefore; i < faces.size(); ++i) {
+            faces[i].topoId = topo::TopologyID::fromTag(prefix + faces[i].topoId.tag());
         }
-        for (topo::Edge& e : placed->edges()) {
-            e.topoId = topo::TopologyID::fromTag(prefix + e.topoId.tag());
+        auto& edges = gathered->edges();
+        for (std::size_t i = edgesBefore; i < edges.size(); ++i) {
+            edges[i].topoId = topo::TopologyID::fromTag(prefix + edges[i].topoId.tag());
         }
-        gathered = gathered ? model::Pattern::collect(*gathered, *placed) : std::move(placed);
+        any = true;
     }
-    return gathered;
+    return any ? std::move(gathered) : nullptr;
 }
 
 std::size_t AssemblyDocument::InterferenceInput::faceCount() const {

@@ -24,10 +24,12 @@
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/SectionView.h"
 #include "horizon/render/Camera.h"
 #include "horizon/topology/Solid.h"
@@ -144,6 +146,11 @@ void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
         if (ownLayer(entity->layer())) continue;  // the sheet draws those itself
         sheet.draftDocument().addEntity(entity->clone());
     }
+}
+
+/// The room @p source's parts list takes above the title block.
+double listedHeight(const model::PartsList& list) {
+    return list.rows.empty() ? 0.0 : list.height();
 }
 
 /// Where @p drawing's views are on the sheet, as saved with its annotations.
@@ -275,12 +282,16 @@ const topo::Solid* DrawingWorkbench::partSolid(const std::string& path, doc::Doc
     return holder.solid();
 }
 
-bool DrawingWorkbench::sourceOf(const std::string& path, Source& source, std::string* error) {
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const std::string& path,
+                                                                           std::string* error) {
+    auto source = std::make_shared<Source>();
+    source->files = {path};
     if (!isAssemblyPath(path)) {
-        source.read.push_back(std::make_unique<doc::Document>());
-        source.solid = partSolid(path, *source.read.back(), error);
-        source.files = {path};
-        return source.solid != nullptr;
+        doc::Document holder;
+        const topo::Solid* part = partSolid(path, holder, error);
+        if (part == nullptr) return nullptr;
+        source->solid = model::Pattern::transformed(*part, math::Mat4::identity());  // its own copy
+        return source;
     }
 
     // The assembly as it is now: its tab's when it is open, else its file's.
@@ -293,53 +304,59 @@ bool DrawingWorkbench::sourceOf(const std::string& path, Source& source, std::st
         std::string why;
         if (!io::NativeFormat::loadAssembly(path, *assembly, &why)) {
             if (error != nullptr) *error = "its assembly could not be read: " + why;
-            return false;
+            return nullptr;
         }
         if (assembly->filePath().empty()) assembly->setFilePath(path);
     }
-    source.files = {path};
 
     // Each part read once, from its tab or its file, however many times the
-    // assembly places it.
+    // assembly places it; the gathered solid is a copy, so what was read
+    // goes when this is done.
     const std::filesystem::path folder = std::filesystem::path(path).parent_path();
     const auto resolved = [&folder](const std::string& partPath) {
         const std::filesystem::path part(partPath);
         return (part.is_relative() ? folder / part : part).lexically_normal().string();
     };
+    std::vector<std::unique_ptr<doc::Document>> read;
     std::map<std::string, const topo::Solid*> parts;
     const auto partOf = [&](const doc::ComponentInstance& c) -> const topo::Solid* {
         const std::string file = resolved(c.partPath);
         const auto known = parts.find(file);
         if (known != parts.end()) return known->second;
-        source.read.push_back(std::make_unique<doc::Document>());
-        const topo::Solid* solid = partSolid(file, *source.read.back(), nullptr);
+        read.push_back(std::make_unique<doc::Document>());
+        const topo::Solid* solid = partSolid(file, *read.back(), nullptr);
         parts.emplace(file, solid);
-        source.files.push_back(file);
+        source->files.push_back(file);
         return solid;
     };
-    source.gathered = assembly->drawingSolid(partOf, &source.missing);
-    if (!source.gathered) {
+    source->solid = assembly->drawingSolid(partOf, &source->missing);
+    if (!source->solid) {
         if (error != nullptr) *error = "none of its components could be drawn";
-        return false;
+        return nullptr;
     }
-    source.solid = source.gathered.get();
 
     // Its bill of materials: the parts list, and a balloon on the first of
     // each part drawn.
     for (const doc::BomLine& line : doc::BomGenerator::generate(*assembly).lines) {
-        source.partsList.rows.push_back({line.item, line.partName, line.quantity});
+        source->partsList.rows.push_back({line.item, line.partName, line.quantity});
         for (const doc::ComponentInstance& c : assembly->components()) {
             if (c.suppressed ||
-                std::find(source.missing.begin(), source.missing.end(), c.id) !=
-                    source.missing.end() ||
+                std::find(source->missing.begin(), source->missing.end(), c.id) !=
+                    source->missing.end() ||
                 !doc::DocumentManager::samePath(resolved(c.partPath), resolved(line.partPath))) {
                 continue;
             }
-            source.balloons.emplace_back(doc::AssemblyDocument::namePrefix(c.id), line.item);
+            source->balloons.emplace_back(doc::AssemblyDocument::namePrefix(c.id), line.item);
             break;
         }
     }
-    return true;
+    return source;
+}
+
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceFor(Sheet& sheet,
+                                                                            std::string* error) {
+    if (!sheet.source) sheet.source = sourceOf(sheet.spec.partPath, error);
+    return sheet.source;
 }
 
 model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
@@ -348,12 +365,9 @@ model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
     return room;
 }
 
-bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
-                            std::string* error, model::Drawing* drawn,
-                            std::vector<std::string>* files, double* partsListHeight) {
-    Source source;
-    if (!sourceOf(spec.partPath, source, error)) return false;
-    const topo::Solid* solid = source.solid;
+void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
+                            const Source& source, model::Drawing* drawn) {
+    const topo::Solid* solid = source.solid.get();
     const model::PartsList& partsList = source.partsList;
     // The views keep clear of the parts list, above the title block.
     model::TitleBlock room = spec.titleBlock;
@@ -435,11 +449,6 @@ bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     // Drawn from the part: the sheet's file is no more out of date than it was.
     document.setDirty(wasDirty);
     if (drawn != nullptr) *drawn = std::move(drawing);
-    if (files != nullptr) *files = source.files;
-    if (partsListHeight != nullptr) {
-        *partsListHeight = partsList.rows.empty() ? 0.0 : partsList.height();
-    }
-    return true;
 }
 
 void DrawingWorkbench::onNewDrawingFromPart() {
@@ -464,20 +473,20 @@ void DrawingWorkbench::onNewDrawingFromPart() {
     const QString stem = QFileInfo(QString::fromStdString(partPath)).completeBaseName();
     spec.titleBlock.title = stem.toStdString();
 
-    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     std::string error;
-    model::Drawing drawing;
-    std::vector<std::string> files;
-    double listed = 0.0;
-    if (!draw(*document, spec, &error, &drawing, &files, &listed)) {
-        m_host.documents().closeDocument(document);
+    const auto source = sourceOf(partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not make a drawing of"), partPath, error);
         return;
     }
+    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
+    model::Drawing drawing;
+    draw(*document, spec, *source, &drawing);
     document->setDirty(true);  // new, and not saved
-    for (const std::string& file : files) m_host.documents().watch(file);
-    m_sheets.push_back(std::make_unique<Sheet>(
-        Sheet{document, spec, std::move(drawing), std::move(files), listed}));
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    m_sheets.push_back(
+        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+                                      listedHeight(source->partsList), source}));
     m_host.addTab(document, tr("Drawing of %1").arg(stem));
     m_host.setPrompt(tr("Drawing made."));
 }
@@ -490,15 +499,14 @@ bool DrawingWorkbench::open(const QString& fileName) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
-    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
-    model::Drawing drawing;
-    std::vector<std::string> files;
-    double listed = 0.0;
-    if (!draw(*document, spec, &error, &drawing, &files, &listed)) {
-        m_host.documents().closeDocument(document);
+    const auto source = sourceOf(spec.partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
+    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
+    model::Drawing drawing;
+    draw(*document, spec, *source, &drawing);
     // What was drawn on it by hand, back where it was: the document holds it
     // from here on, and a save writes it from there.
     if (spec.annotations) {
@@ -511,9 +519,10 @@ bool DrawingWorkbench::open(const QString& fileName) {
     spec.frames.clear();
     document->setFilePath(path);
     document->setDirty(false);
-    for (const std::string& file : files) m_host.documents().watch(file);
-    m_sheets.push_back(std::make_unique<Sheet>(
-        Sheet{document, spec, std::move(drawing), std::move(files), listed}));
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    m_sheets.push_back(
+        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+                                      listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.addTab(document, QFileInfo(fileName).fileName());
     return true;
@@ -543,13 +552,14 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     io::DrawingDocumentSpec spec;
     std::string error;
     model::Drawing drawing;
-    std::vector<std::string> files;
-    double listed = 0.0;
-    if (!io::DrawingDocumentIO::readSpec(path, spec, &error) ||
-        !draw(document, spec, &error, &drawing, &files, &listed)) {
+    std::shared_ptr<const Source> source;
+    if (io::DrawingDocumentIO::readSpec(path, spec, &error))
+        source = sourceOf(spec.partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
+    draw(document, spec, *source, &drawing);
     // The file's hand-drawn entities in place of these, and no undoing back
     // into what was given up: read again is the file as it is.
     std::vector<uint64_t> byHand;
@@ -566,9 +576,10 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     spec.frames.clear();
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
-    for (const std::string& file : files) m_host.documents().watch(file);
-    sheet->files = std::move(files);
-    sheet->partsListHeight = listed;
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    sheet->files = source->files;
+    sheet->partsListHeight = listedHeight(source->partsList);
+    sheet->source = source;
     document.setDirty(false);
     m_host.refreshModifiedIndicators();
     // Its paper may be another size now.
@@ -598,6 +609,7 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
                 return doc::DocumentManager::samePath(file, path);
             });
         if (!document || !from) continue;
+        sheet->source.reset();  // one of its files changed: read them again
         std::string error;
         if (drawAgain(*sheet, &error)) {
             ++redrawn;
@@ -616,14 +628,16 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
 bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error) {
     const auto document = sheet.document.lock();
     if (!document) return false;
+    const auto source = sourceFor(sheet, error);
+    if (!source) return false;
     model::Drawing drawing;
-    std::vector<std::string> files;
-    if (!draw(*document, sheet.spec, error, &drawing, &files, &sheet.partsListHeight)) return false;
+    draw(*document, sheet.spec, *source, &drawing);
     carryAnnotations(*document, sheet.drawing, drawing);
     sheet.drawing = std::move(drawing);
     // An assembly's parts may be others now: each is watched.
-    for (const std::string& file : files) m_host.documents().watch(file);
-    sheet.files = std::move(files);
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    sheet.files = source->files;
+    sheet.partsListHeight = listedHeight(source->partsList);
     return true;
 }
 
@@ -754,9 +768,9 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
         spec.version = 3;
         return true;
     }
-    Source source;
-    if (!sourceOf(spec.partPath, source, error)) return false;
-    const topo::Solid* solid = source.solid;
+    const auto source = sourceFor(sheet, error);
+    if (!source) return false;
+    const topo::Solid* solid = source->solid.get();
     spec.scale = scale;
     spec.version = 3;
     const model::TitleBlock room = roomFor(sheet);
@@ -917,13 +931,13 @@ void DrawingWorkbench::onAddSectionView() {
         from.projection.origin + right * centre.x + up * centre.y + normal * at;
     const math::Vec3 sight = looking->currentIndex() == 0 ? normal * -1.0 : normal;
 
-    Source source;
     std::string error;
-    if (!sourceOf(sheet->spec.partPath, source, &error)) {
+    const auto source = sourceFor(*sheet, &error);
+    if (!source) {
         m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
         return;
     }
-    const topo::Solid* solid = source.solid;
+    const topo::Solid* solid = source->solid.get();
     model::DrawingView section =
         model::SectionGenerator::sectionView(*solid, point, sight * -1.0, 3.0 / from.scale);
     if (section.sectionLoops.empty()) {
@@ -1265,13 +1279,13 @@ void DrawingWorkbench::addDimension(const std::weak_ptr<doc::Document>& document
 
     // A circle or arc is dimensioned by its diameter or radius, anything else
     // by its length: measured from the part as it is.
-    Source source;
     std::string error;
-    if (!sourceOf(sheet->spec.partPath, source, &error)) {
+    const auto source = sourceFor(*sheet, &error);
+    if (!source) {
         m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
         return;
     }
-    const topo::Solid* solid = source.solid;
+    const topo::Solid* solid = source->solid.get();
     io::DrawingDimensionSpec dimension{tag, io::DrawingDimensionSpec::Kind::Length};
     double measured = 0.0;
     if (model::DrawingDimensioner::measureRadius(*solid, picked.edge, measured)) {
@@ -1378,6 +1392,8 @@ void DrawingWorkbench::onUpdateFromPart() {
     if (sheet == nullptr) return;
     const auto document = sheet->document.lock();
     if (!document) return;
+    // The part as it is now, in its tab or its file: read again, not kept.
+    sheet->source.reset();
     std::string error;
     if (!drawAgain(*sheet, &error)) {
         m_host.showStatus(

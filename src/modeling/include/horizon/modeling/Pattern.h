@@ -42,6 +42,12 @@ public:
     /// are kept.
     static std::unique_ptr<topo::Solid> collect(const topo::Solid& a, const topo::Solid& b);
 
+    /// @p source's bodies added to @p into, moved by the rigid @p xform, with
+    /// every carrier and ideal moved and every TopologyID kept: `collect`
+    /// for many solids, each copied once (collecting pairwise copied what
+    /// was gathered again for each one added).
+    static void append(topo::Solid& into, const topo::Solid& source, const math::Mat4& xform);
+
     /// The reverse of `collect`: each body of @p solid as a solid of its own,
     /// with its TopologyIDs. A body is an outer shell together with the
     /// cavities it encloses — an enclosed void is a second shell of the same

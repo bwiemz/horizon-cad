@@ -352,6 +352,10 @@ std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& s
     return bodies;
 }
 
+void Pattern::append(topo::Solid& into, const topo::Solid& source, const Mat4& xform) {
+    cloneInto(into, source, xform, 0);
+}
+
 std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {
     auto out = std::make_unique<Solid>();
     cloneInto(*out, source, xform, 0);

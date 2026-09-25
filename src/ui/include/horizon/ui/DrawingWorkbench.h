@@ -80,6 +80,7 @@ public:
     void refreshDrawingsOf(const std::string& path);
 
 private:
+    struct Source;
     struct Sheet {
         std::weak_ptr<doc::Document> document;
         io::DrawingDocumentSpec spec;
@@ -90,18 +91,22 @@ private:
         std::vector<std::string> files;
         /// The room its parts list takes above the title block (an assembly's).
         double partsListHeight = 0.0;
+        /// What it was drawn from, kept until one of its files changes;
+        /// null: read again at the next drawing.
+        std::shared_ptr<const Source> source;
     };
     /// What a sheet is drawn from (Phase 150): a part's solid, or an
     /// assembly's components gathered into one, with its parts list and a
-    /// balloon for each part.
+    /// balloon for each part. Its own copy of them: a sheet keeps it until
+    /// one of its files changes, not re-reading its parts on every edit, and
+    /// a part's tab may rebuild meanwhile.
     struct Source {
-        const topo::Solid* solid = nullptr;
-        std::unique_ptr<topo::Solid> gathered;             ///< an assembly's components
-        std::vector<std::unique_ptr<doc::Document>> read;  ///< parts read from their files
+        std::unique_ptr<topo::Solid> solid;
         model::PartsList partsList;
-        std::vector<std::pair<std::string, int>> balloons;  ///< a component's name prefix, its item
-        std::vector<std::string> files;
-        std::vector<uint64_t> missing;  ///< components with no part to draw
+        /// A component's name prefix, and its item number.
+        std::vector<std::pair<std::string, int>> balloons;
+        std::vector<std::string> files;  ///< every file it was read from
+        std::vector<uint64_t> missing;   ///< components with no part to draw
     };
     /// An edge clicked on a sheet: the view it is in, and its name.
     struct PickedEdge {
@@ -113,16 +118,16 @@ private:
     const Sheet* sheetOf(const doc::Document* document) const;
     /// The active tab's sheet, or null with a word in the status bar.
     Sheet* activeSheet(const QString& verb);
-    /// Draw @p spec's sheet into @p document again, from its part as it is
-    /// now: on the sheet's own layers, locked, leaving any other. False, with
-    /// the reason, when the part cannot be read or built. A version 1 spec
-    /// is given the views it was drawn with. The views drawn go to @p drawn.
-    bool draw(doc::Document& document, io::DrawingDocumentSpec& spec, std::string* error,
-              model::Drawing* drawn = nullptr, std::vector<std::string>* files = nullptr,
-              double* partsListHeight = nullptr);
+    /// Draw @p spec's sheet into @p document again, from @p source: on the
+    /// sheet's own layers, locked, leaving any other. A version 1 spec is
+    /// given the views it was drawn with. The views drawn go to @p drawn.
+    void draw(doc::Document& document, io::DrawingDocumentSpec& spec, const Source& source,
+              model::Drawing* drawn = nullptr);
     /// What the sheet of @p path (a part, or an assembly) is drawn from, as
-    /// it is now. False, with the reason, when it cannot be read.
-    bool sourceOf(const std::string& path, Source& source, std::string* error);
+    /// it is now. Null, with the reason, when it cannot be read.
+    std::shared_ptr<const Source> sourceOf(const std::string& path, std::string* error);
+    /// @p sheet's source: the one it keeps, or read now and kept.
+    std::shared_ptr<const Source> sourceFor(Sheet& sheet, std::string* error);
     /// @p sheet's title block with the room its parts list takes: what its
     /// views are laid out and placed around.
     static model::TitleBlock roomFor(const Sheet& sheet);
