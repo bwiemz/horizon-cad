@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -752,12 +754,17 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
     return clipped;
 }
 
+/// No point, or no triangle.
+constexpr std::size_t kNoPoint = std::numeric_limits<std::size_t>::max();
+
 /// Points inserted into @p triangles, each at @p inside, the mesh kept
 /// Delaunay in the plane by flips; an edge of the region's own outline is
-/// never flipped. @p boundary holds those edges, by their ends.
+/// never flipped. @p boundary holds those edges, by their ends. @p beside
+/// holds, for each point, an earlier one next to it (kNoPoint if none):
+/// where to look for it when the outline is between it and the one before.
 void insertPoints(std::vector<RegionVertex>& vertices,
                   std::vector<std::array<std::size_t, 3>>& triangles,
-                  const std::vector<RegionVertex>& inside,
+                  const std::vector<RegionVertex>& inside, const std::vector<std::size_t>& beside,
                   const std::set<std::pair<std::size_t, std::size_t>>& boundary, double eps) {
     const auto key = [](std::size_t a, std::size_t b) {
         return a < b ? std::make_pair(a, b) : std::make_pair(b, a);
@@ -835,41 +842,45 @@ void insertPoints(std::vector<RegionVertex>& vertices,
         }
     };
 
-    // The triangle a point is in: walked to from the last one, across the
-    // edge the point is beyond (points come in rows, each near the one
-    // before); every triangle looked at when the walk meets the outline.
-    // triangles.size() when it is on an edge.
-    std::size_t last = 0;
-    const auto locate = [&](const RegionVertex& point) {
-        const auto strictlyIn = [&](std::size_t t) {
-            const auto& tri = triangles[t];
-            return cross2(vertices[tri[0]], vertices[tri[1]], point) > eps &&
-                   cross2(vertices[tri[1]], vertices[tri[2]], point) > eps &&
-                   cross2(vertices[tri[2]], vertices[tri[0]], point) > eps;
-        };
-        std::size_t t = std::min(last, triangles.size() - 1);
+    // Which of triangle t's edges a point is on (k, from tri[k] to
+    // tri[k + 1]); kWithin when strictly within it; kNoPoint when it is
+    // beyond an edge, or on two (at a corner).
+    constexpr std::size_t kWithin = 3;
+    const auto placeIn = [&](std::size_t t, const RegionVertex& point) {
+        const auto& tri = triangles[t];
+        std::size_t on = kWithin;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const double side = cross2(vertices[tri[k]], vertices[tri[(k + 1) % 3]], point);
+            if (side > eps) continue;
+            if (side < -eps || on != kWithin) return kNoPoint;
+            on = k;
+        }
+        return on;
+    };
+    // The triangle a point is in or on, walked to from triangle t across an
+    // edge the point is beyond; not across the outline, which may only be in
+    // the way (a hole, a notch). kNoPoint when every edge it is beyond is.
+    const auto walk = [&](std::size_t t, const RegionVertex& point) {
         for (std::size_t steps = 0; steps < triangles.size(); ++steps) {
             const auto& tri = triangles[t];
-            std::size_t across = triangles.size();
-            for (int k = 0; k < 3 && across == triangles.size(); ++k) {
-                const std::size_t a = tri[static_cast<std::size_t>(k)];
-                const std::size_t b = tri[static_cast<std::size_t>((k + 1) % 3)];
+            bool beyond = false;
+            std::size_t across = kNoPoint;
+            for (std::size_t k = 0; k < 3 && across == kNoPoint; ++k) {
+                const std::size_t a = tri[k];
+                const std::size_t b = tri[(k + 1) % 3];
                 if (cross2(vertices[a], vertices[b], point) >= -eps) continue;
+                beyond = true;
                 const auto found = edgeTriangles.find(key(a, b));
-                if (found == edgeTriangles.end()) break;
+                if (found == edgeTriangles.end()) continue;
                 for (std::size_t other : found->second) {
                     if (other != t) across = other;
                 }
-                if (across == triangles.size()) break;  // the outline: walk no further
             }
-            if (across == triangles.size()) break;
+            if (!beyond) return t;
+            if (across == kNoPoint) return kNoPoint;
             t = across;
         }
-        if (strictlyIn(t)) return t;
-        for (std::size_t u = 0; u < triangles.size(); ++u) {
-            if (strictlyIn(u)) return u;
-        }
-        return triangles.size();
+        return kNoPoint;
     };
 
     // The cut by ears made Delaunay first: its long diagonals, where no
@@ -882,21 +893,69 @@ void insertPoints(std::vector<RegionVertex>& vertices,
         legalize(std::move(all));
     }
 
-    for (const RegionVertex& point : inside) {
-        const std::size_t within = locate(point);
-        if (within == triangles.size()) continue;  // on an edge: left out
-        last = within;
-        vertices.push_back(point);
-        const std::size_t v = vertices.size() - 1;
+    // Each point's triangle, walked to from the last point's (they come in
+    // rows, each near the one before), else from the one beside it's, else
+    // looked for in every triangle.
+    std::vector<std::size_t> home(inside.size(), kNoPoint);
+    std::size_t last = 0;
+    for (std::size_t n = 0; n < inside.size(); ++n) {
+        const RegionVertex& point = inside[n];
+        std::size_t within = walk(std::min(last, triangles.size() - 1), point);
+        if (within == kNoPoint && beside[n] != kNoPoint && home[beside[n]] != kNoPoint) {
+            within = walk(home[beside[n]], point);
+        }
+        for (std::size_t t = 0; within == kNoPoint && t < triangles.size(); ++t) {
+            if (placeIn(t, point) != kNoPoint) within = t;
+        }
+        // Outside the region, or on a corner: left out.
+        const std::size_t on = within == kNoPoint ? kNoPoint : placeIn(within, point);
+        if (on == kNoPoint) continue;
         const auto tri = triangles[within];
-        unindex(within);
-        triangles[within] = {tri[0], tri[1], v};
-        triangles.push_back({tri[1], tri[2], v});
-        triangles.push_back({tri[2], tri[0], v});
-        index(within);
-        index(triangles.size() - 2);
-        index(triangles.size() - 1);
-        legalize({{tri[0], tri[1]}, {tri[1], tri[2]}, {tri[2], tri[0]}});
+        const std::size_t v = vertices.size();
+        if (on == kWithin) {
+            // Its triangle cut in three.
+            vertices.push_back(point);
+            unindex(within);
+            triangles[within] = {tri[0], tri[1], v};
+            triangles.push_back({tri[1], tri[2], v});
+            triangles.push_back({tri[2], tri[0], v});
+            index(within);
+            index(triangles.size() - 2);
+            index(triangles.size() - 1);
+            legalize({{tri[0], tri[1]}, {tri[1], tri[2]}, {tri[2], tri[0]}});
+        } else {
+            // On the edge from a to b (a corner of the grid's points often
+            // is, between two coarser ones): each triangle either side of it
+            // cut in two. Not on the outline, which stays as it is.
+            const std::size_t a = tri[on];
+            const std::size_t b = tri[(on + 1) % 3];
+            const std::size_t c = tri[(on + 2) % 3];
+            const auto found = edgeTriangles.find(key(a, b));
+            if (boundary.count(key(a, b)) != 0 || found == edgeTriangles.end() ||
+                found->second.size() != 2) {
+                continue;
+            }
+            const std::size_t other =
+                found->second[0] == within ? found->second[1] : found->second[0];
+            std::size_t d = a;
+            for (std::size_t corner : triangles[other]) {
+                if (corner != a && corner != b) d = corner;
+            }
+            vertices.push_back(point);
+            unindex(within);
+            unindex(other);
+            triangles[within] = {a, v, c};
+            triangles[other] = {b, v, d};
+            triangles.push_back({v, b, c});
+            triangles.push_back({v, a, d});
+            index(within);
+            index(other);
+            index(triangles.size() - 2);
+            index(triangles.size() - 1);
+            legalize({{b, c}, {c, a}, {a, d}, {d, b}});
+        }
+        home[n] = within;
+        last = within;
     }
 }
 
@@ -1009,14 +1068,56 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         boundary.insert(a < b ? std::make_pair(a, b) : std::make_pair(b, a));
     }
 
-    // Points inside, as far apart as the outline's own and as far from it.
+    // Points inside, as far apart as the outline's own and as far from it:
+    // at a grid's corners. A column's are within the region where a line up
+    // it has crossed the outline and holes an odd number of times; each is
+    // clear of the region's edges near it, found by the grid's cells, each
+    // listing the edges that pass near it.
     std::vector<RegionVertex> inside;
-    if (spacing > 0.0) {
-        const double x0 = u0 * su, x1 = u1 * su, y0 = v0 * sv, y1 = v1 * sv;
-        const auto nx = static_cast<std::size_t>(std::min(400.0, std::floor((x1 - x0) / spacing)));
-        const auto ny = static_cast<std::size_t>(std::min(400.0, std::floor((y1 - y0) / spacing)));
+    std::vector<std::size_t> beside;
+    const double x0 = u0 * su, x1 = u1 * su, y0 = v0 * sv, y1 = v1 * sv;
+    const auto nx = spacing > 0.0
+                        ? static_cast<std::size_t>(std::min(400.0, std::floor((x1 - x0) / spacing)))
+                        : 0;
+    const auto ny = spacing > 0.0
+                        ? static_cast<std::size_t>(std::min(400.0, std::floor((y1 - y0) / spacing)))
+                        : 0;
+    if (nx > 1 && ny > 1) {
+        const double cw = (x1 - x0) / static_cast<double>(nx);
+        const double ch = (y1 - y0) / static_cast<double>(ny);
+        const auto cell = [&](double at, double from, double size, std::size_t count) {
+            const double k = std::floor((at - from) / size);
+            return static_cast<std::size_t>(std::clamp(k, 0.0, static_cast<double>(count - 1)));
+        };
+        // An edge is listed in the cells round each point along it, a
+        // quarter-cell apart: a point within 0.6 spacing (less than a cell)
+        // of it finds it in its own cell.
+        std::vector<std::vector<std::pair<std::size_t, std::size_t>>> near(nx * ny);
+        std::vector<std::size_t> listed(nx * ny, kNoPoint);
+        const double step = 0.25 * std::min(cw, ch);
+        std::size_t edgeNumber = 0;
+        for (const auto& edge : boundary) {
+            const RegionVertex& p = vertices[edge.first];
+            const RegionVertex& q = vertices[edge.second];
+            const auto pieces =
+                static_cast<std::size_t>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
+            for (std::size_t k = 0; k <= pieces; ++k) {
+                const double t =
+                    pieces == 0 ? 0.0 : static_cast<double>(k) / static_cast<double>(pieces);
+                const std::size_t ci = cell(p.x + (q.x - p.x) * t, x0, cw, nx);
+                const std::size_t cj = cell(p.y + (q.y - p.y) * t, y0, ch, ny);
+                for (std::size_t i = ci == 0 ? 0 : ci - 1; i <= std::min(ci + 1, nx - 1); ++i) {
+                    for (std::size_t j = cj == 0 ? 0 : cj - 1; j <= std::min(cj + 1, ny - 1); ++j) {
+                        if (listed[i * ny + j] == edgeNumber) continue;
+                        listed[i * ny + j] = edgeNumber;
+                        near[i * ny + j].push_back(edge);
+                    }
+                }
+            }
+            ++edgeNumber;
+        }
         const auto clear = [&](double x, double y) {
-            for (const auto& [a, b] : boundary) {
+            for (const auto& [a, b] : near[cell(x, x0, cw, nx) * ny + cell(y, y0, ch, ny)]) {
                 const RegionVertex& p = vertices[a];
                 const RegionVertex& q = vertices[b];
                 const double lx = q.x - p.x, ly = q.y - p.y;
@@ -1030,17 +1131,66 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
             }
             return true;
         };
+        // Where a line up at x crosses the outline and the holes, upwards.
+        std::vector<double> crossings;
+        const auto crossingsAt = [&](double x) {
+            crossings.clear();
+            const auto of = [&](const std::vector<std::size_t>& loop) {
+                for (std::size_t k = 0; k < loop.size(); ++k) {
+                    const RegionVertex& p = vertices[loop[k]];
+                    const RegionVertex& q = vertices[loop[(k + 1) % loop.size()]];
+                    if ((p.x <= x) == (q.x <= x)) continue;
+                    crossings.push_back(p.y + (x - p.x) * (q.y - p.y) / (q.x - p.x));
+                }
+            };
+            of(outerIndices);
+            for (const auto& h : holeIndices) of(h);
+            std::sort(crossings.begin(), crossings.end());
+        };
+        const auto xAt = [&](std::size_t i) {
+            return x0 + (x1 - x0) * static_cast<double>(i) / static_cast<double>(nx);
+        };
+        const auto yAt = [&](std::size_t j) {
+            return y0 + (y1 - y0) * static_cast<double>(j) / static_cast<double>(ny);
+        };
+        // Each corner's level: the most times both its column and its row
+        // halve evenly.
+        struct Corner {
+            std::size_t i, j;
+            int level;
+        };
+        std::vector<Corner> corners;
         for (std::size_t i = 1; i < nx; ++i) {
+            crossingsAt(xAt(i));
+            std::size_t below = 0;
             for (std::size_t j = 1; j < ny; ++j) {
-                const double x = x0 + (x1 - x0) * static_cast<double>(i) / static_cast<double>(nx);
-                const double y = y0 + (y1 - y0) * static_cast<double>(j) / static_cast<double>(ny);
-                if (!clear(x, y)) continue;
-                const UV uv{x / su, y / sv};
-                inside.push_back({x, y, {map.at(uv), uv, -1}});
+                const double y = yAt(j);
+                while (below < crossings.size() && crossings[below] < y) ++below;
+                if (below % 2 == 0 || !clear(xAt(i), y)) continue;
+                corners.push_back({i, j, std::min(std::countr_zero(i), std::countr_zero(j))});
             }
         }
+        // Coarse to fine, every 2^k-th corner before those between: each
+        // point then goes in among others about as far apart as it, and only
+        // a few triangles change. (Column by column, each went in beside the
+        // triangles across the region not yet filled, and changed many.)
+        std::stable_sort(corners.begin(), corners.end(),
+                         [](const Corner& a, const Corner& b) { return a.level > b.level; });
+        std::vector<std::size_t> placed(nx * ny, kNoPoint);
+        inside.reserve(corners.size());
+        beside.reserve(corners.size());
+        for (const Corner& c : corners) {
+            // Beside it, in before it: a corner of its level or coarser.
+            const std::size_t step = std::size_t{1} << c.level;
+            std::size_t near = c.i > step ? placed[(c.i - step) * ny + c.j] : kNoPoint;
+            if (near == kNoPoint && c.j > step) near = placed[c.i * ny + c.j - step];
+            const UV uv{xAt(c.i) / su, yAt(c.j) / sv};
+            inside.push_back({xAt(c.i), yAt(c.j), {map.at(uv), uv, -1}});
+            beside.push_back(near);
+            placed[c.i * ny + c.j] = inside.size() - 1;
+        }
     }
-    insertPoints(vertices, triangles, inside, boundary, eps);
+    insertPoints(vertices, triangles, inside, beside, boundary, eps);
 
     std::vector<std::vector<Vec3>> facets;
     facets.reserve(triangles.size());

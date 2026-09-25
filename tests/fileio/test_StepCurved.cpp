@@ -605,12 +605,11 @@ private:
 };
 
 /// A cylinder of radius 2 and height 4 with a pocket cut into its side:
-/// 0.6 radian wide about +x, from z = 1.5 to 2.5, down to radius 1.5. Its
-/// side is a face with a hole, the pocket's window. Its volume is 16 pi less
-/// the pocket's 0.3 (4 - 2.25) = 0.525.
-std::string pocketedCylinder() {
+/// 2 @p a radians wide about +x, from z = @p low to @p high, down to radius
+/// 1.5. Its side is a face with a hole, the pocket's window. Its volume is
+/// 16 pi less the pocket's a (4 - 2.25) (high - low): 0.525 by default.
+std::string pocketedCylinder(double a = 0.3, double low = 1.5, double high = 2.5) {
     Entities e;
-    const double a = 0.3;
     const double c = std::cos(a);
     const double s = std::sin(a);
     const int origin = e.point(0, 0, 0);
@@ -637,25 +636,25 @@ std::string pocketedCylinder() {
     const auto corner = [&](double r, double sign, double h) {
         return e.vertex(r * c, sign * r * s, h);
     };
-    const int o1 = corner(2, -1, 1.5), o2 = corner(2, 1, 1.5), o3 = corner(2, 1, 2.5),
-              o4 = corner(2, -1, 2.5);
-    const int i1 = corner(1.5, -1, 1.5), i2 = corner(1.5, 1, 1.5), i3 = corner(1.5, 1, 2.5),
-              i4 = corner(1.5, -1, 2.5);
+    const int o1 = corner(2, -1, low), o2 = corner(2, 1, low), o3 = corner(2, 1, high),
+              o4 = corner(2, -1, high);
+    const int i1 = corner(1.5, -1, low), i2 = corner(1.5, 1, low), i3 = corner(1.5, 1, high),
+              i4 = corner(1.5, -1, high);
     // Arcs, each from -a to +a.
-    const int arcOuterLow = e.edge(o1, o2, circle(1.5, 2));
-    const int arcOuterHigh = e.edge(o4, o3, circle(2.5, 2));
-    const int arcInnerLow = e.edge(i1, i2, circle(1.5, 1.5));
-    const int arcInnerHigh = e.edge(i4, i3, circle(2.5, 1.5));
+    const int arcOuterLow = e.edge(o1, o2, circle(low, 2));
+    const int arcOuterHigh = e.edge(o4, o3, circle(high, 2));
+    const int arcInnerLow = e.edge(i1, i2, circle(low, 1.5));
+    const int arcInnerHigh = e.edge(i4, i3, circle(high, 1.5));
     // Up the pocket's corners.
-    const int upOuterMinus = e.edge(o1, o4, line(e.point(2 * c, -2 * s, 1.5), 0, 0, 1));
-    const int upOuterPlus = e.edge(o2, o3, line(e.point(2 * c, 2 * s, 1.5), 0, 0, 1));
-    const int upInnerMinus = e.edge(i1, i4, line(e.point(1.5 * c, -1.5 * s, 1.5), 0, 0, 1));
-    const int upInnerPlus = e.edge(i2, i3, line(e.point(1.5 * c, 1.5 * s, 1.5), 0, 0, 1));
+    const int upOuterMinus = e.edge(o1, o4, line(e.point(2 * c, -2 * s, low), 0, 0, 1));
+    const int upOuterPlus = e.edge(o2, o3, line(e.point(2 * c, 2 * s, low), 0, 0, 1));
+    const int upInnerMinus = e.edge(i1, i4, line(e.point(1.5 * c, -1.5 * s, low), 0, 0, 1));
+    const int upInnerPlus = e.edge(i2, i3, line(e.point(1.5 * c, 1.5 * s, low), 0, 0, 1));
     // In from the side, from radius 2 to 1.5.
-    const int inLowMinus = e.edge(o1, i1, line(e.point(2 * c, -2 * s, 1.5), -c, s, 0));
-    const int inLowPlus = e.edge(o2, i2, line(e.point(2 * c, 2 * s, 1.5), -c, -s, 0));
-    const int inHighMinus = e.edge(o4, i4, line(e.point(2 * c, -2 * s, 2.5), -c, s, 0));
-    const int inHighPlus = e.edge(o3, i3, line(e.point(2 * c, 2 * s, 2.5), -c, -s, 0));
+    const int inLowMinus = e.edge(o1, i1, line(e.point(2 * c, -2 * s, low), -c, s, 0));
+    const int inLowPlus = e.edge(o2, i2, line(e.point(2 * c, 2 * s, low), -c, -s, 0));
+    const int inHighMinus = e.edge(o4, i4, line(e.point(2 * c, -2 * s, high), -c, s, 0));
+    const int inHighPlus = e.edge(o3, i3, line(e.point(2 * c, 2 * s, high), -c, -s, 0));
 
     const auto cylinderSurface = [&](double radius) {
         return e.add("CYLINDRICAL_SURFACE('',#" + std::to_string(e.placement(origin, z, x)) + "," +
@@ -677,17 +676,17 @@ std::string pocketedCylinder() {
     // Its low wall, facing up; its high wall, facing down.
     faces.push_back(e.face(
         {{{arcOuterLow, true}, {inLowPlus, true}, {arcInnerLow, false}, {inLowMinus, false}}},
-        plane(e.point(0, 0, 1.5), z, x), true));
+        plane(e.point(0, 0, low), z, x), true));
     faces.push_back(e.face(
         {{{arcOuterHigh, false}, {inHighMinus, true}, {arcInnerHigh, true}, {inHighPlus, false}}},
-        plane(e.point(0, 0, 2.5), e.direction(0, 0, -1), x), true));
+        plane(e.point(0, 0, high), e.direction(0, 0, -1), x), true));
     // Its sides: at +a, facing towards -a; at -a, facing towards +a.
     faces.push_back(e.face(
         {{{inLowPlus, false}, {upOuterPlus, true}, {inHighPlus, true}, {upInnerPlus, false}}},
-        plane(e.point(2 * c, 2 * s, 1.5), e.direction(s, -c, 0), e.direction(c, s, 0)), true));
+        plane(e.point(2 * c, 2 * s, low), e.direction(s, -c, 0), e.direction(c, s, 0)), true));
     faces.push_back(e.face(
         {{{upInnerMinus, true}, {inHighMinus, false}, {upOuterMinus, false}, {inLowMinus, true}}},
-        plane(e.point(2 * c, -2 * s, 1.5), e.direction(s, c, 0), e.direction(c, -s, 0)), true));
+        plane(e.point(2 * c, -2 * s, low), e.direction(s, c, 0), e.direction(c, -s, 0)), true));
     // The caps.
     faces.push_back(e.face({{{bottom, false}}}, plane(origin, z, x), false));
     faces.push_back(e.face({{{top, true}}}, plane(e.point(0, 0, 4), z, x), true));
@@ -709,4 +708,24 @@ TEST(StepCurvedTest, ACurvedFaceWithAHoleIsCutRoundIt) {
     expectRelative(m.modelled, 16.0 * kPi - 0.525, 0.01, "its facets, within 1 %");
     EXPECT_TRUE(m.ideal.exact);
     expectRelative(m.ideal.properties.volume, 16.0 * kPi - 0.525, 1e-8, "the pocketed cylinder");
+}
+
+// A hole over much of a curved face, cut finely: the points on the grid in
+// the hole are not made (each was looked for in every triangle), and those
+// between coarser ones, on their edges, cut them (each was left out).
+TEST(StepCurvedTest, AWideHoleIsCutRoundFinely) {
+    const auto solids = StepFormat::fromString(pocketedCylinder(1.4, 0.3, 3.7));
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const double exact = 16.0 * kPi - 1.4 * 1.75 * 3.4;
+    const auto coarse = hz::model::facetCurved(*solids[0]);
+    const auto fine = hz::model::facetCurved(*solids[0], 0.05);
+    ASSERT_NE(coarse.solid, nullptr) << coarse.error;
+    ASSERT_NE(fine.solid, nullptr) << fine.error;
+    EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+    EXPECT_TRUE(fine.outlined.empty());
+    EXPECT_GT(fine.solid->faces().size(), 4 * coarse.solid->faces().size());
+    const double coarseVolume = MassPropertiesCalculator::compute(*coarse.solid).volume;
+    const double fineVolume = MassPropertiesCalculator::compute(*fine.solid).volume;
+    expectRelative(fineVolume, exact, 1e-3, "its fine facets, within 0.1 %");
+    EXPECT_LT(std::abs(fineVolume - exact), std::abs(coarseVolume - exact)) << "nearer when finer";
 }
