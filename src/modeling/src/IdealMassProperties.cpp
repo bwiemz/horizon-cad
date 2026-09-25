@@ -158,9 +158,15 @@ public:
     /// The solid's boundary refined @p m times along each edge, measured;
     /// nothing whole once @p cancelled is set.
     detail::Measures measure(int m, const std::atomic<bool>* cancelled) {
+        // Looked at along every edge and every row of every triangle, so a
+        // cancel is seen within a row's work: between faces alone, closing
+        // the window waited for the face being measured, a large one at
+        // m = 64 for seconds.
+        m_cancelled = cancelled;
         m_samples.clear();
         m_parted = 0;
         for (const auto& e : m_solid.edges()) {
+            if (stopped()) return {};
             if (e.halfEdge == nullptr || e.halfEdge->origin == nullptr ||
                 e.halfEdge->next == nullptr || e.halfEdge->next->origin == nullptr) {
                 continue;
@@ -169,13 +175,17 @@ public:
         }
         detail::Measures measures;
         for (const auto& [face, info] : m_faces) {
-            if (cancelled != nullptr && cancelled->load()) break;
+            if (stopped()) return {};
             measureFace(info, m, measures);
         }
         return measures;
     }
 
     int partedEdges() const { return m_parted; }
+
+    bool stopped() const {
+        return m_cancelled != nullptr && m_cancelled->load(std::memory_order_relaxed);
+    }
 
     /// The faces measured as modelled though they are facets of a curved
     /// surface: without an ideal, and bending by under 30 degrees from a
@@ -561,6 +571,7 @@ private:
         // Each corner's start, or, where the surface degenerates, the next's.
         const UV at[3] = {start(s, {&a, &b, &c}), start(s, {&b, &c, &a}), start(s, {&c, &a, &b})};
         for (int j = 0; j <= m; ++j) {
+            if (stopped()) return;
             for (int i = 0; i + j <= m; ++i) {
                 Vec3& x = grid[index(i, j)];
                 if (j == 0) {
@@ -605,6 +616,7 @@ private:
         const UV fromB = start(s, {&b, &c});
         const UV fromC = start(s, {&c, &b});
         for (int j = 0; j <= m; ++j) {
+            if (stopped()) return;
             for (int i = 0; i <= m; ++i) {
                 Vec3& x = grid[index(i, j)];
                 if (j == m) {
@@ -643,6 +655,7 @@ private:
     std::map<std::tuple<const void*, double, double>, bool> m_degenerate;
     std::unordered_map<const geo::NurbsSurface*, double> m_sizes;
     std::vector<Vec3> m_grid;
+    const std::atomic<bool>* m_cancelled = nullptr;
     double m_scale = 0.0;
     bool m_curved = false;
     int m_parted = 0;
