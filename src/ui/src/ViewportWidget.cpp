@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QWheelEvent>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -623,6 +624,7 @@ void ViewportWidget::paintGL() {
     m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
     drawDatums(gl);
     drawModelHighlights(gl);
+    drawTriad(gl);
 
     // Render tool preview (rubber-band).
     m_viewportRenderer.renderToolPreview(gl, *m_renderer, m_camera, m_activeTool);
@@ -663,8 +665,21 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
     // arms a drag of it (Phase 158). Shift keeps its meaning: add to the
     // choice.
     const bool selecting = m_activeTool == nullptr || m_activeTool->name() == "Select";
+    m_dragHandle.reset();
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
         m_componentDragger != nullptr && selecting) {
+        // A handle of the chosen component's triad first (Phase 158b): it
+        // is drawn over the model.
+        if (const auto shown = triad()) {
+            if (const auto handle = shown->hitTest(event->position())) {
+                const auto pose = m_componentDragger->triadPose();
+                m_componentDrag = ComponentDrag::Armed;
+                m_dragPick = ModelPick{pose ? pose->component : 0, {}, false};
+                m_dragHandle = handle;
+                m_dragFrom = event->position();
+                return;
+            }
+        }
         const auto pick = pickModel(event->position());
         if (pick && pick->owner != 0) {
             m_componentDrag = ComponentDrag::Armed;
@@ -674,6 +689,37 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
         }
     }
     m_inputHandler.handleMousePress(event, this);
+}
+
+std::optional<Triad> ViewportWidget::triad() const {
+    if (m_componentDragger == nullptr || m_activeSketch || width() <= 0 || height() <= 0) {
+        return std::nullopt;
+    }
+    const auto pose = m_componentDragger->triadPose();
+    if (!pose) return std::nullopt;
+    return Triad(pose->origin, pose->axes, m_camera, width(), height());
+}
+
+void ViewportWidget::drawTriad(QOpenGLExtraFunctions* gl) {
+    const auto shown = triad();
+    if (!shown) return;
+    // Over the model, not hidden by it: a handle behind the part is still
+    // there to take.
+    gl->glDisable(GL_DEPTH_TEST);
+    const std::array<math::Vec3, 3> colours{math::Vec3(0.9, 0.25, 0.25), math::Vec3(0.3, 0.8, 0.3),
+                                            math::Vec3(0.3, 0.5, 1.0)};
+    for (const Triad::Kind kind : {Triad::Kind::Ring, Triad::Kind::Arrow}) {
+        for (int k = 0; k < 3; ++k) {
+            std::vector<float> lines;
+            for (const math::Vec3& p : shown->segments({kind, k})) {
+                lines.insert(lines.end(), {static_cast<float>(p.x), static_cast<float>(p.y),
+                                           static_cast<float>(p.z), 0.0f});
+            }
+            m_renderer->drawLines(gl, m_camera, lines, colours.at(static_cast<size_t>(k)),
+                                  kind == Triad::Kind::Arrow ? 3.0f : 2.0f);
+        }
+    }
+    gl->glEnable(GL_DEPTH_TEST);
 }
 
 std::optional<math::Vec3> ViewportWidget::pickModelPoint(const QPointF& at) const {
@@ -728,7 +774,7 @@ void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
                 QApplication::startDragDistance()) {
                 return;
             }
-            if (!m_componentDragger->beginDrag(m_dragPick.owner, m_dragFrom)) {
+            if (!m_componentDragger->beginDrag(m_dragPick.owner, m_dragFrom, m_dragHandle)) {
                 m_componentDrag = ComponentDrag::Refused;  // the dragger says why
                 return;
             }
@@ -760,7 +806,7 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
         m_componentDrag = ComponentDrag::None;
         if (was == ComponentDrag::Dragging) {
             m_componentDragger->endDrag();
-        } else if (was == ComponentDrag::Armed) {
+        } else if (was == ComponentDrag::Armed && !m_dragHandle) {
             chooseModel(m_dragPick, false);  // pressed and released in place: a click
         }
         update();

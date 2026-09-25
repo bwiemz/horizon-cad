@@ -19,6 +19,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/ui/OverlayRenderer.h"
+#include "horizon/ui/Triad.h"
 #include "horizon/ui/TypedPoint.h"
 #include "horizon/ui/ViewportInputHandler.h"
 #include "horizon/ui/ViewportRenderer.h"
@@ -230,6 +231,9 @@ public:
     void setComponentDragger(ComponentDragger* dragger) { m_componentDragger = dragger; }
     /// A component is being dragged.
     bool draggingComponent() const { return m_componentDrag == ComponentDrag::Dragging; }
+    /// The chosen component's triad as this view sees it now (Phase 158b);
+    /// nothing when no component is chosen.
+    std::optional<Triad> triad() const;
 
     /// What the cursor is over, drawn highlighted.
     void setModelHover(const std::optional<ModelPick>& pick);
@@ -302,6 +306,9 @@ private:
     ComponentDrag m_componentDrag = ComponentDrag::None;
     ModelPick m_dragPick;
     QPointF m_dragFrom;
+    std::optional<Triad::Handle> m_dragHandle;  ///< a triad's handle, or a free drag
+    /// Draw the chosen component's triad over the model.
+    void drawTriad(QOpenGLExtraFunctions* gl);
 
     // Camera
     render::Camera m_camera;

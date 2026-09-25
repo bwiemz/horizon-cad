@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <numbers>
@@ -31,6 +32,7 @@
 #include "horizon/fileio/BomExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/Quaternion.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
@@ -266,7 +268,53 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
 // Dragging a component (Phase 158)
 // ---------------------------------------------------------------------------
 
-bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at) {
+namespace {
+
+/// How far along the line through @p point along unit @p axis the ray
+/// @p origin + t @p direction comes nearest; nothing when they run parallel.
+std::optional<double> nearestAlong(const math::Vec3& point, const math::Vec3& axis,
+                                   const math::Vec3& origin, const math::Vec3& direction) {
+    const math::Vec3 w = point - origin;
+    const double b = axis.dot(direction);
+    const double c = direction.dot(direction);
+    const double denominator = c - b * b;  // |axis| = 1
+    if (std::abs(denominator) < 1e-12 * c) return std::nullopt;
+    return (b * direction.dot(w) - c * axis.dot(w)) / denominator;
+}
+
+/// Where the ray @p origin + t @p direction meets the plane through
+/// @p point facing @p normal; nothing when it runs along it.
+std::optional<math::Vec3> meetPlane(const math::Vec3& point, const math::Vec3& normal,
+                                    const math::Vec3& origin, const math::Vec3& direction) {
+    const double across = direction.dot(normal);
+    if (std::abs(across) < 1e-12) return std::nullopt;
+    return origin + direction * ((point - origin).dot(normal) / across);
+}
+
+}  // namespace
+
+std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const {
+    const doc::AssemblyDocument* asmDoc = assembly();
+    if (asmDoc == nullptr) return std::nullopt;
+    for (const auto& pick : m_host.viewport().modelSelection()) {
+        if (pick.owner == 0) continue;
+        const doc::ComponentInstance* comp = asmDoc->component(pick.owner);
+        if (comp == nullptr || comp->suppressed || !comp->cachedMesh) return std::nullopt;
+        const math::BoundingBox box = placedBounds(*comp);
+        if (!box.isValid()) return std::nullopt;
+        TriadPose pose;
+        pose.component = comp->id;
+        pose.origin = box.center();
+        pose.axes = {comp->transform.transformDirection(math::Vec3::UnitX).normalized(),
+                     comp->transform.transformDirection(math::Vec3::UnitY).normalized(),
+                     comp->transform.transformDirection(math::Vec3::UnitZ).normalized()};
+        return pose;
+    }
+    return std::nullopt;
+}
+
+bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
+                                  const std::optional<Triad::Handle>& handle) {
     auto asmDoc = m_host.currentAssembly();
     if (!asmDoc) return false;
     const doc::ComponentInstance* comp = asmDoc->component(component);
@@ -277,15 +325,35 @@ bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at) {
         return false;
     }
     ViewportWidget& view = m_host.viewport();
-    const auto grabbed = view.pickModelPoint(at);
-    if (!grabbed) return false;
-
     Drag drag;
     drag.assembly = asmDoc;
     drag.component = component;
     drag.start = comp->transform;
-    drag.grabbed = *grabbed;
     drag.facing = (view.camera().target() - view.camera().eye()).normalized();
+    drag.handle = handle;
+    const auto [origin, direction] =
+        view.camera().screenToRay(at.x(), at.y(), view.width(), view.height());
+    if (handle) {
+        // By the triad: along an arrow, or round a ring, from where it was
+        // grabbed on it.
+        const auto pose = triadPose();
+        if (!pose || pose->component != component) return false;
+        drag.pivot = pose->origin;
+        drag.axis = pose->axes.at(static_cast<size_t>(handle->axis));
+        if (handle->kind == Triad::Kind::Arrow) {
+            const auto along = nearestAlong(drag.pivot, drag.axis, origin, direction);
+            if (!along) return false;
+            drag.along = *along;
+        } else {
+            const auto on = meetPlane(drag.pivot, drag.axis, origin, direction);
+            if (!on) return false;
+            drag.towards = *on - drag.pivot;
+        }
+    } else {
+        const auto grabbed = view.pickModelPoint(at);
+        if (!grabbed) return false;
+        drag.grabbed = *grabbed;
+    }
     drag.before = asmDoc->snapshot();
     drag.wasDirty = asmDoc->isDirty();
     if (!asmDoc->mates().empty()) {
@@ -318,11 +386,26 @@ void AssemblyWorkbench::dragTo(const QPointF& at) {
     ViewportWidget& view = m_host.viewport();
     const auto [origin, direction] =
         view.camera().screenToRay(at.x(), at.y(), view.width(), view.height());
-    const double across = direction.dot(m_drag->facing);
-    if (std::abs(across) < 1e-12) return;
-    const math::Vec3 point =
-        origin + direction * ((m_drag->grabbed - origin).dot(m_drag->facing) / across);
-    const math::Mat4 target = math::Mat4::translation(point - m_drag->grabbed) * m_drag->start;
+    math::Mat4 target = m_drag->start;
+    if (!m_drag->handle) {
+        // Free: in the plane through the point grabbed, facing the view.
+        const auto point = meetPlane(m_drag->grabbed, m_drag->facing, origin, direction);
+        if (!point) return;
+        target = math::Mat4::translation(*point - m_drag->grabbed) * m_drag->start;
+    } else if (m_drag->handle->kind == Triad::Kind::Arrow) {
+        const auto along = nearestAlong(m_drag->pivot, m_drag->axis, origin, direction);
+        if (!along) return;
+        target = math::Mat4::translation(m_drag->axis * (*along - m_drag->along)) * m_drag->start;
+    } else {
+        const auto on = meetPlane(m_drag->pivot, m_drag->axis, origin, direction);
+        if (!on) return;
+        const math::Vec3 now = *on - m_drag->pivot;
+        const double angle =
+            std::atan2(m_drag->axis.dot(m_drag->towards.cross(now)), m_drag->towards.dot(now));
+        target = math::Mat4::translation(m_drag->pivot) *
+                 math::Mat4::rotation(math::Quaternion::fromAxisAngle(m_drag->axis, angle)) *
+                 math::Mat4::translation(m_drag->pivot * -1.0) * m_drag->start;
+    }
 
     std::map<std::uint64_t, math::Mat4> placed{{m_drag->component, target}};
     if (m_drag->mates) {

@@ -19,6 +19,13 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 17 (Phases 158–161, in progress)
 
+- **The triad (158, part 2).**
+  - A component chosen in an assembly shows a triad: an arrow along each of
+    its axes, and a ring about each.
+  - Drag an arrow to move the component along that axis only, or a ring to
+    turn it about that axis through its middle. The mates are solved as it
+    moves, as for a free drag.
+
 - **Drag with the mates (158, part 1).**
   - In an assembly, drag a component in the view: it goes where the cursor
     takes it, and its mates are solved as it moves.

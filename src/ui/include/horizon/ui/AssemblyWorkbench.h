@@ -102,7 +102,13 @@ public:
     /// slides as far as they allow; if not even that, it stays. Release is
     /// one undo step; Escape puts everything back. A component held by a
     /// Fixed mate is not dragged.
-    bool beginDrag(std::uint64_t component, const QPointF& at) override;
+    bool beginDrag(std::uint64_t component, const QPointF& at,
+                   const std::optional<Triad::Handle>& handle) override;
+    /// The triad stands at the middle of the component first chosen in the
+    /// view (clicked, or chosen in the tree), along its axes (Phase 158b).
+    /// Dragged by an arrow, the component moves along that axis; by a ring,
+    /// it turns about that axis through the triad's middle.
+    std::optional<TriadPose> triadPose() const override;
     void dragTo(const QPointF& at) override;
     void endDrag() override;
     void cancelDrag() override;
@@ -163,6 +169,11 @@ private:
         math::Vec3 grabbed;                         ///< the point grabbed, in the world
         math::Vec3 facing;                          ///< the plane it moves in faces this way
         std::optional<doc::AssemblyMates> mates;    ///< gathered once; none: moved freely
+        std::optional<Triad::Handle> handle;        ///< dragged by the triad's
+        math::Vec3 pivot;                           ///< the triad's middle, when grabbed
+        math::Vec3 axis;                            ///< its handle's axis
+        double along = 0.0;  ///< an arrow: how far along the axis it was grabbed
+        math::Vec3 towards;  ///< a ring: the point grabbed, from the pivot, in its plane
         doc::AssemblyState before;
         bool wasDirty = false;
         bool moved = false;

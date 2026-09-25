@@ -914,3 +914,62 @@ TEST(AssembliesTest, EscapePutsADragBackAndAClickChooses) {
     EXPECT_EQ(view.modelSelection().front().owner, lid);
     expectAt(*assembly.component(lid), Vec3(12, 0, 10), "not moved");
 }
+
+// Phase 158b: the chosen component's triad. Dragged by its x arrow, the lid
+// moves along x only, however the cursor strays; by its z ring, it turns
+// about z through its middle. Nothing chosen, no triad.
+TEST(AssembliesTest, TheTriadMovesAlongAnAxisAndTurnsAboutOne) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    auto& view = drive.viewport();
+    lookFromAbove(view);
+
+    view.clearModelSelection();
+    EXPECT_FALSE(view.triad().has_value()) << "nothing chosen";
+    drive.clickAt(view.projectToScreen(Vec3(17, 5, 20)));  // the lid's top
+    auto triad = view.triad();
+    if (!triad) FAIL() << "the lid chosen, and no triad";
+    EXPECT_NEAR(triad->origin().x, 17.0, 1e-9) << "at its middle";
+    EXPECT_NEAR(triad->origin().z, 15.0, 1e-9);
+
+    // Along x: grabbed on the arrow, taken 10 further along it.
+    using Handle = hz::ui::Triad::Handle;
+    const Handle arrowX{hz::ui::Triad::Kind::Arrow, 0};
+    ASSERT_EQ(triad->hitTest(triad->handlePoint(arrowX)), arrowX);
+    const Vec3 onArrow = triad->origin() + triad->axis(0) * (0.7 * triad->size());
+    drive.pressAt(triad->handlePoint(arrowX));
+    drive.dragAt(view.projectToScreen(onArrow + Vec3(5, 3, 0)));
+    drive.dragAt(view.projectToScreen(onArrow + Vec3(10, 0, 0)));
+    drive.releaseAt(view.projectToScreen(onArrow + Vec3(10, 0, 0)));
+    expectAt(*assembly.component(lid), Vec3(22, 0, 10), "10 along x, and nothing else");
+
+    // About z: grabbed on the ring, taken a quarter turn round it.
+    drive.clickAt(view.projectToScreen(Vec3(27, 5, 20)));  // its top, where it is now
+    triad = view.triad();
+    if (!triad) FAIL() << "the lid chosen again, and no triad";
+    const Handle ringZ{hz::ui::Triad::Kind::Ring, 2};
+    ASSERT_EQ(triad->hitTest(triad->handlePoint(ringZ)), ringZ);
+    const double r = hz::ui::Triad::kRingShare * triad->size();
+    const auto round = [&](double degrees) {
+        const double t = degrees * std::numbers::pi / 180.0;
+        return view.projectToScreen(
+            triad->origin() + (triad->axis(0) * std::cos(t) + triad->axis(1) * std::sin(t)) * r);
+    };
+    const Vec3 middle = triad->origin();
+    drive.pressAt(round(30));
+    drive.dragAt(round(75));
+    drive.dragAt(round(120));
+    drive.releaseAt(round(120));
+    const auto& turned = assembly.component(lid)->transform;
+    const Vec3 x = turned.transformDirection(Vec3::UnitX);
+    EXPECT_NEAR(x.x, 0.0, 1e-6) << "its x now along y";
+    EXPECT_NEAR(x.y, 1.0, 1e-6);
+    EXPECT_NEAR(x.z, 0.0, 1e-6) << "turned about z only: still on the base's top";
+    const Vec3 centre = turned.transformPoint(Vec3(5, 5, 5));
+    EXPECT_NEAR((centre - middle).length(), 0.0, 1e-6) << "about its middle";
+}
