@@ -835,6 +835,16 @@ TEST(NurbsSurfaceTest, APointProjectsToItsFoot) {
     const Vec3 after = cylinder.evaluate(cylinder.uMin() + 0.01 * period, 1.0);
     const auto [au, av] = cylinder.project(after * 1.001, cylinder.uMax() - 0.01 * period, 1.2);
     EXPECT_LT((cylinder.evaluate(au, av) - after).length(), 1e-9);
+    // On the seam itself it settles, not stepping round and back: its steps
+    // land a period apart, which it took for moving, and it searched on.
+    const Vec3 onSeam = cylinder.evaluate(cylinder.uMin(), 1.5);
+    int settled = 0;
+    for (const double start : {cylinder.uMin() + 1e-3, cylinder.uMax() - 1e-3}) {
+        const auto [su, sv] = cylinder.project(onSeam, start, 1.2);
+        EXPECT_LT((cylinder.evaluate(su, sv) - onSeam).length(), 1e-12);
+        settled += 1;
+    }
+    EXPECT_EQ(settled, 2);
     // Beside the sphere's pole, where dS/du vanishes.
     const auto sphere = NurbsSurface::makeSphere(Vec3(), 1.0);
     // From well away, towards a point just short of either pole: a full

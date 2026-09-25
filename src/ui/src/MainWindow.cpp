@@ -36,6 +36,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -55,7 +56,9 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
@@ -536,6 +539,7 @@ MainWindow::~MainWindow() {
     m_importTask.reset();
     m_interferenceTask.reset();
     m_openTask.reset();
+    m_massTask.reset();
 }
 
 void MainWindow::onCommandPalette() {
@@ -1126,6 +1130,7 @@ void MainWindow::createStatusBar() {
         if (m_importTask) m_importTask->cancel();
         if (m_interferenceTask) m_interferenceTask->cancel();
         if (m_openTask) m_openTask->cancel();  // dropped once it is read
+        if (m_massTask) m_massTask->cancel();
     });
     sb->addPermanentWidget(m_rebuildCancel);
     m_rebuildPoll = new QTimer(this);
@@ -3823,42 +3828,157 @@ void MainWindow::onMassProperties() {
     FeatureForm form(this, verb);
     auto* choice = form.choice(QStringLiteral("material"), tr("Material:"), names);
     if (!form.exec()) return;
-    const auto& material = materials[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
-    const auto props = model::MassPropertiesCalculator::compute(
-        *solid, material.second ? &*material.second : nullptr);
-    if (!props.valid) {
+    const auto& [materialName, material] =
+        materials[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
+    const model::Material* density = material ? &*material : nullptr;
+    const auto modelled = model::MassPropertiesCalculator::compute(*solid, density);
+    if (!modelled.valid) {
         statusBar()->showMessage(tr("The part's mass properties could not be worked out"));
         return;
     }
-    const auto n = [](double v) { return QString::number(v, 'g', 6); };
+
+    const auto n = [](double v) { return QString::number(v, 'g', 7); };
     // Superscripts by code point: the sources are not compiled as UTF-8.
     const QString mm2 = QStringLiteral("mm") + QChar(0x00B2);
     const QString mm3 = QStringLiteral("mm") + QChar(0x00B3);
     const QString cm3 = QStringLiteral("cm") + QChar(0x00B3);
-    QString text =
-        tr("Volume: %1 %2\nSurface area: %3 %4\nCentre of mass: %5")
-            .arg(n(props.volume), mm3, n(props.surfaceArea), mm2, formatPoint(props.centerOfMass));
     // The model is in millimetres and densities in kg/m3: a cubic millimetre
     // at 1 kg/m3 weighs a millionth of a gram, and the kernel's inertia,
     // density times mm^5, is in g mm2 times a million.
     constexpr double kGramsPerUnit = 1e-6;
-    const auto& I = props.inertia;
-    QString inertiaUnit = tr("per unit density, %1").arg(QStringLiteral("mm") + QChar(0x2075));
-    double inertiaScale = 1.0;
-    if (material.second) {
-        text +=
-            tr("\n\n%1: density %2 g/%3\nMass: %4 g")
-                .arg(material.first, n(props.density / 1000.0), cm3, n(props.mass * kGramsPerUnit));
-        inertiaUnit = QStringLiteral("g ") + mm2;
-        inertiaScale = kGramsPerUnit;
+    const bool weighed = material.has_value();
+    const auto measures = [=](const model::MassProperties& props) {
+        QString text = tr("Volume: %1 %2\nSurface area: %3 %4\nCentre of mass: %5")
+                           .arg(n(props.volume), mm3, n(props.surfaceArea), mm2,
+                                formatPoint(props.centerOfMass));
+        if (weighed) text += tr("\nMass: %1 g").arg(n(props.mass * kGramsPerUnit));
+        return text;
+    };
+    const auto inertia = [=](const model::MassProperties& props, const QString& which) {
+        const auto& I = props.inertia;
+        const double scale = weighed ? kGramsPerUnit : 1.0;
+        const QString unit =
+            weighed ? QStringLiteral("g ") + mm2
+                    : tr("per unit density, %1").arg(QStringLiteral("mm") + QChar(0x2075));
+        return tr("Inertia about the centre of mass (%1, %2):\n%3  %4  %5\n%6  %7  %8\n%9  %10  "
+                  "%11")
+            .arg(which, unit, n(I.at(0, 0) * scale), n(I.at(0, 1) * scale), n(I.at(0, 2) * scale),
+                 n(I.at(1, 0) * scale), n(I.at(1, 1) * scale), n(I.at(1, 2) * scale),
+                 n(I.at(2, 0) * scale))
+            .arg(n(I.at(2, 1) * scale), n(I.at(2, 2) * scale));
+    };
+    const QString header =
+        weighed ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(modelled.density / 1000.0), cm3)
+                : QString();
+
+    // Faces that approximate a curved surface: without any, the part is
+    // exactly as modelled.
+    std::size_t curved = 0;
+    for (const auto& face : solid->faces()) curved += face.analyticSurface ? 1 : 0;
+    bool curvedEdges = false;
+    for (const auto& edge : solid->edges()) {
+        curvedEdges = curvedEdges || edge.analyticCurve || (edge.curve && edge.curve->degree() > 1);
     }
-    text += tr("\n\nInertia about the centre of mass (%1):\n%2  %3  %4\n%5  %6  %7\n%8  %9  %10")
-                .arg(inertiaUnit, n(I.at(0, 0) * inertiaScale), n(I.at(0, 1) * inertiaScale),
-                     n(I.at(0, 2) * inertiaScale), n(I.at(1, 0) * inertiaScale),
-                     n(I.at(1, 1) * inertiaScale), n(I.at(1, 2) * inertiaScale),
-                     n(I.at(2, 0) * inertiaScale))
-                .arg(n(I.at(2, 1) * inertiaScale), n(I.at(2, 2) * inertiaScale));
-    QMessageBox::information(this, verb, text);
+    if (curved == 0 && !curvedEdges) {
+        QMessageBox::information(
+            this, verb,
+            header + measures(modelled) +
+                tr("\n\nEvery face is flat, so the part is exactly as modelled.\n\n") +
+                inertia(modelled, tr("as modelled")));
+        return;
+    }
+
+    // As modelled, the facets (what Booleans and export use); ideally, the
+    // surfaces they approximate. The ideal is null while it is measured, or
+    // not there, for @p why.
+    m_massText = [=](const model::IdealMassProperties* ideal, const QString& why) {
+        QString text = header + tr("As modelled (its facets, which Booleans and export use):\n") +
+                       measures(modelled) +
+                       tr("\n\nIdeal (on the curved surfaces the facets approximate):\n");
+        if (ideal == nullptr) {
+            return text + why + QStringLiteral("\n\n") + inertia(modelled, tr("as modelled"));
+        }
+        text += measures(ideal->properties);
+        if (ideal->exact) {
+            text += tr("\nExact: every curved face is measured on its surface.");
+        } else {
+            if (!ideal->withoutIdeal.empty()) {
+                QStringList faces;
+                for (const auto& face : ideal->withoutIdeal) faces << QString::fromStdString(face);
+                text += tr("\nNot exact: measured as modelled, with no curved surface recorded: "
+                           "%1.")
+                            .arg(faces.join(QStringLiteral(", ")));
+            }
+            if (ideal->partedEdges > 0) {
+                text +=
+                    tr("\nNot exact: %n edge(s) where the curved surfaces on either side do "
+                       "not meet.",
+                       "", ideal->partedEdges);
+            }
+        }
+        return text + QStringLiteral("\n\n") + inertia(ideal->properties, tr("ideal"));
+    };
+
+    const bool onWorker = m_rebuildMode == RebuildMode::Always ||
+                          (m_rebuildMode == RebuildMode::Auto && curved >= kWorkerIdealFaces);
+    if (!onWorker) {
+        const auto ideal = model::MassPropertiesCalculator::computeIdeal(*solid, density);
+        QMessageBox::information(this, verb,
+                                 ideal.properties.valid
+                                     ? m_massText(&ideal, {})
+                                     : m_massText(nullptr, tr("It could not be worked out.")));
+        return;
+    }
+    if (m_massTask) {
+        statusBar()->showMessage(tr("Mass properties are already being measured"));
+        return;
+    }
+    // A copy: the part can be edited, or its tab closed, while it is measured.
+    std::shared_ptr<const topo::Solid> copy =
+        model::Pattern::transformed(*solid, math::Mat4::identity());
+    m_massTask = std::make_unique<BackgroundTask<model::IdealMassProperties>>(
+        [copy, material](const std::atomic<bool>& cancelled) {
+            return model::MassPropertiesCalculator::computeIdeal(
+                *copy, material ? &*material : nullptr, 1e-10, &cancelled);
+        });
+    // Shown now, and the ideal filled in when it is measured; closing it
+    // stops the measuring.
+    auto* box = new QMessageBox(QMessageBox::Information, verb,
+                                m_massText(nullptr, tr("Measuring...")), QMessageBox::Ok, this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    connect(box, &QDialog::finished, this, [this] {
+        if (m_massTask) m_massTask->cancel();
+    });
+    m_massBox = box;
+    box->open();
+    m_massTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onMassPropertiesFinished,
+                                  Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Measuring mass properties..."));
+    updateBusyIndicator();
+}
+
+void MainWindow::onMassPropertiesFinished() {
+    if (!m_massTask || !m_massTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<model::IdealMassProperties>> task = std::move(m_massTask);
+    updateBusyIndicator();
+    m_statusPrompt->setText(tr("Ready"));
+    if (!m_massBox) return;  // closed: nobody waits for it
+    if (task->cancelled()) {
+        m_massBox->setText(m_massText(nullptr, tr("Not measured: cancelled.")));
+        return;
+    }
+    if (!task->error().empty()) {
+        m_massBox->setText(m_massText(
+            nullptr,
+            tr("It could not be worked out: %1").arg(QString::fromStdString(task->error()))));
+        return;
+    }
+    const auto ideal = task->take();
+    m_massBox->setText(ideal.properties.valid
+                           ? m_massText(&ideal, {})
+                           : m_massText(nullptr, tr("It could not be worked out.")));
 }
 
 void MainWindow::onSectionPlane() {
@@ -4712,7 +4832,7 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask) return;
+    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask) return;
     const int total = m_rebuildJob->total();
     if (total > 0) {
         m_rebuildProgress->setRange(0, total);

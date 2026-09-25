@@ -109,6 +109,13 @@ public:
     /// elsewhere it stops at the edge. Converges to machine precision.
     std::pair<double, double> project(const math::Vec3& point, double u, double v) const;
 
+    /// The (u, v) of the point of the surface nearest @p point, searched for
+    /// over the whole surface: a grid of starts, the middles of its cells
+    /// (never a pole or an apex, where project() cannot turn), then project()
+    /// from the best few. What closestPoint() does, a hundred times faster:
+    /// it evaluates exactly, without allocating.
+    std::pair<double, double> locate(const math::Vec3& point) const;
+
     /// Extract an iso-parametric curve at constant U (returns a curve along V).
     /// The result is a degree-1 polyline through sampled surface points.
     NurbsCurve isoCurveU(double u, int numSamples = 32) const;

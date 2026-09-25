@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -76,10 +77,12 @@ public:
     /// relative, or the refinement reaches a budget of triangles; where
     /// ideals part, at eight pieces an edge. The default gives the closed
     /// forms of the primitives to 1e-9. Far slower than compute(): for a
-    /// request, not for every rebuild.
+    /// request, not for every rebuild. Set @p cancelled to stop it, and its
+    /// result is not valid.
     static IdealMassProperties computeIdeal(const topo::Solid& solid,
                                             const Material* material = nullptr,
-                                            double tolerance = 1e-10);
+                                            double tolerance = 1e-10,
+                                            const std::atomic<bool>* cancelled = nullptr);
 };
 
 }  // namespace hz::model

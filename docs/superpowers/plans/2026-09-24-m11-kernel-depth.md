@@ -189,28 +189,74 @@ Cases:
   failures. An OCC-style cylinder (V=2, E=3, F=3) has one-vertex cap loops,
   which the boundary mesh skips, so its volume and Booleans are wrong.
 
-### Plan
-1. **Ideal properties.**
-   - Each face with an ideal (`analyticSurface`) is refined against it:
-     subdivided in its (u, v) and its points put on the surface, at rising
-     resolution until the volume changes less than a tolerance. A
-     Richardson step then takes the limit.
-   - Faces without an ideal count as modelled.
-   - `MassProperties` gains `ideal` values and an `exact` flag: true when
-     every curved face has an ideal.
-2. **The dialog reports both.** "As modelled", which is what Booleans and
-   export use, and "ideal", which is the design intent. It says which faces
-   have no ideal.
-3. **STEP curved faces trimmed in (u, v).**
-   - An imported face's loop is built by sampling its edge curves, so a cap
-     bounded by one circle becomes a polygon.
-   - Its STEP surface becomes its ideal: plane, cylinder, cone, sphere,
-     torus or B-spline. Cone, sphere and torus are read (they failed).
-4. **Tests:**
-   - The ideal volume and area of a cylinder, cone, sphere, torus, a filleted
-     box and a revolve match the closed forms to 1e-9 relative.
-   - As modelled, they are unchanged.
-   - An OCC-style STEP cylinder has the right volume both ways.
+### As built
+- **Ideal properties** (`MassPropertiesCalculator::computeIdeal`).
+  - Each edge is cut into m pieces on its ideal curve, or where its faces'
+    ideals meet (projection onto each in turn). Each face with a curved
+    ideal is triangulated, each triangle cut into m², and its points put on
+    the surface. Flat faces keep their plane. Shared edge points keep the
+    refined boundary closed.
+  - Measures at m = 1, 2, 4, ... are extrapolated (Romberg) until the last
+    correction is under the tolerance (1e-10 by default). The estimate was
+    within a factor of 3 of the true error for a torus, sphere and cone.
+  - `exact` holds unless a face without an ideal bends by under 30° from a
+    neighbour without one (such faces are named, and measured as modelled),
+    or two ideals part at an edge (counted; refinement stops at m = 8).
+  - Three things made the sequence settle in powers of 1/m²:
+    - Curve points are nearest to the chord's points, as face points are.
+      Points evenly spaced in a full circle's parameter left an O(1/m)
+      error.
+    - A triangle at an apex or pole is cut as a quad collapsed there, not
+      barycentrically: log(m)/m².
+    - No search starts at, or steps onto, a pole.
+      `NurbsSurface::project` halves a step that would leave the domain;
+      `locate` starts from cell middles.
+- **NurbsSurface:**
+  - `evaluateWithDerivatives`: exact first derivatives, no allocation;
+  - `closedU`/`closedV`;
+  - `project`: seeded Gauss–Newton, round seams;
+  - `locate`: a fast global search. The old `closestPoint`, with numerical
+    derivatives and allocation, took 25 s for a sphere's vertices.
+- **The dialog reports both**, as modelled and ideal, and whether the ideal
+  is exact. Parts with 100 or more curved faces are measured on a worker
+  (in Auto); closing the dialog stops it.
+- **STEP curved faces** (`model::facetCurved`, applied when an imported
+  body is built, so the file's exact B-Rep is what a document saves):
+  - Edges are cut into equal chords by turning (32 per circle), each
+    recording its curve.
+  - Flat faces keep their holes (`SolidSewer` takes inner loops now).
+  - A curved face whose outer loop, mapped into (u, v), is a rectangle is a
+    Coons grid of facets. The mapping handles seams, including one met
+    twice, and poles or an apex, where the side is degenerate. The face's
+    loop orientation sets the facets' orientation. A face that is all of its
+    surface (a sphere, closing both ways round) is taken along the
+    surface's normal.
+  - Any other curved face is one facet, its outline, and the import report
+    says so.
+  - Cone, sphere (in its placement's frame, turned to face out) and torus
+    surfaces are read. Plane angle units are read, so a cone's semi-angle
+    in degrees is right.
+
+### Tests
+- Ideal (modeling): cylinder, cone, sphere, torus, revolve ring and
+  filleted box against closed forms (volume, area, centroid, inertia) to
+  1e-9. A part with nothing curved is as modelled. Facets without ideals
+  are named, and parted ideals counted.
+- NurbsSurface: exact derivatives against differences; closedness;
+  projection to the foot, round a seam, beside a pole, onto a seam.
+- STEP: an OCC-style cylinder, cone, sphere and torus, a cone in degrees,
+  and a plate with a bore, each right as modelled and exact ideally. An
+  imported body is built in facets named for their face.
+- UI: a cylinder's dialog shows both values; on a worker the ideal comes in
+  when measured, and closing the dialog stops it.
+
+### Not done
+- A curved face trimmed other than by a rectangle of its (u, v), such as a
+  cylinder cut by a slanted plane, is one facet, its outline. That needs a
+  constrained triangulation in (u, v).
+- No test file has a B-spline face. They go through the same rule, but
+  only the analytic surfaces are exercised.
+- Export writes the facets, not the curved faces they approximate.
 
 ## Phase 142: Boolean robustness
 

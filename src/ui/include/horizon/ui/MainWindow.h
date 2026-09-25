@@ -2,6 +2,7 @@
 
 #include <QElapsedTimer>
 #include <QMainWindow>
+#include <QPointer>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -15,6 +16,7 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
@@ -29,6 +31,7 @@ class QTabBar;
 class QMenu;
 class QProgressBar;
 class QToolButton;
+class QMessageBox;
 
 namespace hz::doc {
 class Command;
@@ -85,7 +88,7 @@ public:
     /// Anything is running on a worker.
     bool backgroundWorkRunning() const {
         return m_rebuildJob != nullptr || m_importTask != nullptr ||
-               m_interferenceTask != nullptr || m_openTask != nullptr;
+               m_interferenceTask != nullptr || m_openTask != nullptr || m_massTask != nullptr;
     }
 
     /// What goes to a worker in Auto: a rebuild after one that took longer
@@ -100,6 +103,9 @@ public:
     std::uint64_t tessellations() const { return m_tessellations; }
     static constexpr qint64 kWorkerImportBytes = 1'000'000;  ///< and a file opened
     static constexpr std::size_t kWorkerInterferenceFaces = 2000;
+    /// Mass Properties measures the ideal on a worker, in Auto, for a part
+    /// with at least this many faces on curved surfaces.
+    static constexpr std::size_t kWorkerIdealFaces = 100;
 
 public slots:
     /// Write a recovery snapshot of every modified document that changed since
@@ -348,6 +354,7 @@ private:
     void showInterference(const doc::AssemblyDocument& assembly,
                           const doc::InterferenceReport& report);
     void onInterferenceFinished();
+    void onMassPropertiesFinished();
 
     /// The window's size and position and where its docks are, kept across
     /// sessions.
@@ -503,6 +510,11 @@ private:
     bool m_openDrawing = false;
     std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
     std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;
+    /// The ideal mass properties being measured, the dialog waiting for them,
+    /// and its text given them (null: still measuring; a reason: none).
+    std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;
+    QPointer<QMessageBox> m_massBox;
+    std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

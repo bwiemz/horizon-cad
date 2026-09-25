@@ -12,6 +12,7 @@
 // until they settle.
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <initializer_list>
 #include <map>
@@ -154,8 +155,9 @@ public:
         return n;
     }
 
-    /// The solid's boundary refined @p m times along each edge, measured.
-    detail::Measures measure(int m) {
+    /// The solid's boundary refined @p m times along each edge, measured;
+    /// nothing whole once @p cancelled is set.
+    detail::Measures measure(int m, const std::atomic<bool>* cancelled) {
         m_samples.clear();
         m_parted = 0;
         for (const auto& e : m_solid.edges()) {
@@ -166,7 +168,10 @@ public:
             m_samples.emplace(&e, sampleEdge(e, m));
         }
         detail::Measures measures;
-        for (const auto& [face, info] : m_faces) measureFace(info, m, measures);
+        for (const auto& [face, info] : m_faces) {
+            if (cancelled != nullptr && cancelled->load()) break;
+            measureFace(info, m, measures);
+        }
         return measures;
     }
 
@@ -215,14 +220,12 @@ private:
         const auto miss = [&s, &p](const UV& uv) {
             return (s.evaluateWithDerivatives(uv.first, uv.second).point - p).length();
         };
-        const auto [u, v] = s.closestPoint(p);
-        UV best = s.project(p, u, v);
+        UV best = s.locate(p);
         const double tol = 1e-9 * sizeOf(s);
         if (miss(best) > tol) {
-            // closestPoint's coarse grid can choose a pole for a point near
-            // one, and no search leaves a pole: start from every cell of a
-            // finer grid instead.
-            constexpr int kStarts = 8;
+            // Not found from the best starts of a grid: from every cell of
+            // a finer one.
+            constexpr int kStarts = 32;
             const double du = s.uMax() - s.uMin();
             const double dv = s.vMax() - s.vMin();
             for (int i = 0; i < kStarts && miss(best) > tol; ++i) {
@@ -659,7 +662,8 @@ detail::Measures extrapolate(const detail::Measures& fine, const detail::Measure
 
 IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& solid,
                                                            const Material* material,
-                                                           double tolerance) {
+                                                           double tolerance,
+                                                           const std::atomic<bool>* cancelled) {
     IdealMassProperties result;
     const double density = material ? material->density : 1.0;
     IdealSolid ideal(solid);
@@ -675,7 +679,8 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
     int parted = 0;
     for (int m = 1; m <= kMaxRefinement; m *= 2) {
         if (m > 1 && ideal.triangles(m) > kTriangleBudget) break;
-        std::vector<detail::Measures> row{ideal.measure(m)};
+        std::vector<detail::Measures> row{ideal.measure(m, cancelled)};
+        if (cancelled != nullptr && cancelled->load()) return {};
         parted = ideal.partedEdges();
         for (size_t j = 1; j <= table.size(); ++j) {
             row.push_back(extrapolate(row[j - 1], table.back()[j - 1], std::pow(4.0, j) - 1.0));

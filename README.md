@@ -187,7 +187,7 @@ the application, so users cannot reach it yet. Ratings:
 | modeling — sheet metal | experimental, library-only | Validated against analytic bend formulas; no command in the application yet |
 | fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary, backward compatible v1-v9. Feature faceting resolution round-trips; files written before it existed load at the feature defaults |
 | fileio — DXF | stable | Entity subset documented. A hatch keeps one boundary (its islands are reported); blocks nested in blocks are flattened up to 2,000,000 entities, and the rest reported |
-| fileio — STEP AP242 | experimental | File ▸ Import ▸ STEP as a New Part, and File ▸ Export ▸ STEP. Core B-Rep subset with documented limitations (untrimmed analytic carriers, no BREP_WITH_VOIDS, no assembly structure — all pinned by fixture tests in `tests/fileio/fixtures/step/`); what an import skips or approximates is reported |
+| fileio — STEP AP242 | experimental | File ▸ Import ▸ STEP as a New Part, and File ▸ Export ▸ STEP. Core B-Rep subset with documented limitations (no BREP_WITH_VOIDS, no assembly structure — pinned by fixture tests in `tests/fileio/fixtures/step/`); what an import skips or approximates is reported. Plane, cylinder, cone, sphere, torus and B-spline faces are read; an imported part is built in facets that record their surface (141), a face bounded by a rectangle of its surface's (u, v) as a grid, any other curved face as one facet, its outline, and reported. Export writes the facets |
 | fileio — glTF/STL | experimental | Export-only, from File ▸ Export |
 | fileio — drawings (`.hzdwg`, drawing DXF) | experimental, library-only | Drawing documents and their DXF export have no command in the application yet |
 | render — OpenGL path | stable | The shipping viewport |
@@ -373,6 +373,7 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 138 | Done | Bounded memory: the DOF analysis sparse and by cluster, each with its own status, and off the paint path; an undo limit (Preferences); solves that keep only what they moved; one mesh for every instance of a part, one GPU buffer for each mesh; parts released when no component holds them |
 | 139 | Done | Stable names: primitives named after their feature; fillet and chamfer keep the names of edges they do not touch; Revolve, Sweep and Loft faces named after their profile; a curve is one edge and a curved face one face (picked, listed and filleted whole); older files keep their names (format 19) |
 | 140 | Done | Fillet and chamfer at any angle: oblique and concave edges between planar faces, exact; blend and chamfer ends on oblique end faces; parts of several bodies; oblique or concave corner blends refused by name |
+| 141 | Done | Curved faces measured as curved: Mass Properties reports the part as modelled (its facets) and as designed (each face on the surface it approximates, refined and extrapolated: a cylinder, cone, sphere, torus, revolve and filleted box match their closed forms to 1e-9), and says which faces have no ideal; STEP cylinders, cones, spheres and tori come in as facets of their surfaces, where a cap bounded by one circle was skipped |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

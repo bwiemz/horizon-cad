@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -361,15 +362,50 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
         shorten(v, dv, v0, v1, m_closedV, alpha);
         du *= alpha;
         dv *= alpha;
-        const double nextU = keep(u + du, u0, u1, m_closedU);
-        const double nextV = keep(v + dv, v0, v1, m_closedV);
-        const bool still =
-            std::abs(nextU - u) <= 1e-15 * (u1 - u0) && std::abs(nextV - v) <= 1e-15 * (v1 - v0);
-        u = nextU;
-        v = nextV;
+        // Still by the step, not by where it lands: on a seam a step of
+        // 1e-17 lands a period away.
+        const bool still = std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0);
+        u = keep(u + du, u0, u1, m_closedU);
+        v = keep(v + dv, v0, v1, m_closedV);
         if (still) break;
     }
     return {u, v};
+}
+
+std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
+    constexpr int kGrid = 16;
+    constexpr size_t kStarts = 4;
+    struct Start {
+        double distance;
+        double u;
+        double v;
+    };
+    std::vector<Start> starts;
+    starts.reserve(static_cast<size_t>(kGrid * kGrid));
+    const double du = (uMax() - uMin()) / kGrid;
+    const double dv = (vMax() - vMin()) / kGrid;
+    for (int i = 0; i < kGrid; ++i) {
+        for (int j = 0; j < kGrid; ++j) {
+            const double u = uMin() + du * (i + 0.5);
+            const double v = vMin() + dv * (j + 0.5);
+            starts.push_back({(evaluateWithDerivatives(u, v).point - point).lengthSquared(), u, v});
+        }
+    }
+    std::partial_sort(starts.begin(), starts.begin() + static_cast<std::ptrdiff_t>(kStarts),
+                      starts.end(),
+                      [](const Start& a, const Start& b) { return a.distance < b.distance; });
+    std::pair<double, double> best{starts.front().u, starts.front().v};
+    double bestDistance = std::numeric_limits<double>::infinity();
+    for (size_t k = 0; k < kStarts; ++k) {
+        const auto uv = project(point, starts[k].u, starts[k].v);
+        const double d =
+            (evaluateWithDerivatives(uv.first, uv.second).point - point).lengthSquared();
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = uv;
+        }
+    }
+    return best;
 }
 
 // ---------------------------------------------------------------------------

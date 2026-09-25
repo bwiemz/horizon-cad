@@ -47,6 +47,24 @@ work, not "post-1.0".
   - A three-edge corner that is not square, or a chain of fillets across
     edges at different angles, is refused with the reason.
 
+- **Curved faces measured as curved (141).**
+  - Mass Properties reports the part as modelled, which is its facets and
+    what Booleans and export use, and as designed. The designed values
+    measure each face on the curved surface it approximates. A 32-sided
+    cylinder read 0.6 % light; now the cylinder is exact.
+    - A cylinder, cone, sphere, torus, revolve and filleted box match their
+      closed forms to 1e-9.
+    - Where a face has no curved surface recorded (a mesh), or two faces'
+      surfaces do not meet, the dialog says so.
+    - A large part is measured in the background, and closing the dialog
+      stops it.
+  - STEP cones, spheres and tori are read; they were refused. A cone's
+    angle in degrees is read as degrees.
+  - An imported cylinder's caps, each bounded by one circle, had no
+    polygon, so its volume and Booleans were wrong. Imported curved faces
+    are now built in facets that record their surface, like the kernel's
+    own.
+
 ## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
 
 - **A 2D view that scales (136).**

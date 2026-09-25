@@ -22,6 +22,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/Loft.h"
 #include "horizon/modeling/Naming.h"
@@ -1248,7 +1249,17 @@ std::unique_ptr<topo::Solid> ImportedBodyFeature::execute(
     for (auto& face : body->faces()) {
         face.topoId = topo::TopologyID::make(m_featureID, "face:" + std::to_string(index++));
     }
-    model::nameEdgesByFaces(*body);
+    // Its curved faces in facets, as the kernel makes its own (Phase 141): a
+    // cylinder's face bounded by two circles is no loop of points to measure,
+    // cut or draw. The body as read where that cannot be done; the import
+    // said so.
+    auto faceted = model::facetCurved(*body);
+    if (faceted.solid) body = std::move(faceted.solid);
+    if (naming() == model::NamingScheme::Stable) {
+        model::nameEdgesLogically(*body);
+    } else {
+        model::nameEdgesByFaces(*body);
+    }
     return body;
 }
 

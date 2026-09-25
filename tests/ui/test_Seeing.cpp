@@ -5,8 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QApplication>
+#include <QElapsedTimer>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QStatusBar>
 #include <cmath>
 #include <set>
@@ -209,4 +212,93 @@ TEST(SeeingTest, TheMassPropertiesOfABox) {
     EXPECT_TRUE(answer.text().contains(QStringLiteral("Mass: 7.85 g")))
         << answer.text().toStdString();
     EXPECT_TRUE(answer.text().contains(QStringLiteral("(5, 5, 5)"))) << answer.text().toStdString();
+}
+
+namespace {
+
+void cylinder(MainWindow& w) {
+    run(w, "action_cylinder", QStringLiteral("Cylinder"),
+        FormAnswers().number(QStringLiteral("size0"), 5.0).number(QStringLiteral("size1"), 10.0));
+}
+
+/// Until nothing runs on a worker (a rebuild, a measurement).
+void settle(MainWindow& w) {
+    QElapsedTimer waited;
+    waited.start();
+    while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+}
+
+/// The Mass Properties box open now, not blocking (the ideal on a worker).
+QMessageBox* openMassBox() {
+    for (QWidget* widget : QApplication::topLevelWidgets()) {
+        auto* box = qobject_cast<QMessageBox*>(widget);
+        if (box != nullptr && box->isVisible() &&
+            box->windowTitle() == QStringLiteral("Mass Properties")) {
+            return box;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+// A cylinder of radius 5 and height 10 as modelled, 32 facets, and ideally
+// (Phase 141): 780.3613 mm3 and 785.3982 (25 pi 10).
+TEST(SeeingTest, TheMassPropertiesOfACylinderAsModelledAndIdeal) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);  // measured here
+    cylinder(w);
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(QStringLiteral("Mass Properties"),
+                      FormAnswers().choose(QStringLiteral("material"), QStringLiteral("Steel")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_NE(text.find("As modelled"), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 780.3613 "), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << text;
+    EXPECT_NE(text.find("Mass: 6.165376 g"), std::string::npos) << "7.85 g/cm3, ideally " << text;
+    EXPECT_NE(text.find("Exact"), std::string::npos) << text;
+}
+
+// A part measured on a worker: the box opens at once with the part as
+// modelled, and the ideal comes into it when measured.
+TEST(SeeingTest, TheIdealMassPropertiesComeInWhenMeasured) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    cylinder(w);
+    settle(w);
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    QMessageBox* box = openMassBox();
+    ASSERT_NE(box, nullptr) << "open while it is measured";
+    EXPECT_TRUE(box->text().contains(QStringLiteral("Measuring..."))) << box->text().toStdString();
+    EXPECT_TRUE(w.backgroundWorkRunning());
+    settle(w);
+    ASSERT_FALSE(w.backgroundWorkRunning());
+    EXPECT_TRUE(box->text().contains(QStringLiteral("Volume: 785.3982 ")))
+        << box->text().toStdString();
+    box->accept();
+}
+
+// Closing the box stops the measuring.
+TEST(SeeingTest, ClosingTheMassPropertiesStopsTheMeasuring) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    cylinder(w);
+    settle(w);
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    QMessageBox* box = openMassBox();
+    ASSERT_NE(box, nullptr);
+    box->reject();
+    settle(w);
+    EXPECT_FALSE(w.backgroundWorkRunning());
+    EXPECT_EQ(openMassBox(), nullptr);
 }
