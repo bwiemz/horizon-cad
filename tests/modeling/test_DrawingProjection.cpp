@@ -232,10 +232,13 @@ TEST(DrawingProjectionTest, AFinelyFacetedCylinderProjectsQuickly) {
     EXPECT_FALSE(edges.empty());
     std::printf("[   INFO   ] 2048-facet cylinder projected in %.3f s\n", seconds);
 #if HZ_TIME_LIMITS
+    // It took 27 s before the bounding-volume tree. On CI's shared runners,
+    // four tests at once, it measured 0.23 s optimized and 2.8 s in a Windows
+    // Debug build: the limits leave room for that and still catch the old.
 #ifdef NDEBUG
-    EXPECT_LT(seconds, 0.2);
+    EXPECT_LT(seconds, 1.0);
 #else
-    EXPECT_LT(seconds, 2.0) << "unoptimized: a generous bound";
+    EXPECT_LT(seconds, 10.0) << "unoptimized: a generous bound";
 #endif
 #endif
 }
