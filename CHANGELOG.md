@@ -31,6 +31,12 @@ work, not "post-1.0".
 - **Tab cycles the kind of dimension** being placed (horizontal, vertical,
   aligned; radius or diameter), as the tools always meant it to. The view
   no longer loses the keyboard to it.
+- **Clean drawing views (147).** A drawing of a part no longer draws the
+  seams between a curved face's facets. It draws a curved face's outline as
+  its silhouette, a rim on its circle, and marks where a fillet meets a face
+  as a tangent edge. Views of finely faceted parts are drawn up to 40 times
+  faster. The Front view now looks from the front: it showed the part from
+  behind, mirrored.
 - **CI now runs what it claimed to.** It ran no window test (181), none in
   the Linux Release job, and no OpenGL test. All of them run now, each job
   counts what it ran, and coverage floors hold.

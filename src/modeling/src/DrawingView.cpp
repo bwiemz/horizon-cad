@@ -128,6 +128,7 @@ DrawingView DrawingGenerator::detailView(const DrawingView& source, const math::
         de.b = toDetail(clippedB);
         de.sourceEdge = e.sourceEdge;
         de.visibility = e.visibility;
+        de.kind = e.kind;  // a silhouette is one in a detail too
         dv.edges.push_back(de);
     }
 

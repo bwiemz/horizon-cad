@@ -1,9 +1,18 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 
+#include "../TimeLimits.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/DrawingProjection.h"
+#include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -115,4 +124,158 @@ TEST(DrawingProjectionTest, StandardViewsHaveDistinctDirections) {
     EXPECT_GT((front.dir - top.dir).length(), 1e-6);
     EXPECT_GT((front.dir - right.dir).length(), 1e-6);
     EXPECT_GT((top.dir - right.dir).length(), 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// Clean projection (Phase 147): each edge by what it is, curves drawn as
+// curves, and a Front view seen from the front.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+bool vertical(const ProjectedEdge& e) {
+    return std::abs(e.a.x - e.b.x) < 1e-9 && segLength(e) > 1e-9;
+}
+
+}  // namespace
+
+// A cylinder seen side-on is its two outlines and its two rims: the seams
+// between its side's facets are not drawn, except where the side turns away,
+// where they are its silhouette. Every seam was drawn: 32 lines down it.
+TEST(DrawingProjectionTest, ACylinderSeenSideOnIsItsOutlinesAndRims) {
+    constexpr double r = 3.0;
+    auto cyl = PrimitiveFactory::makeCylinder(r, 6.0, 32);
+    auto edges =
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Front));
+    int outlines = 0;
+    for (const auto& e : edges) {
+        if (!vertical(e)) continue;
+        EXPECT_EQ(e.kind, ProjectedEdge::Kind::Silhouette) << "a seam drawn at x = " << e.a.x;
+        EXPECT_EQ(e.visibility, ProjectedEdge::Visibility::Visible);
+        // Where the facets turn away: on the circle, within a facet's sag.
+        EXPECT_NEAR(std::abs(e.a.x), r, r * (1.0 - std::cos(3.14159265358979 / 32)) + 1e-9);
+        ++outlines;
+    }
+    EXPECT_EQ(outlines, 2);
+    for (const auto& e : edges) {
+        if (!vertical(e)) {
+            EXPECT_NEAR(e.a.y, e.b.y, 1e-9) << "a rim, seen edge-on, is level";
+        }
+    }
+}
+
+// Seen from above, a rim is drawn on its circle, as the arc each chord
+// records: it was a 32-gon.
+TEST(DrawingProjectionTest, ARimSeenFromAboveIsDrawnOnItsCircle) {
+    constexpr double r = 3.0;
+    auto cyl = PrimitiveFactory::makeCylinder(r, 6.0, 32);
+    auto edges =
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Top));
+    ASSERT_FALSE(edges.empty());
+    double worst = 0.0;
+    for (const auto& e : edges) {
+        EXPECT_NEAR(std::hypot(e.a.x, e.a.y), r, 1e-9);
+        EXPECT_NEAR(std::hypot(e.b.x, e.b.y), r, 1e-9);
+        const double mid = std::hypot((e.a.x + e.b.x) / 2, (e.a.y + e.b.y) / 2);
+        worst = std::max(worst, r - mid);
+    }
+    EXPECT_LT(worst, 1e-3) << "drawn along the arc, not across it by the chord";
+}
+
+// A fillet meets the faces it joins smoothly: those edges are Tangent, for
+// the drawing to show or leave out; the seams inside the fillet are not
+// edges at all.
+TEST(DrawingProjectionTest, AFilletsEdgesWithItsFacesAreTangent) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    ASSERT_FALSE(box->edges().empty());
+    auto rounded = hz::model::FilletOp::execute(*box, {box->edges().front().topoId}, 2.0, "f");
+    ASSERT_NE(rounded.solid, nullptr) << rounded.errorMessage;
+    auto edges = DrawingProjection::project(
+        *rounded.solid, DrawingProjection::standardView(StandardView::Isometric));
+    int tangent = 0;
+    for (const auto& e : edges) tangent += e.kind == ProjectedEdge::Kind::Tangent ? 1 : 0;
+    EXPECT_GT(tangent, 0) << "the fillet's two edges with the box";
+    // Its facets' seams, where not a silhouette, are not drawn: a box with
+    // one rounded edge has 13 edges and the fillet's silhouette, not 13 plus
+    // a seam per facet.
+    int sharp = 0;
+    for (const auto& e : edges) sharp += e.kind == ProjectedEdge::Kind::Edge ? 1 : 0;
+    EXPECT_LE(sharp, 30) << "sharp runs, the box's own edges split by visibility";
+}
+
+// The Front view looks from the front, as the viewport's Front does, with
+// +X to the right. It looked from behind, mirrored.
+TEST(DrawingProjectionTest, TheFrontViewHasXToTheRight) {
+    auto box = PrimitiveFactory::makeBox(10, 4, 2);  // x in [0, 10]
+    auto edges =
+        DrawingProjection::project(*box, DrawingProjection::standardView(StandardView::Front));
+    ASSERT_FALSE(edges.empty());
+    double lo = 1e9;
+    double hi = -1e9;
+    for (const auto& e : edges) {
+        lo = std::min({lo, e.a.x, e.b.x});
+        hi = std::max({hi, e.a.x, e.b.x});
+    }
+    EXPECT_NEAR(lo, 0.0, 1e-9);
+    EXPECT_NEAR(hi, 10.0, 1e-9);
+}
+
+// A finely faceted part projects in a moment: every edge was cut into 24
+// pieces, however short, and each piece's ray tried every triangle.
+TEST(DrawingProjectionTest, AFinelyFacetedCylinderProjectsQuickly) {
+    auto cyl = PrimitiveFactory::makeCylinder(10.0, 10.0, 2048);
+    const auto start = std::chrono::steady_clock::now();
+    auto edges =
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Isometric));
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_FALSE(edges.empty());
+    std::printf("[   INFO   ] 2048-facet cylinder projected in %.3f s\n", seconds);
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 0.2);
+#else
+    EXPECT_LT(seconds, 2.0) << "unoptimized: a generous bound";
+#endif
+#endif
+}
+
+// An extruded circle's rim is drawn on its circle too. Extrude tags every
+// chord of a rim with the whole circle, not an arc of its own, and the arc
+// was only taken when it started and ended at the chord's ends.
+TEST(DrawingProjectionTest, AnExtrudedRimIsDrawnOnItsCircle) {
+    constexpr double r = 5.0;
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> profile{
+        std::make_shared<hz::draft::DraftCircle>(hz::math::Vec2(0, 0), r)};
+    auto cyl = hz::model::Extrude::execute(profile, hz::draft::SketchPlane{}, Vec3(0, 0, 1), 10.0,
+                                           "extrude_cyl");
+    ASSERT_NE(cyl, nullptr);
+    auto edges =
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Top));
+    ASSERT_FALSE(edges.empty());
+    double worst = 0.0;
+    for (const auto& e : edges) {
+        EXPECT_NEAR(std::hypot(e.a.x, e.a.y), r, 1e-9);
+        EXPECT_NEAR(std::hypot(e.b.x, e.b.y), r, 1e-9);
+        worst = std::max(worst, r - std::hypot((e.a.x + e.b.x) / 2, (e.a.y + e.b.y) / 2));
+    }
+    EXPECT_LT(worst, 1e-3) << "drawn along the circle, not across it by the chord";
+}
+
+// A detail view keeps what each edge is: a silhouette cropped into it is
+// still one. It was made a plain edge.
+TEST(DrawingProjectionTest, ADetailViewKeepsEachEdgesKind) {
+    auto cyl = PrimitiveFactory::makeCylinder(3.0, 6.0, 32);
+    const auto front = hz::model::DrawingGenerator::makeView(*cyl, StandardView::Front);
+    const hz::model::ProjectedEdge* outline = nullptr;
+    for (const auto& e : front.edges) {
+        if (e.kind == ProjectedEdge::Kind::Silhouette) outline = &e;
+    }
+    ASSERT_NE(outline, nullptr);
+    const hz::math::Vec2 middle((outline->a.x + outline->b.x) / 2,
+                                (outline->a.y + outline->b.y) / 2);
+    const auto detail = hz::model::DrawingGenerator::detailView(front, middle, 0.5, 2.0);
+    int silhouettes = 0;
+    for (const auto& e : detail.edges) silhouettes += e.kind == ProjectedEdge::Kind::Silhouette;
+    EXPECT_GT(silhouettes, 0);
 }
