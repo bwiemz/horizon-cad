@@ -209,6 +209,39 @@ nlohmann::json FunctionCallExpr::toJson() const {
     return {{"type", "function"}, {"name", m_name}, {"args", argsArray}};
 }
 
+// --- UnitExpr --------------------------------------------------------------
+
+std::optional<double> UnitExpr::factor(std::string_view unit) {
+    if (unit == "mm") return 1.0;
+    if (unit == "cm") return 10.0;
+    if (unit == "m") return 1000.0;
+    if (unit == "in") return 25.4;
+    if (unit == "ft") return 304.8;
+    if (unit == "deg") return 3.14159265358979323846 / 180.0;
+    if (unit == "rad") return 1.0;
+    return std::nullopt;
+}
+
+bool UnitExpr::isAngle(std::string_view unit) {
+    return unit == "deg" || unit == "rad";
+}
+
+double UnitExpr::evaluate(const std::map<std::string, double>& variables) const {
+    return m_child->evaluate(variables) * factor(m_unit).value_or(1.0);
+}
+
+std::set<std::string> UnitExpr::variables() const {
+    return m_child->variables();
+}
+
+std::string UnitExpr::toString() const {
+    return "(" + m_child->toString() + " " + m_unit + ")";
+}
+
+nlohmann::json UnitExpr::toJson() const {
+    return {{"type", "unit"}, {"unit", m_unit}, {"child", m_child->toJson()}};
+}
+
 // --- Expression::fromJson (static) -----------------------------------------
 
 namespace {
@@ -283,6 +316,15 @@ std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, 
             args.push_back(std::move(arg));
         }
         return std::make_unique<FunctionCallExpr>(name, std::move(args));
+    }
+
+    if (type == "unit") {
+        if (!j.contains("unit") || !j.contains("child")) return nullptr;
+        std::string unit = j.at("unit").get<std::string>();
+        if (!UnitExpr::factor(unit)) return nullptr;
+        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
+        if (!child) return nullptr;
+        return std::make_unique<UnitExpr>(std::move(child), std::move(unit));
     }
 
     return nullptr;  // unknown type
@@ -547,15 +589,29 @@ private:
         return parsePrimary();
     }
 
-    // primary = NUMBER | IDENTIFIER '(' args ')' | IDENTIFIER | '(' expression ')'
+    /// @p value in the unit named next, if one is ("2 in", "(a + b) mm");
+    /// else as it is. Phase 155: a unit word after a number was an error
+    /// (nothing multiplies without a sign), so no expression changes meaning.
+    std::unique_ptr<Expression> withUnit(std::unique_ptr<Expression> value) {
+        if (m_hasError || !value || m_current.type != TokenType::Identifier ||
+            !UnitExpr::factor(m_current.text)) {
+            return value;
+        }
+        std::string unit = m_current.text;
+        advance();
+        return node<UnitExpr>(std::move(value), std::move(unit));
+    }
+
+    // primary = NUMBER unit? | IDENTIFIER '(' args ')' | IDENTIFIER
+    //         | '(' expression ')' unit?
     std::unique_ptr<Expression> parsePrimary() {
         if (m_hasError) return nullptr;
 
-        // NUMBER
+        // NUMBER, and the unit after it ("2 in")
         if (m_current.type == TokenType::Number) {
             double val = m_current.numValue;
             advance();
-            return node<LiteralExpr>(val);
+            return withUnit(node<LiteralExpr>(val));
         }
 
         // IDENTIFIER (variable, constant, or function call)
@@ -605,7 +661,7 @@ private:
             auto inner = parseAddSub();
             if (m_hasError || !inner) return nullptr;
             if (!expect(TokenType::RParen)) return nullptr;
-            return inner;
+            return withUnit(std::move(inner));
         }
 
         // Unexpected token
