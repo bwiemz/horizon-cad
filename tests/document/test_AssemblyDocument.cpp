@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
 using hz::math::Mat4;
@@ -310,4 +315,44 @@ TEST(AssemblyDocumentTest, InterferenceIsMeasuredFromCopiesTheAssemblyCanChangeU
     ASSERT_EQ(report.pairs.size(), 1u);
     EXPECT_NEAR(report.pairs.front().volume, 200.0, 1e-9);
     EXPECT_TRUE(asmDoc.findInterference().pairs.empty()) << "and the assembly as it is now";
+}
+
+// An assembly drawn is its components as one solid: each part placed, its
+// names its own (two instances of one part told apart), a suppressed one
+// left out, and one with no solid listed as missing.
+TEST(AssemblyDocumentTest, TheDrawingSolidIsTheComponentsEachNamedApart) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    const uint64_t a = place(asmDoc, block, hz::math::Vec3(0, 0, 0));
+    const uint64_t b = place(asmDoc, block, hz::math::Vec3(30, 0, 0));
+    const uint64_t hidden = place(asmDoc, block, hz::math::Vec3(60, 0, 0));
+    asmDoc.component(hidden)->suppressed = true;
+    ComponentInstance lightweight;
+    const uint64_t light = asmDoc.addComponent(lightweight);
+
+    std::vector<uint64_t> missing;
+    const auto solid = asmDoc.drawingSolid(
+        [](const ComponentInstance& c) {
+            return c.resolvedPart ? c.resolvedPart->solid() : nullptr;
+        },
+        &missing);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(solid->faces().size(), 2 * block->solid()->faces().size());
+    EXPECT_EQ(missing, std::vector<uint64_t>{light});
+
+    int ofA = 0;
+    int ofB = 0;
+    for (const auto& e : solid->edges()) {
+        const std::string& tag = e.topoId.tag();
+        ofA += tag.rfind(AssemblyDocument::namePrefix(a), 0) == 0 ? 1 : 0;
+        ofB += tag.rfind(AssemblyDocument::namePrefix(b), 0) == 0 ? 1 : 0;
+    }
+    EXPECT_EQ(ofA, static_cast<int>(block->solid()->edges().size()));
+    EXPECT_EQ(ofB, ofA) << "each instance's edges named for it";
+    double maxX = -1e300;
+    for (const auto& v : solid->vertices()) maxX = std::max(maxX, v.point.x);
+    EXPECT_NEAR(maxX, 40.0, 1e-9) << "placed where its component is";
+
+    AssemblyDocument empty;
+    EXPECT_EQ(empty.drawingSolid([](const ComponentInstance&) { return nullptr; }), nullptr);
 }

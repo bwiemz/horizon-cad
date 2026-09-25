@@ -1,11 +1,13 @@
 #include "horizon/document/AssemblyDocument.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
 #include "horizon/document/Document.h"
 #include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/topology/Solid.h"
 
 namespace hz::doc {
 
@@ -26,6 +28,42 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
         input.ids.push_back(comp.id);
     }
     return input;
+}
+
+std::string AssemblyDocument::namePrefix(uint64_t id) {
+    return "c" + std::to_string(id) + "/";
+}
+
+std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
+    const std::function<const topo::Solid*(const ComponentInstance&)>& partOf,
+    std::vector<uint64_t>* missing) const {
+    auto gathered = std::make_unique<topo::Solid>();
+    bool any = false;
+    for (const auto& comp : m_components) {
+        if (comp.suppressed) continue;
+        const topo::Solid* part = partOf(comp);
+        if (part == nullptr) {
+            if (missing != nullptr) missing->push_back(comp.id);
+            continue;
+        }
+        // Placed straight into the one solid: each part copied once.
+        const std::size_t facesBefore = gathered->faces().size();
+        const std::size_t edgesBefore = gathered->edges().size();
+        model::Pattern::append(*gathered, *part, comp.transform);
+        // Its names its own: a balloon or dimension on one instance of a
+        // part names that instance, not every instance of the part.
+        const std::string prefix = namePrefix(comp.id);
+        auto& faces = gathered->faces();
+        for (std::size_t i = facesBefore; i < faces.size(); ++i) {
+            faces[i].topoId = topo::TopologyID::fromTag(prefix + faces[i].topoId.tag());
+        }
+        auto& edges = gathered->edges();
+        for (std::size_t i = edgesBefore; i < edges.size(); ++i) {
+            edges[i].topoId = topo::TopologyID::fromTag(prefix + edges[i].topoId.tag());
+        }
+        any = true;
+    }
+    return any ? std::move(gathered) : nullptr;
 }
 
 std::size_t AssemblyDocument::InterferenceInput::faceCount() const {

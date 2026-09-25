@@ -258,6 +258,50 @@ std::string DrawingGenerator::scaleName(double scale) {
     return "1:" + whole(1.0 / scale);
 }
 
+std::optional<DrawingBalloon> DrawingGenerator::balloonFor(const DrawingView& view,
+                                                           const std::string& namePrefix,
+                                                           int item) {
+    // The balloon's leader goes to the middle of the first piece of its edge
+    // the view has (BalloonRenderer): so the longest such first piece.
+    std::vector<std::string> seen;
+    const ProjectedEdge* best = nullptr;
+    double longest = 0.0;
+    for (const ProjectedEdge& e : view.edges) {
+        const std::string& tag = e.sourceEdge.tag();
+        if (tag.compare(0, namePrefix.size(), namePrefix) != 0) continue;
+        if (std::find(seen.begin(), seen.end(), tag) != seen.end()) continue;
+        seen.push_back(tag);
+        if (e.visibility != ProjectedEdge::Visibility::Visible) continue;
+        const double length = (e.b - e.a).length();
+        if (length > longest) {
+            longest = length;
+            best = &e;
+        }
+    }
+    if (best == nullptr) return std::nullopt;
+
+    DrawingBalloon balloon;
+    balloon.item = item;
+    balloon.feature = best->sourceEdge;
+    const math::Vec2 tip = view.toSheet((best->a + best->b) * 0.5);
+    const math::Vec2 low = view.placement;
+    const math::Vec2 high{low.x + view.sheetWidth(), low.y + view.sheetHeight()};
+    // Straight out from the side of the view nearest the tip, and clear of
+    // it: the leader short, and the circle off the view whatever the angle.
+    const std::array<std::pair<double, math::Vec2>, 4> sides{{
+        {tip.x - low.x, {-1.0, 0.0}},
+        {high.x - tip.x, {1.0, 0.0}},
+        {tip.y - low.y, {0.0, -1.0}},
+        {high.y - tip.y, {0.0, 1.0}},
+    }};
+    const auto nearest = std::min_element(
+        sides.begin(), sides.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    constexpr double kClearance = 8.0;
+    balloon.offset =
+        nearest->second * (std::max(nearest->first, 0.0) + kClearance + balloon.radius);
+    return balloon;
+}
+
 Drawing DrawingGenerator::sheetLayout(const topo::Solid& solid, const Sheet& sheet,
                                       const TitleBlock& titleBlock, double gap, double* chosenScale,
                                       double fixedScale) {

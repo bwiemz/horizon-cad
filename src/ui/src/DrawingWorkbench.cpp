@@ -9,21 +9,27 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <map>
 #include <utility>
 
+#include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/SectionView.h"
 #include "horizon/render/Camera.h"
 #include "horizon/topology/Solid.h"
@@ -79,6 +85,11 @@ QString viewName(const model::DrawingView& view, std::size_t index) {
     return QStringLiteral("%1: %2").arg(index + 1).arg(name);
 }
 
+/// Whether @p path names an assembly: its sheet is drawn from its parts.
+bool isAssemblyPath(const std::string& path) {
+    return QString::fromStdString(path).endsWith(QStringLiteral(".hzasm"), Qt::CaseInsensitive);
+}
+
 /// A label as typed, as a caption shows it: trimmed, a few characters.
 std::string labelFrom(const QString& typed) {
     constexpr int kMaxLabel = 8;
@@ -87,6 +98,133 @@ std::string labelFrom(const QString& typed) {
 
 double distance(const math::Vec2& a, const math::Vec2& b) {
     return std::hypot(b.x - a.x, b.y - a.y);
+}
+
+/// What was drawn on @p sheet by hand, as a document of its own: its
+/// entities, the layers and blocks they use, and the dimension style. Null
+/// when nothing was.
+std::shared_ptr<doc::Document> annotationsOf(const doc::Document& sheet) {
+    auto notes = std::make_shared<doc::Document>();
+    notes->draftDocument().setDimensionStyle(sheet.draftDocument().dimensionStyle());
+    for (const std::string& name : sheet.layerManager().layerNames()) {
+        if (ownLayer(name)) continue;
+        if (const auto* layer = sheet.layerManager().getLayer(name)) {
+            notes->layerManager().addLayer(*layer);
+        }
+    }
+    for (const std::string& name : sheet.draftDocument().blockTable().blockNames()) {
+        notes->draftDocument().blockTable().addBlock(
+            sheet.draftDocument().blockTable().findBlock(name));
+    }
+    bool any = false;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (ownLayer(entity->layer())) continue;
+        notes->draftDocument().addEntity(entity->clone());
+        any = true;
+    }
+    return any ? notes : nullptr;
+}
+
+/// @p notes drawn on @p sheet again: its layers and blocks where the sheet
+/// has none of those names, its dimension style, and its entities.
+void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
+    // Each layer as it was saved, "0" too: a document starts with a "0" of
+    // its own, and keeping that one lost how the user had set theirs.
+    for (const std::string& name : notes.layerManager().layerNames()) {
+        if (ownLayer(name)) continue;
+        if (const auto* layer = notes.layerManager().getLayer(name)) {
+            sheet.layerManager().addLayer(*layer);
+        }
+    }
+    auto& blocks = sheet.draftDocument().blockTable();
+    for (const std::string& name : notes.draftDocument().blockTable().blockNames()) {
+        if (!blocks.findBlock(name))
+            blocks.addBlock(notes.draftDocument().blockTable().findBlock(name));
+    }
+    sheet.draftDocument().setDimensionStyle(notes.draftDocument().dimensionStyle());
+    for (const auto& entity : notes.draftDocument().entities()) {
+        if (ownLayer(entity->layer())) continue;  // the sheet draws those itself
+        sheet.draftDocument().addEntity(entity->clone());
+    }
+}
+
+/// The room @p source's parts list takes above the title block.
+double listedHeight(const model::PartsList& list) {
+    return list.rows.empty() ? 0.0 : list.height();
+}
+
+/// Where @p drawing's views are on the sheet, as saved with its annotations.
+std::vector<io::DrawingViewFrame> framesOf(const model::Drawing& drawing) {
+    std::vector<io::DrawingViewFrame> frames;
+    frames.reserve(drawing.views.size());
+    for (const model::DrawingView& v : drawing.views) {
+        frames.push_back({v.role,
+                          v.kind,
+                          v.label,
+                          v.placement,
+                          {v.placement.x + v.sheetWidth(), v.placement.y + v.sheetHeight()}});
+    }
+    return frames;
+}
+
+/// The views where @p frames say they were: enough of each to carry what
+/// was drawn in it (carryAnnotations).
+model::Drawing drawingOf(const std::vector<io::DrawingViewFrame>& frames) {
+    model::Drawing drawing;
+    drawing.views.reserve(frames.size());
+    for (const io::DrawingViewFrame& f : frames) {
+        model::DrawingView v;
+        v.role = f.role;
+        v.kind = f.kind;
+        v.label = f.label;
+        v.placement = f.low;
+        v.boundsMax = f.high - f.low;
+        drawing.views.push_back(std::move(v));
+    }
+    return drawing;
+}
+
+/// What was drawn by hand inside a view moves with the view: each view of
+/// @p before found in @p after (by what it is), and what lay in its
+/// footprint carried by as far as it moved.
+void carryAnnotations(doc::Document& sheet, const model::Drawing& before,
+                      const model::Drawing& after) {
+    std::vector<bool> taken(after.views.size(), false);
+    std::vector<bool> carried(sheet.draftDocument().entities().size(), false);
+    for (const model::DrawingView& was : before.views) {
+        std::size_t match = after.views.size();
+        for (std::size_t j = 0; j < after.views.size(); ++j) {
+            const model::DrawingView& now = after.views[j];
+            if (!taken[j] && now.role == was.role && now.kind == was.kind &&
+                now.label == was.label) {
+                match = j;
+                break;
+            }
+        }
+        if (match == after.views.size()) continue;  // gone: what was on it stays
+        taken[match] = true;
+        const model::DrawingView& now = after.views[match];
+        const math::Vec2 delta{
+            now.placement.x + now.sheetWidth() / 2.0 - (was.placement.x + was.sheetWidth() / 2.0),
+            now.placement.y + now.sheetHeight() / 2.0 -
+                (was.placement.y + was.sheetHeight() / 2.0)};
+        if (std::abs(delta.x) < 1e-12 && std::abs(delta.y) < 1e-12) continue;
+        const auto [low, high] = was.sheetFootprint();
+        auto& entities = sheet.draftDocument().entities();
+        for (std::size_t k = 0; k < entities.size(); ++k) {
+            const auto& entity = entities[k];
+            if (carried[k] || ownLayer(entity->layer())) continue;
+            const math::BoundingBox box = entity->boundingBox();
+            if (!box.isValid()) continue;
+            const math::Vec3 centre = box.center();
+            if (centre.x < low.x || centre.x > high.x || centre.y < low.y || centre.y > high.y) {
+                continue;
+            }
+            entity->translate(delta);
+            sheet.draftDocument().updateEntityBounds(entity->id());
+            carried[k] = true;
+        }
+    }
 }
 
 }  // namespace
@@ -144,11 +282,96 @@ const topo::Solid* DrawingWorkbench::partSolid(const std::string& path, doc::Doc
     return holder.solid();
 }
 
-bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
-                            std::string* error, model::Drawing* drawn) {
-    doc::Document fromFile;
-    const topo::Solid* solid = partSolid(spec.partPath, fromFile, error);
-    if (solid == nullptr) return false;
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const std::string& path,
+                                                                           std::string* error) {
+    auto source = std::make_shared<Source>();
+    source->files = {path};
+    if (!isAssemblyPath(path)) {
+        doc::Document holder;
+        const topo::Solid* part = partSolid(path, holder, error);
+        if (part == nullptr) return nullptr;
+        source->solid = model::Pattern::transformed(*part, math::Mat4::identity());  // its own copy
+        return source;
+    }
+
+    // The assembly as it is now: its tab's when it is open, else its file's.
+    std::shared_ptr<doc::AssemblyDocument> assembly;
+    for (const auto& open : m_host.openAssemblies()) {
+        if (open && doc::DocumentManager::samePath(open->filePath(), path)) assembly = open;
+    }
+    if (!assembly) {
+        assembly = std::make_shared<doc::AssemblyDocument>();
+        std::string why;
+        if (!io::NativeFormat::loadAssembly(path, *assembly, &why)) {
+            if (error != nullptr) *error = "its assembly could not be read: " + why;
+            return nullptr;
+        }
+        if (assembly->filePath().empty()) assembly->setFilePath(path);
+    }
+
+    // Each part read once, from its tab or its file, however many times the
+    // assembly places it; the gathered solid is a copy, so what was read
+    // goes when this is done.
+    const std::filesystem::path folder = std::filesystem::path(path).parent_path();
+    const auto resolved = [&folder](const std::string& partPath) {
+        const std::filesystem::path part(partPath);
+        return (part.is_relative() ? folder / part : part).lexically_normal().string();
+    };
+    std::vector<std::unique_ptr<doc::Document>> read;
+    std::map<std::string, const topo::Solid*> parts;
+    const auto partOf = [&](const doc::ComponentInstance& c) -> const topo::Solid* {
+        const std::string file = resolved(c.partPath);
+        const auto known = parts.find(file);
+        if (known != parts.end()) return known->second;
+        read.push_back(std::make_unique<doc::Document>());
+        const topo::Solid* solid = partSolid(file, *read.back(), nullptr);
+        parts.emplace(file, solid);
+        source->files.push_back(file);
+        return solid;
+    };
+    source->solid = assembly->drawingSolid(partOf, &source->missing);
+    if (!source->solid) {
+        if (error != nullptr) *error = "none of its components could be drawn";
+        return nullptr;
+    }
+
+    // Its bill of materials: the parts list, and a balloon on the first of
+    // each part drawn.
+    for (const doc::BomLine& line : doc::BomGenerator::generate(*assembly).lines) {
+        source->partsList.rows.push_back({line.item, line.partName, line.quantity});
+        for (const doc::ComponentInstance& c : assembly->components()) {
+            if (c.suppressed ||
+                std::find(source->missing.begin(), source->missing.end(), c.id) !=
+                    source->missing.end() ||
+                !doc::DocumentManager::samePath(resolved(c.partPath), resolved(line.partPath))) {
+                continue;
+            }
+            source->balloons.emplace_back(doc::AssemblyDocument::namePrefix(c.id), line.item);
+            break;
+        }
+    }
+    return source;
+}
+
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceFor(Sheet& sheet,
+                                                                            std::string* error) {
+    if (!sheet.source) sheet.source = sourceOf(sheet.spec.partPath, error);
+    return sheet.source;
+}
+
+model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
+    model::TitleBlock room = sheet.spec.titleBlock;
+    room.height += sheet.partsListHeight;
+    return room;
+}
+
+void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
+                            const Source& source, model::Drawing* drawn) {
+    const topo::Solid* solid = source.solid.get();
+    const model::PartsList& partsList = source.partsList;
+    // The views keep clear of the parts list, above the title block.
+    model::TitleBlock room = spec.titleBlock;
+    if (!partsList.rows.empty()) room.height += partsList.height();
 
     // The layout, and the scale it chose for the title block to state.
     model::TitleBlock titleBlock = spec.titleBlock;
@@ -161,8 +384,8 @@ bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
         spec.version = 2;
     } else if (spec.views.empty()) {
         double chosen = 1.0;
-        drawing = model::DrawingGenerator::sheetLayout(*solid, spec.sheet, titleBlock, spec.gap,
-                                                       &chosen, spec.scale);
+        drawing = model::DrawingGenerator::sheetLayout(*solid, spec.sheet, room, spec.gap, &chosen,
+                                                       spec.scale);
         titleBlock.scale = model::DrawingGenerator::scaleName(chosen);
     } else {
         std::vector<std::string> lost;
@@ -195,8 +418,30 @@ bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     for (const std::string& name : io::DrawingExport::layers()) {
         if (const auto* layer = document.layerManager().getLayer(name)) set.push_back(*layer);
     }
+    // An assembly's balloons, on its isometric view if it has one.
+    if (!source.balloons.empty()) {
+        model::DrawingView* on = nullptr;
+        for (model::DrawingView& view : drawing.views) {
+            if (view.role != model::ViewRole::Projection) continue;
+            if (on == nullptr || view.kind == model::StandardView::Isometric) on = &view;
+            if (view.kind == model::StandardView::Isometric) break;
+        }
+        for (const auto& [prefix, item] : source.balloons) {
+            if (on == nullptr) break;
+            if (auto balloon = model::DrawingGenerator::balloonFor(*on, prefix, item)) {
+                on->balloons.push_back(*balloon);
+            }
+        }
+    }
+    if (!source.missing.empty()) {
+        m_host.showStatus(tr("%n component(s) could not be drawn: their parts could not be read",
+                             nullptr, static_cast<int>(source.missing.size())),
+                          15000);
+    }
+
     document.draftDocument().removeEntities(before);
-    io::DrawingExport::populate(document, drawing, &spec.sheet, &titleBlock);
+    io::DrawingExport::populate(document, drawing, &spec.sheet, &titleBlock,
+                                partsList.rows.empty() ? nullptr : &partsList);
     for (const draft::LayerProperties& layer : set) document.layerManager().addLayer(layer);
     for (const std::string& name : io::DrawingExport::layers()) {
         if (auto* layer = document.layerManager().getLayer(name)) layer->locked = true;
@@ -204,21 +449,21 @@ bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     // Drawn from the part: the sheet's file is no more out of date than it was.
     document.setDirty(wasDirty);
     if (drawn != nullptr) *drawn = std::move(drawing);
-    return true;
 }
 
 void DrawingWorkbench::onNewDrawingFromPart() {
-    // The active part, if it has a file to name; else one chosen.
+    // The active part or assembly, if it has a file to name; else one chosen.
     std::string partPath;
     const doc::Document* active = m_host.currentDocument();
-    if (!m_host.currentAssembly() && active != nullptr &&
-        active->type() == doc::DocumentType::Part && !active->filePath().empty()) {
+    if (const auto assembly = m_host.currentAssembly()) {
+        partPath = assembly->filePath();
+    } else if (active != nullptr && active->type() == doc::DocumentType::Part) {
         partPath = active->filePath();
     }
     if (partPath.empty()) {
-        const QString file =
-            QFileDialog::getOpenFileName(m_host.dialogParent(), tr("New Drawing from Part"),
-                                         QString(), tr("Horizon Parts (*.hzpart);;All Files (*)"));
+        const QString file = QFileDialog::getOpenFileName(
+            m_host.dialogParent(), tr("New Drawing from Part or Assembly"), QString(),
+            tr("Horizon Parts and Assemblies (*.hzpart *.hzasm);;All Files (*)"));
         if (file.isEmpty()) return;
         partPath = file.toStdString();
     }
@@ -228,17 +473,20 @@ void DrawingWorkbench::onNewDrawingFromPart() {
     const QString stem = QFileInfo(QString::fromStdString(partPath)).completeBaseName();
     spec.titleBlock.title = stem.toStdString();
 
-    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     std::string error;
-    model::Drawing drawing;
-    if (!draw(*document, spec, &error, &drawing)) {
-        m_host.documents().closeDocument(document);
+    const auto source = sourceOf(partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not make a drawing of"), partPath, error);
         return;
     }
+    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
+    model::Drawing drawing;
+    draw(*document, spec, *source, &drawing);
     document->setDirty(true);  // new, and not saved
-    m_sheets.push_back(std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing)}));
-    m_host.documents().watch(partPath);
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    m_sheets.push_back(
+        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+                                      listedHeight(source->partsList), source}));
     m_host.addTab(document, tr("Drawing of %1").arg(stem));
     m_host.setPrompt(tr("Drawing made."));
 }
@@ -251,18 +499,31 @@ bool DrawingWorkbench::open(const QString& fileName) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
-    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
-    model::Drawing drawing;
-    if (!draw(*document, spec, &error, &drawing)) {
-        m_host.documents().closeDocument(document);
+    const auto source = sourceOf(spec.partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
+    auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
+    model::Drawing drawing;
+    draw(*document, spec, *source, &drawing);
+    // What was drawn on it by hand, back where it was: the document holds it
+    // from here on, and a save writes it from there.
+    if (spec.annotations) {
+        placeAnnotations(*document, *spec.annotations);
+        // The part may have changed since: from where the views were then
+        // to where they are drawn now.
+        carryAnnotations(*document, drawingOf(spec.frames), drawing);
+    }
+    spec.annotations.reset();
+    spec.frames.clear();
     document->setFilePath(path);
     document->setDirty(false);
-    m_sheets.push_back(std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing)}));
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    m_sheets.push_back(
+        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+                                      listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
-    m_host.documents().watch(spec.partPath);
     m_host.addTab(document, QFileInfo(fileName).fileName());
     return true;
 }
@@ -273,19 +534,13 @@ bool DrawingWorkbench::save(doc::Document& document, const std::string& path, st
         if (error != nullptr) *error = "it is not a drawing sheet";
         return false;
     }
-    if (!io::DrawingDocumentIO::save(path, sheet->spec)) {
+    // Its spec, and what was drawn on it by hand.
+    io::DrawingDocumentSpec written = sheet->spec;
+    written.annotations = annotationsOf(document);
+    if (written.annotations) written.frames = framesOf(sheet->drawing);
+    if (!io::DrawingDocumentIO::save(path, written)) {
         if (error != nullptr) *error = "the file could not be written";
         return false;
-    }
-    // Said, not lost unsaid: a sheet keeps its part, layout and title block;
-    // what was drawn on it by hand is not in the file yet.
-    const bool drawnByHand = std::any_of(
-        document.draftDocument().entities().begin(), document.draftDocument().entities().end(),
-        [](const auto& entity) { return !ownLayer(entity->layer()); });
-    if (drawnByHand) {
-        m_host.showStatus(tr("Drawing saved; what was drawn on the sheet by hand is not saved "
-                             "with it"),
-                          15000);
     }
     return true;
 }
@@ -297,14 +552,34 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     io::DrawingDocumentSpec spec;
     std::string error;
     model::Drawing drawing;
-    if (!io::DrawingDocumentIO::readSpec(path, spec, &error) ||
-        !draw(document, spec, &error, &drawing)) {
+    std::shared_ptr<const Source> source;
+    if (io::DrawingDocumentIO::readSpec(path, spec, &error))
+        source = sourceOf(spec.partPath, &error);
+    if (!source) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
+    draw(document, spec, *source, &drawing);
+    // The file's hand-drawn entities in place of these, and no undoing back
+    // into what was given up: read again is the file as it is.
+    std::vector<uint64_t> byHand;
+    for (const auto& entity : document.draftDocument().entities()) {
+        if (!ownLayer(entity->layer())) byHand.push_back(entity->id());
+    }
+    document.draftDocument().removeEntities(byHand);
+    document.undoStack().clear();
+    if (spec.annotations) {
+        placeAnnotations(document, *spec.annotations);
+        carryAnnotations(document, drawingOf(spec.frames), drawing);
+    }
+    spec.annotations.reset();
+    spec.frames.clear();
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
-    m_host.documents().watch(sheet->spec.partPath);
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    sheet->files = source->files;
+    sheet->partsListHeight = listedHeight(source->partsList);
+    sheet->source = source;
     document.setDirty(false);
     m_host.refreshModifiedIndicators();
     // Its paper may be another size now.
@@ -328,9 +603,15 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
     int redrawn = 0;
     for (const auto& sheet : m_sheets) {
         const auto document = sheet->document.lock();
-        if (!document || !doc::DocumentManager::samePath(sheet->spec.partPath, path)) continue;
+        const bool from =
+            doc::DocumentManager::samePath(sheet->spec.partPath, path) ||
+            std::any_of(sheet->files.begin(), sheet->files.end(), [&](const std::string& file) {
+                return doc::DocumentManager::samePath(file, path);
+            });
+        if (!document || !from) continue;
+        sheet->source.reset();  // one of its files changed: read them again
         std::string error;
-        if (draw(*document, sheet->spec, &error, &sheet->drawing)) {
+        if (drawAgain(*sheet, &error)) {
             ++redrawn;
         } else {
             m_host.showStatus(tr("A drawing of \"%1\" could not be drawn again: %2")
@@ -344,11 +625,27 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
     if (redrawn > 0) m_host.viewport().update();
 }
 
+bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error) {
+    const auto document = sheet.document.lock();
+    if (!document) return false;
+    const auto source = sourceFor(sheet, error);
+    if (!source) return false;
+    model::Drawing drawing;
+    draw(*document, sheet.spec, *source, &drawing);
+    carryAnnotations(*document, sheet.drawing, drawing);
+    sheet.drawing = std::move(drawing);
+    // An assembly's parts may be others now: each is watched.
+    for (const std::string& file : source->files) m_host.documents().watch(file);
+    sheet.files = source->files;
+    sheet.partsListHeight = listedHeight(source->partsList);
+    return true;
+}
+
 void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
     const auto document = sheet.document.lock();
     if (!document) return;
     std::string error;
-    if (!draw(*document, sheet.spec, &error, &sheet.drawing)) {
+    if (!drawAgain(sheet, &error)) {
         m_host.showStatus(tr("%1: the drawing could not be drawn again: %2")
                               .arg(verb, QString::fromStdString(error)));
         return;
@@ -471,15 +768,16 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
         spec.version = 3;
         return true;
     }
-    doc::Document holder;
-    const topo::Solid* solid = partSolid(spec.partPath, holder, error);
-    if (solid == nullptr) return false;
+    const auto source = sourceFor(sheet, error);
+    if (!source) return false;
+    const topo::Solid* solid = source->solid.get();
     spec.scale = scale;
     spec.version = 3;
+    const model::TitleBlock room = roomFor(sheet);
 
     double chosen = 1.0;
-    const model::Drawing layout = model::DrawingGenerator::sheetLayout(
-        *solid, spec.sheet, spec.titleBlock, spec.gap, &chosen, scale);
+    const model::Drawing layout =
+        model::DrawingGenerator::sheetLayout(*solid, spec.sheet, room, spec.gap, &chosen, scale);
     // The standard views the sheet still has, laid out anew, each keeping
     // its switches and dimensions; one removed stays removed.
     const std::vector<io::DrawingViewSpec> before = spec.views;
@@ -534,8 +832,8 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
     for (std::size_t i = standard; i < built.views.size(); ++i) {
         model::DrawingView view = built.views[i];
         bool fit = true;
-        view.placement = model::DrawingGenerator::freePlacement(placed, view, spec.sheet,
-                                                                spec.titleBlock, spec.gap, &fit);
+        view.placement =
+            model::DrawingGenerator::freePlacement(placed, view, spec.sheet, room, spec.gap, &fit);
         spec.views[i].placement = view.placement;
         if (!fit && fits != nullptr) *fits = false;
         placed.views.push_back(std::move(view));
@@ -575,8 +873,8 @@ void DrawingWorkbench::addView(Sheet& sheet, const model::DrawingView& view,
     if (sheet.spec.views.empty()) sheet.spec.views = io::DrawingDocumentIO::viewsOf(sheet.drawing);
     sheet.spec.version = 3;
     bool fits = true;
-    spec.placement = model::DrawingGenerator::freePlacement(
-        sheet.drawing, view, sheet.spec.sheet, sheet.spec.titleBlock, sheet.spec.gap, &fits);
+    spec.placement = model::DrawingGenerator::freePlacement(sheet.drawing, view, sheet.spec.sheet,
+                                                            roomFor(sheet), sheet.spec.gap, &fits);
     sheet.spec.views.push_back(std::move(spec));
     redraw(sheet, verb);
     m_host.showStatus(fits ? tr("%1: placed where there was room; Move View moves it").arg(verb)
@@ -633,13 +931,13 @@ void DrawingWorkbench::onAddSectionView() {
         from.projection.origin + right * centre.x + up * centre.y + normal * at;
     const math::Vec3 sight = looking->currentIndex() == 0 ? normal * -1.0 : normal;
 
-    doc::Document holder;
     std::string error;
-    const topo::Solid* solid = partSolid(sheet->spec.partPath, holder, &error);
-    if (solid == nullptr) {
+    const auto source = sourceFor(*sheet, &error);
+    if (!source) {
         m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
         return;
     }
+    const topo::Solid* solid = source->solid.get();
     model::DrawingView section =
         model::SectionGenerator::sectionView(*solid, point, sight * -1.0, 3.0 / from.scale);
     if (section.sectionLoops.empty()) {
@@ -981,13 +1279,13 @@ void DrawingWorkbench::addDimension(const std::weak_ptr<doc::Document>& document
 
     // A circle or arc is dimensioned by its diameter or radius, anything else
     // by its length: measured from the part as it is.
-    doc::Document holder;
     std::string error;
-    const topo::Solid* solid = partSolid(sheet->spec.partPath, holder, &error);
-    if (solid == nullptr) {
+    const auto source = sourceFor(*sheet, &error);
+    if (!source) {
         m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
         return;
     }
+    const topo::Solid* solid = source->solid.get();
     io::DrawingDimensionSpec dimension{tag, io::DrawingDimensionSpec::Kind::Length};
     double measured = 0.0;
     if (model::DrawingDimensioner::measureRadius(*solid, picked.edge, measured)) {
@@ -1094,8 +1392,10 @@ void DrawingWorkbench::onUpdateFromPart() {
     if (sheet == nullptr) return;
     const auto document = sheet->document.lock();
     if (!document) return;
+    // The part as it is now, in its tab or its file: read again, not kept.
+    sheet->source.reset();
     std::string error;
-    if (!draw(*document, sheet->spec, &error, &sheet->drawing)) {
+    if (!drawAgain(*sheet, &error)) {
         m_host.showStatus(
             tr("The drawing could not be drawn again: %1").arg(QString::fromStdString(error)));
         return;

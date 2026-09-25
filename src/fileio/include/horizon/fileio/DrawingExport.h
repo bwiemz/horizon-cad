@@ -9,6 +9,7 @@ class Solid;
 
 namespace hz::model {
 struct Drawing;
+struct PartsList;
 struct Sheet;
 struct TitleBlock;
 }  // namespace hz::model
@@ -35,9 +36,12 @@ public:
     /// given. Each view is placed and scaled by DrawingView::toSheet, and
     /// leaves out its hidden or tangent edges when it says so. What a drawing
     /// document shows, prints and exports is this.
+    /// With @p partsList too (an assembly's, Phase 150), it is drawn above
+    /// the title block.
     static void populate(doc::Document& doc, const model::Drawing& drawing,
                          const model::Sheet* sheet = nullptr,
-                         const model::TitleBlock* titleBlock = nullptr);
+                         const model::TitleBlock* titleBlock = nullptr,
+                         const model::PartsList* partsList = nullptr);
 
     /// Write a laid-out multi-view drawing to a DXF file. Returns false on I/O
     /// failure.

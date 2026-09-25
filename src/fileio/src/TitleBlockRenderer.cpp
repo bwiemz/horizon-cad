@@ -8,6 +8,7 @@
 
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/modeling/PartsList.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
 
@@ -96,6 +97,51 @@ std::vector<std::shared_ptr<draft::DraftEntity>> TitleBlockRenderer::renderTitle
         if (ty < y0 + 1.0) break;  // panel full
     }
 
+    return out;
+}
+
+std::vector<std::shared_ptr<draft::DraftEntity>> TitleBlockRenderer::renderPartsList(
+    const model::Sheet& sheet, const model::TitleBlock& block, const model::PartsList& list) {
+    std::vector<std::shared_ptr<draft::DraftEntity>> out;
+    if (list.rows.empty()) return out;
+    constexpr double kTextHeight = 2.5;
+    const double rowH = model::PartsList::kRowHeight;
+    const double x1 = sheet.widthMm() - sheet.margin;
+    const double x0 = x1 - block.width;
+    const double y0 = sheet.margin + block.height;  // on the title block
+    const double y1 = y0 + list.height();
+    const double itemRight = x0 + model::PartsList::kItemWidth;
+    const double quantityLeft = x1 - model::PartsList::kQuantityWidth;
+
+    addRect(out, x0, y0, x1, y1, kPartsListLayer);
+    for (std::size_t r = 1; r <= list.rows.size(); ++r) {
+        const double y = y0 + rowH * static_cast<double>(r);
+        out.push_back(line({x0, y}, {x1, y}, kPartsListLayer));
+    }
+    out.push_back(line({itemRight, y0}, {itemRight, y1}, kPartsListLayer));
+    out.push_back(line({quantityLeft, y0}, {quantityLeft, y1}, kPartsListLayer));
+
+    // A name as long as its column holds, at about 0.6 of the text height a
+    // character.
+    const auto fitted = [&](const std::string& name) {
+        const auto room =
+            static_cast<std::size_t>((quantityLeft - itemRight - 4.0) / (0.6 * kTextHeight));
+        if (name.size() <= room || room < 4) return name;
+        return name.substr(0, room - 3) + "...";
+    };
+    const auto row = [&](std::size_t r, const std::string& item, const std::string& name,
+                         const std::string& quantity) {
+        const double baseline = y0 + rowH * static_cast<double>(r) + (rowH - kTextHeight) / 2.0;
+        out.push_back(text({x0 + 2.0, baseline}, item, kTextHeight, kPartsListLayer));
+        out.push_back(
+            text({itemRight + 2.0, baseline}, fitted(name), kTextHeight, kPartsListLayer));
+        out.push_back(text({quantityLeft + 2.0, baseline}, quantity, kTextHeight, kPartsListLayer));
+    };
+    row(0, "ITEM", "PART", "QTY");
+    for (std::size_t r = 0; r < list.rows.size(); ++r) {
+        const model::PartsListRow& part = list.rows[r];
+        row(r + 1, std::to_string(part.item), part.name, std::to_string(part.quantity));
+    }
     return out;
 }
 

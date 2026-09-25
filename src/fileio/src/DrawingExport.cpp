@@ -95,6 +95,10 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties centreLines;
     centreLines.name = kCentreLineLayer;
     doc.layerManager().addLayer(centreLines);
+
+    draft::LayerProperties partsList;
+    partsList.name = TitleBlockRenderer::kPartsListLayer;
+    doc.layerManager().addLayer(partsList);
 }
 
 void addLabelLine(doc::Document& doc, const math::Vec2& a, const math::Vec2& b,
@@ -253,12 +257,14 @@ const std::vector<std::string>& DrawingExport::layers() {
                                                 TitleBlockRenderer::kBorderLayer,
                                                 TitleBlockRenderer::kTitleBlockLayer,
                                                 kViewLabelLayer,
-                                                kCentreLineLayer};
+                                                kCentreLineLayer,
+                                                TitleBlockRenderer::kPartsListLayer};
     return names;
 }
 
 void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
-                             const model::Sheet* sheet, const model::TitleBlock* titleBlock) {
+                             const model::Sheet* sheet, const model::TitleBlock* titleBlock,
+                             const model::PartsList* partsList) {
     addDrawingLayers(doc);
     // Sheet frame and title block first, then the drawing content.
     if (sheet != nullptr) {
@@ -266,6 +272,12 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
         if (titleBlock != nullptr) {
             for (auto& e : TitleBlockRenderer::renderTitleBlock(*sheet, *titleBlock)) {
                 doc.addEntity(std::move(e));
+            }
+            if (partsList != nullptr) {
+                for (auto& e :
+                     TitleBlockRenderer::renderPartsList(*sheet, *titleBlock, *partsList)) {
+                    doc.addEntity(std::move(e));
+                }
             }
         }
     }

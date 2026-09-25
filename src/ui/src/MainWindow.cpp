@@ -818,8 +818,8 @@ void MainWindow::createMenus() {
 
     // ---- Drawing sheets (Phase 148) ----
     QMenu* drawingMenu = menuBar()->addMenu(tr("Drawin&g"));
-    sketchAction(drawingMenu, tr("&New Drawing from Part..."), "action_new_drawing_from_part",
-                 [this] { m_drawings->onNewDrawingFromPart(); });
+    sketchAction(drawingMenu, tr("&New Drawing from Part or Assembly..."),
+                 "action_new_drawing_from_part", [this] { m_drawings->onNewDrawingFromPart(); });
     drawingMenu->addSeparator();
     sketchAction(drawingMenu, tr("&Title Block..."), "action_drawing_title_block",
                  [this] { m_drawings->onTitleBlock(); });
@@ -2094,6 +2094,8 @@ bool MainWindow::saveActiveDocument() {
             forgetSnapshot(*tab);
             RecentFiles::add(QString::fromStdString(m_assembly->filePath()));
             m_statusPrompt->setText(tr("Assembly saved."));
+            // Its drawings show it as saved.
+            m_drawings->refreshDrawingsOf(m_assembly->filePath());
             updateWindowTitle();
             return true;
         }

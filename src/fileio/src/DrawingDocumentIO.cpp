@@ -227,6 +227,20 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
                          {"dimensions", dimensionsJson(v.dimensions)}});
     }
     root["views"] = views;
+    if (spec.annotations) {
+        // Written as the native format writes a document, so they read back
+        // with everything a drawing can hold.
+        root["annotations"] = json::parse(NativeFormat::documentToJson(*spec.annotations, false));
+        json frames = json::array();
+        for (const DrawingViewFrame& f : spec.frames) {
+            frames.push_back({{"role", roleName(f.role)},
+                              {"kind", viewName(f.kind)},
+                              {"label", f.label},
+                              {"low", json::array({f.low.x, f.low.y})},
+                              {"high", json::array({f.high.x, f.high.y})}});
+        }
+        root["frames"] = frames;
+    }
 
     return writeFileAtomically(pathFromUtf8(path),
                                root.dump(2, ' ', false, json::error_handler_t::replace));
@@ -392,6 +406,43 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     }
                 }
                 spec.views.push_back(view);
+            }
+        }
+    }
+    if (version >= 3) {
+        const auto annotations = root.find("annotations");
+        if (annotations != root.end() && !annotations->is_null()) {
+            if (!annotations->is_object()) return fail("its annotations are not a drawing");
+            auto notes = std::make_shared<doc::Document>();
+            std::string why;
+            if (!NativeFormat::documentFromJson(annotations->dump(), *notes, &why)) {
+                return fail("its annotations could not be read: " + why);
+            }
+            spec.annotations = std::move(notes);
+        }
+        // Where the views were then; one that cannot be read is left out,
+        // and what was drawn in it stays where it was.
+        constexpr std::size_t kMaxFrames = 256;  // as many as views are read
+        const auto frames = root.find("frames");
+        if (frames != root.end() && frames->is_array() && frames->size() <= kMaxFrames) {
+            const auto point = [](const json& f, const char* key, math::Vec2& out) {
+                const auto it = f.find(key);
+                if (it == f.end() || !it->is_array() || it->size() != 2 || !(*it)[0].is_number() ||
+                    !(*it)[1].is_number()) {
+                    return false;
+                }
+                out = {(*it)[0].get<double>(), (*it)[1].get<double>()};
+                return std::isfinite(out.x) && std::isfinite(out.y);
+            };
+            for (const auto& f : *frames) {
+                if (!f.is_object()) continue;
+                DrawingViewFrame frame;
+                frame.role = roleNamed(text(f, "role"));
+                frame.kind = viewNamed(text(f, "kind"));
+                frame.label = usableLabel(text(f, "label"));
+                if (!point(f, "low", frame.low) || !point(f, "high", frame.high)) continue;
+                if (!(frame.high.x > frame.low.x) || !(frame.high.y > frame.low.y)) continue;
+                spec.frames.push_back(std::move(frame));
             }
         }
     }
