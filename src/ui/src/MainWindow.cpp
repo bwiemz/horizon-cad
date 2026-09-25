@@ -59,6 +59,7 @@
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
@@ -454,6 +455,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Build UI chrome.
     createMenus();
     createRibbonBar();
+    completeMenusFromRibbon();
     createStatusBar();
     registerTools();
 
@@ -628,13 +630,53 @@ void MainWindow::createMenus() {
 
     // ---- View ----
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
+    m_viewMenu = viewMenu;
 
     viewMenu->addAction(tr("&Front"), this, &MainWindow::onViewFront);
     viewMenu->addAction(tr("&Top"), this, &MainWindow::onViewTop);
     viewMenu->addAction(tr("&Right"), this, &MainWindow::onViewRight);
+    viewMenu->addAction(tr("&Back"), this, [this] {
+        m_viewport->camera().setBackView();
+        m_viewport->update();
+    });
+    viewMenu->addAction(tr("B&ottom"), this, [this] {
+        m_viewport->camera().setBottomView();
+        m_viewport->update();
+    });
+    viewMenu->addAction(tr("&Left"), this, [this] {
+        m_viewport->camera().setLeftView();
+        m_viewport->update();
+    });
     viewMenu->addAction(tr("&Isometric"), this, &MainWindow::onViewIsometric);
     viewMenu->addSeparator();
-    viewMenu->addAction(tr("Fit &All"), this, &MainWindow::onFitAll);
+    // The ribbon's Fit All, with its shortcut, takes this place
+    // (completeMenusFromRibbon): one action, not two.
+    m_viewFitAllPlaceholder = viewMenu->addSeparator();
+    auto* ortho = viewMenu->addAction(tr("&Orthographic"));
+    ortho->setObjectName(QStringLiteral("action_view_ortho"));
+    ortho->setCheckable(true);
+    connect(ortho, &QAction::toggled, this, [this](bool on) { m_viewport->setOrthographic(on); });
+    QMenu* display = viewMenu->addMenu(tr("&Display"));
+    auto* displayGroup = new QActionGroup(this);
+    const auto displayAction = [&](const QString& text, const char* name,
+                                   render::DisplayMode mode) {
+        QAction* action = display->addAction(text);
+        action->setObjectName(QString::fromLatin1(name));
+        action->setCheckable(true);
+        action->setChecked(mode == render::DisplayMode::ShadedWithEdges);
+        displayGroup->addAction(action);
+        connect(action, &QAction::triggered, this,
+                [this, mode] { m_viewport->setDisplayMode(mode); });
+    };
+    displayAction(tr("&Shaded"), "action_display_shaded", render::DisplayMode::Shaded);
+    displayAction(tr("Shaded with &Edges"), "action_display_edges",
+                  render::DisplayMode::ShadedWithEdges);
+    displayAction(tr("&Wireframe"), "action_display_wireframe", render::DisplayMode::Wireframe);
+    auto* section = viewMenu->addAction(tr("&Section Plane..."), this, &MainWindow::onSectionPlane);
+    section->setObjectName(QStringLiteral("action_section"));
+    auto* noSection = viewMenu->addAction(tr("&No Section"), this,
+                                          [this] { m_viewport->setSectionPlane(std::nullopt); });
+    noSection->setObjectName(QStringLiteral("action_section_off"));
     viewMenu->addSeparator();
     viewMenu->addAction(m_featureTreePanel->toggleViewAction());
     viewMenu->addAction(m_propertyPanel->toggleViewAction());
@@ -642,6 +684,7 @@ void MainWindow::createMenus() {
 
     // ---- Model ----
     QMenu* modelMenu = menuBar()->addMenu(tr("&Model"));
+    m_modelMenu = modelMenu;
     QMenu* newSketchMenu = modelMenu->addMenu(tr("New &Sketch"));
     const auto sketchAction = [](QMenu* menu, const QString& text, const char* name, auto slot) {
         QAction* action = menu->addAction(text);
@@ -694,8 +737,9 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Scale"), this, &MainWindow::onScaleTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("&Trim"), this, &MainWindow::onTrimTool);
-    toolsMenu->addAction(tr("&Fillet"), this, &MainWindow::onFilletTool);
-    toolsMenu->addAction(tr("C&hamfer"), this, &MainWindow::onChamferTool);
+    // "(2D)": the command palette lists the part's Fillet and Chamfer too.
+    toolsMenu->addAction(tr("&Fillet (2D)"), this, &MainWindow::onFilletTool);
+    toolsMenu->addAction(tr("C&hamfer (2D)"), this, &MainWindow::onChamferTool);
     toolsMenu->addAction(tr("&Break"), this, &MainWindow::onBreakTool);
     toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
@@ -2677,6 +2721,16 @@ void MainWindow::onFitAll() {
             bbox.expand(entityBBox);
         }
     }
+    // And the solids, where they are shown: they were left out, so a part
+    // with no drawing fitted nothing.
+    for (const render::SceneNode* node : m_viewport->sceneGraph().collectVisibleMeshNodes()) {
+        const math::Mat4 world = node->worldTransform();
+        const auto& positions = node->mesh().positions;
+        for (size_t i = 0; i + 2 < positions.size(); i += 3) {
+            bbox.expand(
+                world.transformPoint(math::Vec3(positions[i], positions[i + 1], positions[i + 2])));
+        }
+    }
     if (bbox.isValid()) {
         m_viewport->camera().fitAll(bbox);
     } else {
@@ -3545,6 +3599,126 @@ void MainWindow::onFinishSketch() {
     editSketch(nullptr);
     statusBar()->showMessage(
         tr("%1 finished: Extrude or Revolve takes it").arg(QString::fromStdString(edited->name())));
+}
+
+void MainWindow::completeMenusFromRibbon() {
+    const auto ribbon = [this](const char* name) {
+        return findChild<QAction*>(QString::fromLatin1(name));
+    };
+    // One Fit All, the ribbon's, which has the shortcut F.
+    if (QAction* fit = ribbon("action_fit-all"); fit && m_viewFitAllPlaceholder) {
+        fit->setText(tr("Fit &All"));
+        m_viewMenu->insertAction(m_viewFitAllPlaceholder, fit);
+    }
+    if (!m_modelMenu) return;
+    // Shortcuts for the commands used most. The single letters are the 2D
+    // tools', so these take Ctrl+Shift.
+    const std::vector<std::pair<const char*, QKeySequence>> shortcuts = {
+        {"action_extrude", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E)},
+        {"action_revolve", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R)},
+        {"action_fillet-3d", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)},
+        {"action_chamfer-3d", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C)},
+        {"action_shell", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H)},
+    };
+    for (const auto& [name, keys] : shortcuts) {
+        if (QAction* action = ribbon(name)) {
+            action->setShortcut(keys);
+            action->setToolTip(QStringLiteral("%1 (%2)").arg(
+                action->text(), keys.toString(QKeySequence::NativeText)));
+        }
+    }
+    // Named for the palette, where "Linear" alone would be a dimension too.
+    if (QAction* linear = ribbon("action_pattern-linear")) linear->setText(tr("Linear Pattern"));
+    if (QAction* circular = ribbon("action_pattern-circular")) {
+        circular->setText(tr("Circular Pattern"));
+    }
+    m_modelMenu->addSeparator();
+    const std::vector<std::vector<const char*>> groups = {
+        {"action_box", "action_cylinder", "action_sphere", "action_cone", "action_torus"},
+        {"action_extrude", "action_revolve"},
+        {"action_boolean-union", "action_boolean-subtract", "action_boolean-intersect"},
+        {"action_fillet-3d", "action_chamfer-3d", "action_shell", "action_draft"},
+        {"action_pattern-linear", "action_pattern-circular"},
+    };
+    for (const auto& group : groups) {
+        for (const char* name : group) {
+            if (QAction* action = ribbon(name)) m_modelMenu->addAction(action);
+        }
+        m_modelMenu->addSeparator();
+    }
+    auto* mass =
+        m_modelMenu->addAction(tr("&Mass Properties..."), this, &MainWindow::onMassProperties);
+    mass->setObjectName(QStringLiteral("action_mass_properties"));
+    mass->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+}
+
+void MainWindow::onMassProperties() {
+    const QString verb = tr("Mass Properties");
+    const topo::Solid* solid = requireBody(verb);
+    if (!solid) return;
+    const std::vector<std::pair<QString, std::optional<model::Material>>> materials = {
+        {tr("None (volume only)"), std::nullopt},
+        {tr("Steel"), model::Material::steel()},
+        {tr("Aluminium"), model::Material::aluminum()},
+        {tr("Titanium"), model::Material::titanium()},
+        {tr("ABS plastic"), model::Material::absPlastic()},
+    };
+    QStringList names;
+    for (const auto& [name, material] : materials) names << name;
+    FeatureForm form(this, verb);
+    auto* choice = form.choice(QStringLiteral("material"), tr("Material:"), names);
+    if (!form.exec()) return;
+    const auto& material = materials[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
+    const auto props = model::MassPropertiesCalculator::compute(
+        *solid, material.second ? &*material.second : nullptr);
+    if (!props.valid) {
+        statusBar()->showMessage(tr("The part's mass properties could not be worked out"));
+        return;
+    }
+    const auto n = [](double v) { return QString::number(v, 'g', 6); };
+    // Superscripts by code point: the sources are not compiled as UTF-8.
+    const QString mm2 = QStringLiteral("mm") + QChar(0x00B2);
+    const QString mm3 = QStringLiteral("mm") + QChar(0x00B3);
+    const QString cm3 = QStringLiteral("cm") + QChar(0x00B3);
+    QString text =
+        tr("Volume: %1 %2\nSurface area: %3 %4\nCentre of mass: %5")
+            .arg(n(props.volume), mm3, n(props.surfaceArea), mm2, formatPoint(props.centerOfMass));
+    // The model is in millimetres and densities in kg/m3: a cubic millimetre
+    // at 1 kg/m3 weighs a millionth of a gram, and the kernel's inertia,
+    // density times mm^5, is in g mm2 times a million.
+    constexpr double kGramsPerUnit = 1e-6;
+    const auto& I = props.inertia;
+    QString inertiaUnit = tr("per unit density, %1").arg(QStringLiteral("mm") + QChar(0x2075));
+    double inertiaScale = 1.0;
+    if (material.second) {
+        text +=
+            tr("\n\n%1: density %2 g/%3\nMass: %4 g")
+                .arg(material.first, n(props.density / 1000.0), cm3, n(props.mass * kGramsPerUnit));
+        inertiaUnit = QStringLiteral("g ") + mm2;
+        inertiaScale = kGramsPerUnit;
+    }
+    text += tr("\n\nInertia about the centre of mass (%1):\n%2  %3  %4\n%5  %6  %7\n%8  %9  %10")
+                .arg(inertiaUnit, n(I.at(0, 0) * inertiaScale), n(I.at(0, 1) * inertiaScale),
+                     n(I.at(0, 2) * inertiaScale), n(I.at(1, 0) * inertiaScale),
+                     n(I.at(1, 1) * inertiaScale), n(I.at(1, 2) * inertiaScale),
+                     n(I.at(2, 0) * inertiaScale))
+                .arg(n(I.at(2, 1) * inertiaScale), n(I.at(2, 2) * inertiaScale));
+    QMessageBox::information(this, verb, text);
+}
+
+void MainWindow::onSectionPlane() {
+    FeatureForm form(this, tr("Section Plane"));
+    auto* axis = form.choice(QStringLiteral("axis"), tr("Across:"), {tr("X"), tr("Y"), tr("Z")});
+    auto* at = form.number(QStringLiteral("offset"), tr("At:"), 0.0, -1e6, 1e6);
+    auto* keep = form.choice(QStringLiteral("keep"), tr("Keep:"),
+                             {tr("What is below it"), tr("What is above it")});
+    if (!form.exec()) return;
+    math::Vec3 normal;
+    (axis->currentIndex() == 0 ? normal.x : axis->currentIndex() == 1 ? normal.y : normal.z) = 1.0;
+    // The shader keeps the points with n.p + w >= 0.
+    const bool below = keep->currentIndex() == 0;
+    const math::Vec3 n = below ? normal * -1.0 : normal;
+    m_viewport->setSectionPlane(math::Vec4(n, below ? at->value() : -at->value()));
 }
 
 void MainWindow::onLoft() {

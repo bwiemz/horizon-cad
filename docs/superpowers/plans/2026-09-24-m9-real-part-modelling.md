@@ -379,21 +379,63 @@ definitions choose directions and faces with. 135 is independent and last.
 
 ## Phase 135: Finding and seeing
 
-- **A Model menu** with every modelling command. These reach the Ctrl+K
-  palette, and the common ones get shortcuts. The 2D Fillet and Chamfer
-  are renamed in the palette so the two are told apart.
-- **Fit All includes solids,** and has one action with its shortcut.
+### As built
+
+- **The Model menu has every modelling command.** The ribbon's
+  primitives, Extrude and Revolve, the booleans, the dress-up features and
+  the patterns join the sketch, loft, sweep and datum commands already
+  there. The menu has the ribbon's actions themselves, not copies
+  (`completeMenusFromRibbon`), so the Ctrl+K palette, which reads the
+  menus, finds them all.
+  - Shortcuts: Ctrl+Shift+E Extrude, R Revolve, F Fillet, C Chamfer, H
+    Shell and M Mass Properties.
+  - The 2D Fillet and Chamfer in Tools are now "Fillet (2D)" and "Chamfer
+    (2D)", and the patterns "Linear Pattern" and "Circular Pattern", so the
+    palette tells them apart.
+- **Fit All frames solids.** It looked at the drawing's entities alone, so
+  a part with no drawing was not framed. It now also takes every visible
+  mesh, in world coordinates. View has the ribbon's Fit All (shortcut F)
+  rather than a second action. It fits the part across the view's narrower
+  side: a perspective view was fitted by its height alone, and an
+  orthographic one by the window's shape before the last resize
+  (`setOrthographic` now keeps the aspect), which drew circles as
+  ellipses.
 - **View:**
-  - orthographic or perspective, kept across a resize;
-  - Back, Bottom and Left views;
-  - display modes: shaded, shaded with edges (the model's edges, 132), and
-    wireframe.
-- **Mass properties:** Model ▸ Mass Properties shows the volume, area,
-  centre of mass and inertia for a chosen material.
-- **Section plane:** a clip plane on X, Y or Z at an offset, with edges
-  clipped too. No cap yet; that is recorded as not done.
-- **Tests:**
-  - every modelling command is in a menu and the palette;
-  - Fit All frames a solid;
-  - ortho survives a resize;
-  - the mass-properties dialog's numbers for a box.
+  - Orthographic, a check item. A resize had put every view back into
+    perspective. `applyProjection` keeps the height and widens the view,
+    and going to orthographic starts as tall as the perspective view was
+    at the target.
+  - Back, Bottom and Left, beside Front, Top and Right (`Camera::
+    setBackView` and the others; the ViewCube now uses them too).
+  - Display: shaded, shaded with edges (the default), or wireframe
+    (`render::DisplayMode`). Wireframe draws the part's edges alone, in a
+    light colour.
+- **Section plane.** View ▸ Section Plane… cuts across X, Y or Z at an
+  offset, keeping what is below or above. The solids' shader already
+  clipped. The line shader now clips too (`uClipPlane`), for the part's
+  edges and the highlight of what is picked. View ▸ No Section takes it
+  away.
+- **Mass properties.** Model ▸ Mass Properties… asks for a material (none,
+  steel, aluminium, titanium, ABS) and shows the volume, surface area,
+  centre of mass, and the inertia about it. With a material, it also shows
+  the density in g/cm³, the mass in g and the inertia in g·mm²; without
+  one, the inertia is per unit density, in mm⁵.
+
+### Tests
+
+6 new, in the window (`SeeingTest`):
+- every modelling command is in the Model menu, and Extrude is one action
+  with a shortcut;
+- Fit All frames a box it could not see;
+- Fit All frames it in a wide and a narrow window, in both projections,
+  keeping an orthographic view's shape;
+- orthographic survives a resize, as tall as before;
+- the display modes, and a section plane that keeps what is below it;
+- a 10 mm steel cube: 1000 mm³, 7.85 g, centred at (5, 5, 5).
+
+### Not done
+
+- The section has no cap: the cut shows the part's inside.
+- Only planes across the axes; not a face or datum plane as the section.
+- No per-body colour or appearance, and the display mode is not saved with
+  the part.

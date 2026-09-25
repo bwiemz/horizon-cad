@@ -42,6 +42,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Sketches.cpp
         test_Picking.cpp
         test_PartCommands.cpp
+        test_Seeing.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

@@ -8,6 +8,7 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec4.h"
 #include "horizon/render/Camera.h"
+#include "horizon/render/DisplayMode.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshBuffer.h"
 #include "horizon/render/SceneGraph.h"
@@ -48,9 +49,16 @@ public:
 
     /// Draw a set of line segments given flat vertex data (x,y,z,dist per vertex, pairs).
     /// Vertex format: 4 floats per vertex (x, y, z, distance-along-entity).
+    /// With @p clipped, the section plane (setClipPlane) cuts them as it cuts
+    /// the solids: for the part's own edges, not the 2D drawing.
     void drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                    const std::vector<float>& lineVertices, const math::Vec3& color,
-                   float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f);
+                   float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f,
+                   bool clipped = false);
+
+    /// How solids are drawn by renderNodes().
+    void setDisplayMode(DisplayMode mode) { m_displayMode = mode; }
+    DisplayMode displayMode() const { return m_displayMode; }
 
     /// Draw a circle approximation given flat vertex data (line segments forming the circle).
     void drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
@@ -90,6 +98,7 @@ public:
     bool isInitialized() const { return m_initialized; }
 
 private:
+    DisplayMode m_displayMode = DisplayMode::ShadedWithEdges;
     void uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node);
 
     /// Render edges of visible mesh nodes as wireframe overlay.

@@ -211,6 +211,8 @@ private slots:
     // Loft, Sweep and datums (Phase 133).
     void onLoft();
     void onSweep();
+    void onMassProperties();
+    void onSectionPlane();
     void onDatumPlane();
     void onDatumAxis();
     void onDatumPoint();
@@ -424,6 +426,12 @@ private:
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
     QAction* m_finishSketchAction = nullptr;
+    QMenu* m_modelMenu = nullptr;
+    QMenu* m_viewMenu = nullptr;
+    QAction* m_viewFitAllPlaceholder = nullptr;
+    /// Put the ribbon's modelling commands in the Model menu (so the command
+    /// palette, which reads the menus, finds them) and its Fit All in View.
+    void completeMenusFromRibbon();
     /// The sketch Extrude and Revolve take when none is being edited: the
     /// one chosen in the sketch list, or last made or finished. Sketch ids
     /// are unique across documents, so another document's is simply not found.

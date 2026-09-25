@@ -147,10 +147,12 @@ layout(location = 1) in float aDistance;
 uniform mat4 uMVP;
 
 out float vDistance;
+out vec3 vWorldPos;  // lines are drawn in world coordinates
 
 void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     vDistance = aDistance;
+    vWorldPos = aPos;
 }
 )glsl";
 
@@ -158,14 +160,20 @@ static const char* kLineFragSrc = R"glsl(
 #version 330 core
 
 in float vDistance;
+in vec3 vWorldPos;
 
 out vec4 FragColor;
 
 uniform vec3 uLineColor;
 uniform int uLineType;        // 0=ByLayer(unused), 1=Continuous, 2=Dashed, etc.
 uniform float uPatternScale;  // Scale factor for pattern lengths.
+uniform vec4 uClipPlane;      // as the solids' shader has it; (0,0,0,0) = none
 
 void main() {
+    // Section-plane clipping, for the part's edges.
+    if (length(uClipPlane.xyz) > 0.001 && dot(vWorldPos, uClipPlane.xyz) + uClipPlane.w < 0.0)
+        discard;
+
     // Continuous (1) or ByLayer fallback (0) — no discarding.
     if (uLineType <= 1) {
         FragColor = vec4(uLineColor, 1.0);
@@ -503,9 +511,10 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
     // on them, and highlights of them win the depth test.
     gl->glEnable(GL_POLYGON_OFFSET_FILL);
     gl->glPolygonOffset(1.0f, 1.0f);
-    renderNodeList(opaqueNodes);
+    const bool faces = m_displayMode != DisplayMode::Wireframe;
+    if (faces) renderNodeList(opaqueNodes);
 
-    if (!translucentNodes.empty()) {
+    if (faces && !translucentNodes.empty()) {
         gl->glEnable(GL_BLEND);
         gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         gl->glDepthMask(GL_FALSE);
@@ -541,8 +550,13 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
             }
         }
     }
+    if (m_displayMode == DisplayMode::Shaded) return;  // faces only
     renderEdgeOverlay(gl, wireframe, vp);
-    drawLines(gl, camera, edgeLines, math::Vec3(0.12, 0.12, 0.12), 1.2f);
+    // Dark over faces; in wireframe, on the dark background, light.
+    const math::Vec3 edgeColour = m_displayMode == DisplayMode::Wireframe
+                                      ? math::Vec3(0.85, 0.87, 0.9)
+                                      : math::Vec3(0.12, 0.12, 0.12);
+    drawLines(gl, camera, edgeLines, edgeColour, 1.2f, 1, 1.0f, true);
 }
 
 void GLRenderer::drawTriangles(QOpenGLExtraFunctions* gl, const Camera& camera,
@@ -579,7 +593,7 @@ void GLRenderer::setBackgroundColor(float r, float g, float b) {
 
 void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
                            const std::vector<float>& lineVertices, const math::Vec3& color,
-                           float lineWidth, int lineType, float patternScale) {
+                           float lineWidth, int lineType, float patternScale, bool clipped) {
     if (!m_initialized || lineVertices.empty()) return;
 
     math::Mat4 vp = camera.projectionMatrix() * camera.viewMatrix();
@@ -589,6 +603,7 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_lineShader.setUniform("uLineColor", color);
     m_lineShader.setUniform("uLineType", lineType);
     m_lineShader.setUniform("uPatternScale", patternScale);
+    m_lineShader.setUniform("uClipPlane", clipped ? m_clipPlane : math::Vec4(0.0, 0.0, 0.0, 0.0));
 
     // Use persistent dynamic VAO/VBO.
     // Vertex format: 4 floats per vertex (x, y, z, distance).

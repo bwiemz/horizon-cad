@@ -22,6 +22,8 @@ void Camera::setOrthographic(double width, double height, double nearPlane, doub
     m_projType = ProjectionType::Orthographic;
     m_orthoWidth = width;
     m_orthoHeight = height;
+    // The view's shape, as setPerspective keeps it: fitAll() sizes by it.
+    if (width > 0.0 && height > 0.0) m_aspect = width / height;
     m_near = nearPlane;
     m_far = farPlane;
 }
@@ -101,18 +103,21 @@ void Camera::fitAll(const math::BoundingBox& bbox) {
         dir = math::Vec3(1.0, 1.0, 1.0).normalized();
     }
 
-    // Calculate distance to fit the bounding box in view
+    // The box's sphere fits across the view's narrower side, with a margin:
+    // the field of view is vertical, and a window is often wider than tall,
+    // or narrower.
+    const double aspect = m_aspect > 1e-10 ? m_aspect : 1.0;
     double distance;
     if (m_projType == ProjectionType::Perspective) {
         double halfFovRad = (m_fov * math::kDegToRad) * 0.5;
         double tanHalf = std::tan(halfFovRad);
         if (tanHalf < 1e-10) tanHalf = 1e-10;  // Guard against zero/tiny FOV.
-        distance = (diag * 0.5) / tanHalf;
+        distance = (diag * 0.5) / std::min(tanHalf, tanHalf * aspect);
         distance *= 1.2;  // add some margin
     } else {
         distance = diag * 1.5;
-        m_orthoWidth = diag * 1.2;
-        m_orthoHeight = m_orthoWidth / m_aspect;
+        m_orthoHeight = diag * 1.2 * std::max(1.0, 1.0 / aspect);
+        m_orthoWidth = m_orthoHeight * aspect;
     }
 
     m_target = center;
@@ -140,6 +145,30 @@ void Camera::setRightView() {
     double dist = (m_eye - m_target).length();
     if (dist < 1e-10) dist = 10.0;
     m_eye = m_target + math::Vec3(dist, 0.0, 0.0);
+    m_up = math::Vec3(0.0, 0.0, 1.0);
+}
+
+void Camera::setBackView() {
+    // Looking along +Y from behind, Z up
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(0.0, dist, 0.0);
+    m_up = math::Vec3(0.0, 0.0, 1.0);
+}
+
+void Camera::setBottomView() {
+    // Looking along +Z up from below, Y up on screen
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(0.0, 0.0, -dist);
+    m_up = math::Vec3(0.0, 1.0, 0.0);
+}
+
+void Camera::setLeftView() {
+    // Looking along +X from the left, Z up
+    double dist = (m_eye - m_target).length();
+    if (dist < 1e-10) dist = 10.0;
+    m_eye = m_target + math::Vec3(-dist, 0.0, 0.0);
     m_up = math::Vec3(0.0, 0.0, 1.0);
 }
 

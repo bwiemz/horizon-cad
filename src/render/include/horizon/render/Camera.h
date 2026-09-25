@@ -29,6 +29,9 @@ public:
     void setTopView();
     void setRightView();
     void setIsometricView();
+    void setBackView();
+    void setBottomView();
+    void setLeftView();
 
     math::Mat4 viewMatrix() const;
     math::Mat4 projectionMatrix() const;
@@ -42,6 +45,9 @@ public:
     const math::Vec3& target() const { return m_target; }
     const math::Vec3& up() const { return m_up; }
     ProjectionType projectionType() const { return m_projType; }
+    double fieldOfView() const { return m_fov; }
+    double orthoWidth() const { return m_orthoWidth; }
+    double orthoHeight() const { return m_orthoHeight; }
 
 private:
     math::Vec3 m_eye{5.0, 5.0, 5.0};

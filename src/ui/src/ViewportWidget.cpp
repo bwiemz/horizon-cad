@@ -381,7 +381,8 @@ void ViewportWidget::drawDatums(QOpenGLExtraFunctions* gl) {
                 break;
         }
     }
-    m_renderer->drawLines(gl, m_camera, lines, math::Vec3(0.95, 0.75, 0.3), 1.5f, 2);
+    // Dashes of about two units: the shader's are 0.5 on, 0.3 off.
+    m_renderer->drawLines(gl, m_camera, lines, math::Vec3(0.95, 0.75, 0.3), 1.5f, 2, 0.25f);
 }
 
 void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
@@ -411,7 +412,7 @@ void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
                 // Over the part's own line for the edge, at the same depth: an
                 // equal depth must pass, or the highlight is hidden by it.
                 gl->glDepthFunc(GL_LEQUAL);
-                m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f);
+                m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f, 1, 1.0f, true);
                 gl->glDepthFunc(GL_LESS);
                 continue;
             }
@@ -510,8 +511,38 @@ void ViewportWidget::resizeGL(int w, int h) {
     const qreal dpr = devicePixelRatioF();
     if (m_glReady) m_renderer->resize(gl, qRound(w * dpr), qRound(h * dpr));
 
-    double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
-    m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
+    applyProjection(w, h);
+}
+
+void ViewportWidget::applyProjection(int w, int h) {
+    const double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
+    if (!m_orthographic) {
+        m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
+        return;
+    }
+    // As tall as the view already is, as wide as the window now is.
+    const double height = m_camera.projectionType() == render::ProjectionType::Orthographic
+                              ? m_camera.orthoHeight()
+                              : 2.0 * (m_camera.eye() - m_camera.target()).length() *
+                                    std::tan(m_camera.fieldOfView() * math::kDegToRad / 2.0);
+    m_camera.setOrthographic(height * aspect, height, -10000.0, 10000.0);
+}
+
+void ViewportWidget::setOrthographic(bool orthographic) {
+    if (orthographic == m_orthographic) return;
+    m_orthographic = orthographic;
+    applyProjection(width(), height());
+    update();
+}
+
+void ViewportWidget::setDisplayMode(render::DisplayMode mode) {
+    m_displayMode = mode;
+    update();
+}
+
+void ViewportWidget::setSectionPlane(const std::optional<math::Vec4>& plane) {
+    m_sectionPlane = plane;
+    update();
 }
 
 void ViewportWidget::paintGL() {
@@ -555,6 +586,12 @@ void ViewportWidget::paintGL() {
     // the meshes of nodes that left the scene, and an emptied scene (a part's
     // tab switched for a drawing's) is when that matters most. No picking
     // pass here: nothing reads it; a pick renders one when it needs it.
+    m_renderer->setDisplayMode(m_displayMode);
+    if (m_sectionPlane) {
+        m_renderer->setClipPlane(*m_sectionPlane);
+    } else {
+        m_renderer->clearClipPlane();
+    }
     m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
     drawDatums(gl);
     drawModelHighlights(gl);
@@ -597,10 +634,6 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
 
 void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
     using Region = ViewCube::Region;
-    double dist = (m_camera.eye() - m_camera.target()).length();
-    if (dist < 1e-10) dist = 10.0;
-    const math::Vec3 t = m_camera.target();
-    const math::Vec3 zUp(0.0, 0.0, 1.0);
     switch (region) {
         case Region::Front:
             m_camera.setFrontView();
@@ -616,13 +649,13 @@ void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
             break;
         // Back / Bottom / Left have no camera preset; mirror the preset math.
         case Region::Back:
-            m_camera.lookAt(t + math::Vec3(0.0, dist, 0.0), t, zUp);
+            m_camera.setBackView();
             break;
         case Region::Bottom:
-            m_camera.lookAt(t + math::Vec3(0.0, 0.0, -dist), t, math::Vec3(0.0, 1.0, 0.0));
+            m_camera.setBottomView();
             break;
         case Region::Left:
-            m_camera.lookAt(t + math::Vec3(-dist, 0.0, 0.0), t, zUp);
+            m_camera.setLeftView();
             break;
         case Region::None:
             break;

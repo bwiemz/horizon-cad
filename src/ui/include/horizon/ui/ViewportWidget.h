@@ -13,7 +13,9 @@
 #include "horizon/drafting/SnapEngine.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/math/Vec4.h"
 #include "horizon/render/Camera.h"
+#include "horizon/render/DisplayMode.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/ui/OverlayRenderer.h"
@@ -172,6 +174,22 @@ public:
     /// Project a world point to screen coordinates (Qt's, 0 at the top).
     QPointF projectToScreen(const math::Vec3& world) const;
 
+    // ---- Seeing the part (Phase 135) ----
+
+    /// Orthographic or perspective, kept across resizes: a resize used to
+    /// put the camera back to perspective. Switching keeps what is framed.
+    void setOrthographic(bool orthographic);
+    bool isOrthographic() const { return m_orthographic; }
+    /// Give the camera the projection for a @p w by @p h view.
+    void applyProjection(int w, int h);
+    /// How solids are drawn: shaded, with their edges, or as wireframe.
+    void setDisplayMode(render::DisplayMode mode);
+    render::DisplayMode displayMode() const { return m_displayMode; }
+    /// A section plane (normal, offset: points with n.p + w < 0 are cut
+    /// away), or none.
+    void setSectionPlane(const std::optional<math::Vec4>& plane);
+    const std::optional<math::Vec4>& sectionPlane() const { return m_sectionPlane; }
+
     // ---- The part in 3D (Phase 132) ----
 
     /// A face or an edge of a solid in the scene, by its persistent name.
@@ -272,6 +290,9 @@ private:
     render::SceneGraph m_sceneGraph;
     std::vector<ModelPick> m_modelSelection;
     std::optional<ModelPick> m_modelHover;
+    bool m_orthographic = false;
+    render::DisplayMode m_displayMode = render::DisplayMode::ShadedWithEdges;
+    std::optional<math::Vec4> m_sectionPlane;
 
     /// Draw the chosen and hovered faces and edges over the solids.
     void drawModelHighlights(QOpenGLExtraFunctions* gl);
