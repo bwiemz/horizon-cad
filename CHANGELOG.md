@@ -59,6 +59,13 @@ work, not "post-1.0".
     or along the face or edge you clicked.
   - Roll Back to Here and Roll Forward in the feature tree. Each is one undo
     step, and a saved part keeps where it was rolled back to.
+- **Extrude and pattern options (134).**
+  - Extrude goes to a distance, both ways (half each), through all of the
+    part, or through all both ways, and can be reversed.
+  - A pattern can repeat chosen features (a hole, a boss) rather than the
+    whole part.
+  - Primitives are placed: a base point and the way their axis points,
+    both editable afterwards. They always stood at the origin.
 
 ## Unreleased — Product completeness, Milestone 8 (Phases 127–130)
 

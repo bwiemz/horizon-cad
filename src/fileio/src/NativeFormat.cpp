@@ -666,6 +666,10 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             if (ext->sketch()) fObj["sketchId"] = ext->sketch()->id();
             if (ext->hasCurvedProfile()) fObj["segments"] = ext->segments();
             if (ext->chordTolerance() > 0.0) fObj["chordTolerance"] = ext->chordTolerance();
+            // How far it goes, when not simply its distance (Phase 134).
+            if (ext->extent() != doc::ExtrudeFeature::Extent::Blind) {
+                fObj["extent"] = static_cast<int>(ext->extent());
+            }
         } else if (const auto* rev = dynamic_cast<const doc::RevolveFeature*>(feat)) {
             fObj["type"] = "revolve";
             fObj["angle"] = rev->angle();
@@ -734,6 +738,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["scalar"] = pat->scalar();
             fObj["count"] = pat->count();
             fObj["suppressed"] = pat->suppressedInstances();
+            // The features it repeats (Phase 134); none, the whole part.
+            if (!pat->targets().empty()) fObj["features"] = pat->targets();
         } else if (const auto* imported = dynamic_cast<const doc::ImportedBodyFeature*>(feat)) {
             // The body itself travels with the part, as STEP text, so the part
             // does not depend on the file it was imported from.
@@ -780,6 +786,13 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["p2"] = prim->p2();
             if (prim->isFaceted()) fObj["segments"] = prim->segments();
             if (prim->chordTolerance() > 0.0) fObj["chordTolerance"] = prim->chordTolerance();
+            // Where it stands (Phase 134); absent, at the origin along +Z.
+            if (prim->isPlaced()) {
+                const auto& b = prim->basePoint();
+                const auto& a = prim->axisDirection();
+                fObj["basePoint"] = {b.x, b.y, b.z};
+                fObj["axisDirection"] = {a.x, a.y, a.z};
+            }
         }
 
         // How a created body combines with the part (Phase 102).
@@ -1526,6 +1539,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                         feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
                                                                std::move(suppressed));
                     }
+                    if (const auto targets = fObj.find("features");
+                        targets != fObj.end() && targets->is_array()) {
+                        std::vector<std::string> ids;
+                        for (const json& id : *targets) {
+                            if (id.is_string()) ids.push_back(id.get<std::string>());
+                        }
+                        feat->setTargets(std::move(ids));
+                    }
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                     continue;
@@ -1594,6 +1615,16 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                         feat->setParameter("chordTolerance",
                                            fObj.at("chordTolerance").get<double>());
                     }
+                    for (const char* key : {"basePoint", "axisDirection"}) {
+                        const auto v = fObj.find(key);
+                        if (v == fObj.end() || !v->is_array() || v->size() != 3) continue;
+                        if (!(*v)[0].is_number() || !(*v)[1].is_number() || !(*v)[2].is_number()) {
+                            continue;
+                        }
+                        feat->setVector(key,
+                                        math::Vec3((*v)[0].get<double>(), (*v)[1].get<double>(),
+                                                   (*v)[2].get<double>()));
+                    }
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                     continue;
@@ -1632,6 +1663,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     if (fObj.contains("chordTolerance")) {
                         feat->setParameter("chordTolerance",
                                            fObj.at("chordTolerance").get<double>());
+                    }
+                    if (const auto extent = fObj.find("extent");
+                        extent != fObj.end() && extent->is_number()) {
+                        feat->setParameter("extent", extent->get<double>());  // 0-3, else ignored
                     }
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));

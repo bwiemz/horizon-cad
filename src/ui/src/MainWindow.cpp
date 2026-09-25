@@ -237,6 +237,7 @@ QString parameterLabel(const std::string& name) {
         {"radius", QT_TRANSLATE_NOOP("MainWindow", "Radius")},
         {"thickness", QT_TRANSLATE_NOOP("MainWindow", "Thickness")},
         {"operation", QT_TRANSLATE_NOOP("MainWindow", "Operation")},
+        {"extent", QT_TRANSLATE_NOOP("MainWindow", "Goes")},
         {"count", QT_TRANSLATE_NOOP("MainWindow", "Count")},
         {"spacing", QT_TRANSLATE_NOOP("MainWindow", "Spacing")},
         {"width", QT_TRANSLATE_NOOP("MainWindow", "Width")},
@@ -3323,6 +3324,13 @@ void MainWindow::addPrimitive(
         sizes.push_back(form.number(QStringLiteral("size%1").arg(i), fields[i].label,
                                     fields[i].value, fields[i].min, 1e6));
     }
+    // Where it stands: from a base point, its own z axis along one of the
+    // axis directions (Phase 134; primitives always stood at the origin).
+    auto* atX = form.number(QStringLiteral("atX"), tr("At x:"), 0.0, -1e6, 1e6);
+    auto* atY = form.number(QStringLiteral("atY"), tr("y:"), 0.0, -1e6, 1e6);
+    auto* atZ = form.number(QStringLiteral("atZ"), tr("z:"), 0.0, -1e6, 1e6);
+    auto* axis =
+        directionChoice(form, QStringLiteral("axis"), tr("Standing along:"), QStringLiteral("+Z"));
     auto* result = form.operationChoice(proposedOperation());
     if (!form.exec()) return;
 
@@ -3330,6 +3338,8 @@ void MainWindow::addPrimitive(
     values.reserve(sizes.size());
     for (const auto* spin : sizes) values.push_back(spin->value());
     auto feature = make(values);
+    feature->setVector("basePoint", math::Vec3(atX->value(), atY->value(), atZ->value()));
+    feature->setVector("axisDirection", chosenDirection(axis));
     feature->setOperation(FeatureForm::operation(result));
     addModelFeature(std::move(feature), verb);
 }
@@ -3738,13 +3748,20 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
-    double distance = 10.0;
-    doc::BodyOperation operation = doc::BodyOperation::Join;
-    if (!askForBodyFeature(tr("Extrude"), tr("Distance:"), distance, 0.01, 1e6, 2, operation)) {
-        return;
-    }
+    FeatureForm form(this, tr("Extrude"));
+    auto* size = form.number(QStringLiteral("size"), tr("Distance:"), 10.0, 0.01, 1e6, 2);
+    auto* goes = form.choice(QStringLiteral("extent"), tr("Goes:"),
+                             {tr("To the distance"), tr("Both ways, half each"), tr("Through all"),
+                              tr("Through all, both ways")});
+    auto* way = form.choice(QStringLiteral("way"), tr("Direction:"),
+                            {tr("Out of the sketch"), tr("Reversed")});
+    auto* result = form.operationChoice(proposedOperation());
+    if (!form.exec()) return;
+    const double distance = size->value();
+    const auto extent = static_cast<doc::ExtrudeFeature::Extent>(goes->currentIndex());
+    const doc::BodyOperation operation = FeatureForm::operation(result);
 
-    math::Vec3 direction = sketch->plane().normal();
+    const math::Vec3 direction = sketch->plane().normal() * (way->currentIndex() == 1 ? -1.0 : 1.0);
 
     // Validate the profile BEFORE mutating the document: a failed extrude
     // must not leave a wrapper sketch or a dead feature behind.
@@ -3757,6 +3774,7 @@ void MainWindow::onExtrudeSketch() {
     }
 
     auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
+    feature->setExtent(extent);
     feature->setOperation(operation);
     if (!addModelFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
         return;
@@ -3993,6 +4011,45 @@ void MainWindow::onDraft() {
 // Slots -- Patterns
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// The features a pattern can repeat instead of the whole part: those that
+/// add or cut material, active in the build.
+std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree) {
+    std::vector<const doc::Feature*> out;
+    const int last = tree.rollbackIndex() >= 0 ? tree.rollbackIndex()
+                                               : static_cast<int>(tree.featureCount()) - 1;
+    for (int i = 0; i <= last; ++i) {
+        const doc::Feature* feature = tree.feature(static_cast<size_t>(i));
+        if (feature && feature->createsNewBody() && !feature->isSuppressed())
+            out.push_back(feature);
+    }
+    return out;
+}
+
+/// A checklist of @p features for a pattern to repeat; the ids of those
+/// checked are read with checkedTargets().
+QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features) {
+    std::vector<std::pair<QString, QString>> items;
+    for (const doc::Feature* feature : features) {
+        items.emplace_back(QString::fromStdString(feature->name()),
+                           QString::fromStdString(feature->featureID()));
+    }
+    return form.checklist(QStringLiteral("features"),
+                          MainWindow::tr("Repeat only (none: the whole part):"), items);
+}
+
+std::vector<std::string> checkedTargets(const QListWidget* list,
+                                        const std::vector<const doc::Feature*>& features) {
+    std::vector<std::string> ids;
+    for (const int row : FeatureForm::checkedRows(list)) {
+        ids.push_back(features[static_cast<size_t>(row)]->featureID());
+    }
+    return ids;
+}
+
+}  // namespace
+
 void MainWindow::onLinearPattern() {
     const QString verb = tr("Linear Pattern");
     if (!requireBody(verb)) return;
@@ -4003,11 +4060,14 @@ void MainWindow::onLinearPattern() {
     auto* spacing = form.number(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
     auto* count =
         form.count(QStringLiteral("count"), tr("Instances:"), 3, 2, doc::kMaxPatternCount);
+    const auto repeatable = repeatableFeatures(m_document->featureTree());
+    auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
 
-    addModelFeature(doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
-                                                    count->value()),
-                    verb);
+    auto pattern = doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
+                                                   count->value());
+    pattern->setTargets(checkedTargets(targets, repeatable));
+    addModelFeature(std::move(pattern), verb);
 }
 
 void MainWindow::onCircularPattern() {
@@ -4020,6 +4080,8 @@ void MainWindow::onCircularPattern() {
     auto* count =
         form.count(QStringLiteral("count"), tr("Instances:"), 4, 2, doc::kMaxPatternCount);
     auto* total = form.number(QStringLiteral("angle"), tr("Over (degrees):"), 360.0, 1.0, 360.0, 2);
+    const auto repeatable = repeatableFeatures(m_document->featureTree());
+    auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
 
     // A full turn spaces the instances evenly around it; a partial one puts
@@ -4027,9 +4089,10 @@ void MainWindow::onCircularPattern() {
     const int n = count->value();
     const double degrees = total->value();
     const double step = degrees >= 360.0 ? 360.0 / n : degrees / (n - 1);
-    addModelFeature(doc::PatternFeature::makeCircular(math::Vec3::Zero, chosenDirection(axis),
-                                                      step * std::numbers::pi / 180.0, n),
-                    verb);
+    auto pattern = doc::PatternFeature::makeCircular(math::Vec3::Zero, chosenDirection(axis),
+                                                     step * std::numbers::pi / 180.0, n);
+    pattern->setTargets(checkedTargets(targets, repeatable));
+    addModelFeature(std::move(pattern), verb);
 }
 
 // ---------------------------------------------------------------------------
@@ -4092,11 +4155,14 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                 break;
             }
             case Kind::Choice: {
-                // The only choice is a Boolean's operation: 0 Union, 1
-                // Subtract, 2 Intersect.
-                auto* choice = form.choice(key, parameterLabel(name) + QStringLiteral(":"),
-                                           {tr("Union"), tr("Subtract"), tr("Intersect")});
-                choice->setCurrentIndex(std::clamp(static_cast<int>(std::lround(value)), 0, 2));
+                QStringList names;
+                for (const auto& choiceName : feat->parameterChoices(name)) {
+                    names << tr(choiceName.c_str());
+                }
+                auto* choice = form.choice(key, parameterLabel(name) + QStringLiteral(":"), names);
+                choice->setCurrentIndex(
+                    std::clamp(static_cast<int>(std::lround(value)), 0,
+                               std::max(0, static_cast<int>(names.size()) - 1)));
                 fields[name] = {[choice] { return static_cast<double>(choice->currentIndex()); },
                                 [choice, shown = choice->currentIndex()] {
                                     return choice->currentIndex() != shown;

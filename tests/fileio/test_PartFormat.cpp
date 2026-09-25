@@ -1052,3 +1052,43 @@ TEST(PartFormatTest, TheRollbackPointIsKept) {
         << error;
     EXPECT_EQ(odd.featureTree().rollbackIndex(), -1);
 }
+
+// An extrusion's extent, a pattern's features and a primitive's placement are
+// saved (Phase 134).
+TEST(PartFormatTest, ExtentsPatternedFeaturesAndPlacementsAreKept) {
+    Document doc;
+    auto box = PrimitiveFeature::makeBox(10, 10, 10);
+    box->setVector("basePoint", Vec3(1, 2, 3));
+    box->setVector("axisDirection", Vec3(0, 1, 0));
+    doc.featureTree().addFeature(std::move(box));
+    auto square = std::make_shared<Sketch>();
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(1, 0), Vec2(1, 1)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(1, 1), Vec2(0, 1)));
+    square->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 1), Vec2(0, 0)));
+    doc.addSketch(square);
+    auto cut = std::make_unique<ExtrudeFeature>(square, Vec3(0, 0, 1), 1.0);
+    cut->setExtent(ExtrudeFeature::Extent::ThroughAllBoth);
+    const std::string cutId = cut->featureID();
+    doc.featureTree().addFeature(std::move(cut));
+    auto pattern = PatternFeature::makeLinear(Vec3(1, 0, 0), 3.0, 2);
+    pattern->setTargets({cutId});
+    doc.featureTree().addFeature(std::move(pattern));
+
+    Document back;
+    std::string error;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(doc, false), back, &error))
+        << error;
+    ASSERT_EQ(back.featureTree().featureCount(), 3u);
+    const auto* placed = dynamic_cast<const PrimitiveFeature*>(back.featureTree().feature(0));
+    ASSERT_NE(placed, nullptr);
+    EXPECT_NEAR((placed->basePoint() - Vec3(1, 2, 3)).length(), 0.0, 1e-12);
+    EXPECT_NEAR((placed->axisDirection() - Vec3(0, 1, 0)).length(), 0.0, 1e-12);
+    const auto* through = dynamic_cast<const ExtrudeFeature*>(back.featureTree().feature(1));
+    ASSERT_NE(through, nullptr);
+    EXPECT_EQ(through->extent(), ExtrudeFeature::Extent::ThroughAllBoth);
+    const auto* repeated = dynamic_cast<const PatternFeature*>(back.featureTree().feature(2));
+    ASSERT_NE(repeated, nullptr);
+    EXPECT_EQ(repeated->targets(), std::vector<std::string>{cutId});
+}

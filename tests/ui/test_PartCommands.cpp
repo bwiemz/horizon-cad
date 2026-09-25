@@ -179,3 +179,62 @@ TEST(PartCommandsTest, ThePartIsRolledBackFromTheTree) {
     EXPECT_EQ(doc.featureTree().rollbackIndex(), -1);
     EXPECT_NEAR(partVolume(doc), 1000.0 - 8.0 * 8.0 * 9.0, 1e-6);
 }
+
+// -- Extrude and pattern options (Phase 134) ----------------------------------
+
+// A hole cut through all, reversed down into a box from a sketch on its top,
+// then repeated by a pattern of that cut alone.
+TEST(PartCommandsTest, AHoleThroughAllIsRepeatedByAPattern) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    // The face's middle is the sketch's origin: a 2 x 2 square near a corner.
+    rectangle(drive, w, Vec2(-4, -4), Vec2(-2, -2));
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers()
+            .number(QStringLiteral("size"), 1.0)
+            .choose(QStringLiteral("extent"), QStringLiteral("Through all"))
+            .choose(QStringLiteral("way"), QStringLiteral("Reversed"))
+            .combine(hz::doc::BodyOperation::Cut));
+    ASSERT_EQ(doc.featureTree().featureCount(), 2u)
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_NEAR(partVolume(doc), 1000.0 - 40.0, 1e-6) << "through the whole box, not 1 deep";
+
+    run(w, "action_pattern-linear", QStringLiteral("Linear Pattern"),
+        FormAnswers()
+            .choose(QStringLiteral("direction"), QStringLiteral("+X"))
+            .number(QStringLiteral("spacing"), 3.0)
+            .number(QStringLiteral("count"), 3)
+            .check(QStringLiteral("features"), {QStringLiteral("Extrude")}));
+    ASSERT_EQ(doc.featureTree().featureCount(), 3u)
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_NEAR(partVolume(doc), 1000.0 - 3 * 40.0, 1e-6) << "three holes, one box";
+}
+
+// A cylinder stood on its side at a point, from the Cylinder form.
+TEST(PartCommandsTest, APrimitiveIsPlacedFromItsForm) {
+    MainWindow w;
+    auto& doc = *w.activeDocument();
+    run(w, "action_cylinder", QStringLiteral("Cylinder"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 1.0)
+            .number(QStringLiteral("size1"), 6.0)
+            .number(QStringLiteral("atX"), 5.0)
+            .choose(QStringLiteral("axis"), QStringLiteral("+Y")));
+    ASSERT_NE(doc.solid(), nullptr) << w.statusBar()->currentMessage().toStdString();
+    double hiY = -1e9;
+    double loX = 1e9;
+    for (const auto& v : doc.solid()->vertices()) {
+        hiY = std::max(hiY, v.point.y);
+        loX = std::min(loX, v.point.x);
+    }
+    EXPECT_NEAR(hiY, 6.0, 1e-9) << "its length along y";
+    EXPECT_NEAR(loX, 4.0, 1e-9) << "its axis through x = 5";
+}
