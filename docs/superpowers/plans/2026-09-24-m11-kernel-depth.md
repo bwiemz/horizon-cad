@@ -18,8 +18,8 @@ corrected two records:
 
 **Old files keep working.** A feature records its naming scheme. A file
 without one loads as `Positional` (NativeFormat.cpp), so every new name below
-applies to `FromGeometry` features only, which is what new features are. A
-saved `"box/edge0"` still finds `box/edge0`.
+applies to `Stable` features only, which is what new features are. A saved
+`"box/edge0"` still finds `box/edge0`.
 
 ## Phase 139: Stable names
 
@@ -63,10 +63,26 @@ saved `"box/edge0"` still finds `box/edge0`.
   seams.
 - **A pattern whose copies meet joins them at Stable names.** It joined them
   by position, which lost every name.
+- **After review:**
+  - A fillet's or chamfer's faces are one face for each curve they round
+    (`nameBlendFaces`), `<feature>/fillet/<curve>/facet:<k>`. Named after
+    each chord and band, a rounded cylinder rim was 256 faces. The edges
+    between them carried the chord's `/chord:`, and `logicalEdge` then cut
+    it from the wrong place: some names covered two or three edges.
+  - A piece of a facet that a Boolean split belongs to its face,
+    `<face>/facet:<k>/piece:<n>` as well as
+    `<face>/facet:<k>/pattern:<n>/piece:<j>`. The pieces were grouped by piece
+    number across facets, so a cylinder cut in two was two faces, each made
+    of halves from both sides.
+  - An older loft's twisted level has always been cut into triangles named
+    `<side>/facet:<k>`, in every scheme. The UI now groups them as their
+    side. That is kept: each triangle carries the side's ruled patch as its
+    ideal, so a mate on the side finds the same frame. Renaming them would
+    orphan references saved in older files.
 
 ### Tests
 
-11 new, 1 changed:
+15 new, 1 changed:
 - Integration (PersistentNaming):
   - two primitives named apart, with a fillet on the second by name;
   - an older (positional) box keeps `box/top`;
@@ -78,7 +94,10 @@ saved `"box/edge0"` still finds `box/edge0`.
     Pappus's theorem;
   - revolve faces named after their profile, stable across the facet count;
   - sweep and loft named after their profile, including a turned ring;
-  - a pattern copy's curves are its own.
+  - a pattern copy's curves are its own;
+  - a rounded and a chamfered rim are one face, with one curve each side;
+  - a cylinder cut in two is one side, and so is a pattern copy's;
+  - an older loft's twisted side is one face, one ideal.
 - Window: a click on a cylinder's rim picks the whole curve, and Fillet
   rounds all of it.
 - Changed: the sides-by-source test now checks both schemes' names.
@@ -87,8 +106,8 @@ saved `"box/edge0"` still finds `box/edge0`.
 
 - A shell's outer faces are renamed by position (`outer_wall_<i>`), not
   kept from its input: it rebuilds the part as a ring stack.
-- A face split into pieces by a Boolean groups its pieces by piece number
-  across facets (`<face>/piece:<k>`), which approximates separate regions.
+- A flat face a Boolean splits into separate regions keeps a name for each,
+  `<face>/piece:<k>`, numbered in storage order.
 - Vertices are still unnamed.
 
 ## Phase 140: Fillet and chamfer at any angle
