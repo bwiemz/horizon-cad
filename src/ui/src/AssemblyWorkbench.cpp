@@ -178,6 +178,7 @@ void AssemblyWorkbench::recordAssemblyEdit(doc::AssemblyState before, bool wasDi
 }
 
 void AssemblyWorkbench::onInsertComponent() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag (Phase 158)
     if (!assembly()) {
         m_host.showStatus(tr("Insert Component is only available in an assembly document"));
         return;
@@ -595,6 +596,7 @@ void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
 }
 
 void AssemblyWorkbench::onAddMate() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag (Phase 158)
     if (!assembly()) {
         m_host.showStatus(tr("Add Mate is only available in an assembly document"));
         return;
@@ -756,6 +758,9 @@ void AssemblyWorkbench::onAddMate() {
 }
 
 bool AssemblyWorkbench::editAssembly(const QString& verb, const std::function<bool()>& edit) {
+    // Not under a drag (a shortcut while the mouse is held): it is put back
+    // first, or its release would record over this edit.
+    m_host.viewport().cancelComponentDrag();
     const bool wasDirty = assembly()->isDirty();
     doc::AssemblyState before = assembly()->snapshot();
     const bool made = edit();

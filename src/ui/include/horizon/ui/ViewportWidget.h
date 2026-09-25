@@ -231,6 +231,10 @@ public:
     void setComponentDragger(ComponentDragger* dragger) { m_componentDragger = dragger; }
     /// A component is being dragged.
     bool draggingComponent() const { return m_componentDrag == ComponentDrag::Dragging; }
+    /// Give up a component drag under way, or armed: everything put back.
+    /// The left button's release, when it comes, is still the drag's. For
+    /// what must not happen under a drag (an undo, an edit of the assembly).
+    void cancelComponentDrag();
     /// The chosen component's triad as this view sees it now (Phase 158b);
     /// nothing when no component is chosen.
     std::optional<Triad> triad() const;

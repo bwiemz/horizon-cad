@@ -648,8 +648,18 @@ void ViewportWidget::paintGL() {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
-    m_viewCubeCapturedPress = false;
-    m_componentDrag = ComponentDrag::None;
+    // Another button while a component drag holds the left one (Phase 158):
+    // the drag is given up, everything put back, and this press goes
+    // nowhere. The left button's release is still the drag's: the tool never
+    // saw its press.
+    if (event->button() != Qt::LeftButton && m_componentDrag != ComponentDrag::None) {
+        cancelComponentDrag();
+        return;
+    }
+    if (event->button() == Qt::LeftButton) {
+        m_viewCubeCapturedPress = false;
+        m_componentDrag = ComponentDrag::None;
+    }
     // A left-click on the orientation gizmo snaps the view instead of drawing.
     if (event->button() == Qt::LeftButton) {
         const ViewCube::Region region =
@@ -689,6 +699,13 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
         }
     }
     m_inputHandler.handleMousePress(event, this);
+}
+
+void ViewportWidget::cancelComponentDrag() {
+    if (m_componentDrag == ComponentDrag::None) return;
+    if (m_componentDrag == ComponentDrag::Dragging) m_componentDragger->cancelDrag();
+    m_componentDrag = ComponentDrag::Refused;  // the release that follows is still its
+    update();
 }
 
 std::optional<Triad> ViewportWidget::triad() const {
@@ -822,9 +839,7 @@ void ViewportWidget::wheelEvent(QWheelEvent* event) {
 void ViewportWidget::keyPressEvent(QKeyEvent* event) {
     // Escape during a component drag puts everything back (Phase 158).
     if (event->key() == Qt::Key_Escape && m_componentDrag != ComponentDrag::None) {
-        if (m_componentDrag == ComponentDrag::Dragging) m_componentDragger->cancelDrag();
-        m_componentDrag = ComponentDrag::Refused;  // the release that follows is still its
-        update();
+        cancelComponentDrag();
         return;
     }
     m_inputHandler.handleKeyPress(event, this);

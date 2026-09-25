@@ -441,6 +441,14 @@ public:
     void releaseAt(const QPointF& at) {
         sendAt(QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     }
+    /// @p button pressed at a point on screen while the left one is held.
+    void pressAlsoAt(const QPointF& at, Qt::MouseButton button) {
+        sendAt(QEvent::MouseButtonPress, at, button, Qt::LeftButton | button, Qt::NoModifier);
+    }
+    /// @p button released at a point on screen, the left one still held.
+    void releaseAlsoAt(const QPointF& at, Qt::MouseButton button) {
+        sendAt(QEvent::MouseButtonRelease, at, button, Qt::LeftButton, Qt::NoModifier);
+    }
 
     void key(Qt::Key key) {
         QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);

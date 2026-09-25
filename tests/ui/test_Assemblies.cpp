@@ -915,6 +915,49 @@ TEST(AssembliesTest, EscapePutsADragBackAndAClickChooses) {
     expectAt(*assembly.component(lid), Vec3(12, 0, 10), "not moved");
 }
 
+// Another button pressed during a drag gives the drag up: everything back,
+// and the left button's release after it chooses nothing and records
+// nothing. An undo during a drag puts the drag back first, and its release
+// records nothing over the undo, which can still be redone.
+TEST(AssembliesTest, ASecondButtonOrAnUndoDuringADragPutsItBack) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    auto& undo = w.activeDocument()->undoStack();
+    const size_t steps = undo.undoCount();
+    auto& view = drive.viewport();
+    lookFromAbove(view);
+    view.clearModelSelection();
+
+    const QPointF grab = view.projectToScreen(Vec3(17, 5, 20));
+    const QPointF away = view.projectToScreen(Vec3(37, 25, 20));
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    drive.pressAlsoAt(away, Qt::MiddleButton);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "put back");
+    drive.releaseAlsoAt(away, Qt::MiddleButton);
+    drive.dragAt(grab);
+    drive.releaseAt(grab);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "and left there");
+    EXPECT_TRUE(view.modelSelection().empty()) << "the release chose nothing";
+    EXPECT_EQ(undo.undoCount(), steps);
+
+    // Undo mid-drag: the move stackTwo made is undone, not recorded over.
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    trigger(w, "action_undo");
+    EXPECT_FALSE(view.draggingComponent());
+    drive.releaseAt(away);
+    EXPECT_EQ(undo.undoCount(), steps - 1) << "the undo, and no drag step";
+    EXPECT_TRUE(undo.canRedo()) << "what was undone can be redone";
+}
+
 // Phase 158b: the chosen component's triad. Dragged by its x arrow, the lid
 // moves along x only, however the cursor strays; by its z ring, it turns
 // about z through its middle. Nothing chosen, no triad.

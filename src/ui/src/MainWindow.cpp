@@ -2966,6 +2966,9 @@ void MainWindow::onRedo() {
 }
 
 void MainWindow::undoOrRedo(bool undo) {
+    // A drag under way is put back first (Phase 158): its release would
+    // record a step from a snapshot taken before this undo, and undo it.
+    m_viewport->cancelComponentDrag();
     const uint64_t revision = m_document->featureTree().revision();
     if (undo) {
         m_document->undoStack().undo();
