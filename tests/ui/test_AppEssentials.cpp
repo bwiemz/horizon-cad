@@ -28,6 +28,7 @@
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/ui/MainWindow.h"
@@ -209,6 +210,7 @@ TEST(AppEssentialsTest, PreferencesAreKeptAndPutIntoEffect) {
         auto* unit = dialog->findChild<QComboBox*>(QStringLiteral("lengthUnit"));
         unit->setCurrentIndex(unit->findData(QStringLiteral("in")));
         dialog->findChild<QSpinBox*>(QStringLiteral("decimals"))->setValue(2);
+        dialog->findChild<QSpinBox*>(QStringLiteral("undoLimit"))->setValue(50);
         answered = true;
         dialog->accept();
     });
@@ -221,6 +223,8 @@ TEST(AppEssentialsTest, PreferencesAreKeptAndPutIntoEffect) {
     EXPECT_EQ(saved.snapPixels, 20);
     EXPECT_EQ(saved.lengthUnit, QStringLiteral("in"));
     EXPECT_EQ(Preferences::current().decimals, 2);
+    EXPECT_EQ(saved.undoLimit, 50);
+    EXPECT_EQ(w.activeDocument()->undoStack().limit(), 50u) << "the open document keeps 50 steps";
 
     auto* viewport = w.findChild<hz::ui::ViewportWidget*>();
     ASSERT_NE(viewport, nullptr);

@@ -1,5 +1,7 @@
 #include "horizon/document/UndoStack.h"
 
+#include <cstddef>
+
 namespace hz::doc {
 
 UndoStack::UndoStack() = default;
@@ -14,7 +16,25 @@ void UndoStack::push(std::unique_ptr<Command> cmd) {
     }
     m_undoStack.push_back(std::move(cmd));
     m_redoStack.clear();
+    trim();
     notifyChanged();
+}
+
+void UndoStack::setLimit(std::size_t steps) {
+    m_limit = steps;
+    trim();
+}
+
+void UndoStack::trim() {
+    if (m_limit == 0 || m_undoStack.size() <= m_limit) return;
+    const std::size_t dropped = m_undoStack.size() - m_limit;
+    m_undoStack.erase(m_undoStack.begin(),
+                      m_undoStack.begin() + static_cast<std::ptrdiff_t>(dropped));
+    // The saved state, as deep as it was less what went: one among what went
+    // cannot be undone back to.
+    if (m_cleanIndex != kCleanUnreachable) {
+        m_cleanIndex = m_cleanIndex >= dropped ? m_cleanIndex - dropped : kCleanUnreachable;
+    }
 }
 
 void UndoStack::undo() {

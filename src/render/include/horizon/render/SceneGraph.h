@@ -64,6 +64,11 @@ public:
     bool hasMesh() const { return m_mesh != nullptr; }
     const MeshData& mesh() const { return *m_mesh; }
     void setMesh(std::unique_ptr<MeshData> mesh) { m_mesh = std::move(mesh); }
+    /// Show @p mesh, shared with whatever else shows it (the instances of an
+    /// assembly's part, a tab's model): it is not copied, and the GPU holds
+    /// it once.
+    void shareMesh(std::shared_ptr<const MeshData> mesh) { m_mesh = std::move(mesh); }
+    const std::shared_ptr<const MeshData>& sharedMesh() const { return m_mesh; }
 
     // Material
     const Material& material() const { return m_material; }
@@ -84,7 +89,7 @@ private:
     uint32_t m_id;
     uint64_t m_ownerId = 0;
 
-    std::unique_ptr<MeshData> m_mesh;
+    std::shared_ptr<const MeshData> m_mesh;
     Material m_material;
 
     SceneNode* m_parent = nullptr;
@@ -119,6 +124,8 @@ public:
 
     /// The ID of every node in the graph, at any depth.
     std::unordered_set<uint32_t> nodeIds() const;
+    /// The meshes of every node, children included.
+    std::unordered_set<const MeshData*> meshes() const;
 
 private:
     std::vector<std::shared_ptr<SceneNode>> m_nodes;

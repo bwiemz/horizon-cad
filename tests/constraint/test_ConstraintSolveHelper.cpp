@@ -77,7 +77,10 @@ TEST(ConstraintSolveHelper, SolveReturnsSnapshotsForUndoCommand) {
     auto result = doc::ConstraintSolveHelper::solveAndApply(doc, sys);
 
     EXPECT_TRUE(result.success);
-    EXPECT_FALSE(result.snapshots.empty());
+    // Only what the solve moved is kept for undo (Phase 138): line 1 is held
+    // where it is. Every constrained entity was cloned, twice, every time.
+    ASSERT_EQ(result.snapshots.size(), 1u);
+    EXPECT_EQ(result.snapshots[0].entityId, line2->id());
 
     // Each snapshot should have before and after states.
     for (const auto& snap : result.snapshots) {

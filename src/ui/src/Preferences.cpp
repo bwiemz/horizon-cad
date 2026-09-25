@@ -29,6 +29,8 @@ Preferences Preferences::load() {
     Preferences p;
     p.autosaveSeconds = std::clamp(
         settings.value(QStringLiteral("autosave/intervalSeconds"), 120).toInt(), 0, 24 * 3600);
+    p.undoLimit =
+        std::clamp(settings.value(QStringLiteral("edit/undoLimit"), 1000).toInt(), 0, 100000);
     p.language = settings.value(QStringLiteral("ui/language")).toString();
     const double grid = settings.value(QStringLiteral("drafting/gridSpacing"), 1.0).toDouble();
     p.gridSpacing = std::isfinite(grid) && grid > 0.0 ? grid : 1.0;
@@ -50,6 +52,7 @@ Preferences Preferences::load() {
 void Preferences::save() const {
     QSettings settings;
     settings.setValue(QStringLiteral("autosave/intervalSeconds"), autosaveSeconds);
+    settings.setValue(QStringLiteral("edit/undoLimit"), undoLimit);
     // No language stored means "follow the system" (see main.cpp).
     if (language.isEmpty()) {
         settings.remove(QStringLiteral("ui/language"));

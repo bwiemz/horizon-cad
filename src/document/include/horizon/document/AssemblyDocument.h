@@ -36,8 +36,9 @@ struct ComponentInstance {
     bool suppressed = false;
 
     ComponentState state = ComponentState::Lightweight;
-    std::shared_ptr<geo::MeshData> cachedMesh;  ///< Lightweight display mesh.
-    std::shared_ptr<Document> resolvedPart;     ///< Non-null when Resolved.
+    /// Display mesh: shared by every instance of the part (DocumentManager).
+    std::shared_ptr<const geo::MeshData> cachedMesh;
+    std::shared_ptr<Document> resolvedPart;  ///< Non-null when Resolved.
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).

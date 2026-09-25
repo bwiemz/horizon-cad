@@ -29,6 +29,14 @@ PreferencesDialog::PreferencesDialog(const Preferences& prefs, const QStringList
     m_autosaveMinutes->setValue((prefs.autosaveSeconds + 59) / 60);
     generalForm->addRow(tr("Autosave every:"), m_autosaveMinutes);
 
+    m_undoLimit = new QSpinBox(general);
+    m_undoLimit->setObjectName(QStringLiteral("undoLimit"));
+    m_undoLimit->setRange(0, 100000);
+    m_undoLimit->setSpecialValueText(tr("No limit"));
+    m_undoLimit->setValue(prefs.undoLimit);
+    m_undoLimit->setToolTip(tr("How many steps each document keeps to undo; the oldest go first"));
+    generalForm->addRow(tr("Undo steps:"), m_undoLimit);
+
     m_language = new QComboBox(general);
     m_language->setObjectName(QStringLiteral("language"));
     m_language->addItem(tr("System default"), QString());
@@ -95,6 +103,7 @@ PreferencesDialog::PreferencesDialog(const Preferences& prefs, const QStringList
 Preferences PreferencesDialog::preferences() const {
     Preferences p = m_base;
     p.autosaveSeconds = m_autosaveMinutes->value() * 60;
+    p.undoLimit = m_undoLimit->value();
     p.language = m_language->currentData().toString();
     p.gridSpacing = m_gridSpacing->value();
     p.snapPixels = m_snapPixels->value();

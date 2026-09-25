@@ -112,4 +112,19 @@ std::unordered_set<uint32_t> SceneGraph::nodeIds() const {
     return ids;
 }
 
+std::unordered_set<const MeshData*> SceneGraph::meshes() const {
+    std::unordered_set<const MeshData*> found;
+    std::vector<const SceneNode*> pending;
+    pending.reserve(m_nodes.size());
+    for (const auto& node : m_nodes) pending.push_back(node.get());
+    while (!pending.empty()) {
+        const SceneNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->hasMesh()) found.insert(node->sharedMesh().get());
+        for (const auto& child : node->children()) pending.push_back(child.get());
+    }
+    return found;
+}
+
 }  // namespace hz::render

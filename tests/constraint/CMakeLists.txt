@@ -2,6 +2,7 @@ add_executable(hz_constraint_tests
     test_ParameterTable.cpp
     test_SketchSolver.cpp
     test_Constraints.cpp
+    test_DOFAnalysis.cpp
 )
 
 target_link_libraries(hz_constraint_tests

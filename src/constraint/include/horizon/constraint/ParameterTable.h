@@ -1,9 +1,11 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "horizon/constraint/GeometryRef.h"
@@ -46,6 +48,9 @@ public:
 
     /// Write solved parameters back to entities.
     void applyToEntities(std::vector<std::shared_ptr<draft::DraftEntity>>& entities) const;
+    /// Write @p entity's parameters back to it; nothing for one not
+    /// registered.
+    void applyToEntity(draft::DraftEntity& entity) const;
 
     /// Build parameter table from entities involved in constraints.
     static ParameterTable buildFromEntities(
@@ -54,6 +59,10 @@ public:
 
     /// Check if an entity is registered.
     bool hasEntity(uint64_t entityId) const;
+
+    /// Entity @p entityId's parameters: the first one's index and how many
+    /// there are; {0, 0} when it is not registered.
+    std::pair<int, int> parameterRange(uint64_t entityId) const;
 
 private:
     struct EntityParams {
@@ -65,6 +74,9 @@ private:
 
     Eigen::VectorXd m_values;
     std::vector<EntityParams> m_entityParams;
+    /// Entity id -> its entry in m_entityParams (the first, if registered
+    /// twice): lookups were a search of them all, for every constraint.
+    std::unordered_map<uint64_t, std::size_t> m_byId;
 
     const EntityParams* findEntityParams(uint64_t entityId) const;
 };

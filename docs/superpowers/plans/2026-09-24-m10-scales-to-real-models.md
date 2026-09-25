@@ -243,29 +243,96 @@ withdrawal here, which keeps what the old refusal did.
 - A refused feature is built away again: two builds for a refusal, as
   before, one for an add.
 
-## Phase 138: Bounded memory (planned)
+## Phase 138: Bounded memory
 
+### As built
+
+- **The DOF analysis, sparse and by cluster** (`SketchSolver::analyzeDOF`).
+  - It built the whole Jacobian dense (m × n) and took its SVD after every
+    edit. For a chain of 400 lines that was 33 s in a Debug build; for 3,000
+    constrained lines the matrix alone would be 860 MB.
+  - Now each constraint's Jacobian rows are taken in its own entities'
+    columns only, into a small scratch buffer, and their non-zeros kept.
+  - Parameters that one equation ties together are joined (union-find), by
+    equation rather than by constraint: a coincidence's x and y fall in two
+    clusters, so a chain of lines breaks into many small clusters.
+  - Each cluster's rank comes from a dense SVD when it has up to 96
+    parameters, and a sparse QR (COLAMD) above that.
+  - The 400-line chain now takes 7 ms, and 3,000 lines with 12,000
+    parameters take 84 ms, both in Debug.
+  - **Each cluster has its own status.** An over-constrained corner no
+    longer turns the whole sketch red, nor a free one the whole sketch
+    green. An entity is:
+    - over-constrained when an equation on it is in an over-constrained
+      cluster, or cannot be met;
+    - free when a parameter of it is tied by nothing, or is in a cluster
+      with freedom left;
+    - fully constrained otherwise.
+  - The freedom left matches the whole Jacobian's rank, tested on chains of
+    every length and mix of constraints.
+  - `ParameterTable` now looks entities up in a hash (it searched them
+    all), and `applyToEntities` makes one pass, not one per entity.
+- **Off the paint path.** `paintGL` no longer runs the analysis. When it is
+  due (`ViewportRenderer::dofStale`), a paint queues it to run just after,
+  and paints again. The frame shows the change at once; the colours follow.
 - **An undo limit.**
-  - `UndoStack::setLimit` by count, from a preference, with a sensible
-    default.
-  - The oldest steps are dropped. When the saved state's step is dropped,
-    the document stays modified until the next save.
-- **The DOF analysis off the paint path.**
-  - `recomputeDOF` runs the solver's dense SVD inside `paintGL`, after
-    every edit.
-  - Run it after a change, off the paint path: sparse where the system is
-    large, on a worker past a size. The view draws the last result.
-- **Moves that clone only what the solve changes.** Move commands snapshot
-  every constrained entity (`ConstraintSolveHelper`). Keep only those the
-  solve moved.
-- **Shared meshes between assembly instances.** Each component's scene node
-  copies its part's mesh. Instances of one part should share one mesh.
+  - `UndoStack::setLimit` drops the oldest steps past the limit, at once
+    and on every push. A saved state among the dropped steps can no longer
+    be reached, so the document stays modified.
+  - Preferences ▸ Undo steps: default 1,000, 0 for no limit. It applies to
+    every open document and to each new one.
+- **Solves keep only what they moved.**
+  - `ConstraintSolveHelper::solveAndApply` cloned every constrained entity
+    before and after every solve, and each move kept both copies for undo.
+    Now it compares the parameters before and after (within rounding) and
+    clones, applies and re-indexes only the entities the solve moved.
+  - Its restore on a failed solve went. The entities are untouched until a
+    solve succeeds, so it had nothing to restore.
+  - Its after-snapshot loop, quadratic in the entities, went too.
+- **Shared meshes.**
+  - A `SceneNode` shows a `shared_ptr<const MeshData>` (`shareMesh`).
+  - `GLRenderer` keeps one GPU buffer for each mesh, not each node. Each
+    entry holds its mesh, so the address it is found by cannot become
+    another mesh's while the entry exists.
+  - Every instance of an assembly's part shares one mesh, tessellated once
+    (`DocumentManager::sharedMesh`, weak, versioned by the part's build or
+    the file's time). Each instance had tessellated its own, and the scene
+    copied it again for every node.
+  - A part tab's mesh (Phase 137) is shown as it is, not copied.
 - **Released parts.**
-  - `DocumentManager` keeps every resolved part for good.
-  - Hold them weakly, so a part no assembly uses is released.
-- **Tests:**
-  - the undo stack stays within its limit and the modified state stays
-    right;
-  - the analysis does not run in a paint;
-  - instances share a mesh;
-  - a part is released when no assembly holds it.
+  - A part opened only for an assembly's components is held by them alone.
+    It is found by its path while one holds it, and released when none
+    does.
+  - It is no longer among `documents()`. `DocumentManager` kept every
+    resolved part for good.
+  - Opened in a tab too, it is kept. Its file is still watched for changes.
+
+### Tests
+
+10 new or extended:
+- The DOF analysis:
+  - each cluster's own status: pinned, free and over-constrained lines
+    side by side;
+  - the freedom agrees with the whole Jacobian's rank, over 24
+    configurations;
+  - 3,000 lines, timed.
+- `dofStale` before and after an edit.
+- The undo limit: the oldest steps go, and the saved state stays right.
+  The preference is kept and applied to the open document.
+- A solve keeps only the moved entity.
+- A shared mesh is listed once by the scene.
+- Two instances of a part share its document and its mesh. The part is
+  released when they let go, and kept when a tab opens it (the unit test
+  and the multi-document integration test).
+- On a real OpenGL: the solid is drawn, and drawn again from the same mesh
+  after the scene is rebuilt.
+
+### Not done
+
+- The solver itself still builds a dense Jacobian and a dense QR every
+  iteration. A move in a large constrained sketch is slow; the solve should
+  go sparse the same way.
+- A single huge cluster (one densely constrained mechanism) still runs a
+  sparse QR on the GUI thread, after the paint rather than in it.
+- Assembly instances share a mesh, but each is still its own draw call;
+  instanced drawing (the InstanceBatcher) is not wired to the viewport.

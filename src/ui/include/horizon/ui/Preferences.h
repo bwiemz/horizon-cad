@@ -10,6 +10,7 @@ namespace hz::ui {
 /// changes how they are shown.
 struct Preferences {
     int autosaveSeconds = 120;                  ///< 0: autosave is off
+    int undoLimit = 1000;                       ///< steps kept to undo; 0: no limit
     QString language;                           ///< "" follows the system; applies on restart
     double gridSpacing = 1.0;                   ///< the grid snap's spacing, in millimetres
     int snapPixels = 10;                        ///< how far on screen a snap reaches

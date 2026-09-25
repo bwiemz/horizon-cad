@@ -86,9 +86,14 @@ TEST(RenderEfficiencyTest, TheConstraintAnalysisRunsWhenTheDocumentChangesNotEve
     for (int frame = 0; frame < 5; ++frame) renderer.recomputeDOF(&doc);
     EXPECT_EQ(renderer.dofComputations(), 1u) << "five frames, one analysis";
 
+    EXPECT_FALSE(renderer.dofStale(&doc));
+
     auto line = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 0), hz::math::Vec2(1, 0));
     doc.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(doc.draftDocument(), line));
+    // What a paint asks (Phase 138): the analysis then runs after it, not in it.
+    EXPECT_TRUE(renderer.dofStale(&doc)) << "an edit: the analysis is due";
     renderer.recomputeDOF(&doc);
+    EXPECT_FALSE(renderer.dofStale(&doc));
     renderer.recomputeDOF(&doc);
     EXPECT_EQ(renderer.dofComputations(), 2u) << "an edit, one more";
 
