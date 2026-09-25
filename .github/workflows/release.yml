@@ -97,6 +97,22 @@ jobs:
       - name: Test
         run: ctest --test-dir build/linux-release -C Release --output-on-failure
 
+      # What is shipped must start: a Qt with no platform plugin passed every
+      # headless test and could not open a window. As in CI.
+      - name: Start the application
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          Xvfb :99 -screen 0 1280x1024x24 &
+          xvfb=$!
+          sleep 2
+          set +e
+          DISPLAY=:99 QT_QPA_PLATFORM=xcb timeout 10 build/linux-release/src/app/horizon
+          status=$?
+          set -e
+          kill "${xvfb}"
+          echo "horizon: exit status ${status} (124 = still running after 10 s)"
+          test "${status}" -eq 124
+
       - name: Package a tarball
         run: cpack --config build/linux-release/CPackConfig.cmake -B dist -G TGZ
 
