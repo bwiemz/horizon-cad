@@ -28,13 +28,18 @@ struct RadiusStop {
 /// Creates a new solid with fillet faces replacing selected edges.
 ///
 /// The operation rebuilds the solid topology from scratch using Euler
-/// operators, inserting NURBS fillet faces at the specified edges.  Currently
-/// supports filleting straight edges of box-like (all-planar-face) solids.
+/// operators, inserting NURBS fillet faces at the specified edges: straight
+/// edges between planar faces, at any angle (Phase 140). The ball rolls in the
+/// wedge between the faces, touching each a setback r cot(theta/2) from the
+/// edge; a concave edge's blend adds material. A blend's end lies on the end
+/// face there, square to the edge or not. A part of several bodies is
+/// filleted body by body.
 ///
 /// Vertex blends (Phase 61): when exactly THREE selected edges meet at a
 /// common vertex with equal radii, the corner is blended with a spherical
 /// patch — each fillet is trimmed back by one radius and a sphere-octant face
-/// is stitched across the three trimmed ends.
+/// is stitched across the three trimmed ends. Square, convex corners only; an
+/// oblique or concave one is refused by name.
 ///
 /// Mitered chains (Phase 94): when exactly TWO selected edges meet at a
 /// three-edge vertex, share one face, and the unselected third edge joins
@@ -44,7 +49,8 @@ struct RadiusStop {
 /// plane, so the bands stay planar and the removed volume is exactly the
 /// blend cross-section times the length of its centroid path.  A turn too
 /// tight for the radius (a blend that would run backwards between its miter
-/// planes) is refused.
+/// planes) is refused, as is a chain across corners of different angles, or
+/// of chords that share no face (both sides faceted, a revolve's rim).
 class FilletOp {
 public:
     /// Chords across a blend arc.

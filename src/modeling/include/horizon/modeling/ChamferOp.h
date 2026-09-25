@@ -39,14 +39,12 @@ struct ChamferResult {
 /// The operation refuses to return a solid that fails `checkManifold()` or
 /// `GeometryValidator`, reporting the diagnostic in `errorMessage` instead.
 ///
+/// Straight edges of planar-faced solids at any angle, convex or concave (a
+/// concave chamfer adds material), and a part of several bodies (the sewer
+/// makes a shell of each). An end no other chamfer meets lies on the end face
+/// there, square to the edge or not (Phase 140).
+///
 /// Limitations:
-///  - straight edges of planar-faced solids, with orthogonal corners: the
-///    offset directions come from the adjacent faces' normals at their
-///    parameter midpoints, so an oblique corner's offsets do not land on the
-///    third face's plane.  Such input is refused by the geometric gate rather
-///    than silently mis-built;
-///  - convex corners: the corner wedge the clip runs on assumes the loop turns
-///    one way at the vertex;
 ///  - inner face loops (holes) are not carried through the rewrite.
 class ChamferOp {
 public:

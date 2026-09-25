@@ -416,7 +416,36 @@ static ChamferResult chamferImpl(const Solid& inputSolid, const std::vector<Topo
         const auto& ce = chamferEdges[i];
         SolidSewer::InputFace fd;
         fd.topoId = TopologyID::make(featureID, "chamfer").child(ce.originalEdge->topoId.tag(), 0);
-        fd.points = {ce.v1_offsetA, ce.v2_offsetA, ce.v2_offsetB, ce.v1_offsetB};
+        // An end no other chamfer meets lies on the end face there (the face
+        // at the vertex the chamfer does not run along), which need not be
+        // square to the edge: the section is carried along the edge onto its
+        // plane, where the clipped side faces put their corners.
+        const auto onEndFace = [&ce](const Vertex* v, Vec3& a, Vec3& b) {
+            const Face* end = nullptr;
+            int others = 0;
+            const HalfEdge* first = v->halfEdge;
+            const HalfEdge* he = first;
+            int guard = 0;
+            do {
+                if (he->face != nullptr && he->face != ce.faceA && he->face != ce.faceB) {
+                    end = he->face;
+                    ++others;
+                }
+                he = he->twin->next;
+            } while (he != first && ++guard < 64);
+            if (others != 1) return;
+            const Vec3 n = loopNormal(end);
+            const double denom = ce.edgeDir.dot(n);
+            if (n.length() < 1e-12 || std::abs(denom) < 1e-9) return;
+            for (Vec3* p : {&a, &b}) *p = *p + ce.edgeDir * ((v->point - *p).dot(n) / denom);
+        };
+        Vec3 a1 = ce.v1_offsetA;
+        Vec3 b1 = ce.v1_offsetB;
+        Vec3 a2 = ce.v2_offsetA;
+        Vec3 b2 = ce.v2_offsetB;
+        if (vertexChamfers[ce.v1->id].size() == 1) onEndFace(ce.v1, a1, b1);
+        if (vertexChamfers[ce.v2->id].size() == 1) onEndFace(ce.v2, a2, b2);
+        fd.points = {a1, a2, b2, b1};
 
         for (const uint32_t vid : {ce.v1->id, ce.v2->id}) {
             for (size_t other : vertexChamfers[vid]) {

@@ -112,41 +112,72 @@ applies to `Stable` features only, which is what new features are. A saved
 
 ## Phase 140: Fillet and chamfer at any angle
 
-### Baseline
-- One inequality (FilletOp.cpp:173-183) refuses every dihedral that is not
-  90° and convex. Its message is generic: "Cannot compute fillet geometry".
-- The blend is exact only at a right angle: a rational quadratic with
-  weight cos 45°.
-- Chamfer says it is orthogonal-only and convex-only (ChamferOp.h:42-50).
-- Multi-body inputs are untested. Faces with inner loops are dropped (only
-  `outerLoop` is walked).
+### As built
 
-### Plan
-1. **Convex edges at any dihedral θ between planar faces.**
-   - The ball's centre lies on the bisector, at r / sin(θ/2) from the edge.
-   - The setback along each face is r·cot(θ/2).
-   - The arc spans π − θ, with weight sin(θ/2).
-   - The capacity check and the chain miter use the setback.
-2. **Concave edges.** The blend adds material: the same frame, with the
-   ball outside the solid. Chamfer's concave case fills the wedge.
-3. **Chamfer at any angle.** Setbacks along each face at the dihedral.
-4. **Multi-body parts and faces with holes.** Faces are grouped by body
-   (the sewer already builds a shell per component), and inner loops are
-   carried.
-5. **Faceted faces on both sides, and multi-body parts** (found in 139): a
-   chain of chords that share no face, such as a revolve's rim where the
-   annulus is faceted too, is refused ("must share exactly one face"). A
-   fillet on a part of two bodies fails its Euler check. Both are to work.
-6. **Corners.** A three-edge corner off 90°, or a mixed convex/concave
-   corner, is refused by name ("an oblique corner blend is not supported
-   yet"), not with the generic message.
-7. **Tests:**
-   - exact volumes of a fillet on a 60°, a 120° and a 135° wedge, against
-     the closed-form section;
-   - a concave L-shape fillet and chamfer;
-   - two bodies, one filleted;
-   - a face with a hole next to the edge;
-   - refusals with their reasons.
+- **A fillet at any angle, convex or concave** (`computeFilletFrame`).
+  - The ball rolls in the wedge between the faces' in-face directions: in
+    the material for a convex edge, on the empty side for a concave one.
+  - It touches each face a setback r·cot(θ/2) from the edge. Its centre is
+    one radius off faceA into the wedge. The arc spans π − θ, with middle
+    weight sin(θ/2), and its middle control point is on the edge.
+  - A concave blend adds material, through the same construction.
+  - At a convex right angle every formula reduces to the old one.
+  - Faces within a degree of continuing one another, or of a knife edge,
+    are refused.
+  - The capacity check compares the setback, not the radius.
+- **A blend's end lies on its end face**, square to the edge or not. The end
+  section is carried along the edge onto the end face's plane, as a miter
+  carries it onto the bisector. The bands stay planar, because each lies
+  between two rulings parallel to the edge.
+- **Fillets on parts of several bodies** (`perBody`).
+  - Each body with edges to round is filleted alone, and the bodies are
+    collected again with their names.
+  - Every face was put in one shell, and Euler's check failed.
+  - After review: the second and later bodies rounded name what they make
+    under `<feature>/body:<k>`. Each rebuild numbers its corner blends and
+    new edges from 0, so two bodies had one `<feature>/blend/corner:0`.
+- **Chamfer.**
+  - At any angle it needed no change: the plane clip is general. Its header
+    said otherwise.
+  - Its end on an oblique end face was not manifold. The chamfer face's
+    corners are now carried onto the end face, where the clipped side faces
+    put theirs.
+  - Multi-body chamfers already worked, since the sewer makes a shell of
+    each piece.
+- **Refused by name:**
+  - "A corner blend of three fillets needs square, convex edges";
+  - "A chain of fillets across corners of different angles".
+
+### Tests
+
+8 new, 2 replaced. The volumes are exact to 1e-9, against closed forms:
+- the kite less the n-chord sector for a fillet, and the triangle for a
+  chamfer;
+- the swept section less twice its first moment, for an end on 45° faces.
+
+Cases:
+- A fillet on a 45° edge, and on all three edges of a triangular prism
+  (45°, 45°, 90°).
+- A fillet ending on 45° end faces.
+- A concave fillet that adds material.
+- One body of two filleted, and two bodies filleted at once, named apart.
+- A chamfer on a 45° edge.
+- A concave chamfer.
+- A chamfer ending on 45° end faces.
+- One body of two chamfered.
+- Replaced: `NonOrthogonalDihedralRefused` and `ConcaveEdgeRefused`, whose
+  refusals are lifted.
+
+### Not done
+
+- A chain of chords that share no face, both sides faceted (a revolve's
+  rim), is refused. It needs a miter at a vertex of four edges.
+- An oblique or concave three-edge corner blend, and a chain across corners
+  of different angles, are refused by name.
+- Faces with holes, which only STEP import makes, still lose their inner
+  loops in both ops.
+- A tolerance-driven chord count assumes a quarter arc. An acute corner's
+  arc is longer, so it meets the tolerance less closely.
 
 ## Phase 141: Curved faces measured as curved
 

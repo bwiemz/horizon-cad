@@ -2,16 +2,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <vector>
 
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/GeometryValidator.h"
@@ -518,44 +521,109 @@ TEST(FilletOpTest, CornerBlendRadiusTooLargeRefused) {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry gates (Phase 61 review): only perpendicular convex edges fillet
+// Any angle (Phase 140): a fillet on an oblique or a concave edge, where only
+// a convex right angle was taken. The ball rolls in the wedge between the two
+// faces; the faceted blend takes away (or, concave, adds) the kite between
+// the edge, the two touch points and the ball's centre, r^2 cot(theta/2),
+// less the n-chord sector of the arc, (n/2) r^2 sin((pi - theta)/n).
 // ---------------------------------------------------------------------------
 
-TEST(FilletOpTest, NonOrthogonalDihedralRefused) {
-    // Right-triangle prism: the corner at (10,0) has a 45° profile angle, so
-    // its vertical edge is an oblique dihedral — must refuse, not silently
-    // emit a wrong-radius fillet. The 90° corner at (0,0) must still work.
+namespace {
+
+double faceted(double r, double theta, int n) {
+    return r * r / std::tan(theta / 2.0) -
+           0.5 * n * r * r * std::sin((kPi - theta) / static_cast<double>(n));
+}
+
+}  // namespace
+
+TEST(FilletOpTest, AnObliqueEdgeFilletsExactly) {
+    // Right-triangle prism: the corner at (10, 0) is 45 degrees.
     auto profile = lineLoop({{0.0, 0.0}, {10.0, 0.0}, {0.0, 10.0}});
     hz::draft::SketchPlane plane;
     auto prism = hz::model::Extrude::execute(profile, plane, Vec3(0, 0, 1), 10.0, "prism");
     ASSERT_NE(prism, nullptr);
+    const int n = 8;
 
     const TopologyID oblique = verticalEdgeAt(*prism, {10.0, 0.0});
     ASSERT_TRUE(oblique.isValid());
-    auto refused = FilletOp::execute(*prism, {oblique}, 1.0, "f");
-    EXPECT_FALSE(refused.errorMessage.empty()) << "45-degree dihedral must be refused";
+    auto rounded = FilletOp::execute(*prism, {oblique}, 1.0, "f", n);
+    ASSERT_NE(rounded.solid, nullptr) << rounded.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*rounded.solid))
+        << hz::topo::GeometryValidator::report(*rounded.solid);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*rounded.solid).volume,
+                500.0 - 10.0 * faceted(1.0, kPi / 4.0, n), 1e-9);
 
+    // The square corner, as before; and all three at once.
     const TopologyID square = verticalEdgeAt(*prism, {0.0, 0.0});
-    ASSERT_TRUE(square.isValid());
-    auto ok = FilletOp::execute(*prism, {square}, 1.0, "f");
-    EXPECT_TRUE(ok.errorMessage.empty()) << ok.errorMessage;
-    ASSERT_NE(ok.solid, nullptr);
-    EXPECT_TRUE(ok.solid->checkEulerFormula());
+    const TopologyID other = verticalEdgeAt(*prism, {0.0, 10.0});
+    auto all = FilletOp::execute(*prism, {oblique, square, other}, 1.0, "f", n);
+    ASSERT_NE(all.solid, nullptr) << all.errorMessage;
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*all.solid).volume,
+                500.0 - 10.0 * (2.0 * faceted(1.0, kPi / 4.0, n) + faceted(1.0, kPi / 2.0, n)),
+                1e-9);
 }
 
-TEST(FilletOpTest, ConcaveEdgeRefused) {
-    // L-shaped prism: the vertical edge at the reentrant corner (1,1) is
-    // concave — the rolling-ball formulas do not apply there.
+TEST(FilletOpTest, AFilletMeetsAnObliqueEndFace) {
+    // The prism's bottom edge along the hypotenuse runs between two 45-degree
+    // end faces, not square ones: its blend's ends lie on them.
+    auto profile = lineLoop({{0.0, 0.0}, {10.0, 0.0}, {0.0, 10.0}});
+    hz::draft::SketchPlane plane;
+    auto prism = hz::model::Extrude::execute(profile, plane, Vec3(0, 0, 1), 10.0, "prism");
+    ASSERT_NE(prism, nullptr);
+    TopologyID hypotenuse;
+    for (const auto& e : prism->edges()) {
+        const Vec3& a = e.halfEdge->origin->point;
+        const Vec3& b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.z) < 1e-9 && std::abs(b.z) < 1e-9 && std::abs(a.x + a.y - 10.0) < 1e-9 &&
+            std::abs(b.x + b.y - 10.0) < 1e-9) {
+            hypotenuse = e.topoId;
+        }
+    }
+    ASSERT_TRUE(hypotenuse.isValid());
+    const int n = 8;
+    auto rounded = FilletOp::execute(*prism, {hypotenuse}, 1.0, "f", n);
+    ASSERT_NE(rounded.solid, nullptr) << rounded.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*rounded.solid))
+        << hz::topo::GeometryValidator::report(*rounded.solid);
+    // A square edge (the base meets the slanted side at 90 degrees), its
+    // removed section swept along the hypotenuse. Each ruling of the section,
+    // a from the edge across the base, starts on a 45-degree end face a along
+    // the edge: the section's area times the length, less twice its first
+    // moment in a. The section: the unit square at the edge less the ball's
+    // n-chord sector about (1, 1).
+    double area = 1.0;
+    double moment = 0.5;
+    for (int k = 0; k < n; ++k) {
+        const double p0 = kPi + 0.5 * kPi * k / n;
+        const double p1 = kPi + 0.5 * kPi * (k + 1) / n;
+        const double triangle = 0.5 * std::sin(p1 - p0);
+        area -= triangle;
+        moment -= triangle * (1.0 + (1.0 + std::cos(p0)) + (1.0 + std::cos(p1))) / 3.0;
+    }
+    ASSERT_NEAR(area, faceted(1.0, kPi / 2.0, n), 1e-12);
+    const double length = 10.0 * std::sqrt(2.0);
+    EXPECT_NEAR(500.0 - hz::model::MassPropertiesCalculator::compute(*rounded.solid).volume,
+                area * length - 2.0 * moment, 1e-9);
+}
+
+TEST(FilletOpTest, AConcaveEdgeFilletsAddingMaterial) {
+    // L-shaped prism: the edge at the reentrant corner (1, 1) is concave; the
+    // blend fills the corner, adding the kite less the sector.
     auto profile =
         lineLoop({{0.0, 0.0}, {10.0, 0.0}, {10.0, 1.0}, {1.0, 1.0}, {1.0, 10.0}, {0.0, 10.0}});
     hz::draft::SketchPlane plane;
     auto prism = hz::model::Extrude::execute(profile, plane, Vec3(0, 0, 1), 5.0, "lprism");
     ASSERT_NE(prism, nullptr);
-
+    const int n = 8;
     const TopologyID reentrant = verticalEdgeAt(*prism, {1.0, 1.0});
     ASSERT_TRUE(reentrant.isValid());
-    auto result = FilletOp::execute(*prism, {reentrant}, 0.4, "f");
-    EXPECT_FALSE(result.errorMessage.empty()) << "concave edge must be refused";
+    auto result = FilletOp::execute(*prism, {reentrant}, 0.4, "f", n);
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume,
+                95.0 + 5.0 * faceted(0.4, kPi / 2.0, n), 1e-9);
 }
 
 TEST(FilletOpTest, SequentialFilletsKeepCurvedFaces) {
@@ -814,4 +882,70 @@ TEST(FilletOpTest, ACornerBlendDrawsOnlyItsEighthOfTheBall) {
         hz::model::MassPropertiesCalculator::compute(*result.solid).surfaceArea;
     // The whole ball would add 7/8 x 4 pi r^2, about 44, to the 600-odd.
     EXPECT_NEAR(meshArea, modelArea, 0.01 * modelArea);
+}
+
+// A part of two bodies (Phase 140): the fillet rounds the edge on its body
+// and leaves the other; the rebuild put every face in one shell, which the
+// second body's faces could not join (Euler's check failed).
+TEST(FilletOpTest, OneBodyOfTwoIsFilleted) {
+    auto first = PrimitiveFactory::makeBox(10, 10, 10);
+    auto second = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(10, 10, 10),
+                                                  hz::math::Mat4::translation(Vec3(20, 0, 0)));
+    for (auto& face : second->faces()) face.topoId = face.topoId.child("second", 0);
+    for (auto& edge : second->edges()) edge.topoId = edge.topoId.child("second", 0);
+    auto both = hz::model::Pattern::collect(*first, *second);
+    const TopologyID edge = second->edges().front().topoId;
+    const int n = 8;
+    auto result = FilletOp::execute(*both, {edge}, 1.0, "f", n);
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(result.solid->isValid()) << result.solid->validationReport();
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume,
+                2000.0 - 10.0 * faceted(1.0, kPi / 2.0, n), 1e-9);
+    EXPECT_EQ(hz::model::Pattern::separate(*result.solid).size(), 2u) << "two bodies still";
+}
+
+// Two bodies rounded in one fillet are named apart (Phase 140 review): each
+// body is rebuilt alone, and each rebuild numbered its corner blends and new
+// edges from 0, so both bodies had a `f/blend/corner:0`. The second body's
+// are named under `f/body:1`.
+TEST(FilletOpTest, TwoBodiesRoundedAtOnceAreNamedApart) {
+    auto first = PrimitiveFactory::makeBox(10, 10, 10);
+    auto second = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(10, 10, 10),
+                                                  hz::math::Mat4::translation(Vec3(20, 0, 0)));
+    for (auto& face : second->faces()) face.topoId = face.topoId.child("second", 0);
+    for (auto& edge : second->edges()) edge.topoId = edge.topoId.child("second", 0);
+    // The three edges at each box's top far corner: a corner blend each.
+    const auto cornerEdges = [](const hz::topo::Solid& box, const Vec3& corner) {
+        std::vector<TopologyID> ids;
+        for (const auto& e : box.edges()) {
+            const Vec3& a = e.halfEdge->origin->point;
+            const Vec3& b = e.halfEdge->twin->origin->point;
+            if ((a - corner).length() < 1e-9 || (b - corner).length() < 1e-9)
+                ids.push_back(e.topoId);
+        }
+        return ids;
+    };
+    auto ids = cornerEdges(*first, Vec3(10, 10, 10));
+    const auto more = cornerEdges(*second, Vec3(30, 10, 10));
+    ASSERT_EQ(ids.size(), 3u);
+    ASSERT_EQ(more.size(), 3u);
+    ids.insert(ids.end(), more.begin(), more.end());
+    auto both = hz::model::Pattern::collect(*first, *second);
+
+    auto alone = FilletOp::execute(*first, cornerEdges(*first, Vec3(10, 10, 10)), 1.0, "f", 8);
+    ASSERT_NE(alone.solid, nullptr) << alone.errorMessage;
+    auto result = FilletOp::execute(*both, ids, 1.0, "f", 8);
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(result.solid->isValid()) << result.solid->validationReport();
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume,
+                2.0 * hz::model::MassPropertiesCalculator::compute(*alone.solid).volume, 1e-9);
+
+    std::map<std::string, int> faces;
+    std::map<std::string, int> edges;
+    for (const auto& face : result.solid->faces()) ++faces[face.topoId.tag()];
+    for (const auto& edge : result.solid->edges()) ++edges[edge.topoId.tag()];
+    for (const auto& [tag, count] : faces) EXPECT_EQ(count, 1) << tag;
+    for (const auto& [tag, count] : edges) EXPECT_EQ(count, 1) << tag;
+    EXPECT_TRUE(faces.count("f/blend/corner:0")) << "the first body's, as when alone";
+    EXPECT_TRUE(faces.count("f/body:1/blend/corner:0")) << "the second's, apart";
 }
