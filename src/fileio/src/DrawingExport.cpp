@@ -22,6 +22,7 @@
 #include "horizon/fileio/TitleBlockRenderer.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
 
@@ -39,6 +40,9 @@ constexpr char kHatchLayer[] = "Hatch";      ///< cross-hatching inside cut prof
 /// Captions under sections and details, and their marks on the views they
 /// were taken from (Phase 149).
 constexpr char kViewLabelLayer[] = "ViewLabels";
+/// Centre marks on holes and bosses, and their axes (Phase 149).
+constexpr char kCentreLineLayer[] = "CentreLines";
+constexpr double kCentreOverrun = 2.0;    ///< how far a centre line runs past the outline, on paper
 constexpr double kCaptionHeight = 3.5;    ///< ISO 3098 for A3 and A4
 constexpr double kArrowLength = 7.0;      ///< a section's viewing arrows, on the sheet
 constexpr double kMarkOverrun = 5.0;      ///< how far a cut's line runs past its view
@@ -87,6 +91,10 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties viewLabels;
     viewLabels.name = kViewLabelLayer;
     doc.layerManager().addLayer(viewLabels);
+
+    draft::LayerProperties centreLines;
+    centreLines.name = kCentreLineLayer;
+    doc.layerManager().addLayer(centreLines);
 }
 
 void addLabelLine(doc::Document& doc, const math::Vec2& a, const math::Vec2& b,
@@ -201,9 +209,13 @@ void addViewLabels(doc::Document& doc, const model::Drawing& drawing, size_t ind
 // Returns false when the view has fewer than three distinct points for it.
 bool fitProjectedCircle(const model::DrawingView& view, const topo::TopologyID& edgeId,
                         math::Vec2& outCenter, double& outRadius) {
+    // Every piece of the curve: a circle is one edge of many chords, each
+    // named as part of it.
+    const std::string logical = model::logicalEdge(edgeId.tag());
     std::vector<math::Vec2> pts;
     for (const model::ProjectedEdge& e : view.edges) {
-        if (!(e.sourceEdge == edgeId)) continue;
+        if (!(e.sourceEdge == edgeId) && model::logicalEdge(e.sourceEdge.tag()) != logical)
+            continue;
         pts.push_back(e.a);
         pts.push_back(e.b);
     }
@@ -240,7 +252,8 @@ const std::vector<std::string>& DrawingExport::layers() {
                                                 kHatchLayer,
                                                 TitleBlockRenderer::kBorderLayer,
                                                 TitleBlockRenderer::kTitleBlockLayer,
-                                                kViewLabelLayer};
+                                                kViewLabelLayer,
+                                                kCentreLineLayer};
     return names;
 }
 
@@ -273,6 +286,23 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             line->setLineType(
                 static_cast<int>(visible ? draft::LineType::Continuous : draft::LineType::Hidden));
             doc.addEntity(std::move(line));
+        }
+
+        // Centre lines, a little past the outline on paper, whatever the scale.
+        if (view.showCentreLines) {
+            for (const auto& segment : view.centreLines) {
+                const math::Vec2 a = toSheet(segment.first);
+                const math::Vec2 b = toSheet(segment.second);
+                const double length = std::hypot(b.x - a.x, b.y - a.y);
+                if (length < 1e-9) continue;
+                const math::Vec2 run{(b.x - a.x) / length * kCentreOverrun,
+                                     (b.y - a.y) / length * kCentreOverrun};
+                auto line = std::make_shared<draft::DraftLine>(
+                    math::Vec2{a.x - run.x, a.y - run.y}, math::Vec2{b.x + run.x, b.y + run.y});
+                line->setLayer(kCentreLineLayer);
+                line->setLineType(static_cast<int>(draft::LineType::Center));
+                doc.addEntity(std::move(line));
+            }
         }
 
         // Section views: cut-profile loops and hatch lines (Phase 61).

@@ -6,26 +6,53 @@
 #include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Naming.h"
 
 namespace hz::io {
 
 std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
     const model::DrawingView& view, const model::LinearDimension& dim, double offset,
     const draft::DimensionStyle& style) {
-    // Find the projected edge for this dimension's model edge in the view.
-    const model::ProjectedEdge* edge = nullptr;
+    // The projected edge for this dimension's model edge in the view: all
+    // of it, end to end. A partly hidden edge is drawn in several runs, and
+    // the first alone put the dimension on part of the edge.
+    const model::ProjectedEdge* first = nullptr;
+    math::Vec2 lowEnd;
+    math::Vec2 highEnd;
+    double low = 0.0;
+    double high = 0.0;
+    math::Vec2 along;
+    const std::string logical = model::logicalEdge(dim.edge.tag());
     for (const model::ProjectedEdge& e : view.edges) {
-        if (e.sourceEdge == dim.edge) {
-            edge = &e;
-            break;
+        if (e.sourceEdge != dim.edge && model::logicalEdge(e.sourceEdge.tag()) != logical) continue;
+        if (first == nullptr) {
+            first = &e;
+            along = e.b - e.a;
+            const double length = along.length();
+            if (length < 1e-12) return nullptr;  // seen end-on: nothing to dimension
+            along = along * (1.0 / length);
+            lowEnd = e.a;
+            highEnd = e.b;
+            low = 0.0;
+            high = length;
+        }
+        for (const math::Vec2& p : {e.a, e.b}) {
+            const double t = (p - first->a).dot(along);
+            if (t < low) {
+                low = t;
+                lowEnd = p;
+            }
+            if (t > high) {
+                high = t;
+                highEnd = p;
+            }
         }
     }
-    if (edge == nullptr) return nullptr;
+    if (first == nullptr) return nullptr;
 
     // Map view-space coordinates onto the sheet (same mapping DrawingExport uses).
-    const auto toSheet = [&view](const math::Vec2& p) { return view.toSheet(p); };
-    const math::Vec2 p1 = toSheet(edge->a);
-    const math::Vec2 p2 = toSheet(edge->b);
+    const math::Vec2 p1 = view.toSheet(lowEnd);
+    const math::Vec2 p2 = view.toSheet(highEnd);
 
     // Place the dimension line offset perpendicular to the edge from its midpoint.
     const math::Vec2 mid((p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);

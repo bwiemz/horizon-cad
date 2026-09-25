@@ -6,8 +6,12 @@
 #include <cstdio>
 #include <functional>
 #include <limits>
+#include <numbers>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -37,12 +41,161 @@ void computeBounds(DrawingView& dv) {
     }
 }
 
+/// The part of the segment @p a - @p b inside the circle (@p centre, radius
+/// squared @p r2), in @p outA - @p outB. False when none of it is.
+bool clipToCircle(const math::Vec2& a, const math::Vec2& b, const math::Vec2& centre, double r2,
+                  math::Vec2& outA, math::Vec2& outB) {
+    // Solve |a + t*(b-a) - centre|^2 = r^2 for the t-interval inside the
+    // circle, then intersect it with [0, 1].
+    const math::Vec2 d(b.x - a.x, b.y - a.y);
+    const math::Vec2 f(a.x - centre.x, a.y - centre.y);
+    const double A = d.x * d.x + d.y * d.y;
+    const double B = 2.0 * (f.x * d.x + f.y * d.y);
+    const double C = f.x * f.x + f.y * f.y - r2;
+    double tLo = 0.0;
+    double tHi = 1.0;
+    if (A < 1e-18) {
+        // Degenerate (zero-length) segment: keep only if the point is inside.
+        if (C > 0.0) return false;
+    } else {
+        const double disc = B * B - 4.0 * A * C;
+        if (disc < 0.0) return false;  // the whole line misses the circle
+        const double s = std::sqrt(disc);
+        tLo = std::max(0.0, (-B - s) / (2.0 * A));
+        tHi = std::min(1.0, (-B + s) / (2.0 * A));
+        if (tLo >= tHi) return false;  // no portion of the segment is inside
+    }
+    outA = {a.x + d.x * tLo, a.y + d.y * tLo};
+    outB = {a.x + d.x * tHi, a.y + d.y * tHi};
+    return true;
+}
+
+/// A cylinder the part has, gathered from the facets that stand in for it.
+struct Cylinder {
+    math::Vec3 origin;  ///< on its axis
+    math::Vec3 axis;    ///< unit
+    double radius = 0.0;
+    std::vector<math::Vec3> points;  ///< its facets' corners
+};
+
+/// A cylinder's axis and centre come from fitting its facets, so they carry
+/// its noise: a hole's axis came back 1e-6 off square, its centre 5e-6 off.
+constexpr double kAxisAngle = 1e-4;  ///< radians, for end-on and side-on
+constexpr double kFitTolerance = 1e-5;
+
+bool sameAxis(const Cylinder& c, const math::Vec3& origin, const math::Vec3& axis, double tol) {
+    if (c.axis.cross(axis).length() > kFitTolerance) return false;
+    const math::Vec3 off = origin - c.origin;
+    return (off - c.axis * off.dot(c.axis)).length() <= tol;
+}
+
+/// The centre lines of the holes and bosses of @p solid seen through
+/// @p projection: those that go at least three quarters of the way round
+/// (so not a fillet), a cross where seen end-on, an axis where seen side-on.
+/// Coaxial ones (a counterbore) share one, the largest.
+std::vector<std::pair<math::Vec2, math::Vec2>> centreLinesOf(const topo::Solid& solid,
+                                                             const ViewProjection& projection) {
+    std::vector<Cylinder> cylinders;
+    for (const topo::Face& face : solid.faces()) {
+        if (!face.analyticSurface) continue;
+        const auto frame = MateGeometry::frameForFace(face);
+        if (!frame || frame->kind != MateFrameKind::Cylindrical || frame->radius <= 0.0) continue;
+        const double tol = kFitTolerance * std::max(1.0, frame->radius);
+        Cylinder* into = nullptr;
+        for (Cylinder& c : cylinders) {
+            if (std::abs(c.radius - frame->radius) <= tol &&
+                sameAxis(c, frame->origin, frame->direction, tol)) {
+                into = &c;
+                break;
+            }
+        }
+        if (into == nullptr) {
+            cylinders.push_back({frame->origin, frame->direction.normalized(), frame->radius, {}});
+            into = &cylinders.back();
+        }
+        const topo::HalfEdge* start =
+            face.outerLoop != nullptr ? face.outerLoop->halfEdge : nullptr;
+        for (const topo::HalfEdge* he = start; he != nullptr;) {
+            if (he->origin != nullptr) into->points.push_back(he->origin->point);
+            he = he->next;
+            if (he == start) break;
+        }
+    }
+
+    // Kept: those most of the way round, each with its extent along its axis.
+    struct Marked {
+        math::Vec3 origin;
+        math::Vec3 axis;
+        double radius;
+        double low;
+        double high;
+    };
+    std::vector<Marked> marked;
+    for (const Cylinder& c : cylinders) {
+        if (c.points.size() < 3) continue;
+        const math::Vec3 ref = std::abs(c.axis.x) < 0.9 ? math::Vec3(1, 0, 0) : math::Vec3(0, 1, 0);
+        const math::Vec3 u = c.axis.cross(ref).normalized();
+        const math::Vec3 w = c.axis.cross(u);
+        std::vector<double> angles;
+        double low = std::numeric_limits<double>::infinity();
+        double high = -std::numeric_limits<double>::infinity();
+        for (const math::Vec3& p : c.points) {
+            const math::Vec3 off = p - c.origin;
+            angles.push_back(std::atan2(off.dot(w), off.dot(u)));
+            low = std::min(low, off.dot(c.axis));
+            high = std::max(high, off.dot(c.axis));
+        }
+        std::sort(angles.begin(), angles.end());
+        double widestGap = angles.front() + 2.0 * std::numbers::pi - angles.back();
+        for (std::size_t i = 1; i < angles.size(); ++i) {
+            widestGap = std::max(widestGap, angles[i] - angles[i - 1]);
+        }
+        if (2.0 * std::numbers::pi - widestGap < 1.5 * std::numbers::pi - 1e-9) continue;
+        bool merged = false;
+        for (Marked& m : marked) {
+            Cylinder axisOf{m.origin, m.axis, m.radius, {}};
+            if (!sameAxis(axisOf, c.origin, c.axis, kFitTolerance * std::max(1.0, c.radius))) {
+                continue;
+            }
+            // Along the same axis: its extent measured from the one kept.
+            const double shift = (c.origin - m.origin).dot(m.axis);
+            const double sign = m.axis.dot(c.axis) < 0.0 ? -1.0 : 1.0;
+            const double a = shift + sign * low;
+            const double b = shift + sign * high;
+            m.low = std::min(m.low, std::min(a, b));
+            m.high = std::max(m.high, std::max(a, b));
+            m.radius = std::max(m.radius, c.radius);
+            merged = true;
+            break;
+        }
+        if (!merged) marked.push_back({c.origin, c.axis, c.radius, low, high});
+    }
+
+    std::vector<std::pair<math::Vec2, math::Vec2>> lines;
+    const math::Vec3 dir = projection.dir.normalized();
+    for (const Marked& m : marked) {
+        const double along = std::abs(m.axis.dot(dir));
+        if (along > std::cos(kAxisAngle)) {
+            // End-on: a cross to the outline.
+            const math::Vec2 c = DrawingProjection::toView(projection, m.origin);
+            lines.push_back({{c.x - m.radius, c.y}, {c.x + m.radius, c.y}});
+            lines.push_back({{c.x, c.y - m.radius}, {c.x, c.y + m.radius}});
+        } else if (along < std::sin(kAxisAngle)) {
+            // Side-on: its axis, end to end.
+            lines.push_back({DrawingProjection::toView(projection, m.origin + m.axis * m.low),
+                             DrawingProjection::toView(projection, m.origin + m.axis * m.high)});
+        }
+    }
+    return lines;
+}
+
 }  // namespace
 
 DrawingView DrawingGenerator::makeView(const topo::Solid& solid, const ViewProjection& projection) {
     DrawingView dv;
     dv.projection = projection;
     dv.edges = DrawingProjection::project(solid, projection);
+    dv.centreLines = centreLinesOf(solid, projection);
     computeBounds(dv);
     return dv;
 }
@@ -235,33 +388,9 @@ DrawingView DrawingGenerator::detailView(const DrawingView& source, const math::
     };
 
     for (const ProjectedEdge& e : source.edges) {
-        // Clip segment a->b to the circle (center, radius): solve
-        // |a + t*(b-a) - center|^2 = r^2 for the t-interval inside the circle,
-        // then intersect it with [0, 1].
-        const math::Vec2 d(e.b.x - e.a.x, e.b.y - e.a.y);
-        const math::Vec2 f(e.a.x - center.x, e.a.y - center.y);
-        const double A = d.x * d.x + d.y * d.y;
-        const double B = 2.0 * (f.x * d.x + f.y * d.y);
-        const double C = f.x * f.x + f.y * f.y - r2;
-
-        double tLo = 0.0;
-        double tHi = 1.0;
-        if (A < 1e-18) {
-            // Degenerate (zero-length) segment: keep only if the point is inside.
-            if (C > 0.0) continue;
-        } else {
-            const double disc = B * B - 4.0 * A * C;
-            if (disc < 0.0) continue;  // the whole line misses the circle
-            const double s = std::sqrt(disc);
-            const double t1 = (-B - s) / (2.0 * A);
-            const double t2 = (-B + s) / (2.0 * A);
-            tLo = std::max(0.0, t1);
-            tHi = std::min(1.0, t2);
-            if (tLo >= tHi) continue;  // no portion of the segment is inside
-        }
-
-        const math::Vec2 clippedA(e.a.x + d.x * tLo, e.a.y + d.y * tLo);
-        const math::Vec2 clippedB(e.a.x + d.x * tHi, e.a.y + d.y * tHi);
+        math::Vec2 clippedA;
+        math::Vec2 clippedB;
+        if (!clipToCircle(e.a, e.b, center, r2, clippedA, clippedB)) continue;
 
         ProjectedEdge de;
         de.a = toDetail(clippedA);
@@ -270,6 +399,13 @@ DrawingView DrawingGenerator::detailView(const DrawingView& source, const math::
         de.visibility = e.visibility;
         de.kind = e.kind;  // a silhouette is one in a detail too
         dv.edges.push_back(de);
+    }
+    for (const auto& [a, b] : source.centreLines) {
+        math::Vec2 clippedA;
+        math::Vec2 clippedB;
+        if (clipToCircle(a, b, center, r2, clippedA, clippedB)) {
+            dv.centreLines.emplace_back(toDetail(clippedA), toDetail(clippedB));
+        }
     }
 
     computeBounds(dv);

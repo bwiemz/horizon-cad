@@ -11,12 +11,14 @@
 #include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 using hz::doc::Document;
@@ -468,4 +470,116 @@ TEST(DrawingDocumentIOTest, ABrokenSectionOrDetailIsRefused) {
     ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
     EXPECT_EQ(spec.views[1].label, "ABCDEFGH");
     std::filesystem::remove_all(dir);
+}
+
+// Dimensions are kept by their edges' names and measured again from the
+// part; one whose edge the part no longer has is said, not drawn; the
+// centre-line switch is kept. A file asking for thousands is refused.
+TEST(DrawingDocumentIOTest, DimensionsAreKeptByTheirEdges) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_dims";
+    std::filesystem::create_directories(dir);
+    const std::string partPath = (dir / "box.hzpart").string();
+    saveBox(partPath);
+    Document part;
+    const hz::topo::Solid* solid = boxSolid(partPath, part);
+    ASSERT_NE(solid, nullptr);
+
+    DrawingDocumentSpec spec;
+    spec.partPath = partPath;
+    spec.views = DrawingDocumentIO::viewsOf(
+        hz::model::DrawingGenerator::sheetLayout(*solid, spec.sheet, spec.titleBlock));
+    const Drawing laid = DrawingDocumentIO::build(*solid, spec);
+    // Front's first edge seen along its length.
+    std::string edge;
+    for (const auto& e : laid.views[0].edges) {
+        if ((e.b - e.a).length() > 1e-6 && !e.sourceEdge.tag().empty()) {
+            edge = e.sourceEdge.tag();
+            break;
+        }
+    }
+    ASSERT_FALSE(edge.empty());
+    spec.views[0].dimensions.push_back({edge, hz::io::DrawingDimensionSpec::Kind::Length});
+    spec.views[0].dimensions.push_back(
+        {"box/no-such-edge", hz::io::DrawingDimensionSpec::Kind::Length});
+    spec.views[1].showCentreLines = false;
+
+    const std::string dwg = (dir / "d.hzdwg").string();
+    ASSERT_TRUE(DrawingDocumentIO::save(dwg, spec));
+    DrawingDocumentSpec read;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
+    ASSERT_EQ(read.views[0].dimensions.size(), 2u);
+    EXPECT_EQ(read.views[0].dimensions[0].edge, edge);
+    EXPECT_FALSE(read.views[1].showCentreLines);
+    EXPECT_TRUE(read.views[0].showCentreLines);
+
+    std::vector<std::string> lost;
+    const Drawing built = DrawingDocumentIO::build(*solid, read, &lost);
+    ASSERT_EQ(built.views[0].dimensions.size(), 1u) << "the edge the part has";
+    EXPECT_GT(built.views[0].dimensions[0].value, 0.0) << "measured from the part";
+    ASSERT_EQ(lost.size(), 1u);
+    EXPECT_NE(lost[0].find("view 1"), std::string::npos) << lost[0];
+    EXPECT_FALSE(built.views[1].showCentreLines);
+
+    std::string many = "[";
+    for (int i = 0; i < 300; ++i)
+        many += std::string(i == 0 ? "" : ",") + R"({"edge": "e", "kind": "length"})";
+    many += "]";
+    write(dwg,
+          R"({"part": "box.hzpart", "version": 3, "views": [{"kind": "Front", "dimensions": )" +
+              many + "}]}");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, read, &error));
+    EXPECT_NE(error.find("dimensions"), std::string::npos) << error;
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "views": [{"kind": "Front", "dimensions": )"
+               R"([{"edge": "e", "kind": "wingspan"}, {"kind": "length"}, 7]}]})");
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
+    EXPECT_TRUE(read.views[0].dimensions.empty()) << "none it could not read";
+    std::filesystem::remove_all(dir);
+}
+
+// A circle is one edge of many chords: a dimension names the circle, and is
+// measured through its chords and drawn on all of it.
+TEST(DrawingDocumentIOTest, ACircleIsDimensionedByItsOwnName) {
+    Document part;
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(PrimitiveFeature::makeCylinder(10.0, 30.0));
+    ASSERT_TRUE(part.rebuildModel());
+    std::string rim;
+    for (const auto& e : part.solid()->edges()) {
+        const std::string logical = hz::model::logicalEdge(e.topoId.tag());
+        if (logical != e.topoId.tag()) {
+            rim = logical;
+            break;
+        }
+    }
+    ASSERT_FALSE(rim.empty()) << "a rim of chords";
+
+    DrawingDocumentSpec spec;
+    spec.views = DrawingDocumentIO::viewsOf(
+        hz::model::DrawingGenerator::sheetLayout(*part.solid(), spec.sheet, spec.titleBlock));
+    spec.views[1].dimensions.push_back({rim, hz::io::DrawingDimensionSpec::Kind::Diameter});
+    std::vector<std::string> lost;
+    const Drawing built = DrawingDocumentIO::build(*part.solid(), spec, &lost);
+    EXPECT_TRUE(lost.empty());
+    ASSERT_EQ(built.views[1].radialDimensions.size(), 1u);
+    EXPECT_NEAR(built.views[1].radialDimensions[0].value, 10.0, 1e-9);
+    EXPECT_TRUE(built.views[1].radialDimensions[0].diameter);
+
+    Document sheet;
+    hz::io::DrawingExport::populate(sheet, built);
+    bool drawn = false;
+    for (const auto& e : sheet.draftDocument().entities()) {
+        const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get());
+        drawn = drawn || (t != nullptr && e->layer() == "Dimensions" &&
+                          t->text().find("20.00") != std::string::npos);
+    }
+    EXPECT_TRUE(drawn) << "fitted to the whole circle";
+
+    // A circle is not straight: stated as a length it is not drawn, but said.
+    EXPECT_FALSE(hz::model::DrawingDimensioner::isStraight(*part.solid(), rim));
+    spec.views[1].dimensions = {{rim, hz::io::DrawingDimensionSpec::Kind::Length}};
+    lost.clear();
+    const Drawing asLength = DrawingDocumentIO::build(*part.solid(), spec, &lost);
+    EXPECT_TRUE(asLength.views[1].dimensions.empty()) << "not measured along one chord";
+    EXPECT_EQ(lost.size(), 1u);
 }
