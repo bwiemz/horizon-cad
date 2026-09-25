@@ -42,6 +42,12 @@ std::optional<Quantity> measured(const std::string& text, std::string* why = nul
     return e ? evaluateQuantity(*e, kVariables, why) : std::nullopt;
 }
 
+/// @p q, or a value no test expects (for a quantity the test has asserted
+/// is there).
+Quantity got(const std::optional<Quantity>& q) {
+    return q.value_or(Quantity{kNaN, 99, 99});
+}
+
 std::string kept(const std::string& text, QuantityKind kind, LengthUnit unit,
                  std::string* why = nullptr) {
     const auto e = Expression::parse(text);
@@ -83,30 +89,30 @@ TEST(QuantityTest, AUnitAfterANumberOrABracketIsParsedAndKept) {
 TEST(QuantityTest, AnExpressionMeasuresWhatItsUnitsSay) {
     auto q = measured("2 in + 3 mm");
     ASSERT_TRUE(q);
-    EXPECT_DOUBLE_EQ(q->value, 53.8);
-    EXPECT_EQ(q->length, 1);
+    EXPECT_DOUBLE_EQ(got(q).value, 53.8);
+    EXPECT_EQ(got(q).length, 1);
     q = measured("2 in * 3 in");
     ASSERT_TRUE(q);
-    EXPECT_EQ(q->length, 2) << "an area";
+    EXPECT_EQ(got(q).length, 2) << "an area";
     q = measured("sqrt(4 in * 1 in)");
     ASSERT_TRUE(q);
-    EXPECT_DOUBLE_EQ(q->value, 50.8);
-    EXPECT_EQ(q->length, 1);
+    EXPECT_DOUBLE_EQ(got(q).value, 50.8);
+    EXPECT_EQ(got(q).length, 1);
     q = measured("wall * count / 2");
     ASSERT_TRUE(q);
-    EXPECT_DOUBLE_EQ(q->value, 20.0);
-    EXPECT_EQ(q->length, 1);
+    EXPECT_DOUBLE_EQ(got(q).value, 20.0);
+    EXPECT_EQ(got(q).length, 1);
     q = measured("sin(30 deg)");
     ASSERT_TRUE(q);
-    EXPECT_NEAR(q->value, 0.5, 1e-15);
-    EXPECT_TRUE(q->pure());
+    EXPECT_NEAR(got(q).value, 0.5, 1e-15);
+    EXPECT_TRUE(got(q).pure());
     q = measured("atan2(1 in, 25.4 mm)");
     ASSERT_TRUE(q);
-    EXPECT_NEAR(q->value, hz::math::kPi / 4, 1e-15);
-    EXPECT_EQ(q->angle, 1);
+    EXPECT_NEAR(got(q).value, hz::math::kPi / 4, 1e-15);
+    EXPECT_EQ(got(q).angle, 1);
     q = measured("tilt * 2");
     ASSERT_TRUE(q);
-    EXPECT_EQ(q->angle, 1);
+    EXPECT_EQ(got(q).angle, 1);
 
     std::string why;
     for (const char* text :
@@ -124,7 +130,7 @@ TEST(QuantityTest, AnExpressionMeasuresWhatItsUnitsSay) {
 TEST(QuantityTest, APlainNumberIsKeptInTheUnitItWasTypedIn) {
     const std::string inInches = kept("wall + 1", QuantityKind::Length, LengthUnit::Inch);
     EXPECT_EQ(inInches, "(wall + (1 in))");
-    EXPECT_DOUBLE_EQ(evaluateQuantity(*Expression::parse(inInches), kVariables)->value, 35.4);
+    EXPECT_DOUBLE_EQ(got(evaluateQuantity(*Expression::parse(inInches), kVariables)).value, 35.4);
 
     EXPECT_EQ(kept("2 * 3", QuantityKind::Length, LengthUnit::Inch), "((2 * 3) in)");
     EXPECT_EQ(kept("2 * 3", QuantityKind::Number, LengthUnit::Inch), "(2 * 3)");

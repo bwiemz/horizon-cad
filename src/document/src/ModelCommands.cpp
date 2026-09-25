@@ -264,6 +264,25 @@ std::string AddSketchCommand::description() const {
 
 // --- AssemblyEditCommand ---
 
+SetVariablesCommand::SetVariablesCommand(Document& document,
+                                         std::map<std::string, std::string> after)
+    : m_document(document), m_after(std::move(after)) {}
+
+void SetVariablesCommand::execute() {
+    m_before = m_document.parameterRegistry().definitions();
+    m_document.parameterRegistry().setDefinitions(m_after);
+    m_document.featureTree().markChanged();
+}
+
+void SetVariablesCommand::undo() {
+    m_document.parameterRegistry().setDefinitions(m_before);
+    m_document.featureTree().markChanged();
+}
+
+std::string SetVariablesCommand::description() const {
+    return "Variables";
+}
+
 SetLengthUnitCommand::SetLengthUnitCommand(Document& document, math::LengthUnit unit,
                                            AssemblyDocument* assembly)
     : m_document(document), m_assembly(assembly), m_new(unit) {}

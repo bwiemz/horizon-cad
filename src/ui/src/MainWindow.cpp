@@ -135,6 +135,7 @@
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ToolManager.h"
 #include "horizon/ui/TrimTool.h"
+#include "horizon/ui/VariablesDialog.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -701,6 +702,8 @@ void MainWindow::createMenus() {
     editMenu->addSeparator();
     editMenu->addAction(tr("Document &Units..."), this, &MainWindow::onDocumentUnits)
         ->setObjectName(QStringLiteral("action_document_units"));
+    editMenu->addAction(tr("&Variables..."), this, &MainWindow::onVariables)
+        ->setObjectName(QStringLiteral("action_variables"));
     QAction* prefsAction =
         editMenu->addAction(tr("Pre&ferences..."), this, &MainWindow::onPreferences);
     prefsAction->setObjectName(QStringLiteral("action_preferences"));
@@ -1870,6 +1873,24 @@ void MainWindow::onDocumentUnits() {
     refreshAllPanels();
     m_viewport->update();
     m_statusPrompt->setText(tr("Lengths are in %1.").arg(nameOf(chosen).toLower()));
+}
+
+void MainWindow::onVariables() {
+    if (m_assembly) {
+        statusBar()->showMessage(tr("Variables belong to a part or a drawing, not an assembly"));
+        return;
+    }
+    const auto before = m_document->parameterRegistry().definitions();
+    VariablesDialog dialog(before, m_document->lengthUnit(), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    auto after = dialog.definitions();
+    if (after == before) return;
+    const auto count = static_cast<int>(after.size());
+    m_document->undoStack().push(
+        std::make_unique<doc::SetVariablesCommand>(*m_document, std::move(after)));
+    // Features whose sizes are expressions of them are built again.
+    rebuildFeatureTree();
+    m_statusPrompt->setText(tr("%n variable(s).", "", count));
 }
 
 void MainWindow::onAbout() {

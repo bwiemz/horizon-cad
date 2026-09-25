@@ -180,6 +180,23 @@ private:
     std::shared_ptr<Sketch> m_sketch;
 };
 
+/// A document's variables as a whole (Phase 155): those in @p after, and no
+/// others. Its features are built again, since their parameters may be
+/// expressions of them.
+class SetVariablesCommand : public Command {
+public:
+    SetVariablesCommand(Document& document, std::map<std::string, std::string> after);
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    Document& m_document;
+    std::map<std::string, std::string> m_before;
+    std::map<std::string, std::string> m_after;
+};
+
 /// The unit a document shows and takes lengths in (Phase 154); with
 /// @p assembly, the assembly's too, whose tab @p document backs. Its model
 /// is not changed: it is in millimetres whatever the unit.

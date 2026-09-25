@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
 
+- **Variables (155, part 1).**
+  - Edit ▸ Variables keeps a document's named values: "wall" = "3 mm",
+    "width" = "10 * wall", "count" = "4".
+  - Each value is worked out as it is typed.
+  - A bad name, an expression that depends on itself, or one that measures
+    nothing ("2 mm + 1") is refused, with the reason.
+  - Expressions take units (mm, cm, m, in, ft, deg, rad), and a length is
+    only added to a length.
+
 - **Document units (154, part 1).**
   - Each part, drawing, sheet and assembly has its own unit: millimetres,
     centimetres, metres, inches or feet. It is saved with the file and set

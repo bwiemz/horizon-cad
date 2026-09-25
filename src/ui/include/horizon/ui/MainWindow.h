@@ -135,6 +135,9 @@ private slots:
     /// Edit ▸ Document Units: the unit the active document shows and takes
     /// lengths in (Phase 154), as one undo step.
     void onDocumentUnits();
+    /// Edit ▸ Variables: the document's variables, as one undo step
+    /// (Phase 155).
+    void onVariables();
     void onAbout();
     void onSaveFile();
     void onSaveFileAs();
