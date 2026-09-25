@@ -1,12 +1,19 @@
 #include "horizon/document/Document.h"
 
 #include <algorithm>
+#include <atomic>
 
 #include "horizon/document/UndoStack.h"
 
 namespace hz::doc {
 
-Document::Document() : m_undoStack(std::make_unique<UndoStack>()) {}
+namespace {
+std::atomic<std::uint64_t> g_nextSerial{1};
+}  // namespace
+
+Document::Document()
+    : m_undoStack(std::make_unique<UndoStack>()),
+      m_serial(g_nextSerial.fetch_add(1, std::memory_order_relaxed)) {}
 
 Document::~Document() = default;
 

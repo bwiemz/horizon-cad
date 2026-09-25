@@ -495,3 +495,43 @@ TEST(DocumentManagerTest, APlacedPartStaysWatchedWhenItsTabCloses) {
 
     std::remove(path.c_str());
 }
+
+// A part read again after a change is tessellated again, even while an
+// older mesh of it is still held (an undo step holds one) and the new read
+// has been built as many times as the old one had.
+TEST(DocumentManagerTest, APartReadAgainIsNotShownWithItsOldMesh) {
+    DocumentManager mgr;
+    double depth = 3.0;
+    mgr.setPartLoader([&depth](const std::string&, Document& doc) {
+        auto sketch = makeRectSketch(10.0, 5.0);
+        doc.addSketch(sketch);
+        doc.featureTree().addFeature(
+            std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), depth));
+        doc.setType(DocumentType::Part);
+        return true;
+    });
+    const std::string path = makeTempFile("hz_test_reread_mesh.hzpart");
+    const auto height = [](const ComponentInstance& c) {
+        double high = 0.0;
+        for (size_t i = 2; c.cachedMesh && i < c.cachedMesh->positions.size(); i += 3) {
+            high = std::max(high, static_cast<double>(c.cachedMesh->positions[i]));
+        }
+        return high;
+    };
+
+    ComponentInstance before;
+    before.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(before, ComponentState::Resolved));
+    EXPECT_NEAR(height(before), 3.0, 1e-9);
+
+    depth = 7.0;  // the file changed
+    mgr.releasePart(path);
+    ComponentInstance after;
+    after.partPath = path;
+    ASSERT_TRUE(mgr.resolveComponent(after, ComponentState::Resolved));
+    ASSERT_NE(after.resolvedPart, before.resolvedPart);
+    ASSERT_EQ(after.resolvedPart->builds(), before.resolvedPart->builds());
+    EXPECT_NEAR(height(after), 7.0, 1e-9) << "not the mesh of the part as it was";
+
+    std::remove(path.c_str());
+}

@@ -119,6 +119,19 @@ File menu only.
       may be listing the components' faces.
     - The part's tab closed with its edits discarded. The components that
       shared its document, or its model's mesh, had them.
+- **A tab showing a file changed on disk reads it again first**
+  (`MainWindow::reloadTabsOf`). A component of a part open in a tab takes
+  the tab's document, which was as old as its read.
+  - A tab without unsaved changes is read again into a new document, in
+    place of its own.
+  - One with unsaved changes asks: read again, losing them, or keep yours
+    (the default). Kept, the assemblies show your version.
+  - An assembly's own tab is not read again; the status bar says to reopen
+    it.
+- **A part read again is tessellated again.** Each `Document` has a serial
+  unique in the process, and a model mesh is shared under the path and that
+  serial. Under the path alone, a new read built as many times as the old
+  one was shown with the old one's mesh, while an undo step still held it.
 - **Files placed stay watched.** A lightweight component's file is now
   watched as a resolved one's was. A file any component was resolved from is
   never unwatched, so closing a tab of the part does not stop the watch.
@@ -141,12 +154,17 @@ File menu only.
   - a placed part stays watched when its tab closes;
   - `samePath` sees through spelling;
   - a restore keeps the geometry loaded now;
+  - a part read again is not shown with its old mesh;
   - the BOM puts one file spelled three ways on one line.
 - Window:
   - saving a part in its tab makes both blocks taller and moves the one on
     top;
   - a file rewritten on disk is picked up by the timer;
   - a part closed unsaved leaves the mates solving on the file's geometry;
+  - a part open in a tab and changed on disk is read again there, and the
+    mates follow;
+  - one with unsaved changes asks, keeping them by default, and reads the
+    file again when told to;
   - Open Part from the menu and from the tree;
   - the BOM lists and exports.
 - The window tests that need a hook each fail with it switched off.

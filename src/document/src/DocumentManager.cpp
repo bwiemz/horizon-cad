@@ -198,10 +198,11 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     // Watched while the manager lives: a tab of the part closing does not
     // stop an assembly placing it from seeing it change.
     m_placedFiles.insert(key);
-    // A mesh from a part's model is as new as its last build; one from the
-    // file (its cache, or a model built from it apart) as the file.
+    // A mesh from a part's model is as new as its last build, of that
+    // document (the file read again is another, built as often maybe); one
+    // from the file (its cache, or a model built from it apart) as the file.
     const auto modelMesh = [this, &key](const Document& part) {
-        return sharedMesh(key + "#model", part.builds(), [&part] {
+        return sharedMesh(key + "#model/" + std::to_string(part.serial()), part.builds(), [&part] {
             return std::make_shared<const geo::MeshData>(
                 model::SolidTessellator::tessellate(*part.solid()));
         });

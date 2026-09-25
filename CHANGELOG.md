@@ -45,6 +45,9 @@ work, not "post-1.0".
     components that shared its document.
   - An undo in an assembly keeps the parts as they are now, and only puts
     back where they were.
+  - A part or drawing open in a tab and changed by another program is read
+    again. If it has unsaved changes, you are asked first, and keeping them
+    is the default.
   - Open Part opens the clicked or chosen component's part in its tab.
   - Bill of Materials lists each part with its count and exports CSV. A
     file spelled two ways is one line.

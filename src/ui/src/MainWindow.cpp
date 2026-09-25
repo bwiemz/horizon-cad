@@ -3250,8 +3250,92 @@ void MainWindow::pollPartFiles() {
     // Not under a dialog: one may be choosing among the components' faces.
     if (QApplication::activeModalWidget() != nullptr) return;
     for (const std::string& path : m_docManager.pollExternalChanges()) {
+        // A tab showing the file first: a component of a part open in a tab
+        // takes the tab's document, which is as old as its read.
+        reloadTabsOf(path);
         refreshComponentsOf(path);
     }
+}
+
+void MainWindow::reloadTabsOf(const std::string& path) {
+    const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+    for (size_t i = 0; i < m_tabs.size(); ++i) {
+        const DocTab& tab = m_tabs[i];
+        const std::string& tabPath =
+            tab.assembly ? tab.assembly->filePath() : tab.document->filePath();
+        if (!doc::DocumentManager::samePath(tabPath, path)) continue;
+        if (tab.assembly) {
+            statusBar()->showMessage(
+                tr("\"%1\" was changed by another program: close it and open it again to "
+                   "see the change")
+                    .arg(name),
+                15000);
+            continue;
+        }
+        if (isTabModified(tab)) {
+            // Never lose the user's edits unasked: keeping them is the default.
+            m_tabBar->setCurrentIndex(static_cast<int>(i));
+            const std::shared_ptr<doc::Document> asked = tab.document;
+            QMessageBox box(QMessageBox::Warning, tr("File Changed on Disk"),
+                            tr("\"%1\" was changed by another program, and has unsaved "
+                               "changes here.")
+                                .arg(name),
+                            QMessageBox::Discard | QMessageBox::Ignore, this);
+            box.setInformativeText(
+                tr("Read it again, losing your changes, or keep your version? Saving yours "
+                   "replaces the other program's."));
+            box.button(QMessageBox::Discard)->setText(tr("Read Again"));
+            box.button(QMessageBox::Ignore)->setText(tr("Keep Mine"));
+            box.setDefaultButton(QMessageBox::Ignore);
+            box.setEscapeButton(QMessageBox::Ignore);
+            if (box.exec() != QMessageBox::Discard) continue;
+            // Its place, found again: the tabs may have changed meanwhile.
+            i = 0;
+            while (i < m_tabs.size() && m_tabs[i].document != asked) ++i;
+            if (i == m_tabs.size()) return;
+        }
+        reloadTab(i);
+    }
+}
+
+bool MainWindow::reloadTab(size_t index) {
+    DocTab& tab = m_tabs[index];
+    const std::shared_ptr<doc::Document> old = tab.document;
+    const std::string path = old->filePath();
+    const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+    FileOpen read =
+        readFile(path, QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive));
+    if (!read.document) {
+        statusBar()->showMessage(
+            tr("\"%1\" was changed by another program, and could not be read again: %2")
+                .arg(name, QString::fromStdString(read.error)),
+            15000);
+        return false;
+    }
+    const std::shared_ptr<doc::Document> fresh = std::move(read.document);
+    fresh->setFilePath(path);
+    fresh->setDirty(false);
+
+    // The old document goes: its build, if one runs, is of no use.
+    if (m_rebuildJob && m_rebuildDocument == old) m_rebuildJob->cancel();
+    old->setChangeCallback(nullptr);
+    forgetSnapshot(tab);
+    m_docManager.closeDocument(old);
+    m_docManager.adoptDocument(fresh);
+    m_docManager.noteSaved(fresh);  // found by its path, and watched from now
+    watchDocument(fresh);
+    fresh->undoStack().setLimit(static_cast<std::size_t>(Preferences::current().undoLimit));
+    tab.document = fresh;
+    tab.mesh.reset();
+    tab.meshBuild = 0;
+    tab.lastBuildMs = kBuildTimeUnknown;
+    tab.modelStale = fresh->needsBuild();
+
+    if (&tab == activeTab()) activateTabDocument();
+    refreshModifiedIndicators();
+    statusBar()->showMessage(
+        tr("\"%1\" was changed by another program, and has been read again").arg(name), 10000);
+    return true;
 }
 
 void MainWindow::openComponentPart(uint64_t id) {

@@ -405,8 +405,16 @@ private:
     /// Called when a part is saved here, found changed on disk, or its tab
     /// closed with its edits discarded.
     void refreshComponentsOf(const std::string& path);
-    /// Refresh the components of every watched file changed on disk.
+    /// For every watched file changed on disk: its tabs read again, then
+    /// the components placing it refreshed.
     void pollPartFiles();
+    /// Tabs showing @p path, changed on disk by another program: one without
+    /// unsaved changes is read again; one with them asks whether to read it
+    /// again, losing them, or keep its own. An assembly's tab says so only.
+    void reloadTabsOf(const std::string& path);
+    /// Read tab @p index's file again, into a new document in place of its
+    /// own. False, and said why, when it cannot be read.
+    bool reloadTab(size_t index);
     /// Open the part component @p id places, in its tab.
     void openComponentPart(uint64_t id);
     void removeComponent(uint64_t id);

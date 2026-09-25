@@ -427,6 +427,87 @@ TEST(AssembliesTest, APartChangedOnDiskIsPickedUp) {
     EXPECT_NEAR(heightOf(assembly.components()[0]), 25.0, 1e-9);
 }
 
+/// Edits @p block as another program would: its box made @p depth deep,
+/// its features (and so its faces' names) kept, and its time moved on
+/// however coarse the clock.
+void rewriteOnDisk(const QString& block, double depth) {
+    hz::doc::Document part;
+    ASSERT_TRUE(hz::io::NativeFormat::load(block.toStdString(), part));
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", depth));
+    ASSERT_TRUE(part.rebuildModel());
+    ASSERT_TRUE(hz::io::NativeFormat::save(block.toStdString(), part));
+    const std::filesystem::path file(block.toStdString());
+    std::filesystem::last_write_time(
+        file, std::filesystem::last_write_time(file) + std::chrono::seconds(2));
+}
+
+double depthOf(const hz::doc::Document& part) {
+    if (part.featureTree().featureCount() == 0) return 0.0;
+    return part.featureTree().feature(0)->parameters().at("depth");
+}
+
+// A part open in its tab and changed on disk is read again there, and the
+// assembly follows. The tab's document was kept as the part, and the mates
+// were solved on it, as it was before the change.
+TEST(AssembliesTest, APartOpenInATabAndChangedOnDiskIsReadAgain) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    const hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+
+    rewriteOnDisk(block, 25);
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000)) << "read again";
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 25.0, 1e-12);
+    EXPECT_FALSE(w.activeDocument()->isDirty());
+
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    EXPECT_NEAR(heightOf(*assembly.component(base)), 25.0, 1e-9);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 25.0, 1e-6) << "on the new top";
+}
+
+// A part changed on disk while it has unsaved changes here asks first:
+// kept, the tab and the assembly stay with the user's version; read again,
+// they take the file's.
+TEST(AssembliesTest, APartWithUnsavedChangesAsksBeforeReadingAgain) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    deepen(*part, 20);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+
+    {
+        DialogResponder keep(QMessageBox::Ignore, QStringLiteral("File Changed on Disk"));
+        rewriteOnDisk(block, 25);
+        keep.waitForDialog(5000);
+        ASSERT_TRUE(keep.seen());
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Ignore) << "keeping is the default";
+    }
+    EXPECT_EQ(w.activeDocument(), part) << "kept";
+    EXPECT_TRUE(part->isDirty());
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 20.0, 1e-6) << "on the user's version";
+
+    {
+        DialogResponder readAgain(QMessageBox::Discard, QStringLiteral("File Changed on Disk"));
+        rewriteOnDisk(block, 30);
+        readAgain.waitForDialog(5000);
+        ASSERT_TRUE(readAgain.seen());
+    }
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 30.0, 1e-12);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 30.0, 1e-6) << "on the file's";
+}
+
 // A part edited in its tab and closed unsaved leaves the assembly as its
 // file is: the components shared its document, and the mates were solved on
 // its edits after it was gone.

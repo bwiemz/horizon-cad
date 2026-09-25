@@ -138,6 +138,10 @@ public:
     /// How many builds have been applied (rebuildModel or applyBuild, not
     /// cancelled): what is made from the solid, its mesh, knows it is new.
     std::uint64_t builds() const { return m_builds; }
+    /// This document object, unique in the process: two reads of one file
+    /// are two serials, where their build counts may be equal. With
+    /// builds(), it says which solid a mesh was made from.
+    std::uint64_t serial() const { return m_serial; }
     /// Failure message from the last rebuildModel() call (empty on success).
     const std::string& lastBuildMessage() const { return m_lastBuildMessage; }
 
@@ -196,6 +200,7 @@ private:
     std::string m_lastBuildMessage;
     int m_failedFeatureIndex = -1;
     std::uint64_t m_builds = 0;
+    std::uint64_t m_serial = 0;
     bool m_built = false;          ///< a build has been applied...
     uint64_t m_builtRevision = 0;  ///< ...for this revision of the feature tree
     DocumentType m_type = DocumentType::Drawing;
