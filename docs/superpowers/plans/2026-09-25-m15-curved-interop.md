@@ -184,9 +184,16 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
   face of one bracket is not taken for another's.
 - **`assemblyFromString`** returns the parts once each and their placements,
   named by the uses down to them ("Sub:1/Bolt:2").
-- **`assemblyToString`** writes a part product for each part (its solids and
-  an origin) and an assembly product whose uses place them the same way. A
-  placement that is not rigid, or of no part, is left out and said.
+- **`assemblyToString`** writes a part product for each part and an
+  assembly product whose uses place them the same way:
+  - A part's shape is a SHAPE_REPRESENTATION holding its origin, related to
+    an ADVANCED_BREP representation for each of its solids, as OCC writes
+    one. Solids in one B-rep representation read back as the shells of one
+    solid.
+  - A placement that is not rigid, or of no part, is left out and said.
+- **Limits, in review:** the walk counts the solids it places, not only the
+  placements, so a part of many solids used many times is cut short too. Half
+  a UTF-16 pair in a name reads as U+FFFD.
 - **Names** travel as Part-21 text: quotes and backslashes doubled, all else
   `\X2\`/`\X4\` escaped; those and `\X\`, `\S\` read back.
 - **The app:**

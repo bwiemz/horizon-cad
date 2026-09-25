@@ -379,3 +379,48 @@ TEST(StepAssemblyTest, AnAssemblyIsKeptAsPartFilesAndAnAssemblyFile) {
     EXPECT_NEAR(volumeOf(*bracket.solid()), volumeOf(*rig.bracket), 1e-6);
     fs::remove_all(dir);
 }
+
+// Half a UTF-16 pair, or one on its own, is the replacement character, not
+// dropped, and not written as a surrogate UTF-8 cannot hold.
+TEST(StepAssemblyTest, ABrokenEscapeInANameIsTheReplacementCharacter) {
+    const Rig rig;
+    std::string text = rig.text();
+    const std::string was = "PRODUCT('Pin','Pin'";
+    const auto at = text.find(was);
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, was.size(),
+                 "PRODUCT('Pin','A\\X2\\D83D\\X0\\B\\X2\\DE00\\X0\\C\\X2\\D83DDE00\\X0\\'");
+    const StepAssembly read = StepFormat::assemblyFromString(text);
+    ASSERT_EQ(read.parts.size(), 2u) << StepFormat::lastError();
+    EXPECT_EQ(read.parts[1].name,
+              "A\xEF\xBF\xBD"
+              "B\xEF\xBF\xBD"
+              "C\xF0\x9F\x98\x80");
+}
+
+// A part of many solids placed many times is cut short by the solids placed,
+// not only by the placements.
+TEST(StepAssemblyTest, APartOfManySolidsPlacedManyTimesIsCutShort) {
+    std::vector<std::unique_ptr<Solid>> boxes;
+    StepWritePart part{"Stack", {}};
+    boxes.reserve(30);
+    part.bodies.reserve(30);
+    for (int k = 0; k < 30; ++k) {
+        boxes.push_back(PrimitiveFactory::makeBox(1, 1, 1));
+        part.bodies.push_back(boxes.back().get());
+    }
+    std::vector<StepOccurrence> occurrences;
+    occurrences.reserve(1000);
+    for (int k = 0; k < 1000; ++k) {
+        occurrences.push_back({0, "Stack", Mat4::translation({2.0 * k, 0, 0})});
+    }
+    ImportReport report;
+    const StepAssembly read = StepFormat::assemblyFromString(
+        StepFormat::assemblyToString("Stacks", {part}, occurrences), &report);
+    ASSERT_EQ(read.parts.size(), 1u) << StepFormat::lastError();
+    EXPECT_EQ(read.parts[0].bodies.size(), 30u);
+    EXPECT_LE(read.occurrences.size() * 30, 20000u + 30u);
+    EXPECT_GT(read.occurrences.size(), 600u);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped[0].find("more times than can be read"), std::string::npos);
+}

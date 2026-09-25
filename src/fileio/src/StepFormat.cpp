@@ -2087,17 +2087,28 @@ std::string decodeStepText(const std::string& in) {
             std::size_t at = i + 4;
             std::uint32_t unit = 0;
             std::uint32_t high = 0;  // a UTF-16 high surrogate waiting for its low
+            // What is not a character (half a pair, a surrogate on its own,
+            // beyond Unicode) is the replacement character, not dropped.
+            constexpr std::uint32_t kReplacement = 0xFFFD;
             while (at < in.size() && in[at] != '\\' && hex(at, digits, unit)) {
-                if (digits == 4 && unit >= 0xD800 && unit < 0xDC00) {
+                const bool surrogate = unit >= 0xD800 && unit < 0xE000;
+                const bool highHalf = digits == 4 && unit >= 0xD800 && unit < 0xDC00;
+                const bool lowHalf = digits == 4 && unit >= 0xDC00 && unit < 0xE000;
+                if (high != 0 && !lowHalf) {
+                    put(kReplacement);
+                    high = 0;
+                }
+                if (highHalf) {
                     high = unit;
-                } else if (digits == 4 && unit >= 0xDC00 && unit < 0xE000 && high != 0) {
+                } else if (lowHalf && high != 0) {
                     put(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00));
                     high = 0;
                 } else {
-                    put(unit);
+                    put(surrogate || unit > 0x10FFFF ? kReplacement : unit);
                 }
                 at += digits;
             }
+            if (high != 0) put(kReplacement);
             i = in.compare(at, 4, "\\X0\\") == 0 ? at + 4 : at;
         } else if (in.compare(i, 3, "\\X\\") == 0) {
             std::uint32_t byte = 0;
@@ -2369,9 +2380,10 @@ struct ProductStructure {
     std::vector<std::string> leftOut;
 };
 
-/// At most this many placements, and this many assemblies walked into: a
+/// At most this many solids placed, and this many assemblies walked into: a
 /// file whose assemblies multiply beyond them (a part used ten times in each
-/// of ten nested levels) is cut short.
+/// of ten nested levels, or a part of many solids used many times) is cut
+/// short.
 constexpr std::size_t kMaxPlacements = 20000;
 constexpr std::size_t kMaxVisits = 1000000;
 /// Assemblies nested deeper than this are taken for a loop.
@@ -2560,18 +2572,20 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
     std::vector<bool> placedProduct(structure.products.size(), false);
     bool cut = false;
     std::size_t visits = 0;
+    std::size_t solids = 0;  // placed so far, counting each of a part's
     std::set<int> unplaced;  // uses with no placement that can be read
     std::set<int> loops;     // uses of an assembly within itself
     // Each placement is named by the uses down to it ("Sub:1/Bolt:2"); a
     // top product by its own name.
     std::function<void(int, const Mat4&, int, const std::string&)> walk =
         [&](int definition, const Mat4& world, int depth, const std::string& path) {
-            if (structure.placed.size() >= kMaxPlacements || ++visits > kMaxVisits) {
+            if (solids >= kMaxPlacements || ++visits > kMaxVisits) {
                 cut = true;
                 return;
             }
             const auto product = productOf.find(definition);
             if (product != productOf.end()) {
+                solids += structure.products[product->second].groups.size();
                 structure.placed.push_back(
                     {product->second, depth > 0 ? path : structure.products[product->second].name,
                      world});
@@ -2942,8 +2956,10 @@ std::string StepFormat::assemblyToString(const std::string& name,
         }
     }
 
-    // Each part used, once: its solids and its origin, the frame its
-    // placements move.
+    // Each part used, once: its origin, the frame its placements move, in a
+    // shape representation of its own; and each of its solids in an
+    // advanced B-rep representation related to it (as OCC writes a part),
+    // so each comes back a solid of its own, not a shell of one.
     struct Written {
         int definition = 0;
         int rep = 0;
@@ -2953,25 +2969,31 @@ std::string StepFormat::assemblyToString(const std::string& name,
     int index = 0;
     for (std::size_t p = 0; p < parts.size(); ++p) {
         if (!used[p]) continue;
-        std::vector<int> items;
+        const std::string quoted = stepText(parts[p].name);
+        std::vector<int> bodies;
         for (const topo::Solid* body : parts[p].bodies) {
             if (body == nullptr) continue;
             const std::vector<int> msbs =
                 writeSolid(w, *body, index++, options.asDesigned,
                            report != nullptr ? &report->faceted : nullptr);
-            items.insert(items.end(), msbs.begin(), msbs.end());
+            if (msbs.empty()) continue;
+            bodies.push_back(w.add("ADVANCED_BREP_SHAPE_REPRESENTATION(" + quoted + "," +
+                                   StepWriter::refList(msbs) + ",#" + std::to_string(pre.context) +
+                                   ")"));
         }
-        if (items.empty()) continue;
+        if (bodies.empty()) continue;
         Written part;
         part.origin = axis(Mat4::identity());
-        items.push_back(part.origin);
-        const std::string quoted = stepText(parts[p].name);
         const ProductIds ids = writeProduct(w, pre, quoted, "part");
         part.definition = ids.definition;
-        part.rep = w.add("ADVANCED_BREP_SHAPE_REPRESENTATION(" + quoted + "," +
-                         StepWriter::refList(items) + ",#" + std::to_string(pre.context) + ")");
+        part.rep = w.add("SHAPE_REPRESENTATION(" + quoted + ",(#" + std::to_string(part.origin) +
+                         "),#" + std::to_string(pre.context) + ")");
         w.add("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ids.shape) + ",#" +
               std::to_string(part.rep) + ")");
+        for (const int body : bodies) {
+            w.add("SHAPE_REPRESENTATION_RELATIONSHIP('','',#" + std::to_string(part.rep) + ",#" +
+                  std::to_string(body) + ")");
+        }
         written[p] = part;
     }
 
