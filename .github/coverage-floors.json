@@ -1,0 +1,19 @@
+{
+  "_comment": "Line coverage (percent) each src/ module must keep in CI's coverage job. Set on 2026-09-25 from the first run with the window tests, one point under what it measured. Raise a floor when a module's coverage rises; lower one only with a reason in the commit.",
+  "app": 0,
+  "cam": 97,
+  "constraint": 50,
+  "document": 75,
+  "drafting": 59,
+  "fileio": 82,
+  "geometry": 83,
+  "kinematics": 97,
+  "math": 90,
+  "modeling": 93,
+  "pdm": 93,
+  "plugin": 93,
+  "render": 48,
+  "simulation": 96,
+  "topology": 92,
+  "ui": 67
+}
