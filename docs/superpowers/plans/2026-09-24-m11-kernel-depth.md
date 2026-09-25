@@ -219,7 +219,9 @@ Cases:
     derivatives and allocation, took 25 s for a sphere's vertices.
 - **The dialog reports both**, as modelled and ideal, and whether the ideal
   is exact. Parts with 100 or more curved faces are measured on a worker
-  (in Auto); closing the dialog stops it.
+  (in Auto); closing the dialog stops it. After review: a cancel is seen
+  along every edge and every row of every triangle; between faces alone,
+  closing the window waited for a large face to finish.
 - **STEP curved faces** (`model::facetCurved`, applied when an imported
   body is built, so the file's exact B-Rep is what a document saves):
   - Edges are cut into equal chords by turning (32 per circle), each

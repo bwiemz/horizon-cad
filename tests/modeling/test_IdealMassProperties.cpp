@@ -4,10 +4,13 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <deque>
 #include <memory>
 #include <numbers>
+#include <thread>
 #include <vector>
 
 #include "horizon/drafting/DraftLine.h"
@@ -198,4 +201,27 @@ TEST(IdealMassPropertiesTest, IdealsThatPartAreCounted) {
     EXPECT_NEAR(ideal.properties.volume, rounded_, 0.01 * rounded_);
     EXPECT_LT(std::abs(ideal.properties.volume - rounded_), std::abs(modelled - rounded_))
         << "nearer the design than the facets";
+}
+
+// A measurement cancelled stops within a moment and says it is not valid:
+// the window waits for it when it closes (Phase 141 review). It looked
+// only between faces, so a large face at a fine refinement ran on.
+TEST(IdealMassPropertiesTest, ACancelledMeasurementStopsPromptly) {
+    auto solid = PrimitiveFactory::makeTorus(4.0, 1.0, 64);
+    ASSERT_NE(solid, nullptr);
+    std::atomic<bool> cancelled{false};
+    std::chrono::steady_clock::time_point stoppedAt;
+    hz::model::IdealMassProperties ideal;
+    std::thread worker([&] {
+        // A tolerance it cannot reach: it would refine to its limit.
+        ideal = MassPropertiesCalculator::computeIdeal(*solid, nullptr, 0.0, &cancelled);
+        stoppedAt = std::chrono::steady_clock::now();
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const auto cancelledAt = std::chrono::steady_clock::now();
+    cancelled = true;
+    worker.join();
+    EXPECT_FALSE(ideal.properties.valid);
+    const double ms = std::chrono::duration<double, std::milli>(stoppedAt - cancelledAt).count();
+    EXPECT_LT(ms, 2000.0) << "stopped " << ms << " ms after it was cancelled";
 }
