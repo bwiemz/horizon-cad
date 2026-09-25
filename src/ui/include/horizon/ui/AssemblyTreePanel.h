@@ -26,7 +26,9 @@ class AssemblyTreePanel : public QDockWidget {
 public:
     explicit AssemblyTreePanel(QWidget* parent = nullptr);
 
-    /// Rebuild the rows from @p assembly; empty when it is null.
+    /// Rebuild the rows from @p assembly; empty when it is null. The current
+    /// row stays current if it is still there, and @p assembly is the one
+    /// the rows were of: ids start at 1 in each assembly.
     void refresh(const doc::AssemblyDocument* assembly);
 
     /// The component (or mate) of the current row; 0 when the row is not one.
@@ -63,6 +65,8 @@ private:
     QAction* m_editMateAction = nullptr;
     QAction* m_openPartAction = nullptr;
     bool m_currentSuppressed = false;
+    /// The assembly the rows are of (identity only; never dereferenced).
+    const doc::AssemblyDocument* m_shown = nullptr;
 };
 
 }  // namespace hz::ui

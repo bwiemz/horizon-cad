@@ -94,8 +94,12 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
 }
 
 void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
-    const uint64_t component = currentComponent();
-    const uint64_t mate = currentMate();
+    // The current row is kept within one assembly only: another's component
+    // #1 is not the one chosen, and Delete would have removed it.
+    const bool same = assembly == m_shown;
+    const uint64_t component = same ? currentComponent() : 0;
+    const uint64_t mate = same ? currentMate() : 0;
+    m_shown = assembly;
     const QSignalBlocker quiet(m_tree);
     m_tree->clear();
     if (assembly == nullptr) {
