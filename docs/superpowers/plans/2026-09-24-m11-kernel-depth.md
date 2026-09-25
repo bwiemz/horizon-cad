@@ -133,6 +133,9 @@ applies to `Stable` features only, which is what new features are. A saved
   - Each body with edges to round is filleted alone, and the bodies are
     collected again with their names.
   - Every face was put in one shell, and Euler's check failed.
+  - After review: the second and later bodies rounded name what they make
+    under `<feature>/body:<k>`. Each rebuild numbers its corner blends and
+    new edges from 0, so two bodies had one `<feature>/blend/corner:0`.
 - **Chamfer.**
   - At any angle it needed no change: the plane clip is general. Its header
     said otherwise.
@@ -147,7 +150,7 @@ applies to `Stable` features only, which is what new features are. A saved
 
 ### Tests
 
-7 new, 2 replaced. The volumes are exact to 1e-9, against closed forms:
+8 new, 2 replaced. The volumes are exact to 1e-9, against closed forms:
 - the kite less the n-chord sector for a fillet, and the triangle for a
   chamfer;
 - the swept section less twice its first moment, for an end on 45° faces.
@@ -157,7 +160,7 @@ Cases:
   (45°, 45°, 90°).
 - A fillet ending on 45° end faces.
 - A concave fillet that adds material.
-- One body of two filleted.
+- One body of two filleted, and two bodies filleted at once, named apart.
 - A chamfer on a 45° edge.
 - A concave chamfer.
 - A chamfer ending on 45° end faces.
