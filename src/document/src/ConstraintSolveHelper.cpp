@@ -4,15 +4,10 @@
 #include <cmath>
 
 #include "horizon/constraint/ParameterTable.h"
-#include "horizon/drafting/DraftArc.h"
-#include "horizon/drafting/DraftCircle.h"
-#include "horizon/drafting/DraftLine.h"
-#include "horizon/drafting/DraftPolyline.h"
-#include "horizon/drafting/DraftRectangle.h"
 
 namespace hz::doc {
 
-/// Copy geometric properties from src to dst (same pattern as ConstraintCommands.cpp).
+/// Whether a solve's result stands: it converged, with or without freedom left.
 static bool isSolveSuccess(cstr::SolveStatus status) {
     return status == cstr::SolveStatus::Success || status == cstr::SolveStatus::Converged ||
            status == cstr::SolveStatus::UnderConstrained;
