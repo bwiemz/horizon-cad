@@ -46,8 +46,8 @@ public:
                             double max, int decimals = 3);
     /// An angle: its value() and @p degrees, @p min, @p max in degrees,
     /// typed in them or in radians ("0.5 rad").
-    QuantitySpinBox* angle(const QString& name, const QString& label, double degrees,
-                           double min, double max, int decimals = 3);
+    QuantitySpinBox* angle(const QString& name, const QString& label, double degrees, double min,
+                           double max, int decimals = 3);
     QLineEdit* text(const QString& name, const QString& label, const QString& value = {});
     QSpinBox* count(const QString& name, const QString& label, int value, int min, int max);
     QComboBox* choice(const QString& name, const QString& label, const QStringList& items);

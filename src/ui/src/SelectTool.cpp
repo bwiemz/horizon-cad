@@ -14,8 +14,8 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/math/BoundingBox.h"
-#include "horizon/ui/GripManager.h"
 #include "horizon/ui/FeatureForm.h"
+#include "horizon/ui/GripManager.h"
 #include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 
@@ -400,11 +400,11 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
     // another (Phase 154).
     FeatureForm form(m_viewport, QObject::tr("Edit Constraint"),
                      m_viewport->document()->lengthUnit());
-    QuantitySpinBox* field =
-        isAngle ? form.angle(QStringLiteral("value"), QObject::tr("Angle:"),
-                             currentValue * 180.0 / pi, 0.001, 359.999, 4)
-                : form.length(QStringLiteral("value"), QObject::tr("Distance:"), currentValue,
-                              0.001, 1e9, 4);
+    QuantitySpinBox* field = isAngle
+                                 ? form.angle(QStringLiteral("value"), QObject::tr("Angle:"),
+                                              currentValue * 180.0 / pi, 0.001, 359.999, 4)
+                                 : form.length(QStringLiteral("value"), QObject::tr("Distance:"),
+                                               currentValue, 0.001, 1e9, 4);
     if (!form.exec()) return false;
     const double newDisplay = field->value();
 
