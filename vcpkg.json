@@ -14,14 +14,29 @@
   ],
   "features": {
     "qt": {
-      "description": "Build Qt 6 with vcpkg. Turn off (VCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON, or the linux-system-qt preset) to build against an installed Qt 6.",
+      "description": "Build Qt 6 with vcpkg: what the application needs to show a window and draw text (FreeType, HarfBuzz; on Linux fontconfig and the xcb platform plugin), and nothing more. Turn off (VCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON, or the linux-system-qt preset) to build against an installed Qt 6.",
       "dependencies": [
         {
           "name": "qtbase",
           "default-features": false,
           "features": [
             "widgets",
-            "opengl"
+            "opengl",
+            "freetype",
+            "harfbuzz",
+            "png",
+            {
+              "name": "fontconfig",
+              "platform": "linux"
+            },
+            {
+              "name": "xcb",
+              "platform": "linux"
+            },
+            {
+              "name": "xcb-xlib",
+              "platform": "linux"
+            }
           ]
         }
       ]
