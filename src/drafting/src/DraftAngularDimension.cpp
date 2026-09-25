@@ -240,11 +240,7 @@ void DraftAngularDimension::translate(const math::Vec2& delta) {
 std::shared_ptr<DraftEntity> DraftAngularDimension::clone() const {
     auto copy =
         std::make_shared<DraftAngularDimension>(m_vertex, m_line1Point, m_line2Point, m_arcRadius);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     copy->setTextOverride(m_textOverride);
     return copy;
 }

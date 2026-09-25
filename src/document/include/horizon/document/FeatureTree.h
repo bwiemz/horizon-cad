@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec3.h"
@@ -97,9 +98,10 @@ public:
         return execute(std::move(inputSolid), reason);
     }
 
-    /// The sketches it is made from (Phase 157). The tree places each that
-    /// follows a face on that face, as the part stands before the feature,
-    /// before it builds the feature.
+    /// The sketches it is made from (Phase 157). Before it builds the
+    /// feature, the tree places each that follows a face on that face, and
+    /// projects again the part's edges projected into it, from the part as
+    /// it stands before the feature.
     virtual std::vector<std::shared_ptr<Sketch>> sketches() const { return {}; }
 
     /// True for non-geometric construction features (datum planes, axes,
@@ -753,6 +755,9 @@ struct BuildResult {
     /// Where each sketch that follows a face was placed (Phase 157), by id:
     /// what a build of a copy (on a worker) gives the document it copied.
     std::map<uint64_t, draft::SketchPlane> placements;
+    /// The edges projected into each sketch (Phase 157), drawn again from the
+    /// part, by sketch id: each entity keeps the id of the one it replaces.
+    std::map<uint64_t, std::vector<std::shared_ptr<draft::DraftEntity>>> projections;
 };
 
 /// How a build running on another thread says how far it has got, and learns

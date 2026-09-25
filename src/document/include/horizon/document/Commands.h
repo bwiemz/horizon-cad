@@ -251,6 +251,23 @@ private:
     std::vector<std::pair<uint64_t, int>> m_oldLineTypes;
 };
 
+/// Command to make one or more entities construction geometry, or not
+/// (Phase 157): a guide, never part of a profile.
+class ChangeEntityConstructionCommand : public Command {
+public:
+    ChangeEntityConstructionCommand(draft::DraftDocument& doc,
+                                    const std::vector<uint64_t>& entityIds, bool construction);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    bool m_construction;
+    std::vector<std::pair<uint64_t, bool>> m_old;
+};
+
 /// Command to change the text override of a dimension entity.
 class ChangeTextOverrideCommand : public Command {
 public:

@@ -146,11 +146,7 @@ void DraftRadialDimension::translate(const math::Vec2& delta) {
 std::shared_ptr<DraftEntity> DraftRadialDimension::clone() const {
     auto copy =
         std::make_shared<DraftRadialDimension>(m_center, m_radius, m_textPoint, m_isDiameter);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     copy->setTextOverride(m_textOverride);
     return copy;
 }

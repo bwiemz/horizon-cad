@@ -192,6 +192,16 @@ bool Document::applyBuild(BuildResult result) {
     for (const auto& [id, plane] : result.placements) {
         if (const auto sketch = findSketch(id)) sketch->setPlaced(plane);
     }
+    // And the edges projected into it, as the build drew them again.
+    for (const auto& [id, projected] : result.projections) {
+        const auto sketch = findSketch(id);
+        if (!sketch) continue;
+        for (const auto& again : projected) {
+            if (sketch->drawing().sharedEntity(again->id()) != again) {
+                sketch->drawing().replaceEntity(again->id(), again);
+            }
+        }
+    }
     return m_failedFeatureIndex < 0;
 }
 

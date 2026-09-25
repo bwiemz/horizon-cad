@@ -72,6 +72,7 @@
 #include "horizon/math/Quantity.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
@@ -759,6 +760,12 @@ void MainWindow::createMenus() {
     m_finishSketchAction = sketchAction(modelMenu, tr("&Finish Sketch"), "action_sketch_finish",
                                         [this] { onFinishSketch(); });
     m_finishSketchAction->setEnabled(false);
+    m_projectEdgesAction = sketchAction(modelMenu, tr("&Project Edges..."), "action_project_edges",
+                                        [this] { onProjectEdges(); });
+    m_projectEdgesAction->setEnabled(false);
+    m_constructionAction = sketchAction(modelMenu, tr("&Construction"), "action_construction",
+                                        [this] { onToggleConstruction(); });
+    m_constructionAction->setEnabled(false);
     modelMenu->addSeparator();
     sketchAction(modelMenu, tr("&Loft..."), "action_loft", [this] { onLoft(); });
     sketchAction(modelMenu, tr("S&weep..."), "action_sweep", [this] { onSweep(); });
@@ -1352,8 +1359,8 @@ void MainWindow::activateTabDocument() {
     m_viewport->setActiveSketch(nullptr);
     m_viewport->setDocument(m_document.get());
     m_viewport->setActiveSketch(m_document->editedSketch().get());
-    if (m_finishSketchAction) {
-        m_finishSketchAction->setEnabled(m_document->editedSketch() != nullptr);
+    for (QAction* action : {m_finishSketchAction, m_projectEdgesAction, m_constructionAction}) {
+        if (action) action->setEnabled(m_document->editedSketch() != nullptr);
     }
     if (tab->modelStale) {
         rebuildFeatureTree();
@@ -3865,6 +3872,90 @@ void MainWindow::newSketchOn(const draft::SketchPlane& plane, const QString& whe
         tr("Sketching on %1: draw the profile, then Model > Finish Sketch").arg(where));
 }
 
+void MainWindow::onProjectEdges() {
+    const auto sketch = m_document->editedSketch();
+    if (!sketch) {
+        statusBar()->showMessage(tr("Edges are projected into a sketch: edit one first"));
+        return;
+    }
+    const topo::Solid* solid = m_document->solid();
+    if (solid == nullptr) {
+        statusBar()->showMessage(tr("There is no part to project edges from"));
+        return;
+    }
+    const PickList edges = edgesOf(*solid);
+    if (edges.ids.empty()) {
+        statusBar()->showMessage(tr("The part has no edges to project"));
+        return;
+    }
+    FeatureForm form(this, tr("Project Edges"), m_document->lengthUnit());
+    auto* list = form.checklist(QStringLiteral("edges"), tr("Edges:"), edges.items);
+    checkClicked(list, edges, m_viewport->modelSelection(), true);
+    auto* kind = form.choice(QStringLiteral("kind"), tr("As:"),
+                             {tr("Construction geometry"), tr("Part of the profile")});
+    if (!form.exec()) return;
+
+    auto& drawing = m_document->activeDrawing();
+    auto add = std::make_unique<doc::CompositeCommand>(tr("Project Edges").toStdString());
+    int made = 0;
+    QStringList missed;
+    for (const int row : FeatureForm::checkedRows(list)) {
+        // By its whole name, which lasts through a later feature's Boolean.
+        const std::string name = model::wholeEdgeName(edges.ids[static_cast<size_t>(row)].tag());
+        std::string why;
+        auto entity = model::projectEdge(*solid, name, sketch->plane(), &why);
+        if (!entity) {
+            missed << tr("%1 %2").arg(QString::fromStdString(name), QString::fromStdString(why));
+            continue;
+        }
+        // It follows the edge: each build projects it again, from the part.
+        entity->setSourceEdge(name);
+        entity->setConstruction(kind->currentIndex() == 0);
+        entity->setLayer(m_document->layerManager().currentLayer());
+        add->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, std::move(entity)));
+        ++made;
+    }
+    if (made == 0) {
+        statusBar()->showMessage(
+            missed.isEmpty() ? tr("No edges were chosen")
+                             : tr("Nothing projected: %1").arg(missed.join(QStringLiteral("; "))));
+        return;
+    }
+    m_document->undoStack().push(std::move(add));
+    m_viewport->update();
+    QString message = tr("%n edge(s) projected: they follow the part", "", made);
+    if (!missed.isEmpty()) {
+        message += tr("; not %1").arg(missed.join(QStringLiteral("; ")));
+    }
+    statusBar()->showMessage(message);
+}
+
+void MainWindow::onToggleConstruction() {
+    if (!m_document->editedSketch()) {
+        statusBar()->showMessage(tr("Construction geometry is drawn in a sketch: edit one first"));
+        return;
+    }
+    auto& drawing = m_document->activeDrawing();
+    std::vector<uint64_t> ids;
+    bool all = true;  // all construction already: made geometry again
+    for (const uint64_t id : m_viewport->selectionManager().selectedIds()) {
+        if (const auto entity = drawing.sharedEntity(id)) {
+            ids.push_back(id);
+            all = all && entity->construction();
+        }
+    }
+    if (ids.empty()) {
+        statusBar()->showMessage(tr("Select lines, arcs or circles of the sketch first"));
+        return;
+    }
+    m_document->undoStack().push(
+        std::make_unique<doc::ChangeEntityConstructionCommand>(drawing, ids, !all));
+    m_viewport->update();
+    const auto count = static_cast<int>(ids.size());
+    statusBar()->showMessage(all ? tr("%n made part of the profile again", "", count)
+                                 : tr("%n made construction geometry", "", count));
+}
+
 void MainWindow::onNewSketchOnPlane(int which) {
     using math::Vec3;
     // Each seen from outside the part's positive octant: XY from above, XZ
@@ -4375,7 +4466,9 @@ void MainWindow::syncSketchView() {
         rebuildScene();
         refreshAllPanels();
     }
-    if (m_finishSketchAction) m_finishSketchAction->setEnabled(editing != nullptr);
+    for (QAction* action : {m_finishSketchAction, m_projectEdgesAction, m_constructionAction}) {
+        if (action) action->setEnabled(editing != nullptr);
+    }
     refreshSketchList();
 }
 

@@ -276,6 +276,66 @@ TEST(SketchesTest, ASketchFollowsItsFaceWhenThePartIsBuiltOnAWorker) {
         << "the part's own sketch, not only the worker's copy: z = " << sketch->plane().origin().z;
 }
 
+// Phase 157b: an edge of the part projected into a sketch, as construction
+// geometry, is drawn again where the edge is when the part changes; the
+// Construction command makes it part of the profile, and back.
+TEST(SketchesTest, AnEdgeProjectedIntoASketchFollowsThePart) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    const auto sketch = doc.editedSketch();
+    ASSERT_NE(sketch, nullptr);
+    // The top's edge at x = 10, listed from either end.
+    run(w, "action_project_edges", QStringLiteral("Project Edges"),
+        FormAnswers()
+            .check(QStringLiteral("edges"), {QStringLiteral("(10, 0, 10) – (10, 10, 10)"),
+                                             QStringLiteral("(10, 10, 10) – (10, 0, 10)")})
+            .choose(QStringLiteral("kind"), QStringLiteral("Construction geometry")));
+    ASSERT_EQ(sketch->entities().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    const auto projected = sketch->entities().front();
+    EXPECT_TRUE(projected->construction());
+    EXPECT_FALSE(projected->sourceEdge().empty());
+    const auto* line = dynamic_cast<const hz::draft::DraftLine*>(projected.get());
+    ASSERT_NE(line, nullptr);
+    EXPECT_NEAR(line->start().x, 5.0, 1e-9) << "x = 10 is 5 from the face's middle";
+    const uint64_t id = projected->id();
+
+    // Construction, and back: each one undo step.
+    drive.viewport().selectionManager().clearSelection();
+    drive.viewport().selectionManager().select(id);
+    trigger(w, "action_construction");
+    EXPECT_FALSE(sketch->drawing().sharedEntity(id)->construction());
+    trigger(w, "action_undo");
+    EXPECT_TRUE(sketch->drawing().sharedEntity(id)->construction());
+    drive.viewport().selectionManager().clearSelection();
+
+    circle(drive, w, Vec2(0, 0), 2.0);
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers().number(QStringLiteral("size"), 3.0).combine(hz::doc::BodyOperation::Join));
+    ASSERT_NEAR(boundsOf(*doc.solid()).hi.z, 13.0, 1e-9)
+        << "the guide is not part of the profile: "
+        << w.statusBar()->currentMessage().toStdString();
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().number(QStringLiteral("width"), 30.0));
+        auto* tree = w.findChild<hz::ui::FeatureTreePanel*>()->findChild<QTreeWidget*>();
+        tree->setCurrentItem(tree->topLevelItem(0));
+        trigger(w, "editFeature");
+        ASSERT_TRUE(edit.seen());
+    }
+    const auto now = sketch->drawing().sharedEntity(id);
+    const auto* moved = dynamic_cast<const hz::draft::DraftLine*>(now.get());
+    ASSERT_NE(moved, nullptr);
+    EXPECT_NEAR(moved->start().x, 25.0, 1e-9) << "the edge at x = 30 now";
+}
+
 // Undoing the new sketch takes it away, and the window leaves it.
 TEST(SketchesTest, UndoingANewSketchLeavesIt) {
     MainWindow w;

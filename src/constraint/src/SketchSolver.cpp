@@ -40,6 +40,10 @@ Eigen::MatrixXd SketchSolver::buildJacobian(const ParameterTable& params,
         c->jacobian(params, J, offset);
         offset += c->equationCount();
     }
+    // A held parameter (Phase 157) has no say: no step moves it.
+    for (int col = 0; col < n; ++col) {
+        if (params.isFixed(col)) J.col(col).setZero();
+    }
     return J;
 }
 
@@ -75,7 +79,7 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
             Eigen::MatrixXd J = buildJacobian(params, constraints);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
             const int rank = static_cast<int>(qr.rank());
-            result.degreesOfFreedom = n - rank;
+            result.degreesOfFreedom = n - params.fixedCount() - rank;
 
             if (result.degreesOfFreedom > 0) {
                 result.status = SolveStatus::UnderConstrained;
@@ -129,7 +133,7 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
     Eigen::MatrixXd J = buildJacobian(params, constraints);
     Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
     const int rank = static_cast<int>(qr.rank());
-    result.degreesOfFreedom = n - rank;
+    result.degreesOfFreedom = n - params.fixedCount() - rank;
 
     if (m > rank) {
         result.status = SolveStatus::OverConstrained;
@@ -255,6 +259,7 @@ DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
         c.jacobian(params, scratch, 0);
         for (const auto& [first, count] : ranges) {
             for (int col = first; col < first + count; ++col) {
+                if (params.isFixed(col)) continue;  // held: a constant here
                 for (int r = 0; r < rows; ++r) {
                     const double v = scratch(r, col);
                     if (v != 0.0)
@@ -306,7 +311,7 @@ DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
         cluster.over = cluster.rows > rank;
         cluster.freedom = cols - rank;
     }
-    result.totalDOF = n - rankTotal;
+    result.totalDOF = n - params.fixedCount() - rankTotal;
 
     // An entity is over-constrained when an equation of a constraint on it
     // is in an over-constrained cluster, or cannot be met; free when a
@@ -327,6 +332,7 @@ DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
         if (s == EntityDOFStatus::OverConstrained) continue;
         const auto [first, count] = params.parameterRange(id);
         for (int p = first; p < first + count; ++p) {
+            if (params.isFixed(p)) continue;  // held where the part puts it
             if (!tied[static_cast<size_t>(p)] || byRoot[clusters.find(p)].freedom > 0) {
                 s = EntityDOFStatus::Free;
                 break;

@@ -86,11 +86,7 @@ void DraftHatch::translate(const math::Vec2& delta) {
 
 std::shared_ptr<DraftEntity> DraftHatch::clone() const {
     auto copy = std::make_shared<DraftHatch>(m_boundary, m_pattern, m_angle, m_spacing);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

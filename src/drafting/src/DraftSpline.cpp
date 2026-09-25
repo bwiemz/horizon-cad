@@ -209,11 +209,7 @@ void DraftSpline::translate(const math::Vec2& delta) {
 std::shared_ptr<DraftEntity> DraftSpline::clone() const {
     auto copy = std::make_shared<DraftSpline>(m_controlPoints, m_closed);
     copy->setWeights(m_weights);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

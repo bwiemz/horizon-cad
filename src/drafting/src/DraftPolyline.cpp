@@ -96,11 +96,7 @@ static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
 
 std::shared_ptr<DraftEntity> DraftPolyline::clone() const {
     auto copy = std::make_shared<DraftPolyline>(m_points, m_closed);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

@@ -455,6 +455,32 @@ std::string ChangeEntityLineTypeCommand::description() const {
     return "Change Line Type";
 }
 
+// --- ChangeEntityConstructionCommand ---
+
+ChangeEntityConstructionCommand::ChangeEntityConstructionCommand(
+    draft::DraftDocument& doc, const std::vector<uint64_t>& entityIds, bool construction)
+    : m_doc(doc), m_entityIds(entityIds), m_construction(construction) {}
+
+void ChangeEntityConstructionCommand::execute() {
+    m_old.clear();
+    for (uint64_t id : m_entityIds) {
+        if (const auto e = m_doc.sharedEntity(id)) {
+            m_old.emplace_back(id, e->construction());
+            e->setConstruction(m_construction);
+        }
+    }
+}
+
+void ChangeEntityConstructionCommand::undo() {
+    for (const auto& [id, was] : m_old) {
+        if (const auto e = m_doc.sharedEntity(id)) e->setConstruction(was);
+    }
+}
+
+std::string ChangeEntityConstructionCommand::description() const {
+    return m_construction ? "Make Construction" : "Make Not Construction";
+}
+
 // --- ChangeTextOverrideCommand ---
 
 ChangeTextOverrideCommand::ChangeTextOverrideCommand(draft::DraftDocument& doc, uint64_t entityId,

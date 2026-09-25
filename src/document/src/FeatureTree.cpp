@@ -22,6 +22,7 @@
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
+#include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
@@ -186,6 +187,7 @@ bool ExtrudeFeature::setVector(const std::string& name, const math::Vec3& value)
 bool ExtrudeFeature::hasCurvedProfile() const {
     if (!m_sketch) return false;
     for (const auto& ent : m_sketch->entities()) {
+        if (ent->construction()) continue;  // not part of the profile
         if (dynamic_cast<const draft::DraftArc*>(ent.get()) ||
             dynamic_cast<const draft::DraftCircle*>(ent.get())) {
             return true;
@@ -440,6 +442,7 @@ std::vector<math::Vec3> extractPathPoints(const Sketch& sketch, int arcSegmentsP
     std::vector<math::Vec2> pts2D;
 
     for (const auto& ent : sketch.entities()) {
+        if (ent->construction()) continue;  // guides the drawing; not the path
         if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(ent.get())) {
             for (const auto& p : pl->points()) pts2D.push_back(p);
             continue;
@@ -1453,31 +1456,75 @@ bool takesPart(const Feature& feature) {
     return !feature.isConstruction() && !feature.isSuppressed();
 }
 
-/// The sketches placed so far in one build (Phase 157), by id.
+/// The sketches made ready so far in one build (Phase 157), by id.
 using Placed = std::map<uint64_t, std::shared_ptr<Sketch>>;
 
-/// Each sketch @p feature is made from that follows a face, placed on it as
-/// @p part stands, before the feature is built: once in a build, by the
-/// first feature made from it (a pattern builds its feature again against a
-/// later part; a second feature from the sketch builds on it where it is).
-/// False, and why, when a face is not there or not flat.
-bool placeSketches(const Feature& feature, const topo::Solid* part, Placed& placed,
-                   std::string* reason) {
+/// Whether @p sketch has an edge of the part projected into it.
+bool projects(const Sketch& sketch) {
+    return std::any_of(sketch.entities().begin(), sketch.entities().end(),
+                       [](const auto& entity) { return !entity->sourceEdge().empty(); });
+}
+
+/// Each edge projected into @p sketch drawn again from @p part, where the
+/// sketch now is: the same entity (its id, its style) in the edge's shape
+/// now. An edge that is gone leaves construction geometry where it was;
+/// one that shapes the part fails it, false and why.
+bool projectAgain(Sketch& sketch, const topo::Solid* part, std::string* reason) {
+    // Taken first: each is replaced in the drawing as it is drawn again.
+    std::vector<std::shared_ptr<draft::DraftEntity>> projected;
+    for (const auto& entity : sketch.entities()) {
+        if (!entity->sourceEdge().empty()) projected.push_back(entity);
+    }
+    for (const auto& entity : projected) {
+        const std::string& edge = entity->sourceEdge();
+        std::string why = "is not there: there is no part before it";
+        auto again =
+            part != nullptr ? model::projectEdge(*part, edge, sketch.plane(), &why) : nullptr;
+        if (!again) {
+            if (entity->construction()) continue;  // a guide only: it stays
+            if (reason) {
+                *reason = "sketch '" + sketch.name() + "' has the part's edge " + edge +
+                          " projected into it, and it " + why;
+            }
+            return false;
+        }
+        again->setId(entity->id());
+        again->copyStyleFrom(*entity);
+        again->setSourceEdge(edge);
+        sketch.drawing().replaceEntity(entity->id(), std::move(again));
+    }
+    return true;
+}
+
+/// Each sketch @p feature is made from made ready for it, as @p part stands
+/// before it: placed on the face it follows, and the edges projected into
+/// it projected again. Once in a build, by the first feature made from it
+/// (a pattern builds its feature again against a later part; a second
+/// feature from the sketch builds on it as it was made ready). False, and
+/// why, when a face is not there or not flat, or an edge that shapes the
+/// part is gone.
+bool prepareSketches(const Feature& feature, const topo::Solid* part, Placed& placed,
+                     std::string* reason) {
     for (const auto& sketch : feature.sketches()) {
-        if (!sketch || sketch->face().empty() || placed.count(sketch->id()) != 0) continue;
-        const std::string on =
-            "sketch '" + sketch->name() + "' is on a face (" + sketch->face() + ")";
-        if (part == nullptr) {
-            if (reason) *reason = on + ", and there is no part before it";
-            return false;
+        if (!sketch || placed.count(sketch->id()) != 0) continue;
+        const bool follows = !sketch->face().empty();
+        if (!follows && !projects(*sketch)) continue;
+        if (follows) {
+            const std::string on =
+                "sketch '" + sketch->name() + "' is on a face (" + sketch->face() + ")";
+            if (part == nullptr) {
+                if (reason) *reason = on + ", and there is no part before it";
+                return false;
+            }
+            std::string why;
+            const auto face = model::planeOfFace(*part, sketch->face(), &why);
+            if (!face) {
+                if (reason) *reason = on + " that " + why;
+                return false;
+            }
+            sketch->placeOn(face->origin, face->normal);
         }
-        std::string why;
-        const auto face = model::planeOfFace(*part, sketch->face(), &why);
-        if (!face) {
-            if (reason) *reason = on + " that " + why;
-            return false;
-        }
-        sketch->placeOn(face->origin, face->normal);
+        if (!projectAgain(*sketch, part, reason)) return false;
         placed[sketch->id()] = sketch;
     }
     return true;
@@ -1497,7 +1544,7 @@ std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_pt
                                           const std::vector<const Feature*>& before,
                                           Placed& placed) {
     try {
-        if (!placeSketches(feature, part.get(), placed, reason)) return nullptr;
+        if (!prepareSketches(feature, part.get(), placed, reason)) return nullptr;
         BuildContext context;
         context.before = before;
         if (!feature.createsNewBody()) {
@@ -1635,7 +1682,7 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     for (const auto& feat : m_features) {
         if (!takesPart(*feat)) continue;
         context.part = bodies.empty() ? nullptr : bodies.back().get();
-        if (!placeSketches(*feat, context.part, placed, nullptr)) continue;
+        if (!prepareSketches(*feat, context.part, placed, nullptr)) continue;
 
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
@@ -1687,9 +1734,17 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     std::unique_ptr<topo::Solid> solid;
     std::vector<const Feature*> before;
     Placed placed;
-    // Where each sketch was placed, for the document this tree is a copy of.
+    // Where each sketch was placed, and the edges projected into it as they
+    // are now, for the document this tree is a copy of.
     const auto report = [&placed, &result] {
-        for (const auto& [id, sketch] : placed) result.placements.emplace(id, sketch->plane());
+        for (const auto& [id, sketch] : placed) {
+            if (!sketch->face().empty()) result.placements.emplace(id, sketch->plane());
+            auto& projected = result.projections[id];
+            for (const auto& entity : sketch->entities()) {
+                if (!entity->sourceEdge().empty()) projected.push_back(entity);
+            }
+            if (projected.empty()) result.projections.erase(id);
+        }
     };
     for (int i = 0; i < limit; ++i) {
         if (control) {

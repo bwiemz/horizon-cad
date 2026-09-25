@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -60,6 +61,17 @@ public:
     /// Check if an entity is registered.
     bool hasEntity(uint64_t entityId) const;
 
+    /// Whether parameter @p index is held where it is: one of an edge of the
+    /// part projected into the sketch (Phase 157), which the part places.
+    bool isFixed(int index) const {
+        return index >= 0 && static_cast<size_t>(index) < m_fixed.size() &&
+               m_fixed[static_cast<size_t>(index)];
+    }
+    /// How many parameters are held.
+    int fixedCount() const {
+        return static_cast<int>(std::count(m_fixed.begin(), m_fixed.end(), true));
+    }
+
     /// Entity @p entityId's parameters: the first one's index and how many
     /// there are; {0, 0} when it is not registered.
     std::pair<int, int> parameterRange(uint64_t entityId) const;
@@ -73,6 +85,7 @@ private:
     };
 
     Eigen::VectorXd m_values;
+    std::vector<bool> m_fixed;  ///< by parameter: held (isFixed())
     std::vector<EntityParams> m_entityParams;
     /// Entity id -> its entry in m_entityParams (the first, if registered
     /// twice): lookups were a search of them all, for every constraint.

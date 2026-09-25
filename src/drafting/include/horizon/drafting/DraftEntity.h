@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/drafting/SnapPoint.h"
@@ -45,14 +46,28 @@ public:
     uint64_t groupId() const { return m_groupId; }
     void setGroupId(uint64_t gid) { m_groupId = gid; }
 
-    /// Take @p other's layer, colour, line width, line type and group: what a
-    /// piece made from @p other (by Trim, Break, Extend...) keeps of it.
+    /// Construction geometry (Phase 157): drawn to guide the rest (a centre
+    /// line, an edge of the part projected), never part of a profile.
+    bool construction() const { return m_construction; }
+    void setConstruction(bool construction) { m_construction = construction; }
+
+    /// The part's edge it was projected from (Phase 157), by its logical
+    /// name, which it follows: each build that places its sketch projects the
+    /// edge again. "" for one drawn.
+    const std::string& sourceEdge() const { return m_sourceEdge; }
+    void setSourceEdge(std::string edge) { m_sourceEdge = std::move(edge); }
+
+    /// Take @p other's layer, colour, line width, line type, group, and
+    /// whether it is construction: what a piece made from @p other (by Trim,
+    /// Break, Extend...) keeps of it. Not the edge it was projected from: a
+    /// piece of it is not the edge's projection.
     void copyStyleFrom(const DraftEntity& other) {
         m_layer = other.m_layer;
         m_color = other.m_color;
         m_lineWidth = other.m_lineWidth;
         m_lineType = other.m_lineType;
         m_groupId = other.m_groupId;
+        m_construction = other.m_construction;
     }
 
     virtual math::BoundingBox boundingBox() const = 0;
@@ -68,6 +83,14 @@ public:
     virtual void rotate(const math::Vec2& center, double angle) = 0;
     virtual void scale(const math::Vec2& center, double factor) = 0;
 
+protected:
+    /// What a clone keeps of this beyond its shape: its style, and what it
+    /// is (construction, the edge it was projected from). Not its id.
+    void copyInto(DraftEntity& copy) const {
+        copy.copyStyleFrom(*this);
+        copy.m_sourceEdge = m_sourceEdge;
+    }
+
 private:
     uint64_t m_id;
     std::string m_layer;
@@ -75,6 +98,8 @@ private:
     double m_lineWidth;
     int m_lineType;
     uint64_t m_groupId;
+    bool m_construction = false;
+    std::string m_sourceEdge;
 
     static math::IdCounter<uint64_t> s_nextId;
 };

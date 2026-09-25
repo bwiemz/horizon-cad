@@ -124,11 +124,7 @@ void DraftEllipse::translate(const math::Vec2& delta) {
 
 std::shared_ptr<DraftEntity> DraftEllipse::clone() const {
     auto copy = std::make_shared<DraftEllipse>(m_center, m_semiMajor, m_semiMinor, m_rotation);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

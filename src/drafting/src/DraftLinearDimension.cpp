@@ -179,11 +179,7 @@ void DraftLinearDimension::translate(const math::Vec2& delta) {
 std::shared_ptr<DraftEntity> DraftLinearDimension::clone() const {
     auto copy = std::make_shared<DraftLinearDimension>(m_defPoint1, m_defPoint2, m_dimLinePoint,
                                                        m_orientation);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     copy->setTextOverride(m_textOverride);
     return copy;
 }
