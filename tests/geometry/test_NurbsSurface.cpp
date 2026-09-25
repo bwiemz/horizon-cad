@@ -750,3 +750,107 @@ TEST(NurbsSurfaceTest, SphereOctantIsOneEighthOfTheSphere) {
     const hz::math::Vec3 mid = octant.evaluate(0.5, 0.5);
     EXPECT_GT(octant.normal(0.5, 0.5).dot(mid - c), 0.0) << "faces away from the center";
 }
+
+// ===========================================================================
+// Exact derivatives and projection (Phase 141)
+// ===========================================================================
+
+namespace {
+
+/// Every kind of surface the kernel makes, and a non-uniform rational cubic.
+std::vector<NurbsSurface> sampleSurfaces() {
+    std::vector<NurbsSurface> out;
+    out.push_back(NurbsSurface::makeCylinder(Vec3(1, 2, 3), Vec3(0.2, 0.1, 1), 2.5, 4.0));
+    out.push_back(NurbsSurface::makeSphere(Vec3(-1, 0, 2), 3.0));
+    out.push_back(NurbsSurface::makeTorus(Vec3(0, 1, 0), Vec3(0, 0, 1), 5.0, 1.5));
+    out.push_back(NurbsSurface::makeCone(Vec3(0, 0, 0), Vec3(1, 0, 1), 0.4, 3.0));
+    out.push_back(NurbsSurface::makeSphereOctant(Vec3(1, 1, 1), 2.0, Vec3(1, 0, 0), Vec3(0, 1, 0),
+                                                 Vec3(0, 0, 1)));
+    std::vector<std::vector<Vec3>> pts(5, std::vector<Vec3>(4));
+    std::vector<std::vector<double>> wts(5, std::vector<double>(4));
+    for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            pts[i][j] = Vec3(i, j, std::sin(i * 1.3) * std::cos(j * 0.7) + 0.1 * i * j);
+            wts[i][j] = 1.0 + 0.3 * ((i + 2 * j) % 3);
+        }
+    }
+    out.emplace_back(pts, wts, std::vector<double>{0, 0, 0, 0, 0.3, 1, 1, 1, 1},
+                     std::vector<double>{0, 0, 0, 0.6, 1, 1, 1}, 3, 2);
+    return out;
+}
+
+}  // namespace
+
+TEST(NurbsSurfaceTest, ExactDerivativesAgreeWithTheSurface) {
+    for (const auto& s : sampleSurfaces()) {
+        for (int i = 0; i <= 10; ++i) {
+            for (int j = 0; j <= 10; ++j) {
+                const double u = s.uMin() + (s.uMax() - s.uMin()) * (0.013 + 0.97 * i / 10.0);
+                const double v = s.vMin() + (s.vMax() - s.vMin()) * (0.017 + 0.96 * j / 10.0);
+                const SurfacePoint p = s.evaluateWithDerivatives(u, v);
+                EXPECT_LT((p.point - s.evaluate(u, v)).length(), 1e-12);
+                // Central differences, accurate to h^2.
+                const double h = 1e-6;
+                const Vec3 du = (s.evaluate(u + h, v) - s.evaluate(u - h, v)) * (0.5 / h);
+                const Vec3 dv = (s.evaluate(u, v + h) - s.evaluate(u, v - h)) * (0.5 / h);
+                EXPECT_LT((p.du - du).length(), 1e-6 * std::max(1.0, du.length()));
+                EXPECT_LT((p.dv - dv).length(), 1e-6 * std::max(1.0, dv.length()));
+            }
+        }
+    }
+}
+
+TEST(NurbsSurfaceTest, AClosedSurfaceKnowsItsSeam) {
+    const auto cylinder = NurbsSurface::makeCylinder(Vec3(), Vec3(0, 0, 1), 2.0, 3.0);
+    EXPECT_TRUE(cylinder.closedU());
+    EXPECT_FALSE(cylinder.closedV());
+    const auto torus = NurbsSurface::makeTorus(Vec3(), Vec3(0, 0, 1), 5.0, 1.0);
+    EXPECT_TRUE(torus.closedU());
+    EXPECT_TRUE(torus.closedV());
+    const auto plane = NurbsSurface::makePlane(Vec3(), Vec3(1, 0, 0), Vec3(0, 1, 0), 2.0, 2.0);
+    EXPECT_FALSE(plane.closedU());
+    EXPECT_FALSE(plane.closedV());
+}
+
+// A point off the surface projects to its foot, the start being near: on the
+// far side of a seam, and beside a pole, too.
+TEST(NurbsSurfaceTest, APointProjectsToItsFoot) {
+    for (const auto& s : sampleSurfaces()) {
+        for (int i = 0; i <= 8; ++i) {
+            for (int j = 0; j <= 8; ++j) {
+                const double u = s.uMin() + (s.uMax() - s.uMin()) * (0.05 + 0.9 * i / 8.0);
+                const double v = s.vMin() + (s.vMax() - s.vMin()) * (0.05 + 0.9 * j / 8.0);
+                const Vec3 foot = s.evaluate(u, v);
+                const Vec3 off = foot + s.normal(u, v) * 0.01;
+                const double startU = u + 0.02 * (s.uMax() - s.uMin());
+                const double startV = v - 0.02 * (s.vMax() - s.vMin());
+                const auto [pu, pv] = s.project(off, startU, startV);
+                EXPECT_LT((s.evaluate(pu, pv) - foot).length(), 1e-9) << u << " " << v;
+            }
+        }
+    }
+    // Round the cylinder's seam: started just before it, the foot just after.
+    const auto cylinder = NurbsSurface::makeCylinder(Vec3(), Vec3(0, 0, 1), 2.0, 3.0);
+    const double period = cylinder.uMax() - cylinder.uMin();
+    const Vec3 after = cylinder.evaluate(cylinder.uMin() + 0.01 * period, 1.0);
+    const auto [au, av] = cylinder.project(after * 1.001, cylinder.uMax() - 0.01 * period, 1.2);
+    EXPECT_LT((cylinder.evaluate(au, av) - after).length(), 1e-9);
+    // Beside the sphere's pole, where dS/du vanishes.
+    const auto sphere = NurbsSurface::makeSphere(Vec3(), 1.0);
+    // From well away, towards a point just short of either pole: a full
+    // step overshoots the pole, and clamped there the search stuck, u no
+    // longer moving the point off it.
+    for (const double z : {-1.0, 1.0}) {
+        for (int k = 0; k < 16; ++k) {
+            const double angle = 2.0 * kPi * k / 16.0;
+            const Vec3 target = Vec3(0.2 * std::cos(angle), 0.2 * std::sin(angle), z).normalized();
+            const double startV = z < 0 ? sphere.vMin() + 0.3 * (sphere.vMax() - sphere.vMin())
+                                        : sphere.vMax() - 0.3 * (sphere.vMax() - sphere.vMin());
+            const auto [pu, pv] = sphere.project(target * 0.99, 0.37, startV);
+            EXPECT_LT((sphere.evaluate(pu, pv) - target).length(), 1e-9) << z << " " << k;
+        }
+    }
+    const Vec3 nearPole = Vec3(0.001, 0.002, 1.0).normalized();
+    const auto [su, sv] = sphere.project(nearPole * 1.01, 0.3, sphere.vMax() - 0.01);
+    EXPECT_LT((sphere.evaluate(su, sv) - nearPole).length(), 1e-9);
+}

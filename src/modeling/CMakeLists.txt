@@ -25,6 +25,7 @@ add_library(hz_modeling STATIC
     src/ReferenceGeometry.cpp
     src/InterferenceChecker.cpp
     src/MassProperties.cpp
+    src/IdealMassProperties.cpp
     src/Measure.cpp
     src/DrawingProjection.cpp
     src/SectionView.cpp

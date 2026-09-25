@@ -4,6 +4,7 @@
 #include <cmath>
 #include <vector>
 
+#include "MassIntegrals.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/topology/HalfEdge.h"
 
@@ -81,13 +82,42 @@ void subexpressions(double w0, double w1, double w2, double& f1, double& f2, dou
 
 }  // namespace
 
-MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
-                                                 const Material* material) {
-    MassProperties props;
-    props.density = material ? material->density : 1.0;
+namespace detail {
 
-    std::vector<Triangle> tris = boundaryTriangles(solid);
-    if (tris.size() < 4) return props;  // need a closed volume
+void Measures::addVolume(const Vec3& p0, const Vec3& p1, const Vec3& p2) {
+    const double a1 = p1.x - p0.x, b1 = p1.y - p0.y, c1 = p1.z - p0.z;
+    const double a2 = p2.x - p0.x, b2 = p2.y - p0.y, c2 = p2.z - p0.z;
+    const double d0 = b1 * c2 - b2 * c1;
+    const double d1 = a2 * c1 - a1 * c2;
+    const double d2 = a1 * b2 - a2 * b1;
+
+    double f1x, f2x, f3x, g0x, g1x, g2x;
+    double f1y, f2y, f3y, g0y, g1y, g2y;
+    double f1z, f2z, f3z, g0z, g1z, g2z;
+    subexpressions(p0.x, p1.x, p2.x, f1x, f2x, f3x, g0x, g1x, g2x);
+    subexpressions(p0.y, p1.y, p2.y, f1y, f2y, f3y, g0y, g1y, g2y);
+    subexpressions(p0.z, p1.z, p2.z, f1z, f2z, f3z, g0z, g1z, g2z);
+
+    sums[0] += d0 * f1x;
+    sums[1] += d0 * f2x;
+    sums[2] += d1 * f2y;
+    sums[3] += d2 * f2z;
+    sums[4] += d0 * f3x;
+    sums[5] += d1 * f3y;
+    sums[6] += d2 * f3z;
+    sums[7] += d0 * (p0.y * g0x + p1.y * g1x + p2.y * g2x);
+    sums[8] += d1 * (p0.z * g0y + p1.z * g1y + p2.z * g2y);
+    sums[9] += d2 * (p0.x * g0z + p1.x * g1z + p2.x * g2z);
+}
+
+void Measures::add(const Vec3& p0, const Vec3& p1, const Vec3& p2) {
+    area += 0.5 * (p1 - p0).cross(p2 - p0).length();
+    addVolume(p0, p1, p2);
+}
+
+MassProperties finish(const Measures& measures, double density) {
+    MassProperties props;
+    props.density = density;
 
     constexpr double kOneDiv6 = 1.0 / 6.0;
     constexpr double kOneDiv24 = 1.0 / 24.0;
@@ -95,50 +125,13 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     constexpr double kOneDiv120 = 1.0 / 120.0;
     const std::array<double, 10> mult = {kOneDiv6,  kOneDiv24, kOneDiv24,  kOneDiv24,  kOneDiv60,
                                          kOneDiv60, kOneDiv60, kOneDiv120, kOneDiv120, kOneDiv120};
-    std::array<double, 10> intg = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    // Surface area is the sum of unsigned triangle areas — accurate for the
-    // non-planar (saddle) face loops that Loft/Fillet produce, where a single
-    // signed vector area over the whole loop would undercount.
-    double area = 0.0;
-
-    for (const Triangle& t : tris) {
-        const Vec3& p0 = t[0];
-        const Vec3& p1 = t[1];
-        const Vec3& p2 = t[2];
-
-        area += 0.5 * (p1 - p0).cross(p2 - p0).length();
-
-        const double a1 = p1.x - p0.x, b1 = p1.y - p0.y, c1 = p1.z - p0.z;
-        const double a2 = p2.x - p0.x, b2 = p2.y - p0.y, c2 = p2.z - p0.z;
-        const double d0 = b1 * c2 - b2 * c1;
-        const double d1 = a2 * c1 - a1 * c2;
-        const double d2 = a1 * b2 - a2 * b1;
-
-        double f1x, f2x, f3x, g0x, g1x, g2x;
-        double f1y, f2y, f3y, g0y, g1y, g2y;
-        double f1z, f2z, f3z, g0z, g1z, g2z;
-        subexpressions(p0.x, p1.x, p2.x, f1x, f2x, f3x, g0x, g1x, g2x);
-        subexpressions(p0.y, p1.y, p2.y, f1y, f2y, f3y, g0y, g1y, g2y);
-        subexpressions(p0.z, p1.z, p2.z, f1z, f2z, f3z, g0z, g1z, g2z);
-
-        intg[0] += d0 * f1x;
-        intg[1] += d0 * f2x;
-        intg[2] += d1 * f2y;
-        intg[3] += d2 * f2z;
-        intg[4] += d0 * f3x;
-        intg[5] += d1 * f3y;
-        intg[6] += d2 * f3z;
-        intg[7] += d0 * (p0.y * g0x + p1.y * g1x + p2.y * g2x);
-        intg[8] += d1 * (p0.z * g0y + p1.z * g1y + p2.z * g2y);
-        intg[9] += d2 * (p0.x * g0z + p1.x * g1z + p2.x * g2z);
-    }
-
+    std::array<double, 10> intg = measures.sums;
     if (intg[0] < 0.0) {  // normalize inward/outward sign to positive volume
         for (double& v : intg) v = -v;
     }
     for (size_t k = 0; k < 10; ++k) intg[k] *= mult[k];
 
-    props.surfaceArea = area;
+    props.surfaceArea = measures.area;
     props.volume = intg[0];
     if (props.volume <= 0.0) return props;  // degenerate
 
@@ -163,6 +156,25 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     props.mass = rho * props.volume;
     props.valid = true;
     return props;
+}
+
+}  // namespace detail
+
+MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
+                                                 const Material* material) {
+    const double density = material ? material->density : 1.0;
+    std::vector<Triangle> tris = boundaryTriangles(solid);
+    if (tris.size() < 4) {  // need a closed volume
+        MassProperties props;
+        props.density = density;
+        return props;
+    }
+    // Surface area is the sum of unsigned triangle areas — accurate for the
+    // non-planar (saddle) face loops that Loft/Fillet produce, where a single
+    // signed vector area over the whole loop would undercount.
+    detail::Measures measures;
+    for (const Triangle& t : tris) measures.add(t[0], t[1], t[2]);
+    return detail::finish(measures, density);
 }
 
 }  // namespace hz::model

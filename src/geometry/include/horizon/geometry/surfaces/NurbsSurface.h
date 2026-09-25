@@ -17,6 +17,13 @@ struct TessellationResult {
     std::vector<uint32_t> indices;  ///< Triangle list (3 indices per triangle).
 };
 
+/// A point of a surface with its first partial derivatives.
+struct SurfacePoint {
+    math::Vec3 point;
+    math::Vec3 du;  ///< dS/du
+    math::Vec3 dv;  ///< dS/dv
+};
+
 /// Non-uniform rational B-spline (NURBS) tensor-product surface.
 ///
 /// Stores a 2D grid of control points with per-point weights, knot vectors in
@@ -76,11 +83,31 @@ public:
     /// Unit surface normal at (u, v): normalize(dS/du x dS/dv).
     math::Vec3 normal(double u, double v) const;
 
+    /// The point at (u, v) and its partial derivatives, exactly: the rational
+    /// basis differentiated, where derivativeU and derivativeV difference
+    /// evaluate() 1e-7 apart. Allocates nothing up to degree 15 in each
+    /// direction (beyond, it falls back to those). (u, v) is clamped to the
+    /// domain, as evaluate() clamps it.
+    SurfacePoint evaluateWithDerivatives(double u, double v) const;
+
+    /// Whether the surface closes on itself in u (in v): its edges u = uMin
+    /// and u = uMax coincide, as a cylinder's do at its seam.
+    bool closedU() const { return m_closedU; }
+    bool closedV() const { return m_closedV; }
+
     // -- Closest-Point & Iso-Curves (Task 3) ----------------------------------
 
     /// Find the parameter pair (u, v) of the closest point on the surface to @p point.
     /// Uses 2D Newton iteration on the gradient of distance-squared after an 8x8 grid search.
     std::pair<double, double> closestPoint(const math::Vec3& point, double tol = 1e-8) const;
+
+    /// The (u, v) of the point of the surface nearest @p point, by Newton's
+    /// method from (@p u, @p v): for a point near the surface and a start
+    /// near its answer, where closestPoint's grid search, over the whole
+    /// surface, is too slow to repeat for each of many points. Across a seam
+    /// where the surface closes on itself the search goes on round, where
+    /// elsewhere it stops at the edge. Converges to machine precision.
+    std::pair<double, double> project(const math::Vec3& point, double u, double v) const;
 
     /// Extract an iso-parametric curve at constant U (returns a curve along V).
     /// The result is a degree-1 polyline through sampled surface points.
@@ -133,6 +160,8 @@ private:
     std::vector<double> m_knotsV;
     int m_degreeU;
     int m_degreeV;
+    bool m_closedU = false;
+    bool m_closedV = false;
 };
 
 }  // namespace hz::geo
