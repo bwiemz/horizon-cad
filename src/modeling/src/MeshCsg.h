@@ -15,11 +15,24 @@ class NurbsSurface;
 namespace hz::model {
 
 /// Distance from a face plane within which a point counts as lying on it —
-/// the BSP splitter's on-plane band.  Exported so downstream sewing can weld
-/// at a tolerance >= this: any two points the splitter treated as coincident
-/// on a shared plane must be reconcilable, or seams the splitter is allowed
-/// to open could never be closed.
+/// the BSP splitter's on-plane band — for a part 100 across (CsgTolerance).
+/// Downstream sewing welds at a tolerance >= the band: any two points the
+/// splitter treated as coincident on a shared plane must be reconcilable, or
+/// seams the splitter is allowed to open could never be closed.
 constexpr double kCsgPlaneEps = 1e-6;
+
+/// The tolerances of one Boolean, from the size of its operands (Phase 142).
+/// They were absolute, and 1e-6 on a part a hundredth of a millimetre
+/// across is a ten-thousandth of it: its fragments' seams did not sew.
+struct CsgTolerance {
+    /// The on-plane band, also the weld of the fragments' sewing and of
+    /// their merging: 1e-8 of the operands' extent, but never under 64 ulps
+    /// of their largest coordinate, which is all the precision there is a
+    /// million out.
+    double plane = kCsgPlaneEps;
+
+    static CsgTolerance of(const math::Vec3& low, const math::Vec3& high);
+};
 
 /// A convex polygon fragment flowing through the CSG pipeline.
 struct CsgPolygon {
@@ -40,15 +53,15 @@ struct CsgPolygon {
 /// Input polygons must be convex and outward-oriented; both solids' boundary
 /// triangulations from BoundaryMesh satisfy this.
 ///
-/// The BSP tree is built without a balancing heuristic, so its traversals
-/// (build/clip/invert and node destruction) recurse to tree depth, which for
-/// the axis-aligned prismatic solids typical here is O(triangle count).  That
-/// is fine for the part sizes this kernel targets; a very large mesh
-/// (tens of thousands of triangles) could approach stack limits, at which
-/// point a plane-selection heuristic or an iterative traversal would be the
-/// fix.
+/// The tree is a flat array walked with explicit stacks, so no traversal
+/// recurses. Each split plane is the best of a sample of the polygons' own
+/// (fewest splits, most even sides). A convex solid's own planes each have
+/// all its other faces behind them, so its tree is a chain whatever the
+/// choice, and building it is quadratic in its facet count: a cylinder of
+/// 2,048 facets takes seconds in a debug build.
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
-                                   const std::vector<CsgPolygon>& b, BooleanType type);
+                                   const std::vector<CsgPolygon>& b, BooleanType type,
+                                   double planeEps = kCsgPlaneEps);
 
 /// Triangulate boundary polygons into the convex fragments the BSP needs.
 std::vector<CsgPolygon> csgTriangles(const std::vector<BoundaryPolygon>& polygons, bool fromA);

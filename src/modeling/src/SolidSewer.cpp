@@ -192,11 +192,12 @@ void eliminateTJunctions(std::vector<IndexedFace>& faces, const std::vector<Vec3
 
 std::shared_ptr<geo::NurbsSurface> synthesizePlanarPatch(const std::vector<size_t>& loop,
                                                          const std::vector<Vec3>& pts) {
-    // Newell normal.
+    // Newell normal, about the first point (its error then does not grow
+    // with the distance from the origin).
     Vec3 n = Vec3::Zero;
     for (size_t i = 0; i < loop.size(); ++i) {
-        const Vec3& a = pts[loop[i]];
-        const Vec3& b = pts[loop[(i + 1) % loop.size()]];
+        const Vec3 a = pts[loop[i]] - pts[loop[0]];
+        const Vec3 b = pts[loop[(i + 1) % loop.size()]] - pts[loop[0]];
         n.x += (a.y - b.y) * (a.z + b.z);
         n.y += (a.z - b.z) * (a.x + b.x);
         n.z += (a.x - b.x) * (a.y + b.y);
