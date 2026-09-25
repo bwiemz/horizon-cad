@@ -25,6 +25,8 @@ public:
     bool key(int key, math::LengthUnit unit = math::LengthUnit::Millimetre);
 
     double value() const { return m_value; }
+    /// Something is being typed.
+    bool typing() const { return !m_text.empty(); }
 
     /// Drop what is being typed and any refusal; the value stays.
     void clear();

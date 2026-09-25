@@ -711,7 +711,30 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event) {
     m_inputHandler.handleKeyPress(event, this);
 }
 
+bool ViewportWidget::typingText() const {
+    return m_typedPoint.typing() || (m_activeTool != nullptr && m_activeTool->typingText());
+}
+
 bool ViewportWidget::event(QEvent* event) {
+    // A value being typed takes its letters and spaces as its text ("2 mm",
+    // "0.5 rad"): claimed before the window's one-key tool shortcuts (M,
+    // R, Space) take them, as a line edit claims them (Phase 154). A
+    // letter first is still a shortcut: nothing is typed then.
+    if (event->type() == QEvent::ShortcutOverride && typingText()) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        const auto modifiers = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+        const int code = key->key();
+        const bool text =
+            (code >= Qt::Key_A && code <= Qt::Key_Z) || (code >= Qt::Key_0 && code <= Qt::Key_9) ||
+            code == Qt::Key_Space || code == Qt::Key_Apostrophe || code == Qt::Key_QuoteDbl ||
+            code == Qt::Key_Slash || code == Qt::Key_degree || code == Qt::Key_Period ||
+            code == Qt::Key_Comma || code == Qt::Key_Minus || code == Qt::Key_At ||
+            code == Qt::Key_Less || code == Qt::Key_Backspace;
+        if (modifiers == Qt::NoModifier && text) {
+            event->accept();
+            return true;
+        }
+    }
     if (event->type() == QEvent::KeyPress && m_activeTool != nullptr) {
         auto* key = static_cast<QKeyEvent*>(event);
         if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) &&

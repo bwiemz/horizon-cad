@@ -28,6 +28,7 @@ public:
     std::vector<std::pair<math::Vec2, math::Vec2>> getPreviewLines() const override;
 
     std::string promptText() const override;
+    bool typingText() const override { return m_distance.typing(); }
     bool wantsCrosshair() const override;
 
 private:

@@ -125,6 +125,9 @@ public:
 
     /// What is being typed for the active tool's next point.
     TypedPoint& typedPoint() { return m_typedPoint; }
+    /// A value is part way typed: a point, or one a tool reads itself. Its
+    /// keys go to it, before the window's one-key shortcuts (Phase 154).
+    bool typingText() const;
     const TypedPoint& typedPoint() const { return m_typedPoint; }
 
     /// Give @p point to the active tool as a click there, without snapping

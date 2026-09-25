@@ -53,6 +53,11 @@ public:
     /// itself (a fillet radius) returns false.
     virtual bool acceptsTypedPoints() const { return false; }
 
+    /// Whether the tool is part way through a value typed into it (a fillet
+    /// radius, a rotation): its letters and spaces are the value's text
+    /// ("5 mm", "0.5 rad"), not the window's one-key shortcuts (Phase 154).
+    virtual bool typingText() const { return false; }
+
     /// The point the next one is measured from, if there is one: the start
     /// of the line being drawn, a circle's centre. Relative input
     /// ("@dx,dy"), a length typed alone, and ortho and polar tracking all
