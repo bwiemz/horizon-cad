@@ -171,6 +171,16 @@ void VariablesDialog::accept() {
         m_problem->show();
         return;
     }
+    // Each configuration, laid over them, must still be worked out.
+    for (const std::string& name : m_configurations.configurationNames()) {
+        if (!doc::ParameterRegistry::check(m_configurations.overlay(defined, name), &reason)) {
+            m_problem->setText(
+                tr("In configuration %1: %2")
+                    .arg(QString::fromStdString(name), QString::fromStdString(reason)));
+            m_problem->show();
+            return;
+        }
+    }
     QDialog::accept();
 }
 

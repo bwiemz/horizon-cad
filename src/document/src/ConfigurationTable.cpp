@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include "horizon/document/ParameterRegistry.h"
-
 namespace hz::doc {
 
 void ConfigurationTable::setConfiguration(const std::string& name, const Overrides& overrides) {
@@ -31,17 +29,17 @@ ConfigurationTable::Overrides ConfigurationTable::overrides(const std::string& n
     return it == m_configs.end() ? Overrides{} : it->second;
 }
 
-bool ConfigurationTable::apply(const std::string& name, ParameterRegistry& params) const {
-    auto it = m_configs.find(name);
-    if (it == m_configs.end()) return false;
-    for (const auto& [param, value] : it->second) {
-        params.set(param, value);
-    }
-    return true;
+ConfigurationTable::Overrides ConfigurationTable::overlay(const Overrides& definitions,
+                                                          const std::string& name) const {
+    Overrides out = definitions;
+    const auto it = m_configs.find(name);
+    if (it == m_configs.end()) return out;
+    for (const auto& [variable, expression] : it->second) out[variable] = expression;
+    return out;
 }
 
 bool ConfigurationTable::setActive(const std::string& name) {
-    if (!hasConfiguration(name)) return false;
+    if (!name.empty() && !hasConfiguration(name)) return false;
     m_active = name;
     return true;
 }

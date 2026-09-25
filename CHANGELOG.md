@@ -19,6 +19,14 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
 
+- **Configurations (156).**
+  - Edit ▸ Configurations keeps a design table: each configuration gives
+    some variables other values ("Thin": wall = 1 mm; "Thick": wall = 5 mm).
+  - Choose a configuration above the feature tree, and the part and its
+    constraints are built in it. Choose none, and it is built as the part
+    itself, since no configuration writes its values into the variables.
+  - Each choice is one undo step, and the table is saved with the part.
+
 - **Variables (155, part 1).**
   - Edit ▸ Variables keeps a document's named values: "wall" = "3 mm",
     "width" = "10 * wall", "count" = "4".

@@ -92,6 +92,7 @@
 #include "horizon/ui/CircleTool.h"
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/CommandPalette.h"
+#include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/EllipseTool.h"
@@ -518,6 +519,8 @@ MainWindow::MainWindow(QWidget* parent)
             &MainWindow::onFeatureSuppressRequested);
     connect(m_featureTreePanel, &FeatureTreePanel::featureReordered, this,
             &MainWindow::onFeatureReordered);
+    connect(m_featureTreePanel, &FeatureTreePanel::configurationChosen, this,
+            &MainWindow::onConfigurationChosen);
     connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged, this,
             &MainWindow::onRollbackChanged);
     connect(m_featureTreePanel, &FeatureTreePanel::createBoxRequested, this,
@@ -706,6 +709,8 @@ void MainWindow::createMenus() {
         ->setObjectName(QStringLiteral("action_document_units"));
     editMenu->addAction(tr("&Variables..."), this, &MainWindow::onVariables)
         ->setObjectName(QStringLiteral("action_variables"));
+    editMenu->addAction(tr("C&onfigurations..."), this, &MainWindow::onConfigurations)
+        ->setObjectName(QStringLiteral("action_configurations"));
     QAction* prefsAction =
         editMenu->addAction(tr("Pre&ferences..."), this, &MainWindow::onPreferences);
     prefsAction->setObjectName(QStringLiteral("action_preferences"));
@@ -1536,6 +1541,8 @@ void MainWindow::refreshAllPanels() {
     }
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
+    m_featureTreePanel->setConfigurations(m_document->configurations().configurationNames(),
+                                          m_document->configurations().active());
     refreshSketchList();
     if (m_document->failedFeatureIndex() >= 0) {
         m_featureTreePanel->markFailed(m_document->failedFeatureIndex(),
@@ -1884,6 +1891,7 @@ void MainWindow::onVariables() {
     }
     const auto before = m_document->parameterRegistry().definitions();
     VariablesDialog dialog(before, m_document->lengthUnit(), this);
+    dialog.setConfigurations(m_document->configurations());
     if (dialog.exec() != QDialog::Accepted) return;
     auto after = dialog.definitions();
     if (after == before) return;
@@ -1893,6 +1901,33 @@ void MainWindow::onVariables() {
     // Features whose sizes are expressions of them are built again.
     rebuildFeatureTree();
     m_statusPrompt->setText(tr("%n variable(s).", "", count));
+}
+
+void MainWindow::onConfigurations() {
+    if (m_assembly) {
+        statusBar()->showMessage(tr("Configurations belong to a part, not an assembly"));
+        return;
+    }
+    const doc::ConfigurationTable& before = m_document->configurations();
+    ConfigurationsDialog dialog(before, m_document->parameterRegistry().definitions(), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    doc::ConfigurationTable after = dialog.table();
+    if (after == before) return;
+    const auto count = static_cast<int>(after.size());
+    m_document->undoStack().push(
+        std::make_unique<doc::SetConfigurationsCommand>(*m_document, std::move(after)));
+    rebuildFeatureTree();
+    m_statusPrompt->setText(tr("%n configuration(s).", "", count));
+}
+
+void MainWindow::onConfigurationChosen(const QString& name) {
+    doc::ConfigurationTable table = m_document->configurations();
+    if (!table.setActive(name.toStdString()) || table == m_document->configurations()) return;
+    m_document->undoStack().push(std::make_unique<doc::SetConfigurationsCommand>(
+        *m_document, std::move(table), "Configuration"));
+    rebuildFeatureTree();
+    m_statusPrompt->setText(name.isEmpty() ? tr("Built with its own variables.")
+                                           : tr("Built as %1.").arg(name));
 }
 
 void MainWindow::onAbout() {
@@ -4836,7 +4871,8 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                 if (why != nullptr) *why = "it is not an expression";
                 return std::nullopt;
             }
-            const auto variables = m_document->parameterRegistry().quantities();
+            // As the part is built: its configuration laid over them (156).
+            const auto variables = m_document->variables();
             const auto kept =
                 math::normalized(*parsed, variables, kind, m_document->lengthUnit(), why);
             if (!kept) return std::nullopt;
@@ -5056,6 +5092,8 @@ void MainWindow::showBuildResult() {
     if (settlePendingAdd(*m_document)) return;
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
+    m_featureTreePanel->setConfigurations(m_document->configurations().configurationNames(),
+                                          m_document->configurations().active());
     refreshSketchList();
 
     if (m_document->failedFeatureIndex() >= 0) {

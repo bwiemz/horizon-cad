@@ -1,7 +1,9 @@
 #include "horizon/ui/FeatureTreePanel.h"
 
 #include <QAction>
+#include <QComboBox>
 #include <QDropEvent>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QLabel>
@@ -133,6 +135,19 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     auto* pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(2);
+    // The configuration the part is built in, when it has any (Phase 156).
+    m_configurationRow = new QWidget(page);
+    auto* configurationLayout = new QHBoxLayout(m_configurationRow);
+    configurationLayout->setContentsMargins(4, 4, 4, 0);
+    configurationLayout->addWidget(new QLabel(tr("Configuration:"), m_configurationRow));
+    m_configuration = new QComboBox(m_configurationRow);
+    m_configuration->setObjectName(QStringLiteral("configuration"));
+    configurationLayout->addWidget(m_configuration, 1);
+    pageLayout->addWidget(m_configurationRow);
+    m_configurationRow->hide();
+    connect(m_configuration, &QComboBox::activated, this, [this](int index) {
+        emit configurationChosen(m_configuration->itemData(index).toString());
+    });
     m_sketchTitle = new QLabel(tr("Sketches"), page);
     m_sketchTitle->setContentsMargins(4, 4, 4, 0);
     pageLayout->addWidget(m_sketchTitle);
@@ -310,6 +325,24 @@ void FeatureTreePanel::onItemDoubleClicked(QTreeWidgetItem* item, int /*column*/
     if (ok) {
         emit featureDoubleClicked(index);
     }
+}
+
+}  // namespace hz::ui
+
+namespace hz::ui {
+
+void FeatureTreePanel::setConfigurations(const std::vector<std::string>& names,
+                                         const std::string& active) {
+    const QSignalBlocker quiet(m_configuration);
+    m_configuration->clear();
+    m_configuration->addItem(tr("(Its own variables)"), QString());
+    for (const std::string& name : names) {
+        const QString text = QString::fromStdString(name);
+        m_configuration->addItem(text, text);
+    }
+    m_configuration->setCurrentIndex(
+        std::max(0, m_configuration->findData(QString::fromStdString(active))));
+    m_configurationRow->setVisible(!names.empty());
 }
 
 }  // namespace hz::ui

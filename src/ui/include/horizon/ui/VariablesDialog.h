@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/math/Units.h"
 
 class QLabel;
@@ -27,6 +28,13 @@ public:
     /// The variables as they are now in the table (the rows with a name).
     std::map<std::string, std::string> definitions() const;
 
+    /// The document's configurations: OK is refused, too, if one of them
+    /// laid over the variables as they are now could not be worked out (it
+    /// overrides a variable with an expression of one that is gone).
+    void setConfigurations(const doc::ConfigurationTable& configurations) {
+        m_configurations = configurations;
+    }
+
     void accept() override;
 
 private:
@@ -40,6 +48,7 @@ private:
     QTableWidget* m_table;
     QLabel* m_problem;
     math::LengthUnit m_unit;
+    doc::ConfigurationTable m_configurations;
     bool m_showing = false;  ///< the values being written: no edit of the user's
 };
 

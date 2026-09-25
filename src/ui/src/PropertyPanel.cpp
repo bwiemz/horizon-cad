@@ -704,10 +704,9 @@ void PropertyPanel::onGeometryEdited() {
     std::shared_ptr<draft::DraftEntity> placed = after->clone();
     placed->setId(current->id());
     drawing.replaceEntity(current->id(), placed);
-    auto& parameters = document.parameterRegistry();
     document.undoStack().push(std::make_unique<doc::GripMoveCommand>(
         drawing, current->id(), before, after, document.activeConstraints(),
-        [&parameters](const std::string& name) { return parameters.get(name); }));
+        document.variableResolver()));
     viewport->update();
     // The constraints may have moved it on: show where it is.
     updateForSelection(m_currentIds);

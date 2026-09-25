@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 
@@ -184,6 +185,24 @@ public:
 private:
     Document& m_doc;
     std::shared_ptr<Sketch> m_sketch;
+};
+
+/// A document's design table as a whole (Phase 156): its configurations and
+/// which is active. Its features are built again.
+class SetConfigurationsCommand : public Command {
+public:
+    SetConfigurationsCommand(Document& document, ConfigurationTable after,
+                             std::string description = "Configurations");
+
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    Document& m_document;
+    ConfigurationTable m_before;
+    ConfigurationTable m_after;
+    std::string m_description;
 };
 
 /// A document's variables as a whole (Phase 155): those in @p after, and no
