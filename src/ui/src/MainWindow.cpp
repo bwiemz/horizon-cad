@@ -4325,6 +4325,7 @@ std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree
 /// checked are read with checkedTargets().
 QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features) {
     std::vector<std::pair<QString, QString>> items;
+    items.reserve(features.size());
     for (const doc::Feature* feature : features) {
         items.emplace_back(QString::fromStdString(feature->name()),
                            QString::fromStdString(feature->featureID()));
