@@ -19,11 +19,13 @@
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
@@ -334,6 +336,41 @@ TEST(SketchesTest, AnEdgeProjectedIntoASketchFollowsThePart) {
     const auto* moved = dynamic_cast<const hz::draft::DraftLine*>(now.get());
     ASSERT_NE(moved, nullptr);
     EXPECT_NEAR(moved->start().x, 25.0, 1e-9) << "the edge at x = 30 now";
+}
+
+// A straight edge a groove cuts in two is one edge to project: its pieces,
+// listed apart where a fillet picks them, are one row here, the name it is
+// kept by.
+TEST(SketchesTest, AnEdgeInPiecesIsProjectedAsOne) {
+    MainWindow w;
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    // A groove across the top, front to back: the top's front edge in two.
+    auto groove = std::make_shared<hz::doc::Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 5), Vec3::UnitZ, Vec3::UnitX));
+    groove->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(4, -1), Vec2(6, 11)));
+    doc.addSketch(groove);
+    auto cut = std::make_unique<hz::doc::ExtrudeFeature>(groove, Vec3::UnitZ, 10.0);
+    cut->setOperation(hz::doc::BodyOperation::Cut);
+    doc.featureTree().addFeature(std::move(cut));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+
+    trigger(w, "action_sketch_xy");
+    FormFiller project(QStringLiteral("Project Edges"), FormAnswers().reject());
+    trigger(w, "action_project_edges");
+    ASSERT_TRUE(project.seen());
+    int pieces = 0;
+    for (const QString& row : project.offered(QStringLiteral("edges"))) {
+        for (const auto* piece : {"(0, 0, 10) – (4, 0, 10)", "(4, 0, 10) – (0, 0, 10)",
+                                  "(6, 0, 10) – (10, 0, 10)", "(10, 0, 10) – (6, 0, 10)"}) {
+            if (row == QString::fromUtf8(piece)) ++pieces;
+        }
+    }
+    EXPECT_EQ(pieces, 1) << "one row for the edge, not one for each piece";
 }
 
 // Undoing the new sketch takes it away, and the window leaves it.

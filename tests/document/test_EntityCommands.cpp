@@ -283,3 +283,35 @@ TEST(EntityCommandsTest, ExplodingPutsThePiecesWhereTheBlockDrewThem) {
         EXPECT_TRUE(near(text->position(), placed.transformPoint(Vec2(2, 1))));
     }
 }
+
+// Phase 157: a copy of an edge projected into a sketch is not that edge's
+// projection. Duplicate and Mirror make copies that follow no edge (the next
+// build would draw them back onto the original), and keep being
+// construction; a clone, which stands in for the entity itself (a grip's
+// undo), keeps both.
+TEST(EntityCommandsTest, ACopyOfAProjectedEdgeFollowsNoEdge) {
+    DraftDocument doc;
+    auto projected = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    projected->setSourceEdge("extrude_1/edge:cap_top|side:e2");
+    projected->setConstruction(true);
+    doc.addEntity(projected);
+
+    const auto clone = projected->clone();
+    EXPECT_EQ(clone->sourceEdge(), projected->sourceEdge()) << "the entity itself, restored";
+    EXPECT_TRUE(clone->construction());
+
+    hz::doc::UndoStack stack;
+    stack.push(std::make_unique<hz::doc::DuplicateEntityCommand>(
+        doc, std::vector<uint64_t>{projected->id()}, Vec2(0, 5)));
+    stack.push(std::make_unique<hz::doc::MirrorEntityCommand>(
+        doc, std::vector<uint64_t>{projected->id()}, Vec2(0, -1), Vec2(10, -1)));
+    ASSERT_EQ(doc.entities().size(), 3u);
+    for (const auto& entity : doc.entities()) {
+        if (entity == projected) {
+            EXPECT_FALSE(entity->sourceEdge().empty()) << "the original still follows its edge";
+            continue;
+        }
+        EXPECT_TRUE(entity->sourceEdge().empty()) << "a copy follows no edge";
+        EXPECT_TRUE(entity->construction()) << "and is a guide still";
+    }
+}

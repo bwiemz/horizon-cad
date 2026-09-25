@@ -262,6 +262,8 @@ bool OffsetTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos)
             offset->setColor(m_sourceEntity->color());
             offset->setLineWidth(m_sourceEntity->lineWidth());
             offset->setLineType(m_sourceEntity->lineType());
+            // An offset guide is a guide too (Phase 157).
+            offset->setConstruction(m_sourceEntity->construction());
             auto cmd = std::make_unique<doc::AddEntityCommand>(doc, offset);
             m_viewport->document()->undoStack().push(std::move(cmd));
         }

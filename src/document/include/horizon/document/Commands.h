@@ -742,8 +742,12 @@ private:
     std::vector<std::pair<uint64_t, uint64_t>> m_savedGroupIds;
 };
 
-/// Remap groupIds on cloned entities so each original group maps to a fresh group.
-void remapCloneGroupIds(draft::DraftDocument& doc,
-                        std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
+/// Make @p clones entities of their own in @p doc (copies made by Duplicate,
+/// Mirror, Paste, an array): each original group mapped to a fresh group,
+/// and none following the part's edge its original was projected from
+/// (Phase 157), since a copy is not that edge's projection, and the next
+/// build would draw it back onto the original.
+void adoptClones(draft::DraftDocument& doc,
+                 std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
 
 }  // namespace hz::doc
