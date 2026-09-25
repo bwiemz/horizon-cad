@@ -271,3 +271,31 @@ TEST(DrawingExportTest, SectionsAndDetailsAreCaptionedAndMarked) {
     EXPECT_NEAR(circle->center().y, onSheet.y, 1e-9);
     EXPECT_NEAR(circle->radius(), 10.0 * frontScale, 1e-9);
 }
+
+// Centre lines are drawn on their own layer as chain lines, 2 mm past the
+// outline on paper at any scale; a view told to leave them out has none.
+TEST(DrawingExportTest, CentreLinesRunPastTheOutline) {
+    auto cyl = PrimitiveFactory::makeCylinder(10.0, 30.0, 32);
+    Drawing drawing;
+    drawing.views.push_back(DrawingGenerator::makeView(*cyl, hz::model::StandardView::Top));
+    drawing.views[0].scale = 0.5;
+    Document doc;
+    DrawingExport::populate(doc, drawing);
+    const auto& own = DrawingExport::layers();
+    EXPECT_NE(std::find(own.begin(), own.end(), "CentreLines"), own.end());
+    int lines = 0;
+    for (const auto& e : doc.draftDocument().entities()) {
+        if (e->layer() != "CentreLines") continue;
+        const auto* l = dynamic_cast<const hz::draft::DraftLine*>(e.get());
+        ASSERT_NE(l, nullptr);
+        ++lines;
+        EXPECT_EQ(l->lineType(), static_cast<int>(hz::draft::LineType::Center));
+        EXPECT_NEAR((l->end() - l->start()).length(), 20.0 * 0.5 + 4.0, 1e-9);
+    }
+    EXPECT_EQ(lines, 2);
+
+    drawing.views[0].showCentreLines = false;
+    Document without;
+    DrawingExport::populate(without, drawing);
+    for (const auto& e : without.draftDocument().entities()) EXPECT_NE(e->layer(), "CentreLines");
+}

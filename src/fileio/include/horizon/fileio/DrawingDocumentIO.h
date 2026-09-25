@@ -13,6 +13,14 @@ class Solid;
 
 namespace hz::io {
 
+/// A dimension on a view (Phase 149): the model edge it measures, by its
+/// stable name, measured again from the part whenever the sheet is drawn.
+struct DrawingDimensionSpec {
+    enum class Kind { Length, Radius, Diameter };
+    std::string edge;  ///< the edge's name: a curve's logical name, not one of its chords'
+    Kind kind = Kind::Length;
+};
+
 /// One view of a drawing, as saved: how it looks at the part, and where and
 /// how large it sits on the sheet. Its geometry is not saved: it is projected
 /// again from the part when the drawing is read (Principle 9).
@@ -30,6 +38,8 @@ struct DrawingViewSpec {
     int source = -1;          ///< the projection before it that it was taken from
     math::Vec2 detailCenter;  ///< a detail's circle, in its source's view space
     double detailRadius = 0.0;
+    bool showCentreLines = true;
+    std::vector<DrawingDimensionSpec> dimensions;
 };
 
 /// A drawing document's persisted specification: the part it draws, its
@@ -80,8 +90,11 @@ public:
     static bool readSpec(const std::string& path, DrawingDocumentSpec& outSpec,
                          std::string* error = nullptr);
 
-    /// The drawing @p spec describes, projected from @p solid.
-    static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec);
+    /// The drawing @p spec describes, projected from @p solid, its dimensions
+    /// measured from it. A dimension whose edge the part no longer has is
+    /// left out, and said in @p lost ("view 2: a length").
+    static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
+                                std::vector<std::string>* lost = nullptr);
 
     /// The spec that saves @p drawing as it is laid out.
     static std::vector<DrawingViewSpec> viewsOf(const model::Drawing& drawing);

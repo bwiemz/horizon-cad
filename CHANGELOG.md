@@ -64,6 +64,18 @@ work, not "post-1.0".
   - New views go where the sheet has room. Move View moves one by two
     clicks. Remove View removes one, with the views taken from it.
   - Choosing another scale keeps the sections and details.
+- **Dimensions and centre lines on a sheet (149).**
+  - Drawing ▸ Add Dimension: click edges to dimension them. You get a
+    circle's diameter, an arc's radius, or an edge's length, stated at full
+    size.
+  - They are measured from the part each time the sheet is drawn. When
+    the part changes, they change with it. One whose edge is gone is said.
+  - A partly hidden edge is dimensioned end to end. The dimension used to
+    cover only its first visible run.
+  - Holes and bosses get centre lines: a cross seen end-on, the axis seen
+    side-on.
+  - Drawing ▸ View Properties shows or leaves out each view's hidden edges,
+    tangent edges and centre lines.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**

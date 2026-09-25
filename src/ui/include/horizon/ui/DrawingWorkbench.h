@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,13 @@ public:
     void onMoveView();
     /// A view chosen in a form, and the views taken from it, removed.
     void onRemoveView();
+    /// A view's switches: its hidden edges, tangent edges and centre lines.
+    void onViewProperties();
+    /// Edges clicked, one after another, each dimensioned: its length, or
+    /// its radius or diameter, measured from the part and kept by its name.
+    void onAddDimension();
+    /// An edge clicked: its dimensions removed.
+    void onRemoveDimension();
 
     // --- For the window ---
     /// Whether @p document is a sheet this workbench draws.
@@ -76,6 +84,11 @@ private:
         /// The views as last drawn: what a click on the sheet finds.
         model::Drawing drawing;
     };
+    /// An edge clicked on a sheet: the view it is in, and its name.
+    struct PickedEdge {
+        int view = -1;
+        topo::TopologyID edge;
+    };
 
     Sheet* sheetOf(const doc::Document* document);
     const Sheet* sheetOf(const doc::Document* document) const;
@@ -101,6 +114,15 @@ private:
     static int viewAt(const Sheet& sheet, const math::Vec2& at, bool projectionOnly);
     /// The first letter no view of @p sheet is labelled with.
     static QString nextLabel(const Sheet& sheet);
+    /// The edge drawn nearest the sheet point @p at, within reach of it.
+    static std::optional<PickedEdge> edgeAt(const Sheet& sheet, const math::Vec2& at);
+    /// A PickTool for edges on the sheet showing @p document, handing each
+    /// one clicked to @p use, the tool staying for the next.
+    void pickEdges(const QString& verb, const std::weak_ptr<doc::Document>& document,
+                   void (DrawingWorkbench::*use)(const std::weak_ptr<doc::Document>&,
+                                                 const PickedEdge&));
+    void addDimension(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
+    void removeDimensions(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     /// A detail of view @p source of the sheet showing @p document, clicked
     /// at @p centre with @p radius on the sheet: its scale and label asked.
     void addDetail(const std::weak_ptr<doc::Document>& document, int source,

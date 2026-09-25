@@ -5,11 +5,14 @@
 #include <fstream>
 #include <initializer_list>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SectionView.h"
 #include "horizon/topology/Solid.h"
 
@@ -85,6 +88,25 @@ model::ViewRole roleNamed(const std::string& name) {
     return model::ViewRole::Projection;
 }
 
+const char* dimensionKindName(DrawingDimensionSpec::Kind kind) {
+    switch (kind) {
+        case DrawingDimensionSpec::Kind::Radius:
+            return "radius";
+        case DrawingDimensionSpec::Kind::Diameter:
+            return "diameter";
+        case DrawingDimensionSpec::Kind::Length:
+            break;
+    }
+    return "length";
+}
+
+std::optional<DrawingDimensionSpec::Kind> dimensionKindNamed(const std::string& name) {
+    if (name == "length") return DrawingDimensionSpec::Kind::Length;
+    if (name == "radius") return DrawingDimensionSpec::Kind::Radius;
+    if (name == "diameter") return DrawingDimensionSpec::Kind::Diameter;
+    return std::nullopt;
+}
+
 /// A label as a caption can show it: a few characters, no line breaks.
 std::string usableLabel(std::string label) {
     std::erase_if(label, [](char c) { return c == '\n' || c == '\r'; });
@@ -114,6 +136,31 @@ model::PaperSize paperNamed(const std::string& name, model::PaperSize fallback) 
 /// A scale a sheet can be drawn at: positive and finite.
 bool usableScale(double s) {
     return std::isfinite(s) && s > 1e-6 && s < 1e6;
+}
+
+}  // namespace
+
+namespace {
+
+/// The edge of @p solid a dimension names: the edge of that name, or a chord
+/// of the curve of that name (a circle is one edge of many chords). An
+/// empty ID when the solid has neither.
+topo::TopologyID edgeNamed(const topo::Solid& solid, const std::string& name) {
+    for (const topo::Edge& e : solid.edges()) {
+        if (e.topoId.tag() == name) return e.topoId;
+    }
+    for (const topo::Edge& e : solid.edges()) {
+        if (model::logicalEdge(e.topoId.tag()) == name) return e.topoId;
+    }
+    return {};
+}
+
+json dimensionsJson(const std::vector<DrawingDimensionSpec>& dimensions) {
+    json out = json::array();
+    for (const DrawingDimensionSpec& d : dimensions) {
+        out.push_back({{"edge", d.edge}, {"kind", dimensionKindName(d.kind)}});
+    }
+    return out;
 }
 
 }  // namespace
@@ -175,7 +222,9 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
                          {"label", v.label},
                          {"source", v.source},
                          {"detailCenter", json::array({v.detailCenter.x, v.detailCenter.y})},
-                         {"detailRadius", v.detailRadius}});
+                         {"detailRadius", v.detailRadius},
+                         {"centreLines", v.showCentreLines},
+                         {"dimensions", dimensionsJson(v.dimensions)}});
     }
     root["views"] = views;
 
@@ -322,6 +371,25 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                         view.detailCenter = {(*centre)[0].get<double>(),
                                              (*centre)[1].get<double>()};
                     }
+                    view.showCentreLines = flag(v, "centreLines", true);
+                    // Each is measured again from the part when the sheet is
+                    // drawn: as many as a view has room for, no more.
+                    constexpr std::size_t kMaxDimensions = 256;
+                    const auto dims = v.find("dimensions");
+                    if (dims != v.end() && dims->is_array()) {
+                        if (dims->size() > kMaxDimensions) {
+                            return fail(at + " has " + std::to_string(dims->size()) +
+                                        " dimensions; at most " + std::to_string(kMaxDimensions) +
+                                        " are read");
+                        }
+                        for (const auto& d : *dims) {
+                            if (!d.is_object()) continue;
+                            const auto kind = dimensionKindNamed(text(d, "kind"));
+                            const std::string edge = text(d, "edge");
+                            if (!kind || edge.empty()) continue;
+                            view.dimensions.push_back({edge, *kind});
+                        }
+                    }
                 }
                 spec.views.push_back(view);
             }
@@ -359,7 +427,8 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
     return true;
 }
 
-model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingDocumentSpec& spec) {
+model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
+                                        std::vector<std::string>* lost) {
     if (spec.views.empty()) {
         return model::DrawingGenerator::sheetLayout(solid, spec.sheet, spec.titleBlock, spec.gap,
                                                     nullptr, spec.scale);
@@ -397,6 +466,26 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
         view.placement = v.placement;
         view.showHidden = v.showHidden;
         view.showTangentEdges = v.showTangentEdges;
+        view.showCentreLines = v.showCentreLines;
+        // Measured from the part as it is: an edge it no longer has is said.
+        for (const DrawingDimensionSpec& d : v.dimensions) {
+            const topo::TopologyID edge = edgeNamed(solid, d.edge);
+            bool found = false;
+            if (d.kind == DrawingDimensionSpec::Kind::Length) {
+                model::LinearDimension dim;
+                found = model::DrawingDimensioner::dimensionEdge(solid, edge, dim);
+                if (found) view.dimensions.push_back(dim);
+            } else {
+                model::RadialDimension dim;
+                found = model::DrawingDimensioner::dimensionRadius(
+                    solid, edge, d.kind == DrawingDimensionSpec::Kind::Diameter, dim);
+                if (found) view.radialDimensions.push_back(dim);
+            }
+            if (!found && lost != nullptr) {
+                lost->push_back("view " + std::to_string(drawing.views.size() + 1) + ": a " +
+                                dimensionKindName(d.kind));
+            }
+        }
         drawing.views.push_back(std::move(view));
     }
     return drawing;
@@ -418,6 +507,7 @@ std::vector<DrawingViewSpec> DrawingDocumentIO::viewsOf(const model::Drawing& dr
         spec.source = v.source;
         spec.detailCenter = v.detailCenter;
         spec.detailRadius = v.detailRadius;
+        spec.showCentreLines = v.showCentreLines;
         views.push_back(spec);
     }
     return views;

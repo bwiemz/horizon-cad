@@ -836,6 +836,13 @@ void MainWindow::createMenus() {
                  [this] { m_drawings->onMoveView(); });
     sketchAction(drawingMenu, tr("&Remove View..."), "action_remove_view",
                  [this] { m_drawings->onRemoveView(); });
+    sketchAction(drawingMenu, tr("View &Properties..."), "action_view_properties",
+                 [this] { m_drawings->onViewProperties(); });
+    drawingMenu->addSeparator();
+    sketchAction(drawingMenu, tr("Add D&imension"), "action_add_drawing_dimension",
+                 [this] { m_drawings->onAddDimension(); });
+    sketchAction(drawingMenu, tr("Remove Dime&nsion"), "action_remove_drawing_dimension",
+                 [this] { m_drawings->onRemoveDimension(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));

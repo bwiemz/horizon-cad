@@ -55,6 +55,10 @@ struct DrawingView {
     // space. Empty for ordinary projection views.
     std::vector<std::vector<math::Vec2>> sectionLoops;            ///< closed cut boundaries
     std::vector<std::pair<math::Vec2, math::Vec2>> sectionHatch;  ///< 45° hatch segments
+    /// Centre lines (Phase 149), in view space, to the outline: a cross on
+    /// each hole or boss seen end-on, an axis along each seen side-on. The
+    /// export runs them a little past it.
+    std::vector<std::pair<math::Vec2, math::Vec2>> centreLines;
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};
@@ -64,6 +68,7 @@ struct DrawingView {
     /// a fillet meets a face). A new drawing sheet leaves tangent edges out.
     bool showHidden = true;
     bool showTangentEdges = true;
+    bool showCentreLines = true;
 
     /// Where a view-space point lands on the sheet. Every renderer maps with
     /// this, so a view's scale reaches all it draws.

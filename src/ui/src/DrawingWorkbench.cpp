@@ -7,7 +7,9 @@
 #include <QLineEdit>
 #include <QTimer>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <map>
 #include <utility>
 
 #include "horizon/document/Document.h"
@@ -18,8 +20,10 @@
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SectionView.h"
 #include "horizon/render/Camera.h"
 #include "horizon/topology/Solid.h"
@@ -161,7 +165,16 @@ bool DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
                                                        &chosen, spec.scale);
         titleBlock.scale = model::DrawingGenerator::scaleName(chosen);
     } else {
-        drawing = io::DrawingDocumentIO::build(*solid, spec);
+        std::vector<std::string> lost;
+        drawing = io::DrawingDocumentIO::build(*solid, spec, &lost);
+        // Kept, and drawn again should the part have the edges again.
+        if (!lost.empty()) {
+            QStringList which;
+            for (const std::string& l : lost) which << QString::fromStdString(l);
+            m_host.showStatus(tr("Dimensions whose edges the part no longer has are not drawn: %1")
+                                  .arg(which.join(QStringLiteral("; "))),
+                              15000);
+        }
         // The sheet's scale is its projections'.
         for (const model::DrawingView& view : drawing.views) {
             if (view.role != model::ViewRole::Projection) continue;
@@ -452,13 +465,9 @@ void DrawingWorkbench::onScale() {
 bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::string* error) {
     if (fits != nullptr) *fits = true;
     io::DrawingDocumentSpec& spec = sheet.spec;
-    const bool added = std::any_of(spec.views.begin(), spec.views.end(), [](const auto& v) {
-        return v.role != model::ViewRole::Projection;
-    });
-    if (!added) {
-        // The standard views alone: the automatic layout, at the scale.
+    if (spec.views.empty()) {
+        // The automatic layout: laid out at the scale when it is drawn.
         spec.scale = scale;
-        spec.views.clear();
         spec.version = 3;
         return true;
     }
@@ -471,11 +480,25 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
     double chosen = 1.0;
     const model::Drawing layout = model::DrawingGenerator::sheetLayout(
         *solid, spec.sheet, spec.titleBlock, spec.gap, &chosen, scale);
-    std::vector<io::DrawingViewSpec> views = io::DrawingDocumentIO::viewsOf(layout);
+    // The standard views the sheet still has, laid out anew, each keeping
+    // its switches and dimensions; one removed stays removed.
+    const std::vector<io::DrawingViewSpec> before = spec.views;
+    std::vector<io::DrawingViewSpec> views;
+    for (const io::DrawingViewSpec& laid : io::DrawingDocumentIO::viewsOf(layout)) {
+        const auto was = std::find_if(before.begin(), before.end(), [&](const auto& v) {
+            return v.role == model::ViewRole::Projection && v.kind == laid.kind;
+        });
+        if (was == before.end()) continue;
+        io::DrawingViewSpec kept = laid;
+        kept.showHidden = was->showHidden;
+        kept.showTangentEdges = was->showTangentEdges;
+        kept.showCentreLines = was->showCentreLines;
+        kept.dimensions = was->dimensions;
+        views.push_back(std::move(kept));
+    }
     const std::size_t standard = views.size();
     // Each section and detail, taken from the same view laid out anew: a
     // section at the sheet's scale, a detail as many times its view's.
-    const std::vector<io::DrawingViewSpec> before = spec.views;
     for (const io::DrawingViewSpec& v : before) {
         if (v.role == model::ViewRole::Projection) continue;
         io::DrawingViewSpec kept = v;
@@ -859,6 +882,204 @@ void DrawingWorkbench::onRemoveView() {
         m_host.showStatus(tr("%1: the views taken from it went with it (%2)").arg(verb).arg(taken),
                           15000);
     }
+}
+
+std::optional<DrawingWorkbench::PickedEdge> DrawingWorkbench::edgeAt(const Sheet& sheet,
+                                                                     const math::Vec2& at) {
+    constexpr double kReach = 2.0;  // sheet millimetres
+    std::optional<PickedEdge> best;
+    double nearest = kReach;
+    const auto& views = sheet.drawing.views;
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        const model::DrawingView& view = views[i];
+        for (const model::ProjectedEdge& e : view.edges) {
+            // Only what is drawn, and only an edge with a name to keep.
+            const bool visible = e.visibility == model::ProjectedEdge::Visibility::Visible;
+            if (!visible && !view.showHidden) continue;
+            if (e.kind == model::ProjectedEdge::Kind::Tangent && !view.showTangentEdges) continue;
+            if (e.sourceEdge.tag().empty()) continue;
+            const math::Vec2 a = view.toSheet(e.a);
+            const math::Vec2 b = view.toSheet(e.b);
+            const math::Vec2 ab = b - a;
+            const double length2 = ab.dot(ab);
+            const double t =
+                length2 > 1e-18 ? std::clamp((at - a).dot(ab) / length2, 0.0, 1.0) : 0.0;
+            const double d = distance(at, a + ab * t);
+            if (d <= nearest) {
+                nearest = d;
+                best = PickedEdge{static_cast<int>(i), e.sourceEdge};
+            }
+        }
+    }
+    return best;
+}
+
+void DrawingWorkbench::pickEdges(const QString& verb, const std::weak_ptr<doc::Document>& document,
+                                 void (DrawingWorkbench::*use)(const std::weak_ptr<doc::Document>&,
+                                                               const PickedEdge&)) {
+    const auto picked = std::make_shared<PickedEdge>();
+    auto tool = std::make_unique<PickTool>(
+        verb.toStdString(),
+        std::vector<std::string>{tr("Click an edge of a view (Esc when done)").toStdString()},
+        [this, document, picked](std::size_t /*step*/, const math::Vec2& point, std::string& why) {
+            const auto shown = document.lock();
+            const Sheet* sheet = sheetOf(shown.get());
+            if (sheet == nullptr || m_host.currentDocument() != shown.get()) {
+                why = tr("Not on the drawing being dimensioned").toStdString();
+                return false;
+            }
+            const auto edge = edgeAt(*sheet, point);
+            if (!edge) {
+                why = tr("No edge there").toStdString();
+                return false;
+            }
+            *picked = *edge;
+            return true;
+        },
+        [this, document, picked, use](const std::vector<math::Vec2>& /*points*/) {
+            // Out of the tool's own event; the tool stays for the next edge.
+            QTimer::singleShot(
+                0, this, [this, document, use, edge = *picked] { (this->*use)(document, edge); });
+        });
+    m_host.runTool(std::move(tool));
+}
+
+void DrawingWorkbench::onAddDimension() {
+    const QString verb = tr("Add Dimension");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    pickEdges(verb, active->document, &DrawingWorkbench::addDimension);
+}
+
+void DrawingWorkbench::onRemoveDimension() {
+    const QString verb = tr("Remove Dimension");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    pickEdges(verb, active->document, &DrawingWorkbench::removeDimensions);
+}
+
+void DrawingWorkbench::addDimension(const std::weak_ptr<doc::Document>& document,
+                                    const PickedEdge& picked) {
+    const QString verb = tr("Add Dimension");
+    const std::shared_ptr<doc::Document> shown = document.lock();
+    Sheet* sheet = sheetOf(shown.get());
+    if (sheet == nullptr) return;
+    if (sheet->spec.views.empty())
+        sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
+    if (picked.view < 0 || static_cast<std::size_t>(picked.view) >= sheet->spec.views.size()) {
+        return;
+    }
+    auto& dimensions = sheet->spec.views[static_cast<std::size_t>(picked.view)].dimensions;
+    // A curve is dimensioned whole, by its own name, not one chord's.
+    const std::string tag = model::logicalEdge(picked.edge.tag());
+    if (std::any_of(dimensions.begin(), dimensions.end(),
+                    [&](const auto& d) { return d.edge == tag; })) {
+        m_host.showStatus(
+            tr("%1: that edge is dimensioned already; Remove Dimension removes it").arg(verb));
+        return;
+    }
+
+    // A circle or arc is dimensioned by its diameter or radius, anything else
+    // by its length: measured from the part as it is.
+    doc::Document holder;
+    std::string error;
+    const topo::Solid* solid = partSolid(sheet->spec.partPath, holder, &error);
+    if (solid == nullptr) {
+        m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
+        return;
+    }
+    io::DrawingDimensionSpec dimension{tag, io::DrawingDimensionSpec::Kind::Length};
+    double measured = 0.0;
+    if (model::DrawingDimensioner::measureRadius(*solid, picked.edge, measured)) {
+        // A whole circle, or an arc: a curve is one edge of many chords by
+        // one name. It is whole when its chords close, every end shared.
+        std::map<const topo::Vertex*, int> ends;
+        for (const topo::Edge& e : solid->edges()) {
+            if (model::logicalEdge(e.topoId.tag()) != tag || e.halfEdge == nullptr ||
+                e.halfEdge->twin == nullptr) {
+                continue;
+            }
+            ++ends[e.halfEdge->origin];
+            ++ends[e.halfEdge->twin->origin];
+        }
+        const bool closed =
+            !ends.empty() && std::all_of(ends.begin(), ends.end(),
+                                         [](const auto& end) { return end.second % 2 == 0; });
+        dimension.kind = closed ? io::DrawingDimensionSpec::Kind::Diameter
+                                : io::DrawingDimensionSpec::Kind::Radius;
+    } else if (!model::DrawingDimensioner::measureEdge(*solid, picked.edge, measured) ||
+               measured < 1e-9) {
+        m_host.showStatus(tr("%1: that edge has no length to state").arg(verb));
+        return;
+    }
+    dimensions.push_back(std::move(dimension));
+    sheet->spec.version = 3;
+    redraw(*sheet, verb);
+}
+
+void DrawingWorkbench::removeDimensions(const std::weak_ptr<doc::Document>& document,
+                                        const PickedEdge& picked) {
+    const QString verb = tr("Remove Dimension");
+    const std::shared_ptr<doc::Document> shown = document.lock();
+    Sheet* sheet = sheetOf(shown.get());
+    if (sheet == nullptr || picked.view < 0 ||
+        static_cast<std::size_t>(picked.view) >= sheet->spec.views.size()) {
+        m_host.showStatus(tr("%1: that edge has no dimension").arg(verb));
+        return;
+    }
+    auto& dimensions = sheet->spec.views[static_cast<std::size_t>(picked.view)].dimensions;
+    const std::string tag = model::logicalEdge(picked.edge.tag());
+    const auto removed =
+        std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
+    if (removed == 0) {
+        m_host.showStatus(tr("%1: that edge has no dimension").arg(verb));
+        return;
+    }
+    redraw(*sheet, verb);
+}
+
+void DrawingWorkbench::onViewProperties() {
+    const QString verb = tr("View Properties");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    const std::shared_ptr<doc::Document> document = active->document.lock();
+    std::vector<std::array<bool, 3>> shownNow;
+    QStringList names;
+    for (std::size_t i = 0; i < active->drawing.views.size(); ++i) {
+        const model::DrawingView& v = active->drawing.views[i];
+        names << viewName(v, i);
+        shownNow.push_back({v.showHidden, v.showTangentEdges, v.showCentreLines});
+    }
+    if (names.isEmpty()) return;
+    FeatureForm form(m_host.dialogParent(), verb);
+    auto* view = form.choice(QStringLiteral("view"), tr("View:"), names);
+    const QStringList either{tr("Shown"), tr("Left out")};
+    std::array<QComboBox*, 3> switches{
+        form.choice(QStringLiteral("hidden"), tr("Hidden edges:"), either),
+        form.choice(QStringLiteral("tangent"), tr("Tangent edges:"), either),
+        form.choice(QStringLiteral("centreLines"), tr("Centre lines:"), either)};
+    // Each switch shows the view chosen as it is.
+    const auto showFor = [switches, shownNow](int index) {
+        const auto& now = shownNow[static_cast<std::size_t>(std::max(index, 0))];
+        for (std::size_t k = 0; k < switches.size(); ++k) {
+            switches[k]->setCurrentIndex(now[k] ? 0 : 1);
+        }
+    };
+    showFor(0);
+    QObject::connect(view, &QComboBox::currentIndexChanged, view, showFor);
+    if (!form.exec()) return;
+    Sheet* sheet = sheetOf(document.get());
+    if (sheet == nullptr) return;
+    if (sheet->spec.views.empty())
+        sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
+    const auto index = static_cast<std::size_t>(std::max(view->currentIndex(), 0));
+    if (index >= sheet->spec.views.size()) return;
+    io::DrawingViewSpec& chosen = sheet->spec.views[index];
+    chosen.showHidden = switches[0]->currentIndex() == 0;
+    chosen.showTangentEdges = switches[1]->currentIndex() == 0;
+    chosen.showCentreLines = switches[2]->currentIndex() == 0;
+    sheet->spec.version = 3;
+    redraw(*sheet, verb);
 }
 
 void DrawingWorkbench::onUpdateFromPart() {

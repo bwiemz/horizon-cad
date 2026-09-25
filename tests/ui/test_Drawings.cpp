@@ -29,9 +29,11 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftDimension.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/Tool.h"
@@ -367,14 +369,14 @@ TEST(DrawingsTest, ASheetPlotsOnItsPaperAtFullSize) {
 
 namespace {
 
-/// Where the sheet of the block at @p path lays its views out: as the
-/// workbench does, on an A3 sheet.
-hz::model::Drawing layoutOf(const QString& path) {
+/// Where the sheet of the part at @p path lays its views out: as the
+/// workbench does, on an A3 sheet, at @p scale (0: the largest that fits).
+hz::model::Drawing layoutOf(const QString& path, double scale = 0.0) {
     hz::doc::Document part;
     EXPECT_TRUE(hz::io::NativeFormat::load(path.toStdString(), part));
     EXPECT_TRUE(part.rebuildModel());
     return hz::model::DrawingGenerator::sheetLayout(*part.solid(), hz::model::Sheet{},
-                                                    hz::model::TitleBlock{});
+                                                    hz::model::TitleBlock{}, 10.0, nullptr, scale);
 }
 
 /// Save the active sheet (named @p path the first time) and read what it
@@ -614,4 +616,156 @@ TEST(DrawingsTest, TheScaleFormKeepsSectionsAndDetails) {
     EXPECT_EQ(after.views[5].source, 0);
     EXPECT_TRUE(labelTexts(*sheet).contains(QStringLiteral("SECTION A-A")));
     EXPECT_FALSE(w.statusBar()->currentMessage().contains(QStringLiteral("no room")));
+}
+
+// ---------------------------------------------------------------------------
+// Dimensions and centre lines (Phase 149, part 2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A cylinder 20 across and 30 tall, built and saved at @p path.
+void saveCylinder(const QString& path) {
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeCylinder(10, 30));
+    ASSERT_TRUE(part.rebuildModel());
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+}
+
+/// The block at @p path made @p depth deep as another program would: its
+/// feature, and so its edges' names, kept; its time moved on.
+void deepenOnDisk(const QString& path, double depth) {
+    hz::doc::Document part;
+    ASSERT_TRUE(hz::io::NativeFormat::load(path.toStdString(), part));
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", depth));
+    ASSERT_TRUE(part.rebuildModel());
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+    const std::filesystem::path file(path.toStdString());
+    std::filesystem::last_write_time(
+        file, std::filesystem::last_write_time(file) + std::chrono::seconds(2));
+}
+
+/// The dimensions drawn on @p sheet, as they read.
+QStringList dimensionTexts(const hz::doc::Document& sheet) {
+    QStringList texts;
+    const auto& style = sheet.draftDocument().dimensionStyle();
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (entity->layer() != "Dimensions") continue;
+        if (const auto* d = dynamic_cast<const hz::draft::DraftDimension*>(entity.get())) {
+            texts << QString::fromStdString(d->displayText(style));
+        } else if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+            texts << QString::fromStdString(t->text());
+        }
+    }
+    return texts;
+}
+
+}  // namespace
+
+// An edge clicked is dimensioned, stated at 1:1 and measured from the part:
+// when the part changes on disk the dimension changes with it. The tool
+// stays for the next edge; one dimensioned already says so; Remove
+// Dimension takes it off.
+TEST(DrawingsTest, ADimensionIsPickedOnAnEdgeAndFollowsThePart) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& front = layout.views[0];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    const auto& style = sheet->draftDocument().dimensionStyle();
+
+    // Front's left side: the block's depth, 10.
+    const hz::math::Vec2 side{front.placement.x, front.placement.y + front.sheetHeight() / 2.0};
+    ToolDriver drive(w);
+    trigger(w, "action_add_drawing_dimension");
+    drive.click(side);
+    ASSERT_TRUE(waitUntil([&] { return !dimensionTexts(*sheet).isEmpty(); }, 5000));
+    EXPECT_EQ(dimensionTexts(*sheet),
+              QStringList{QString::fromStdString(style.formatLength(10.0))});
+    EXPECT_FALSE(selecting(w)) << "the tool stays for the next edge";
+
+    drive.click(side);
+    ASSERT_TRUE(waitUntil(
+        [&] {
+            return w.statusBar()->currentMessage().contains(QStringLiteral("dimensioned already"));
+        },
+        5000));
+    EXPECT_EQ(dimensionTexts(*sheet).size(), 1);
+
+    // The part made deeper on disk: the dimension says so.
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    deepenOnDisk(block, 30);
+    ASSERT_TRUE(waitUntil(
+        [&] {
+            return dimensionTexts(*sheet) ==
+                   QStringList{QString::fromStdString(style.formatLength(30.0))};
+        },
+        5000))
+        << dimensionTexts(*sheet).join(", ").toStdString() << " / "
+        << w.statusBar()->currentMessage().toStdString();
+
+    // Laid out again at another scale, it is kept.
+    {
+        FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", "1:1"));
+        trigger(w, "action_drawing_scale");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_EQ(dimensionTexts(*sheet).size(), 1);
+
+    // Taken off by a click on its edge, where it now is.
+    const hz::model::DrawingView now = layoutOf(block, 1.0).views[0];
+    trigger(w, "action_remove_drawing_dimension");
+    drive.click({now.placement.x, now.placement.y + now.sheetHeight() / 2.0});
+    ASSERT_TRUE(waitUntil([&] { return dimensionTexts(*sheet).isEmpty(); }, 5000));
+}
+
+// A circle clicked is dimensioned by its diameter; a cylinder's centre lines
+// are drawn (a cross on its end, its axis on its sides), and View Properties
+// leaves a view's out.
+TEST(DrawingsTest, ACylindersDiameterAndCentreLines) {
+    QTemporaryDir dir;
+    const QString cylinder = dir.filePath(QStringLiteral("pin.hzpart"));
+    saveCylinder(cylinder);
+    const hz::model::Drawing layout = layoutOf(cylinder);
+    const hz::model::DrawingView& top = layout.views[1];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, cylinder);
+    ASSERT_NE(sheet, nullptr);
+    EXPECT_EQ(countOn(*sheet, "CentreLines"), 4u)
+        << "a cross on Top, an axis on Front and on Right, none on the isometric";
+
+    // The rim, seen from above: a point on its circle.
+    const hz::math::Vec2 centre =
+        top.toSheet(hz::model::DrawingProjection::toView(top.projection, {0, 0, 0}));
+    ToolDriver drive(w);
+    trigger(w, "action_add_drawing_dimension");
+    drive.click({centre.x + 10.0 * top.scale, centre.y});
+    ASSERT_TRUE(waitUntil([&] { return !dimensionTexts(*sheet).isEmpty(); }, 5000));
+    ASSERT_EQ(dimensionTexts(*sheet).size(), 1);
+    EXPECT_TRUE(dimensionTexts(*sheet)[0].startsWith(QString::fromUtf8("\xE2\x8C\x80")))
+        << dimensionTexts(*sheet)[0].toStdString();
+    EXPECT_TRUE(dimensionTexts(*sheet)[0].contains(QStringLiteral("20")));
+    trigger(w, "tool_select");
+
+    {
+        FormFiller form(QStringLiteral("View Properties"),
+                        FormAnswers().choose("view", "2: Top").choose("centreLines", "Left out"));
+        trigger(w, "action_view_properties");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_EQ(countOn(*sheet, "CentreLines"), 2u) << "Top's cross left out";
+    const auto hiddenBefore = countOn(*sheet, "Hidden");
+    ASSERT_GT(hiddenBefore, 0u);
+    {
+        FormFiller form(QStringLiteral("View Properties"),
+                        FormAnswers().choose("view", "1: Front").choose("hidden", "Left out"));
+        trigger(w, "action_view_properties");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_LT(countOn(*sheet, "Hidden"), hiddenBefore);
+    EXPECT_EQ(countOn(*sheet, "CentreLines"), 2u) << "Front's own switch, not Top's";
 }

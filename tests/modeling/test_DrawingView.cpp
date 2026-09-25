@@ -1,10 +1,17 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/FilletOp.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -267,4 +274,69 @@ TEST(DrawingViewTest, AnAddedViewIsPlacedWhereThereIsRoom) {
     huge.placement = DrawingGenerator::freePlacement(d, huge, sheet, tb, gap, &fits);
     EXPECT_FALSE(fits);
     EXPECT_GT(huge.placement.x, sheet.widthMm()) << "beside the sheet";
+}
+
+namespace {
+
+/// The lengths of @p view's centre lines, shortest first.
+std::vector<double> centreLineLengths(const DrawingView& view) {
+    std::vector<double> lengths;
+    for (const auto& [a, b] : view.centreLines) lengths.push_back((b - a).length());
+    std::sort(lengths.begin(), lengths.end());
+    return lengths;
+}
+
+}  // namespace
+
+// A cylinder seen end-on has a cross on its centre, its arms to the
+// outline; seen side-on, its axis end to end; at an angle, none.
+TEST(DrawingViewTest, ACylinderHasCentreLines) {
+    auto cyl = PrimitiveFactory::makeCylinder(10.0, 30.0, 32);  // about Z, from z = 0
+    const DrawingView top = DrawingGenerator::makeView(*cyl, StandardView::Top);
+    ASSERT_EQ(top.centreLines.size(), 2u) << "a cross";
+    for (const double length : centreLineLengths(top)) EXPECT_NEAR(length, 20.0, 1e-9);
+    const Vec2 centre = hz::model::DrawingProjection::toView(top.projection, Vec3(0, 0, 0));
+    for (const auto& [a, b] : top.centreLines) {
+        EXPECT_NEAR((a.x + b.x) / 2.0, centre.x, 1e-9);
+        EXPECT_NEAR((a.y + b.y) / 2.0, centre.y, 1e-9);
+    }
+
+    const DrawingView front = DrawingGenerator::makeView(*cyl, StandardView::Front);
+    ASSERT_EQ(front.centreLines.size(), 1u) << "its axis";
+    EXPECT_NEAR(centreLineLengths(front)[0], 30.0, 1e-9);
+
+    const DrawingView iso = DrawingGenerator::makeView(*cyl, StandardView::Isometric);
+    EXPECT_TRUE(iso.centreLines.empty()) << "seen at an angle: an ellipse, not marked";
+
+    // A detail keeps what of them is inside its circle.
+    const DrawingView detail = DrawingGenerator::detailView(top, centre, 4.0, 1.0);
+    ASSERT_EQ(detail.centreLines.size(), 2u);
+    for (const double length : centreLineLengths(detail)) EXPECT_NEAR(length, 8.0, 1e-9);
+}
+
+// A hole through a block is marked; the block's straight faces are not.
+TEST(DrawingViewTest, AHoleThroughABlockHasACentreMark) {
+    auto block = PrimitiveFactory::makeBox(40.0, 40.0, 10.0);
+    auto pin = PrimitiveFactory::makeCylinder(5.0, 30.0, 32);
+    pin = hz::model::Pattern::transformed(*pin, hz::math::Mat4::translation(Vec3(20, 20, -10)));
+    auto holed = hz::model::BooleanOp::execute(*block, *pin, hz::model::BooleanType::Subtract);
+    ASSERT_NE(holed, nullptr);
+    const DrawingView top = DrawingGenerator::makeView(*holed, StandardView::Top);
+    ASSERT_EQ(top.centreLines.size(), 2u);
+    for (const double length : centreLineLengths(top)) EXPECT_NEAR(length, 10.0, 1e-9);
+    const DrawingView front = DrawingGenerator::makeView(*holed, StandardView::Front);
+    ASSERT_EQ(front.centreLines.size(), 1u);
+    // Its axis is fitted to the hole's facets: good to 1e-5, not exact.
+    EXPECT_NEAR(centreLineLengths(front)[0], 10.0, 1e-4) << "through the block, not past it";
+}
+
+// A fillet goes a quarter of the way round: not a hole, and not marked, in
+// any view.
+TEST(DrawingViewTest, AFilletHasNoCentreLines) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    auto rounded = hz::model::FilletOp::execute(*box, {box->edges().front().topoId}, 2.0, "f");
+    ASSERT_NE(rounded.solid, nullptr) << rounded.errorMessage;
+    for (const StandardView v : {StandardView::Front, StandardView::Top, StandardView::Right}) {
+        EXPECT_TRUE(DrawingGenerator::makeView(*rounded.solid, v).centreLines.empty());
+    }
 }

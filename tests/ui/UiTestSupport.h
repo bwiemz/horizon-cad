@@ -27,6 +27,7 @@
 #include <map>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "horizon/document/FeatureTree.h"
 #include "horizon/math/Vec2.h"
@@ -105,9 +106,11 @@ struct FormAnswers {
         texts[name] = value;
         return *this;
     }
-    /// A choice (QComboBox) by object name: the item text to pick.
+    /// A choice (QComboBox) by object name: the item text to pick. Choices
+    /// are made in the order given, as a user makes them: one may change
+    /// what the form shows in others (the view whose switches it shows).
     FormAnswers& choose(const QString& name, const QString& text) {
-        choices[name] = text;
+        choices.emplace_back(name, text);
         return *this;
     }
     /// A choice (QComboBox) by object name: the first item whose text
@@ -135,7 +138,7 @@ struct FormAnswers {
 
     std::map<QString, double> numbers;
     std::map<QString, QString> texts;
-    std::map<QString, QString> choices;
+    std::vector<std::pair<QString, QString>> choices;
     std::map<QString, QString> choicesContaining;
     std::map<QString, QStringList> checks;
     std::optional<doc::BodyOperation> operation;

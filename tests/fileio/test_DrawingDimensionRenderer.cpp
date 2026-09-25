@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <tuple>
 
+#include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/fileio/DrawingDimensionRenderer.h"
 #include "horizon/modeling/DrawingDimension.h"
@@ -51,4 +54,38 @@ TEST(DrawingDimensionRendererTest, ReturnsNullWhenEdgeNotInView) {
     dim.edge = TopologyID::make("box", "edge999");  // not present in the model/view
     dim.value = 1.0;
     EXPECT_EQ(DrawingDimensionRenderer::render(front, dim, 5.0), nullptr);
+}
+
+// A partly hidden edge is drawn in runs: its dimension spans them all, end
+// to end. It went on the first run only, stating the whole length there.
+TEST(DrawingDimensionRendererTest, APartlyHiddenEdgeIsDimensionedEndToEnd) {
+    const auto edge = hz::topo::TopologyID::fromTag("box/edge/e1");
+    hz::model::DrawingView view;
+    for (const auto& [a, b, hidden] :
+         {std::tuple{hz::math::Vec2(4, 0), hz::math::Vec2(6, 0), true},
+          std::tuple{hz::math::Vec2(0, 0), hz::math::Vec2(4, 0), false},
+          std::tuple{hz::math::Vec2(6, 0), hz::math::Vec2(10, 0), false}}) {
+        hz::model::ProjectedEdge e;
+        e.a = a;
+        e.b = b;
+        e.sourceEdge = edge;
+        e.visibility = hidden ? hz::model::ProjectedEdge::Visibility::Hidden
+                              : hz::model::ProjectedEdge::Visibility::Visible;
+        view.edges.push_back(e);
+    }
+    view.boundsMax = {10.0, 0.0};
+    view.scale = 2.0;
+    view.placement = {100.0, 50.0};
+    hz::model::LinearDimension dim;
+    dim.edge = edge;
+    dim.value = 10.0;
+    const auto drafted = hz::io::DrawingDimensionRenderer::render(view, dim, 5.0);
+    ASSERT_NE(drafted, nullptr);
+    const double from = std::min(drafted->defPoint1().x, drafted->defPoint2().x);
+    const double to = std::max(drafted->defPoint1().x, drafted->defPoint2().x);
+    EXPECT_NEAR(from, 100.0, 1e-9);
+    EXPECT_NEAR(to, 120.0, 1e-9) << "the whole edge, at 2:1";
+    EXPECT_EQ(drafted->displayText(hz::draft::DimensionStyle{}),
+              hz::draft::DimensionStyle{}.formatLength(10.0))
+        << "stated at 1:1";
 }
