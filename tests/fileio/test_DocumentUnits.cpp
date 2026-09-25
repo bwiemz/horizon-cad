@@ -97,3 +97,15 @@ TEST(DocumentUnitsTest, AChangeOfUnitIsUndone) {
     EXPECT_EQ(assembly.lengthUnit(), LengthUnit::Millimetre);
     EXPECT_FALSE(backing.isDirty());
 }
+
+// Cleared, a document is a new one: in millimetres, as an assembly is.
+TEST(DocumentUnitsTest, ClearingADocumentPutsItBackInMillimetres) {
+    hz::doc::Document document;
+    document.setLengthUnit(LengthUnit::Inch);
+    document.clear();
+    EXPECT_EQ(document.lengthUnit(), LengthUnit::Millimetre);
+    hz::doc::AssemblyDocument assembly;
+    assembly.setLengthUnit(LengthUnit::Inch);
+    assembly.clear();
+    EXPECT_EQ(assembly.lengthUnit(), LengthUnit::Millimetre);
+}
