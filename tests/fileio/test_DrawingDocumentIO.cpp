@@ -15,6 +15,9 @@
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/modeling/DrawingView.h"
+#include "horizon/topology/Solid.h"
 
 using hz::doc::Document;
 using hz::doc::DocumentType;
@@ -311,7 +314,7 @@ TEST(DrawingDocumentIOTest, TheSheetScaleIsKeptAndReadWithoutThePart) {
     std::string error;
     ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
     EXPECT_DOUBLE_EQ(read.scale, 0.5);
-    EXPECT_EQ(read.version, 2);
+    EXPECT_EQ(read.version, 3);
     EXPECT_TRUE(
         std::filesystem::equivalent(dir, std::filesystem::path(read.partPath).parent_path()));
     Drawing drawing;
@@ -322,5 +325,147 @@ TEST(DrawingDocumentIOTest, TheSheetScaleIsKeptAndReadWithoutThePart) {
         ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read)) << scale;
         EXPECT_DOUBLE_EQ(read.scale, 0.0) << scale;
     }
+    std::filesystem::remove_all(dir);
+}
+
+// ---------------------------------------------------------------------------
+// Version 3 (Phase 149): sections and details.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The box part at @p path, read into @p part and rebuilt: its solid.
+const hz::topo::Solid* boxSolid(const std::string& path, Document& part) {
+    EXPECT_TRUE(NativeFormat::load(path, part));
+    EXPECT_TRUE(part.rebuildModel());
+    return part.solid();
+}
+
+/// A sheet of the box: its standard views, section A-A cut through the
+/// Front view's middle, and detail B of the Front view at twice its scale.
+DrawingDocumentSpec sectionedSpec(const std::string& partPath, const hz::topo::Solid& solid) {
+    DrawingDocumentSpec spec;
+    spec.partPath = partPath;
+    const Drawing laid =
+        hz::model::DrawingGenerator::sheetLayout(solid, spec.sheet, spec.titleBlock);
+    spec.views = DrawingDocumentIO::viewsOf(laid);
+    const auto& front = laid.views[0];
+    hz::math::BoundingBox box;
+    for (const auto& v : solid.vertices()) box.expand(v.point);
+
+    hz::io::DrawingViewSpec section;
+    section.role = hz::model::ViewRole::Section;
+    section.label = "A";
+    section.source = 0;
+    section.projection.origin = box.center();
+    section.projection.dir = {-1.0, 0.0, 0.0};  // Front's right: a vertical cut, looking left
+    section.scale = front.scale;
+    section.placement = {20.0, 200.0};
+    spec.views.push_back(section);
+
+    hz::io::DrawingViewSpec detail;
+    detail.role = hz::model::ViewRole::Detail;
+    detail.label = "B";
+    detail.source = 0;
+    detail.detailCenter = {front.boundsMin.x, front.boundsMin.y};  // a corner
+    detail.detailRadius = 1.0;
+    detail.scale = 2.0 * front.scale;
+    detail.placement = {20.0, 60.0};
+    spec.views.push_back(detail);
+    return spec;
+}
+
+}  // namespace
+
+// A section and a detail are saved with their role, label and source, and
+// built again from the part: the section cut and hatched, the detail the
+// part of its source inside its circle.
+TEST(DrawingDocumentIOTest, SectionsAndDetailsAreKept) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_v3";
+    std::filesystem::create_directories(dir);
+    const std::string partPath = (dir / "box.hzpart").string();
+    saveBox(partPath);
+    Document part;
+    const hz::topo::Solid* solid = boxSolid(partPath, part);
+    ASSERT_NE(solid, nullptr);
+    const DrawingDocumentSpec spec = sectionedSpec(partPath, *solid);
+
+    const std::string dwg = (dir / "d.hzdwg").string();
+    ASSERT_TRUE(DrawingDocumentIO::save(dwg, spec));
+    DrawingDocumentSpec read;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
+    EXPECT_EQ(read.version, 3);
+    ASSERT_EQ(read.views.size(), 6u);
+    EXPECT_EQ(read.views[4].role, hz::model::ViewRole::Section);
+    EXPECT_EQ(read.views[4].label, "A");
+    EXPECT_EQ(read.views[4].source, 0);
+    EXPECT_EQ(read.views[5].role, hz::model::ViewRole::Detail);
+    EXPECT_EQ(read.views[5].label, "B");
+    EXPECT_EQ(read.views[5].source, 0);
+    EXPECT_DOUBLE_EQ(read.views[5].detailRadius, 1.0);
+    EXPECT_DOUBLE_EQ(read.views[5].detailCenter.x, spec.views[5].detailCenter.x);
+
+    const Drawing built = DrawingDocumentIO::build(*solid, read);
+    ASSERT_EQ(built.views.size(), 6u);
+    const auto& section = built.views[4];
+    EXPECT_EQ(section.role, hz::model::ViewRole::Section);
+    EXPECT_FALSE(section.sectionLoops.empty()) << "cut through the middle";
+    EXPECT_FALSE(section.sectionHatch.empty());
+    const auto& detail = built.views[5];
+    EXPECT_EQ(detail.source, 0);
+    ASSERT_FALSE(detail.edges.empty());
+    for (const auto& e : detail.edges) {
+        for (const auto& p : {e.a, e.b}) {
+            EXPECT_LE(std::hypot(p.x - detail.detailCenter.x, p.y - detail.detailCenter.y),
+                      1.0 + 1e-9)
+                << "inside its circle, not enlarged";
+        }
+    }
+    EXPECT_DOUBLE_EQ(detail.scale, 2.0 * built.views[0].scale);
+    std::filesystem::remove_all(dir);
+}
+
+// A section or detail taken from nothing, from itself or a later view, or
+// from another section is refused with a reason; a detail needs a circle; a label is
+// kept to a few characters on one line.
+TEST(DrawingDocumentIOTest, ABrokenSectionOrDetailIsRefused) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_v3_bad";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    const std::string front = R"({"kind": "Front"})";
+    const auto file = [&](const std::string& views) {
+        write(dwg, R"({"part": "box.hzpart", "version": 3, "views": [)" + views + "]}");
+    };
+    DrawingDocumentSpec spec;
+    std::string error;
+
+    file(front + R"(, {"role": "detail", "source": 2, "detailCenter": [0, 0], "detailRadius": 1})");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("view 2"), std::string::npos) << error;
+
+    file(front + R"(, {"role": "detail", "source": 0, "detailCenter": [0, 0], "detailRadius": 0})");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("circle"), std::string::npos) << error;
+
+    file(front + R"(, {"role": "section", "source": 0, "direction": [1, 0, 0]},)" +
+         R"({"role": "section", "source": 1, "direction": [0, 0, 1]})");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("not a projection"), std::string::npos) << error;
+
+    // A section says where it cuts, on a view before it: none, itself or a
+    // later one is refused. It was read: a caption marking nothing.
+    for (const std::string& source :
+         {std::string(), std::string(R"("source": -1, )"), std::string(R"("source": 1, )"),
+          std::string(R"("source": 5, )")}) {
+        file(front + R"(, {"role": "section", )" + source + R"("direction": [1, 0, 0]})");
+        EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << source;
+        EXPECT_NE(error.find("section of no view"), std::string::npos) << error;
+    }
+
+    file(front + R"(, {"role": "section", "source": 0, "direction": [1, 0, 0],)" +
+         R"( "label": "A\nBCDEFGHIJKLMNOP"})");
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
+    EXPECT_EQ(spec.views[1].label, "ABCDEFGH");
     std::filesystem::remove_all(dir);
 }

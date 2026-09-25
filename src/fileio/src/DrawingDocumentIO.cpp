@@ -10,6 +10,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/SectionView.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::io {
@@ -19,7 +20,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr int kVersion = 2;
+constexpr int kVersion = 3;
+constexpr double kHatchSpacing = 3.0;  ///< sheet millimetres between a section's hatch lines
 
 // Each field read by its type, defaulted when missing or of another type: a
 // field of the wrong type in a hostile file threw from json::value().
@@ -63,6 +65,32 @@ const char* viewName(model::StandardView view) {
             return "isometric";
     }
     return "front";
+}
+
+const char* roleName(model::ViewRole role) {
+    switch (role) {
+        case model::ViewRole::Section:
+            return "section";
+        case model::ViewRole::Detail:
+            return "detail";
+        case model::ViewRole::Projection:
+            break;
+    }
+    return "projection";
+}
+
+model::ViewRole roleNamed(const std::string& name) {
+    if (name == "section") return model::ViewRole::Section;
+    if (name == "detail") return model::ViewRole::Detail;
+    return model::ViewRole::Projection;
+}
+
+/// A label as a caption can show it: a few characters, no line breaks.
+std::string usableLabel(std::string label) {
+    std::erase_if(label, [](char c) { return c == '\n' || c == '\r'; });
+    constexpr std::size_t kMaxLabel = 8;
+    if (label.size() > kMaxLabel) label.resize(kMaxLabel);
+    return label;
 }
 
 model::StandardView viewNamed(const std::string& name) {
@@ -142,7 +170,12 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
                          {"scale", v.scale},
                          {"placement", json::array({v.placement.x, v.placement.y})},
                          {"hidden", v.showHidden},
-                         {"tangent", v.showTangentEdges}});
+                         {"tangent", v.showTangentEdges},
+                         {"role", roleName(v.role)},
+                         {"label", v.label},
+                         {"source", v.source},
+                         {"detailCenter", json::array({v.detailCenter.x, v.detailCenter.y})},
+                         {"detailRadius", v.detailRadius}});
     }
     root["views"] = views;
 
@@ -182,7 +215,9 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
 
     // Compared as a number: a version of 1e300 cast to int was undefined.
     const double versionNumber = number(root, "version", 1.0);
-    const int version = std::isfinite(versionNumber) && versionNumber >= 2.0 ? 2 : 1;
+    const int version = !std::isfinite(versionNumber) || versionNumber < 2.0 ? 1
+                        : versionNumber < 3.0                                ? 2
+                                                                             : 3;
     if (version >= 2) {
         const double scale = number(root, "scale", 0.0);
         spec.scale = usableScale(scale) ? scale : 0.0;
@@ -248,6 +283,46 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                 }
                 view.showHidden = flag(v, "hidden", true);
                 view.showTangentEdges = flag(v, "tangent", true);
+                if (version >= 3) {
+                    // A section or detail names a projection view before it:
+                    // its mark is drawn there, and a detail is cut from it.
+                    const std::string at = "view " + std::to_string(spec.views.size() + 1);
+                    view.role = roleNamed(text(v, "role"));
+                    view.label = usableLabel(text(v, "label"));
+                    const double source = number(v, "source", -1.0);
+                    if (source >= 0.0 && source < static_cast<double>(spec.views.size())) {
+                        view.source = static_cast<int>(source);
+                    }
+                    const bool fromProjection =
+                        view.source >= 0 &&
+                        spec.views[static_cast<std::size_t>(view.source)].role ==
+                            model::ViewRole::Projection;
+                    if (view.role != model::ViewRole::Projection && view.source >= 0 &&
+                        !fromProjection) {
+                        return fail(at + " is taken from a view that is not a projection");
+                    }
+                    // A section with no view to mark its cut on is a caption
+                    // that says nothing of where it cuts.
+                    if (view.role == model::ViewRole::Section && !fromProjection) {
+                        return fail(at + " is a section of no view before it");
+                    }
+                    if (view.role == model::ViewRole::Detail) {
+                        const auto centre = v.find("detailCenter");
+                        view.detailRadius = number(v, "detailRadius", 0.0);
+                        if (!fromProjection) {
+                            return fail(at + " is a detail of no view before it");
+                        }
+                        if (centre == v.end() || !centre->is_array() || centre->size() != 2 ||
+                            !(*centre)[0].is_number() || !(*centre)[1].is_number() ||
+                            !std::isfinite((*centre)[0].get<double>()) ||
+                            !std::isfinite((*centre)[1].get<double>()) ||
+                            !std::isfinite(view.detailRadius) || view.detailRadius <= 0.0) {
+                            return fail(at + " is a detail with no circle");
+                        }
+                        view.detailCenter = {(*centre)[0].get<double>(),
+                                             (*centre)[1].get<double>()};
+                    }
+                }
                 spec.views.push_back(view);
             }
         }
@@ -291,7 +366,32 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
     }
     model::Drawing drawing;
     for (const DrawingViewSpec& v : spec.views) {
-        model::DrawingView view = model::DrawingGenerator::makeView(solid, v.projection);
+        const bool fromProjection =
+            v.source >= 0 && static_cast<std::size_t>(v.source) < drawing.views.size() &&
+            drawing.views[static_cast<std::size_t>(v.source)].role == model::ViewRole::Projection;
+        model::DrawingView view;
+        if (v.role == model::ViewRole::Section) {
+            // Hatched 3 mm apart on the paper, whatever the scale.
+            view = model::SectionGenerator::sectionView(
+                solid, v.projection.origin, v.projection.dir.normalized() * -1.0,
+                kHatchSpacing / (usableScale(v.scale) ? v.scale : 1.0));
+        } else if (v.role == model::ViewRole::Detail) {
+            // Cut from its source as built, not enlarged: its scale says how
+            // large it is drawn. One with no source stays empty, and keeps the
+            // views after it where they are.
+            if (fromProjection) {
+                view = model::DrawingGenerator::detailView(
+                    drawing.views[static_cast<std::size_t>(v.source)], v.detailCenter,
+                    v.detailRadius, 1.0);
+            }
+            view.detailCenter = v.detailCenter;
+            view.detailRadius = v.detailRadius;
+        } else {
+            view = model::DrawingGenerator::makeView(solid, v.projection);
+        }
+        view.role = v.role;
+        view.label = v.label;
+        view.source = v.role == model::ViewRole::Projection || !fromProjection ? -1 : v.source;
         view.kind = v.kind;
         view.scale = v.scale;
         view.placement = v.placement;
@@ -313,6 +413,11 @@ std::vector<DrawingViewSpec> DrawingDocumentIO::viewsOf(const model::Drawing& dr
         spec.placement = v.placement;
         spec.showHidden = v.showHidden;
         spec.showTangentEdges = v.showTangentEdges;
+        spec.role = v.role;
+        spec.label = v.label;
+        spec.source = v.source;
+        spec.detailCenter = v.detailCenter;
+        spec.detailRadius = v.detailRadius;
         views.push_back(spec);
     }
     return views;

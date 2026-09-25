@@ -1,11 +1,15 @@
 #include "horizon/fileio/DrawingExport.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/drafting/DraftText.h"
@@ -16,6 +20,7 @@
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GeometricToleranceRenderer.h"
 #include "horizon/fileio/TitleBlockRenderer.h"
+#include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
@@ -31,9 +36,15 @@ constexpr char kToleranceLayer[] = "Tolerances";
 constexpr char kBalloonLayer[] = "Balloons";
 constexpr char kSectionLayer[] = "Section";  ///< cut-profile boundaries of section views
 constexpr char kHatchLayer[] = "Hatch";      ///< cross-hatching inside cut profiles
-constexpr double kDimensionOffset = 5.0;     ///< sheet distance from the edge to the dimension line
-constexpr double kToleranceOffset = 8.0;     ///< sheet distance from the edge to a GD&T frame
-constexpr double kDatumOffset = -8.0;        ///< opposite side, so datums clear tolerances
+/// Captions under sections and details, and their marks on the views they
+/// were taken from (Phase 149).
+constexpr char kViewLabelLayer[] = "ViewLabels";
+constexpr double kCaptionHeight = 3.5;    ///< ISO 3098 for A3 and A4
+constexpr double kArrowLength = 7.0;      ///< a section's viewing arrows, on the sheet
+constexpr double kMarkOverrun = 5.0;      ///< how far a cut's line runs past its view
+constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
+constexpr double kToleranceOffset = 8.0;  ///< sheet distance from the edge to a GD&T frame
+constexpr double kDatumOffset = -8.0;     ///< opposite side, so datums clear tolerances
 constexpr double kRadialTextHeight = 3.0;
 
 void addDrawingLayers(doc::Document& doc) {
@@ -72,6 +83,118 @@ void addDrawingLayers(doc::Document& doc) {
     draft::LayerProperties titleBlock;
     titleBlock.name = TitleBlockRenderer::kTitleBlockLayer;
     doc.layerManager().addLayer(titleBlock);
+
+    draft::LayerProperties viewLabels;
+    viewLabels.name = kViewLabelLayer;
+    doc.layerManager().addLayer(viewLabels);
+}
+
+void addLabelLine(doc::Document& doc, const math::Vec2& a, const math::Vec2& b,
+                  draft::LineType type = draft::LineType::Continuous) {
+    auto line = std::make_shared<draft::DraftLine>(a, b);
+    line->setLayer(kViewLabelLayer);
+    line->setLineType(static_cast<int>(type));
+    doc.addEntity(std::move(line));
+}
+
+void addLabelText(doc::Document& doc, const math::Vec2& at, const std::string& text,
+                  double height) {
+    auto t = std::make_shared<draft::DraftText>(at, text, height);
+    t->setLayer(kViewLabelLayer);
+    t->setAlignment(draft::TextAlignment::Center);
+    doc.addEntity(std::move(t));
+}
+
+/// An arrow on the sheet whose head is at @p head, pointing along @p dir
+/// (a unit vector).
+void addArrow(doc::Document& doc, const math::Vec2& head, const math::Vec2& dir) {
+    const math::Vec2 tail{head.x - dir.x * kArrowLength, head.y - dir.y * kArrowLength};
+    addLabelLine(doc, tail, head);
+    const double c = std::cos(0.35);
+    const double s = std::sin(0.35);
+    for (const double side : {1.0, -1.0}) {
+        const math::Vec2 back{-(dir.x * c - side * dir.y * s), -(side * dir.x * s + dir.y * c)};
+        addLabelLine(doc, head, {head.x + back.x * 3.0, head.y + back.y * 3.0});
+    }
+}
+
+/// The caption under @p view, and its mark on its source: a section's cut,
+/// with arrows the way it looks, or a detail's circle.
+void addViewLabels(doc::Document& doc, const model::Drawing& drawing, size_t index) {
+    const model::DrawingView& view = drawing.views[index];
+    if (view.label.empty() || view.role == model::ViewRole::Projection) return;
+    const bool section = view.role == model::ViewRole::Section;
+    const bool hasSource = view.source >= 0 &&
+                           static_cast<size_t>(view.source) < drawing.views.size() &&
+                           static_cast<size_t>(view.source) != index;
+
+    std::string caption =
+        section ? "SECTION " + view.label + "-" + view.label : "DETAIL " + view.label;
+    if (!section || (hasSource && std::abs(drawing.views[static_cast<size_t>(view.source)].scale -
+                                           view.scale) > 1e-12)) {
+        caption += " (" + model::DrawingGenerator::scaleName(view.scale) + ")";
+    }
+    const auto [low, high] = view.sheetFootprint();
+    addLabelText(doc, {(low.x + high.x) / 2.0, low.y + 1.5}, caption, kCaptionHeight);
+    if (!hasSource) return;
+
+    const model::DrawingView& from = drawing.views[static_cast<size_t>(view.source)];
+    if (!section) {
+        const math::Vec2 centre = from.toSheet(view.detailCenter);
+        const double radius = view.detailRadius * from.scale;
+        auto circle = std::make_shared<draft::DraftCircle>(centre, radius);
+        circle->setLayer(kViewLabelLayer);
+        doc.addEntity(std::move(circle));
+        const double r = radius + 2.0;
+        addLabelText(doc, {centre.x + r * 0.7071, centre.y + r * 0.7071}, view.label,
+                     kCaptionHeight);
+        return;
+    }
+
+    // The cut, seen on the source: the plane meets its view plane in a line.
+    const math::Vec3 point = view.projection.origin;
+    const math::Vec3 sight = view.projection.dir.normalized();  // the section looks this way
+    const math::Vec3 along = sight.cross(from.projection.dir);  // in both planes
+    const math::Vec2 p = model::DrawingProjection::toView(from.projection, point);
+    const math::Vec2 q = model::DrawingProjection::toView(from.projection, point + along);
+    const math::Vec2 s = model::DrawingProjection::toView(from.projection, point + sight);
+    math::Vec2 d{q.x - p.x, q.y - p.y};
+    math::Vec2 look{s.x - p.x, s.y - p.y};
+    const double dl = std::hypot(d.x, d.y);
+    const double ll = std::hypot(look.x, look.y);
+    if (dl < 1e-9 || ll < 1e-9) return;  // the cut is not seen edge-on there
+    d = {d.x / dl, d.y / dl};
+    look = {look.x / ll, look.y / ll};
+
+    // Across the source's bounds, and a little past them.
+    const double over = kMarkOverrun / from.scale;
+    double tLo = -std::numeric_limits<double>::infinity();
+    double tHi = std::numeric_limits<double>::infinity();
+    const double lo[2] = {from.boundsMin.x - over, from.boundsMin.y - over};
+    const double hi[2] = {from.boundsMax.x + over, from.boundsMax.y + over};
+    const double origin[2] = {p.x, p.y};
+    const double step[2] = {d.x, d.y};
+    for (int axis = 0; axis < 2; ++axis) {
+        if (std::abs(step[axis]) < 1e-12) {
+            if (origin[axis] < lo[axis] || origin[axis] > hi[axis]) return;  // misses the view
+            continue;
+        }
+        const double t0 = (lo[axis] - origin[axis]) / step[axis];
+        const double t1 = (hi[axis] - origin[axis]) / step[axis];
+        tLo = std::max(tLo, std::min(t0, t1));
+        tHi = std::min(tHi, std::max(t0, t1));
+    }
+    if (!(tLo < tHi)) return;
+    const math::Vec2 a = from.toSheet({p.x + d.x * tLo, p.y + d.y * tLo});
+    const math::Vec2 b = from.toSheet({p.x + d.x * tHi, p.y + d.y * tHi});
+    addLabelLine(doc, a, b, draft::LineType::Center);
+    for (const math::Vec2& end : {a, b}) {
+        addArrow(doc, end, look);
+        addLabelText(doc,
+                     {end.x - look.x * (kArrowLength + 3.0),
+                      end.y - look.y * (kArrowLength + 3.0) - kCaptionHeight / 2.0},
+                     view.label, kCaptionHeight);
+    }
 }
 
 // Fit a 2D circle through the view's projected segments of @p edgeId.
@@ -116,7 +239,8 @@ const std::vector<std::string>& DrawingExport::layers() {
                                                 kSectionLayer,
                                                 kHatchLayer,
                                                 TitleBlockRenderer::kBorderLayer,
-                                                TitleBlockRenderer::kTitleBlockLayer};
+                                                TitleBlockRenderer::kTitleBlockLayer,
+                                                kViewLabelLayer};
     return names;
 }
 
@@ -235,6 +359,8 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             }
         }
     }
+    // Sections' and details' captions, and their marks on their sources.
+    for (size_t i = 0; i < drawing.views.size(); ++i) addViewLabels(doc, drawing, i);
 }
 
 bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing) {

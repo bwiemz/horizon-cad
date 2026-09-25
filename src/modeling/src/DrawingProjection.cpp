@@ -394,6 +394,15 @@ double meshDiagonal(const std::vector<Vec3>& mesh) {
 
 }  // namespace
 
+Vec2 DrawingProjection::toView(const ViewProjection& view, const Vec3& p) {
+    return projectPoint(p, view, makeBasis(view));
+}
+
+std::pair<Vec3, Vec3> DrawingProjection::axes(const ViewProjection& view) {
+    const Basis basis = makeBasis(view);
+    return {basis.right, basis.upn};
+}
+
 std::vector<ProjectedEdge> DrawingProjection::project(const topo::Solid& solid,
                                                       const ViewProjection& view) {
     const Basis basis = makeBasis(view);

@@ -827,6 +827,15 @@ void MainWindow::createMenus() {
                  [this] { m_drawings->onScale(); });
     sketchAction(drawingMenu, tr("&Update from Part"), "action_update_drawing",
                  [this] { m_drawings->onUpdateFromPart(); });
+    drawingMenu->addSeparator();
+    sketchAction(drawingMenu, tr("Add Se&ction View..."), "action_add_section_view",
+                 [this] { m_drawings->onAddSectionView(); });
+    sketchAction(drawingMenu, tr("Add &Detail View"), "action_add_detail_view",
+                 [this] { m_drawings->onAddDetailView(); });
+    sketchAction(drawingMenu, tr("&Move View"), "action_move_view",
+                 [this] { m_drawings->onMoveView(); });
+    sketchAction(drawingMenu, tr("&Remove View..."), "action_remove_view",
+                 [this] { m_drawings->onRemoveView(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1368,6 +1377,18 @@ void MainWindow::activateTabDocument() {
 
 void MainWindow::addTab(std::shared_ptr<doc::Document> document, const QString& title) {
     addDocumentTab(std::move(document), nullptr, title);
+}
+
+void MainWindow::runTool(std::unique_ptr<Tool> tool) {
+    // The viewport lets go of a tool of the same name before it is replaced.
+    m_viewport->setActiveTool(nullptr);
+    const std::string name = tool->name();
+    m_toolManager->registerTool(std::move(tool));
+    activateTool(name);
+}
+
+void MainWindow::endTool() {
+    onSelectTool();
 }
 
 void MainWindow::refreshUsersOf(const std::string& path, bool report) {

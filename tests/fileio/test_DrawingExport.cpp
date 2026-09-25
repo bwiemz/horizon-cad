@@ -1,18 +1,25 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <string>
 
 #include "horizon/document/Document.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/LineType.h"
 #include "horizon/fileio/DrawingExport.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/modeling/DrawingBalloon.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/GeometricTolerance.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SectionView.h"
 #include "horizon/topology/Solid.h"
 
 using hz::doc::Document;
@@ -188,4 +195,79 @@ TEST(DrawingExportTest, ExportsBalloonsOnBalloonLayer) {
     EXPECT_GE(balloonEntities, 2);  // at least the circle and the number text
 
     std::remove(path.c_str());
+}
+
+// A section is captioned "SECTION A-A" and its cut drawn across its source
+// as a chain line with arrows the way it looks; a detail is captioned with
+// its scale and circled on its source. All on the ViewLabels layer.
+TEST(DrawingExportTest, SectionsAndDetailsAreCaptionedAndMarked) {
+    auto box = PrimitiveFactory::makeBox(100.0, 50.0, 20.0);
+    hz::model::Sheet sheet;
+    hz::model::TitleBlock tb;
+    Drawing drawing = DrawingGenerator::sheetLayout(*box, sheet, tb);
+    const hz::model::DrawingView front = drawing.views[0];  // a copy: views are added below
+    const double frontScale = front.scale;
+
+    hz::math::BoundingBox bounds;
+    for (const auto& v : box->vertices()) bounds.expand(v.point);
+    auto section = hz::model::SectionGenerator::sectionView(*box, bounds.center(),
+                                                            hz::math::Vec3(1.0, 0.0, 0.0));
+    section.role = hz::model::ViewRole::Section;
+    section.label = "A";
+    section.source = 0;
+    section.scale = frontScale;
+    section.placement = {30.0, 60.0};
+
+    const hz::math::Vec2 centre{(front.boundsMin.x + front.boundsMax.x) / 2.0, front.boundsMin.y};
+    auto detail = DrawingGenerator::detailView(front, centre, 10.0, 1.0);
+    detail.role = hz::model::ViewRole::Detail;
+    detail.label = "B";
+    detail.source = 0;
+    detail.detailCenter = centre;
+    detail.detailRadius = 10.0;
+    detail.scale = 2.0 * frontScale;
+    detail.placement = {30.0, 150.0};
+    drawing.views.push_back(section);
+    drawing.views.push_back(detail);
+
+    Document doc;
+    DrawingExport::populate(doc, drawing, &sheet, &tb);
+    ASSERT_NE(doc.layerManager().getLayer("ViewLabels"), nullptr);
+    const auto& own = DrawingExport::layers();
+    EXPECT_NE(std::find(own.begin(), own.end(), "ViewLabels"), own.end());
+
+    std::vector<std::string> texts;
+    int chains = 0;
+    const hz::draft::DraftCircle* circle = nullptr;
+    const hz::math::Vec2 frontLow = front.toSheet(front.boundsMin);
+    const hz::math::Vec2 frontHigh = front.toSheet(front.boundsMax);
+    for (const auto& e : doc.draftDocument().entities()) {
+        if (e->layer() != "ViewLabels") continue;
+        if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get())) {
+            texts.push_back(t->text());
+        } else if (const auto* c = dynamic_cast<const hz::draft::DraftCircle*>(e.get())) {
+            circle = c;
+        } else if (const auto* l = dynamic_cast<const hz::draft::DraftLine*>(e.get())) {
+            if (l->lineType() != static_cast<int>(hz::draft::LineType::Center)) continue;
+            ++chains;
+            // Vertical, through the middle of Front, and past its top and bottom.
+            EXPECT_NEAR(l->start().x, (frontLow.x + frontHigh.x) / 2.0, 1e-6);
+            EXPECT_NEAR(l->end().x, l->start().x, 1e-9);
+            EXPECT_LT(std::min(l->start().y, l->end().y), frontLow.y);
+            EXPECT_GT(std::max(l->start().y, l->end().y), frontHigh.y);
+        }
+    }
+    const auto has = [&](const std::string& s) {
+        return std::find(texts.begin(), texts.end(), s) != texts.end();
+    };
+    EXPECT_TRUE(has("SECTION A-A")) << "at its source's scale, none stated";
+    EXPECT_TRUE(has("DETAIL B (" + DrawingGenerator::scaleName(2.0 * frontScale) + ")"));
+    EXPECT_EQ(std::count(texts.begin(), texts.end(), "A"), 2) << "a letter at each end of the cut";
+    EXPECT_TRUE(has("B"));
+    EXPECT_EQ(chains, 1);
+    ASSERT_NE(circle, nullptr);
+    const hz::math::Vec2 onSheet = front.toSheet(centre);
+    EXPECT_NEAR(circle->center().x, onSheet.x, 1e-9);
+    EXPECT_NEAR(circle->center().y, onSheet.y, 1e-9);
+    EXPECT_NEAR(circle->radius(), 10.0 * frontScale, 1e-9);
 }

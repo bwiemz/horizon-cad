@@ -18,6 +18,10 @@ class Solid;
 
 namespace hz::model {
 
+/// What a view shows (Phase 149): the part as seen, the part cut, or a part
+/// of another view drawn larger.
+enum class ViewRole { Projection, Section, Detail };
+
 /// One placed view in a 2D drawing: the projected/classified geometry, its 2D
 /// bounding box in view space, and where it sits on the sheet.
 ///
@@ -28,6 +32,18 @@ namespace hz::model {
 struct DrawingView {
     StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
     ViewProjection projection;                ///< the camera this view was projected through
+    /// A section looks at its cut: the plane through `projection.origin`,
+    /// facing back along `projection.dir`.
+    ViewRole role = ViewRole::Projection;
+    /// "A" names section A-A or detail A, in the caption under the view and
+    /// in its mark on its source. Empty: neither is drawn.
+    std::string label;
+    /// The view it was taken from (an index into the drawing's views), where
+    /// its mark is drawn: a section's cut, a detail's circle. -1: none.
+    int source = -1;
+    /// A detail's circle, in its source's view space (model millimetres).
+    math::Vec2 detailCenter{0.0, 0.0};
+    double detailRadius = 0.0;
     std::vector<ProjectedEdge> edges;
     std::vector<LinearDimension> dimensions;        ///< dimensions anchored to this view's edges
     std::vector<RadialDimension> radialDimensions;  ///< R/⌀ dimensions on circular edges
@@ -62,6 +78,12 @@ struct DrawingView {
     /// Extents on the sheet.
     double sheetWidth() const { return width() * scale; }
     double sheetHeight() const { return height() * scale; }
+
+    /// The sheet room under a view that its caption takes.
+    static constexpr double kCaptionRoom = 8.0;
+    /// The view's rectangle on the sheet (lower-left, upper-right), with the
+    /// room below it for its caption when it has a label.
+    std::pair<math::Vec2, math::Vec2> sheetFootprint() const;
 };
 
 /// A 2D drawing: a set of placed orthographic/isometric views of one solid.
@@ -108,6 +130,14 @@ public:
 
     /// A scale as a drawing states it: "1:2", "1:1", "5:1".
     static std::string scaleName(double scale);
+
+    /// Where @p view can go on @p sheet (its placement): inside the border,
+    /// clear of the title block, and @p gap from every view of @p drawing
+    /// and its caption. Candidates are the sheet's corner and the sides of
+    /// the views, top first. None: beside the sheet, and @p fits false.
+    static math::Vec2 freePlacement(const Drawing& drawing, const DrawingView& view,
+                                    const Sheet& sheet, const TitleBlock& titleBlock,
+                                    double gap = 10.0, bool* fits = nullptr);
 
     /// A detail view: crop @p source's geometry to the circle (@p center,
     /// @p radius) in view space and enlarge it by @p scale about that center.

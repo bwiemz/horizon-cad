@@ -12,6 +12,10 @@ namespace hz::doc {
 class Document;
 }  // namespace hz::doc
 
+namespace hz::topo {
+class Solid;
+}  // namespace hz::topo
+
 namespace hz::ui {
 
 class WorkbenchHost;
@@ -38,6 +42,14 @@ public:
     void onScale();
     /// Draw the active sheet again from its part.
     void onUpdateFromPart();
+    /// A section through a view of the active sheet, set in a form (Phase 149).
+    void onAddSectionView();
+    /// A detail of a view: its centre and radius clicked, then a form.
+    void onAddDetailView();
+    /// A view clicked, then the place it goes to.
+    void onMoveView();
+    /// A view chosen in a form, and the views taken from it, removed.
+    void onRemoveView();
 
     // --- For the window ---
     /// Whether @p document is a sheet this workbench draws.
@@ -61,6 +73,8 @@ private:
     struct Sheet {
         std::weak_ptr<doc::Document> document;
         io::DrawingDocumentSpec spec;
+        /// The views as last drawn: what a click on the sheet finds.
+        model::Drawing drawing;
     };
 
     Sheet* sheetOf(const doc::Document* document);
@@ -70,8 +84,31 @@ private:
     /// Draw @p spec's sheet into @p document again, from its part as it is
     /// now: on the sheet's own layers, locked, leaving any other. False, with
     /// the reason, when the part cannot be read or built. A version 1 spec
-    /// is given the views it was drawn with.
-    bool draw(doc::Document& document, io::DrawingDocumentSpec& spec, std::string* error);
+    /// is given the views it was drawn with. The views drawn go to @p drawn.
+    bool draw(doc::Document& document, io::DrawingDocumentSpec& spec, std::string* error,
+              model::Drawing* drawn = nullptr);
+    /// The part at @p path as it is now: its tab's solid when it is open and
+    /// built, else its file's, built in @p holder. Null, with the reason.
+    const topo::Solid* partSolid(const std::string& path, doc::Document& holder,
+                                 std::string* error);
+    /// Lay the sheet's standard views out again at @p scale (0: the largest
+    /// that fits), with its sections and details kept, scaled with them, and
+    /// placed again where there is room; @p fits false when some found none.
+    /// False, with the reason, when the part cannot be read.
+    bool layOutAgain(Sheet& sheet, double scale, bool* fits, std::string* error);
+    /// The view of @p sheet under the sheet point @p at; -1 for none. Only
+    /// projections, when @p projectionOnly.
+    static int viewAt(const Sheet& sheet, const math::Vec2& at, bool projectionOnly);
+    /// The first letter no view of @p sheet is labelled with.
+    static QString nextLabel(const Sheet& sheet);
+    /// A detail of view @p source of the sheet showing @p document, clicked
+    /// at @p centre with @p radius on the sheet: its scale and label asked.
+    void addDetail(const std::weak_ptr<doc::Document>& document, int source,
+                   const math::Vec2& centre, const math::Vec2& onCircle);
+    /// Add @p view (built, sized) to @p sheet as @p spec says, where there is
+    /// room, and draw the sheet again.
+    void addView(Sheet& sheet, const model::DrawingView& view, io::DrawingViewSpec spec,
+                 const QString& verb);
     /// Draw the active sheet again after its spec changed, and mark it
     /// modified.
     void redraw(Sheet& sheet, const QString& verb);

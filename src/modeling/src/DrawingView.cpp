@@ -1,7 +1,10 @@
 #include "horizon/modeling/DrawingView.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -92,8 +95,11 @@ const std::vector<double>& DrawingGenerator::standardScales() {
 std::string DrawingGenerator::scaleName(double scale) {
     const auto whole = [](double v) {
         const double r = std::round(v);
-        return std::abs(v - r) < 1e-9 ? std::to_string(static_cast<long long>(r))
-                                      : std::to_string(v);
+        if (std::abs(v - r) < 1e-9) return std::to_string(static_cast<long long>(r));
+        // Not a standard scale: as few digits as say it ("2.5", not "2.500000").
+        std::array<char, 32> text{};
+        std::snprintf(text.data(), text.size(), "%.4g", v);
+        return std::string(text.data());
     };
     if (scale >= 1.0) return whole(scale) + ":1";
     return "1:" + whole(1.0 / scale);
@@ -147,6 +153,74 @@ Drawing DrawingGenerator::sheetLayout(const topo::Solid& solid, const Sheet& she
     }
     if (chosenScale != nullptr) *chosenScale = scale;
     return d;
+}
+
+std::pair<math::Vec2, math::Vec2> DrawingView::sheetFootprint() const {
+    const math::Vec2 low = placement;
+    const math::Vec2 high{placement.x + sheetWidth(), placement.y + sheetHeight()};
+    const double caption = label.empty() ? 0.0 : kCaptionRoom;
+    return {{low.x, low.y - caption}, high};
+}
+
+math::Vec2 DrawingGenerator::freePlacement(const Drawing& drawing, const DrawingView& view,
+                                           const Sheet& sheet, const TitleBlock& titleBlock,
+                                           double gap, bool* fits) {
+    // The footprint wanted, as an offset from the view's placement.
+    const double caption = view.label.empty() ? 0.0 : DrawingView::kCaptionRoom;
+    const double w = view.sheetWidth();
+    const double h = view.sheetHeight() + caption;
+
+    // What is taken: the views with their captions, and the title block.
+    struct Box {
+        double x0, y0, x1, y1;
+    };
+    std::vector<Box> taken;
+    for (const DrawingView& v : drawing.views) {
+        const auto [low, high] = v.sheetFootprint();
+        taken.push_back({low.x, low.y, high.x, high.y});
+    }
+    const double right = sheet.widthMm() - sheet.margin;
+    taken.push_back(
+        {right - titleBlock.width, sheet.margin, right, sheet.margin + titleBlock.height});
+
+    const double minX = sheet.margin + gap;
+    const double minY = sheet.margin + gap;
+    const double maxX = sheet.widthMm() - sheet.margin - gap;
+    const double maxY = sheet.heightMm() - sheet.margin - gap;
+    const auto clear = [&](double x, double y) {
+        if (x < minX - 1e-9 || y < minY - 1e-9 || x + w > maxX + 1e-9 || y + h > maxY + 1e-9) {
+            return false;
+        }
+        for (const Box& b : taken) {
+            if (x < b.x1 + gap - 1e-9 && b.x0 - gap < x + w - 1e-9 && y < b.y1 + gap - 1e-9 &&
+                b.y0 - gap < y + h - 1e-9) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Candidates: against the border, and beside each thing taken.
+    std::vector<double> xs{minX, maxX - w};
+    std::vector<double> ys{maxY - h, minY};
+    for (const Box& b : taken) {
+        xs.push_back(b.x1 + gap);
+        xs.push_back(b.x0 - gap - w);
+        ys.push_back(b.y1 + gap);
+        ys.push_back(b.y0 - gap - h);
+    }
+    std::sort(xs.begin(), xs.end());
+    std::sort(ys.begin(), ys.end(), std::greater<>());
+    for (const double y : ys) {
+        for (const double x : xs) {
+            if (clear(x, y)) {
+                if (fits != nullptr) *fits = true;
+                return {x, y + caption};
+            }
+        }
+    }
+    if (fits != nullptr) *fits = false;
+    return {sheet.widthMm() + gap, maxY - h + caption};  // beside the sheet
 }
 
 DrawingView DrawingGenerator::detailView(const DrawingView& source, const math::Vec2& center,

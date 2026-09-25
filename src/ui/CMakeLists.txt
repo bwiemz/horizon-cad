@@ -59,6 +59,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/AssemblyTreePanel.h
     include/horizon/ui/AssemblyWorkbench.h
     include/horizon/ui/DrawingWorkbench.h
+    include/horizon/ui/PickTool.h
     include/horizon/ui/WorkbenchHost.h
     include/horizon/ui/FeatureForm.h
     include/horizon/ui/LocaleManager.h
@@ -141,6 +142,7 @@ add_library(hz_ui STATIC
     src/AssemblyTreePanel.cpp
     src/AssemblyWorkbench.cpp
     src/DrawingWorkbench.cpp
+    src/PickTool.cpp
 )
 
 target_include_directories(hz_ui

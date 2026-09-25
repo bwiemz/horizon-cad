@@ -3,6 +3,10 @@
 // on its own locked layers. It saves as a .hzdwg and opens again, its title
 // block and scale are set in forms, and it follows its part when the part
 // changes on disk or is saved in its tab.
+//
+// Views added to it (Phase 149): a section cut through a view, a detail
+// clicked on one, a view moved by clicks or removed with those taken from
+// it, and all of them kept when the sheet is laid out at another scale.
 
 #include <gtest/gtest.h>
 
@@ -24,15 +28,19 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/DrawingView.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::test::FilePicker;
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
+using hz::test::ToolDriver;
 using hz::ui::MainWindow;
 
 namespace {
@@ -351,4 +359,259 @@ TEST(DrawingsTest, ASheetPlotsOnItsPaperAtFullSize) {
     }
     EXPECT_NEAR(low, 10.0, 1e-3);
     EXPECT_NEAR(high, 410.0, 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// Views added to a sheet (Phase 149)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Where the sheet of the block at @p path lays its views out: as the
+/// workbench does, on an A3 sheet.
+hz::model::Drawing layoutOf(const QString& path) {
+    hz::doc::Document part;
+    EXPECT_TRUE(hz::io::NativeFormat::load(path.toStdString(), part));
+    EXPECT_TRUE(part.rebuildModel());
+    return hz::model::DrawingGenerator::sheetLayout(*part.solid(), hz::model::Sheet{},
+                                                    hz::model::TitleBlock{});
+}
+
+/// Save the active sheet (named @p path the first time) and read what it
+/// says.
+hz::io::DrawingDocumentSpec savedSpec(MainWindow& w, const QString& path) {
+    if (w.activeDocument()->filePath().empty()) {
+        FilePicker picker(path);
+        trigger(w, "action_save");
+    } else {
+        trigger(w, "action_save");
+    }
+    hz::io::DrawingDocumentSpec spec;
+    EXPECT_TRUE(hz::io::DrawingDocumentIO::readSpec(path.toStdString(), spec));
+    return spec;
+}
+
+/// What is written on the ViewLabels layer.
+QStringList labelTexts(const hz::doc::Document& sheet) {
+    QStringList texts;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (entity->layer() != "ViewLabels") continue;
+        if (const auto* text = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+            texts << QString::fromStdString(text->text());
+        }
+    }
+    return texts;
+}
+
+bool selecting(MainWindow& w) {
+    const auto* tool = w.findChild<hz::ui::ViewportWidget*>()->activeTool();
+    return tool != nullptr && tool->name() == "Select";
+}
+
+/// A detail of the Front view of @p front, about its lower-left corner, 8 mm
+/// across on the sheet, labelled @p label: clicked, then the form accepted.
+void addDetailOfFront(MainWindow& w, const hz::model::DrawingView& front, const QString& label) {
+    ToolDriver drive(w);
+    trigger(w, "action_add_detail_view");
+    FormFiller form(QStringLiteral("Add Detail View"), FormAnswers().text("label", label));
+    const hz::math::Vec2 corner = front.placement;
+    drive.click(corner);
+    drive.click({corner.x + 8.0, corner.y});
+    ASSERT_TRUE(waitUntil([&] { return form.seen(); }, 5000));
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000)) << "back to Select";
+}
+
+}  // namespace
+
+// A section cut through the Front view: captioned, hatched, its cut marked
+// on Front, saved and opened again; a cut that misses the part is refused.
+TEST(DrawingsTest, ASectionIsCutThroughAView) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+
+    {
+        FormFiller form(QStringLiteral("Add Section View"), FormAnswers()
+                                                                .choose("view", "1: Front")
+                                                                .choose("cut", "Vertical")
+                                                                .number("offset", 0.0)
+                                                                .text("label", "A"));
+        trigger(w, "action_add_section_view");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(labelTexts(*sheet).contains(QStringLiteral("SECTION A-A")));
+    EXPECT_EQ(labelTexts(*sheet).count(QStringLiteral("A")), 2)
+        << "a letter at each end of the cut";
+    EXPECT_GT(countOn(*sheet, "Section"), 0u);
+    EXPECT_GT(countOn(*sheet, "Hatch"), 0u);
+    EXPECT_TRUE(sheet->isDirty());
+
+    const QString file = dir.filePath(QStringLiteral("block.hzdwg"));
+    const auto spec = savedSpec(w, file);
+    ASSERT_EQ(spec.views.size(), 5u) << "the four standard views, and the section";
+    EXPECT_EQ(spec.views[4].role, hz::model::ViewRole::Section);
+    EXPECT_EQ(spec.views[4].source, 0);
+    EXPECT_EQ(spec.views[4].label, "A");
+
+    const size_t labels = countOn(*sheet, "ViewLabels");
+    {
+        FormFiller form(QStringLiteral("Add Section View"),
+                        FormAnswers().choose("view", "1: Front").number("offset", 500.0));
+        trigger(w, "action_add_section_view");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("misses")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(countOn(*sheet, "ViewLabels"), labels) << "nothing added";
+
+    emit tabBar(w)->tabCloseRequested(tabBar(w)->currentIndex());
+    ASSERT_TRUE(w.openPath(file));
+    EXPECT_TRUE(labelTexts(*w.activeDocument()).contains(QStringLiteral("SECTION A-A")));
+}
+
+// A detail: its centre clicked on a view (a click off every view is refused),
+// then its radius; the form takes the scale, twice the view's by default.
+TEST(DrawingsTest, ADetailIsClickedOnAView) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& front = layout.views[0];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+
+    {
+        ToolDriver drive(w);
+        trigger(w, "action_add_detail_view");
+        drive.click({front.placement.x - 5.0, front.placement.y - 5.0});  // off every view
+        EXPECT_FALSE(selecting(w)) << "still waiting for a centre on a view";
+    }
+    addDetailOfFront(w, front, QStringLiteral("B"));
+
+    double twice = 10.0;
+    for (const double s : hz::model::DrawingGenerator::standardScales()) {
+        if (s >= 2.0 * front.scale - 1e-9) twice = s;
+    }
+    const QString caption =
+        QStringLiteral("DETAIL B (%1)")
+            .arg(QString::fromStdString(hz::model::DrawingGenerator::scaleName(twice)));
+    EXPECT_TRUE(labelTexts(*sheet).contains(caption))
+        << labelTexts(*sheet).join(", ").toStdString();
+    const hz::draft::DraftCircle* circle = nullptr;
+    for (const auto& entity : sheet->draftDocument().entities()) {
+        if (entity->layer() != "ViewLabels") continue;
+        if (const auto* c = dynamic_cast<const hz::draft::DraftCircle*>(entity.get())) circle = c;
+    }
+    ASSERT_NE(circle, nullptr) << "circled on Front";
+    EXPECT_NEAR(circle->center().x, front.placement.x, 1.0);
+    EXPECT_NEAR(circle->center().y, front.placement.y, 1.0);
+    EXPECT_NEAR(circle->radius(), 8.0, 1.0);
+
+    const auto spec = savedSpec(w, dir.filePath(QStringLiteral("block.hzdwg")));
+    ASSERT_EQ(spec.views.size(), 5u);
+    EXPECT_EQ(spec.views[4].role, hz::model::ViewRole::Detail);
+    EXPECT_EQ(spec.views[4].source, 0);
+    EXPECT_DOUBLE_EQ(spec.views[4].scale, twice);
+}
+
+// A view clicked, then where the clicked point goes: it moves by as much.
+TEST(DrawingsTest, AViewIsMovedByClicks) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& iso = layout.views[3];
+    MainWindow w;
+    ASSERT_NE(drawingOfOpenPart(w, block), nullptr);
+
+    ToolDriver drive(w);
+    trigger(w, "action_move_view");
+    const hz::math::Vec2 at{iso.placement.x + iso.sheetWidth() / 2.0,
+                            iso.placement.y + iso.sheetHeight() / 2.0};
+    drive.click(at);
+    drive.click({at.x - 20.0, at.y - 15.0});
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000)) << "back to Select";
+
+    const auto spec = savedSpec(w, dir.filePath(QStringLiteral("block.hzdwg")));
+    ASSERT_EQ(spec.views.size(), 4u);
+    // A click lands on a pixel, and may snap: within a millimetre.
+    EXPECT_NEAR(spec.views[3].placement.x, iso.placement.x - 20.0, 1.0);
+    EXPECT_NEAR(spec.views[3].placement.y, iso.placement.y - 15.0, 1.0);
+    EXPECT_NEAR(spec.views[0].placement.x, layout.views[0].placement.x, 1e-9) << "the rest stay";
+}
+
+// A view removed takes the views taken from it with it, and says so.
+TEST(DrawingsTest, ARemovedViewTakesItsDetailWithIt) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    addDetailOfFront(w, layout.views[0], QStringLiteral("B"));
+    ASSERT_FALSE(labelTexts(*sheet).isEmpty());
+
+    {
+        FormFiller form(QStringLiteral("Remove View"), FormAnswers().choose("view", "1: Front"));
+        trigger(w, "action_remove_view");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("went with it")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_TRUE(labelTexts(*sheet).isEmpty()) << "the detail, its caption and its circle gone";
+    const auto spec = savedSpec(w, dir.filePath(QStringLiteral("block.hzdwg")));
+    ASSERT_EQ(spec.views.size(), 3u);
+    for (const auto& v : spec.views) EXPECT_EQ(v.role, hz::model::ViewRole::Projection);
+    EXPECT_NE(spec.views[0].kind, hz::model::StandardView::Front);
+}
+
+// The Scale form lays the standard views out again and keeps the section
+// and the detail: the section at the new scale, the detail as many times
+// its view's (at a standard scale), each placed where there is room.
+TEST(DrawingsTest, TheScaleFormKeepsSectionsAndDetails) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    {
+        FormFiller form(QStringLiteral("Add Section View"),
+                        FormAnswers().choose("view", "1: Front").text("label", "A"));
+        trigger(w, "action_add_section_view");
+        ASSERT_TRUE(form.seen());
+    }
+    addDetailOfFront(w, layout.views[0], QStringLiteral("B"));
+    const QString file = dir.filePath(QStringLiteral("block.hzdwg"));
+    const auto before = savedSpec(w, file);
+    ASSERT_EQ(before.views.size(), 6u);
+    const double ratio = before.views[5].scale / before.views[0].scale;
+
+    {
+        FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", "1:1"));
+        trigger(w, "action_drawing_scale");
+        ASSERT_TRUE(form.seen());
+    }
+    const auto after = savedSpec(w, file);
+    ASSERT_EQ(after.views.size(), 6u);
+    EXPECT_DOUBLE_EQ(after.views[0].scale, 1.0);
+    EXPECT_EQ(after.views[4].role, hz::model::ViewRole::Section);
+    EXPECT_DOUBLE_EQ(after.views[4].scale, 1.0);
+    EXPECT_EQ(after.views[4].source, 0);
+    EXPECT_EQ(after.views[5].role, hz::model::ViewRole::Detail);
+    // As many times its view's as before, or the standard scale above that.
+    double atLeast = 10.0;
+    for (const double s : hz::model::DrawingGenerator::standardScales()) {
+        if (s >= ratio * 1.0 - 1e-9) atLeast = s;
+    }
+    EXPECT_DOUBLE_EQ(after.views[5].scale, atLeast);
+    EXPECT_EQ(after.views[5].source, 0);
+    EXPECT_TRUE(labelTexts(*sheet).contains(QStringLiteral("SECTION A-A")));
+    EXPECT_FALSE(w.statusBar()->currentMessage().contains(QStringLiteral("no room")));
 }
