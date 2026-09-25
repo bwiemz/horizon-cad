@@ -35,6 +35,19 @@ void UndoStack::redo() {
     notifyChanged();
 }
 
+bool UndoStack::withdraw(const Command* command) {
+    if (m_undoStack.empty() || m_undoStack.back().get() != command) return false;
+    const auto cmd = std::move(m_undoStack.back());
+    m_undoStack.pop_back();
+    cmd->undo();
+    // Saved with the command in it: that state is gone for good.
+    if (m_cleanIndex != kCleanUnreachable && m_cleanIndex > m_undoStack.size()) {
+        m_cleanIndex = kCleanUnreachable;
+    }
+    notifyChanged();
+    return true;
+}
+
 bool UndoStack::canUndo() const {
     return !m_undoStack.empty();
 }

@@ -158,29 +158,90 @@ Also:
 - The cache keeps a CPU copy of the vertices (16 bytes each) beside the
   GPU's.
 
-## Phase 137: The GUI thread stays free (planned)
+## Phase 137: The GUI thread stays free
 
-- **One build per added feature.**
-  - Count the builds (`Document` gets a build counter for tests).
-  - The audit found an add builds two or three times, the first on the GUI
-    thread; the count will say where. It should build once, on the worker
-    when the last build was slow, as `rebuildFeatureTree` already decides.
-- **Open and save off the GUI thread.**
-  - Opening a part parses and then builds on the GUI thread
-    (`rebuildScene` builds a model that was never built). Parse and build on
-    the worker; show the document as building meanwhile.
-  - The audit found save serialises on the GUI thread. Snapshot there, then
-    serialise and write on the worker.
-- **Cached tessellation.**
-  - `rebuildScene` tessellates the solid every time it runs: every
-    selection change, every sketch-mode change.
-  - Keep the mesh with the solid it came from, and tessellate only a new
-    solid.
-- **Tests:**
-  - the build count of an add;
-  - a timer that fires while a large part opens;
-  - the tessellation count across scene rebuilds that do not change the
-    solid.
+### As built
+
+- **A feature added is built once.**
+  - `addModelFeature` built the whole model on the GUI thread to try the
+    feature, took it out again, pushed its command, then built again in
+    `rebuildFeatureTree`: two builds for every add, the first always on the
+    GUI thread.
+  - Now the command goes in at once and the model is built once, by
+    `rebuildFeatureTree`, which puts a slow build on the worker. The
+    command appends and clears the rollback, as the trial did, so that one
+    build is the model the trial built.
+- **A feature that fails itself is withdrawn** (a Cut that would leave
+  nothing, an Intersect of bodies that do not touch).
+  - The add leaves a pending mark: its document (held weakly), its step,
+    its feature, and the undo revision it left. There is one mark for each
+    document (`PendingAdds`). The review found a single mark for the window:
+    an add in another tab while a first tab's build still ran on the worker
+    took the first's place, and the first's failing feature was never
+    withdrawn.
+  - When that document's build is shown or applied (`settlePendingAdd`, from
+    `showBuildResult` and `onRebuildFinished`), the feature is refused if
+    nothing has been done since and it is the failing one. It is taken back
+    with `UndoStack::withdraw`, new: undo the newest step and forget it,
+    with nothing left to redo. The part as it was is then built again.
+  - This works on a worker too: the refusal comes when the build does.
+  - Anything done before the build is seen (an undo, another step) settles
+    it: a feature still there stays, failing like any other.
+- **A part opened is built on a worker.**
+  - A part came in unbuilt, and `rebuildScene` built it on the GUI thread
+    as the tab opened.
+  - Now its tab's build time is marked unknown (`kBuildTimeUnknown`). Auto
+    treats that as slow, so the first build goes to the worker, and
+    `rebuildScene` no longer builds a model the worker is building.
+- **A large file is read on a worker.** A part or DXF drawing of at least
+  1 MB (`kWorkerImportBytes`, as STEP import uses) is read on a worker
+  (`readFile`, `startOpen`), into a document of its own.
+  - When it has been read, its tab is added. `DocumentManager::adoptPart`
+    registers a part as `openPart` would, or returns the one opened
+    meanwhile. `adoptDocument` registers a drawing.
+  - One file is read at a time. Cancel drops the result once it is read,
+    because reading cannot be stopped midway.
+  - 100,000 lines took 3.1 s to read in a Debug build.
+- **Tessellated once for each build.** `rebuildScene` tessellated the solid
+  every time it ran: every tab shown, every sketch opened or closed, every
+  undo. Each tab now keeps its mesh with the build it came from
+  (`Document::builds()`, new), and tessellates only a new build.
+
+### Tests
+
+9 new:
+- `UndoStack::withdraw`: undone and forgotten; only the newest step can be
+  withdrawn; a saved state that had the step cannot be reached again.
+- `PendingAdds`: one for each document, taken for its own, replaced by that
+  document's next add, and let go of with a closed document. Also a window
+  test of adds in two tabs, one failing on the worker. That test does not
+  catch the race itself: whether the first build returns before the second
+  add depends on timing.
+- In the window (`GuiThreadFreeTest`):
+  - an add builds once;
+  - a feature that fails itself is withdrawn, with nothing to redo, here and
+    on a worker (where it is in the tree while its build runs);
+  - a part opened is built on a worker, and at once with RebuildMode Never;
+  - the model is tessellated once for each build, not again for a sketch
+    opened and closed;
+  - a large part and a large DXF are read on a worker, their tabs added when
+    read, one at a time, and a file already open shows its tab.
+
+Each new window test was seen to fail on the code before it, bar the
+withdrawal here, which keeps what the old refusal did.
+
+### Not done
+
+- **Save stays on the GUI thread.** For 100,000 lines in a Debug build:
+  building the JSON tree takes 916 ms, dumping it 477 ms, writing it 5 ms.
+  - The tree reads the document, so it can only be built off the GUI thread
+    from a copy, and making the copy costs about as much.
+  - Moving only the dump saves a third, and needs the saved state recorded
+    at the undo depth the save began from. It is left for when saving gets
+    faster itself.
+- Reading a file cannot be cancelled while it runs.
+- A refused feature is built away again: two builds for a refusal, as
+  before, one for an add.
 
 ## Phase 138: Bounded memory (planned)
 

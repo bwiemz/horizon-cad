@@ -35,6 +35,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -490,6 +491,7 @@ MainWindow::~MainWindow() {
     m_rebuildJob.reset();
     m_importTask.reset();
     m_interferenceTask.reset();
+    m_openTask.reset();
 }
 
 void MainWindow::onCommandPalette() {
@@ -1079,6 +1081,7 @@ void MainWindow::createStatusBar() {
         }
         if (m_importTask) m_importTask->cancel();
         if (m_interferenceTask) m_interferenceTask->cancel();
+        if (m_openTask) m_openTask->cancel();  // dropped once it is read
     });
     sb->addPermanentWidget(m_rebuildCancel);
     m_rebuildPoll = new QTimer(this);
@@ -1206,7 +1209,15 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                std::shared_ptr<doc::AssemblyDocument> assembly,
                                const QString& title) {
     watchDocument(document);
-    m_tabs.push_back(DocTab{std::move(document), std::move(assembly), title, m_nextRecoveryKey++});
+    DocTab tab{std::move(document), std::move(assembly), title, m_nextRecoveryKey++};
+    if (!tab.assembly && tab.document->needsBuild()) {
+        // A part come in unbuilt (opened, recovered): how long its model
+        // takes to build is not known, so Auto builds it on a worker, and a
+        // large part does not freeze the window as it opens.
+        tab.lastBuildMs = kBuildTimeUnknown;
+        tab.modelStale = true;
+    }
+    m_tabs.push_back(std::move(tab));
     int index = m_tabBar->addTab(title);
     m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
@@ -1299,12 +1310,28 @@ void MainWindow::rebuildScene() {
     } else if (m_document->featureTree().featureCount() > 0) {
         // Build only a model that has not been built: a failed build keeps
         // its partial solid (or none), and building it again here, on the
-        // GUI thread, would only fail again.
-        if (!m_document->solid() && m_document->needsBuild()) m_document->rebuildModel();
+        // GUI thread, would only fail again. Nor one a worker is building.
+        const bool building = m_rebuildJob != nullptr && m_rebuildDocument == m_document;
+        if (!m_document->solid() && m_document->needsBuild() && !building) {
+            m_document->rebuildModel();
+        }
         if (m_document->solid()) {
-            auto meshData = model::SolidTessellator::tessellate(*m_document->solid(), 0.1);
+            DocTab* tab = activeTab();
+            if (tab != nullptr && tab->document != m_document) tab = nullptr;
+            std::shared_ptr<const geo::MeshData> mesh;
+            if (tab != nullptr && tab->mesh && tab->meshBuild == m_document->builds()) {
+                mesh = tab->mesh;
+            } else {
+                mesh = std::make_shared<const geo::MeshData>(
+                    model::SolidTessellator::tessellate(*m_document->solid(), 0.1));
+                ++m_tessellations;
+                if (tab != nullptr) {
+                    tab->mesh = mesh;
+                    tab->meshBuild = m_document->builds();
+                }
+            }
             auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
-            node->setMesh(std::make_unique<render::MeshData>(std::move(meshData)));
+            node->setMesh(std::make_unique<render::MeshData>(*mesh));
             // While a sketch is edited the view works in its frame.
             if (const auto& sketch = m_document->editedSketch()) {
                 node->setLocalTransform(sketch->plane().worldToLocalMatrix());
@@ -1717,7 +1744,12 @@ bool MainWindow::openPath(const QString& fileName) {
         return true;
     }
 
-    if (fileName.endsWith(".dxf", Qt::CaseInsensitive)) {
+    // A large drawing or part is read on a worker, and the window stays free
+    // while it is: reading one took seconds.
+    const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
+    if (openOnWorker(fileName)) return startOpen(fileName, drawing);
+
+    if (drawing) {
         auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
         std::string error;
         io::ImportReport report;
@@ -1728,9 +1760,7 @@ bool MainWindow::openPath(const QString& fileName) {
         }
         document->setFilePath(path);
         document->setDirty(false);
-        addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Drawing")));
-        showImportReport(QFileInfo(fileName).fileName(), report);
-        RecentFiles::add(fileName);
+        showOpened(std::move(document), fileName, tr("Drawing"), std::move(report));
         return true;
     }
 
@@ -1741,19 +1771,96 @@ bool MainWindow::openPath(const QString& fileName) {
         reportFileError(tr("Could not open"), path, m_lastLoadError);
         return false;
     }
-    // Dedup hit → the document is already shown in some tab; focus it.
+    showOpened(std::move(document), fileName, tr("Document"), m_lastLoadReport);
+    return true;
+}
+
+void MainWindow::showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
+                            const QString& fallbackTitle, io::ImportReport report) {
+    // The manager dedups by canonical path: a document already open is
+    // already in a tab, and that tab is shown.
     for (size_t i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs[i].document == document) {
             m_tabBar->setCurrentIndex(static_cast<int>(i));
             RecentFiles::add(fileName);
-            return true;
+            return;
         }
     }
-    const io::ImportReport report = m_lastLoadReport;
-    addDocumentTab(std::move(document), nullptr, tabTitleForPath(path, tr("Document")));
+    addDocumentTab(std::move(document), nullptr,
+                   tabTitleForPath(fileName.toStdString(), fallbackTitle));
     showImportReport(QFileInfo(fileName).fileName(), report);
     RecentFiles::add(fileName);
+}
+
+MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing) {
+    FileOpen open;
+    auto document = std::make_shared<doc::Document>();
+    bool read = false;
+    if (drawing) {
+        document->setType(doc::DocumentType::Drawing);
+        read = io::DxfFormat::load(path, *document, &open.error, &open.report);
+    } else {
+        read = io::NativeFormat::load(path, *document, &open.error, &open.report);
+    }
+    if (read) open.document = std::move(document);
+    return open;
+}
+
+bool MainWindow::openOnWorker(const QString& fileName) const {
+    return m_rebuildMode == RebuildMode::Always ||
+           (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
+}
+
+bool MainWindow::startOpen(const QString& fileName, bool drawing) {
+    if (m_openTask) {
+        statusBar()->showMessage(
+            tr("%1 is still being opened").arg(QFileInfo(m_openFile).fileName()));
+        return false;
+    }
+    m_openFile = fileName;
+    m_openDrawing = drawing;
+    const std::string path = fileName.toStdString();
+    m_openTask = std::make_unique<BackgroundTask<FileOpen>>(
+        [path, drawing](const std::atomic<bool>& /*cancelled*/) {
+            return readFile(path, drawing);
+        });
+    m_openTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onOpenFinished, Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Opening %1...").arg(QFileInfo(fileName).fileName()));
+    updateBusyIndicator();
     return true;
+}
+
+void MainWindow::onOpenFinished() {
+    if (!m_openTask || !m_openTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<FileOpen>> task = std::move(m_openTask);
+    const QString fileName = std::exchange(m_openFile, QString());
+    updateBusyIndicator();
+    m_statusPrompt->setText(tr("Ready"));
+    if (task->cancelled()) {
+        statusBar()->showMessage(tr("Open cancelled"), 10000);
+        return;
+    }
+    FileOpen open = task->take();
+    if (!task->error().empty()) open.error = task->error();
+    const std::string path = fileName.toStdString();
+    if (!open.document) {
+        reportFileError(tr("Could not open"), path, open.error);
+        return;
+    }
+    std::shared_ptr<doc::Document> document;
+    if (m_openDrawing) {
+        open.document->setFilePath(path);
+        open.document->setDirty(false);
+        m_docManager.adoptDocument(open.document);
+        document = std::move(open.document);
+    } else {
+        // Opened meanwhile, from another path to it: that one is shown.
+        document = m_docManager.adoptPart(path, std::move(open.document));
+    }
+    showOpened(std::move(document), fileName, m_openDrawing ? tr("Drawing") : tr("Document"),
+               std::move(open.report));
 }
 
 void MainWindow::openFiles(const QStringList& fileNames) {
@@ -4019,46 +4126,59 @@ bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLab
 
 bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
                                  const std::shared_ptr<doc::Sketch>& wrapperSketch) {
-    // Try the feature at the end of the active history first. One that fails
-    // there itself (a Cut that would leave nothing, an Intersect of bodies
-    // that do not touch) is refused, leaving the part — and the undo
-    // history — as they were.
-    auto& tree = m_document->featureTree();
-    const int rollback = tree.rollbackIndex();
-    tree.setRollbackIndex(-1);
-    tree.addFeature(std::move(feature));
-    const size_t index = tree.featureCount() - 1;
-    // However the trial ends, the feature comes back out of the tree and the
-    // rollback is put back: a feature left in the tree but not in the undo
-    // history could never be undone.
-    bool failsItself = true;
-    QString reason;
-    try {
-        m_document->rebuildModel();
-        failsItself = m_document->failedFeatureIndex() == static_cast<int>(index);
-        reason = QString::fromStdString(m_document->lastBuildMessage());
-    } catch (const std::exception& e) {
-        reason = QString::fromUtf8(e.what());
-    } catch (...) {
-        reason = tr("an unknown error");
-    }
-    feature = tree.takeFeature(index);
-    tree.setRollbackIndex(rollback);
-
-    if (failsItself) {
-        rebuildFeatureTree();
-        statusBar()->showMessage(tr("%1 not added: %2").arg(verb, reason));
-        return false;
-    }
-
-    m_document->undoStack().push(
-        std::make_unique<doc::AddFeatureCommand>(*m_document, std::move(feature), wrapperSketch));
+    // The feature goes in as its step and the model is built once, on a
+    // worker when builds are slow. It was built twice: first to try the
+    // feature, always here on the GUI thread, then again to show it. One
+    // that fails itself is refused when its build is shown
+    // (settlePendingAdd).
+    auto command =
+        std::make_unique<doc::AddFeatureCommand>(*m_document, std::move(feature), wrapperSketch);
+    PendingAdd pending;
+    pending.document = m_document;
+    pending.step = command.get();
+    pending.feature = command->feature();
+    pending.verb = verb;
+    m_document->undoStack().push(std::move(command));
+    pending.history = m_document->undoStack().revision();
+    m_pendingAdds.put(std::move(pending));
+    m_addRefused = false;
     rebuildFeatureTree();
-    if (m_document->failedFeatureIndex() >= 0) {
-        statusBar()->showMessage(tr("%1 added, but an earlier feature fails to rebuild").arg(verb));
-    } else {
-        m_statusPrompt->setText(tr("%1 added.").arg(verb));
+    if (m_addRefused) return false;
+    if (!rebuildRunning()) {
+        if (m_document->failedFeatureIndex() >= 0) {
+            statusBar()->showMessage(
+                tr("%1 added, but an earlier feature fails to rebuild").arg(verb));
+        } else {
+            m_statusPrompt->setText(tr("%1 added.").arg(verb));
+        }
     }
+    return true;
+}
+
+bool MainWindow::settlePendingAdd(doc::Document& document) {
+    const auto taken = m_pendingAdds.take(document);
+    if (!taken) return false;  // nothing added to it waits
+    const PendingAdd& pending = *taken;
+    // Anything done since the add (an undo, another step) settles it: the
+    // feature, if it is still there, stays, failing like any other.
+    if (document.undoStack().revision() != pending.history) return false;
+    const auto index = document.featureTree().indexOf(pending.feature);
+    if (!index || document.failedFeatureIndex() != static_cast<int>(*index)) return false;
+
+    // It fails itself (a Cut that would leave nothing, an Intersect of
+    // bodies that do not touch): withdrawn, leaving the part, and the undo
+    // history, as they were.
+    const QString reason = QString::fromStdString(document.lastBuildMessage());
+    document.undoStack().withdraw(pending.step);
+    m_addRefused = true;
+    if (&document == m_document.get()) {
+        rebuildFeatureTree();
+    } else {
+        for (DocTab& tab : m_tabs) {
+            if (tab.document.get() == &document) tab.modelStale = true;  // built when shown
+        }
+    }
+    statusBar()->showMessage(tr("%1 not added: %2").arg(pending.verb, reason));
     return true;
 }
 
@@ -4476,7 +4596,8 @@ void MainWindow::rebuildFeatureTree() {
     const bool onWorker =
         tab != nullptr && !m_assembly &&
         (m_rebuildMode == RebuildMode::Always ||
-         (m_rebuildMode == RebuildMode::Auto && tab->lastBuildMs >= kWorkerRebuildMs));
+         (m_rebuildMode == RebuildMode::Auto &&
+          (tab->lastBuildMs >= kWorkerRebuildMs || tab->lastBuildMs == kBuildTimeUnknown)));
     if (onWorker) {
         startRebuild();
         return;
@@ -4492,6 +4613,9 @@ void MainWindow::rebuildFeatureTree() {
 }
 
 void MainWindow::showBuildResult() {
+    // A feature just added that fails itself is withdrawn, and the part as
+    // it was is built and shown instead.
+    if (settlePendingAdd(*m_document)) return;
     m_featureTreePanel->clearFailures();
     m_featureTreePanel->refresh(m_document->featureTree());
     refreshSketchList();
@@ -4540,7 +4664,7 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_interferenceTask) return;
+    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask) return;
     const int total = m_rebuildJob->total();
     if (total > 0) {
         m_rebuildProgress->setRange(0, total);
@@ -4573,6 +4697,8 @@ void MainWindow::onRebuildFinished() {
             if (active && !again) {
                 m_statusPrompt->setText(tr("Ready"));
                 showBuildResult();
+            } else if (!active) {
+                settlePendingAdd(*document);  // its tab builds it when shown
             }
         } else {
             // Not applied: the model is behind its features until a rebuild

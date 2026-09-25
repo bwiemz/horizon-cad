@@ -128,9 +128,16 @@ public:
     const topo::Solid* solid() const { return m_solid.get(); }
     topo::Solid* solid() { return m_solid.get(); }
 
-    /// Take ownership of the built solid (e.g. loaded from a cache).
-    void setSolid(std::unique_ptr<topo::Solid> solid) { m_solid = std::move(solid); }
+    /// Take ownership of the built solid (e.g. loaded from a cache): a new
+    /// solid, counted as a build.
+    void setSolid(std::unique_ptr<topo::Solid> solid) {
+        m_solid = std::move(solid);
+        ++m_builds;
+    }
 
+    /// How many builds have been applied (rebuildModel or applyBuild, not
+    /// cancelled): what is made from the solid, its mesh, knows it is new.
+    std::uint64_t builds() const { return m_builds; }
     /// Failure message from the last rebuildModel() call (empty on success).
     const std::string& lastBuildMessage() const { return m_lastBuildMessage; }
 
@@ -188,6 +195,7 @@ private:
     std::unique_ptr<topo::Solid> m_solid;
     std::string m_lastBuildMessage;
     int m_failedFeatureIndex = -1;
+    std::uint64_t m_builds = 0;
     bool m_built = false;          ///< a build has been applied...
     uint64_t m_builtRevision = 0;  ///< ...for this revision of the feature tree
     DocumentType m_type = DocumentType::Drawing;

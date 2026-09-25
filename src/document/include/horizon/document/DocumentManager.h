@@ -64,6 +64,14 @@ public:
     /// on load failure or when no part loader is set.
     std::shared_ptr<Document> openPart(const std::string& path);
 
+    /// Register @p loaded, read from @p path elsewhere (on a worker), as
+    /// openPart registers what it reads. If @p path is open already (opened
+    /// meanwhile), that document is returned and @p loaded is dropped.
+    /// Returns nullptr for a null @p loaded.
+    std::shared_ptr<Document> adoptPart(const std::string& path, std::shared_ptr<Document> loaded);
+    /// Register @p document, made or imported elsewhere (a DXF read on a
+    /// worker), as newDocument registers the documents it makes.
+    void adoptDocument(std::shared_ptr<Document> document);
     /// Open an assembly file (deduplicated by canonical path). Returns
     /// nullptr on load failure or when no assembly loader is set.
     std::shared_ptr<AssemblyDocument> openAssembly(const std::string& path);

@@ -246,3 +246,40 @@ TEST(DocumentDirtyTest, ChangeCallbackCoversCommandsAndExplicitMarks) {
     doc.setDirty(true);
     EXPECT_EQ(calls, 3) << "a cleared callback is not called";
 }
+
+// A step refused once taken (Phase 137: a feature is added, then built once;
+// one that fails itself is taken back) is undone and forgotten: nothing to
+// redo, and only the newest step can be.
+TEST(UndoStackTest, AWithdrawnStepIsUndoneAndForgotten) {
+    int value = 0;
+    UndoStack stack;
+    stack.push(add(value, 1));
+    stack.setClean();
+    auto refused = add(value, 10);
+    const Command* step = refused.get();
+    stack.push(std::move(refused));
+    const auto revision = stack.revision();
+
+    auto other = add(value, 100);
+    EXPECT_FALSE(stack.withdraw(other.get())) << "not a step of the stack";
+    EXPECT_EQ(value, 11);
+
+    EXPECT_TRUE(stack.withdraw(step));
+    EXPECT_EQ(value, 1);
+    EXPECT_FALSE(stack.canRedo()) << "forgotten, not waiting to be redone";
+    EXPECT_TRUE(stack.canUndo());
+    EXPECT_TRUE(stack.isClean()) << "back where it was saved";
+    EXPECT_GT(stack.revision(), revision);
+    EXPECT_FALSE(stack.withdraw(step)) << "gone";
+
+    // Saved with the step in it, that state cannot be reached again.
+    auto saved = add(value, 5);
+    const Command* savedStep = saved.get();
+    stack.push(std::move(saved));
+    stack.setClean();
+    EXPECT_TRUE(stack.withdraw(savedStep));
+    EXPECT_FALSE(stack.isClean());
+    stack.undo();
+    stack.redo();
+    EXPECT_FALSE(stack.isClean());
+}
