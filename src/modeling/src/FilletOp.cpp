@@ -62,13 +62,16 @@ static Vec3 newellNormal(const Face* face) {
 /// point outward — calibrates convexity tests independently of the kernel's
 /// winding convention.
 static double signedLoopVolume(const Solid& solid) {
+    // About a vertex of the solid's own: about the origin, the rounding grows
+    // as the cube of the distance, and far out the sign was chance.
+    const Vec3 o = solid.vertices().empty() ? Vec3() : solid.vertices().front().point;
     double vol = 0.0;
     for (const auto& f : solid.faces()) {
         auto verts = faceVertices(&f);
         if (verts.size() < 3) continue;
-        const Vec3& a = verts[0]->point;
+        const Vec3 a = verts[0]->point - o;
         for (size_t i = 1; i + 1 < verts.size(); ++i) {
-            vol += a.dot(verts[i]->point.cross(verts[i + 1]->point)) / 6.0;
+            vol += a.dot((verts[i]->point - o).cross(verts[i + 1]->point - o)) / 6.0;
         }
     }
     return vol;

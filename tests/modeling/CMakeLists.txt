@@ -8,6 +8,7 @@ add_executable(hz_modeling_tests
     test_ExactPredicates.cpp
     test_SurfaceSurfaceIntersection.cpp
     test_BooleanOp.cpp
+    test_BooleanRobustness.cpp
     test_AdversarialModels.cpp
     test_FilletOp.cpp
     test_ChamferOp.cpp

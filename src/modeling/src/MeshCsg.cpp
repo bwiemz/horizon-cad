@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace hz::model {
@@ -10,12 +11,6 @@ using hz::math::Vec3;
 
 namespace {
 
-/// Distance from a plane within which a point counts as lying on it.
-/// Downstream sewing welds at a tolerance >= this (see kCsgPlaneEps in the
-/// header) so on-plane split points the CSG treats as coincident are always
-/// reconcilable during sewing.
-constexpr double kPlaneEps = kCsgPlaneEps;
-
 struct Plane {
     Vec3 normal;   // unit
     double w = 0;  // normal · x = w
@@ -23,11 +18,14 @@ struct Plane {
 
     static Plane fromPolygon(const std::vector<Vec3>& pts) {
         Plane p;
+        // Newell's sum about the first point: about the origin, its terms
+        // grow with the distance from it, and a triangle a million out came
+        // out tilted enough (2e-10 rad) to shift its plane 2e-4 there.
         Vec3 n = Vec3::Zero;
         const size_t count = pts.size();
         for (size_t i = 0; i < count; ++i) {
-            const Vec3& a = pts[i];
-            const Vec3& b = pts[(i + 1) % count];
+            const Vec3 a = pts[i] - pts[0];
+            const Vec3 b = pts[(i + 1) % count] - pts[0];
             n.x += (a.y - b.y) * (a.z + b.z);
             n.y += (a.z - b.z) * (a.x + b.x);
             n.z += (a.x - b.x) * (a.y + b.y);
@@ -58,8 +56,9 @@ struct Poly {
 
 enum : int { COPLANAR = 0, FRONT = 1, BACK = 2, SPANNING = 3 };
 
-/// Split `poly` by `plane` into the four output buckets (csg.js algorithm).
-void splitPolygon(const Plane& plane, const Poly& poly, std::vector<Poly>& coplanarFront,
+/// Split `poly` by `plane` into the four output buckets (csg.js algorithm),
+/// moved there whole when it does not cross it.
+void splitPolygon(const Plane& plane, double eps, Poly&& poly, std::vector<Poly>& coplanarFront,
                   std::vector<Poly>& coplanarBack, std::vector<Poly>& front,
                   std::vector<Poly>& back) {
     const auto& pts = poly.data.points;
@@ -69,7 +68,7 @@ void splitPolygon(const Plane& plane, const Poly& poly, std::vector<Poly>& copla
     std::vector<int> types(n);
     for (size_t i = 0; i < n; ++i) {
         const double t = plane.normal.dot(pts[i]) - plane.w;
-        const int type = (t < -kPlaneEps) ? BACK : (t > kPlaneEps) ? FRONT : COPLANAR;
+        const int type = (t < -eps) ? BACK : (t > eps) ? FRONT : COPLANAR;
         polygonType |= type;
         types[i] = type;
     }
@@ -77,13 +76,13 @@ void splitPolygon(const Plane& plane, const Poly& poly, std::vector<Poly>& copla
     switch (polygonType) {
         case COPLANAR:
             (plane.normal.dot(poly.plane.normal) > 0 ? coplanarFront : coplanarBack)
-                .push_back(poly);
+                .push_back(std::move(poly));
             break;
         case FRONT:
-            front.push_back(poly);
+            front.push_back(std::move(poly));
             break;
         case BACK:
-            back.push_back(poly);
+            back.push_back(std::move(poly));
             break;
         case SPANNING: {
             std::vector<Vec3> f;
@@ -127,71 +126,134 @@ void splitPolygon(const Plane& plane, const Poly& poly, std::vector<Poly>& copla
     }
 }
 
-/// One node of the CSG BSP tree (csg.js structure, double precision).
-struct Node {
-    Plane plane;
-    bool hasPlane = false;
-    std::unique_ptr<Node> front;
-    std::unique_ptr<Node> back;
-    std::vector<Poly> polygons;
+/// A BSP tree (csg.js structure, double precision) held as an array of
+/// nodes, each traversal a loop over an explicit stack: recursion went as
+/// deep as the tree, which for a prismatic solid split by its first
+/// polygon's plane is its triangle count, and a large part overflowed the
+/// 1 MB stack of a Windows thread. The traversals visit in the recursive
+/// order (a node, then its front, then its back), so every result, and the
+/// order of the fragments it returns, is as it was.
+class Bsp {
+public:
+    /// @p eps: the on-plane band.
+    explicit Bsp(double eps) : m_eps(eps), m_nodes(1) {}
 
+    /// Flip inside and outside: every polygon and plane, front for back.
     void invert() {
-        for (auto& p : polygons) p.flip();
-        if (hasPlane) plane.flip();
-        if (front) front->invert();
-        if (back) back->invert();
-        std::swap(front, back);
+        for (Node& node : m_nodes) {
+            for (auto& p : node.polygons) p.flip();
+            if (node.hasPlane) node.plane.flip();
+            std::swap(node.front, node.back);
+        }
     }
 
+    /// @p list less what lies inside this tree's solid (behind a leaf's
+    /// plane), split where it crosses.
     std::vector<Poly> clipPolygons(std::vector<Poly> list) const {
-        if (!hasPlane) return list;
-        std::vector<Poly> f;
-        std::vector<Poly> b;
-        for (auto& poly : list) {
-            splitPolygon(plane, poly, f, b, f, b);
+        std::vector<Poly> out;
+        std::vector<std::pair<int, std::vector<Poly>>> stack;
+        stack.emplace_back(0, std::move(list));
+        while (!stack.empty()) {
+            auto [index, polys] = std::move(stack.back());
+            stack.pop_back();
+            const Node& node = m_nodes[static_cast<size_t>(index)];
+            if (!node.hasPlane) {
+                out.insert(out.end(), std::make_move_iterator(polys.begin()),
+                           std::make_move_iterator(polys.end()));
+                continue;
+            }
+            std::vector<Poly> f;
+            std::vector<Poly> b;
+            for (auto& poly : polys) splitPolygon(node.plane, m_eps, std::move(poly), f, b, f, b);
+            // The back after the front: pushed first.
+            if (node.back >= 0) stack.emplace_back(node.back, std::move(b));
+            // (Behind a leaf's plane is inside the solid: dropped.)
+            if (node.front >= 0) {
+                stack.emplace_back(node.front, std::move(f));
+            } else {
+                out.insert(out.end(), std::make_move_iterator(f.begin()),
+                           std::make_move_iterator(f.end()));
+            }
         }
-        if (front) f = front->clipPolygons(std::move(f));
-        if (back) {
-            b = back->clipPolygons(std::move(b));
-        } else {
-            b.clear();  // back of a leaf plane is inside the solid — discard
+        return out;
+    }
+
+    /// Clip every polygon of this tree to @p bsp's solid.
+    void clipTo(const Bsp& bsp) {
+        for (Node& node : m_nodes) node.polygons = bsp.clipPolygons(std::move(node.polygons));
+    }
+
+    /// Every polygon: a node's, then its front's, then its back's.
+    std::vector<Poly> allPolygons() const {
+        std::vector<Poly> out;
+        std::vector<int> stack{0};
+        while (!stack.empty()) {
+            const Node& node = m_nodes[static_cast<size_t>(stack.back())];
+            stack.pop_back();
+            out.insert(out.end(), node.polygons.begin(), node.polygons.end());
+            if (node.back >= 0) stack.push_back(node.back);
+            if (node.front >= 0) stack.push_back(node.front);
         }
-        f.insert(f.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end()));
-        return f;
+        return out;
     }
 
-    void clipTo(const Node& bsp) {
-        polygons = bsp.clipPolygons(std::move(polygons));
-        if (front) front->clipTo(bsp);
-        if (back) back->clipTo(bsp);
-    }
-
-    void allPolygons(std::vector<Poly>& out) const {
-        out.insert(out.end(), polygons.begin(), polygons.end());
-        if (front) front->allPolygons(out);
-        if (back) back->allPolygons(out);
-    }
-
+    /// Add @p list to the tree, splitting it by the planes it meets and
+    /// growing nodes where it reaches a leaf.
     void build(std::vector<Poly> list) {
-        if (list.empty()) return;
-        if (!hasPlane) {
-            plane = list[0].plane;
-            hasPlane = true;
-        }
-        std::vector<Poly> frontList;
-        std::vector<Poly> backList;
-        for (auto& poly : list) {
-            splitPolygon(plane, poly, polygons, polygons, frontList, backList);
-        }
-        if (!frontList.empty()) {
-            if (!front) front = std::make_unique<Node>();
-            front->build(std::move(frontList));
-        }
-        if (!backList.empty()) {
-            if (!back) back = std::make_unique<Node>();
-            back->build(std::move(backList));
+        std::vector<std::pair<int, std::vector<Poly>>> stack;
+        stack.emplace_back(0, std::move(list));
+        while (!stack.empty()) {
+            auto [index, polys] = std::move(stack.back());
+            stack.pop_back();
+            if (polys.empty()) continue;
+            if (!m_nodes[static_cast<size_t>(index)].hasPlane) {
+                m_nodes[static_cast<size_t>(index)].plane = polys[0].plane;
+                m_nodes[static_cast<size_t>(index)].hasPlane = true;
+            }
+            std::vector<Poly> frontList;
+            std::vector<Poly> backList;
+            {
+                Node& node = m_nodes[static_cast<size_t>(index)];
+                for (auto& poly : polys) {
+                    splitPolygon(node.plane, m_eps, std::move(poly), node.polygons, node.polygons,
+                                 frontList, backList);
+                }
+            }
+            // The front before the back, as the recursion built them: the
+            // back pushed first. (A new node can move the array: index it.)
+            if (!backList.empty()) {
+                stack.emplace_back(childOf(index, false), std::move(backList));
+            }
+            if (!frontList.empty()) {
+                stack.emplace_back(childOf(index, true), std::move(frontList));
+            }
         }
     }
+
+private:
+    struct Node {
+        Plane plane;
+        bool hasPlane = false;
+        int front = -1;  ///< index into m_nodes, or -1
+        int back = -1;
+        std::vector<Poly> polygons;
+    };
+
+    /// The node's front (or back) child, made if it has none.
+    int childOf(int index, bool front) {
+        int child = front ? m_nodes[static_cast<size_t>(index)].front
+                          : m_nodes[static_cast<size_t>(index)].back;
+        if (child < 0) {
+            child = static_cast<int>(m_nodes.size());
+            m_nodes.emplace_back();
+            (front ? m_nodes[static_cast<size_t>(index)].front
+                   : m_nodes[static_cast<size_t>(index)].back) = child;
+        }
+        return child;
+    }
+
+    double m_eps;
+    std::vector<Node> m_nodes;  ///< the root first
 };
 
 std::vector<Poly> toPolys(const std::vector<CsgPolygon>& in) {
@@ -209,10 +271,21 @@ std::vector<Poly> toPolys(const std::vector<CsgPolygon>& in) {
 
 }  // namespace
 
+CsgTolerance CsgTolerance::of(const Vec3& low, const Vec3& high) {
+    const double extent = (high - low).length();
+    const double magnitude = std::max({std::abs(low.x), std::abs(low.y), std::abs(low.z),
+                                       std::abs(high.x), std::abs(high.y), std::abs(high.z)});
+    CsgTolerance t;
+    t.plane = std::max(1e-8 * extent, 64.0 * std::numeric_limits<double>::epsilon() * magnitude);
+    if (!(t.plane > 0.0) || !std::isfinite(t.plane)) t.plane = kCsgPlaneEps;
+    return t;
+}
+
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
-                                   const std::vector<CsgPolygon>& b, BooleanType type) {
-    Node nodeA;
-    Node nodeB;
+                                   const std::vector<CsgPolygon>& b, BooleanType type,
+                                   double planeEps) {
+    Bsp nodeA(planeEps);
+    Bsp nodeB(planeEps);
     nodeA.build(toPolys(a));
     nodeB.build(toPolys(b));
 
@@ -241,15 +314,12 @@ std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
             break;
     }
 
-    std::vector<Poly> bAll;
-    nodeB.allPolygons(bAll);
-    nodeA.build(std::move(bAll));
+    nodeA.build(nodeB.allPolygons());
     if (type != BooleanType::Union) {
         nodeA.invert();
     }
 
-    std::vector<Poly> merged;
-    nodeA.allPolygons(merged);
+    std::vector<Poly> merged = nodeA.allPolygons();
 
     std::vector<CsgPolygon> result;
     result.reserve(merged.size());
@@ -276,11 +346,19 @@ std::vector<CsgPolygon> csgTriangles(const std::vector<BoundaryPolygon>& polygon
 }
 
 double csgVolume(const std::vector<CsgPolygon>& polygons) {
+    // About a point of its own (see BoundaryMesh::signedVolume).
+    Vec3 o;
+    for (const auto& poly : polygons) {
+        if (!poly.points.empty()) {
+            o = poly.points[0];
+            break;
+        }
+    }
     double vol6 = 0.0;
     for (const auto& poly : polygons) {
         const auto& p = poly.points;
         for (size_t i = 1; i + 1 < p.size(); ++i) {
-            vol6 += p[0].dot(p[i].cross(p[i + 1]));
+            vol6 += (p[0] - o).dot((p[i] - o).cross(p[i + 1] - o));
         }
     }
     return vol6 / 6.0;

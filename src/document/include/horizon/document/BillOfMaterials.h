@@ -26,10 +26,11 @@ struct BillOfMaterials {
 /// Rolls up an assembly's component instances into a bill of materials.
 class BomGenerator {
 public:
-    /// Traverse @p assembly's components, grouping by part reference (partPath),
-    /// counting occurrences. Suppressed components are excluded. Lines are
-    /// numbered 1..N in order of first appearance; two instances of the same part
-    /// collapse to one line with quantity 2.
+    /// Traverse @p assembly's components, grouping by part file (partPath,
+    /// a relative one taken from the assembly's folder, made canonical: one
+    /// file spelled two ways is one line), counting occurrences. Suppressed components are
+    /// excluded. Lines are numbered 1..N in order of first appearance; two instances of the same
+    /// part collapse to one line with quantity 2.
     static BillOfMaterials generate(const AssemblyDocument& assembly);
 };
 

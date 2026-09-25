@@ -199,7 +199,7 @@ public:
     /// A face or an edge of a solid in the scene, by its persistent name.
     struct ModelPick {
         uint64_t owner = 0;  ///< the scene node's ownerId: a component's id, or 0
-        std::string tag;     ///< the face's or edge's TopologyID tag
+        std::string tag;     ///< the face's or edge's TopologyID tag; empty: all of it
         bool edge = false;
         bool operator==(const ModelPick&) const = default;
     };

@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -111,10 +112,22 @@ public:
     /// Every instance of a part shares one mesh, tessellated or read once
     /// while any holds it: each had its own.
     ///
+    /// The part's file is watched from then on (pollExternalChanges), even
+    /// after a tab of it closes: an assembly placing it shows it changed.
+    ///
     /// `assemblyDir` is used to resolve relative part paths.
     /// Returns true on success.
     bool resolveComponent(ComponentInstance& instance, ComponentState mode,
                           const std::string& assemblyDir = {});
+
+    /// Whether @p a and @p b name the same file (canonically).
+    static bool samePath(const std::string& a, const std::string& b);
+
+    /// Forget the part at @p path read for components alone, so the next
+    /// resolve reads it from its file again (it changed there). A part open
+    /// in a tab is kept: its tab's document is the part. Components hold
+    /// what they have until they let go of it.
+    void releasePart(const std::string& path);
 
     // --- External change notifications ---
 
@@ -151,6 +164,8 @@ private:
     std::map<std::string, std::weak_ptr<Document>> m_documentsByPath;
     std::map<std::string, std::weak_ptr<AssemblyDocument>> m_assembliesByPath;
     std::map<std::string, std::filesystem::file_time_type> m_watchedFiles;
+    /// The files components were resolved from: never unwatched.
+    std::set<std::string> m_placedFiles;
     struct SharedMesh {
         std::weak_ptr<const geo::MeshData> mesh;
         std::uint64_t version = 0;

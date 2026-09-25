@@ -21,12 +21,13 @@ namespace {
 using Loop = std::vector<Vec3>;
 
 /// Newell normal of a loop: its direction is the loop's normal, its length
-/// twice the loop's area.
+/// twice the loop's area. Summed about the first point, so its error does
+/// not grow with the loop's distance from the origin.
 Vec3 newell(const Loop& pts) {
     Vec3 n(0, 0, 0);
     for (size_t i = 0; i < pts.size(); ++i) {
-        const Vec3& p = pts[i];
-        const Vec3& q = pts[(i + 1) % pts.size()];
+        const Vec3 p = pts[i] - pts[0];
+        const Vec3 q = pts[(i + 1) % pts.size()] - pts[0];
         n.x += (p.y - q.y) * (p.z + q.z);
         n.y += (p.z - q.z) * (p.x + q.x);
         n.z += (p.x - q.x) * (p.y + q.y);
@@ -310,7 +311,6 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
     Region whole = mergeRegion(polys, normal, tol);
     if (!whole.ok) return std::nullopt;
     if (whole.holes.empty()) return whole.outer;
-    if (whole.holes.size() > 60) return std::nullopt;
 
     // Cut along the region's longest outer edge direction, through each hole.
     Vec3 along(0, 0, 0);
@@ -326,13 +326,18 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
     }
     const Vec3 side = normal.cross(along).normalized();
 
+    // Which side of each cut a piece is on, a bit for each hole: as many
+    // words as it takes (one word allowed 60 holes, and a plate with more
+    // stayed in fragments).
+    using Cell = std::vector<uint64_t>;
+    const size_t words = (whole.holes.size() + 63) / 64;
     struct Piece {
         Loop loop;
-        uint64_t cell = 0;  ///< Which side of each cut it is on.
+        Cell cell;
     };
     std::vector<Piece> pieces;
     pieces.reserve(polys.size());
-    for (const auto& poly : polys) pieces.push_back({poly, 0});
+    for (const auto& poly : polys) pieces.push_back({poly, Cell(words, 0)});
     for (size_t k = 0; k < whole.holes.size(); ++k) {
         Vec3 middle(0, 0, 0);
         for (const auto& p : whole.holes[k]) middle = middle + p;
@@ -342,13 +347,17 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
         cut.reserve(pieces.size() * 2);
         for (const auto& piece : pieces) {
             auto [front, back] = splitConvex(piece.loop, side, offset, tol);
-            if (!front.empty()) cut.push_back({std::move(front), piece.cell | (uint64_t{1} << k)});
+            if (!front.empty()) {
+                Cell cell = piece.cell;
+                cell[k / 64] |= uint64_t{1} << (k % 64);
+                cut.push_back({std::move(front), std::move(cell)});
+            }
             if (!back.empty()) cut.push_back({std::move(back), piece.cell});
         }
         pieces = std::move(cut);
     }
 
-    std::map<uint64_t, std::vector<Loop>> cells;
+    std::map<Cell, std::vector<Loop>> cells;
     for (auto& piece : pieces) cells[piece.cell].push_back(std::move(piece.loop));
     std::vector<Loop> merged;
     for (const auto& entry : cells) {
@@ -382,7 +391,8 @@ std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double
         // fragments share its name across several planes).
         struct Plane {
             Vec3 normal;
-            double offset;
+            Vec3 point;  ///< a point of it: offsets n·p differ by the normals'
+                         ///< rounding times the distance from the origin
             std::vector<size_t> members;
         };
         std::vector<Plane> planes;
@@ -395,12 +405,12 @@ std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double
                 continue;
             }
             const Vec3 unit = n * (1.0 / len);
-            const double offset = unit.dot(pts[0]);
             auto it = std::find_if(planes.begin(), planes.end(), [&](const Plane& p) {
-                return p.normal.dot(unit) > 1.0 - 1e-9 && std::abs(p.offset - offset) <= tol;
+                return p.normal.dot(unit) > 1.0 - 1e-9 &&
+                       std::abs(p.normal.dot(pts[0] - p.point)) <= tol;
             });
             if (it == planes.end()) {
-                planes.push_back({unit, offset, {}});
+                planes.push_back({unit, pts[0], {}});
                 it = planes.end() - 1;
             }
             it->members.push_back(i);

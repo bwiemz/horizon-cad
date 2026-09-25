@@ -40,6 +40,40 @@ work, not "post-1.0".
 - **CI now runs what it claimed to.** It ran no window test (181), none in
   the Linux Release job, and no OpenGL test. All of them run now, each job
   counts what it ran, and coverage floors hold.
+## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
+
+- **Placing components (143).**
+  - An Assembly menu, and an assembly tree beside the feature tree, listing
+    the components and mates.
+    - From the tree: remove, suppress, rename; edit a mate's distance or
+      angle, or remove it.
+    - Removing a component takes its mates with it. A mate left behind made
+      every later move fail.
+  - Move and Rotate Component, each one undo step, with the mates solved
+    again. A component held by a Fixed mate stays put, and says so.
+  - A component is placed beside the others when inserted, not on top of
+    them at the origin.
+  - A component can be clicked as soon as it is inserted. Add Mate lists
+    each face once, said by what it is, and takes the faces clicked. A
+    clicked cylinder's side used to be matched to whichever of its facets
+    came first.
+
+- **Living assemblies (144).**
+  - A part saved in its tab, or changed on disk by another program, shows
+    changed in every open assembly that places it. The mates are solved
+    again, so what sits on it moves with it. Before, an assembly showed a
+    part as it was when the assembly opened it.
+  - A part edited in its tab and closed without saving leaves the
+    assemblies as its file is. Its unsaved edits used to stay in the
+    components that shared its document.
+  - An undo in an assembly keeps the parts as they are now, and only puts
+    back where they were.
+  - A part or drawing open in a tab and changed by another program is read
+    again. If it has unsaved changes, you are asked first, and keeping them
+    is the default.
+  - Open Part opens the clicked or chosen component's part in its tab.
+  - Bill of Materials lists each part with its count and exports CSV. A
+    file spelled two ways is one line.
 
 ## Unreleased — Product completeness, Milestone 11 (Phases 139–142)
 
@@ -88,6 +122,20 @@ work, not "post-1.0".
     polygon, so its volume and Booleans were wrong. Imported curved faces
     are now built in facets that record their surface, like the kernel's
     own.
+
+- **Boolean robustness (142).**
+  - A Boolean either gives a valid solid that conserves volume or says why
+    it cannot. Tests cover random placements, parts a million millimetres
+    from the origin, very small and very large parts, and faces in exact
+    contact.
+    - Far from the origin, a Boolean could turn a part inside out:
+      Subtract gave the intersection.
+    - A very small part's Boolean could fail to join up.
+  - Tolerances scale with the parts.
+  - A Boolean on a finely faceted part no longer risks overflowing the
+    stack.
+  - A face cut by more than 60 holes is put back together, where it was
+    left in hundreds of fragments.
 
 ## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
 

@@ -177,6 +177,63 @@ TEST(AssemblyDocumentTest, MateManagement) {
     EXPECT_TRUE(asmDoc.mates().empty());
 }
 
+// A component removed takes its mates with it (Phase 143): one left behind
+// referred to nothing, and every later solve failed. The others stay.
+TEST(AssemblyDocumentTest, RemovingAComponentRemovesItsMates) {
+    AssemblyDocument asmDoc;
+    const uint64_t base = asmDoc.addComponent(ComponentInstance{});
+    const uint64_t lid = asmDoc.addComponent(ComponentInstance{});
+    const uint64_t pin = asmDoc.addComponent(ComponentInstance{});
+    Mate onBase;
+    onBase.a = {base, hz::topo::TopologyID::make("p", "top")};
+    onBase.b = {lid, hz::topo::TopologyID::make("p", "bottom")};
+    Mate onPin;
+    onPin.a = {lid, hz::topo::TopologyID::make("p", "top")};
+    onPin.b = {pin, hz::topo::TopologyID::make("p", "bottom")};
+    asmDoc.addMate(onBase);
+    const uint64_t kept = asmDoc.addMate(onPin);
+
+    const auto before = asmDoc.snapshot();
+    EXPECT_TRUE(asmDoc.removeComponent(base));
+    ASSERT_EQ(asmDoc.mates().size(), 1u);
+    EXPECT_EQ(asmDoc.mates().front().id, kept);
+
+    asmDoc.restore(before);
+    EXPECT_EQ(asmDoc.components().size(), 3u);
+    EXPECT_EQ(asmDoc.mates().size(), 2u) << "put back, mates and all";
+}
+
+// An undo puts back where components were, not the geometry they had then:
+// a part changed since shows changed (Phase 144).
+TEST(AssemblyDocumentTest, RestoringKeepsTheGeometryLoadedNow) {
+    AssemblyDocument asmDoc;
+    ComponentInstance c;
+    c.partPath = "bolt.hzpart";
+    c.cachedMesh = std::make_shared<hz::geo::MeshData>();
+    const uint64_t id = asmDoc.addComponent(c);
+    const auto before = asmDoc.snapshot();
+
+    auto* now = asmDoc.component(id);
+    ASSERT_NE(now, nullptr);
+    now->transform = Mat4::translation(Vec3(5, 0, 0));
+    const auto newer = std::make_shared<hz::geo::MeshData>();
+    now->cachedMesh = newer;
+    now->state = ComponentState::Resolved;
+
+    asmDoc.restore(before);
+    const auto* back = asmDoc.component(id);
+    ASSERT_NE(back, nullptr);
+    EXPECT_EQ(back->transform.transformPoint(Vec3(0, 0, 0)).x, 0.0) << "the placement goes back";
+    EXPECT_EQ(back->cachedMesh, newer) << "the geometry stays as it is now";
+    EXPECT_EQ(back->state, ComponentState::Resolved);
+
+    // A component the undo brings back has the geometry it had.
+    const auto kept = before.components.front().cachedMesh;
+    asmDoc.removeComponent(id);
+    asmDoc.restore(before);
+    EXPECT_EQ(asmDoc.component(id)->cachedMesh, kept);
+}
+
 // ---------------------------------------------------------------------------
 // Interference (Phase 96).  The checker existed in the modeling layer (Phase
 // 48) and nothing in the document or the UI called it.

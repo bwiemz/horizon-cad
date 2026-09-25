@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/BillOfMaterials.h"
 
@@ -76,4 +78,24 @@ TEST(BillOfMaterialsTest, EmptyAssemblyIsEmpty) {
     BillOfMaterials bom = BomGenerator::generate(asmDoc);
     EXPECT_TRUE(bom.lines.empty());
     EXPECT_EQ(bom.totalQuantity(), 0);
+}
+
+// One file is one line however its path is spelled; a relative path is the
+// assembly's folder's (Phase 144).
+TEST(BillOfMaterialsTest, OneFileSpelledThreeWaysIsOneLine) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_bom_spelling";
+    std::filesystem::create_directories(dir / "sub");
+    AssemblyDocument asmDoc;
+    asmDoc.setFilePath((dir / "top.hzasm").string());
+    asmDoc.addComponent(part("bolt-1", "bolt.hzpart"));
+    asmDoc.addComponent(part("bolt-2", "sub/../bolt.hzpart"));
+    asmDoc.addComponent(part("bolt-3", (dir / "bolt.hzpart").string()));
+    asmDoc.addComponent(part("nut-1", "sub/nut.hzpart"));
+
+    const BillOfMaterials bom = BomGenerator::generate(asmDoc);
+    ASSERT_EQ(bom.lines.size(), 2u);
+    EXPECT_EQ(bom.lines[0].quantity, 3);
+    EXPECT_EQ(bom.lines[0].partPath, "bolt.hzpart") << "as first spelled";
+    EXPECT_EQ(bom.lines[1].partName, "nut");
+    std::filesystem::remove_all(dir);
 }
