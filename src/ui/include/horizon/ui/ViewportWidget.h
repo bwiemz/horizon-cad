@@ -69,6 +69,10 @@ public:
     /// 3.3 context, or the shaders failed to compile). Known after the first
     /// show; the user is told once.
     const QString& graphicsProblem() const { return m_graphicsProblem; }
+    /// The viewport has drawn a whole frame with OpenGL 3.3: a context, its
+    /// shaders, and a paint that reached the end. (A context alone is not
+    /// enough: some platforms give one and then have nothing to draw into.)
+    bool hasDrawn() const { return m_framesDrawn > 0; }
 
     // ---- Document ----
 
@@ -261,7 +265,8 @@ private:
     /// initializeGL() got an OpenGL 3.3 context and built the renderer:
     /// paintGL() and resizeGL() may use it.
     bool m_glReady = false;
-    bool m_dofQueued = false;  ///< the DOF analysis is to run after this paint
+    std::uint64_t m_framesDrawn = 0;  ///< whole frames painted with OpenGL 3.3
+    bool m_dofQueued = false;         ///< the DOF analysis is to run after this paint
     bool m_graphicsCheckScheduled = false;
     bool m_graphicsProblemReported = false;
     /// Snap the camera to the standard view requested by a view-cube click.

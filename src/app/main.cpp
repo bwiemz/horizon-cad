@@ -2,6 +2,7 @@
 
 #include <QCommandLineParser>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QIcon>
 #include <QLocale>
@@ -11,6 +12,7 @@
 #include <QStyleFactory>
 #include <QSurfaceFormat>
 #include <QSysInfo>
+#include <QTextStream>
 #include <QTimer>
 
 #include "horizon/Revision.h"
@@ -19,6 +21,7 @@
 #include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/Logging.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/ViewportWidget.h"
 
 // Suppress a specific Qt 6.10 qpixmap_win.cpp assertion on MSVC debug builds.
 // Qt's internal bitmap mask operations trigger:
@@ -73,6 +76,49 @@ static void applyDarkTheme(QApplication& app) {
     }
 }
 
+/// horizon --self-test: the window shown, wait for its viewport to draw a
+/// frame, and report. Exit 0 once it has, 3 if it cannot (and why), 4 if it
+/// has not within 20 s. Neither a recovered session nor files are
+/// opened: a dialog must not keep it waiting. The packages are started this
+/// way before they are shipped, since every test runs headless, where a
+/// Qt with no platform plugin passed them all.
+static int runSelfTest(QApplication& app, hz::ui::MainWindow& window) {
+    auto* viewport = window.findChild<hz::ui::ViewportWidget*>();
+    QTextStream out(stdout);
+    if (viewport == nullptr) {
+        out << "self-test: no viewport\n";
+        return 3;
+    }
+    QElapsedTimer clock;
+    clock.start();
+    QTimer poll;
+    QObject::connect(&poll, &QTimer::timeout, &app, [&] {
+        if (viewport->hasDrawn()) {
+            app.exit(0);
+        } else if (!viewport->graphicsProblem().isEmpty()) {
+            app.exit(3);  // a "Graphics Problem" box may be up: exit() ends its loop too
+        } else if (clock.elapsed() > 20000) {
+            app.exit(4);
+        }
+    });
+    poll.start(100);
+    const int status = app.exec();
+    switch (status) {
+        case 0:
+            out << "self-test: the window is shown and its viewport draws ("
+                << QGuiApplication::platformName() << ")\n";
+            break;
+        case 3:
+            out << "self-test: the viewport cannot draw: " << viewport->graphicsProblem() << "\n";
+            break;
+        default:
+            out << "self-test: the viewport drew nothing within 20 s\n";
+            break;
+    }
+    spdlog::info("Self-test finished (status {})", status);
+    return status;
+}
+
 /// Everything that needs the application object. Kept apart from main() so the
 /// application — and every widget — is destroyed before logging is shut down:
 /// their destructors may still log, or reach std::terminate.
@@ -115,11 +161,18 @@ static int run(int argc, char* argv[]) {
     parser.addPositionalArgument(QStringLiteral("files"),
                                  QCoreApplication::translate("main", "Files to open."),
                                  QStringLiteral("[files...]"));
+    const QCommandLineOption selfTest(
+        QStringLiteral("self-test"),
+        QCoreApplication::translate("main",
+                                    "Open the window, check that its viewport can draw, say "
+                                    "what was found, and exit: 0 if it can."));
+    parser.addOption(selfTest);
     parser.process(app);
     const QStringList files = parser.positionalArguments();
 
     hz::ui::MainWindow window;
     window.show();
+    if (parser.isSet(selfTest)) return runSelfTest(app, window);
     // Once the window is on screen: offer back what a crashed session left,
     // then open what was asked for.
     QTimer::singleShot(0, &window, [&window, files] {

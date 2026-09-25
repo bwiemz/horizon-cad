@@ -630,6 +630,7 @@ void ViewportWidget::paintGL() {
     // qpixmap_win.cpp assertion triggered by QPainter on QOpenGLWidget.
     m_viewportRenderer.blitTextOverlay(gl, m_camera, m_document, m_selectionManager, width(),
                                        height(), pixelToWorldScale(), devicePixelRatioF());
+    ++m_framesDrawn;
 }
 
 // ---------------------------------------------------------------------------

@@ -202,24 +202,25 @@ jobs:
           echo "Window tests: ${count:-0}"
           test "${count:-0}" -gt 0
 
-      # The application must start and show a window on a real X server:
-      # every test runs headless, and a Qt with no platform plugin built,
-      # linked and passed them all, then could not open a window.
+      # The application must start and draw on a real X server: every test
+      # runs headless, and a Qt with no platform plugin built, linked and
+      # passed them all, then could not open a window. --self-test shows the
+      # window, waits for the viewport to draw a frame (Mesa's software
+      # OpenGL here), and exits 0 only then; a "Graphics Problem" is exit 3.
       - name: Start the application
         if: always() && steps.configure.outcome == 'success' && runner.os == 'Linux'
         run: |
-          sudo apt-get install -y --no-install-recommends xvfb
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri
           Xvfb :99 -screen 0 1280x1024x24 &
           xvfb=$!
           sleep 2
           set +e
-          DISPLAY=:99 QT_QPA_PLATFORM=xcb timeout 10 build/${{ matrix.preset }}/src/app/horizon
+          DISPLAY=:99 QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout 60 build/${{ matrix.preset }}/src/app/horizon --self-test
           status=$?
           set -e
           kill "${xvfb}"
-          # Still running when the time was up (124): it started.
-          echo "horizon: exit status ${status} (124 = still running after 10 s)"
-          test "${status}" -eq 124
+          test "${status}" -eq 0
 
       # Saved even when a later step failed: vcpkg's packages (Qt above all)
       # are the slow part, and a failed job used to throw them away, so the
@@ -346,6 +347,16 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4
+
+      # As in the build jobs: the window tests are there only when Qt has an
+      # offscreen plugin, and a Qt without one skipped them without a word.
+      - name: Check the window tests ran
+        if: always()
+        run: |
+          count=$(ctest --test-dir build/linux-debug -C Debug -N -L window | sed -n 's/^Total Tests: //p')
+          echo "### Window tests: ${count:-0}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Window tests: ${count:-0}"
+          test "${count:-0}" -gt 0
 
       # Saved even when a later step failed: vcpkg's packages (Qt above all)
       # are the slow part, and a failed job used to throw them away, so the
@@ -703,6 +714,16 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4
+
+      # As in the build jobs: the window tests are there only when Qt has an
+      # offscreen plugin, and a Qt without one skipped them without a word.
+      - name: Check the window tests ran
+        if: always()
+        run: |
+          count=$(ctest --test-dir build/linux-debug -C Debug -N -L window | sed -n 's/^Total Tests: //p')
+          echo "### Window tests: ${count:-0}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Window tests: ${count:-0}"
+          test "${count:-0}" -gt 0
 
       - name: Report
         if: always()
