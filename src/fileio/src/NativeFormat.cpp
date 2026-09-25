@@ -828,6 +828,18 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         cache["positions"] = mesh.positions;
         cache["normals"] = mesh.normals;
         cache["indices"] = mesh.indices;
+        // Its faces and edges by name (Phase 143), so a component drawn from
+        // the cache can be clicked: a mate is made on a clicked face. Keys
+        // an older build does not read.
+        if (mesh.hasFaces()) {
+            cache["faceTags"] = mesh.faceTags;
+            cache["triangleFaces"] = mesh.triangleFaces;
+            json edges = json::array();
+            for (const auto& edge : mesh.edges) {
+                edges.push_back({{"tag", edge.tag}, {"points", edge.points}});
+            }
+            cache["edges"] = std::move(edges);
+        }
         root["tessellationCache"] = cache;
     }
 
@@ -2025,6 +2037,50 @@ bool NativeFormat::assemblyFromJson(const std::string& text, doc::AssemblyDocume
 // Lightweight tessellation-cache read
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// The cache's faces and edges by name, when it has them and they hold
+/// together; a mesh without them otherwise (drawn, but not clickable).
+void readCachedFaces(const json& cache, geo::MeshData& mesh) {
+    if (!cache.contains("faceTags") || !cache.contains("triangleFaces")) return;
+    const auto& tags = cache.at("faceTags");
+    const auto& faces = cache.at("triangleFaces");
+    if (!tags.is_array() || !faces.is_array() || faces.size() != mesh.indices.size() / 3) return;
+    std::vector<std::string> faceTags;
+    faceTags.reserve(tags.size());
+    for (const auto& tag : tags) {
+        if (!tag.is_string()) return;
+        faceTags.push_back(tag.get<std::string>());
+    }
+    std::vector<uint32_t> triangleFaces;
+    triangleFaces.reserve(faces.size());
+    for (const auto& face : faces) {
+        if (!face.is_number_unsigned() || face.get<uint64_t>() >= faceTags.size()) return;
+        triangleFaces.push_back(face.get<uint32_t>());
+    }
+    std::vector<geo::MeshData::Edge> edges;
+    if (cache.contains("edges") && cache.at("edges").is_array()) {
+        for (const auto& edge : cache.at("edges")) {
+            if (!edge.is_object() || !edge.contains("tag") || !edge.at("tag").is_string() ||
+                !edge.contains("points") || !edge.at("points").is_array()) {
+                continue;
+            }
+            geo::MeshData::Edge e;
+            e.tag = edge.at("tag").get<std::string>();
+            for (const auto& v : edge.at("points")) {
+                if (!v.is_number()) break;
+                e.points.push_back(v.get<float>());
+            }
+            if (e.points.size() >= 6 && e.points.size() % 3 == 0) edges.push_back(std::move(e));
+        }
+    }
+    mesh.faceTags = std::move(faceTags);
+    mesh.triangleFaces = std::move(triangleFaces);
+    mesh.edges = std::move(edges);
+}
+
+}  // namespace
+
 std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& filePath) {
     std::ifstream file(pathFromUtf8(filePath));
     if (!file.is_open()) return nullptr;
@@ -2059,6 +2115,7 @@ std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& fil
             if (index < 0 || index >= vertexCount) return nullptr;
             mesh->indices.push_back(static_cast<uint32_t>(index));
         }
+        readCachedFaces(cache, *mesh);
         return mesh;
     } catch (const std::exception&) {
         return nullptr;

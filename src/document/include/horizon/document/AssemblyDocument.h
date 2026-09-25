@@ -98,7 +98,8 @@ public:
     /// Returns the instance id.
     uint64_t addComponent(ComponentInstance instance);
 
-    /// Remove a component by id. Returns true if found.
+    /// Remove a component by id, and the mates that refer to it. Returns
+    /// true if found.
     bool removeComponent(uint64_t id);
 
     /// Find a component by id (nullptr if absent).

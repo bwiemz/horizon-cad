@@ -25,6 +25,7 @@
 #include "horizon/ui/RebuildJob.h"
 
 class QCloseEvent;
+class QComboBox;
 class QTimer;
 class QLabel;
 class QTabBar;
@@ -46,6 +47,8 @@ class LayerPanel;
 class RibbonBar;
 class FeatureTreePanel;
 class RecoveryManager;
+class AssemblyTreePanel;
+class FeatureForm;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow {
@@ -144,6 +147,15 @@ private slots:
     void onInsertComponent();
     void onAddMate();
     void onCheckInterference();
+    // Placing components (Phase 143): on the component clicked or chosen in
+    // the assembly tree, or one chosen in the form.
+    void onMoveComponent();
+    void onRotateComponent();
+    void onRemoveComponent();
+    void onSuppressComponent();
+    void onRenameComponent();
+    void onEditMate();
+    void onRemoveMate();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -371,6 +383,23 @@ private:
     void syncSketchView();
     void refreshSketchList();
     bool solveAssemblyMates(doc::AssemblyDocument& asmDoc);
+    /// Change the assembly by @p edit, as one undo step named @p verb: its
+    /// mates are solved again after it, and if they cannot be, or @p edit
+    /// declines (returns false), the assembly is left as it was.
+    bool editAssembly(const QString& verb, const std::function<bool()>& edit);
+    /// The component a command acts on: the first clicked, else the one
+    /// current in the assembly tree; 0 when neither.
+    uint64_t targetComponent() const;
+    /// A "component" choice on @p form, @p target chosen; @p ids its rows'.
+    QComboBox* componentChoice(FeatureForm& form, uint64_t target,
+                               std::vector<uint64_t>& ids) const;
+    /// A "mate" choice on @p form, @p target chosen; @p ids its rows'.
+    QComboBox* mateChoice(FeatureForm& form, uint64_t target, std::vector<uint64_t>& ids) const;
+    void removeComponent(uint64_t id);
+    void setComponentSuppressed(uint64_t id, bool suppressed);
+    void renameComponent(uint64_t id);
+    void editMate(uint64_t id);
+    void removeMate(uint64_t id);
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
     void activateTabDocument();
@@ -478,6 +507,7 @@ private:
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
+    AssemblyTreePanel* m_assemblyTreePanel = nullptr;  ///< tabbed with the feature tree
     QAction* m_finishSketchAction = nullptr;
     QMenu* m_modelMenu = nullptr;
     QMenu* m_viewMenu = nullptr;

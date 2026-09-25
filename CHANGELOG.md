@@ -17,6 +17,24 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
+
+- **Placing components (143).**
+  - An Assembly menu, and an assembly tree beside the feature tree, listing
+    the components and mates.
+    - From the tree: remove, suppress, rename; edit a mate's distance or
+      angle, or remove it.
+    - Removing a component takes its mates with it. A mate left behind made
+      every later move fail.
+  - Move and Rotate Component, each one undo step, with the mates solved
+    again. A component held by a Fixed mate stays put, and says so.
+  - A component is placed beside the others when inserted, not on top of
+    them at the origin.
+  - A component can be clicked as soon as it is inserted. Add Mate lists
+    each face once, said by what it is, and takes the faces clicked. A
+    clicked cylinder's side used to be matched to whichever of its facets
+    came first.
+
 ## Unreleased — Product completeness, Milestone 11 (Phases 139–142)
 
 - **Stable names (139).**
