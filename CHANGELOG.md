@@ -31,6 +31,15 @@ work, not "post-1.0".
     Properties, mate distances and interference volumes are all shown in
     the document's unit. Mass Properties used to show millimetres whatever
     the unit.
+- **Fields that take units (154, part 2).**
+  - Every length field shows the document's unit: feature dialogs, Edit
+    Feature, assembly moves and mates, the property panel, arrays and
+    constraint values.
+  - Each accepts a value typed in any unit: "2 in", "50.8 mm", "1' 6\"",
+    "3/4 in". A bare number is in the document's unit.
+  - Angle fields show degrees and also accept "0.5 rad".
+  - Add Mate has its own distance and angle fields. One field used to
+    serve both.
 
 ## Unreleased — Professional workflows, Milestone 15 (Phases 151–153) — complete
 

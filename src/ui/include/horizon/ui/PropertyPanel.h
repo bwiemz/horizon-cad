@@ -16,6 +16,7 @@ class QStackedWidget;
 namespace hz::ui {
 
 class MainWindow;
+class QuantitySpinBox;
 
 class PropertyPanel : public QDockWidget {
     Q_OBJECT
@@ -72,6 +73,8 @@ private:
     QComboBox* m_layerCombo = nullptr;
     QPushButton* m_colorButton = nullptr;
     QPushButton* m_byLayerButton = nullptr;
+    /// Every field showing a length, to show it in the document's unit.
+    std::vector<QuantitySpinBox*> m_lengthFields;
     QDoubleSpinBox* m_lineWidthSpin = nullptr;
     QComboBox* m_lineTypeCombo = nullptr;
 

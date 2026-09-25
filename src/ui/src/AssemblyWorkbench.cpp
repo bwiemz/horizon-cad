@@ -37,6 +37,7 @@
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/FeatureForm.h"
 #include "horizon/ui/Preferences.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
 
@@ -519,11 +520,24 @@ void AssemblyWorkbench::onAddMate() {
     form->addRow(tr("Component B:"), compBCombo);
     form->addRow(tr("Face B:"), faceBCombo);
 
-    auto* valueSpin = new QDoubleSpinBox(&dialog);
+    // A distance mate's distance, or an angle mate's angle, in the
+    // assembly's unit or typed in another (Phase 154).
+    const math::LengthUnit unit = m_host.currentDocument()->lengthUnit();
+    auto* valueSpin = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, &dialog);
     valueSpin->setObjectName("value");
     valueSpin->setRange(-1e6, 1e6);
-    valueSpin->setDecimals(3);
-    form->addRow(tr("Value (distance / angle°):"), valueSpin);
+    form->addRow(tr("Distance:"), valueSpin);
+    auto* angleSpin = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, unit, 3, &dialog);
+    angleSpin->setObjectName("angle");
+    angleSpin->setRange(-360.0, 360.0);
+    form->addRow(tr("Angle:"), angleSpin);
+    const auto offerValue = [typeCombo, valueSpin, angleSpin] {
+        const auto type = static_cast<doc::MateType>(typeCombo->currentData().toInt());
+        valueSpin->setEnabled(type == doc::MateType::Distance);
+        angleSpin->setEnabled(type == doc::MateType::Angle);
+    };
+    connect(typeCombo, &QComboBox::currentIndexChanged, &dialog, offerValue);
+    offerValue();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -541,7 +555,7 @@ void AssemblyWorkbench::onAddMate() {
         mate.b.faceId =
             topo::TopologyID::fromTag(faceBCombo->currentData().toString().toStdString());
     }
-    mate.value = mate.type == doc::MateType::Angle ? valueSpin->value() * std::numbers::pi / 180.0
+    mate.value = mate.type == doc::MateType::Angle ? angleSpin->value() * std::numbers::pi / 180.0
                                                    : valueSpin->value();
 
     // The solve moves components; a mate that cannot be solved leaves the
@@ -632,12 +646,12 @@ void AssemblyWorkbench::onMoveComponent() {
         m_host.showStatus(tr("%1 works on an assembly's components").arg(verb));
         return;
     }
-    FeatureForm form(m_host.dialogParent(), verb);
+    FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
     std::vector<uint64_t> ids;
     auto* which = componentChoice(form, targetComponent(), ids);
-    auto* dx = form.number(QStringLiteral("dx"), tr("Move X:"), 0.0, -1e6, 1e6);
-    auto* dy = form.number(QStringLiteral("dy"), tr("Move Y:"), 0.0, -1e6, 1e6);
-    auto* dz = form.number(QStringLiteral("dz"), tr("Move Z:"), 0.0, -1e6, 1e6);
+    auto* dx = form.length(QStringLiteral("dx"), tr("Move X:"), 0.0, -1e6, 1e6);
+    auto* dy = form.length(QStringLiteral("dy"), tr("Move Y:"), 0.0, -1e6, 1e6);
+    auto* dz = form.length(QStringLiteral("dz"), tr("Move Z:"), 0.0, -1e6, 1e6);
     if (!form.exec()) return;
     const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
     if (isFixed(*assembly(), id)) {
@@ -664,7 +678,7 @@ void AssemblyWorkbench::onRotateComponent() {
     auto* which = componentChoice(form, targetComponent(), ids);
     auto* axis = form.choice(QStringLiteral("axis"), tr("About:"), {tr("X"), tr("Y"), tr("Z")});
     axis->setCurrentIndex(2);
-    auto* angle = form.number(QStringLiteral("angle"), tr("Angle (degrees):"), 90.0, -360.0, 360.0);
+    auto* angle = form.angle(QStringLiteral("angle"), tr("Angle:"), 90.0, -360.0, 360.0);
     if (!form.exec()) return;
     const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
     if (isFixed(*assembly(), id)) {
@@ -730,10 +744,11 @@ void AssemblyWorkbench::editMate(uint64_t id) {
         m_host.showStatus(tr("%1: a %2 mate has no value").arg(verb, mateTypeName(mate.type)));
         return;
     }
-    FeatureForm form(m_host.dialogParent(), verb);
-    auto* value =
-        form.number(QStringLiteral("value"), angle ? tr("Angle (degrees):") : tr("Distance:"),
-                    angle ? mate.value * 180.0 / std::numbers::pi : mate.value, -1e6, 1e6);
+    FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
+    QuantitySpinBox* value =
+        angle ? form.angle(QStringLiteral("value"), tr("Angle:"),
+                           mate.value * 180.0 / std::numbers::pi, -1e6, 1e6)
+              : form.length(QStringLiteral("value"), tr("Distance:"), mate.value, -1e6, 1e6);
     if (!form.exec()) return;
     const double set = angle ? value->value() * std::numbers::pi / 180.0 : value->value();
     editAssembly(verb, [this, id, set] {

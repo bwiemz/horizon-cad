@@ -2,6 +2,8 @@
 
 #include <QDialog>
 
+#include "horizon/math/Units.h"
+
 class QSpinBox;
 class QDoubleSpinBox;
 
@@ -11,7 +13,9 @@ class RectArrayDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit RectArrayDialog(QWidget* parent = nullptr);
+    /// Its spacings shown and typed in @p unit, the document's (Phase 154).
+    explicit RectArrayDialog(QWidget* parent = nullptr,
+                             math::LengthUnit unit = math::LengthUnit::Millimetre);
 
     int columns() const;
     int rows() const;

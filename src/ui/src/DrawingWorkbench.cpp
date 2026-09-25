@@ -35,6 +35,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/FeatureForm.h"
 #include "horizon/ui/PickTool.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
 
@@ -907,11 +908,11 @@ void DrawingWorkbench::onAddSectionView() {
         m_host.showStatus(tr("%1: a section is cut through a front, top or side view").arg(verb));
         return;
     }
-    FeatureForm form(m_host.dialogParent(), verb);
+    FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
     auto* view = form.choice(QStringLiteral("view"), tr("Through view:"), names);
     auto* cut = form.choice(QStringLiteral("cut"), tr("Cut:"), {tr("Vertical"), tr("Horizontal")});
     auto* offset =
-        form.number(QStringLiteral("offset"), tr("From the view's centre:"), 0.0, -1e6, 1e6);
+        form.length(QStringLiteral("offset"), tr("From the view's centre:"), 0.0, -1e6, 1e6);
     auto* looking = form.choice(QStringLiteral("direction"), tr("Looking:"),
                                 {tr("Left or down"), tr("Right or up")});
     auto* label = form.text(QStringLiteral("label"), tr("Label:"), nextLabel(*active));

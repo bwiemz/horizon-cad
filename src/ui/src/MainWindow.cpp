@@ -119,6 +119,7 @@
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PreferencesDialog.h"
 #include "horizon/ui/PropertyPanel.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/RadialDimensionTool.h"
 #include "horizon/ui/RecentFiles.h"
 #include "horizon/ui/RecoveryManager.h"
@@ -1851,7 +1852,7 @@ void MainWindow::onDocumentUnits() {
         names << nameOf(math::kLengthUnits[k]);
         if (math::kLengthUnits[k] == m_document->lengthUnit()) current = static_cast<int>(k);
     }
-    FeatureForm form(this, tr("Document Units"));
+    FeatureForm form(this, tr("Document Units"), m_document->lengthUnit());
     QComboBox* unit = form.choice(QStringLiteral("unit"), tr("Lengths in:"), names);
     unit->setCurrentIndex(current);
     auto* note = new QLabel(tr("The model is kept in millimetres: its unit changes only how its "
@@ -2668,7 +2669,7 @@ void MainWindow::onExportPlot(bool pdf) {
         return;
     }
 
-    FeatureForm form(this, tr("Export %1").arg(format));
+    FeatureForm form(this, tr("Export %1").arg(format), m_document->lengthUnit());
     QStringList papers;
     for (const auto& size : draft::standardPaperSizes()) papers << QString::fromLatin1(size.name);
     auto* paper = form.choice(QStringLiteral("paper"), tr("Paper:"), papers);
@@ -3213,7 +3214,7 @@ void MainWindow::onRectangularArray() {
     }
     if (filteredIds.empty()) return;
 
-    RectArrayDialog dlg(this);
+    RectArrayDialog dlg(this, m_document->lengthUnit());
     if (dlg.exec() != QDialog::Accepted) return;
 
     int cols = dlg.columns();
@@ -3269,7 +3270,7 @@ void MainWindow::onPolarArray() {
     }
     if (filteredIds.empty()) return;
 
-    PolarArrayDialog dlg(this);
+    PolarArrayDialog dlg(this, m_document->lengthUnit());
     if (dlg.exec() != QDialog::Accepted) return;
 
     int count = dlg.count();
@@ -3340,16 +3341,16 @@ void MainWindow::onDimensionStyle() {
     const draft::DimensionStyle& now = drawing.dimensionStyle();
     const QStringList units = Preferences::lengthUnits();
 
-    FeatureForm form(this, tr("Dimension Style"));
-    auto* height = form.number(QStringLiteral("textHeight"), tr("Text height:"), now.textHeight,
+    FeatureForm form(this, tr("Dimension Style"), m_document->lengthUnit());
+    auto* height = form.length(QStringLiteral("textHeight"), tr("Text height:"), now.textHeight,
                                0.01, 1000.0, 3);
     auto* arrow =
-        form.number(QStringLiteral("arrowSize"), tr("Arrow size:"), now.arrowSize, 0.0, 1000.0, 3);
-    auto* angle = form.number(QStringLiteral("arrowAngle"), tr("Arrow half-angle (degrees):"),
+        form.length(QStringLiteral("arrowSize"), tr("Arrow size:"), now.arrowSize, 0.0, 1000.0, 3);
+    auto* angle = form.angle(QStringLiteral("arrowAngle"), tr("Arrow half-angle:"),
                               now.arrowAngle * math::kRadToDeg, 1.0, 89.0, 1);
-    auto* gap = form.number(QStringLiteral("extensionGap"), tr("Extension gap:"), now.extensionGap,
+    auto* gap = form.length(QStringLiteral("extensionGap"), tr("Extension gap:"), now.extensionGap,
                             0.0, 1000.0, 3);
-    auto* overshoot = form.number(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
+    auto* overshoot = form.length(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
                                   now.extensionOvershoot, 0.0, 1000.0, 3);
     auto* precision =
         form.count(QStringLiteral("precision"), tr("Decimal places:"), now.precision, 0, 12);
@@ -3534,10 +3535,10 @@ void MainWindow::onCreateBlock() {
         }
     }
     const math::Vec3 centre = bounds.isValid() ? bounds.center() : math::Vec3(0, 0, 0);
-    FeatureForm form(this, tr("Create Block"));
+    FeatureForm form(this, tr("Create Block"), m_document->lengthUnit());
     auto* nameField = form.text(QStringLiteral("blockName"), tr("Block name:"));
-    auto* baseX = form.number(QStringLiteral("baseX"), tr("Base point X:"), centre.x, -1e9, 1e9, 4);
-    auto* baseY = form.number(QStringLiteral("baseY"), tr("Base point Y:"), centre.y, -1e9, 1e9, 4);
+    auto* baseX = form.length(QStringLiteral("baseX"), tr("Base point X:"), centre.x, -1e9, 1e9, 4);
+    auto* baseY = form.length(QStringLiteral("baseY"), tr("Base point Y:"), centre.y, -1e9, 1e9, 4);
     if (!form.exec()) return;
     const QString name = nameField->text().trimmed();
     if (name.isEmpty()) return;
@@ -3718,18 +3719,18 @@ void MainWindow::addPrimitive(
     const QString& verb, const std::vector<PrimitiveField>& fields,
     const std::function<std::unique_ptr<doc::PrimitiveFeature>(const std::vector<double>&)>& make) {
     if (!requirePart(verb)) return;
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     std::vector<QDoubleSpinBox*> sizes;
     sizes.reserve(fields.size());
     for (size_t i = 0; i < fields.size(); ++i) {
-        sizes.push_back(form.number(QStringLiteral("size%1").arg(i), fields[i].label,
+        sizes.push_back(form.length(QStringLiteral("size%1").arg(i), fields[i].label,
                                     fields[i].value, fields[i].min, 1e6));
     }
     // Where it stands: from a base point, its own z axis along one of the
     // axis directions (Phase 134; primitives always stood at the origin).
-    auto* atX = form.number(QStringLiteral("atX"), tr("At x:"), 0.0, -1e6, 1e6);
-    auto* atY = form.number(QStringLiteral("atY"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* atZ = form.number(QStringLiteral("atZ"), tr("z:"), 0.0, -1e6, 1e6);
+    auto* atX = form.length(QStringLiteral("atX"), tr("At x:"), 0.0, -1e6, 1e6);
+    auto* atY = form.length(QStringLiteral("atY"), tr("y:"), 0.0, -1e6, 1e6);
+    auto* atZ = form.length(QStringLiteral("atZ"), tr("z:"), 0.0, -1e6, 1e6);
     auto* axis =
         directionChoice(form, QStringLiteral("axis"), tr("Standing along:"), QStringLiteral("+Z"));
     auto* result = form.operationChoice(proposedOperation());
@@ -3891,7 +3892,7 @@ void MainWindow::onNewSketchOnFace() {
     }
     QStringList names;
     for (const auto& face : faces) names << face.text;
-    FeatureForm form(this, tr("Sketch on a Face"));
+    FeatureForm form(this, tr("Sketch on a Face"), m_document->lengthUnit());
     auto* choice = form.choice(QStringLiteral("face"), tr("Face:"), names);
     if (!form.exec()) return;
     const auto& picked = faces[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
@@ -3912,7 +3913,7 @@ void MainWindow::onNewSketchOnDatum() {
         statusBar()->showMessage(tr("The part has no datum plane to sketch on"));
         return;
     }
-    FeatureForm form(this, tr("Sketch on a Datum Plane"));
+    FeatureForm form(this, tr("Sketch on a Datum Plane"), m_document->lengthUnit());
     auto* choice = form.choice(QStringLiteral("datum"), tr("Datum plane:"), names);
     if (!form.exec()) return;
     const int index = std::max(choice->currentIndex(), 0);
@@ -3932,7 +3933,7 @@ void MainWindow::onEditSketch() {
         names << QString::fromStdString(sketches[i]->name());
         if (sketches[i]->id() == m_profileSketchId) current = static_cast<int>(i);
     }
-    FeatureForm form(this, tr("Edit Sketch"));
+    FeatureForm form(this, tr("Edit Sketch"), m_document->lengthUnit());
     auto* choice = form.choice(QStringLiteral("sketch"), tr("Sketch:"), names);
     choice->setCurrentIndex(current);
     if (!form.exec()) return;
@@ -4012,7 +4013,7 @@ void MainWindow::onMassProperties() {
     };
     QStringList names;
     for (const auto& [name, material] : materials) names << name;
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     auto* choice = form.choice(QStringLiteral("material"), tr("Material:"), names);
     if (!form.exec()) return;
     // Named, not a structured binding: the worker's lambda captures the
@@ -4180,9 +4181,9 @@ void MainWindow::onMassPropertiesFinished() {
 }
 
 void MainWindow::onSectionPlane() {
-    FeatureForm form(this, tr("Section Plane"));
+    FeatureForm form(this, tr("Section Plane"), m_document->lengthUnit());
     auto* axis = form.choice(QStringLiteral("axis"), tr("Across:"), {tr("X"), tr("Y"), tr("Z")});
-    auto* at = form.number(QStringLiteral("offset"), tr("At:"), 0.0, -1e6, 1e6);
+    auto* at = form.length(QStringLiteral("offset"), tr("At:"), 0.0, -1e6, 1e6);
     auto* keep = form.choice(QStringLiteral("keep"), tr("Keep:"),
                              {tr("What is below it"), tr("What is above it")});
     if (!form.exec()) return;
@@ -4210,7 +4211,7 @@ void MainWindow::onLoft() {
         statusBar()->showMessage(tr("A loft joins two or more sketches: make them first"));
         return;
     }
-    FeatureForm form(this, tr("Loft"));
+    FeatureForm form(this, tr("Loft"), m_document->lengthUnit());
     auto* list = form.checklist(QStringLiteral("sections"), tr("Sections, in order:"), items);
     auto* result = form.operationChoice(proposedOperation());
     if (!form.exec()) return;
@@ -4242,7 +4243,7 @@ void MainWindow::onSweep() {
             tr("A sweep takes a profile sketch along a path sketch: make them first"));
         return;
     }
-    FeatureForm form(this, tr("Sweep"));
+    FeatureForm form(this, tr("Sweep"), m_document->lengthUnit());
     auto* profile = form.choice(QStringLiteral("profile"), tr("Profile:"), names);
     auto* path = form.choice(QStringLiteral("path"), tr("Path:"), names);
     path->setCurrentIndex(1);
@@ -4282,11 +4283,11 @@ void MainWindow::onDatumPlane() {
     }
     QStringList names;
     for (const auto& [name, plane] : bases) names << name;
-    FeatureForm form(this, tr("Datum Plane"));
+    FeatureForm form(this, tr("Datum Plane"), m_document->lengthUnit());
     auto* base = form.choice(QStringLiteral("base"), tr("From:"), names);
     auto* offset =
-        form.number(QStringLiteral("offset"), tr("Offset along its normal:"), 10.0, -1e6, 1e6);
-    auto* angle = form.number(QStringLiteral("angle"), tr("Turned about its x axis (degrees):"),
+        form.length(QStringLiteral("offset"), tr("Offset along its normal:"), 10.0, -1e6, 1e6);
+    auto* angle = form.angle(QStringLiteral("angle"), tr("Turned about its x axis:"),
                               0.0, -360.0, 360.0, 3);
     if (!form.exec()) return;
     model::DatumPlane plane = bases[static_cast<size_t>(std::max(base->currentIndex(), 0))].second;
@@ -4310,11 +4311,11 @@ void MainWindow::onDatumAxis() {
     }
     QStringList names;
     for (const auto& [name, direction] : directions) names << name;
-    FeatureForm form(this, tr("Datum Axis"));
+    FeatureForm form(this, tr("Datum Axis"), m_document->lengthUnit());
     auto* along = form.choice(QStringLiteral("direction"), tr("Along:"), names);
-    auto* x = form.number(QStringLiteral("x"), tr("Through x:"), 0.0, -1e6, 1e6);
-    auto* y = form.number(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* z = form.number(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
+    auto* x = form.length(QStringLiteral("x"), tr("Through x:"), 0.0, -1e6, 1e6);
+    auto* y = form.length(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
+    auto* z = form.length(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
     if (!form.exec()) return;
     const auto axis = model::refgeo::axisFromDirection(
         math::Vec3(x->value(), y->value(), z->value()),
@@ -4324,10 +4325,10 @@ void MainWindow::onDatumAxis() {
 
 void MainWindow::onDatumPoint() {
     if (m_assembly) return;
-    FeatureForm form(this, tr("Datum Point"));
-    auto* x = form.number(QStringLiteral("x"), tr("x:"), 0.0, -1e6, 1e6);
-    auto* y = form.number(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* z = form.number(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
+    FeatureForm form(this, tr("Datum Point"), m_document->lengthUnit());
+    auto* x = form.length(QStringLiteral("x"), tr("x:"), 0.0, -1e6, 1e6);
+    auto* y = form.length(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
+    auto* z = form.length(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
     if (!form.exec()) return;
     addModelFeature(doc::DatumFeature::makePoint(
                         model::refgeo::pointAt(math::Vec3(x->value(), y->value(), z->value()))),
@@ -4395,8 +4396,8 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
-    FeatureForm form(this, tr("Extrude"));
-    auto* size = form.number(QStringLiteral("size"), tr("Distance:"), 10.0, 0.01, 1e6, 2);
+    FeatureForm form(this, tr("Extrude"), m_document->lengthUnit());
+    auto* size = form.length(QStringLiteral("size"), tr("Distance:"), 10.0, 0.01, 1e6, 2);
     auto* goes = form.choice(QStringLiteral("extent"), tr("Goes:"),
                              {tr("To the distance"), tr("Both ways, half each"), tr("Through all"),
                               tr("Through all, both ways")});
@@ -4442,8 +4443,8 @@ void MainWindow::onRevolveSketch() {
         return;
     }
 
-    FeatureForm form(this, tr("Revolve"));
-    auto* size = form.number(QStringLiteral("size"), tr("Angle (degrees):"), 360.0, 1.0, 360.0, 1);
+    FeatureForm form(this, tr("Revolve"), m_document->lengthUnit());
+    auto* size = form.angle(QStringLiteral("size"), tr("Angle:"), 360.0, 1.0, 360.0, 1);
     // About one of the sketch's own axes, through its origin: on the XY
     // plane, the world's Y or X.
     auto* axis =
@@ -4481,7 +4482,7 @@ void MainWindow::onRevolveSketch() {
 bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
                                    double min, double max, int decimals,
                                    doc::BodyOperation& operation) {
-    FeatureForm form(this, title);
+    FeatureForm form(this, title, m_document->lengthUnit());
     auto* size = form.number(QStringLiteral("size"), valueLabel, value, min, max, decimals);
     auto* result = form.operationChoice(proposedOperation());
     if (!form.exec()) return false;
@@ -4605,8 +4606,8 @@ void MainWindow::addEdgeFeature(bool fillet) {
     if (!solid) return;
     const PickList edges = edgesOf(*solid);
 
-    FeatureForm form(this, verb);
-    auto* size = form.number(QStringLiteral("size"), fillet ? tr("Radius:") : tr("Distance:"), 1.0,
+    FeatureForm form(this, verb, m_document->lengthUnit());
+    auto* size = form.length(QStringLiteral("size"), fillet ? tr("Radius:") : tr("Distance:"), 1.0,
                              0.001, 1e6);
     auto* list = form.checklist(QStringLiteral("edges"), tr("Edges:"), edges.items);
     checkClicked(list, edges, m_viewport->modelSelection(), true);
@@ -4635,9 +4636,9 @@ void MainWindow::onShell() {
     if (!solid) return;
     const PickList faces = facesOf(*solid);
 
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     auto* thickness =
-        form.number(QStringLiteral("thickness"), tr("Wall thickness:"), 1.0, 0.001, 1e6);
+        form.length(QStringLiteral("thickness"), tr("Wall thickness:"), 1.0, 0.001, 1e6);
     auto* list = form.checklist(QStringLiteral("faces"), tr("Faces to open:"), faces.items);
     checkClicked(list, faces, m_viewport->modelSelection(), false);
     if (!form.exec()) return;
@@ -4653,11 +4654,11 @@ void MainWindow::onDraft() {
     const QString verb = tr("Draft");
     if (!requireBody(verb)) return;
 
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     auto* pull =
         directionChoice(form, QStringLiteral("pull"), tr("Pull direction:"), QStringLiteral("+Z"));
-    auto* neutral = form.number(QStringLiteral("neutral"), tr("Neutral plane at:"), 0.0, -1e6, 1e6);
-    auto* angle = form.number(QStringLiteral("angle"), tr("Angle (degrees):"), 3.0, 0.01, 89.0, 2);
+    auto* neutral = form.length(QStringLiteral("neutral"), tr("Neutral plane at:"), 0.0, -1e6, 1e6);
+    auto* angle = form.angle(QStringLiteral("angle"), tr("Angle:"), 3.0, 0.01, 89.0, 2);
     if (!form.exec()) return;
 
     // The neutral plane is square to the pull, at that distance along it.
@@ -4715,10 +4716,10 @@ void MainWindow::onLinearPattern() {
     const QString verb = tr("Linear Pattern");
     if (!requireBody(verb)) return;
 
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     auto* direction =
         directionChoice(form, QStringLiteral("direction"), tr("Direction:"), QStringLiteral("+X"));
-    auto* spacing = form.number(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
+    auto* spacing = form.length(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
     auto* count =
         form.count(QStringLiteral("count"), tr("Instances:"), 3, 2, doc::kMaxPatternCount);
     const auto repeatable = repeatableFeatures(m_document->featureTree());
@@ -4735,12 +4736,12 @@ void MainWindow::onCircularPattern() {
     const QString verb = tr("Circular Pattern");
     if (!requireBody(verb)) return;
 
-    FeatureForm form(this, verb);
+    FeatureForm form(this, verb, m_document->lengthUnit());
     auto* axis =
         directionChoice(form, QStringLiteral("axis"), tr("About the axis:"), QStringLiteral("+Z"));
     auto* count =
         form.count(QStringLiteral("count"), tr("Instances:"), 4, 2, doc::kMaxPatternCount);
-    auto* total = form.number(QStringLiteral("angle"), tr("Over (degrees):"), 360.0, 1.0, 360.0, 2);
+    auto* total = form.angle(QStringLiteral("angle"), tr("Over:"), 360.0, 1.0, 360.0, 2);
     const auto repeatable = repeatableFeatures(m_document->featureTree());
     auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
@@ -4783,7 +4784,7 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         return;
     }
 
-    FeatureForm form(this, tr("Edit %1").arg(QString::fromStdString(feat->name())));
+    FeatureForm form(this, tr("Edit %1").arg(QString::fromStdString(feat->name())), m_document->lengthUnit());
     // Each field shows the stored value as it is — a floor would turn a legal
     // 0 (a pointed cone's radius) into something else before anyone touched
     // it; the feature refuses a value it cannot use. Angles are shown in
@@ -4801,8 +4802,8 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         const QString key = QString::fromStdString(name);
         switch (feat->parameterKind(name)) {
             case Kind::Angle: {
-                auto* spin = form.number(key, parameterLabel(name) + tr(" (degrees):"),
-                                         value * math::kRadToDeg, -1e6, 1e6, 3);
+                auto* spin = form.angle(key, parameterLabel(name) + QStringLiteral(":"),
+                                        value * math::kRadToDeg, -1e6, 1e6, 3);
                 fields[name] = {[spin] { return spin->value() * math::kDegToRad; },
                                 [spin, shown = spin->value()] { return spin->value() != shown; }};
                 break;
@@ -4831,7 +4832,7 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                 break;
             }
             case Kind::Length: {
-                auto* spin = form.number(key, parameterLabel(name) + QStringLiteral(":"), value,
+                auto* spin = form.length(key, parameterLabel(name) + QStringLiteral(":"), value,
                                          -1e9, 1e9, 4);
                 fields[name] = {[spin] { return spin->value(); },
                                 [spin, shown = spin->value()] { return spin->value() != shown; }};
@@ -4853,10 +4854,10 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     for (const auto& [name, value] : vectors) {
         const QString key = QString::fromStdString(name);
         if (doc::Feature::isPoint(name)) {
-            auto* x = form.number(key + QStringLiteral("X"), parameterLabel(name) + tr(" x:"),
+            auto* x = form.length(key + QStringLiteral("X"), parameterLabel(name) + tr(" x:"),
                                   value.x, -1e9, 1e9, 4);
-            auto* y = form.number(key + QStringLiteral("Y"), tr("y:"), value.y, -1e9, 1e9, 4);
-            auto* z = form.number(key + QStringLiteral("Z"), tr("z:"), value.z, -1e9, 1e9, 4);
+            auto* y = form.length(key + QStringLiteral("Y"), tr("y:"), value.y, -1e9, 1e9, 4);
+            auto* z = form.length(key + QStringLiteral("Z"), tr("z:"), value.z, -1e9, 1e9, 4);
             vectorFields[name] = [x, y, z, sx = x->value(), sy = y->value(),
                                   sz = z->value()]() -> std::optional<math::Vec3> {
                 if (x->value() == sx && y->value() == sy && z->value() == sz) return std::nullopt;

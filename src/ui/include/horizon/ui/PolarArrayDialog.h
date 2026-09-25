@@ -2,6 +2,8 @@
 
 #include <QDialog>
 
+#include "horizon/math/Units.h"
+
 class QSpinBox;
 class QDoubleSpinBox;
 class QCheckBox;
@@ -12,7 +14,9 @@ class PolarArrayDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit PolarArrayDialog(QWidget* parent = nullptr);
+    /// Its centre shown and typed in @p unit, the document's (Phase 154).
+    explicit PolarArrayDialog(QWidget* parent = nullptr,
+                              math::LengthUnit unit = math::LengthUnit::Millimetre);
 
     int count() const;
     double totalAngle() const;

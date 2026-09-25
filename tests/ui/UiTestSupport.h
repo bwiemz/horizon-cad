@@ -102,6 +102,12 @@ struct FormAnswers {
         numbers[name] = value;
         return *this;
     }
+    /// @p text typed into number field @p name, as a user types it ("2 in"),
+    /// and read as the field reads it (Phase 154).
+    FormAnswers& typed(const QString& name, const QString& text) {
+        typedNumbers[name] = text;
+        return *this;
+    }
     /// A text field (QLineEdit) by object name.
     FormAnswers& text(const QString& name, const QString& value) {
         texts[name] = value;
@@ -138,6 +144,7 @@ struct FormAnswers {
     }
 
     std::map<QString, double> numbers;
+    std::map<QString, QString> typedNumbers;
     std::map<QString, QString> texts;
     std::vector<std::pair<QString, QString>> choices;
     std::map<QString, QString> choicesContaining;
@@ -211,6 +218,16 @@ private:
                 ADD_FAILURE() << "no number field " << name.toStdString();
                 return false;
             }
+        }
+        for (const auto& [name, text] : m_answers.typedNumbers) {
+            auto* spin = dialog.findChild<QDoubleSpinBox*>(name);
+            auto* edit = spin ? spin->findChild<QLineEdit*>() : nullptr;
+            if (edit == nullptr) {
+                ADD_FAILURE() << "no number field " << name.toStdString();
+                return false;
+            }
+            edit->setText(text);
+            spin->interpretText();
         }
         for (const auto& [name, value] : m_answers.texts) {
             auto* edit = dialog.findChild<QLineEdit*>(name);

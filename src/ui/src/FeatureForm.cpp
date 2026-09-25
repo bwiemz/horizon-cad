@@ -10,6 +10,8 @@
 #include <QSpinBox>
 #include <cmath>
 
+#include "horizon/ui/QuantitySpinBox.h"
+
 namespace hz::ui {
 
 QString formatPoint(const math::Vec3& p) {
@@ -17,8 +19,8 @@ QString formatPoint(const math::Vec3& p) {
     return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
 }
 
-FeatureForm::FeatureForm(QWidget* parent, const QString& title)
-    : m_dialog(parent), m_form(new QFormLayout(&m_dialog)) {
+FeatureForm::FeatureForm(QWidget* parent, const QString& title, math::LengthUnit unit)
+    : m_dialog(parent), m_form(new QFormLayout(&m_dialog)), m_unit(unit) {
     m_dialog.setWindowTitle(title);
 }
 
@@ -31,6 +33,26 @@ QDoubleSpinBox* FeatureForm::number(const QString& name, const QString& label, d
     spin->setDecimals(decimals);
     spin->setRange(min, max);
     spin->setValue(value);
+    m_form->addRow(label, spin);
+    return spin;
+}
+
+QuantitySpinBox* FeatureForm::length(const QString& name, const QString& label, double mm,
+                                     double min, double max, int decimals) {
+    auto* spin = new QuantitySpinBox(QuantitySpinBox::Kind::Length, m_unit, decimals, &m_dialog);
+    spin->setObjectName(name);
+    spin->setRange(min, max);
+    spin->setValue(mm);
+    m_form->addRow(label, spin);
+    return spin;
+}
+
+QuantitySpinBox* FeatureForm::angle(const QString& name, const QString& label, double degrees,
+                                    double min, double max, int decimals) {
+    auto* spin = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, m_unit, decimals, &m_dialog);
+    spin->setObjectName(name);
+    spin->setRange(min, max);
+    spin->setValue(degrees);
     m_form->addRow(label, spin);
     return spin;
 }
