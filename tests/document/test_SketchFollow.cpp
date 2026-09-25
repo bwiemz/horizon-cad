@@ -62,7 +62,10 @@ struct BoxWithASketchOnTop {
         EXPECT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
         top = box->featureID() + "/top";
         const auto face = hz::model::planeOfFace(*doc.solid(), top);
-        EXPECT_TRUE(face.has_value()) << top;
+        if (!face) {
+            ADD_FAILURE() << "no plane for " << top;
+            return;
+        }
         sketch = std::make_shared<Sketch>(SketchPlane(face->origin, face->normal, Vec3::UnitX));
         sketch->setName("On top");
         sketch->setFace(top);
@@ -113,8 +116,9 @@ TEST(SketchFollowTest, ASketchOnAFaceFollowsItWhenThePartChanges) {
 
     part.setBoxDepth(10.0);
     EXPECT_NEAR(volumeOf(part.doc), 1020.0, 1e-6);
-    ASSERT_TRUE(part.sketch->placed().has_value());
-    const Vec3 placed = part.sketch->placed()->origin();
+    const auto placedPlane = part.sketch->placed();
+    if (!placedPlane) FAIL() << "placed by the build";
+    const Vec3 placed = placedPlane->origin();
     const Vec3 drawn = part.sketch->drawnPlane().origin();
     EXPECT_TRUE(placed.x == drawn.x && placed.y == drawn.y && placed.z == drawn.z)
         << "back on the plane it was drawn on, exactly";
