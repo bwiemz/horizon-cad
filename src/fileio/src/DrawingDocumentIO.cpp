@@ -111,6 +111,7 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
     }
     root["part"] = part;
     root["gap"] = spec.gap;
+    root["scale"] = spec.scale;
 
     json sheet;
     sheet["paper"] = model::paperSizeName(spec.sheet.size);
@@ -149,8 +150,8 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
                                root.dump(2, ' ', false, json::error_handler_t::replace));
 }
 
-bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSpec,
-                             model::Drawing& outDrawing, std::string* error) {
+bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& outSpec,
+                                 std::string* error) {
     const auto fail = [error](const std::string& why) {
         if (error != nullptr) *error = why;
         return false;
@@ -183,6 +184,8 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
     const double versionNumber = number(root, "version", 1.0);
     const int version = std::isfinite(versionNumber) && versionNumber >= 2.0 ? 2 : 1;
     if (version >= 2) {
+        const double scale = number(root, "scale", 0.0);
+        spec.scale = usableScale(scale) ? scale : 0.0;
         const auto sheet = root.find("sheet");
         if (sheet != root.end() && sheet->is_object()) {
             spec.sheet.size = paperNamed(text(*sheet, "paper"), spec.sheet.size);
@@ -249,6 +252,19 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
             }
         }
     }
+    spec.version = version;
+    outSpec = spec;
+    return true;
+}
+
+bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSpec,
+                             model::Drawing& outDrawing, std::string* error) {
+    const auto fail = [error](const std::string& why) {
+        if (error != nullptr) *error = why;
+        return false;
+    };
+    DrawingDocumentSpec spec;
+    if (!readSpec(path, spec, error)) return false;
     outSpec = spec;
 
     // Open and rebuild the referenced part, then project the drawing from it,
@@ -262,14 +278,16 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
         return fail("its part \"" + spec.partPath + "\" did not rebuild");
     }
     // A version 1 file: the four standard views, spaced by its gap, at 1:1.
-    outDrawing = version >= 2 ? build(*partDoc.solid(), spec)
-                              : model::DrawingGenerator::standardViews(*partDoc.solid(), spec.gap);
+    outDrawing = spec.version >= 2
+                     ? build(*partDoc.solid(), spec)
+                     : model::DrawingGenerator::standardViews(*partDoc.solid(), spec.gap);
     return true;
 }
 
 model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingDocumentSpec& spec) {
     if (spec.views.empty()) {
-        return model::DrawingGenerator::sheetLayout(solid, spec.sheet, spec.titleBlock, spec.gap);
+        return model::DrawingGenerator::sheetLayout(solid, spec.sheet, spec.titleBlock, spec.gap,
+                                                    nullptr, spec.scale);
     }
     model::Drawing drawing;
     for (const DrawingViewSpec& v : spec.views) {

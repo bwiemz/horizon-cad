@@ -17,7 +17,7 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 13 (Phases 145–146)
+## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–148)
 
 - **The Linux build opens a window (145).** It was built with a Qt that had
   no platform plugin and no font engine: every headless test passed, and the
@@ -44,6 +44,17 @@ work, not "post-1.0".
 - **CI now runs what it claimed to.** It ran no window test (181), none in
   the Linux Release job, and no OpenGL test. All of them run now, each job
   counts what it ran, and coverage floors hold.
+- **Drawing sheets (148).**
+  - Drawing ▸ New Drawing from Part opens a tab with the part's four
+    standard views on paper, at the largest standard scale that fits, with
+    a border and a title block.
+  - Save it as a `.hzdwg`. It names the part, so it opens again drawn from
+    the part as it is then.
+  - Set the title block, the paper and the scale in forms.
+  - An open sheet is drawn again when its part is saved, or changed by
+    another program.
+  - PDF and SVG export of a sheet start on its paper at 1:1.
+  - A view drawn at a scale states its lengths at 1:1.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**

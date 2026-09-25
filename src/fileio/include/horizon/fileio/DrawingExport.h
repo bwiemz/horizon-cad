@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace hz::topo {
 class Solid;
@@ -26,6 +27,9 @@ namespace hz::io {
 /// its sheet placement so a multi-view drawing lays out without overlap.
 class DrawingExport {
 public:
+    /// The layers populate() draws on: all a drawing's own, none the user's.
+    static const std::vector<std::string>& layers();
+
     /// Draw @p drawing into @p doc, on its layers (Visible, Hidden, Section,
     /// Dimensions, ...): framed by @p sheet's border, and @p titleBlock, when
     /// given. Each view is placed and scaled by DrawingView::toSheet, and

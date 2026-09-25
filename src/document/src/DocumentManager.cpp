@@ -23,6 +23,12 @@ bool DocumentManager::samePath(const std::string& a, const std::string& b) {
     return !a.empty() && !b.empty() && canonicalPath(a) == canonicalPath(b);
 }
 
+void DocumentManager::watch(const std::string& path) {
+    const std::string key = canonicalPath(path);
+    m_placedFiles.insert(key);
+    if (m_watchedFiles.count(key) == 0) watchFile(key);
+}
+
 void DocumentManager::releasePart(const std::string& path) {
     const std::string key = canonicalPath(path);
     const auto it = m_documentsByPath.find(key);

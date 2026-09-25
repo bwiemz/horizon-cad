@@ -123,6 +123,10 @@ public:
     /// Whether @p a and @p b name the same file (canonically).
     static bool samePath(const std::string& a, const std::string& b);
 
+    /// Watch @p path for changes on disk from now on, for as long as the
+    /// manager lives (a part a drawing draws: pollExternalChanges reports it).
+    void watch(const std::string& path);
+
     /// Forget the part at @p path read for components alone, so the next
     /// resolve reads it from its file again (it changed there). A part open
     /// in a tab is kept: its tab's document is the part. Components hold
