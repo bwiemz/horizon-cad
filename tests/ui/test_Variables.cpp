@@ -6,19 +6,31 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTimer>
+#include <QTreeWidget>
 #include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "UiTestSupport.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
+#include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/VariablesDialog.h"
 
+using hz::test::FormAnswers;
+using hz::test::FormFiller;
 using hz::ui::MainWindow;
 using hz::ui::VariablesDialog;
 
@@ -122,4 +134,157 @@ TEST(VariablesDialogTest, ALoopIsRefusedAndNothingChanges) {
         << answer.refused().toStdString();
     EXPECT_TRUE(document.parameterRegistry().definitions().empty());
     EXPECT_FALSE(document.undoStack().canUndo());
+}
+
+namespace {
+
+double partVolume(const hz::doc::Document& doc) {
+    return doc.solid() ? hz::model::MassPropertiesCalculator::compute(*doc.solid()).volume : 0.0;
+}
+
+void editFirstFeature(MainWindow& w) {
+    auto* panel = w.findChild<hz::ui::FeatureTreePanel*>();
+    ASSERT_NE(panel, nullptr);
+    auto* tree = panel->findChild<QTreeWidget*>();
+    ASSERT_NE(tree, nullptr);
+    tree->setCurrentItem(tree->topLevelItem(0));
+    auto* edit = panel->findChild<QAction*>(QStringLiteral("editFeature"));
+    ASSERT_NE(edit, nullptr);
+    edit->trigger();
+}
+
+}  // namespace
+
+// A field takes "=expression": it shows it, and holds its value; a number
+// typed, or stepped to, is a number again.
+TEST(VariablesDialogTest, AFieldTakesAnExpression) {
+    using hz::ui::QuantitySpinBox;
+    QuantitySpinBox field(QuantitySpinBox::Kind::Length, hz::math::LengthUnit::Millimetre, 3);
+    field.setRange(0.0, 1e6);
+    field.setResolver(
+        [](const std::string& text, std::string* why) -> std::optional<QuantitySpinBox::Worked> {
+            if (text == "wall * 2") return QuantitySpinBox::Worked{6.0, "(wall * 2)"};
+            if (why != nullptr) *why = "no";
+            return std::nullopt;
+        });
+    auto* edit = field.findChild<QLineEdit*>();
+    ASSERT_NE(edit, nullptr);
+    edit->setText(QStringLiteral("=wall * 2"));
+    field.interpretText();
+    EXPECT_DOUBLE_EQ(field.value(), 6.0);
+    EXPECT_EQ(field.expression(), "(wall * 2)");
+    EXPECT_EQ(field.text(), QStringLiteral("=wall * 2")) << "shown without its outer brackets";
+    field.interpretText();
+    EXPECT_EQ(field.expression(), "(wall * 2)") << "entered as shown, it stays";
+
+    edit->setText(QStringLiteral("=nosuch"));
+    field.interpretText();
+    EXPECT_DOUBLE_EQ(field.value(), 6.0) << "what cannot be worked out changes nothing";
+
+    field.stepBy(1);
+    EXPECT_TRUE(field.expression().empty()) << "stepped to: a number";
+    field.setExpression("(wall * 2)", 6.0);
+    edit->setText(QStringLiteral("4"));
+    field.interpretText();
+    EXPECT_TRUE(field.expression().empty()) << "typed: a number";
+    EXPECT_DOUBLE_EQ(field.value(), 4.0);
+}
+
+// A box's width given as an expression of a variable, in a part in inches:
+// kept with its unit, followed when the variable changes, taken back by
+// undo.
+TEST(VariablesDialogTest, AFeaturesSizeIsAnExpressionOfAVariable) {
+    MainWindow w;
+    {
+        FormFiller units(
+            QStringLiteral("Document Units"),
+            FormAnswers().choose(QStringLiteral("unit"), QStringLiteral("Inches (in)")));
+        trigger(w, "action_document_units");
+        ASSERT_TRUE(units.seen());
+    }
+    {
+        FormFiller box(QStringLiteral("Box"),
+                       FormAnswers()
+                           .typed(QStringLiteral("size0"), QStringLiteral("1"))
+                           .typed(QStringLiteral("size1"), QStringLiteral("1"))
+                           .typed(QStringLiteral("size2"), QStringLiteral("1")));
+        trigger(w, "action_box");
+        ASSERT_TRUE(box.seen());
+    }
+    hz::doc::Document& doc = *w.activeDocument();
+    {
+        VariablesAnswer answer({{QStringLiteral("wall"), QStringLiteral("0.5 in")}});
+        trigger(w, "action_variables");
+        ASSERT_TRUE(answer.seen());
+    }
+    {
+        FormFiller edit(
+            QStringLiteral("Edit Box"),
+            FormAnswers().typed(QStringLiteral("width"), QStringLiteral("=wall * 4 + 1")));
+        editFirstFeature(w);
+        ASSERT_TRUE(edit.seen());
+    }
+    const hz::doc::Feature* box = doc.featureTree().feature(0);
+    ASSERT_NE(box, nullptr);
+    EXPECT_EQ(box->parameterExpressions().at("width"), "((wall * 4) + (1 in))")
+        << "a bare number kept in the unit it was typed in";
+    EXPECT_NEAR(partVolume(doc), 3 * 25.4 * 25.4 * 25.4, 1e-6);
+
+    doc.undoStack().push(std::make_unique<hz::doc::SetVariablesCommand>(
+        doc, std::map<std::string, std::string>{{"wall", "1 in"}}));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    EXPECT_NEAR(partVolume(doc), 5 * 25.4 * 25.4 * 25.4, 1e-6) << "it follows the variable";
+
+    doc.undoStack().undo();  // the variable
+    doc.undoStack().undo();  // the edit
+    EXPECT_TRUE(box->parameterExpressions().empty());
+}
+
+// Built on a worker, from a copy: the part's own feature still holds the
+// value its expression works out to, and a save writes that beside it.
+TEST(VariablesDialogTest, AnExpressionWorkedOutOnAWorkerIsKeptInThePart) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    {
+        FormFiller box(QStringLiteral("Box"), FormAnswers()
+                                                  .number(QStringLiteral("size0"), 10.0)
+                                                  .number(QStringLiteral("size1"), 10.0)
+                                                  .number(QStringLiteral("size2"), 10.0));
+        trigger(w, "action_box");
+        ASSERT_TRUE(box.seen());
+    }
+    const auto settle = [&w] {
+        QElapsedTimer waited;
+        waited.start();
+        while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+    };
+    settle();
+    hz::doc::Document& doc = *w.activeDocument();
+    {
+        VariablesAnswer answer({{QStringLiteral("wall"), QStringLiteral("3 mm")}});
+        trigger(w, "action_variables");
+        ASSERT_TRUE(answer.seen());
+    }
+    settle();
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().typed(QStringLiteral("width"), QStringLiteral("=wall * 2")));
+        editFirstFeature(w);
+        ASSERT_TRUE(edit.seen());
+    }
+    settle();
+    // wall to 5 mm; then undone and done again from the menu, which builds
+    // the part on the worker each time.
+    doc.undoStack().push(std::make_unique<hz::doc::SetVariablesCommand>(
+        doc, std::map<std::string, std::string>{{"wall", "5 mm"}}));
+    trigger(w, "action_undo");
+    settle();
+    trigger(w, "action_redo");
+    settle();
+    EXPECT_FALSE(doc.needsBuild());
+    EXPECT_DOUBLE_EQ(doc.featureTree().feature(0)->parameters().at("width"), 10.0)
+        << "the part's own feature, not only the worker's copy";
+    EXPECT_NEAR(partVolume(doc), 1000.0, 1e-6);
 }

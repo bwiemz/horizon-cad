@@ -229,14 +229,30 @@ written, and a plain number means a plain number.
 - Saved as before (`designVariables`, with the expression). An older build
   reads an expression with a unit as unparseable and keeps the value.
 
-### 155c: feature parameters as expressions
-- A length or angle field takes "=expression" ("=wall * 2"). It keeps the
-  expression, normalized, and shows its value.
-- In the Edit Feature form, a parameter given an expression keeps it
-  (`Feature::parameterExpressions`), saved beside the number, which an
-  older build reads.
-- On each build, a feature's expressions are evaluated against the
-  document's variables. A failure is that feature's build error.
+### 155c: feature parameters as expressions (as built)
+- **`Feature::parameterExpressions`** holds the kept expressions, by
+  parameter. `expressionError` is set when one can't be evaluated.
+- **`Document::applyExpressions`**, run first by `buildWithDiagnostics`
+  (which `rebuildModel` and the worker's `RebuildJob` both call):
+  - evaluates each expression against the variables;
+  - checks it measures what its parameter is: a length, an angle, or a
+    plain number for a count;
+  - sets the parameter.
+  - A failure fails that feature's build with the reason, and the part
+    stands as it did before it.
+- **NativeFormat** saves `expressions` beside the parameters. The
+  parameters hold the values last worked out, which an older build reads.
+- **`EditFeatureCommand`** takes expression changes (an empty one returns
+  the parameter to a number), and undo restores all of them.
+- **`QuantitySpinBox`**:
+  - takes "=expression" through a resolver, and shows the expression
+    without its outer brackets;
+  - stepping or typing a number drops the expression;
+  - Qt rounds a value to the field's places by multiplying, so the field
+    recognises its expression's value within a tolerance.
+- **The Edit Feature form** gives each length and angle field a resolver
+  that normalizes in the document's unit, shows a stored expression, and
+  passes changes to the command.
 
 ## Phase 156: Configurations (outline)
 - A design table of variable values per configuration, saved.

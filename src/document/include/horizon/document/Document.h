@@ -119,6 +119,16 @@ public:
     /// with a null solid.
     bool rebuildModel();
 
+    /// Each feature's parameter expressions worked out against the
+    /// document's variables, and its parameters set to them (Phase 155).
+    /// One that cannot be (a missing variable, a length where an angle
+    /// goes) is its feature's expressionError, where the build fails.
+    void applyExpressions();
+
+    /// The part built, its expressions first worked out: what
+    /// rebuildModel() applies, and a worker builds from a snapshot.
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr);
+
     /// Take the result of a build made elsewhere (a worker's, from a
     /// snapshot of this document), as rebuildModel() takes its own. A
     /// cancelled build leaves the model as it was. Returns true when no

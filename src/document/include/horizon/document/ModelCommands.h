@@ -108,11 +108,14 @@ std::vector<std::string> refusedVectors(Feature& feature,
 /// chord tolerance).
 class EditFeatureCommand : public Command {
 public:
-    /// @p vectors are directions and points to set (Feature::setVector).
+    /// @p vectors are directions and points to set (Feature::setVector);
+    /// @p expressions parameters given as expressions (Phase 155), an empty
+    /// one given its number again.
     EditFeatureCommand(Document& doc, const Feature* feature,
                        std::map<std::string, double> parameters,
                        std::optional<BodyOperation> operation = std::nullopt,
-                       std::map<std::string, math::Vec3> vectors = {});
+                       std::map<std::string, math::Vec3> vectors = {},
+                       std::map<std::string, std::string> expressions = {});
 
     void execute() override;
     void undo() override;
@@ -120,7 +123,8 @@ public:
 
 private:
     void apply(const std::map<std::string, double>& parameters, BodyOperation operation,
-               const std::map<std::string, math::Vec3>& vectors);
+               const std::map<std::string, math::Vec3>& vectors,
+               const std::map<std::string, std::string>& expressions);
 
     Document& m_doc;
     const Feature* m_feature;
@@ -130,6 +134,8 @@ private:
     BodyOperation m_oldOperation = BodyOperation::NewBody;
     std::map<std::string, math::Vec3> m_newVectors;
     std::map<std::string, math::Vec3> m_oldVectors;
+    std::map<std::string, std::string> m_newExpressions;  ///< the changes
+    std::map<std::string, std::string> m_oldExpressions;  ///< all of them, before
 };
 
 /// Roll the part back to just after feature @p index (-1: to the end): the

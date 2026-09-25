@@ -183,10 +183,34 @@ public:
     model::NamingScheme naming() const { return m_naming; }
     void setNaming(model::NamingScheme naming) { m_naming = naming; }
 
+    /// Parameters given as expressions of the document's variables (Phase
+    /// 155), by name, each as it is kept ("(wall * 2)"). The parameter
+    /// itself holds the value it last worked out to, which a file keeps
+    /// too, for a build that reads no expressions.
+    const std::map<std::string, std::string>& parameterExpressions() const { return m_expressions; }
+    /// Parameter @p name given as @p expression; an empty one: its number
+    /// again.
+    void setParameterExpression(const std::string& name, const std::string& expression) {
+        if (expression.empty()) {
+            m_expressions.erase(name);
+        } else {
+            m_expressions[name] = expression;
+        }
+    }
+    void setParameterExpressions(std::map<std::string, std::string> expressions) {
+        m_expressions = std::move(expressions);
+    }
+    /// Why one of its expressions could not be worked out when the part
+    /// was last built; empty when each was. The build fails at it.
+    const std::string& expressionError() const { return m_expressionError; }
+    void setExpressionError(std::string error) { m_expressionError = std::move(error); }
+
 private:
     BodyOperation m_operation = BodyOperation::NewBody;
     bool m_suppressed = false;
     model::NamingScheme m_naming = model::NamingScheme::Stable;
+    std::map<std::string, std::string> m_expressions;
+    std::string m_expressionError;
 };
 
 /// Extrude feature: creates a solid by extruding a sketch profile along a direction.

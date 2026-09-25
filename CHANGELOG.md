@@ -27,6 +27,17 @@ work, not "post-1.0".
     nothing ("2 mm + 1") is refused, with the reason.
   - Expressions take units (mm, cm, m, in, ft, deg, rad), and a length is
     only added to a length.
+- **Feature sizes as expressions (155, part 2).**
+  - In Edit Feature, a length or an angle can be "=wall * 2". It is worked
+    out every time the part is built, so changing a variable changes the
+    part.
+  - A plain number is kept in the unit it was typed in ("wall + 1" typed in
+    inches is kept as "wall + 1 in"), so changing the document's unit
+    changes nothing.
+  - An expression that can't be worked out fails its feature, with the
+    reason.
+  - Files keep the value beside the expression, and an older version reads
+    the value.
 
 - **Document units (154, part 1).**
   - Each part, drawing, sheet and assembly has its own unit: millimetres,

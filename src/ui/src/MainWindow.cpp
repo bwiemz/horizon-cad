@@ -66,8 +66,10 @@
 #include "horizon/fileio/SvgExport.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Expression.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/MathUtils.h"
+#include "horizon/math/Quantity.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
@@ -4819,24 +4821,57 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     struct Field {
         std::function<double()> read;  ///< in the parameter's own units
         std::function<bool()> touched;
+        /// The expression it is given, as kept; empty for a number
+        /// (Phase 155). Null for a field that takes none.
+        std::function<std::string()> expression;
     };
     std::map<std::string, Field> fields;
+    // A length or an angle may be "=expression" of the document's
+    // variables, kept with its units written.
+    const auto resolverFor = [this](math::QuantityKind kind) -> QuantitySpinBox::Resolver {
+        return [this, kind](const std::string& text,
+                            std::string* why) -> std::optional<QuantitySpinBox::Worked> {
+            const auto parsed = math::Expression::parse(text);
+            if (!parsed) {
+                if (why != nullptr) *why = "it is not an expression";
+                return std::nullopt;
+            }
+            const auto variables = m_document->parameterRegistry().quantities();
+            const auto kept =
+                math::normalized(*parsed, variables, kind, m_document->lengthUnit(), why);
+            if (!kept) return std::nullopt;
+            const auto q = math::evaluateQuantity(*kept, variables, why);
+            if (!q) return std::nullopt;
+            return QuantitySpinBox::Worked{
+                kind == math::QuantityKind::Angle ? q->value * math::kRadToDeg : q->value,
+                kept->toString()};
+        };
+    };
+    const auto expressionOf = [feat](const std::string& name) {
+        const auto found = feat->parameterExpressions().find(name);
+        return found != feat->parameterExpressions().end() ? found->second : std::string();
+    };
     for (const auto& [name, value] : params) {
         const QString key = QString::fromStdString(name);
         switch (feat->parameterKind(name)) {
             case Kind::Angle: {
                 auto* spin = form.angle(key, parameterLabel(name) + QStringLiteral(":"),
                                         value * math::kRadToDeg, -1e6, 1e6, 3);
+                spin->setResolver(resolverFor(math::QuantityKind::Angle));
+                if (const std::string kept = expressionOf(name); !kept.empty()) {
+                    spin->setExpression(kept, value * math::kRadToDeg);
+                }
                 fields[name] = {[spin] { return spin->value() * math::kDegToRad; },
-                                [spin, shown = spin->value()] { return spin->value() != shown; }};
+                                [spin, shown = spin->value()] { return spin->value() != shown; },
+                                [spin] { return spin->expression(); }};
                 break;
             }
             case Kind::Count: {
                 auto* count = form.count(key, parameterLabel(name) + QStringLiteral(":"),
                                          static_cast<int>(std::lround(value)), 0, 1000000);
-                fields[name] = {
-                    [count] { return static_cast<double>(count->value()); },
-                    [count, shown = count->value()] { return count->value() != shown; }};
+                fields[name] = {[count] { return static_cast<double>(count->value()); },
+                                [count, shown = count->value()] { return count->value() != shown; },
+                                nullptr};
                 break;
             }
             case Kind::Choice: {
@@ -4851,14 +4886,20 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                 fields[name] = {[choice] { return static_cast<double>(choice->currentIndex()); },
                                 [choice, shown = choice->currentIndex()] {
                                     return choice->currentIndex() != shown;
-                                }};
+                                },
+                                nullptr};
                 break;
             }
             case Kind::Length: {
                 auto* spin = form.length(key, parameterLabel(name) + QStringLiteral(":"), value,
                                          -1e9, 1e9, 4);
+                spin->setResolver(resolverFor(math::QuantityKind::Length));
+                if (const std::string kept = expressionOf(name); !kept.empty()) {
+                    spin->setExpression(kept, value);
+                }
                 fields[name] = {[spin] { return spin->value(); },
-                                [spin, shown = spin->value()] { return spin->value() != shown; }};
+                                [spin, shown = spin->value()] { return spin->value() != shown; },
+                                [spin] { return spin->expression(); }};
                 break;
             }
         }
@@ -4911,8 +4952,12 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     if (!form.exec()) return;
 
     std::map<std::string, double> changed;
+    std::map<std::string, std::string> changedExpressions;  // empty: a number again
     for (const auto& [name, field] : fields) {
         if (field.touched()) changed[name] = field.read();
+        if (field.expression && field.expression() != expressionOf(name)) {
+            changedExpressions[name] = field.expression();
+        }
     }
     std::map<std::string, math::Vec3> changedVectors;
     for (const auto& [name, read] : vectorFields) {
@@ -4942,10 +4987,13 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         const auto chosen = FeatureForm::operation(result);
         if (chosen != feat->operation()) operation = chosen;
     }
-    if (changed.empty() && changedVectors.empty() && !operation) return;
+    if (changed.empty() && changedVectors.empty() && !operation && changedExpressions.empty()) {
+        return;
+    }
 
     m_document->undoStack().push(std::make_unique<doc::EditFeatureCommand>(
-        *m_document, feat, std::move(changed), operation, std::move(changedVectors)));
+        *m_document, feat, std::move(changed), operation, std::move(changedVectors),
+        std::move(changedExpressions)));
     rebuildFeatureTree();
 }
 
@@ -5032,6 +5080,10 @@ void MainWindow::startRebuild() {
         return;
     }
     m_rebuildDocument = m_document;
+    // Expressions worked out here, on the document itself (Phase 155): the
+    // worker works them out on its copy, which goes when it is done, and
+    // the parameters kept (and saved) are these.
+    m_document->applyExpressions();
     m_rebuildJob = std::make_unique<RebuildJob>(*m_document);
     m_rebuildClock.start();
     // Posted from the worker to this window's thread. The destructor waits

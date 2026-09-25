@@ -1655,8 +1655,9 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             continue;
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
-        std::string reason;
-        auto next = applyFeature(feature, std::move(solid), &reason, before);
+        std::string reason = feature.expressionError();  // Phase 155
+        auto next =
+            reason.empty() ? applyFeature(feature, std::move(solid), &reason, before) : nullptr;
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()
