@@ -26,6 +26,18 @@ struct DrawingDimensionSpec {
     Kind kind = Kind::Length;
 };
 
+/// Where a view was on the sheet when it was saved (Phase 150): what it is,
+/// and its rectangle. What was drawn in it is carried from there to where
+/// the view is drawn when the sheet is opened: the part may have changed
+/// since, and its views moved.
+struct DrawingViewFrame {
+    model::ViewRole role = model::ViewRole::Projection;
+    model::StandardView kind = model::StandardView::Front;
+    std::string label;
+    math::Vec2 low;
+    math::Vec2 high;
+};
+
 /// One view of a drawing, as saved: how it looks at the part, and where and
 /// how large it sits on the sheet. Its geometry is not saved: it is projected
 /// again from the part when the drawing is read (Principle 9).
@@ -62,6 +74,8 @@ struct DrawingDocumentSpec {
     /// layers and blocks, and the dimension style, as a document of their
     /// own. Null: nothing.
     std::shared_ptr<doc::Document> annotations;
+    /// Where the views were when the annotations were saved.
+    std::vector<DrawingViewFrame> frames;
     /// The format version it was read from: 1 lays out the standard views
     /// by the gap at 1:1, as version 1 did; 2 is the sheet layout; 3 adds
     /// sections and details.

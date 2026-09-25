@@ -126,8 +126,10 @@ std::shared_ptr<doc::Document> annotationsOf(const doc::Document& sheet) {
 /// @p notes drawn on @p sheet again: its layers and blocks where the sheet
 /// has none of those names, its dimension style, and its entities.
 void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
+    // Each layer as it was saved, "0" too: a document starts with a "0" of
+    // its own, and keeping that one lost how the user had set theirs.
     for (const std::string& name : notes.layerManager().layerNames()) {
-        if (ownLayer(name) || sheet.layerManager().getLayer(name) != nullptr) continue;
+        if (ownLayer(name)) continue;
         if (const auto* layer = notes.layerManager().getLayer(name)) {
             sheet.layerManager().addLayer(*layer);
         }
@@ -142,6 +144,35 @@ void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
         if (ownLayer(entity->layer())) continue;  // the sheet draws those itself
         sheet.draftDocument().addEntity(entity->clone());
     }
+}
+
+/// Where @p drawing's views are on the sheet, as saved with its annotations.
+std::vector<io::DrawingViewFrame> framesOf(const model::Drawing& drawing) {
+    std::vector<io::DrawingViewFrame> frames;
+    for (const model::DrawingView& v : drawing.views) {
+        frames.push_back({v.role,
+                          v.kind,
+                          v.label,
+                          v.placement,
+                          {v.placement.x + v.sheetWidth(), v.placement.y + v.sheetHeight()}});
+    }
+    return frames;
+}
+
+/// The views where @p frames say they were: enough of each to carry what
+/// was drawn in it (carryAnnotations).
+model::Drawing drawingOf(const std::vector<io::DrawingViewFrame>& frames) {
+    model::Drawing drawing;
+    for (const io::DrawingViewFrame& f : frames) {
+        model::DrawingView v;
+        v.role = f.role;
+        v.kind = f.kind;
+        v.label = f.label;
+        v.placement = f.low;
+        v.boundsMax = f.high - f.low;
+        drawing.views.push_back(std::move(v));
+    }
+    return drawing;
 }
 
 /// What was drawn by hand inside a view moves with the view: each view of
@@ -468,8 +499,14 @@ bool DrawingWorkbench::open(const QString& fileName) {
     }
     // What was drawn on it by hand, back where it was: the document holds it
     // from here on, and a save writes it from there.
-    if (spec.annotations) placeAnnotations(*document, *spec.annotations);
+    if (spec.annotations) {
+        placeAnnotations(*document, *spec.annotations);
+        // The part may have changed since: from where the views were then
+        // to where they are drawn now.
+        carryAnnotations(*document, drawingOf(spec.frames), drawing);
+    }
     spec.annotations.reset();
+    spec.frames.clear();
     document->setFilePath(path);
     document->setDirty(false);
     for (const std::string& file : files) m_host.documents().watch(file);
@@ -489,6 +526,7 @@ bool DrawingWorkbench::save(doc::Document& document, const std::string& path, st
     // Its spec, and what was drawn on it by hand.
     io::DrawingDocumentSpec written = sheet->spec;
     written.annotations = annotationsOf(document);
+    if (written.annotations) written.frames = framesOf(sheet->drawing);
     if (!io::DrawingDocumentIO::save(path, written)) {
         if (error != nullptr) *error = "the file could not be written";
         return false;
@@ -518,8 +556,12 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     }
     document.draftDocument().removeEntities(byHand);
     document.undoStack().clear();
-    if (spec.annotations) placeAnnotations(document, *spec.annotations);
+    if (spec.annotations) {
+        placeAnnotations(document, *spec.annotations);
+        carryAnnotations(document, drawingOf(spec.frames), drawing);
+    }
     spec.annotations.reset();
+    spec.frames.clear();
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
     for (const std::string& file : files) m_host.documents().watch(file);

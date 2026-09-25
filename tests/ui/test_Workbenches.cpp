@@ -479,6 +479,9 @@ TEST(WorkbenchesTest, WhatIsDrawnByHandIsSavedWithTheSheet) {
     notes.color = 0xFFFF0000;
     sheet.layerManager().addLayer(notes);
     note(sheet, {50.0, 30.0}, "DEBURR ALL EDGES", "Notes");
+    // Layer "0" as the user set it: a document starts with one of its own.
+    sheet.layerManager().getLayer("0")->color = 0xFF00FF00;
+    sheet.layerManager().getLayer("0")->locked = true;
     auto style = sheet.draftDocument().dimensionStyle();
     style.textHeight = 5.0;
     sheet.draftDocument().setDimensionStyle(style);
@@ -501,6 +504,9 @@ TEST(WorkbenchesTest, WhatIsDrawnByHandIsSavedWithTheSheet) {
     ASSERT_NE(back.layerManager().getLayer("Notes"), nullptr);
     EXPECT_EQ(back.layerManager().getLayer("Notes")->color, 0xFFFF0000u);
     EXPECT_DOUBLE_EQ(back.draftDocument().dimensionStyle().textHeight, 5.0);
+    ASSERT_NE(back.layerManager().getLayer("0"), nullptr);
+    EXPECT_EQ(back.layerManager().getLayer("0")->color, 0xFF00FF00u) << "as set, not as new";
+    EXPECT_TRUE(back.layerManager().getLayer("0")->locked);
     EXPECT_FALSE(back.isDirty());
 
     // Another note, then the file read again: the file's alone.
@@ -570,4 +576,44 @@ TEST(WorkbenchesTest, WhatIsDrawnInAViewMovesWithIt) {
     EXPECT_NEAR(inside->position().x, moved.x + 12.0, 1e-9);
     EXPECT_NEAR(inside->position().y, moved.y - 7.0, 1e-9);
     EXPECT_NEAR(outside->position().x, 15.0, 1e-12);
+}
+
+// A note saved in a view is where the view is when the sheet is opened
+// again, though the part changed in between and the view moved.
+TEST(WorkbenchesTest, ANoteFollowsItsViewAcrossAChangeWhileTheSheetWasClosed) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+    const hz::math::Vec2 before = centreOf(cubeLayout(cube).views[0]);
+    {
+        StandInHost host;
+        hz::ui::DrawingWorkbench workbench(host);
+        ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+        hz::doc::Document& sheet = *host.tabs.back().first;
+        note(sheet, before, "IN FRONT", "0");
+        std::string error;
+        ASSERT_TRUE(workbench.save(sheet, sheetPath, &error)) << error;
+    }
+    // Closed; the part grows.
+    {
+        hz::doc::Document part;
+        ASSERT_TRUE(hz::io::NativeFormat::load(cube.toStdString(), part));
+        ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", 25.0));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(cube.toStdString(), part));
+    }
+    const hz::math::Vec2 after = centreOf(cubeLayout(cube).views[0]);
+    ASSERT_GT(std::hypot(after.x - before.x, after.y - before.y), 1.0) << "Front moved";
+
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    const auto found = notesSaying(*host.tabs.back().first, "IN FRONT");
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_NEAR(found[0]->position().x, after.x, 1e-9) << "at Front's centre, where it is now";
+    EXPECT_NEAR(found[0]->position().y, after.y, 1e-9);
 }
