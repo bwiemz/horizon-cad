@@ -78,6 +78,10 @@ bool AssemblyDocument::removeComponent(uint64_t id) {
                            [id](const ComponentInstance& c) { return c.id == id; });
     if (it == m_components.end()) return false;
     m_components.erase(it);
+    // Its mates go with it: one left referring to it made every later solve
+    // fail (InvalidReference).
+    std::erase_if(m_mates,
+                  [id](const Mate& m) { return m.a.componentId == id || m.b.componentId == id; });
     m_dirty = true;
     return true;
 }

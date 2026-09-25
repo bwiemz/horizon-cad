@@ -56,6 +56,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/PendingAdds.h
     include/horizon/ui/ViewportRenderer.h
     include/horizon/ui/FeatureTreePanel.h
+    include/horizon/ui/AssemblyTreePanel.h
     include/horizon/ui/FeatureForm.h
     include/horizon/ui/LocaleManager.h
     include/horizon/ui/CommandPalette.h
@@ -134,6 +135,7 @@ add_library(hz_ui STATIC
     src/RibbonBar.cpp
     src/OverlayRenderer.cpp
     src/FeatureTreePanel.cpp
+    src/AssemblyTreePanel.cpp
 )
 
 target_include_directories(hz_ui

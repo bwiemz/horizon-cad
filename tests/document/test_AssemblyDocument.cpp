@@ -177,6 +177,32 @@ TEST(AssemblyDocumentTest, MateManagement) {
     EXPECT_TRUE(asmDoc.mates().empty());
 }
 
+// A component removed takes its mates with it (Phase 143): one left behind
+// referred to nothing, and every later solve failed. The others stay.
+TEST(AssemblyDocumentTest, RemovingAComponentRemovesItsMates) {
+    AssemblyDocument asmDoc;
+    const uint64_t base = asmDoc.addComponent(ComponentInstance{});
+    const uint64_t lid = asmDoc.addComponent(ComponentInstance{});
+    const uint64_t pin = asmDoc.addComponent(ComponentInstance{});
+    Mate onBase;
+    onBase.a = {base, hz::topo::TopologyID::make("p", "top")};
+    onBase.b = {lid, hz::topo::TopologyID::make("p", "bottom")};
+    Mate onPin;
+    onPin.a = {lid, hz::topo::TopologyID::make("p", "top")};
+    onPin.b = {pin, hz::topo::TopologyID::make("p", "bottom")};
+    asmDoc.addMate(onBase);
+    const uint64_t kept = asmDoc.addMate(onPin);
+
+    const auto before = asmDoc.snapshot();
+    EXPECT_TRUE(asmDoc.removeComponent(base));
+    ASSERT_EQ(asmDoc.mates().size(), 1u);
+    EXPECT_EQ(asmDoc.mates().front().id, kept);
+
+    asmDoc.restore(before);
+    EXPECT_EQ(asmDoc.components().size(), 3u);
+    EXPECT_EQ(asmDoc.mates().size(), 2u) << "put back, mates and all";
+}
+
 // ---------------------------------------------------------------------------
 // Interference (Phase 96).  The checker existed in the modeling layer (Phase
 // 48) and nothing in the document or the UI called it.
