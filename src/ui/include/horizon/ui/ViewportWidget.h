@@ -256,6 +256,7 @@ private:
     /// initializeGL() got an OpenGL 3.3 context and built the renderer:
     /// paintGL() and resizeGL() may use it.
     bool m_glReady = false;
+    bool m_dofQueued = false;  ///< the DOF analysis is to run after this paint
     bool m_graphicsCheckScheduled = false;
     bool m_graphicsProblemReported = false;
     /// Snap the camera to the standard view requested by a view-cube click.

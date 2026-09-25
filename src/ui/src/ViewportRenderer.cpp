@@ -156,18 +156,20 @@ void ViewportRenderer::destroyGL(QOpenGLExtraFunctions* gl) {
 // DOF visualization
 // ---------------------------------------------------------------------------
 
-void ViewportRenderer::recomputeDOF(doc::Document* doc) {
+bool ViewportRenderer::dofStale(const doc::Document* doc) const {
     const std::uint64_t revision = doc ? doc->undoStack().revision() : 0;
     // The drawing too: editing a sketch changes what is drawn, not the
     // document's revision.
     const draft::DraftDocument* drawing = doc ? &doc->activeDrawing() : nullptr;
-    if (!m_dofDirty && doc == m_dofDocument && revision == m_dofRevision &&
-        drawing == m_dofDrawing) {
-        return;
-    }
+    return m_dofDirty || doc != m_dofDocument || revision != m_dofRevision ||
+           drawing != m_dofDrawing;
+}
+
+void ViewportRenderer::recomputeDOF(doc::Document* doc) {
+    if (!dofStale(doc)) return;
     m_dofDocument = doc;
-    m_dofRevision = revision;
-    m_dofDrawing = drawing;
+    m_dofRevision = doc ? doc->undoStack().revision() : 0;
+    m_dofDrawing = doc ? &doc->activeDrawing() : nullptr;
     ++m_dofComputations;
     if (!doc) {
         m_dofAnalysis = {};

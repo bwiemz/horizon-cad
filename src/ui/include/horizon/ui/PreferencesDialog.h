@@ -24,6 +24,7 @@ public:
 
 private:
     QSpinBox* m_autosaveMinutes = nullptr;
+    QSpinBox* m_undoLimit = nullptr;
     QComboBox* m_language = nullptr;
     QDoubleSpinBox* m_gridSpacing = nullptr;
     QSpinBox* m_snapPixels = nullptr;

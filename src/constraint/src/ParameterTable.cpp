@@ -65,19 +65,23 @@ int ParameterTable::registerEntity(const draft::DraftEntity& entity) {
         return -1;
     }
 
+    m_byId.emplace(ep.entityId, m_entityParams.size());
     m_entityParams.push_back(ep);
     return startIdx;
 }
 
 const ParameterTable::EntityParams* ParameterTable::findEntityParams(uint64_t entityId) const {
-    for (const auto& ep : m_entityParams) {
-        if (ep.entityId == entityId) return &ep;
-    }
-    return nullptr;
+    const auto it = m_byId.find(entityId);
+    return it == m_byId.end() ? nullptr : &m_entityParams[it->second];
 }
 
 bool ParameterTable::hasEntity(uint64_t entityId) const {
     return findEntityParams(entityId) != nullptr;
+}
+
+std::pair<int, int> ParameterTable::parameterRange(uint64_t entityId) const {
+    const auto* ep = findEntityParams(entityId);
+    return ep ? std::pair<int, int>{ep->startIndex, ep->paramCount} : std::pair<int, int>{0, 0};
 }
 
 int ParameterTable::parameterIndex(const GeometryRef& ref) const {
@@ -229,35 +233,36 @@ std::pair<math::Vec2, double> ParameterTable::circleData(const GeometryRef& ref)
 
 void ParameterTable::applyToEntities(
     std::vector<std::shared_ptr<draft::DraftEntity>>& entities) const {
-    for (const auto& ep : m_entityParams) {
-        for (auto& entity : entities) {
-            if (entity->id() != ep.entityId) continue;
-            int base = ep.startIndex;
+    for (auto& entity : entities) {
+        if (entity) applyToEntity(*entity);
+    }
+}
 
-            if (auto* line = dynamic_cast<draft::DraftLine*>(entity.get())) {
-                line->setStart({m_values(base), m_values(base + 1)});
-                line->setEnd({m_values(base + 2), m_values(base + 3)});
-            } else if (auto* circle = dynamic_cast<draft::DraftCircle*>(entity.get())) {
-                circle->setCenter({m_values(base), m_values(base + 1)});
-                circle->setRadius(m_values(base + 2));
-            } else if (auto* arc = dynamic_cast<draft::DraftArc*>(entity.get())) {
-                arc->setCenter({m_values(base), m_values(base + 1)});
-                arc->setRadius(m_values(base + 2));
-                arc->setStartAngle(m_values(base + 3));
-                arc->setEndAngle(m_values(base + 4));
-            } else if (auto* rect = dynamic_cast<draft::DraftRectangle*>(entity.get())) {
-                rect->setCorner1({m_values(base), m_values(base + 1)});
-                rect->setCorner2({m_values(base + 2), m_values(base + 3)});
-            } else if (auto* poly = dynamic_cast<draft::DraftPolyline*>(entity.get())) {
-                int n = ep.paramCount / 2;
-                std::vector<math::Vec2> pts(n);
-                for (int i = 0; i < n; ++i) {
-                    pts[i] = {m_values(base + 2 * i), m_values(base + 2 * i + 1)};
-                }
-                poly->setPoints(pts);
-            }
-            break;
+void ParameterTable::applyToEntity(draft::DraftEntity& entity) const {
+    const EntityParams* ep = findEntityParams(entity.id());
+    if (!ep) return;
+    const int base = ep->startIndex;
+    if (auto* line = dynamic_cast<draft::DraftLine*>(&entity)) {
+        line->setStart({m_values(base), m_values(base + 1)});
+        line->setEnd({m_values(base + 2), m_values(base + 3)});
+    } else if (auto* circle = dynamic_cast<draft::DraftCircle*>(&entity)) {
+        circle->setCenter({m_values(base), m_values(base + 1)});
+        circle->setRadius(m_values(base + 2));
+    } else if (auto* arc = dynamic_cast<draft::DraftArc*>(&entity)) {
+        arc->setCenter({m_values(base), m_values(base + 1)});
+        arc->setRadius(m_values(base + 2));
+        arc->setStartAngle(m_values(base + 3));
+        arc->setEndAngle(m_values(base + 4));
+    } else if (auto* rect = dynamic_cast<draft::DraftRectangle*>(&entity)) {
+        rect->setCorner1({m_values(base), m_values(base + 1)});
+        rect->setCorner2({m_values(base + 2), m_values(base + 3)});
+    } else if (auto* poly = dynamic_cast<draft::DraftPolyline*>(&entity)) {
+        const int n = ep->paramCount / 2;
+        std::vector<math::Vec2> pts(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            pts[static_cast<size_t>(i)] = {m_values(base + 2 * i), m_values(base + 2 * i + 1)};
         }
+        poly->setPoints(pts);
     }
 }
 

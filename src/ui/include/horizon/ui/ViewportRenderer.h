@@ -90,6 +90,9 @@ public:
     /// document or its undo history changed since the last one: it runs the
     /// constraint solver, and a frame is drawn on every mouse move.
     void recomputeDOF(doc::Document* doc);
+    /// Whether recomputeDOF(@p doc) would run the analysis: the document,
+    /// its history or its drawing changed since the last one.
+    bool dofStale(const doc::Document* doc) const;
 
     /// Make the next recomputeDOF() run, whatever it is given.
     void invalidateDOF() { m_dofDirty = true; }

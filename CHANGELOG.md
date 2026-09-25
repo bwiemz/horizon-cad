@@ -52,6 +52,22 @@ work, not "post-1.0".
   - Opening or closing a sketch, or switching tabs, no longer tessellates
     the part again.
 
+- **Bounded memory (138).**
+  - Large constrained sketches stay responsive. The analysis behind the
+    constraint colours took 33 s after every edit of a 400-line chain (in
+    a debug build), and now takes 7 ms. It no longer runs while the view is
+    drawn.
+  - The constraint colours are per cluster. An over-constrained corner no
+    longer turns the whole sketch red, and a free one no longer turns it all
+    green.
+  - Preferences ▸ Undo steps limits the history each document keeps
+    (default 1,000).
+  - A move in a constrained sketch keeps, for undo, only what the solve
+    moved. It kept two copies of every constrained entity.
+  - Every instance of a part in an assembly shares one mesh, and the GPU
+    holds it once. A part opened only for an assembly is released when no
+    component uses it.
+
 ## Unreleased — Product completeness, Milestone 9 (Phases 131–135)
 
 - **Sketches on planes (131).**

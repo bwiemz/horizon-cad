@@ -42,6 +42,15 @@ public:
 
     bool canUndo() const;
     bool canRedo() const;
+    /// How many steps can be undone.
+    std::size_t undoCount() const { return m_undoStack.size(); }
+
+    /// Keep at most @p steps steps to undo (0: no limit), dropping the oldest
+    /// beyond it, now and on every push: each holds what it needs to undo,
+    /// clones of entities included, and a long session held them all. A
+    /// saved state among those dropped can no longer be reached.
+    void setLimit(std::size_t steps);
+    std::size_t limit() const { return m_limit; }
 
     /// Drop all history. The empty stack is the clean state.
     void clear();
@@ -64,6 +73,8 @@ public:
 
 private:
     void notifyChanged();
+    /// Drop the oldest steps past the limit.
+    void trim();
 
     static constexpr std::size_t kCleanUnreachable = static_cast<std::size_t>(-1);
 
@@ -72,6 +83,7 @@ private:
     /// Undo depth of the clean state, or kCleanUnreachable.
     std::size_t m_cleanIndex = 0;
     std::uint64_t m_revision = 0;
+    std::size_t m_limit = 0;
     std::function<void()> m_onChange;
 };
 

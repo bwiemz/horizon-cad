@@ -283,3 +283,38 @@ TEST(UndoStackTest, AWithdrawnStepIsUndoneAndForgotten) {
     stack.redo();
     EXPECT_FALSE(stack.isClean());
 }
+
+// An undo limit (Phase 138): the oldest steps go past it, now and on every
+// push; a saved state among them cannot be undone back to, one after them
+// still can.
+TEST(UndoStackTest, TheOldestStepsGoPastTheLimit) {
+    int value = 0;
+    UndoStack stack;
+    for (int i = 0; i < 5; ++i) stack.push(add(value, 1));
+    stack.setClean();  // saved at five
+    stack.setLimit(3);
+    EXPECT_EQ(stack.undoCount(), 3u);
+    EXPECT_TRUE(stack.isClean()) << "the saved state is the newest, still there";
+    for (int i = 0; i < 4; ++i) stack.push(add(value, 1));
+    EXPECT_EQ(stack.undoCount(), 3u);
+    EXPECT_EQ(value, 9);
+    for (int i = 0; i < 5; ++i) stack.undo();
+    EXPECT_EQ(value, 6) << "three steps back, and no further";
+    EXPECT_FALSE(stack.isClean()) << "saved at five: that step is gone";
+    stack.redo();
+    stack.redo();
+    stack.redo();
+    EXPECT_EQ(value, 9);
+
+    // Saved within what is kept: undoing back to it is clean.
+    stack.setClean();
+    stack.push(add(value, 1));
+    stack.push(add(value, 1));
+    stack.undo();
+    stack.undo();
+    EXPECT_TRUE(stack.isClean());
+
+    stack.setLimit(0);
+    for (int i = 0; i < 10; ++i) stack.push(add(value, 1));
+    EXPECT_EQ(stack.undoCount(), 11u) << "no limit";
+}

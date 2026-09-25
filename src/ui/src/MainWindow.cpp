@@ -1208,6 +1208,7 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                std::shared_ptr<doc::AssemblyDocument> assembly,
                                const QString& title) {
     watchDocument(document);
+    document->undoStack().setLimit(static_cast<std::size_t>(Preferences::current().undoLimit));
     DocTab tab{std::move(document), std::move(assembly), title, m_nextRecoveryKey++};
     if (!tab.assembly && tab.document->needsBuild()) {
         // A part come in unbuilt (opened, recovered): how long its model
@@ -1300,7 +1301,7 @@ void MainWindow::rebuildScene() {
             if (!comp.cachedMesh) continue;
             auto node =
                 std::make_shared<render::SceneNode>(comp.name.empty() ? "Component" : comp.name);
-            node->setMesh(std::make_unique<render::MeshData>(*comp.cachedMesh));
+            node->shareMesh(comp.cachedMesh);  // one mesh for every instance of a part
             node->setLocalTransform(comp.transform);
             node->setOwnerId(comp.id);  // a click on it names the component
             node->setMaterial(render::Material{math::Vec3{0.62, 0.68, 0.75}, 0.15f, 0.5f, 32.0f});
@@ -1330,7 +1331,7 @@ void MainWindow::rebuildScene() {
                 }
             }
             auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
-            node->setMesh(std::make_unique<render::MeshData>(*mesh));
+            node->shareMesh(mesh);  // the tab's, not a copy
             // While a sketch is edited the view works in its frame.
             if (const auto& sketch = m_document->editedSketch()) {
                 node->setLocalTransform(sketch->plane().worldToLocalMatrix());
@@ -1644,6 +1645,9 @@ void MainWindow::applyPreferences(const Preferences& prefs) {
     showAutosaveState(m_recovery->problem());
     m_viewport->snapEngine().setGridSpacing(prefs.gridSpacing);
     m_viewport->setSnapPixels(prefs.snapPixels);
+    for (const DocTab& tab : m_tabs) {
+        tab.document->undoStack().setLimit(static_cast<std::size_t>(prefs.undoLimit));
+    }
 }
 
 void MainWindow::onPreferences() {

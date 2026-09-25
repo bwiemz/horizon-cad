@@ -45,3 +45,26 @@ TEST(SceneCacheTest, EntriesForNodesThatLeftTheSceneAreDropped) {
     hz::render::eraseStaleEntries(cache, scene.nodeIds());
     EXPECT_TRUE(cache.empty());
 }
+
+// Nodes that share a mesh (an assembly's instances of one part, Phase 138)
+// show it once: the scene lists it once, so the GPU holds it once. Each
+// instance had a copy of its own, and the GPU one each.
+TEST(SceneCacheTest, ASharedMeshIsListedOnce) {
+    auto mesh = std::make_shared<const hz::render::MeshData>();
+    SceneGraph scene;
+    auto root = std::make_shared<SceneNode>("assembly");
+    for (int i = 0; i < 3; ++i) {
+        auto instance = std::make_shared<SceneNode>("bolt");
+        instance->shareMesh(mesh);
+        root->addChild(instance);
+    }
+    auto other = std::make_shared<SceneNode>("plate");
+    other->setMesh(std::make_unique<hz::render::MeshData>());
+    root->addChild(other);
+    scene.addNode(root);
+
+    const auto meshes = scene.meshes();
+    EXPECT_EQ(meshes.size(), 2u) << "the bolt's, once, and the plate's";
+    EXPECT_EQ(meshes.count(mesh.get()), 1u);
+    EXPECT_EQ(mesh.use_count(), 4) << "the three nodes share it, uncopied";
+}

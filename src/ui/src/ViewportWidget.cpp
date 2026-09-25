@@ -555,8 +555,16 @@ void ViewportWidget::paintGL() {
     }
 
     // The constraint analysis behind the DOF colours: only when the document
-    // changed, not on every frame.
-    m_viewportRenderer.recomputeDOF(m_document);
+    // changed, and not in a paint. This frame shows the change at once with
+    // the colours it had; the analysis runs next, and the colours follow.
+    if (m_viewportRenderer.dofStale(m_document) && !m_dofQueued) {
+        m_dofQueued = true;
+        QTimer::singleShot(0, this, [this] {
+            m_dofQueued = false;
+            m_viewportRenderer.recomputeDOF(m_document);
+            update();
+        });
+    }
 
     // Clear with background color (kept in sync with setBackgroundColor above).
     gl->glClearColor(0.11f, 0.115f, 0.13f, 1.0f);

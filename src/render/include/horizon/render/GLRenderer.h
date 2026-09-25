@@ -121,7 +121,6 @@ public:
 
 private:
     DisplayMode m_displayMode = DisplayMode::ShadedWithEdges;
-    void uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node);
 
     /// Render edges of visible mesh nodes as wireframe overlay.
     void renderEdgeOverlay(QOpenGLExtraFunctions* gl, const std::vector<SceneNode*>& nodes,
@@ -136,9 +135,17 @@ private:
     ShaderProgram m_edgeShader;
     Grid m_grid;
 
-    // Cached GPU mesh buffers keyed by node ID; renderNodes() drops those whose
-    // node has left the scene.
-    std::unordered_map<uint32_t, std::unique_ptr<MeshBuffer>> m_meshCache;
+    // Cached GPU mesh buffers, one for each mesh however many nodes show it
+    // (an assembly's instances of a part). Each holds its mesh, so the
+    // address it is found by is not another mesh's while it is here.
+    // renderNodes() drops those no node in the scene shows.
+    struct CachedMesh {
+        std::shared_ptr<const MeshData> mesh;
+        std::unique_ptr<MeshBuffer> buffer;
+    };
+    std::unordered_map<const MeshData*, CachedMesh> m_meshCache;
+    /// The GPU buffer of @p node's mesh, sent the first time; null for none.
+    MeshBuffer* bufferFor(QOpenGLExtraFunctions* gl, const SceneNode* node);
 
     void destroyDynamicBuffers(QOpenGLExtraFunctions* gl);
     void uploadDynamic(QOpenGLExtraFunctions* gl, const void* data, size_t sizeBytes);

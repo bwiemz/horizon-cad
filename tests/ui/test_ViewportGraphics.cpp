@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QAction>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QGuiApplication>
@@ -16,6 +17,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/render/Camera.h"
+#include "horizon/ui/MainWindow.h"
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::test::DialogResponder;
@@ -134,4 +136,49 @@ TEST(ViewportGraphicsTest, TheDrawingIsDrawnWhereItIsAndFollowsChanges) {
     frame = viewport.grabFramebuffer();
     EXPECT_TRUE(near(frame, at(5052, 50), light)) << "a chunk not drawn before, now in view";
     viewport.hide();
+}
+
+// A part's solid on a real OpenGL (Phase 138: meshes are shared, and the GPU
+// keeps one buffer for each mesh, not each node): the box is drawn where it
+// is, and again after the scene is built anew around the same mesh (a
+// sketch opened and closed), which reuses what the GPU has.
+TEST(ViewportGraphicsTest, TheSolidIsDrawnAndDrawnAgainFromTheSameMesh) {
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
+    }
+    hz::ui::MainWindow w;
+    w.resize(640, 480);
+    w.show();
+    {
+        hz::test::FormFiller filler(QStringLiteral("Box"),
+                                    hz::test::FormAnswers()
+                                        .number(QStringLiteral("size0"), 10.0)
+                                        .number(QStringLiteral("size1"), 10.0)
+                                        .number(QStringLiteral("size2"), 10.0));
+        w.findChild<QAction*>(QStringLiteral("action_box"))->trigger();
+        ASSERT_TRUE(filler.seen());
+    }
+    auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
+    QElapsedTimer waited;
+    waited.start();
+    while (!viewport.isValid() && waited.elapsed() < 5000) QCoreApplication::processEvents();
+    viewport.camera().lookAt(hz::math::Vec3(40, -35, 45), hz::math::Vec3(5, 5, 5),
+                             hz::math::Vec3(0, 0, 1));
+    QImage frame = viewport.grabFramebuffer();
+    if (!viewport.isValid() || !viewport.graphicsProblem().isEmpty()) {
+        GTEST_SKIP() << "no OpenGL here";
+    }
+    // The solid is shaded blue-grey; the background and grid are near grey.
+    const auto shaded = [](const QColor& c) { return c.blue() > 90 && c.blue() > c.red() + 15; };
+    const QPointF middle = viewport.projectToScreen(hz::math::Vec3(5, 5, 5));
+    EXPECT_TRUE(near(frame, middle, shaded)) << "the box, where it is";
+    EXPECT_FALSE(near(frame, QPointF(8, viewport.height() / 2.0), shaded)) << "not everywhere";
+
+    w.findChild<QAction*>(QStringLiteral("action_sketch_xy"))->trigger();
+    w.findChild<QAction*>(QStringLiteral("action_sketch_finish"))->trigger();
+    viewport.camera().lookAt(hz::math::Vec3(40, -35, 45), hz::math::Vec3(5, 5, 5),
+                             hz::math::Vec3(0, 0, 1));
+    frame = viewport.grabFramebuffer();
+    EXPECT_TRUE(near(frame, viewport.projectToScreen(hz::math::Vec3(5, 5, 5)), shaded))
+        << "drawn again from the same mesh";
 }

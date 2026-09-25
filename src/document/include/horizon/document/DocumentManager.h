@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -102,7 +103,13 @@ public:
     /// cache (or, if the part is already open with a built solid, from that
     /// solid) without loading the feature tree.
     /// Resolved: opens the full part document (deduplicated), rebuilding its
-    /// model if needed, and fills both `resolvedPart` and `cachedMesh`.
+    /// model if needed, and fills both `resolvedPart` and `cachedMesh`. A
+    /// part opened only for components is held by them alone: it is found by
+    /// its path while one holds it, and released when none does (it is not
+    /// among documents()).
+    ///
+    /// Every instance of a part shares one mesh, tessellated or read once
+    /// while any holds it: each had its own.
     ///
     /// `assemblyDir` is used to resolve relative part paths.
     /// Returns true on success.
@@ -119,6 +126,17 @@ public:
     std::vector<std::string> pollExternalChanges();
 
 private:
+    /// Open @p path, or find it open; @p keep registers it among
+    /// documents() (a tab's), where a component's is found by path only.
+    std::shared_ptr<Document> openPart(const std::string& path, bool keep);
+    std::shared_ptr<Document> registerPart(const std::string& path,
+                                           std::shared_ptr<Document> document, bool keep);
+    /// The mesh made for @p key at @p version, if one still holds it; else
+    /// what @p make makes, kept (weakly) for the next.
+    std::shared_ptr<const geo::MeshData> sharedMesh(
+        const std::string& key, std::uint64_t version,
+        const std::function<std::shared_ptr<const geo::MeshData>()>& make);
+
     static std::string canonicalPath(const std::string& path);
     void watchFile(const std::string& canonical);
     void unwatchFile(const std::string& canonical);
@@ -133,6 +151,11 @@ private:
     std::map<std::string, std::weak_ptr<Document>> m_documentsByPath;
     std::map<std::string, std::weak_ptr<AssemblyDocument>> m_assembliesByPath;
     std::map<std::string, std::filesystem::file_time_type> m_watchedFiles;
+    struct SharedMesh {
+        std::weak_ptr<const geo::MeshData> mesh;
+        std::uint64_t version = 0;
+    };
+    std::map<std::string, SharedMesh> m_meshes;
 };
 
 }  // namespace hz::doc

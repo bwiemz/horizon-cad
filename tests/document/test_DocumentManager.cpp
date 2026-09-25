@@ -272,16 +272,26 @@ TEST(DocumentManagerTest, ResolveComponentResolvedLoadsFeatureTree) {
     ASSERT_NE(comp.cachedMesh, nullptr);
     EXPECT_FALSE(comp.cachedMesh->positions.empty());
 
-    // The resolved part is a registered open document (shared instance).
-    EXPECT_EQ(mgr.documents().size(), 1u);
+    // The resolved part is found by its path (a shared instance), and held
+    // by its components alone: it is not a document kept open (Phase 138).
+    EXPECT_TRUE(mgr.documents().empty());
     EXPECT_EQ(mgr.findByPath(path), comp.resolvedPart);
 
-    // A second instance of the same part shares the document.
+    // A second instance of the same part shares the document, and the mesh.
     ComponentInstance comp2;
     comp2.partPath = path;
     EXPECT_TRUE(mgr.resolveComponent(comp2, ComponentState::Resolved));
     EXPECT_EQ(comp2.resolvedPart, comp.resolvedPart);
+    EXPECT_EQ(comp2.cachedMesh, comp.cachedMesh) << "tessellated once, for both";
+
+    // Opened in a tab too, it is kept; let go of by the components alone, it
+    // goes.
+    EXPECT_EQ(mgr.openPart(path), comp.resolvedPart);
     EXPECT_EQ(mgr.documents().size(), 1u);
+    ASSERT_TRUE(mgr.closeDocument(comp.resolvedPart));
+    comp.resolvedPart.reset();
+    comp2.resolvedPart.reset();
+    EXPECT_EQ(mgr.findByPath(path), nullptr) << "released";
 
     std::remove(path.c_str());
 }

@@ -1,6 +1,9 @@
 #include "horizon/document/DocumentManager.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <system_error>
 
 #include "horizon/modeling/SolidTessellator.h"
@@ -30,35 +33,43 @@ std::shared_ptr<AssemblyDocument> DocumentManager::newAssembly() {
 }
 
 std::shared_ptr<Document> DocumentManager::openPart(const std::string& path) {
-    const std::string key = canonicalPath(path);
+    return openPart(path, /*keep=*/true);
+}
 
-    auto it = m_documentsByPath.find(key);
-    if (it != m_documentsByPath.end()) {
-        if (auto existing = it->second.lock()) return existing;
-        m_documentsByPath.erase(it);
-    }
-
+std::shared_ptr<Document> DocumentManager::openPart(const std::string& path, bool keep) {
+    if (auto existing = findByPath(path)) return registerPart(path, std::move(existing), keep);
     if (!m_partLoader) return nullptr;
-
     auto doc = std::make_shared<Document>();
     if (!m_partLoader(path, *doc)) return nullptr;
-    return adoptPart(path, std::move(doc));
+    return registerPart(path, std::move(doc), keep);
 }
 
 std::shared_ptr<Document> DocumentManager::adoptPart(const std::string& path,
                                                      std::shared_ptr<Document> loaded) {
+    if (auto existing = findByPath(path)) return registerPart(path, std::move(existing), true);
+    return registerPart(path, std::move(loaded), true);
+}
+
+std::shared_ptr<Document> DocumentManager::registerPart(const std::string& path,
+                                                        std::shared_ptr<Document> document,
+                                                        bool keep) {
+    if (!document) return nullptr;
     const std::string key = canonicalPath(path);
-    if (auto it = m_documentsByPath.find(key); it != m_documentsByPath.end()) {
-        if (auto existing = it->second.lock()) return existing;
-        m_documentsByPath.erase(it);
+    auto& known = m_documentsByPath[key];
+    if (known.lock() != document) {
+        // Newly read: its file is watched, a component's part too (a change
+        // to it is worth knowing of while an assembly shows it).
+        document->setFilePath(path);
+        document->setDirty(false);
+        known = document;
+        watchFile(key);
     }
-    if (!loaded) return nullptr;
-    loaded->setFilePath(path);
-    loaded->setDirty(false);
-    m_documents.push_back(loaded);
-    m_documentsByPath[key] = loaded;
-    watchFile(key);
-    return loaded;
+    // Kept (a tab's): among the documents. A part opened for components
+    // before is kept once a tab opens it too.
+    if (keep && std::find(m_documents.begin(), m_documents.end(), document) == m_documents.end()) {
+        m_documents.push_back(document);
+    }
+    return document;
 }
 
 void DocumentManager::adoptDocument(std::shared_ptr<Document> document) {
@@ -169,17 +180,28 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     }
     const std::string fullPath = partPath.string();
 
+    const std::string key = canonicalPath(fullPath);
+    // A mesh from a part's model is as new as its last build; one from the
+    // file (its cache, or a model built from it apart) as the file.
+    const auto modelMesh = [this, &key](const Document& part) {
+        return sharedMesh(key + "#model", part.builds(), [&part] {
+            return std::make_shared<const geo::MeshData>(
+                model::SolidTessellator::tessellate(*part.solid()));
+        });
+    };
+    std::error_code timeError;
+    const auto fileTime = fs::last_write_time(fullPath, timeError);
+    const auto fileVersion =
+        timeError ? 0u : static_cast<std::uint64_t>(fileTime.time_since_epoch().count());
+
     if (mode == ComponentState::Resolved) {
-        auto part = openPart(fullPath);
+        auto part = openPart(fullPath, /*keep=*/false);
         if (!part) return false;
         if (!part->solid() && part->featureTree().featureCount() > 0) {
             part->rebuildModel();
         }
         instance.resolvedPart = part;
-        if (part->solid()) {
-            instance.cachedMesh = std::make_shared<geo::MeshData>(
-                model::SolidTessellator::tessellate(*part->solid()));
-        }
+        if (part->solid()) instance.cachedMesh = modelMesh(*part);
         instance.state = ComponentState::Resolved;
         return true;
     }
@@ -196,35 +218,52 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
 
     // If the part happens to be open already with a built solid, reuse it.
     if (auto open = findByPath(fullPath); open && open->solid()) {
-        instance.cachedMesh =
-            std::make_shared<geo::MeshData>(model::SolidTessellator::tessellate(*open->solid()));
+        instance.cachedMesh = modelMesh(*open);
         instance.state = ComponentState::Lightweight;
         return true;
     }
 
-    if (m_meshLoader) {
-        if (auto mesh = m_meshLoader(fullPath)) {
-            instance.cachedMesh = std::move(mesh);
-            instance.state = ComponentState::Lightweight;
-            return true;
+    // From the file: its tessellation cache, or else the full part loaded
+    // into a temporary document (not registered as open) and tessellated.
+    const auto fromFile = [this, &fullPath]() -> std::shared_ptr<const geo::MeshData> {
+        if (m_meshLoader) {
+            if (auto mesh = m_meshLoader(fullPath)) return mesh;
         }
-    }
-
-    // Fallback: the part file has no tessellation cache. Load the full part
-    // into a temporary document (not registered as open) and tessellate.
-    if (m_partLoader) {
-        Document temp;
-        if (m_partLoader(fullPath, temp)) {
-            temp.rebuildModel();
-            if (temp.solid()) {
-                instance.cachedMesh = std::make_shared<geo::MeshData>(
-                    model::SolidTessellator::tessellate(*temp.solid()));
-                instance.state = ComponentState::Lightweight;
-                return true;
+        if (m_partLoader) {
+            Document temp;
+            if (m_partLoader(fullPath, temp)) {
+                temp.rebuildModel();
+                if (temp.solid()) {
+                    return std::make_shared<const geo::MeshData>(
+                        model::SolidTessellator::tessellate(*temp.solid()));
+                }
             }
         }
+        return nullptr;
+    };
+    if (auto mesh = sharedMesh(key + "#file", fileVersion, fromFile)) {
+        instance.cachedMesh = std::move(mesh);
+        instance.state = ComponentState::Lightweight;
+        return true;
     }
     return false;
+}
+
+std::shared_ptr<const geo::MeshData> DocumentManager::sharedMesh(
+    const std::string& key, std::uint64_t version,
+    const std::function<std::shared_ptr<const geo::MeshData>()>& make) {
+    // Let go of the entries no instance holds any more.
+    for (auto it = m_meshes.begin(); it != m_meshes.end();) {
+        it = it->second.mesh.expired() ? m_meshes.erase(it) : std::next(it);
+    }
+    if (const auto found = m_meshes.find(key); found != m_meshes.end()) {
+        if (auto mesh = found->second.mesh.lock(); mesh && found->second.version == version) {
+            return mesh;
+        }
+    }
+    auto mesh = make();
+    if (mesh) m_meshes[key] = SharedMesh{mesh, version};
+    return mesh;
 }
 
 void DocumentManager::watchFile(const std::string& canonical) {

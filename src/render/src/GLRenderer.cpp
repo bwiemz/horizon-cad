@@ -3,6 +3,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <algorithm>
+#include <iterator>
 
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
@@ -398,12 +399,8 @@ void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
 
     auto renderNodeList = [&](const std::vector<const SceneNode*>& nodes) {
         for (const SceneNode* node : nodes) {
-            if (m_meshCache.find(node->id()) == m_meshCache.end()) {
-                uploadMesh(gl, node);
-            }
-
-            auto it = m_meshCache.find(node->id());
-            if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+            MeshBuffer* buffer = bufferFor(gl, node);
+            if (buffer == nullptr) continue;
 
             math::Mat4 model = node->worldTransform();
             math::Mat4 mvp = vp * model;
@@ -418,9 +415,9 @@ void GLRenderer::renderScene(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
             m_phongShader.setUniform("uMetallic", mat.metallic);
             m_phongShader.setUniform("uAlpha", mat.alpha);
 
-            it->second->bind();
-            it->second->draw(gl);
-            it->second->release();
+            buffer->bind();
+            buffer->draw(gl);
+            buffer->release();
         }
     };
 
@@ -449,7 +446,10 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
 
     // The context is current here, so the gone nodes' GL buffers are freed
     // with them.
-    eraseStaleEntries(m_meshCache, scene.nodeIds());
+    const auto shown = scene.meshes();
+    for (auto it = m_meshCache.begin(); it != m_meshCache.end();) {
+        it = shown.count(it->first) == 0 ? m_meshCache.erase(it) : std::next(it);
+    }
 
     auto visibleNodes = scene.collectVisibleMeshNodes();
     if (visibleNodes.empty()) return;
@@ -481,12 +481,8 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
 
     auto renderNodeList = [&](const std::vector<const SceneNode*>& nodes) {
         for (const SceneNode* node : nodes) {
-            if (m_meshCache.find(node->id()) == m_meshCache.end()) {
-                uploadMesh(gl, node);
-            }
-
-            auto it = m_meshCache.find(node->id());
-            if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+            MeshBuffer* buffer = bufferFor(gl, node);
+            if (buffer == nullptr) continue;
 
             math::Mat4 model = node->worldTransform();
             math::Mat4 mvp = vp * model;
@@ -501,9 +497,9 @@ void GLRenderer::renderNodes(QOpenGLExtraFunctions* gl, const SceneGraph& scene,
             m_phongShader.setUniform("uMetallic", mat.metallic);
             m_phongShader.setUniform("uAlpha", mat.alpha);
 
-            it->second->bind();
-            it->second->draw(gl);
-            it->second->release();
+            buffer->bind();
+            buffer->draw(gl);
+            buffer->release();
         }
     };
 
@@ -718,13 +714,17 @@ void GLRenderer::drawFilledQuad(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_fillShader.release();
 }
 
-void GLRenderer::uploadMesh(QOpenGLExtraFunctions* gl, const SceneNode* node) {
-    if (!node || !node->hasMesh()) return;
-
-    const MeshData& meshData = node->mesh();
-    auto buffer = std::make_unique<MeshBuffer>();
-    buffer->create(gl, meshData.positions, meshData.normals, meshData.indices);
-    m_meshCache.emplace(node->id(), std::move(buffer));
+MeshBuffer* GLRenderer::bufferFor(QOpenGLExtraFunctions* gl, const SceneNode* node) {
+    if (!node || !node->hasMesh()) return nullptr;
+    const auto& mesh = node->sharedMesh();
+    auto it = m_meshCache.find(mesh.get());
+    if (it == m_meshCache.end()) {
+        auto buffer = std::make_unique<MeshBuffer>();
+        buffer->create(gl, mesh->positions, mesh->normals, mesh->indices);
+        it = m_meshCache.emplace(mesh.get(), CachedMesh{mesh, std::move(buffer)}).first;
+    }
+    MeshBuffer* buffer = it->second.buffer.get();
+    return buffer != nullptr && buffer->isValid() ? buffer : nullptr;
 }
 
 // ---- Edge wireframe overlay ----
@@ -749,16 +749,16 @@ void GLRenderer::renderEdgeOverlay(QOpenGLExtraFunctions* gl, const std::vector<
     gl->glLineWidth(1.0f);
 
     for (const SceneNode* node : nodes) {
-        auto it = m_meshCache.find(node->id());
-        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+        MeshBuffer* buffer = bufferFor(gl, node);
+        if (buffer == nullptr) continue;
 
         math::Mat4 model = node->worldTransform();
         math::Mat4 mvp = vp * model;
         m_edgeShader.setUniform("uMVP", mvp);
 
-        it->second->bind();
-        it->second->draw(gl);
-        it->second->release();
+        buffer->bind();
+        buffer->draw(gl);
+        buffer->release();
     }
 
     fnPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -846,8 +846,8 @@ void GLRenderer::renderPickingPass(QOpenGLExtraFunctions* gl, const SceneGraph& 
     m_pickShader.bind();
 
     for (const SceneNode* node : visibleNodes) {
-        auto it = m_meshCache.find(node->id());
-        if (it == m_meshCache.end() || !it->second || !it->second->isValid()) continue;
+        MeshBuffer* buffer = bufferFor(gl, node);
+        if (buffer == nullptr) continue;
 
         math::Mat4 model = node->worldTransform();
         math::Mat4 mvp = vp * model;
@@ -860,9 +860,9 @@ void GLRenderer::renderPickingPass(QOpenGLExtraFunctions* gl, const SceneGraph& 
         float b = static_cast<float>((id >> 16) & 0xFF) / 255.0f;
         m_pickShader.setUniform("uPickColor", math::Vec3(r, g, b));
 
-        it->second->bind();
-        it->second->draw(gl);
-        it->second->release();
+        buffer->bind();
+        buffer->draw(gl);
+        buffer->release();
     }
 
     m_pickShader.release();

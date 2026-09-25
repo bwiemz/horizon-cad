@@ -115,7 +115,11 @@ TEST(MultiDocumentIntegrationTest, PartToAssemblyWorkflow) {
     ASSERT_NE(first.resolvedPart, nullptr);
     EXPECT_EQ(first.resolvedPart, second.resolvedPart)
         << "both instances must share one open part document";
-    EXPECT_EQ(mgr.documents().size(), 1u);
+    EXPECT_EQ(first.cachedMesh, second.cachedMesh) << "and one mesh";
+    // Held by the components, found by its path, and not kept open for good
+    // (Phase 138): it goes when they let go.
+    EXPECT_TRUE(mgr.documents().empty());
+    EXPECT_EQ(mgr.findByPath(partPath), first.resolvedPart);
     EXPECT_EQ(first.resolvedPart->type(), DocumentType::Part);
     EXPECT_EQ(first.resolvedPart->featureTree().featureCount(), 1u);
     EXPECT_NE(first.resolvedPart->solid(), nullptr);
@@ -136,6 +140,10 @@ TEST(MultiDocumentIntegrationTest, PartToAssemblyWorkflow) {
     auto changed = mgr.pollExternalChanges();
     ASSERT_EQ(changed.size(), 1u);
     EXPECT_NE(changed[0].find("plate.hzpart"), std::string::npos);
+
+    first.resolvedPart.reset();
+    second.resolvedPart.reset();
+    EXPECT_EQ(mgr.findByPath(partPath), nullptr) << "released once no component holds it";
 
     fs::remove_all(dir);
 }
