@@ -12,6 +12,29 @@ using namespace hz::render;
 
 namespace {
 
+/// The QGuiApplication the GL tests need: made by the first of them, and
+/// destroyed when the tests are done, while Qt is whole. A function-local
+/// static one was destroyed at exit, after Qt's own thread storage, and the
+/// process crashed after every test had passed.
+class GuiEnvironment : public ::testing::Environment {
+public:
+    void make(const QByteArray& platform) {
+        if (QGuiApplication::instance() != nullptr) return;
+        qputenv("QT_QPA_PLATFORM", platform);
+        m_app = std::make_unique<QGuiApplication>(m_argc, m_argv);
+    }
+    void TearDown() override { m_app.reset(); }
+
+private:
+    int m_argc = 1;
+    char m_arg0[16] = "hz_render_tests";
+    char* m_argv[2] = {m_arg0, nullptr};
+    std::unique_ptr<QGuiApplication> m_app;
+};
+
+auto* const g_gui =
+    static_cast<GuiEnvironment*>(::testing::AddGlobalTestEnvironment(new GuiEnvironment));
+
 /// Offscreen GL fixture: skips (rather than fails) on machines/CI runners
 /// without a usable OpenGL implementation.
 class OpenGLBackendTest : public ::testing::Test {
@@ -29,14 +52,7 @@ protected:
             GTEST_SKIP() << "GL runtime tests are opt-in: set HZ_RENDER_TESTS_PLATFORM";
         }
 
-        if (QGuiApplication::instance() == nullptr) {
-            qputenv("QT_QPA_PLATFORM", platform);
-            static int argc = 1;
-            static char arg0[] = "hz_render_tests";
-            static char* argv[] = {arg0, nullptr};
-            static QGuiApplication app(argc, argv);
-            (void)app;
-        }
+        g_gui->make(platform);
 
         // Match the application's context profile (src/app/main.cpp): a
         // default-format context can silently be Compatibility profile, where
