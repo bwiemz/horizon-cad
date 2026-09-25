@@ -148,7 +148,9 @@ TEST(DraftDocumentTest, RemovingManyEntitiesOneByOneIsFast) {
     EXPECT_TRUE(d.entities().empty());
     EXPECT_EQ(d.spatialIndex().size(), 0u);
 #ifdef NDEBUG
-    EXPECT_LT(ms, 500.0);
+    // 574 ms on CI's Linux Release job with four tests at once, the first
+    // time that job ran any tests; well under a second on a quiet machine.
+    EXPECT_LT(ms, 3000.0);
 #else
     // Debug builds: 12 s on CI's Windows runner with four tests at once. The
     // quadratic removal this guards against took minutes.
