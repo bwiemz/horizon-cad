@@ -217,7 +217,7 @@ TEST(BooleanOpTest, RandomTransformStressTest) {
         auto result = BooleanOp::execute(*boxA, *boxB, BooleanType::Subtract);
         if (result && result->faceCount() > 0) ++successCount;
     }
-    EXPECT_GE(successCount, 5) << "Too many failures in stress test";
+    EXPECT_EQ(successCount, 20) << "Too many failures in stress test";
 }
 
 // ---------------------------------------------------------------------------
@@ -225,9 +225,8 @@ TEST(BooleanOpTest, RandomTransformStressTest) {
 //
 // Across all three Boolean types and a spread of random overlapping
 // configurations — from deep overlap to near-coincident faces — the operation
-// must not crash and must never emit invalid topology. A face-level Boolean is
-// allowed to give up (return nullptr) on a hard case, but any solid it does
-// return must be a valid, Euler-consistent B-Rep.
+// must not crash and must never emit invalid topology. Every one gives a
+// valid, Euler-consistent B-Rep (Phase 142: it was enough that one did).
 // ---------------------------------------------------------------------------
 
 TEST(BooleanOpTest, RandomOverlapProducesValidTopology) {
@@ -255,7 +254,7 @@ TEST(BooleanOpTest, RandomOverlapProducesValidTopology) {
             }
         }
     }
-    EXPECT_GT(produced, 0) << "No Boolean produced a result — the guard exercised nothing";
+    EXPECT_EQ(produced, 18) << "a Boolean gave up";
 }
 
 // ===========================================================================

@@ -16,13 +16,14 @@ using hz::math::Vec3;
 namespace {
 
 /// Newell's method: robust normal (unnormalized) for a possibly non-convex,
-/// possibly slightly non-planar loop.
+/// possibly slightly non-planar loop; summed about the first point, so its
+/// error does not grow with the loop's distance from the origin.
 Vec3 newellNormal(const std::vector<Vec3>& pts) {
     Vec3 n = Vec3::Zero;
     const size_t count = pts.size();
     for (size_t i = 0; i < count; ++i) {
-        const Vec3& a = pts[i];
-        const Vec3& b = pts[(i + 1) % count];
+        const Vec3 a = pts[i] - pts[0];
+        const Vec3 b = pts[(i + 1) % count] - pts[0];
         n.x += (a.y - b.y) * (a.z + b.z);
         n.y += (a.z - b.z) * (a.x + b.x);
         n.z += (a.x - b.x) * (a.y + b.y);
@@ -349,11 +350,21 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
 }
 
 double BoundaryMesh::signedVolume(const std::vector<BoundaryPolygon>& polygons) {
+    // About a point of the solid's own, not the origin: a triple product's
+    // rounding grows as the cube of the distance, and a million out it was
+    // larger than a box's volume, so the box was sometimes found inside out.
+    Vec3 o;
+    for (const auto& poly : polygons) {
+        if (!poly.points.empty()) {
+            o = poly.points[0];
+            break;
+        }
+    }
     double vol6 = 0.0;
     for (const auto& poly : polygons) {
         const auto& p = poly.points;
         for (size_t i = 1; i + 1 < p.size(); ++i) {
-            vol6 += p[0].dot(p[i].cross(p[i + 1]));
+            vol6 += (p[0] - o).dot((p[i] - o).cross(p[i + 1] - o));
         }
     }
     return vol6 / 6.0;
