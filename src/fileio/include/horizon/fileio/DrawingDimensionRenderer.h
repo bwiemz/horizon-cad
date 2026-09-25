@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include "horizon/drafting/DimensionStyle.h"
+
 namespace hz::draft {
 class DraftLinearDimension;
 }  // namespace hz::draft
@@ -26,9 +28,12 @@ public:
     /// @p view, with the dimension line offset from the edge by @p offset (in
     /// sheet units). Returns nullptr if the dimension's edge does not appear in
     /// the view.
-    static std::shared_ptr<draft::DraftLinearDimension> render(const model::DrawingView& view,
-                                                               const model::LinearDimension& dim,
-                                                               double offset);
+    ///
+    /// On a view drawn at a scale, the dimension states the length at 1:1, in
+    /// @p style: the document's, whose units and precision the drawing shows.
+    static std::shared_ptr<draft::DraftLinearDimension> render(
+        const model::DrawingView& view, const model::LinearDimension& dim, double offset,
+        const draft::DimensionStyle& style = draft::DimensionStyle{});
 };
 
 }  // namespace hz::io

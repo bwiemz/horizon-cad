@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
@@ -9,7 +10,8 @@
 namespace hz::io {
 
 std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
-    const model::DrawingView& view, const model::LinearDimension& dim, double offset) {
+    const model::DrawingView& view, const model::LinearDimension& dim, double offset,
+    const draft::DimensionStyle& style) {
     // Find the projected edge for this dimension's model edge in the view.
     const model::ProjectedEdge* edge = nullptr;
     for (const model::ProjectedEdge& e : view.edges) {
@@ -21,10 +23,7 @@ std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
     if (edge == nullptr) return nullptr;
 
     // Map view-space coordinates onto the sheet (same mapping DrawingExport uses).
-    auto toSheet = [&](const math::Vec2& p) {
-        return math::Vec2((p.x - view.boundsMin.x) + view.placement.x,
-                          (p.y - view.boundsMin.y) + view.placement.y);
-    };
+    const auto toSheet = [&view](const math::Vec2& p) { return view.toSheet(p); };
     const math::Vec2 p1 = toSheet(edge->a);
     const math::Vec2 p2 = toSheet(edge->b);
 
@@ -39,8 +38,14 @@ std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
     }
     const math::Vec2 dimLinePoint(mid.x + perp.x * offset, mid.y + perp.y * offset);
 
-    return std::make_shared<draft::DraftLinearDimension>(
+    auto dimension = std::make_shared<draft::DraftLinearDimension>(
         p1, p2, dimLinePoint, draft::DraftLinearDimension::Orientation::Aligned);
+    // On a view drawn at a scale, the sheet length is not the part's: state
+    // the length at 1:1, as the view drawn full size would.
+    if (std::abs(view.scale - 1.0) > 1e-12 && view.scale > 0.0) {
+        dimension->setTextOverride(style.formatLength((p2 - p1).length() / view.scale));
+    }
+    return dimension;
 }
 
 }  // namespace hz::io

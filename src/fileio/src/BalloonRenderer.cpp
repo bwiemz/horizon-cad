@@ -24,10 +24,7 @@ std::vector<std::shared_ptr<draft::DraftEntity>> BalloonRenderer::render(
     if (edge == nullptr) return {};
 
     // Map view-space coordinates onto the sheet (same mapping DrawingExport uses).
-    auto toSheet = [&](const math::Vec2& p) {
-        return math::Vec2((p.x - view.boundsMin.x) + view.placement.x,
-                          (p.y - view.boundsMin.y) + view.placement.y);
-    };
+    const auto toSheet = [&view](const math::Vec2& p) { return view.toSheet(p); };
     const math::Vec2 a = toSheet(edge->a);
     const math::Vec2 b = toSheet(edge->b);
     const math::Vec2 tip((a.x + b.x) * 0.5,
