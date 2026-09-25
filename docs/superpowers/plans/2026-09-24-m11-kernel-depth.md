@@ -313,6 +313,12 @@ Cases:
   is a chain whatever the choice.
 - **The validators already had a relative tolerance.** The feature tree's
   gate uses 1e-9 of the part's size, with a floor of 1e-7.
+- **After review:** interference checking takes the same tolerances. It
+  called `csgExecute` with the old absolute band. Its "touching, not
+  interfering" volume was 1e-9 absolute, which is all of an overlap in parts
+  a ten-thousandth the size; it is now 1e-12 of the extent cubed. The
+  small-stack test runs on POSIX only. The fix it guards is the same on
+  every platform, but a thread's stack size is set there with pthreads.
 
 ### Tests
 - `BooleanRobustness`:

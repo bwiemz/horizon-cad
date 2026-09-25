@@ -172,3 +172,32 @@ TEST(InterferenceCheckerTest, FaceContactIsNotInterference) {
     translate(*b, Vec3(4, 0, 0));
     EXPECT_TRUE(InterferenceChecker::check({a.get(), b.get()}).empty());
 }
+
+// Interference in parts of any size and anywhere (Phase 142 review): the
+// check took its tolerances as absolute, where Booleans take them from the
+// parts, and called an overlap under 1e-9 touching, which is all of an
+// overlap in parts a ten-thousandth of these. Touching is still not
+// interfering, small, far out, or both.
+TEST(InterferenceCheckerTest, InterferenceIsFoundAtAnyScaleAndPlace) {
+    const auto scaled = [](hz::topo::Solid& solid, double by, const Vec3& at) {
+        for (auto& v : const_cast<std::deque<hz::topo::Vertex>&>(solid.vertices())) {
+            v.point = v.point * by + at;
+        }
+    };
+    for (const double by : {1e-4, 1.0}) {
+        for (const Vec3& at : {Vec3(0, 0, 0), Vec3(1e6, -2e6, 1.5e6)}) {
+            auto a = PrimitiveFactory::makeBox(4, 4, 4);
+            auto overlapping = PrimitiveFactory::makeBox(4, 4, 4);
+            auto touching = PrimitiveFactory::makeBox(4, 4, 4);
+            translate(*overlapping, Vec3(2, 2, 2));
+            translate(*touching, Vec3(4, 0, 0));
+            scaled(*a, by, at);
+            scaled(*overlapping, by, at);
+            scaled(*touching, by, at);
+            EXPECT_TRUE(InterferenceChecker::solidsInterfere(*a, *overlapping))
+                << "scale " << by << ", at x " << at.x;
+            EXPECT_FALSE(InterferenceChecker::solidsInterfere(*a, *touching))
+                << "scale " << by << ", at x " << at.x;
+        }
+    }
+}
