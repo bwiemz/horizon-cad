@@ -28,8 +28,8 @@ class WorkbenchHost;
 /// A sheet is drawn from its part as it is now: from the part's tab when it
 /// is open, else from its file. It is drawn again when the part changes
 /// there. The sheet's own layers are locked, since it holds nothing of its
-/// own; what is drawn on it by hand, on other layers, stays for the session
-/// but is not yet saved.
+/// own; what is drawn on it by hand, on other layers, is saved with it and
+/// moves with the view it was drawn in (Phase 150).
 class DrawingWorkbench : public QObject {
     Q_OBJECT
 
@@ -131,6 +131,9 @@ private:
     /// room, and draw the sheet again.
     void addView(Sheet& sheet, const model::DrawingView& view, io::DrawingViewSpec spec,
                  const QString& verb);
+    /// Draw @p sheet again from its spec and its part, carrying what was
+    /// drawn by hand inside a view with the view. False, with the reason.
+    bool drawAgain(Sheet& sheet, std::string* error);
     /// Draw the active sheet again after its spec changed, and mark it
     /// modified.
     void redraw(Sheet& sheet, const QString& verb);

@@ -13,6 +13,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
@@ -412,4 +414,160 @@ TEST(WorkbenchesTest, AViewIsMovedByTheToolsClicks) {
     ASSERT_EQ(read.views.size(), 4u);
     EXPECT_NEAR(read.views[3].placement.x, iso.placement.x - 30.0, 1e-9);
     EXPECT_NEAR(read.views[3].placement.y, iso.placement.y, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
+// What is drawn on a sheet by hand (Phase 150)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A note on @p sheet at @p at, on layer @p layer: what it now holds.
+std::shared_ptr<hz::draft::DraftText> note(hz::doc::Document& sheet, const hz::math::Vec2& at,
+                                           const std::string& text, const std::string& layer) {
+    auto t = std::make_shared<hz::draft::DraftText>(at, text, 3.5);
+    t->setLayer(layer);
+    sheet.draftDocument().addEntity(t);
+    return t;
+}
+
+/// The notes on @p sheet saying @p text.
+std::vector<const hz::draft::DraftText*> notesSaying(const hz::doc::Document& sheet,
+                                                     const std::string& text) {
+    std::vector<const hz::draft::DraftText*> found;
+    for (const auto& e : sheet.draftDocument().entities()) {
+        const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get());
+        if (t != nullptr && t->text() == text) found.push_back(t);
+    }
+    return found;
+}
+
+/// The cube's sheet laid out as the workbench lays it (automatic, A3).
+hz::model::Drawing cubeLayout(const QString& cube) {
+    hz::doc::Document part;
+    EXPECT_TRUE(hz::io::NativeFormat::load(cube.toStdString(), part));
+    EXPECT_TRUE(part.rebuildModel());
+    const hz::io::DrawingDocumentSpec spec;
+    return hz::model::DrawingGenerator::sheetLayout(*part.solid(), spec.sheet, spec.titleBlock,
+                                                    spec.gap);
+}
+
+hz::math::Vec2 centreOf(const hz::model::DrawingView& v) {
+    return {v.placement.x + v.sheetWidth() / 2.0, v.placement.y + v.sheetHeight() / 2.0};
+}
+
+}  // namespace
+
+// What is drawn on a sheet by hand is saved with it: its entities, their
+// layers and the dimension style; opened again, it is where it was. Read
+// again, the file's replace what is there, and nothing is left to undo.
+TEST(WorkbenchesTest, WhatIsDrawnByHandIsSavedWithTheSheet) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    hz::doc::Document& sheet = *host.tabs.back().first;
+    hz::draft::LayerProperties notes;
+    notes.name = "Notes";
+    notes.color = 0xFFFF0000;
+    sheet.layerManager().addLayer(notes);
+    note(sheet, {50.0, 30.0}, "DEBURR ALL EDGES", "Notes");
+    auto style = sheet.draftDocument().dimensionStyle();
+    style.textHeight = 5.0;
+    sheet.draftDocument().setDimensionStyle(style);
+    std::string error;
+    ASSERT_TRUE(workbench.save(sheet, sheetPath, &error)) << error;
+
+    hz::io::DrawingDocumentSpec read;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(sheetPath, read, &error)) << error;
+    ASSERT_NE(read.annotations, nullptr);
+    EXPECT_EQ(read.annotations->draftDocument().entities().size(), 1u) << "the note, not the views";
+
+    StandInHost again;
+    hz::ui::DrawingWorkbench reopened(again);
+    ASSERT_TRUE(reopened.open(QString::fromStdString(sheetPath)));
+    hz::doc::Document& back = *again.tabs.back().first;
+    const auto found = notesSaying(back, "DEBURR ALL EDGES");
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_NEAR(found[0]->position().x, 50.0, 1e-9);
+    EXPECT_NEAR(found[0]->position().y, 30.0, 1e-9);
+    ASSERT_NE(back.layerManager().getLayer("Notes"), nullptr);
+    EXPECT_EQ(back.layerManager().getLayer("Notes")->color, 0xFFFF0000u);
+    EXPECT_DOUBLE_EQ(back.draftDocument().dimensionStyle().textHeight, 5.0);
+    EXPECT_FALSE(back.isDirty());
+
+    // Another note, then the file read again: the file's alone.
+    note(back, {80.0, 30.0}, "NOT KEPT", "Notes");
+    reopened.readAgain(back);
+    EXPECT_TRUE(notesSaying(back, "NOT KEPT").empty());
+    EXPECT_EQ(notesSaying(back, "DEBURR ALL EDGES").size(), 1u);
+    EXPECT_FALSE(back.undoStack().canUndo());
+}
+
+// A note drawn in a view moves with it: when the view is moved, and when
+// the part grows and the sheet is laid out again; one drawn outside every
+// view stays where it is.
+TEST(WorkbenchesTest, WhatIsDrawnInAViewMovesWithIt) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    hz::doc::Document& sheet = *host.tabs.back().first;
+
+    const auto layout = cubeLayout(cube);
+    const hz::model::DrawingView& front = layout.views[0];
+    const hz::math::Vec2 inFront = centreOf(front);
+    auto inside = note(sheet, inFront, "IN FRONT", "0");
+    auto outside = note(sheet, {15.0, 15.0}, "IN THE CORNER", "0");
+
+    // The part grows: the sheet is laid out again, Front with it.
+    {
+        hz::doc::Document part;
+        ASSERT_TRUE(hz::io::NativeFormat::load(cube.toStdString(), part));
+        ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", 25.0));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(cube.toStdString(), part));
+    }
+    workbench.refreshDrawingsOf(cube.toStdString());
+    const hz::math::Vec2 moved = centreOf(cubeLayout(cube).views[0]);
+    ASSERT_GT(std::hypot(moved.x - inFront.x, moved.y - inFront.y), 1.0) << "Front moved";
+    EXPECT_NEAR(inside->position().x, moved.x, 1e-9) << "at Front's centre still";
+    EXPECT_NEAR(inside->position().y, moved.y, 1e-9);
+    EXPECT_NEAR(outside->position().x, 15.0, 1e-12) << "on no view: where it was";
+    EXPECT_NEAR(outside->position().y, 15.0, 1e-12);
+
+    // Front moved by clicks: the note with it.
+    workbench.onMoveView();
+    ASSERT_NE(host.tool, nullptr);
+    const auto button = [&](QEvent::Type type, const hz::math::Vec2& at) {
+        QMouseEvent event(type, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton,
+                          type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton,
+                          Qt::NoModifier);
+        if (type == QEvent::MouseButtonPress) {
+            host.tool->mousePressEvent(&event, at);
+        } else {
+            host.tool->mouseReleaseEvent(&event, at);
+        }
+    };
+    for (const hz::math::Vec2& at : {moved, hz::math::Vec2{moved.x + 12.0, moved.y - 7.0}}) {
+        button(QEvent::MouseButtonPress, at);
+        button(QEvent::MouseButtonRelease, at);
+    }
+    QCoreApplication::processEvents();
+    EXPECT_NEAR(inside->position().x, moved.x + 12.0, 1e-9);
+    EXPECT_NEAR(inside->position().y, moved.y - 7.0, 1e-9);
+    EXPECT_NEAR(outside->position().x, 15.0, 1e-12);
 }

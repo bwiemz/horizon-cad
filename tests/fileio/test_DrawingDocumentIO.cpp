@@ -583,3 +583,19 @@ TEST(DrawingDocumentIOTest, ACircleIsDimensionedByItsOwnName) {
     EXPECT_TRUE(asLength.views[1].dimensions.empty()) << "not measured along one chord";
     EXPECT_EQ(lost.size(), 1u);
 }
+
+// Annotations that are not a drawing are refused with a reason.
+TEST(DrawingDocumentIOTest, AnnotationsThatAreNotADrawingAreRefused) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_notes";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "annotations": [1, 2]})");
+    DrawingDocumentSpec spec;
+    std::string error;
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("annotations"), std::string::npos) << error;
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "annotations": null})");
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
+    EXPECT_EQ(spec.annotations, nullptr);
+    std::filesystem::remove_all(dir);
+}

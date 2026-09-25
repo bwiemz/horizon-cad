@@ -227,6 +227,11 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
                          {"dimensions", dimensionsJson(v.dimensions)}});
     }
     root["views"] = views;
+    if (spec.annotations) {
+        // Written as the native format writes a document, so they read back
+        // with everything a drawing can hold.
+        root["annotations"] = json::parse(NativeFormat::documentToJson(*spec.annotations, false));
+    }
 
     return writeFileAtomically(pathFromUtf8(path),
                                root.dump(2, ' ', false, json::error_handler_t::replace));
@@ -393,6 +398,18 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                 }
                 spec.views.push_back(view);
             }
+        }
+    }
+    if (version >= 3) {
+        const auto annotations = root.find("annotations");
+        if (annotations != root.end() && !annotations->is_null()) {
+            if (!annotations->is_object()) return fail("its annotations are not a drawing");
+            auto notes = std::make_shared<doc::Document>();
+            std::string why;
+            if (!NativeFormat::documentFromJson(annotations->dump(), *notes, &why)) {
+                return fail("its annotations could not be read: " + why);
+            }
+            spec.annotations = std::move(notes);
         }
     }
     spec.version = version;

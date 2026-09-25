@@ -1,11 +1,16 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
+
+namespace hz::doc {
+class Document;
+}  // namespace hz::doc
 
 namespace hz::topo {
 class Solid;
@@ -53,6 +58,10 @@ struct DrawingDocumentSpec {
     /// at @p scale when it is positive, else at the largest that fits.
     std::vector<DrawingViewSpec> views;
     double scale = 0.0;
+    /// What was drawn on the sheet by hand (Phase 150): its entities, their
+    /// layers and blocks, and the dimension style, as a document of their
+    /// own. Null: nothing.
+    std::shared_ptr<doc::Document> annotations;
     /// The format version it was read from: 1 lays out the standard views
     /// by the gap at 1:1, as version 1 did; 2 is the sheet layout; 3 adds
     /// sections and details.

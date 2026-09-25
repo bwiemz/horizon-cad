@@ -17,7 +17,7 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–149)
+## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–150)
 
 - **The Linux build opens a window (145).** It was built with a Qt that had
   no platform plugin and no font engine: every headless test passed, and the
@@ -76,6 +76,12 @@ work, not "post-1.0".
     side-on.
   - Drawing ▸ View Properties shows or leaves out each view's hidden edges,
     tangent edges and centre lines.
+- **Notes stay on a sheet, and with their view (150).**
+  - What you draw on a drawing sheet (notes, lines, your own layers and
+    the dimension style) is saved with it. It used to last only for the
+    session.
+  - A note drawn in a view moves with the view: when you move the view,
+    when you change the scale or paper, and when the part changes size.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**

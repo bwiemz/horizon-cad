@@ -14,6 +14,7 @@
 
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
@@ -87,6 +88,95 @@ std::string labelFrom(const QString& typed) {
 
 double distance(const math::Vec2& a, const math::Vec2& b) {
     return std::hypot(b.x - a.x, b.y - a.y);
+}
+
+/// What was drawn on @p sheet by hand, as a document of its own: its
+/// entities, the layers and blocks they use, and the dimension style. Null
+/// when nothing was.
+std::shared_ptr<doc::Document> annotationsOf(const doc::Document& sheet) {
+    auto notes = std::make_shared<doc::Document>();
+    notes->draftDocument().setDimensionStyle(sheet.draftDocument().dimensionStyle());
+    for (const std::string& name : sheet.layerManager().layerNames()) {
+        if (ownLayer(name)) continue;
+        if (const auto* layer = sheet.layerManager().getLayer(name)) {
+            notes->layerManager().addLayer(*layer);
+        }
+    }
+    for (const std::string& name : sheet.draftDocument().blockTable().blockNames()) {
+        notes->draftDocument().blockTable().addBlock(
+            sheet.draftDocument().blockTable().findBlock(name));
+    }
+    bool any = false;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (ownLayer(entity->layer())) continue;
+        notes->draftDocument().addEntity(entity->clone());
+        any = true;
+    }
+    return any ? notes : nullptr;
+}
+
+/// @p notes drawn on @p sheet again: its layers and blocks where the sheet
+/// has none of those names, its dimension style, and its entities.
+void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
+    for (const std::string& name : notes.layerManager().layerNames()) {
+        if (ownLayer(name) || sheet.layerManager().getLayer(name) != nullptr) continue;
+        if (const auto* layer = notes.layerManager().getLayer(name)) {
+            sheet.layerManager().addLayer(*layer);
+        }
+    }
+    auto& blocks = sheet.draftDocument().blockTable();
+    for (const std::string& name : notes.draftDocument().blockTable().blockNames()) {
+        if (!blocks.findBlock(name))
+            blocks.addBlock(notes.draftDocument().blockTable().findBlock(name));
+    }
+    sheet.draftDocument().setDimensionStyle(notes.draftDocument().dimensionStyle());
+    for (const auto& entity : notes.draftDocument().entities()) {
+        if (ownLayer(entity->layer())) continue;  // the sheet draws those itself
+        sheet.draftDocument().addEntity(entity->clone());
+    }
+}
+
+/// What was drawn by hand inside a view moves with the view: each view of
+/// @p before found in @p after (by what it is), and what lay in its
+/// footprint carried by as far as it moved.
+void carryAnnotations(doc::Document& sheet, const model::Drawing& before,
+                      const model::Drawing& after) {
+    std::vector<bool> taken(after.views.size(), false);
+    std::vector<bool> carried(sheet.draftDocument().entities().size(), false);
+    for (const model::DrawingView& was : before.views) {
+        std::size_t match = after.views.size();
+        for (std::size_t j = 0; j < after.views.size(); ++j) {
+            const model::DrawingView& now = after.views[j];
+            if (!taken[j] && now.role == was.role && now.kind == was.kind &&
+                now.label == was.label) {
+                match = j;
+                break;
+            }
+        }
+        if (match == after.views.size()) continue;  // gone: what was on it stays
+        taken[match] = true;
+        const model::DrawingView& now = after.views[match];
+        const math::Vec2 delta{
+            now.placement.x + now.sheetWidth() / 2.0 - (was.placement.x + was.sheetWidth() / 2.0),
+            now.placement.y + now.sheetHeight() / 2.0 -
+                (was.placement.y + was.sheetHeight() / 2.0)};
+        if (std::abs(delta.x) < 1e-12 && std::abs(delta.y) < 1e-12) continue;
+        const auto [low, high] = was.sheetFootprint();
+        auto& entities = sheet.draftDocument().entities();
+        for (std::size_t k = 0; k < entities.size(); ++k) {
+            const auto& entity = entities[k];
+            if (carried[k] || ownLayer(entity->layer())) continue;
+            const math::BoundingBox box = entity->boundingBox();
+            if (!box.isValid()) continue;
+            const math::Vec3 centre = box.center();
+            if (centre.x < low.x || centre.x > high.x || centre.y < low.y || centre.y > high.y) {
+                continue;
+            }
+            entity->translate(delta);
+            sheet.draftDocument().updateEntityBounds(entity->id());
+            carried[k] = true;
+        }
+    }
 }
 
 }  // namespace
@@ -258,6 +348,10 @@ bool DrawingWorkbench::open(const QString& fileName) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
+    // What was drawn on it by hand, back where it was: the document holds it
+    // from here on, and a save writes it from there.
+    if (spec.annotations) placeAnnotations(*document, *spec.annotations);
+    spec.annotations.reset();
     document->setFilePath(path);
     document->setDirty(false);
     m_sheets.push_back(std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing)}));
@@ -273,19 +367,12 @@ bool DrawingWorkbench::save(doc::Document& document, const std::string& path, st
         if (error != nullptr) *error = "it is not a drawing sheet";
         return false;
     }
-    if (!io::DrawingDocumentIO::save(path, sheet->spec)) {
+    // Its spec, and what was drawn on it by hand.
+    io::DrawingDocumentSpec written = sheet->spec;
+    written.annotations = annotationsOf(document);
+    if (!io::DrawingDocumentIO::save(path, written)) {
         if (error != nullptr) *error = "the file could not be written";
         return false;
-    }
-    // Said, not lost unsaid: a sheet keeps its part, layout and title block;
-    // what was drawn on it by hand is not in the file yet.
-    const bool drawnByHand = std::any_of(
-        document.draftDocument().entities().begin(), document.draftDocument().entities().end(),
-        [](const auto& entity) { return !ownLayer(entity->layer()); });
-    if (drawnByHand) {
-        m_host.showStatus(tr("Drawing saved; what was drawn on the sheet by hand is not saved "
-                             "with it"),
-                          15000);
     }
     return true;
 }
@@ -302,6 +389,16 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
+    // The file's hand-drawn entities in place of these, and no undoing back
+    // into what was given up: read again is the file as it is.
+    std::vector<uint64_t> byHand;
+    for (const auto& entity : document.draftDocument().entities()) {
+        if (!ownLayer(entity->layer())) byHand.push_back(entity->id());
+    }
+    document.draftDocument().removeEntities(byHand);
+    document.undoStack().clear();
+    if (spec.annotations) placeAnnotations(document, *spec.annotations);
+    spec.annotations.reset();
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
     m_host.documents().watch(sheet->spec.partPath);
@@ -330,7 +427,7 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
         const auto document = sheet->document.lock();
         if (!document || !doc::DocumentManager::samePath(sheet->spec.partPath, path)) continue;
         std::string error;
-        if (draw(*document, sheet->spec, &error, &sheet->drawing)) {
+        if (drawAgain(*sheet, &error)) {
             ++redrawn;
         } else {
             m_host.showStatus(tr("A drawing of \"%1\" could not be drawn again: %2")
@@ -344,11 +441,21 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
     if (redrawn > 0) m_host.viewport().update();
 }
 
+bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error) {
+    const auto document = sheet.document.lock();
+    if (!document) return false;
+    model::Drawing drawing;
+    if (!draw(*document, sheet.spec, error, &drawing)) return false;
+    carryAnnotations(*document, sheet.drawing, drawing);
+    sheet.drawing = std::move(drawing);
+    return true;
+}
+
 void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
     const auto document = sheet.document.lock();
     if (!document) return;
     std::string error;
-    if (!draw(*document, sheet.spec, &error, &sheet.drawing)) {
+    if (!drawAgain(sheet, &error)) {
         m_host.showStatus(tr("%1: the drawing could not be drawn again: %2")
                               .arg(verb, QString::fromStdString(error)));
         return;
@@ -1095,7 +1202,7 @@ void DrawingWorkbench::onUpdateFromPart() {
     const auto document = sheet->document.lock();
     if (!document) return;
     std::string error;
-    if (!draw(*document, sheet->spec, &error, &sheet->drawing)) {
+    if (!drawAgain(*sheet, &error)) {
         m_host.showStatus(
             tr("The drawing could not be drawn again: %1").arg(QString::fromStdString(error)));
         return;
