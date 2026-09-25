@@ -828,6 +828,16 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         if (feat->naming() != model::NamingScheme::Positional) {
             fObj["naming"] = static_cast<int>(feat->naming());
         }
+        // Phase 155: parameters given as expressions of the variables. The
+        // parameters beside them hold the values they worked out to, which
+        // a build that reads no expressions uses.
+        if (!feat->parameterExpressions().empty()) {
+            json expressions = json::object();
+            for (const auto& [name, text] : feat->parameterExpressions()) {
+                expressions[name] = text;
+            }
+            fObj["expressions"] = expressions;
+        }
 
         featureTreeArray.push_back(fObj);
     }
@@ -1404,6 +1414,16 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     if (feature->createsNewBody()) feature->setOperation(operation);
                     feature->setSuppressed(suppressed);
                     feature->setNaming(naming);
+                    // Phase 155. What is not text is left out: the value
+                    // beside it stands.
+                    if (const auto expressions = fObj.find("expressions");
+                        expressions != fObj.end() && expressions->is_object()) {
+                        for (const auto& [name, text] : expressions->items()) {
+                            if (text.is_string()) {
+                                feature->setParameterExpression(name, text.get<std::string>());
+                            }
+                        }
+                    }
                     doc.featureTree().addFeature(std::move(feature));
                 };
 

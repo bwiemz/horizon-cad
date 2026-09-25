@@ -2,8 +2,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <map>
+#include <optional>
+#include <string>
 
 #include "horizon/document/UndoStack.h"
+#include "horizon/math/Expression.h"
+#include "horizon/math/Quantity.h"
 
 namespace hz::doc {
 
@@ -81,7 +87,69 @@ void Document::clear() {
 }
 
 bool Document::rebuildModel() {
-    return applyBuild(m_featureTree.buildWithDiagnostics());
+    return applyBuild(buildWithDiagnostics());
+}
+
+BuildResult Document::buildWithDiagnostics(BuildControl* control) {
+    applyExpressions();
+    return m_featureTree.buildWithDiagnostics(control);
+}
+
+void Document::applyExpressions() {
+    std::map<std::string, math::Quantity> variables;
+    bool worked = false;  // worked out once, if any feature has an expression
+    for (size_t index = 0; index < m_featureTree.featureCount(); ++index) {
+        Feature* feature = m_featureTree.feature(index);
+        if (feature == nullptr) continue;
+        if (feature->parameterExpressions().empty()) {
+            feature->setExpressionError({});
+            continue;
+        }
+        if (!worked) {
+            variables = m_parameterRegistry.quantities();
+            worked = true;
+        }
+        std::string error;
+        for (const auto& [name, text] : feature->parameterExpressions()) {
+            std::string why;
+            const auto expression = math::Expression::parse(text);
+            const auto q =
+                expression ? math::evaluateQuantity(*expression, variables, &why) : std::nullopt;
+            if (!expression) why = "it is not an expression";
+            std::optional<double> value;
+            if (q) {
+                switch (feature->parameterKind(name)) {
+                    case Feature::ParameterKind::Length:
+                        if (q->length == 1 && q->angle == 0)
+                            value = q->value;
+                        else
+                            why = "it gives " + math::measureName(*q) + ", not a length";
+                        break;
+                    case Feature::ParameterKind::Angle:
+                        if (q->length == 0 && q->angle == 1)
+                            value = q->value;
+                        else
+                            why = "it gives " + math::measureName(*q) + ", not an angle";
+                        break;
+                    case Feature::ParameterKind::Count:
+                    case Feature::ParameterKind::Choice:
+                        if (q->pure())
+                            value = std::round(q->value);
+                        else
+                            why = "it gives " + math::measureName(*q) + ", not a number";
+                        break;
+                }
+            }
+            if (value && !feature->setParameter(name, *value)) {
+                why = "the feature cannot take " + std::to_string(*value);
+                value.reset();
+            }
+            if (!value && error.empty()) {
+                error = "its " + name + ", " + text + ", cannot be worked out: " + why;
+            }
+        }
+        feature->setExpressionError(std::move(error));
+    }
 }
 
 bool Document::applyBuild(BuildResult result) {

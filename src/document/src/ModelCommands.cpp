@@ -157,12 +157,14 @@ std::vector<std::string> refusedVectors(Feature& feature,
 EditFeatureCommand::EditFeatureCommand(Document& doc, const Feature* feature,
                                        std::map<std::string, double> parameters,
                                        std::optional<BodyOperation> operation,
-                                       std::map<std::string, math::Vec3> vectors)
+                                       std::map<std::string, math::Vec3> vectors,
+                                       std::map<std::string, std::string> expressions)
     : m_doc(doc),
       m_feature(feature),
       m_new(std::move(parameters)),
       m_newOperation(operation),
-      m_newVectors(std::move(vectors)) {}
+      m_newVectors(std::move(vectors)),
+      m_newExpressions(std::move(expressions)) {}
 
 void EditFeatureCommand::execute() {
     Feature* feature = inTree(m_doc, m_feature);
@@ -172,18 +174,29 @@ void EditFeatureCommand::execute() {
     m_old = feature->parameters();
     m_oldOperation = feature->operation();
     m_oldVectors = feature->vectors();
-    apply(m_new, m_newOperation.value_or(m_oldOperation), m_newVectors);
+    m_oldExpressions = feature->parameterExpressions();
+    std::map<std::string, std::string> expressions = m_oldExpressions;
+    for (const auto& [name, text] : m_newExpressions) {
+        if (text.empty()) {
+            expressions.erase(name);
+        } else {
+            expressions[name] = text;
+        }
+    }
+    apply(m_new, m_newOperation.value_or(m_oldOperation), m_newVectors, expressions);
 }
 
 void EditFeatureCommand::undo() {
-    apply(m_old, m_oldOperation, m_oldVectors);
+    apply(m_old, m_oldOperation, m_oldVectors, m_oldExpressions);
 }
 
 void EditFeatureCommand::apply(const std::map<std::string, double>& parameters,
                                BodyOperation operation,
-                               const std::map<std::string, math::Vec3>& vectors) {
+                               const std::map<std::string, math::Vec3>& vectors,
+                               const std::map<std::string, std::string>& expressions) {
     Feature* feature = inTree(m_doc, m_feature);
     if (!feature) return;
+    feature->setParameterExpressions(expressions);
     setParameters(*feature, parameters);
     for (const auto& [name, value] : vectors) feature->setVector(name, value);
     feature->setOperation(operation);

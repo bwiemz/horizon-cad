@@ -34,7 +34,7 @@ void RebuildJob::run() {
         doc::Document copy;
         std::string error;
         if (io::NativeFormat::documentFromJson(m_snapshot, copy, &error)) {
-            m_result = copy.featureTree().buildWithDiagnostics(&m_control);
+            m_result = copy.buildWithDiagnostics(&m_control);
         } else {
             m_result.failedFeatureIndex = 0;
             m_result.failureMessage = "the model could not be copied for rebuilding: " + error;

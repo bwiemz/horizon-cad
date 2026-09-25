@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QDoubleSpinBox>
+#include <functional>
 #include <optional>
+#include <string>
 
 #include "horizon/math/Units.h"
 
@@ -29,6 +31,25 @@ public:
     /// its value stays.
     void setUnit(math::LengthUnit unit);
 
+    /// An expression typed after "=" worked out (Phase 155): its value (in
+    /// millimetres, or degrees) and the expression as it is kept.
+    struct Worked {
+        double value = 0.0;
+        std::string kept;
+    };
+    /// Works out an expression, or says why not in its second argument.
+    using Resolver = std::function<std::optional<Worked>(const std::string&, std::string*)>;
+    /// Take "=expression" too ("=wall * 2"), worked out by @p resolver: the
+    /// field shows the expression and holds its value.
+    void setResolver(Resolver resolver) { m_resolver = std::move(resolver); }
+    /// The expression the value is from, as kept; empty when it is a number
+    /// (typed, or stepped to with the arrows).
+    std::string expression() const;
+    /// Show @p kept, an expression as kept, for its @p value.
+    void setExpression(const std::string& kept, double value);
+
+    void stepBy(int steps) override;
+
 protected:
     QString textFromValue(double value) const override;
     double valueFromText(const QString& text) const override;
@@ -38,10 +59,17 @@ private:
     /// @p text read, in millimetres or degrees; nullopt when it is not a
     /// value (or is one only in part, while it is being typed).
     std::optional<double> read(const QString& text) const;
+    /// Whether @p value is the one the expression shown gave.
+    bool fromExpression(double value) const;
 
     Kind m_kind;
     math::LengthUnit m_unit;
     int m_shown;
+    Resolver m_resolver;
+    /// The expression shown, and the value it gave: valueFromText, const,
+    /// takes one typed.
+    mutable std::string m_expression;
+    mutable double m_expressionValue = 0.0;
 };
 
 }  // namespace hz::ui

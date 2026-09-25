@@ -11,6 +11,7 @@ add_executable(hz_fileio_tests
     test_StepCurved.cpp
     test_StepAssembly.cpp
     test_DocumentUnits.cpp
+    test_ExpressionsIO.cpp
     test_GltfExport.cpp
     test_ImportExport.cpp
     test_DxfFidelity.cpp
