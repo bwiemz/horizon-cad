@@ -100,11 +100,46 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
 
 ## Phase 146: Workbench controllers
 
-Outline only, planned in detail when no open PR touches `MainWindow`:
-- `AssemblyWorkbench` takes the Assembly menu's commands and their helpers.
-- `PartWorkbench` takes the 3D part commands.
-- `MainWindow` keeps tabs, menus, docks and file commands.
-- No behaviour changes. The window tests, now in CI, are the net.
+In two parts, each its own PR: the assembly commands, then the part commands.
+
+### Part 1 as built: AssemblyWorkbench
+- **`WorkbenchHost`**: the narrow interface a workbench reaches the window
+  through:
+  - the active document and assembly, and every open assembly;
+  - the document manager and the viewport;
+  - the status bar and prompt;
+  - scene rebuilds and the modified markers;
+  - opening a file and reporting a file error;
+  - the worker policy and the busy indicator.
+
+  `MainWindow` implements it privately.
+- **`AssemblyWorkbench`** holds the 27 assembly functions and their helpers,
+  moved with their text unchanged except for how they reach the window.
+  These cover inserting, moving, rotating, renaming, suppressing and
+  removing components; adding, editing and removing mates; interference,
+  with its worker; the bill of materials; opening a component's part; and
+  refreshing the components of a changed part.
+  - The workbench wires the assembly tree to itself, and the view's
+    selection to the tree.
+  - The window keeps the menu, the dock, the tabs and the file watching,
+    and calls it for crash recovery, opening, saving, closing and reloading.
+    Opening uses `placeOnOpen`, where it snapshotted, solved and compared.
+- `MainWindow.cpp` is 4,808 lines, down from 5,657. `formatPoint` moved to
+  `FeatureForm`, where both halves of the window use it.
+- The four copies of "the assembly's folder" are one `assemblyDir()`.
+
+### Part 1 tests
+- All 13 assembly window tests pass unchanged; they are the net.
+- New: the workbench runs against a stand-in host with no window. It says
+  when there is no assembly, places a lid on its base by their mate as the
+  assembly opens, and moves it up when the base's part file grows.
+
+### Part 2 (next): PartWorkbench
+- The 3D part commands: primitives, extrude and revolve, loft and sweep,
+  fillet, chamfer, shell and draft, patterns, datums, sketches on faces,
+  feature editing and mass properties.
+- A view kept per tab (plan view for a drawing, isometric for a part), with
+  the view state moved out of the shared viewport.
 
 ## Tracking
 

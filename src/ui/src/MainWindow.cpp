@@ -80,6 +80,7 @@
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/ArcTool.h"
 #include "horizon/ui/AssemblyTreePanel.h"
+#include "horizon/ui/AssemblyWorkbench.h"
 #include "horizon/ui/BreakTool.h"
 #include "horizon/ui/ChainDimensionTool.h"
 #include "horizon/ui/ChamferTool.h"
@@ -141,78 +142,8 @@ constexpr int kWindowStateVersion = 1;
 
 namespace {
 
-/// A component's bounds where it is placed, from its mesh; invalid when it
-/// has none.
-math::BoundingBox placedBounds(const doc::ComponentInstance& comp) {
-    math::BoundingBox box;
-    if (!comp.cachedMesh) return box;
-    const auto& p = comp.cachedMesh->positions;
-    for (size_t i = 0; i + 2 < p.size(); i += 3) {
-        box.expand(comp.transform.transformPoint(math::Vec3(p[i], p[i + 1], p[i + 2])));
-    }
-    return box;
-}
-
-/// Whether any component of @p now is placed other than in @p before.
-bool placementsDiffer(const doc::AssemblyState& before, const doc::AssemblyDocument& now) {
-    for (const auto& comp : now.components()) {
-        for (const auto& was : before.components) {
-            if (was.id != comp.id) continue;
-            for (int r = 0; r < 4; ++r) {
-                for (int c = 0; c < 4; ++c) {
-                    if (was.transform.at(r, c) != comp.transform.at(r, c)) return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-QString mateTypeName(doc::MateType type) {
-    switch (type) {
-        case doc::MateType::Coincident:
-            return MainWindow::tr("Coincident");
-        case doc::MateType::Concentric:
-            return MainWindow::tr("Concentric");
-        case doc::MateType::Distance:
-            return MainWindow::tr("Distance");
-        case doc::MateType::Angle:
-            return MainWindow::tr("Angle");
-        case doc::MateType::Parallel:
-            return MainWindow::tr("Parallel");
-        case doc::MateType::Perpendicular:
-            return MainWindow::tr("Perpendicular");
-        case doc::MateType::Tangent:
-            return MainWindow::tr("Tangent");
-        case doc::MateType::Fixed:
-            return MainWindow::tr("Fixed");
-    }
-    return {};
-}
-
-/// The folder an assembly's relative part paths are in: its file's; none
-/// while it is unsaved.
-std::string assemblyDir(const doc::AssemblyDocument& assembly) {
-    return assembly.filePath().empty()
-               ? std::string()
-               : std::filesystem::path(assembly.filePath()).parent_path().string();
-}
-
-/// The file @p comp places, found as DocumentManager::resolveComponent finds it.
-std::string partFile(const doc::ComponentInstance& comp, const std::string& dir) {
-    std::filesystem::path path(comp.partPath);
-    if (path.is_relative() && !dir.empty()) path = std::filesystem::path(dir) / path;
-    return path.string();
-}
-
 /// How often the files open or placed are looked at for changes on disk.
 constexpr int kPartWatchMs = 2000;
-
-/// A point or direction as the dialogs show it: "(10, 0, 2.5)".
-QString formatPoint(const math::Vec3& p) {
-    const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
-    return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
-}
 
 /// Edges or faces of the part to choose from in a dialog, until the viewport
 /// can pick them: each one's name, and how it is listed ({text, tooltip}).
@@ -564,30 +495,9 @@ MainWindow::MainWindow(QWidget* parent)
     addDockWidget(Qt::LeftDockWidgetArea, m_assemblyTreePanel);
     tabifyDockWidget(m_featureTreePanel, m_assemblyTreePanel);
     m_featureTreePanel->raise();
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::componentSelected, this, [this](uint64_t id) {
-        m_viewport->chooseModel(ViewportWidget::ModelPick{id, {}, false}, false);
-    });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::removeComponentRequested, this,
-            [this](uint64_t id) { removeComponent(id); });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::suppressRequested, this,
-            [this](uint64_t id, bool suppress) { setComponentSuppressed(id, suppress); });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::renameRequested, this,
-            [this](uint64_t id) { renameComponent(id); });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::openPartRequested, this,
-            [this](uint64_t id) { openComponentPart(id); });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::editMateRequested, this,
-            [this](uint64_t id) { editMate(id); });
-    connect(m_assemblyTreePanel, &AssemblyTreePanel::removeMateRequested, this,
-            [this](uint64_t id) { removeMate(id); });
-    // A component clicked in the view is the tree's current row.
-    connect(m_viewport, &ViewportWidget::modelSelectionChanged, this, [this] {
-        if (!m_assembly) return;
-        for (const auto& pick : m_viewport->modelSelection()) {
-            if (pick.owner == 0) continue;
-            m_assemblyTreePanel->showComponent(pick.owner);
-            break;
-        }
-    });
+    // The assembly commands, which wire the tree to themselves (Phase 146).
+    m_assemblies = std::make_unique<AssemblyWorkbench>(static_cast<WorkbenchHost&>(*this),
+                                                       *m_assemblyTreePanel);
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
@@ -646,7 +556,7 @@ MainWindow::~MainWindow() {
     // Stop work on workers before anything it could report to is gone.
     m_rebuildJob.reset();
     m_importTask.reset();
-    m_interferenceTask.reset();
+    m_assemblies.reset();
     m_openTask.reset();
     m_reloadTask.reset();
     m_massTask.reset();
@@ -875,28 +785,31 @@ void MainWindow::createMenus() {
     // ---- Assembly (Phase 143: its commands were three in the File menu) ----
     QMenu* assemblyMenu = menuBar()->addMenu(tr("&Assembly"));
     sketchAction(assemblyMenu, tr("&Insert Component..."), "action_insert_component",
-                 [this] { onInsertComponent(); });
-    sketchAction(assemblyMenu, tr("&Open Part"), "action_open_part", [this] { onOpenPart(); });
+                 [this] { m_assemblies->onInsertComponent(); });
+    sketchAction(assemblyMenu, tr("&Open Part"), "action_open_part",
+                 [this] { m_assemblies->onOpenPart(); });
     sketchAction(assemblyMenu, tr("&Move Component..."), "action_move_component",
-                 [this] { onMoveComponent(); });
+                 [this] { m_assemblies->onMoveComponent(); });
     sketchAction(assemblyMenu, tr("R&otate Component..."), "action_rotate_component",
-                 [this] { onRotateComponent(); });
+                 [this] { m_assemblies->onRotateComponent(); });
     sketchAction(assemblyMenu, tr("Re&name Component..."), "action_rename_component",
-                 [this] { onRenameComponent(); });
+                 [this] { m_assemblies->onRenameComponent(); });
     sketchAction(assemblyMenu, tr("&Suppress or Unsuppress Component"), "action_suppress_component",
-                 [this] { onSuppressComponent(); });
+                 [this] { m_assemblies->onSuppressComponent(); });
     sketchAction(assemblyMenu, tr("&Remove Component"), "action_remove_component",
-                 [this] { onRemoveComponent(); });
+                 [this] { m_assemblies->onRemoveComponent(); });
     assemblyMenu->addSeparator();
-    sketchAction(assemblyMenu, tr("Add &Mate..."), "action_add_mate", [this] { onAddMate(); });
-    sketchAction(assemblyMenu, tr("&Edit Mate..."), "action_edit_mate", [this] { onEditMate(); });
+    sketchAction(assemblyMenu, tr("Add &Mate..."), "action_add_mate",
+                 [this] { m_assemblies->onAddMate(); });
+    sketchAction(assemblyMenu, tr("&Edit Mate..."), "action_edit_mate",
+                 [this] { m_assemblies->onEditMate(); });
     sketchAction(assemblyMenu, tr("Remo&ve Mate..."), "action_remove_mate",
-                 [this] { onRemoveMate(); });
+                 [this] { m_assemblies->onRemoveMate(); });
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("Check &Interference"), "action_check_interference",
-                 [this] { onCheckInterference(); });
+                 [this] { m_assemblies->onCheckInterference(); });
     sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
-                 [this] { onBillOfMaterials(); });
+                 [this] { m_assemblies->onBillOfMaterials(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1260,7 +1173,7 @@ void MainWindow::createStatusBar() {
             m_rebuildJob->cancel();
         }
         if (m_importTask) m_importTask->cancel();
-        if (m_interferenceTask) m_interferenceTask->cancel();
+        m_assemblies->cancelWork();
         if (m_openTask) m_openTask->cancel();  // dropped once it is read
         if (m_reloadTask) m_reloadTask->cancel();
         if (m_massTask) m_massTask->cancel();
@@ -1466,7 +1379,7 @@ void MainWindow::onTabCloseRequested(int index) {
     // A part closed with its edits discarded: components that shared its
     // document, or its model's mesh, had them. They show its file again.
     if (!tab.assembly && tab.document->isDirty() && !tab.document->filePath().empty()) {
-        refreshComponentsOf(tab.document->filePath());
+        m_assemblies->refreshComponentsOf(tab.document->filePath());
     }
 }
 
@@ -1575,16 +1488,6 @@ bool MainWindow::isTabModified(const DocTab& tab) const {
     // assembly's own flag covers changes made outside them (a recovery).
     const bool edited = tab.document->isDirty();
     return tab.assembly ? tab.assembly->isDirty() || edited : edited;
-}
-
-void MainWindow::recordAssemblyEdit(doc::AssemblyState before, bool wasDirty,
-                                    const QString& description) {
-    // From here the undo stack carries the change — undoing back to the saved
-    // state must clear the modified marker, which the assembly's own flag,
-    // set by the edit itself, would not.
-    m_assembly->setDirty(wasDirty);
-    m_document->undoStack().push(std::make_unique<doc::AssemblyEditCommand>(
-        *m_assembly, std::move(before), m_assembly->snapshot(), description.toStdString()));
 }
 
 void MainWindow::refreshModifiedIndicators() {
@@ -1754,7 +1657,7 @@ void MainWindow::offerRecovery() {
             }
             assembly->setFilePath(entry.originalPath.toStdString());
             assembly->setDirty(true);
-            solveAssemblyMates(*assembly);
+            m_assemblies->solveAssemblyMates(*assembly);
             auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
             addDocumentTab(std::move(backing), std::move(assembly), entry.title);
             m_tabs.back().recovered = true;
@@ -1936,9 +1839,7 @@ bool MainWindow::openPath(const QString& fileName) {
         const io::ImportReport report = m_lastLoadReport;
         // Saved assemblies come back positioned by their mates: modified, if
         // that moved anything, so the placing can be saved.
-        const doc::AssemblyState placed = assembly->snapshot();
-        solveAssemblyMates(*assembly);
-        if (placementsDiffer(placed, *assembly)) assembly->setDirty(true);
+        if (m_assemblies->placeOnOpen(*assembly)) assembly->setDirty(true);
         auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
         addDocumentTab(std::move(backing), std::move(assembly),
                        tabTitleForPath(path, tr("Assembly")));
@@ -2161,7 +2062,7 @@ bool MainWindow::saveActiveDocument() {
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
         // The assemblies placing it show it as saved.
-        refreshComponentsOf(path);
+        m_assemblies->refreshComponentsOf(path);
         return true;
     }
     reportFileError(tr("Could not save"), path, error);
@@ -2551,702 +2452,13 @@ void MainWindow::onExportPlot(bool pdf) {
     m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
 }
 
-void MainWindow::onInsertComponent() {
-    if (!m_assembly) {
-        statusBar()->showMessage(tr("Insert Component is only available in an assembly document"));
-        return;
-    }
-
-    QString fileName = QFileDialog::getOpenFileName(this, tr("Insert Component"), QString(),
-                                                    tr("Horizon Parts (*.hzpart);;All Files (*)"));
-    if (fileName.isEmpty()) return;
-
-    doc::ComponentInstance comp;
-    comp.partPath = fileName.toStdString();
-    comp.name = std::filesystem::path(comp.partPath).stem().string();
-
-    const std::string asmDir =
-        m_assembly->filePath().empty()
-            ? std::string()
-            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
-    if (!m_docManager.resolveComponent(comp, doc::ComponentState::Lightweight, asmDir)) {
-        QMessageBox::warning(this, tr("Error"),
-                             tr("Failed to load the part (no geometry could be produced)."));
-        return;
-    }
-
-    // Beside the others, along +X, not on top of them at the origin.
-    math::BoundingBox others;
-    for (const auto& placed : m_assembly->components()) {
-        if (!placed.suppressed) others.expand(placedBounds(placed));
-    }
-    const math::BoundingBox own = placedBounds(comp);
-    if (others.isValid() && own.isValid()) {
-        const double gap =
-            0.1 * std::max((others.max() - others.min()).x, (own.max() - own.min()).x);
-        comp.transform =
-            math::Mat4::translation(math::Vec3(others.max().x + gap - own.min().x, 0.0, 0.0));
-    }
-
-    const bool wasDirty = m_assembly->isDirty();
-    doc::AssemblyState before = m_assembly->snapshot();
-    m_assembly->addComponent(std::move(comp));
-    recordAssemblyEdit(std::move(before), wasDirty, tr("Insert Component"));
-    rebuildScene();
-    m_viewport->camera().setIsometricView();
-    m_statusPrompt->setText(tr("Component inserted."));
-}
-
-bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
-    if (asmDoc.mates().empty()) return true;
-
-    const std::string asmDir =
-        asmDoc.filePath().empty() ? std::string()
-                                  : std::filesystem::path(asmDoc.filePath()).parent_path().string();
-
-    // Frames come from B-Rep faces, so mate solving needs resolved parts.
-    std::vector<model::SolverComponent> solverComponents;
-    for (auto& comp : asmDoc.components()) {
-        if (!comp.resolvedPart) {
-            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
-        }
-        model::SolverComponent sc;
-        sc.id = comp.id;
-        sc.transform = comp.transform;
-        solverComponents.push_back(sc);
-    }
-
-    std::vector<model::SolverMate> solverMates;
-    for (const auto& mate : asmDoc.mates()) {
-        model::SolverMate sm;
-        sm.type = mate.type;
-        sm.componentA = mate.a.componentId;
-        sm.componentB = mate.b.componentId;
-        sm.value = mate.value;
-
-        if (mate.type != doc::MateType::Fixed) {
-            auto frameFor = [&](const doc::MateReference& ref, model::MateFrame& out) -> bool {
-                const auto* comp = asmDoc.component(ref.componentId);
-                if (!comp || !comp->resolvedPart || !comp->resolvedPart->solid()) return false;
-                const auto* face =
-                    model::MateGeometry::findFace(*comp->resolvedPart->solid(), ref.faceId);
-                if (!face) return false;
-                auto frame = model::MateGeometry::frameForFace(*face);
-                if (!frame) return false;
-                out = *frame;
-                return true;
-            };
-            if (!frameFor(mate.a, sm.frameA) || !frameFor(mate.b, sm.frameB)) {
-                statusBar()->showMessage(
-                    tr("Mate %1 references geometry that could not be resolved").arg(mate.id));
-                return false;
-            }
-        }
-        solverMates.push_back(sm);
-    }
-
-    model::AssemblySolver solver;
-    auto result = solver.solve(solverComponents, solverMates);
-
-    if (result.status == model::AssemblySolveStatus::Success) {
-        for (auto& comp : asmDoc.components()) {
-            auto it = result.transforms.find(comp.id);
-            if (it != result.transforms.end()) comp.transform = it->second;
-        }
-        QString status = tr("Mates solved (%1 iterations)").arg(result.iterations);
-        if (result.redundantCount > 0) {
-            status += tr("; %1 redundant constraint(s)").arg(result.redundantCount);
-        }
-        if (!result.ungroundedComponents.empty()) {
-            status += tr("; %1 component(s) not connected to ground")
-                          .arg(result.ungroundedComponents.size());
-        }
-        if (reportSuccess) statusBar()->showMessage(status);
-        return true;
-    }
-
-    statusBar()->showMessage(
-        tr("Mate solve failed: %1")
-            .arg(QString::fromStdString(result.message.empty() ? "did not converge"
-                                                               : result.message)));
-    return false;
-}
-
-void MainWindow::onCheckInterference() {
-    if (!m_assembly) {
-        statusBar()->showMessage(
-            tr("Check Interference is only available in an assembly document"));
-        return;
-    }
-
-    // Interference is measured on the B-Rep, so every component is resolved.
-    const std::string asmDir =
-        m_assembly->filePath().empty()
-            ? std::string()
-            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
-    for (auto& comp : m_assembly->components()) {
-        if (!comp.suppressed && !comp.resolvedPart) {
-            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
-        }
-    }
-
-    auto input =
-        std::make_shared<doc::AssemblyDocument::InterferenceInput>(m_assembly->interferenceInput());
-    const bool onWorker =
-        m_rebuildMode == RebuildMode::Always ||
-        (m_rebuildMode == RebuildMode::Auto && input->faceCount() >= kWorkerInterferenceFaces);
-    if (!onWorker) {
-        showInterference(*m_assembly, doc::AssemblyDocument::measureInterference(*input));
-        return;
-    }
-    if (m_interferenceTask) {
-        statusBar()->showMessage(tr("An interference check is already running"));
-        return;
-    }
-    // The input is copies of the placed solids: the assembly can be edited,
-    // or its tab closed, while they are measured.
-    m_interferenceAssembly = m_assembly;
-    m_interferenceTask = std::make_unique<BackgroundTask<doc::InterferenceReport>>(
-        [input](const std::atomic<bool>& cancelled) {
-            return doc::AssemblyDocument::measureInterference(*input, &cancelled);
-        });
-    m_interferenceTask->start([this] {
-        QMetaObject::invokeMethod(this, &MainWindow::onInterferenceFinished, Qt::QueuedConnection);
-    });
-    m_statusPrompt->setText(tr("Checking interference..."));
-    updateBusyIndicator();
-}
-
-void MainWindow::onInterferenceFinished() {
-    if (!m_interferenceTask || !m_interferenceTask->finished()) return;
-    const std::unique_ptr<BackgroundTask<doc::InterferenceReport>> task =
-        std::move(m_interferenceTask);
-    const std::shared_ptr<doc::AssemblyDocument> assembly = std::move(m_interferenceAssembly);
-    updateBusyIndicator();
-    m_statusPrompt->setText(tr("Ready"));
-    if (task->cancelled()) {
-        statusBar()->showMessage(tr("Interference check cancelled"), 10000);
-        return;
-    }
-    if (!task->error().empty()) {
-        statusBar()->showMessage(
-            tr("The interference check failed: %1").arg(QString::fromStdString(task->error())));
-        return;
-    }
-    showInterference(*assembly, task->take());
-}
-
-void MainWindow::showInterference(const doc::AssemblyDocument& assembly,
-                                  const doc::InterferenceReport& report) {
-    auto nameOf = [&assembly](uint64_t id) {
-        const auto* comp = assembly.component(id);
-        const std::string name = comp && !comp->name.empty() ? comp->name : "component";
-        return QString("%1 (#%2)").arg(QString::fromStdString(name)).arg(id);
-    };
-
-    QStringList lines;
-    for (const auto& pair : report.pairs) {
-        const QString amount = pair.volumeResolved
-                                   ? tr("%1 cubic units shared").arg(pair.volume, 0, 'g', 6)
-                                   : tr("overlap could not be measured");
-        lines << tr("%1 and %2: %3").arg(nameOf(pair.componentA), nameOf(pair.componentB), amount);
-    }
-    for (uint64_t id : report.unchecked) {
-        lines << tr("%1 was not checked: its part could not be resolved").arg(nameOf(id));
-    }
-
-    if (report.pairs.empty()) {
-        statusBar()->showMessage(report.unchecked.empty()
-                                     ? tr("No interference found")
-                                     : tr("No interference among the resolved components"));
-    } else {
-        statusBar()->showMessage(
-            tr("%n interfering pair(s)", "", static_cast<int>(report.pairs.size())));
-    }
-    if (!lines.isEmpty()) {
-        QMessageBox::information(this, tr("Interference"), lines.join('\n'));
-    }
-}
-
-void MainWindow::onAddMate() {
-    if (!m_assembly) {
-        statusBar()->showMessage(tr("Add Mate is only available in an assembly document"));
-        return;
-    }
-    if (m_assembly->components().size() < 2) {
-        statusBar()->showMessage(tr("Insert at least two components first"));
-        return;
-    }
-    // Faces clicked in the viewport, on two components: the mate's A and B.
-    std::vector<ViewportWidget::ModelPick> clickedFaces;
-    for (const auto& pick : m_viewport->modelSelection()) {
-        const bool another = std::none_of(
-            clickedFaces.begin(), clickedFaces.end(),
-            [&pick](const ViewportWidget::ModelPick& p) { return p.owner == pick.owner; });
-        if (!pick.edge && pick.owner != 0 && another) clickedFaces.push_back(pick);
-    }
-
-    // Resolve parts so faces are available for picking.
-    const std::string asmDir =
-        m_assembly->filePath().empty()
-            ? std::string()
-            : std::filesystem::path(m_assembly->filePath()).parent_path().string();
-    for (auto& comp : m_assembly->components()) {
-        if (!comp.resolvedPart) {
-            m_docManager.resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
-        }
-    }
-
-    // Faces a mate can take, one row each (a curved face's facets together,
-    // as a click picks it), said by what they are and where; the name is the
-    // row's data. Raw facet names made a cylinder a row per facet, and a
-    // clicked curved face matched none of them.
-    auto addFaces = [](const doc::ComponentInstance& comp, QComboBox* combo) {
-        if (!comp.resolvedPart || !comp.resolvedPart->solid()) return;
-        std::set<std::string> seen;
-        for (const auto& face : comp.resolvedPart->solid()->faces()) {
-            if (!face.topoId.isValid()) continue;
-            const std::string logical = model::logicalFace(face.topoId.tag());
-            if (!seen.insert(logical).second) continue;
-            const auto frame = model::MateGeometry::frameForFace(face);
-            if (!frame) continue;
-            const QString what = frame->kind == model::MateFrameKind::Planar
-                                     ? tr("plane facing %1").arg(formatPoint(frame->direction))
-                                     : tr("cylinder of radius %1 along %2")
-                                           .arg(frame->radius, 0, 'g', 6)
-                                           .arg(formatPoint(frame->direction));
-            combo->addItem(QStringLiteral("%1 (%2)").arg(what, QString::fromStdString(logical)),
-                           QString::fromStdString(logical));
-        }
-    };
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Add Mate"));
-    auto* form = new QFormLayout(&dialog);
-
-    // The type by its value, not by the combo's order.
-    auto* typeCombo = new QComboBox(&dialog);
-    typeCombo->setObjectName("type");
-    for (const doc::MateType type :
-         {doc::MateType::Coincident, doc::MateType::Concentric, doc::MateType::Distance,
-          doc::MateType::Angle, doc::MateType::Parallel, doc::MateType::Perpendicular,
-          doc::MateType::Tangent, doc::MateType::Fixed}) {
-        typeCombo->addItem(mateTypeName(type), static_cast<int>(type));
-    }
-    form->addRow(tr("Type:"), typeCombo);
-
-    auto* compACombo = new QComboBox(&dialog);
-    auto* compBCombo = new QComboBox(&dialog);
-    compACombo->setObjectName("componentA");
-    compBCombo->setObjectName("componentB");
-    for (const auto& comp : m_assembly->components()) {
-        QString label =
-            QString("%1 (#%2)")
-                .arg(QString::fromStdString(comp.name.empty() ? "component" : comp.name))
-                .arg(comp.id);
-        compACombo->addItem(label, QVariant::fromValue<qulonglong>(comp.id));
-        compBCombo->addItem(label, QVariant::fromValue<qulonglong>(comp.id));
-    }
-    if (compBCombo->count() > 1) compBCombo->setCurrentIndex(1);
-
-    auto* faceACombo = new QComboBox(&dialog);
-    auto* faceBCombo = new QComboBox(&dialog);
-    faceACombo->setObjectName("faceA");
-    faceBCombo->setObjectName("faceB");
-    auto refreshFaces = [&](QComboBox* compCombo, QComboBox* faceCombo) {
-        faceCombo->clear();
-        const auto id = static_cast<uint64_t>(compCombo->currentData().toULongLong());
-        if (const auto* comp = m_assembly->component(id)) addFaces(*comp, faceCombo);
-    };
-    refreshFaces(compACombo, faceACombo);
-    refreshFaces(compBCombo, faceBCombo);
-    connect(compACombo, &QComboBox::currentIndexChanged, &dialog,
-            [&] { refreshFaces(compACombo, faceACombo); });
-    connect(compBCombo, &QComboBox::currentIndexChanged, &dialog,
-            [&] { refreshFaces(compBCombo, faceBCombo); });
-    const auto offer = [](QComboBox* compCombo, QComboBox* faceCombo,
-                          const ViewportWidget::ModelPick& pick) {
-        const int comp = compCombo->findData(QVariant::fromValue<qulonglong>(pick.owner));
-        if (comp < 0) return;
-        compCombo->setCurrentIndex(comp);  // refreshes the faces
-        const int face = faceCombo->findData(QString::fromStdString(pick.tag));
-        if (face >= 0) faceCombo->setCurrentIndex(face);
-    };
-    if (!clickedFaces.empty()) offer(compACombo, faceACombo, clickedFaces[0]);
-    if (clickedFaces.size() > 1) offer(compBCombo, faceBCombo, clickedFaces[1]);
-
-    form->addRow(tr("Component A:"), compACombo);
-    form->addRow(tr("Face A:"), faceACombo);
-    form->addRow(tr("Component B:"), compBCombo);
-    form->addRow(tr("Face B:"), faceBCombo);
-
-    auto* valueSpin = new QDoubleSpinBox(&dialog);
-    valueSpin->setObjectName("value");
-    valueSpin->setRange(-1e6, 1e6);
-    valueSpin->setDecimals(3);
-    form->addRow(tr("Value (distance / angle°):"), valueSpin);
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    form->addRow(buttons);
-
-    if (dialog.exec() != QDialog::Accepted) return;
-
-    doc::Mate mate;
-    mate.type = static_cast<doc::MateType>(typeCombo->currentData().toInt());
-    mate.a.componentId = static_cast<uint64_t>(compACombo->currentData().toULongLong());
-    mate.a.faceId = topo::TopologyID::fromTag(faceACombo->currentData().toString().toStdString());
-    if (mate.type != doc::MateType::Fixed) {
-        mate.b.componentId = static_cast<uint64_t>(compBCombo->currentData().toULongLong());
-        mate.b.faceId =
-            topo::TopologyID::fromTag(faceBCombo->currentData().toString().toStdString());
-    }
-    mate.value = mate.type == doc::MateType::Angle ? valueSpin->value() * std::numbers::pi / 180.0
-                                                   : valueSpin->value();
-
-    // The solve moves components; a mate that cannot be solved leaves the
-    // assembly exactly as it was, and one that can is a single undo step.
-    const bool wasDirty = m_assembly->isDirty();
-    doc::AssemblyState before = m_assembly->snapshot();
-    m_assembly->addMate(std::move(mate));
-    if (solveAssemblyMates(*m_assembly)) {
-        recordAssemblyEdit(std::move(before), wasDirty, tr("Add Mate"));
-    } else {
-        m_assembly->restore(std::move(before));
-        m_assembly->setDirty(wasDirty);
-    }
-    rebuildScene();
-}
-
 // ---------------------------------------------------------------------------
 // Placing components (Phase 143)
 // ---------------------------------------------------------------------------
 
-bool MainWindow::editAssembly(const QString& verb, const std::function<bool()>& edit) {
-    const bool wasDirty = m_assembly->isDirty();
-    doc::AssemblyState before = m_assembly->snapshot();
-    const bool made = edit();
-    if (made && solveAssemblyMates(*m_assembly)) {
-        recordAssemblyEdit(std::move(before), wasDirty, verb);
-        rebuildScene();
-        return true;
-    }
-    const QString why = statusBar()->currentMessage();
-    m_assembly->restore(std::move(before));
-    m_assembly->setDirty(wasDirty);
-    rebuildScene();
-    if (made) {
-        statusBar()->showMessage(
-            tr("%1 was not made: the mates cannot hold it (%2)").arg(verb, why));
-    }
-    return false;
-}
-
-uint64_t MainWindow::targetComponent() const {
-    for (const auto& pick : m_viewport->modelSelection()) {
-        if (pick.owner != 0 && m_assembly && m_assembly->component(pick.owner)) return pick.owner;
-    }
-    return m_assemblyTreePanel->currentComponent();
-}
-
-QComboBox* MainWindow::componentChoice(FeatureForm& form, uint64_t target,
-                                       std::vector<uint64_t>& ids) const {
-    QStringList names;
-    int chosen = 0;
-    for (const auto& comp : m_assembly->components()) {
-        if (comp.id == target) chosen = static_cast<int>(ids.size());
-        ids.push_back(comp.id);
-        names << QStringLiteral("%1 (#%2)")
-                     .arg(QString::fromStdString(comp.name.empty() ? "component" : comp.name))
-                     .arg(comp.id);
-    }
-    auto* choice = form.choice(QStringLiteral("component"), tr("Component:"), names);
-    choice->setCurrentIndex(chosen);
-    return choice;
-}
-
-QComboBox* MainWindow::mateChoice(FeatureForm& form, uint64_t target,
-                                  std::vector<uint64_t>& ids) const {
-    const auto nameOf = [this](uint64_t id) {
-        const auto* comp = m_assembly->component(id);
-        return QString::fromStdString(comp == nullptr || comp->name.empty() ? "component"
-                                                                            : comp->name);
-    };
-    QStringList names;
-    int chosen = 0;
-    for (const auto& mate : m_assembly->mates()) {
-        if (mate.id == target) chosen = static_cast<int>(ids.size());
-        ids.push_back(mate.id);
-        names << (mate.type == doc::MateType::Fixed
-                      ? tr("%1: %2 (#%3)")
-                            .arg(mateTypeName(mate.type), nameOf(mate.a.componentId))
-                            .arg(mate.id)
-                      : tr("%1: %2 and %3 (#%4)")
-                            .arg(mateTypeName(mate.type), nameOf(mate.a.componentId),
-                                 nameOf(mate.b.componentId))
-                            .arg(mate.id));
-    }
-    auto* choice = form.choice(QStringLiteral("mate"), tr("Mate:"), names);
-    choice->setCurrentIndex(chosen);
-    return choice;
-}
-
-namespace {
-
-/// Whether a Fixed mate holds @p id where it is.
-bool isFixed(const doc::AssemblyDocument& assembly, uint64_t id) {
-    return std::any_of(assembly.mates().begin(), assembly.mates().end(), [id](const doc::Mate& m) {
-        return m.type == doc::MateType::Fixed && m.a.componentId == id;
-    });
-}
-
-}  // namespace
-
-void MainWindow::onMoveComponent() {
-    const QString verb = tr("Move Component");
-    if (!m_assembly || m_assembly->components().empty()) {
-        statusBar()->showMessage(tr("%1 works on an assembly's components").arg(verb));
-        return;
-    }
-    FeatureForm form(this, verb);
-    std::vector<uint64_t> ids;
-    auto* which = componentChoice(form, targetComponent(), ids);
-    auto* dx = form.number(QStringLiteral("dx"), tr("Move X:"), 0.0, -1e6, 1e6);
-    auto* dy = form.number(QStringLiteral("dy"), tr("Move Y:"), 0.0, -1e6, 1e6);
-    auto* dz = form.number(QStringLiteral("dz"), tr("Move Z:"), 0.0, -1e6, 1e6);
-    if (!form.exec()) return;
-    const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
-    if (isFixed(*m_assembly, id)) {
-        statusBar()->showMessage(
-            tr("%1: a Fixed mate holds it; remove the mate to move it").arg(verb));
-        return;
-    }
-    const math::Vec3 by(dx->value(), dy->value(), dz->value());
-    editAssembly(verb, [this, id, by] {
-        auto* comp = m_assembly->component(id);
-        if (comp == nullptr) return false;
-        comp->transform = math::Mat4::translation(by) * comp->transform;
-        return true;
-    });
-}
-
-void MainWindow::onRotateComponent() {
-    const QString verb = tr("Rotate Component");
-    if (!m_assembly || m_assembly->components().empty()) {
-        statusBar()->showMessage(tr("%1 works on an assembly's components").arg(verb));
-        return;
-    }
-    FeatureForm form(this, verb);
-    std::vector<uint64_t> ids;
-    auto* which = componentChoice(form, targetComponent(), ids);
-    auto* axis = form.choice(QStringLiteral("axis"), tr("About:"), {tr("X"), tr("Y"), tr("Z")});
-    axis->setCurrentIndex(2);
-    auto* angle = form.number(QStringLiteral("angle"), tr("Angle (degrees):"), 90.0, -360.0, 360.0);
-    if (!form.exec()) return;
-    const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
-    if (isFixed(*m_assembly, id)) {
-        statusBar()->showMessage(
-            tr("%1: a Fixed mate holds it; remove the mate to turn it").arg(verb));
-        return;
-    }
-    const double radians = angle->value() * std::numbers::pi / 180.0;
-    const int about = axis->currentIndex();
-    editAssembly(verb, [this, id, radians, about] {
-        auto* comp = m_assembly->component(id);
-        if (comp == nullptr) return false;
-        // About its own middle, where it is.
-        const math::BoundingBox box = placedBounds(*comp);
-        const math::Vec3 middle = box.isValid() ? (box.min() + box.max()) * 0.5
-                                                : comp->transform.transformPoint(math::Vec3());
-        const math::Mat4 turn = about == 0   ? math::Mat4::rotationX(radians)
-                                : about == 1 ? math::Mat4::rotationY(radians)
-                                             : math::Mat4::rotationZ(radians);
-        comp->transform = math::Mat4::translation(middle) * turn *
-                          math::Mat4::translation(middle * -1.0) * comp->transform;
-        return true;
-    });
-}
-
-void MainWindow::removeComponent(uint64_t id) {
-    if (!m_assembly || m_assembly->component(id) == nullptr) return;
-    editAssembly(tr("Remove Component"), [this, id] { return m_assembly->removeComponent(id); });
-}
-
-void MainWindow::setComponentSuppressed(uint64_t id, bool suppressed) {
-    if (!m_assembly || m_assembly->component(id) == nullptr) return;
-    editAssembly(suppressed ? tr("Suppress Component") : tr("Unsuppress Component"),
-                 [this, id, suppressed] {
-                     m_assembly->component(id)->suppressed = suppressed;
-                     return true;
-                 });
-}
-
-void MainWindow::renameComponent(uint64_t id) {
-    if (!m_assembly || m_assembly->component(id) == nullptr) return;
-    const QString verb = tr("Rename Component");
-    FeatureForm form(this, verb);
-    auto* name = form.text(QStringLiteral("name"), tr("Name:"),
-                           QString::fromStdString(m_assembly->component(id)->name));
-    if (!form.exec()) return;
-    const std::string text = name->text().trimmed().toStdString();
-    if (text.empty()) {
-        statusBar()->showMessage(tr("%1: a component needs a name").arg(verb));
-        return;
-    }
-    editAssembly(verb, [this, id, text] {
-        m_assembly->component(id)->name = text;
-        return true;
-    });
-}
-
-void MainWindow::editMate(uint64_t id) {
-    if (!m_assembly || m_assembly->mate(id) == nullptr) return;
-    const QString verb = tr("Edit Mate");
-    const doc::Mate& mate = *m_assembly->mate(id);
-    const bool angle = mate.type == doc::MateType::Angle;
-    if (!angle && mate.type != doc::MateType::Distance) {
-        statusBar()->showMessage(
-            tr("%1: a %2 mate has no value").arg(verb, mateTypeName(mate.type)));
-        return;
-    }
-    FeatureForm form(this, verb);
-    auto* value =
-        form.number(QStringLiteral("value"), angle ? tr("Angle (degrees):") : tr("Distance:"),
-                    angle ? mate.value * 180.0 / std::numbers::pi : mate.value, -1e6, 1e6);
-    if (!form.exec()) return;
-    const double set = angle ? value->value() * std::numbers::pi / 180.0 : value->value();
-    editAssembly(verb, [this, id, set] {
-        m_assembly->mate(id)->value = set;
-        return true;
-    });
-}
-
-void MainWindow::removeMate(uint64_t id) {
-    if (!m_assembly || m_assembly->mate(id) == nullptr) return;
-    editAssembly(tr("Remove Mate"), [this, id] { return m_assembly->removeMate(id); });
-}
-
-void MainWindow::onRemoveComponent() {
-    if (!m_assembly || m_assembly->components().empty()) {
-        statusBar()->showMessage(tr("Remove Component works on an assembly's components"));
-        return;
-    }
-    uint64_t id = targetComponent();
-    if (id == 0) {
-        FeatureForm form(this, tr("Remove Component"));
-        std::vector<uint64_t> ids;
-        auto* which = componentChoice(form, 0, ids);
-        if (!form.exec()) return;
-        id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
-    }
-    removeComponent(id);
-}
-
-void MainWindow::onSuppressComponent() {
-    if (!m_assembly || m_assembly->components().empty()) {
-        statusBar()->showMessage(tr("Suppress Component works on an assembly's components"));
-        return;
-    }
-    uint64_t id = targetComponent();
-    if (id == 0) {
-        FeatureForm form(this, tr("Suppress Component"));
-        std::vector<uint64_t> ids;
-        auto* which = componentChoice(form, 0, ids);
-        if (!form.exec()) return;
-        id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
-    }
-    const auto* comp = m_assembly->component(id);
-    if (comp != nullptr) setComponentSuppressed(id, !comp->suppressed);
-}
-
-void MainWindow::onRenameComponent() {
-    if (!m_assembly || m_assembly->components().empty()) {
-        statusBar()->showMessage(tr("Rename Component works on an assembly's components"));
-        return;
-    }
-    uint64_t id = targetComponent();
-    if (id == 0) {
-        FeatureForm form(this, tr("Rename Component"));
-        std::vector<uint64_t> ids;
-        auto* which = componentChoice(form, 0, ids);
-        if (!form.exec()) return;
-        id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
-    }
-    renameComponent(id);
-}
-
-void MainWindow::onEditMate() {
-    if (!m_assembly || m_assembly->mates().empty()) {
-        statusBar()->showMessage(tr("Edit Mate: the assembly has no mates"));
-        return;
-    }
-    FeatureForm form(this, tr("Choose Mate"));
-    std::vector<uint64_t> ids;
-    auto* which = mateChoice(form, m_assemblyTreePanel->currentMate(), ids);
-    if (!form.exec()) return;
-    editMate(ids[static_cast<size_t>(std::max(which->currentIndex(), 0))]);
-}
-
-void MainWindow::onRemoveMate() {
-    if (!m_assembly || m_assembly->mates().empty()) {
-        statusBar()->showMessage(tr("Remove Mate: the assembly has no mates"));
-        return;
-    }
-    FeatureForm form(this, tr("Remove Mate"));
-    std::vector<uint64_t> ids;
-    auto* which = mateChoice(form, m_assemblyTreePanel->currentMate(), ids);
-    if (!form.exec()) return;
-    removeMate(ids[static_cast<size_t>(std::max(which->currentIndex(), 0))]);
-}
-
 // ---------------------------------------------------------------------------
 // Living assemblies (Phase 144)
 // ---------------------------------------------------------------------------
-
-void MainWindow::refreshComponentsOf(const std::string& path, bool report) {
-    if (path.empty()) return;
-    // What was read of the file is out of date: the next component to
-    // resolve it reads it again. (A part open in a tab stays: it is the part.)
-    m_docManager.releasePart(path);
-    int refreshed = 0;
-    bool solved = true;
-    bool moved = false;
-    bool shown = false;
-    for (DocTab& tab : m_tabs) {
-        if (!tab.assembly) continue;
-        const std::string dir = assemblyDir(*tab.assembly);
-        bool places = false;
-        for (auto& comp : tab.assembly->components()) {
-            if (!doc::DocumentManager::samePath(partFile(comp, dir), path)) continue;
-            comp.cachedMesh.reset();
-            comp.resolvedPart.reset();
-            comp.state = doc::ComponentState::Lightweight;
-            places = true;
-        }
-        if (!places) continue;
-        ++refreshed;
-        // Its faces may be elsewhere now: the mates place the components
-        // again. That is a change to the assembly, to be saved.
-        const doc::AssemblyState placed = tab.assembly->snapshot();
-        solved = solveAssemblyMates(*tab.assembly, /*reportSuccess=*/false) && solved;
-        if (placementsDiffer(placed, *tab.assembly)) {
-            tab.assembly->setDirty(true);
-            moved = true;
-        }
-        shown = shown || tab.assembly == m_assembly;
-    }
-    if (refreshed == 0) return;
-    if (shown) rebuildScene();  // reads the meshes again
-    if (moved) refreshModifiedIndicators();
-    // A mate the part no longer has a face for is reported by the solve.
-    if (solved && report) {
-        statusBar()->showMessage(
-            tr("\"%1\" changed: the assemblies placing it show it as it is now")
-                .arg(QFileInfo(QString::fromStdString(path)).fileName()),
-            10000);
-    }
-}
 
 void MainWindow::pollPartFiles() {
     // Not under a dialog: one may be choosing among the components' faces.
@@ -3254,7 +2466,7 @@ void MainWindow::pollPartFiles() {
     for (const std::string& path : m_docManager.pollExternalChanges()) {
         // A tab showing the file first: a component of a part open in a tab
         // takes the tab's document, which is as old as its read.
-        if (!reloadTabsOf(path)) refreshComponentsOf(path);
+        if (!reloadTabsOf(path)) m_assemblies->refreshComponentsOf(path);
     }
 }
 
@@ -3311,7 +2523,7 @@ void MainWindow::reloadTab(size_t index, bool asked) {
     // again froze the window every time another program saved it.
     if (!openOnWorker(fileName)) {
         const bool replaced = replaceTabDocument(old, readFile(path, drawing), asked);
-        refreshComponentsOf(path, replaced);
+        m_assemblies->refreshComponentsOf(path, replaced);
         return;
     }
     if (m_reloadTask) {
@@ -3351,7 +2563,7 @@ void MainWindow::onReloadFinished() {
         if (!task->error().empty()) read.error = task->error();
         replaced = replaceTabDocument(old, std::move(read), m_reloadAsked);
     }
-    refreshComponentsOf(path, replaced);
+    m_assemblies->refreshComponentsOf(path, replaced);
     // The files waiting, until one is read on a worker again.
     while (!m_reloadTask && !m_reloadQueue.empty()) {
         const auto [next, givenUp] = m_reloadQueue.front();
@@ -3362,7 +2574,7 @@ void MainWindow::onReloadFinished() {
         if (askedAbout && i < m_tabs.size()) {
             reloadTab(i, true);  // its changes given up already
         } else if (!reloadTabsOf(next)) {
-            refreshComponentsOf(next);
+            m_assemblies->refreshComponentsOf(next);
         }
     }
 }
@@ -3415,87 +2627,6 @@ bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, F
     statusBar()->showMessage(
         tr("\"%1\" was changed by another program, and has been read again").arg(name), 10000);
     return true;
-}
-
-void MainWindow::openComponentPart(uint64_t id) {
-    const auto* comp = m_assembly ? m_assembly->component(id) : nullptr;
-    if (comp == nullptr) {
-        statusBar()->showMessage(
-            tr("Open Part: click a component, or choose one in the assembly tree"));
-        return;
-    }
-    if (comp->partPath.empty()) {
-        statusBar()->showMessage(tr("Open Part: the component has no part file"));
-        return;
-    }
-    openPath(QString::fromStdString(partFile(*comp, assemblyDir(*m_assembly))));
-}
-
-void MainWindow::onOpenPart() {
-    if (!m_assembly) {
-        statusBar()->showMessage(tr("Open Part is only available in an assembly document"));
-        return;
-    }
-    openComponentPart(targetComponent());
-}
-
-void MainWindow::onBillOfMaterials() {
-    if (!m_assembly) {
-        statusBar()->showMessage(tr("Bill of Materials is only available in an assembly document"));
-        return;
-    }
-    const doc::BillOfMaterials bom = doc::BomGenerator::generate(*m_assembly);
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Bill of Materials"));
-    auto* layout = new QVBoxLayout(&dialog);
-    auto* table = new QTableWidget(static_cast<int>(bom.lines.size()), 3, &dialog);
-    table->setObjectName(QStringLiteral("bom"));
-    table->setHorizontalHeaderLabels({tr("Item"), tr("Part"), tr("Quantity")});
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->verticalHeader()->hide();
-    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    for (size_t i = 0; i < bom.lines.size(); ++i) {
-        const doc::BomLine& line = bom.lines[i];
-        const int row = static_cast<int>(i);
-        table->setItem(row, 0, new QTableWidgetItem(QString::number(line.item)));
-        auto* part = new QTableWidgetItem(QString::fromStdString(line.partName));
-        part->setToolTip(QString::fromStdString(line.partPath));
-        table->setItem(row, 1, part);
-        table->setItem(row, 2, new QTableWidgetItem(QString::number(line.quantity)));
-    }
-    layout->addWidget(table);
-    layout->addWidget(new QLabel(
-        tr("%n component(s) in all; suppressed ones are left out.", "", bom.totalQuantity()),
-        &dialog));
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-    QPushButton* exportButton =
-        buttons->addButton(tr("Export CSV..."), QDialogButtonBox::ActionRole);
-    exportButton->setObjectName(QStringLiteral("exportBom"));
-    exportButton->setEnabled(!bom.lines.empty());
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    const QString assemblyPath = QString::fromStdString(m_assembly->filePath());
-    connect(exportButton, &QPushButton::clicked, &dialog, [this, &dialog, &bom, assemblyPath] {
-        const QFileInfo from(assemblyPath);
-        const QString suggested = assemblyPath.isEmpty()
-                                      ? QStringLiteral("bom.csv")
-                                      : from.dir().filePath(from.completeBaseName() + "-bom.csv");
-        const QString file =
-            QFileDialog::getSaveFileName(&dialog, tr("Export Bill of Materials"), suggested,
-                                         tr("CSV Files (*.csv);;All Files (*)"));
-        if (file.isEmpty()) return;
-        if (!io::BomExport::toCsv(file.toStdString(), bom)) {
-            reportFileError(tr("Could not export"), file.toStdString(),
-                            "the file could not be written");
-            return;
-        }
-        statusBar()->showMessage(
-            tr("Bill of materials exported to \"%1\"").arg(QFileInfo(file).fileName()));
-    });
-    layout->addWidget(buttons);
-    dialog.resize(480, 320);
-    dialog.exec();
 }
 
 // ---------------------------------------------------------------------------
@@ -5588,6 +4719,39 @@ void MainWindow::startRebuild() {
     updateBusyIndicator();
 }
 
+// ---------------------------------------------------------------------------
+// WorkbenchHost: what the workbenches ask of the window (Phase 146)
+// ---------------------------------------------------------------------------
+
+bool MainWindow::backgroundWorkRunning() const {
+    return m_rebuildJob != nullptr || m_importTask != nullptr || m_assemblies->busy() ||
+           m_openTask != nullptr || m_massTask != nullptr || m_reloadTask != nullptr;
+}
+
+std::vector<std::shared_ptr<doc::AssemblyDocument>> MainWindow::openAssemblies() {
+    std::vector<std::shared_ptr<doc::AssemblyDocument>> assemblies;
+    for (const DocTab& tab : m_tabs) {
+        if (tab.assembly) assemblies.push_back(tab.assembly);
+    }
+    return assemblies;
+}
+
+void MainWindow::showStatus(const QString& message, int timeoutMs) {
+    statusBar()->showMessage(message, timeoutMs);
+}
+
+QString MainWindow::currentStatus() {
+    return statusBar()->currentMessage();
+}
+
+void MainWindow::setPrompt(const QString& text) {
+    m_statusPrompt->setText(text);
+}
+
+bool MainWindow::onWorker(bool large) {
+    return m_rebuildMode == RebuildMode::Always || (m_rebuildMode == RebuildMode::Auto && large);
+}
+
 void MainWindow::updateBusyIndicator() {
     const bool busy = backgroundWorkRunning();
     m_rebuildProgress->setVisible(busy);
@@ -5598,7 +4762,7 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask ||
+    if (!m_rebuildJob || m_importTask || m_assemblies->busy() || m_openTask || m_massTask ||
         m_reloadTask) {
         return;
     }

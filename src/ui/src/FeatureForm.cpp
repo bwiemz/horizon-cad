@@ -8,8 +8,14 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QSpinBox>
+#include <cmath>
 
 namespace hz::ui {
+
+QString formatPoint(const math::Vec3& p) {
+    const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
+    return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
+}
 
 FeatureForm::FeatureForm(QWidget* parent, const QString& title)
     : m_dialog(parent), m_form(new QFormLayout(&m_dialog)) {
