@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -27,6 +28,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 
 namespace hz::io {
@@ -274,10 +276,482 @@ int writeSurface(StepWriter& w, const geo::NurbsSurface& s) {
                  ") REPRESENTATION_ITEM('') SURFACE())");
 }
 
+// ---------------------------------------------------------------------------
+// Curved faces as designed (Phase 151)
+// ---------------------------------------------------------------------------
+
+/// A circle: what a rim's chords stand in for.
+struct Circle {
+    Vec3 center;
+    Vec3 normal;  ///< unit
+    double radius = 0.0;
+};
+
+/// @p curve as a circle, if it is one: three points on it make a circle,
+/// and every other point sampled must lie on that one.
+std::optional<Circle> circleOf(const geo::NurbsCurve& curve) {
+    const double t0 = curve.tMin();
+    const double t1 = curve.tMax();
+    const Vec3 a = curve.evaluate(t0);
+    const Vec3 b = curve.evaluate(t0 + (t1 - t0) / 3.0);
+    const Vec3 c = curve.evaluate(t0 + 2.0 * (t1 - t0) / 3.0);
+    const Vec3 ab = b - a;
+    const Vec3 ac = c - a;
+    const Vec3 n = ab.cross(ac);
+    const double n2 = n.dot(n);
+    const double scale = std::max({ab.length(), ac.length(), 1e-300});
+    if (n2 <= 1e-18 * scale * scale * scale * scale) return std::nullopt;  // collinear
+    // The circumcentre of a, b, c.
+    const Vec3 center =
+        a + (n.cross(ab) * ac.dot(ac) + ac.cross(n) * ab.dot(ab)) * (1.0 / (2.0 * n2));
+    Circle circle{center, n * (1.0 / std::sqrt(n2)), (a - center).length()};
+    const double tolerance = 1e-9 * std::max(1.0, circle.radius);
+    for (int i = 0; i <= 16; ++i) {
+        const Vec3 p = curve.evaluate(t0 + (t1 - t0) * i / 16.0);
+        const Vec3 off = p - circle.center;
+        if (std::abs(off.length() - circle.radius) > tolerance ||
+            std::abs(off.dot(circle.normal)) > tolerance) {
+            return std::nullopt;
+        }
+    }
+    return circle;
+}
+
+/// A face's plane, from its outer loop (Newell): its normal (unit, the way
+/// the loop runs) and a point on it. None for a degenerate loop.
+std::optional<std::pair<Vec3, Vec3>> planeOf(const topo::Face& f) {
+    if (f.outerLoop == nullptr || f.outerLoop->halfEdge == nullptr) return std::nullopt;
+    Vec3 normal;
+    Vec3 centroid;
+    int count = 0;
+    const topo::HalfEdge* start = f.outerLoop->halfEdge;
+    const topo::HalfEdge* he = start;
+    do {
+        if (he == nullptr || he->origin == nullptr || he->next == nullptr ||
+            he->next->origin == nullptr) {
+            return std::nullopt;
+        }
+        const Vec3& p = he->origin->point;
+        const Vec3& q = he->next->origin->point;
+        normal = normal + Vec3((p.y - q.y) * (p.z + q.z), (p.z - q.z) * (p.x + q.x),
+                               (p.x - q.x) * (p.y + q.y));
+        centroid = centroid + p;
+        ++count;
+        he = he->next;
+    } while (he != start && count < 1000000);
+    const double length = normal.length();
+    if (length <= 0.0 || count == 0) return std::nullopt;
+    return std::make_pair(normal * (1.0 / length), centroid * (1.0 / count));
+}
+
+/// A curved face as designed: the facets that stand in for one analytic
+/// surface, joined by their shared edges, and how they are written as one
+/// face on it. `why` says why they are not, when they are not.
+struct CurvedFace {
+    std::vector<const topo::Face*> facets;
+    const geo::NurbsSurface* surface = nullptr;
+    /// Its outline: the half-edges of its facets whose other side is not
+    /// one of them, in loops as its facets run.
+    std::vector<std::vector<const topo::HalfEdge*>> loops;
+    /// A closed face's (a cylinder's side): the edge between its two
+    /// outlines it is cut along, and its half-edge from the first to the
+    /// second.
+    const topo::HalfEdge* seamUp = nullptr;
+    bool sameSense = true;
+    std::string why;  ///< empty: written as designed
+};
+
+/// The curved faces of @p solid (Phase 151): the facets of each analytic
+/// surface, joined over their shared edges, and whether each can be written
+/// as one face on its surface. One that cannot keeps its facets, and says
+/// why. @p curved receives the edges written on their ideal curves, and
+/// @p rims the circles recovered for those whose ideal was lost (a hole's
+/// rim, cut by a Boolean: where a cylinder meets a plane square to it).
+std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
+                                        std::unordered_set<const topo::Edge*>& curved,
+                                        std::unordered_map<const topo::Edge*, Circle>& rims) {
+    // Facets of one surface, joined over their shared edges.
+    std::unordered_map<const topo::Face*, const topo::Face*> parent;
+    const std::function<const topo::Face*(const topo::Face*)> root = [&](const topo::Face* f) {
+        const topo::Face* r = f;
+        while (parent.at(r) != r) r = parent.at(r);
+        while (parent.at(f) != r) {
+            const topo::Face* next = parent.at(f);
+            parent[f] = r;
+            f = next;
+        }
+        return r;
+    };
+    for (const auto& f : solid.faces()) {
+        if (f.analyticSurface) parent[&f] = &f;
+    }
+    for (const auto& e : solid.edges()) {
+        const topo::HalfEdge* h = e.halfEdge;
+        if (h == nullptr || h->twin == nullptr || h->face == nullptr || h->twin->face == nullptr) {
+            continue;
+        }
+        const topo::Face* a = h->face;
+        const topo::Face* b = h->twin->face;
+        if (a == b || !a->analyticSurface || a->analyticSurface != b->analyticSurface) continue;
+        const topo::Face* ra = root(a);
+        const topo::Face* rb = root(b);
+        if (ra != rb) parent[ra] = rb;
+    }
+    std::unordered_map<const topo::Face*, std::size_t> groupOf;
+    std::vector<CurvedFace> faces;
+    for (const auto& f : solid.faces()) {  // in the solid's order, so the file is too
+        if (!f.analyticSurface) continue;
+        const topo::Face* r = root(&f);
+        auto it = groupOf.find(r);
+        if (it == groupOf.end()) {
+            it = groupOf.emplace(r, faces.size()).first;
+            faces.emplace_back();
+            faces.back().surface = f.analyticSurface.get();
+        }
+        groupOf[&f] = it->second;
+        faces[it->second].facets.push_back(&f);
+    }
+    const auto groupIndex = [&](const topo::Face* f) -> std::optional<std::size_t> {
+        const auto it = groupOf.find(f);
+        if (it == groupOf.end()) return std::nullopt;
+        return it->second;
+    };
+    const auto inGroup = [&](const topo::Face* f, std::size_t g) {
+        const auto i = groupIndex(f);
+        return i && *i == g;
+    };
+    const auto onSurface = [](const geo::NurbsSurface& surface, const Vec3& p, double scale) {
+        const auto [u, v] = surface.closestPoint(p);
+        return (surface.evaluate(u, v) - p).length() <= 1e-7 * std::max(1.0, scale);
+    };
+
+    for (std::size_t g = 0; g < faces.size(); ++g) {
+        CurvedFace& face = faces[g];
+        const geo::NurbsSurface& surface = *face.surface;
+        // Its outline, and whether any of its corners is inside it: a pole,
+        // or an apex, which no one outline goes round.
+        std::vector<const topo::HalfEdge*> outline;
+        std::unordered_set<const topo::Vertex*> corners;
+        std::unordered_set<const topo::Vertex*> onOutline;
+        std::size_t halfEdges = 0;
+        for (const topo::Face* f : face.facets) {
+            std::vector<const topo::Wire*> wires{f->outerLoop};
+            wires.insert(wires.end(), f->innerLoops.begin(), f->innerLoops.end());
+            for (const topo::Wire* wire : wires) {
+                if (wire == nullptr || wire->halfEdge == nullptr) continue;
+                const topo::HalfEdge* start = wire->halfEdge;
+                const topo::HalfEdge* he = start;
+                do {
+                    ++halfEdges;
+                    corners.insert(he->origin);
+                    if (he->twin == nullptr || !inGroup(he->twin->face, g)) {
+                        outline.push_back(he);
+                        onOutline.insert(he->origin);
+                        if (he->next != nullptr) onOutline.insert(he->next->origin);
+                    }
+                    he = he->next;
+                } while (he != nullptr && he != start && halfEdges < 10000000);
+            }
+        }
+        if (outline.empty()) {
+            face.why = "it is closed all round (a sphere or a torus)";
+            continue;
+        }
+        if (corners.size() != onOutline.size()) {
+            face.why = "it comes to a point inside it (a cone's apex, a pole)";
+            continue;
+        }
+        // The outline in loops: from a half-edge on it to the next, round
+        // the vertex it ends at, over the facets' own edges.
+        std::unordered_set<const topo::HalfEdge*> left(outline.begin(), outline.end());
+        while (!left.empty()) {
+            std::vector<const topo::HalfEdge*> loop;
+            const topo::HalfEdge* he = *std::min_element(
+                left.begin(), left.end(), [&](const topo::HalfEdge* a, const topo::HalfEdge* b) {
+                    // The same start each time, whatever the set's order.
+                    return std::find(outline.begin(), outline.end(), a) <
+                           std::find(outline.begin(), outline.end(), b);
+                });
+            bool closed = false;
+            for (std::size_t guard = 0; guard <= halfEdges; ++guard) {
+                loop.push_back(he);
+                left.erase(he);
+                const topo::HalfEdge* next = he->next;
+                std::size_t turns = 0;
+                while (next != nullptr && next->twin != nullptr && inGroup(next->twin->face, g) &&
+                       turns++ <= halfEdges) {
+                    next = next->twin->next;
+                }
+                if (next == nullptr) break;
+                if (next == loop.front()) {
+                    closed = true;
+                    break;
+                }
+                if (left.count(next) == 0) break;  // not a simple outline
+                he = next;
+            }
+            if (!closed) {
+                face.why = "its outline does not close";
+                break;
+            }
+            face.loops.push_back(std::move(loop));
+        }
+        if (!face.why.empty()) continue;
+        if (face.loops.size() > 2) {
+            face.why = "it has more than two outlines";
+            continue;
+        }
+
+        // Every edge of its outline, on it: a circle, a curve of its own
+        // span, a straight edge along it (a cylinder's rulings), or a rim
+        // where it meets a plane square to it, whose circle a Boolean did
+        // not keep.
+        const auto frame = model::MateGeometry::frameForFace(*face.facets.front());
+        // A rim's circle from its own corners, which lie on it exactly: the
+        // circle through three of them, the rest checked against it. (The
+        // cylinder's own centre is fitted to its facets, 5e-6 off.)
+        bool rimOffCircle = false;  // a rim found, its corners not all on one circle
+        const auto rimOf = [&](const std::vector<const topo::HalfEdge*>& loop,
+                               const topo::HalfEdge* he) -> std::optional<Circle> {
+            if (!frame || frame->kind != model::MateFrameKind::Cylindrical || he->twin == nullptr ||
+                groupIndex(he->twin->face)) {
+                return std::nullopt;
+            }
+            const auto plane = planeOf(*he->twin->face);
+            if (!plane || std::abs(std::abs(plane->first.dot(frame->direction)) - 1.0) > 1e-9) {
+                return std::nullopt;
+            }
+            // Its corners: of the outline's edges into that plane, whatever
+            // faces it is in (a Boolean leaves a plane in triangles).
+            std::vector<Vec3> corners;
+            for (const topo::HalfEdge* h : loop) {
+                if (h->twin == nullptr || h->twin->face == nullptr) continue;
+                const auto other = planeOf(*h->twin->face);
+                if (!other || other->first.dot(plane->first) < 1.0 - 1e-12 ||
+                    std::abs((other->second - plane->second).dot(plane->first)) >
+                        1e-9 * std::max(1.0, plane->second.length())) {
+                    continue;
+                }
+                corners.push_back(h->origin->point);
+            }
+            if (corners.size() < 3) return std::nullopt;
+            const Vec3& p = corners[0];
+            const Vec3& q = corners[corners.size() / 3];
+            const Vec3& r = corners[2 * corners.size() / 3];
+            const Vec3 pq = q - p;
+            const Vec3 pr = r - p;
+            const Vec3 n = pq.cross(pr);
+            const double n2 = n.dot(n);
+            if (n2 <= 0.0) return std::nullopt;
+            const Vec3 centre =
+                p + (n.cross(pq) * pr.dot(pr) + pr.cross(n) * pq.dot(pq)) * (1.0 / (2.0 * n2));
+            const Circle rim{centre, plane->first, (p - centre).length()};
+            const double tol = 1e-9 * std::max(1.0, rim.radius + centre.length());
+            // The cylinder's own rim, every corner on it: a Boolean may split
+            // a chord in two, at a point inside the circle, and then no one
+            // circle goes through its corners.
+            bool onCircle =
+                std::abs(rim.radius - frame->radius) <= 1e-5 * std::max(1.0, rim.radius);
+            for (const Vec3& corner : corners) {
+                const Vec3 off = corner - rim.center;
+                onCircle = onCircle && std::abs(off.length() - rim.radius) <= tol &&
+                           std::abs(off.dot(rim.normal)) <= tol;
+            }
+            if (!onCircle) {
+                rimOffCircle = true;
+                return std::nullopt;
+            }
+            return rim;
+        };
+        double scale = 0.0;
+        for (const auto* he : outline) {
+            scale = std::max(scale, he->origin->point.length());
+        }
+        for (const auto& loop : face.loops) {
+            for (const topo::HalfEdge* he : loop) {
+                const topo::Edge* e = he->edge;
+                if (e == nullptr || e->halfEdge == nullptr || e->halfEdge->twin == nullptr) {
+                    face.why = "an edge of its outline is incomplete";
+                    break;
+                }
+                const Vec3& a = e->halfEdge->origin->point;
+                const Vec3& b = e->halfEdge->twin->origin->point;
+                if (e->analyticCurve) {
+                    if (circleOf(*e->analyticCurve)) continue;
+                    const Vec3 c0 = e->analyticCurve->evaluate(e->analyticCurve->tMin());
+                    const Vec3 c1 = e->analyticCurve->evaluate(e->analyticCurve->tMax());
+                    const double tol = 1e-9 * std::max(1.0, scale);
+                    if ((((c0 - a).length() <= tol && (c1 - b).length() <= tol) ||
+                         ((c0 - b).length() <= tol && (c1 - a).length() <= tol))) {
+                        continue;  // its own span
+                    }
+                    face.why = "an edge of its outline is part of a curve other than a circle";
+                    break;
+                }
+                if (const auto rim = rimOf(loop, he)) {
+                    rims[e] = *rim;
+                    continue;
+                }
+                if (!onSurface(surface, (a + b) * 0.5, scale)) {
+                    face.why = rimOffCircle
+                                   ? "its rim's corners are not all on one circle (a Boolean "
+                                     "split its chords)"
+                                   : "a straight edge of its outline leaves its surface";
+                    break;
+                }
+            }
+            if (!face.why.empty()) break;
+        }
+        if (!face.why.empty()) continue;
+
+        // Two outlines (a cylinder's side): cut along an edge between them
+        // that lies on the surface (a ruling, not a triangle's diagonal).
+        if (face.loops.size() == 2) {
+            std::unordered_set<const topo::Vertex*> first;
+            std::unordered_set<const topo::Vertex*> second;
+            for (const auto* he : face.loops[0]) first.insert(he->origin);
+            for (const auto* he : face.loops[1]) second.insert(he->origin);
+            bool joined = false;
+            for (const topo::Face* f : face.facets) {
+                const topo::HalfEdge* start = f->outerLoop->halfEdge;
+                const topo::HalfEdge* he = start;
+                do {
+                    if (he->twin != nullptr && inGroup(he->twin->face, g) &&
+                        first.count(he->origin) != 0 && he->next != nullptr &&
+                        second.count(he->next->origin) != 0) {
+                        joined = true;
+                        const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
+                        if (!he->edge->analyticCurve && onSurface(surface, mid, scale)) {
+                            face.seamUp = he;
+                            break;
+                        }
+                    }
+                    he = he->next;
+                } while (he != nullptr && he != start);
+                if (face.seamUp != nullptr) break;
+            }
+            if (face.seamUp == nullptr) {
+                face.why = joined ? "no edge joining its two outlines lies on its surface"
+                                  : "no edge joins its two outlines";
+                continue;
+            }
+        }
+
+        // Which way it faces: each facet's normal against the surface's.
+        int along = 0;
+        int against = 0;
+        const std::size_t step = std::max<std::size_t>(1, face.facets.size() / 16);
+        for (std::size_t i = 0; i < face.facets.size(); i += step) {
+            const auto plane = planeOf(*face.facets[i]);
+            if (!plane) continue;
+            const auto [u, v] = surface.closestPoint(plane->second);
+            const double d = surface.normal(u, v).dot(plane->first);
+            if (d > 1e-6) ++along;
+            if (d < -1e-6) ++against;
+        }
+        if (along > 0 && against > 0) {
+            face.why = "its facets face both ways on its surface";
+            continue;
+        }
+        if (along == 0 && against == 0) {
+            face.why = "which way it faces cannot be told";
+            continue;
+        }
+        face.sameSense = along > 0;
+    }
+
+    // The edges of the outlines written on their ideal curves; each must be
+    // on the face across it too: another written as designed, or a plane
+    // the curve lies in (a cylinder's cap). A face kept in facets is
+    // bounded by chords, and one written as designed beside it cannot be.
+    for (bool changed = true; changed;) {
+        changed = false;
+        curved.clear();
+        for (std::size_t g = 0; g < faces.size(); ++g) {
+            CurvedFace& face = faces[g];
+            if (!face.why.empty()) continue;
+            for (const auto& loop : face.loops) {
+                for (const topo::HalfEdge* he : loop) {
+                    const topo::Edge* e = he->edge;
+                    const auto rim = rims.find(e);
+                    if (!e->analyticCurve && rim == rims.end()) continue;
+                    const topo::Face* across = he->twin->face;
+                    const auto other = groupIndex(across);
+                    bool accepted = other && faces[*other].why.empty();
+                    if (!accepted && !other) {
+                        const auto plane = planeOf(*across);
+                        accepted = plane.has_value();
+                        for (int i = 0; accepted && i <= 8; ++i) {
+                            Vec3 p;
+                            if (e->analyticCurve) {
+                                p = e->analyticCurve->evaluate(
+                                    e->analyticCurve->tMin() +
+                                    (e->analyticCurve->tMax() - e->analyticCurve->tMin()) * i /
+                                        8.0);
+                            } else {
+                                // A recovered rim lies in the plane it was
+                                // found from: its circle's points, by angle.
+                                const Circle& c = rim->second;
+                                const Vec3 ref =
+                                    std::abs(c.normal.x) < 0.9 ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
+                                const Vec3 u =
+                                    c.normal.cross(ref) * (1.0 / c.normal.cross(ref).length());
+                                const Vec3 w = c.normal.cross(u);
+                                const double angle = 2.0 * math::kPi * i / 8.0;
+                                p = c.center +
+                                    (u * std::cos(angle) + w * std::sin(angle)) * c.radius;
+                            }
+                            accepted = std::abs((p - plane->second).dot(plane->first)) <=
+                                       1e-7 * std::max(1.0, p.length());
+                        }
+                    }
+                    if (!accepted) {
+                        face.why = "a face beside it is kept in facets";
+                        changed = true;
+                        break;
+                    }
+                    curved.insert(e);
+                }
+                if (!face.why.empty()) break;
+            }
+        }
+    }
+    return faces;
+}
+
 /// Emit one solid; returns one MANIFOLD_SOLID_BREP id per shell (Horizon
 /// solids may hold several disjoint shells, e.g. Pattern results — STEP
 /// expresses those as sibling MANIFOLD_SOLID_BREPs in one representation).
-std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index) {
+std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, bool asDesigned,
+                            std::vector<std::string>* faceted) {
+    // Its curved faces as designed, where they can be (Phase 151).
+    std::unordered_set<const topo::Edge*> curved;
+    std::unordered_map<const topo::Edge*, Circle> rims;
+    std::vector<CurvedFace> designed;
+    if (asDesigned) designed = planCurvedFaces(solid, curved, rims);
+    std::unordered_map<const topo::Face*, const CurvedFace*> designedOf;
+    std::unordered_set<const topo::Edge*> seams;
+    for (const CurvedFace& face : designed) {
+        if (!face.why.empty()) {
+            if (faceted != nullptr) {
+                faceted->push_back("a curved face of " + std::to_string(face.facets.size()) +
+                                   " facets: " + face.why);
+            }
+            continue;
+        }
+        for (const topo::Face* f : face.facets) designedOf[f] = &face;
+        if (face.seamUp != nullptr) seams.insert(face.seamUp->edge);
+    }
+    // An edge between two facets of one face written as designed is inside
+    // it, and not written: but for the seam it is cut along.
+    const auto inside = [&](const topo::Edge& e) {
+        const topo::HalfEdge* h = e.halfEdge;
+        if (h == nullptr || h->twin == nullptr || seams.count(&e) != 0) return false;
+        const auto a = designedOf.find(h->face);
+        const auto b = designedOf.find(h->twin->face);
+        return a != designedOf.end() && b != designedOf.end() && a->second == b->second;
+    };
+
     // Vertices.
     std::unordered_map<const topo::Vertex*, int> vertexIds;
     for (const auto& v : solid.vertices()) {
@@ -287,16 +761,51 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index) 
     // Edges. Orient the written curve along the recorded half-edge direction.
     std::unordered_map<const topo::Edge*, int> edgeIds;
     for (const auto& e : solid.edges()) {
-        if (e.halfEdge == nullptr || e.curve == nullptr) continue;
+        if (e.halfEdge == nullptr || e.curve == nullptr || inside(e)) continue;
         const topo::Vertex* start = e.halfEdge->origin;
         const topo::Vertex* end = e.halfEdge->twin->origin;
+        const std::string ends =
+            "#" + std::to_string(vertexIds.at(start)) + ",#" + std::to_string(vertexIds.at(end));
+        if (curved.count(&e) != 0) {
+            const auto rim = rims.find(&e);
+            const std::optional<Circle> circle =
+                rim != rims.end() ? std::optional<Circle>(rim->second) : circleOf(*e.analyticCurve);
+            if (circle) {
+                // On its circle, the short way from its start to its end: the
+                // circle's axis turned so that way runs anticlockwise.
+                const Vec3 from = start->point - circle->center;
+                const Vec3 to = end->point - circle->center;
+                const Vec3 axis = from.cross(to).dot(circle->normal) >= 0.0 ? circle->normal
+                                                                            : circle->normal * -1.0;
+                const Vec3 ref = from * (1.0 / from.length());
+                const int placement = w.add(
+                    "AXIS2_PLACEMENT_3D('',#" + std::to_string(w.addPoint(circle->center)) + ",#" +
+                    std::to_string(w.add("DIRECTION('',(" + fmtReal(axis.x) + "," +
+                                         fmtReal(axis.y) + "," + fmtReal(axis.z) + "))")) +
+                    ",#" +
+                    std::to_string(w.add("DIRECTION('',(" + fmtReal(ref.x) + "," + fmtReal(ref.y) +
+                                         "," + fmtReal(ref.z) + "))")) +
+                    ")");
+                const int circleId = w.add("CIRCLE('',#" + std::to_string(placement) + "," +
+                                           fmtReal(circle->radius) + ")");
+                edgeIds[&e] =
+                    w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(circleId) + ",.T.)");
+                continue;
+            }
+            // A curve of the edge's own span.
+            const Vec3 c0 = e.analyticCurve->evaluate(e.analyticCurve->tMin());
+            const bool senseForward = (c0 - start->point).length() <= (c0 - end->point).length();
+            const int curveId = writeCurve(w, *e.analyticCurve);
+            edgeIds[&e] = w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(curveId) + "," +
+                                (senseForward ? ".T." : ".F.") + ")");
+            continue;
+        }
         // same_sense: does the curve run start → end?
         const Vec3 c0 = e.curve->evaluate(e.curve->tMin());
         const bool senseForward = (c0 - start->point).length() <= (c0 - end->point).length();
         const int curveId = writeCurve(w, *e.curve);
-        edgeIds[&e] = w.add("EDGE_CURVE('',#" + std::to_string(vertexIds.at(start)) + ",#" +
-                            std::to_string(vertexIds.at(end)) + ",#" + std::to_string(curveId) +
-                            "," + (senseForward ? ".T." : ".F.") + ")");
+        edgeIds[&e] = w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(curveId) + "," +
+                            (senseForward ? ".T." : ".F.") + ")");
     }
 
     // Faces.
@@ -333,11 +842,65 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index) 
                      std::to_string(surfId) + ",.T.)");
     };
 
+    // A curved face as designed: one face on its surface, round its outline;
+    // a closed one's two outlines joined into one loop along its seam, used
+    // once each way, as other systems (and this one's reader) expect.
+    auto writeDesigned = [&](const CurvedFace& face) -> std::optional<int> {
+        const auto oriented = [&](const topo::HalfEdge* he) -> std::optional<int> {
+            const auto it = edgeIds.find(he->edge);
+            if (it == edgeIds.end()) return std::nullopt;
+            const bool forward = he->origin == he->edge->halfEdge->origin;
+            return w.add("ORIENTED_EDGE('',*,*,#" + std::to_string(it->second) + "," +
+                         (forward ? ".T." : ".F.") + ")");
+        };
+        std::vector<const topo::HalfEdge*> path;
+        const auto from = [](const std::vector<const topo::HalfEdge*>& loop,
+                             const topo::Vertex* v) {
+            std::vector<const topo::HalfEdge*> turned;
+            const auto at = std::find_if(loop.begin(), loop.end(),
+                                         [v](const topo::HalfEdge* he) { return he->origin == v; });
+            if (at == loop.end()) return turned;
+            turned.insert(turned.end(), at, loop.end());
+            turned.insert(turned.end(), loop.begin(), at);
+            return turned;
+        };
+        if (face.seamUp == nullptr) {
+            path = face.loops.front();
+        } else {
+            const auto first = from(face.loops[0], face.seamUp->origin);
+            const auto second = from(face.loops[1], face.seamUp->next->origin);
+            if (first.empty() || second.empty()) return std::nullopt;
+            path = first;
+            path.push_back(face.seamUp);
+            path.insert(path.end(), second.begin(), second.end());
+            path.push_back(face.seamUp->twin);
+        }
+        std::vector<int> edges;
+        for (const topo::HalfEdge* he : path) {
+            const auto id = oriented(he);
+            if (!id) return std::nullopt;
+            edges.push_back(*id);
+        }
+        const int loop = w.add("EDGE_LOOP(''," + StepWriter::refList(edges) + ")");
+        const int bound = w.add("FACE_OUTER_BOUND('',#" + std::to_string(loop) + ",.T.)");
+        const int surfId = writeSurface(w, *face.surface);
+        return w.add("ADVANCED_FACE('',(#" + std::to_string(bound) + "),#" +
+                     std::to_string(surfId) + "," + (face.sameSense ? ".T." : ".F.") + ")");
+    };
+
     auto writeShell = [&](const std::vector<const topo::Face*>& faces,
                           int shellIndex) -> std::optional<int> {
         std::vector<int> faceIds;
+        std::unordered_set<const CurvedFace*> written;
         for (const topo::Face* f : faces) {
             if (f == nullptr) continue;
+            const auto designedFace = designedOf.find(f);
+            if (designedFace != designedOf.end()) {
+                // Its facets are the one face: written once, for the first.
+                if (!written.insert(designedFace->second).second) continue;
+                if (auto id = writeDesigned(*designedFace->second)) faceIds.push_back(*id);
+                continue;
+            }
             if (auto id = writeFace(*f)) faceIds.push_back(*id);
         }
         if (faceIds.empty()) return std::nullopt;
@@ -1460,8 +2023,10 @@ double contextMillimetres(const StepParser& parser, int contextId, std::string* 
 // Public API
 // ===========================================================================
 
-std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids) {
+std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids,
+                                 const WriteOptions& options, WriteReport* report) {
     StepWriter w;
+    if (report != nullptr) report->faceted.clear();
 
     // Geometric representation context (SI millimetres) shared by all solids.
     const int lengthUnit = w.add("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
@@ -1488,7 +2053,8 @@ std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids) 
     int index = 0;
     for (const topo::Solid* solid : solids) {
         if (solid == nullptr) continue;
-        const std::vector<int> msbs = writeSolid(w, *solid, index);
+        const std::vector<int> msbs = writeSolid(w, *solid, index, options.asDesigned,
+                                                 report != nullptr ? &report->faceted : nullptr);
         if (msbs.empty()) continue;
 
         const std::string name = "'part_" + std::to_string(index) + "'";
@@ -1523,14 +2089,15 @@ std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids) 
     return out.str();
 }
 
-bool StepFormat::save(const std::string& filePath, const std::vector<const topo::Solid*>& solids) {
+bool StepFormat::save(const std::string& filePath, const std::vector<const topo::Solid*>& solids,
+                      const WriteOptions& options, WriteReport* report) {
     g_lastError.clear();
     if (solids.empty()) {
         g_lastError = "no solids to export";
         return false;
     }
     std::string error;
-    if (!writeFileAtomically(pathFromUtf8(filePath), toString(solids), &error)) {
+    if (!writeFileAtomically(pathFromUtf8(filePath), toString(solids, options, report), &error)) {
         g_lastError = error;
         return false;
     }

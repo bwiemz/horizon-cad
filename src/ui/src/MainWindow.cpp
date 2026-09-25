@@ -2398,12 +2398,28 @@ void MainWindow::onExportStep() {
     const QString fileName =
         askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
     if (fileName.isEmpty()) return;
-    if (!io::StepFormat::save(fileName.toStdString(), {solid})) {
+    io::StepFormat::WriteReport report;
+    if (!io::StepFormat::save(fileName.toStdString(), {solid}, {}, &report)) {
         reportFileError(tr("Could not export"), fileName.toStdString(),
                         io::StepFormat::lastError());
         return;
     }
     m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+    // Written as designed, but for faces that could not be: said, not
+    // left for the other system to find as a mesh of facets.
+    if (!report.faceted.empty()) {
+        QStringList lines;
+        for (const std::string& why : report.faceted) lines << QString::fromStdString(why);
+        QMessageBox box(QMessageBox::Information, tr("Export STEP"),
+                        tr("%n curved face(s) were written as their facets, not on their surfaces.",
+                           nullptr, static_cast<int>(report.faceted.size())),
+                        QMessageBox::Ok, this);
+        box.setInformativeText(
+            tr("The part is exact as modelled; other systems will see those "
+               "faces as flat facets."));
+        box.setDetailedText(lines.join(QLatin1Char('\n')));
+        box.exec();
+    }
 }
 
 void MainWindow::onExportStl() {

@@ -14,14 +14,20 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
 namespace fs = std::filesystem;
@@ -294,4 +300,116 @@ TEST(StepCurvedTest, AnImportedBodyIsBuiltInFacets) {
     EXPECT_TRUE(faces.count(id + "/face:0")) << *faces.begin();
     const auto ideal = MassPropertiesCalculator::computeIdeal(*built);
     expectRelative(ideal.properties.volume, 2.0 * kPi, 1e-9, "the cylinder");
+}
+
+// ---------------------------------------------------------------------------
+// Written as designed (Phase 151)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::size_t count(const std::string& text, const std::string& what) {
+    std::size_t n = 0;
+    for (std::size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) {
+        ++n;
+    }
+    return n;
+}
+
+/// @p solid written as designed: the file, and the faces kept in facets.
+std::pair<std::string, std::vector<std::string>> designed(const hz::topo::Solid& solid) {
+    StepFormat::WriteReport report;
+    const std::string text = StepFormat::toString({&solid}, {}, &report);
+    return {text, report.faceted};
+}
+
+}  // namespace
+
+// A cylinder goes out as three faces, its side one face on the cylinder,
+// bounded by its rims' circles: other systems read a cylinder, not a
+// 34-faced prism. Read back, it measures as the cylinder it is.
+TEST(StepCurvedTest, ACylinderIsWrittenAsDesigned) {
+    const auto cyl = hz::model::PrimitiveFactory::makeCylinder(4.0, 12.0);
+    const auto [text, faceted] = designed(*cyl);
+    EXPECT_TRUE(faceted.empty()) << faceted.front();
+    EXPECT_EQ(count(text, "ADVANCED_FACE("), 3u);
+    EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the side, on the cylinder";
+    EXPECT_EQ(count(text, "CIRCLE("), 64u) << "each rim chord an arc of its circle";
+    const auto m = measure(text);
+    EXPECT_TRUE(m.ideal.exact);
+    expectRelative(m.ideal.properties.volume, kPi * 16.0 * 12.0, 1e-9, "the cylinder");
+    expectRelative(m.ideal.properties.surfaceArea, 2.0 * kPi * 4.0 * 12.0 + 2.0 * kPi * 16.0, 1e-9,
+                   "its area");
+}
+
+// A cylinder made as a part is made (a feature, stably named), and one
+// moved there, go out as designed too.
+TEST(StepCurvedTest, APartsCylinderAndAMovedOneAreWrittenAsDesigned) {
+    hz::doc::Document part;
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeCylinder(3.0, 5.0));
+    ASSERT_TRUE(part.rebuildModel());
+    const auto moved = hz::model::Pattern::transformed(
+        *part.solid(), hz::math::Mat4::translation(hz::math::Vec3(10, -4, 2)));
+    for (const hz::topo::Solid* solid : {part.solid(), moved.get()}) {
+        const auto [text, faceted] = designed(*solid);
+        EXPECT_TRUE(faceted.empty());
+        EXPECT_EQ(count(text, "ADVANCED_FACE("), 3u);
+        const auto m = measure(text);
+        expectRelative(m.ideal.properties.volume, kPi * 9.0 * 5.0, 1e-9, "the cylinder");
+    }
+}
+
+// A boss joined to a block: its side one face, its foot's circle found
+// where the Boolean left none, and the whole measured exactly.
+TEST(StepCurvedTest, ABossJoinedToABlockIsWrittenAsDesigned) {
+    const auto block = hz::model::PrimitiveFactory::makeBox(40, 40, 10);
+    const auto boss =
+        hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeCylinder(5, 10),
+                                        hz::math::Mat4::translation(hz::math::Vec3(20, 20, 10)));
+    const auto joined = hz::model::BooleanOp::execute(*block, *boss, hz::model::BooleanType::Union);
+    ASSERT_NE(joined, nullptr);
+    const auto [text, faceted] = designed(*joined);
+    EXPECT_TRUE(faceted.empty()) << faceted.front();
+    EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u);
+    const auto m = measure(text);
+    EXPECT_TRUE(m.ideal.exact);
+    expectRelative(m.ideal.properties.volume, 40.0 * 40.0 * 10.0 + kPi * 25.0 * 10.0, 1e-9,
+                   "block and boss");
+}
+
+// What cannot yet go out as designed goes out as its facets, and says why:
+// a sphere (closed all round), a cone (its apex inside it), and a hole a
+// Boolean cut (its rim's chords split off the circle). Each still reads back
+// as the solid it is.
+TEST(StepCurvedTest, WhatCannotBeWrittenAsDesignedIsKeptInFacetsAndSaid) {
+    const auto sphere = hz::model::PrimitiveFactory::makeSphere(5.0);
+    const auto cone = hz::model::PrimitiveFactory::makeCone(4.0, 0.0, 12.0);
+    const auto plate = hz::model::PrimitiveFactory::makeBox(40, 40, 10);
+    const auto pin =
+        hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeCylinder(5, 30),
+                                        hz::math::Mat4::translation(hz::math::Vec3(20, 20, -10)));
+    const auto holed =
+        hz::model::BooleanOp::execute(*plate, *pin, hz::model::BooleanType::Subtract);
+    ASSERT_NE(holed, nullptr);
+    const std::vector<std::pair<const hz::topo::Solid*, std::string>> cases{
+        {sphere.get(), "closed all round"},
+        {cone.get(), "comes to a point"},
+        {holed.get(), "not all on one circle"}};
+    for (const auto& [solid, why] : cases) {
+        const auto [text, faceted] = designed(*solid);
+        ASSERT_EQ(faceted.size(), 1u) << why;
+        EXPECT_NE(faceted.front().find(why), std::string::npos) << faceted.front();
+        EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 0u) << "its facets, as they are";
+        const auto back = StepFormat::fromString(text);
+        ASSERT_EQ(back.size(), 1u);
+        EXPECT_NEAR(MassPropertiesCalculator::compute(*back[0]).volume,
+                    MassPropertiesCalculator::compute(*solid).volume,
+                    1e-9 * MassPropertiesCalculator::compute(*solid).volume)
+            << why;
+    }
+    // A box has no curved face: as it was.
+    const auto box = hz::model::PrimitiveFactory::makeBox(2, 3, 4);
+    const auto [text, faceted] = designed(*box);
+    EXPECT_TRUE(faceted.empty());
+    EXPECT_EQ(count(text, "ADVANCED_FACE("), 6u);
 }

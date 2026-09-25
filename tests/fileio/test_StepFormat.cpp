@@ -136,14 +136,11 @@ TEST(StepFormat, CylinderRoundTripIsExactForTheFacetedSolid) {
     auto cyl = PrimitiveFactory::makeCylinder(4.0, 12.0);
     ASSERT_NE(cyl, nullptr);
 
-    // Curved primitives are faceted, so a cylinder's faces are planar patches
-    // and the export carries no rational surface.  That is not a loss: the
-    // written model is exactly the model in memory.  Exporting the analytic
-    // surface a facet records (topo::Face::analyticSurface) would mean writing
-    // a cylindrical carrier under a planar quad loop — geometry the file
-    // itself would contradict.  Emitting analytic faces is a separate feature
-    // (un-faceting on export), not a property of the round trip.
-    const std::string text = StepFormat::toString(refs(*cyl));
+    // Written as modelled, a cylinder's faces are its planar facets and the
+    // export carries no rational surface: the written model is exactly the
+    // model in memory. (Written as designed, the default since Phase 151,
+    // its side is one face on the cylinder: StepCurvedTest.)
+    const std::string text = StepFormat::toString(refs(*cyl), {false});
     EXPECT_EQ(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
     EXPECT_NE(text.find("B_SPLINE_SURFACE_WITH_KNOTS"), std::string::npos);
 
@@ -233,7 +230,9 @@ TEST(StepFormat, MultiSolidRoundTrip) {
     ASSERT_NE(box, nullptr);
     ASSERT_NE(cyl, nullptr);
 
-    auto solids = StepFormat::fromString(StepFormat::toString({box.get(), cyl.get()}));
+    // As modelled: the solids and their facets exactly (as designed is
+    // StepCurvedTest's).
+    auto solids = StepFormat::fromString(StepFormat::toString({box.get(), cyl.get()}, {false}));
     ASSERT_EQ(solids.size(), 2u) << StepFormat::lastError();
     EXPECT_TRUE(solids[0]->isValid());
     EXPECT_TRUE(solids[1]->isValid());
