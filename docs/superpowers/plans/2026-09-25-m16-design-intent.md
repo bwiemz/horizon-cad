@@ -286,10 +286,103 @@ written, and a plain number means a plain number.
 - **The feature tree** has a Configuration chooser above the features,
   hidden while there are none; choosing one builds the part in it.
 
-## Phase 157: Sketches that follow (outline)
-- A sketch on a face follows the face by its stable name.
-- Part edges can be projected into a sketch.
-- Extrude up to a face.
+## Phase 157: Sketches that follow
+
+Three parts, each its own PR: a sketch follows its face (157a), part edges
+projected into a sketch (157b), and extrude up to a face (157c).
+
+### 157a: a sketch follows its face (as built)
+- **Before this,** Sketch on a Face copied the face's plane into the sketch
+  and dropped the face's name. When the part changed, the sketch stayed
+  where it was drawn, and a boss drawn on a top face was left inside a
+  taller part.
+- **`model::FacePlane`** (new, in modeling):
+  - `planeOf(face, outward)` gives a flat face's plane, through the middle
+    of its outline and facing out of the part. A face on a curved carrier
+    is not flat, and neither is a facet of a curved face (its ideal, a
+    cylinder's side, is curved);
+  - `wholeFaceName(tag)` removes the `/piece:<n>` a Boolean gives each
+    piece of a face it splits;
+  - `planeOfFace(solid, name)` finds all the pieces of a face named that
+    way. They must share one plane. Otherwise it gives nullopt with "is not
+    there" or "is no longer flat".
+  - Sketch on a Face lists faces with the same `planeOf`, so a sketch is
+    placed exactly where it was drawn while the part is unchanged.
+- **`Sketch`** keeps:
+  - the plane it was drawn on (`drawnPlane()`, what the file calls
+    "plane");
+  - the face it follows (`face()`, a whole name);
+  - where a build last placed it (`placed()`).
+  - `plane()` is where it is: the placement, else the drawn plane.
+  - `placeOn(point, normal)` takes the drawn plane's origin and x axis
+    straight onto the face's plane. A face that moves along its normal
+    carries the sketch along unturned, and a face that grows leaves it
+    where it is.
+  - This is a pure function of the drawn plane and the face, so undoing a
+    change puts the sketch back exactly.
+  - `placement()` is the rigid move from the drawn plane to the placed one.
+- **The build.** `Feature::sketches()` names the sketches a feature is made
+  from (Extrude, Revolve, Loft's sections, Sweep's profile and path).
+  - Before a feature is built, `applyFeature` (and `buildBodies`) places
+    each sketch that follows a face, on the part as it stands.
+  - Each sketch is placed once per build, by the first feature made from
+    it. A pattern's rebuild of that feature, and a second feature from the
+    sketch, use it where it was placed.
+  - A face that is not there, or is no longer flat, fails the feature,
+    naming the sketch and the face. The sketch stays where it was last
+    placed.
+- **Directions and axes are kept as drawn.** An extrusion's direction and a
+  revolve's axis are stored in the drawn plane's frame, and the build takes
+  them through `placement()`. A face that turns, turns them too. The Extrude
+  and Revolve commands take the drawn plane's normal and axes.
+- **A worker's build.** `BuildResult::placements` carries each placed
+  sketch's plane by id, and `Document::applyBuild` gives it to the
+  document's own sketches. So a part built from a copy draws, and edits,
+  its sketches where they now are.
+- **Files:**
+  - a sketch saves "plane" (drawn), "face" and "placed";
+  - format version 20, because an older build would leave the sketch on
+    its drawn plane and build a different part.
+- **The sketch list** says "on a face", and its tooltip names the face.
+- Not done: a sketch on a datum plane does not follow the datum (a datum
+  keeps coordinates, not what it was made from), and there is no command
+  yet to move a sketch to another face or stop it following.
+
+### 157b: part edges projected into a sketch (plan)
+- **Construction geometry.** `DraftEntity` gets a construction flag.
+  - It is saved, and drawn dashed and dim.
+  - `ProfileValidator` skips it, so it is never part of a profile.
+  - A command sets or clears the flag on the selected sketch entities, as
+    one undo step.
+- **Sketch ▸ Project Edges**, while a sketch is edited:
+  - The part's edges are listed. Picking is off in sketch mode, so edges
+    clicked before are checked.
+  - Each chosen logical edge is taken straight onto the sketch plane:
+    - a line for a straight edge;
+    - a circle or arc for a circular one whose plane is parallel to the
+      sketch;
+    - otherwise a polyline through its chords.
+  - They are construction by default, and keep the edge's name
+    (`sourceEdge`).
+- **They follow.** When a build places the sketch, each projected entity is
+  projected again from the same part. It keeps its id, so constraints on it
+  hold. An edge that is gone leaves the entity where it was, and says so.
+- The constraint solver holds projected entities fixed.
+
+### 157c: extrude up to a face (plan)
+- **The data.** `ExtrudeFeature::Extent::UpToFace` and a face (by whole
+  name). They are saved as "extent": 4 and "upToFace", and the format
+  version becomes 21, because an older build would read 4 as Blind.
+- **The build.** The face is found in the part before the extrude
+  (`planeOfFace`).
+  - A face parallel to the sketch gives the distance.
+  - A face that is not parallel gives each profile point its own distance
+    to the face's plane, making a slanted top. It is refused where a point
+    would not reach the face.
+  - A curved face is refused for now.
+- **The Extrude form** gets "Up to a face" with a list of the part's flat
+  faces, the one clicked before already chosen. The Edit form shows the
+  face.
 
 ## Tracking
 

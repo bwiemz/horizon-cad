@@ -1,5 +1,6 @@
 #include "horizon/document/Sketch.h"
 
+#include <cmath>
 #include <utility>
 
 #include "horizon/constraint/ConstraintSystem.h"
@@ -45,11 +46,36 @@ void Sketch::setName(const std::string& name) {
 }
 
 const draft::SketchPlane& Sketch::plane() const {
-    return m_plane;
+    return m_placed ? *m_placed : m_plane;
 }
 
 void Sketch::setPlane(const draft::SketchPlane& plane) {
     m_plane = plane;
+    m_placed.reset();
+}
+
+void Sketch::placeOn(const math::Vec3& point, const math::Vec3& normal) {
+    const math::Vec3 n = normal.normalized();
+    const math::Vec3 from = m_plane.origin() - point;
+    // On the plane it was drawn on (as a build finds it again, the part
+    // unchanged): there, exactly, not a rounding away.
+    if ((n - m_plane.normal()).length() < 1e-12 && std::abs(from.dot(n)) < 1e-12) {
+        m_placed = m_plane;
+        return;
+    }
+    const math::Vec3 origin = m_plane.origin() - n * from.dot(n);
+    math::Vec3 across = m_plane.xAxis() - n * m_plane.xAxis().dot(n);
+    if (across.length() < 1e-6) {
+        // Its x axis now along the normal: x is y x normal in a right-handed
+        // frame, so the y axis, taken onto the plane, gives it.
+        across = (m_plane.yAxis() - n * m_plane.yAxis().dot(n)).cross(n);
+    }
+    m_placed = draft::SketchPlane(origin, n, across);
+}
+
+math::Mat4 Sketch::placement() const {
+    if (!m_placed) return math::Mat4::identity();
+    return m_placed->localToWorldMatrix() * m_plane.worldToLocalMatrix();
 }
 
 void Sketch::addEntity(std::shared_ptr<draft::DraftEntity> entity) {

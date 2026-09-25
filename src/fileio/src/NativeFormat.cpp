@@ -65,7 +65,27 @@ static std::string dumpJson(const json& root, int indent) {
 /// 19: a feature may carry "naming": 3 (Phase 139), whose names are scoped to
 /// their feature and kept across fillets. An older build, which knows no 3,
 /// refuses the file rather than build it under other names.
-static constexpr int kFormatVersion = 19;
+/// 20: a sketch may carry "face", the face it follows, and "placed", where a
+/// build last put it on that face (Phase 157). An older build would leave
+/// the sketch on the plane it was drawn on, wherever the face has gone, and
+/// build a different part.
+static constexpr int kFormatVersion = 20;
+
+/// A sketch's plane: its origin, normal and x axis.
+static json planeToJson(const draft::SketchPlane& plane) {
+    return {{"origin", {plane.origin().x, plane.origin().y, plane.origin().z}},
+            {"normal", {plane.normal().x, plane.normal().y, plane.normal().z}},
+            {"xAxis", {plane.xAxis().x, plane.xAxis().y, plane.xAxis().z}}};
+}
+
+/// A plane planeToJson() wrote. Throws, as json does, on a malformed one.
+static draft::SketchPlane planeFromJson(const json& pObj) {
+    const auto vec = [&pObj](const char* key) {
+        const auto& v = pObj.at(key);
+        return math::Vec3(v.at(0).get<double>(), v.at(1).get<double>(), v.at(2).get<double>());
+    };
+    return draft::SketchPlane(vec("origin"), vec("normal"), vec("xAxis"));
+}
 
 /// Store `message` in `error` (when given) and report failure.
 static bool fail(std::string* error, std::string message) {
@@ -672,10 +692,11 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         skObj["id"] = sketch->id();
         skObj["name"] = sketch->name();
 
-        const auto& plane = sketch->plane();
-        skObj["plane"] = {{"origin", {plane.origin().x, plane.origin().y, plane.origin().z}},
-                          {"normal", {plane.normal().x, plane.normal().y, plane.normal().z}},
-                          {"xAxis", {plane.xAxis().x, plane.xAxis().y, plane.xAxis().z}}};
+        // The plane it was drawn on; for one that follows a face, the face,
+        // and where a build last placed it there (Phase 157).
+        skObj["plane"] = planeToJson(sketch->drawnPlane());
+        if (!sketch->face().empty()) skObj["face"] = sketch->face();
+        if (sketch->placed()) skObj["placed"] = planeToJson(*sketch->placed());
 
         json skEntities = json::array();
         for (const auto& entity : sketch->entities()) {
@@ -1363,21 +1384,14 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
             try {
                 // Reconstruct SketchPlane
                 draft::SketchPlane plane;  // default XY
-                if (skObj.contains("plane")) {
-                    const auto& pObj = skObj.at("plane");
-                    math::Vec3 origin(pObj.at("origin").at(0).get<double>(),
-                                      pObj.at("origin").at(1).get<double>(),
-                                      pObj.at("origin").at(2).get<double>());
-                    math::Vec3 normal(pObj.at("normal").at(0).get<double>(),
-                                      pObj.at("normal").at(1).get<double>(),
-                                      pObj.at("normal").at(2).get<double>());
-                    math::Vec3 xAxis(pObj.at("xAxis").at(0).get<double>(),
-                                     pObj.at("xAxis").at(1).get<double>(),
-                                     pObj.at("xAxis").at(2).get<double>());
-                    plane = draft::SketchPlane(origin, normal, xAxis);
-                }
+                if (skObj.contains("plane")) plane = planeFromJson(skObj.at("plane"));
 
                 auto sketch = std::make_shared<doc::Sketch>(plane);
+                // Phase 157: the face it follows, and where it was placed.
+                if (skObj.contains("face") && skObj.at("face").is_string()) {
+                    sketch->setFace(skObj.at("face").get<std::string>());
+                }
+                if (skObj.contains("placed")) sketch->setPlaced(planeFromJson(skObj.at("placed")));
                 if (skObj.contains("id")) {
                     sketch->setId(skObj.at("id").get<uint64_t>());
                 }

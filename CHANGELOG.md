@@ -19,6 +19,17 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
 
+- **Sketches that follow their face (157, part 1).**
+  - A sketch made with Sketch on a Face now follows that face when the part
+    changes. Make the box taller, and the sketch on its top, with the boss
+    drawn there, goes up with it; undo brings both back exactly.
+  - An extrusion's direction and a revolve's axis move with their sketch.
+  - If the face is gone, or is no longer flat, the feature made from the
+    sketch fails, and says which sketch and which face.
+  - The sketch list marks a sketch that is on a face.
+  - Files are saved as format version 20, which older builds refuse to
+    open, since they would build a different part.
+
 - **Configurations (156).**
   - Edit ▸ Configurations keeps a design table: each configuration gives
     some variables other values ("Thin": wall = 1 mm; "Thick": wall = 5 mm).

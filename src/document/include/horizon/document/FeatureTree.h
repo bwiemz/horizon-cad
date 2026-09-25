@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
@@ -95,6 +96,11 @@ public:
         (void)context;
         return execute(std::move(inputSolid), reason);
     }
+
+    /// The sketches it is made from (Phase 157). The tree places each that
+    /// follows a face on that face, as the part stands before the feature,
+    /// before it builds the feature.
+    virtual std::vector<std::shared_ptr<Sketch>> sketches() const { return {}; }
 
     /// True for non-geometric construction features (datum planes, axes,
     /// points). The feature tree skips these when building the solid, so they
@@ -239,7 +245,10 @@ public:
     bool setVector(const std::string& name, const math::Vec3& value) override;
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_sketch}; }
     bool createsNewBody() const override { return true; }
+    /// Which way it goes, as the sketch was drawn: a sketch placed on a face
+    /// that has turned takes it along (Sketch::placement()).
     const math::Vec3& direction() const { return m_direction; }
     double distance() const { return m_distance; }
     void restoreFeatureID(const std::string& id) override;
@@ -282,6 +291,9 @@ public:
     bool setVector(const std::string& name, const math::Vec3& value) override;
 
     const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_sketch}; }
+    /// The axis, as the sketch was drawn: a sketch placed on a face takes it
+    /// along (Sketch::placement()).
     const math::Vec3& axisPoint() const { return m_axisPoint; }
     bool createsNewBody() const override { return true; }
     const math::Vec3& axisDir() const { return m_axisDir; }
@@ -327,6 +339,7 @@ public:
 
     bool createsNewBody() const override { return true; }
     const std::vector<std::shared_ptr<Sketch>>& sections() const { return m_sections; }
+    std::vector<std::shared_ptr<Sketch>> sketches() const override { return m_sections; }
 
 private:
     std::vector<std::shared_ptr<Sketch>> m_sections;
@@ -352,6 +365,7 @@ public:
     const std::shared_ptr<Sketch>& profile() const { return m_profile; }
     bool createsNewBody() const override { return true; }
     const std::shared_ptr<Sketch>& path() const { return m_path; }
+    std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_profile, m_path}; }
 
     /// Steps per full turn used to sample arcs in the path, the "segments"
     /// parameter.  A straight path is exact and ignores it.
@@ -736,6 +750,9 @@ struct BuildResult {
     std::string failureMessage;
     int failedFeatureIndex = -1;
     bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
+    /// Where each sketch that follows a face was placed (Phase 157), by id:
+    /// what a build of a copy (on a worker) gives the document it copied.
+    std::map<uint64_t, draft::SketchPlane> placements;
 };
 
 /// How a build running on another thread says how far it has got, and learns

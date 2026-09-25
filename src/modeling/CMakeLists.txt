@@ -14,6 +14,7 @@ add_library(hz_modeling STATIC
     src/FilletOp.cpp
     src/ChamferOp.cpp
     src/MateGeometry.cpp
+    src/FacePlane.cpp
     src/AssemblySolver.cpp
     src/RingStack.cpp
     src/Loft.cpp

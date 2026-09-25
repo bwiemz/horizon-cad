@@ -258,13 +258,21 @@ void FeatureTreePanel::refreshSketches(const std::vector<SketchRow>& rows, uint6
     const QSignalBlocker quiet(m_sketchList);  // listing is not choosing
     m_sketchList->clear();
     for (const SketchRow& row : rows) {
-        QString text = QString::fromStdString(row.name);
+        QStringList notes;
+        if (!row.face.empty()) notes << tr("on a face");
         if (row.editing) {
-            text += tr(" (editing)");
+            notes << tr("editing");
         } else if (!row.usedBy.empty()) {
-            text += tr(" (used by %1)").arg(QString::fromStdString(row.usedBy));
+            notes << tr("used by %1").arg(QString::fromStdString(row.usedBy));
         }
+        QString text = QString::fromStdString(row.name);
+        if (!notes.isEmpty()) text += QStringLiteral(" (%1)").arg(notes.join(QStringLiteral(", ")));
         auto* item = new QListWidgetItem(text, m_sketchList);
+        if (!row.face.empty()) {
+            item->setToolTip(tr("Follows the part's face %1: when the part changes, it moves "
+                                "with the face")
+                                 .arg(QString::fromStdString(row.face)));
+        }
         item->setData(Qt::UserRole, QVariant::fromValue<qulonglong>(row.id));
         if (row.id == selected) m_sketchList->setCurrentItem(item);
     }

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <exception>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -22,6 +23,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/Loft.h"
@@ -174,8 +176,9 @@ bool ExtrudeFeature::setVector(const std::string& name, const math::Vec3& value)
     if (name != "direction") return false;
     const auto unit = unitDirection(value);
     if (!unit) return false;
-    // Along the sketch's own plane it sweeps nothing.
-    if (m_sketch && std::abs(unit->dot(m_sketch->plane().normal())) < 1e-9) return false;
+    // Along the sketch's own plane it sweeps nothing. Kept as the sketch was
+    // drawn, and so checked against the plane it was drawn on.
+    if (m_sketch && std::abs(unit->dot(m_sketch->drawnPlane().normal())) < 1e-9) return false;
     m_direction = *unit;
     return true;
 }
@@ -212,15 +215,17 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
     const draft::SketchPlane& plane = m_sketch->plane();
+    // Placed on a face that has turned, the sketch takes its direction along.
+    const math::Vec3 direction = m_sketch->placement().transformDirection(m_direction);
     const auto extrude = [&](const draft::SketchPlane& from, double distance) {
-        return model::Extrude::execute(m_sketch->entities(), from, m_direction, distance,
-                                       m_featureID, m_segments, m_chordTolerance, reason, naming());
+        return model::Extrude::execute(m_sketch->entities(), from, direction, distance, m_featureID,
+                                       m_segments, m_chordTolerance, reason, naming());
     };
     // Along the direction, a plane the sketch's, moved @p by.
     const auto moved = [&plane](const math::Vec3& by) {
         return draft::SketchPlane(plane.origin() + by, plane.normal(), plane.xAxis());
     };
-    const math::Vec3 unit = m_direction.normalized();
+    const math::Vec3 unit = direction.normalized();
     switch (m_extent) {
         case Extent::Blind:
             break;
@@ -312,8 +317,9 @@ bool RevolveFeature::setVector(const std::string& name, const math::Vec3& value)
 
 int RevolveFeature::segments() const {
     if (m_chordTolerance > 0.0 && m_sketch) {
-        const double radius = model::Revolve::profileRadius(m_sketch->entities(), m_sketch->plane(),
-                                                            m_axisPoint, m_axisDir);
+        // As drawn: the axis as it is kept, with the plane it was drawn on.
+        const double radius = model::Revolve::profileRadius(
+            m_sketch->entities(), m_sketch->drawnPlane(), m_axisPoint, m_axisDir);
         if (radius > 0.0) return model::Revolve::segmentsForTolerance(radius, m_chordTolerance);
     }
     return m_segments;
@@ -331,9 +337,12 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
 
 std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
                                                      std::string* reason) const {
-    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), m_axisPoint, m_axisDir,
-                                   m_angle, m_featureID, segments(), m_chordTolerance, reason,
-                                   naming());
+    // Placed on a face that has moved, the sketch takes its axis along.
+    const math::Mat4 placement = m_sketch->placement();
+    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(),
+                                   placement.transformPoint(m_axisPoint),
+                                   placement.transformDirection(m_axisDir), m_angle, m_featureID,
+                                   segments(), m_chordTolerance, reason, naming());
 }
 
 // ---------------------------------------------------------------------------
@@ -1444,6 +1453,36 @@ bool takesPart(const Feature& feature) {
     return !feature.isConstruction() && !feature.isSuppressed();
 }
 
+/// The sketches placed so far in one build (Phase 157), by id.
+using Placed = std::map<uint64_t, std::shared_ptr<Sketch>>;
+
+/// Each sketch @p feature is made from that follows a face, placed on it as
+/// @p part stands, before the feature is built: once in a build, by the
+/// first feature made from it (a pattern builds its feature again against a
+/// later part; a second feature from the sketch builds on it where it is).
+/// False, and why, when a face is not there or not flat.
+bool placeSketches(const Feature& feature, const topo::Solid* part, Placed& placed,
+                   std::string* reason) {
+    for (const auto& sketch : feature.sketches()) {
+        if (!sketch || sketch->face().empty() || placed.count(sketch->id()) != 0) continue;
+        const std::string on =
+            "sketch '" + sketch->name() + "' is on a face (" + sketch->face() + ")";
+        if (part == nullptr) {
+            if (reason) *reason = on + ", and there is no part before it";
+            return false;
+        }
+        std::string why;
+        const auto face = model::planeOfFace(*part, sketch->face(), &why);
+        if (!face) {
+            if (reason) *reason = on + " that " + why;
+            return false;
+        }
+        sketch->placeOn(face->origin, face->normal);
+        placed[sketch->id()] = sketch;
+    }
+    return true;
+}
+
 /// One step of the regeneration rule every build path shares: a creating
 /// feature builds a tool body, combined with the part by its operation; any
 /// other feature transforms the part.
@@ -1455,8 +1494,10 @@ bool takesPart(const Feature& feature) {
 /// feature into the tree and not yet taken it out.
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
                                           std::string* reason,
-                                          const std::vector<const Feature*>& before) {
+                                          const std::vector<const Feature*>& before,
+                                          Placed& placed) {
     try {
+        if (!placeSketches(feature, part.get(), placed, reason)) return nullptr;
         BuildContext context;
         context.before = before;
         if (!feature.createsNewBody()) {
@@ -1575,9 +1616,10 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 
     std::unique_ptr<topo::Solid> solid;
     std::vector<const Feature*> before;
+    Placed placed;
     for (const auto& feat : m_features) {
         if (!takesPart(*feat)) continue;
-        solid = applyFeature(*feat, std::move(solid), nullptr, before);
+        solid = applyFeature(*feat, std::move(solid), nullptr, before, placed);
         if (!solid) {
             return nullptr;  // Feature failed
         }
@@ -1589,9 +1631,11 @@ std::unique_ptr<topo::Solid> FeatureTree::build() const {
 std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     std::vector<std::unique_ptr<topo::Solid>> bodies;
     BuildContext context;
+    Placed placed;
     for (const auto& feat : m_features) {
         if (!takesPart(*feat)) continue;
         context.part = bodies.empty() ? nullptr : bodies.back().get();
+        if (!placeSketches(*feat, context.part, placed, nullptr)) continue;
 
         if (feat->consumesAllBodies()) {
             // Boolean-style combine: replace the whole body list with its result.
@@ -1642,6 +1686,11 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
 
     std::unique_ptr<topo::Solid> solid;
     std::vector<const Feature*> before;
+    Placed placed;
+    // Where each sketch was placed, for the document this tree is a copy of.
+    const auto report = [&placed, &result] {
+        for (const auto& [id, sketch] : placed) result.placements.emplace(id, sketch->plane());
+    };
     for (int i = 0; i < limit; ++i) {
         if (control) {
             if (control->cancel) {
@@ -1656,8 +1705,9 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason = feature.expressionError();  // Phase 155
-        auto next =
-            reason.empty() ? applyFeature(feature, std::move(solid), &reason, before) : nullptr;
+        auto next = reason.empty()
+                        ? applyFeature(feature, std::move(solid), &reason, before, placed)
+                        : nullptr;
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()
@@ -1669,6 +1719,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             // nothing.
             result.solid = replayUpTo(i, control);
             if (control && control->cancel) result.cancelled = true;
+            report();
             return result;
         }
         solid = std::move(next);
@@ -1678,18 +1729,20 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
 
     if (control) control->done = limit;
     result.solid = std::move(solid);
+    report();
     return result;
 }
 
 std::unique_ptr<topo::Solid> FeatureTree::replayUpTo(int limit, BuildControl* control) const {
     std::unique_ptr<topo::Solid> solid;
     std::vector<const Feature*> before;
+    Placed placed;
     for (int i = 0; i < limit; ++i) {
         if (control && control->cancel) return nullptr;
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         if (!takesPart(feature)) continue;
         std::string reason;
-        solid = applyFeature(feature, std::move(solid), &reason, before);
+        solid = applyFeature(feature, std::move(solid), &reason, before, placed);
         if (!solid) return nullptr;  // built the first time; cannot fail now
         before.push_back(&feature);
     }
