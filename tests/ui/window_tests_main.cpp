@@ -8,6 +8,22 @@
 #include <QTemporaryDir>
 
 #include "horizon/ui/Application.h"
+#include "horizon/ui/Preferences.h"
+
+namespace {
+
+/// Each test starts as a new installation does: no settings, default
+/// preferences. A test earlier in the same process (the smoke test switches
+/// every drafting aid) left them changed, and three tests failed after it
+/// when the binary was run whole; under CTest each test has its own process.
+class FreshSettings : public ::testing::EmptyTestEventListener {
+    void OnTestStart(const ::testing::TestInfo& /*test*/) override {
+        QSettings().clear();
+        hz::ui::Preferences::load().save();
+    }
+};
+
+}  // namespace
 
 int main(int argc, char** argv) {
     // Headless by default; an explicit QT_QPA_PLATFORM still wins.
@@ -32,6 +48,7 @@ int main(int argc, char** argv) {
         QStringLiteral("hz_ui_window_tests-%1").arg(QCoreApplication::applicationPid()));
 
     ::testing::InitGoogleTest(&argc, argv);
+    ::testing::UnitTest::GetInstance()->listeners().Append(new FreshSettings);
     const int status = RUN_ALL_TESTS();
     QDir data(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
     data.removeRecursively();
