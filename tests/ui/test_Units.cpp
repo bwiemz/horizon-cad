@@ -4,7 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QTreeWidget>
 #include <memory>
@@ -18,11 +20,13 @@
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/PropertyPanel.h"
 #include "horizon/ui/QuantitySpinBox.h"
+#include "horizon/ui/ViewportWidget.h"
 
 using hz::math::LengthUnit;
 using hz::math::Vec2;
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
+using hz::test::ToolDriver;
 using hz::ui::MainWindow;
 using hz::ui::QuantitySpinBox;
 
@@ -169,4 +173,63 @@ TEST(UnitsFieldTest, ThePropertyPanelShowsAndTakesTheDocumentsUnit) {
         w.activeDocument()->draftDocument().sharedEntity(line->id()));
     ASSERT_NE(edited, nullptr);
     EXPECT_NEAR(edited->end().x, 50.8, 1e-9);
+}
+
+// Rotate's typed angle takes radians too (Phase 154).
+TEST(UnitsFieldTest, ARotationIsTypedInRadians) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(10, 0), Vec2(20, 0));
+    w.activeDocument()->draftDocument().addEntity(line);
+    drive.viewport().selectionManager().select(line->id());
+    trigger(w, "tool_rotate");
+    drive.click(Vec2(0, 0));  // about the origin
+    for (const Qt::Key key : {Qt::Key_1, Qt::Key_Period, Qt::Key_5, Qt::Key_7, Qt::Key_0, Qt::Key_7,
+                              Qt::Key_9, Qt::Key_6, Qt::Key_3, Qt::Key_2, Qt::Key_6, Qt::Key_8,
+                              Qt::Key_Space, Qt::Key_R, Qt::Key_A, Qt::Key_D, Qt::Key_Return}) {
+        drive.key(key);
+    }
+    const auto selected = drive.viewport().selectionManager().selectedIds();
+    ASSERT_EQ(selected.size(), 1u);
+    const auto turned = std::dynamic_pointer_cast<hz::draft::DraftLine>(
+        w.activeDocument()->draftDocument().sharedEntity(selected.front()));
+    ASSERT_NE(turned, nullptr);
+    EXPECT_NEAR(turned->start().x, 0.0, 1e-6);
+    EXPECT_NEAR(turned->start().y, 10.0, 1e-6) << "a quarter turn";
+}
+
+// A value being typed keeps its letters and spaces: the window's one-key
+// shortcuts (M for Move, R for Rectangle, Space for Select) do not take
+// them. Qt first offers a key to the focused widget as a ShortcutOverride;
+// the viewport claims it while something is typed, and only then.
+TEST(UnitsFieldTest, ALetterTypedInAValueIsNotAShortcut) {
+    MainWindow w;
+    ToolDriver drive(w);
+    hz::ui::ViewportWidget& viewport = drive.viewport();
+    const auto claims = [&viewport](Qt::Key key, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        QKeyEvent offered(QEvent::ShortcutOverride, key, modifiers);
+        offered.ignore();
+        QCoreApplication::sendEvent(&viewport, &offered);
+        return offered.isAccepted();
+    };
+
+    trigger(w, "tool_line");
+    EXPECT_FALSE(claims(Qt::Key_M)) << "nothing typed: M is Move's";
+    drive.key(Qt::Key_5);
+    EXPECT_TRUE(claims(Qt::Key_M)) << "\"5 m...\": a unit";
+    EXPECT_TRUE(claims(Qt::Key_Space));
+    EXPECT_TRUE(claims(Qt::Key_QuoteDbl, Qt::ShiftModifier));
+    EXPECT_FALSE(claims(Qt::Key_S, Qt::ControlModifier)) << "Ctrl+S saves, typing or not";
+    drive.key(Qt::Key_Escape);
+    EXPECT_FALSE(claims(Qt::Key_M)) << "what was typed is dropped";
+
+    // A tool that reads its own value: a rotation's angle.
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(10, 0), Vec2(20, 0));
+    w.activeDocument()->draftDocument().addEntity(line);
+    viewport.selectionManager().select(line->id());
+    trigger(w, "tool_rotate");
+    drive.click(Vec2(0, 0));
+    EXPECT_FALSE(claims(Qt::Key_R));
+    drive.key(Qt::Key_1);
+    EXPECT_TRUE(claims(Qt::Key_R)) << "\"1 r...\": radians";
 }

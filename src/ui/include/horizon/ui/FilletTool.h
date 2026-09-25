@@ -28,6 +28,7 @@ public:
     std::vector<ArcPreview> getPreviewArcs() const override;
 
     std::string promptText() const override;
+    bool typingText() const override { return m_radius.typing(); }
     bool wantsCrosshair() const override;
 
 private:

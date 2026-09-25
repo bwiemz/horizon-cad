@@ -1265,7 +1265,8 @@ void MainWindow::onDraftingAidToggled(QAction* changed) {
 QString MainWindow::toolPrompt() const {
     const Tool* tool = m_viewport ? m_viewport->activeTool() : nullptr;
     if (tool == nullptr) return tr("Ready");
-    const std::string prompt = tool->promptText() + m_viewport->typedPoint().prompt();
+    const std::string prompt =
+        tool->promptText() + m_viewport->typedPoint().prompt(m_document->lengthUnit());
     return prompt.empty() ? tr("Ready") : QString::fromStdString(prompt);
 }
 

@@ -16,6 +16,8 @@
 #include "horizon/drafting/Intersection.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
+#include "horizon/math/Units.h"
+#include "horizon/ui/TypedUnits.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -123,14 +125,20 @@ bool RotateTool::keyPressEvent(QKeyEvent* event) {
             return true;
         }
         if (event->key() == Qt::Key_Backspace && !m_angleInput.empty()) {
-            m_angleInput.pop_back();
+            takeBack(m_angleInput);
             return true;
         }
+        // Degrees, or said otherwise after it ("0.5 rad", Phase 154).
+        if (typeUnitKey(event->key(), m_angleInput)) return true;
         if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
             if (!m_angleInput.empty() && m_viewport && m_viewport->document()) {
-                try {
-                    double angleDeg = std::stod(m_angleInput);
-                    double angleRad = math::degToRad(angleDeg);
+                const std::optional<double> typed = math::parseAngle(m_angleInput);
+                if (!typed) {
+                    m_angleInput.clear();
+                    return true;
+                }
+                {
+                    const double angleRad = *typed;
 
                     auto& doc = m_viewport->document()->activeDrawing();
                     auto& sel = m_viewport->selectionManager();
@@ -160,8 +168,6 @@ bool RotateTool::keyPressEvent(QKeyEvent* event) {
                     m_state = State::SelectCenter;
                     m_angleInput.clear();
                     m_viewport->setLastSnapResult({});
-                } catch (...) {
-                    m_angleInput.clear();
                 }
             }
             return true;

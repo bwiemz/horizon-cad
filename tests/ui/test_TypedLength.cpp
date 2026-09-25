@@ -44,7 +44,7 @@ TEST(TypedLengthTest, OnlyAWholePositiveNumberIsALength) {
 TEST(TypedLengthTest, EnterTakesTheLengthOrSaysWhyNot) {
     TypedLength radius(1.0);
     type(radius, "1.2.3");
-    EXPECT_EQ(radius.prompt("radius"), "  Radius: 1.2.3");
+    EXPECT_EQ(radius.prompt("radius"), "  Radius (mm): 1.2.3");
     EXPECT_TRUE(radius.key(Qt::Key_Return));
     EXPECT_DOUBLE_EQ(radius.value(), 1.0);
     EXPECT_EQ(radius.prompt("radius"), "  '1.2.3' is not a radius");
@@ -54,7 +54,7 @@ TEST(TypedLengthTest, EnterTakesTheLengthOrSaysWhyNot) {
     type(radius, ".5");
     EXPECT_TRUE(radius.key(Qt::Key_Enter));
     EXPECT_DOUBLE_EQ(radius.value(), 2.5);
-    EXPECT_EQ(radius.prompt("radius"), "  [radius=2.5]");
+    EXPECT_EQ(radius.prompt("radius"), "  [radius=2.5 mm]");
 
     EXPECT_TRUE(radius.key(Qt::Key_Return)) << "Enter with nothing typed is still the input's";
     EXPECT_FALSE(radius.key(Qt::Key_Backspace)) << "nothing to take back";
@@ -68,12 +68,29 @@ TEST(TypedLengthTest, ChamferAndFilletRefuseWhatIsNotALength) {
     EXPECT_NE(chamfer.promptText().find("'1.2.3' is not a distance"), std::string::npos)
         << chamfer.promptText();
     type(chamfer, "4");
-    EXPECT_NE(chamfer.promptText().find("[distance=4]"), std::string::npos);
+    EXPECT_NE(chamfer.promptText().find("[distance=4 mm]"), std::string::npos);
 
     hz::ui::FilletTool fillet;
     type(fillet, ".");
     EXPECT_NE(fillet.promptText().find("'.' is not a radius"), std::string::npos)
         << fillet.promptText();
     type(fillet, "0.75", Qt::Key_Enter);
-    EXPECT_NE(fillet.promptText().find("[radius=0.75]"), std::string::npos);
+    EXPECT_NE(fillet.promptText().find("[radius=0.75 mm]"), std::string::npos);
+}
+
+// Phase 154: a radius in the document's unit, or typed with its own.
+TEST(TypedLengthTest, ARadiusMayCarryItsUnit) {
+    using hz::math::LengthUnit;
+    EXPECT_EQ(TypedLength::parse("1", LengthUnit::Inch), 25.4);
+    EXPECT_EQ(TypedLength::parse("3 mm", LengthUnit::Inch), 3.0);
+    EXPECT_FALSE(TypedLength::parse("-1 in", LengthUnit::Inch)) << "a length is positive";
+
+    TypedLength radius(1.0);
+    for (int key : {Qt::Key_1, Qt::Key_Space, Qt::Key_C, Qt::Key_M}) {
+        EXPECT_TRUE(radius.key(key, LengthUnit::Inch));
+    }
+    EXPECT_EQ(radius.prompt("radius", LengthUnit::Inch), "  Radius (in): 1 cm");
+    EXPECT_TRUE(radius.key(Qt::Key_Return, LengthUnit::Inch));
+    EXPECT_DOUBLE_EQ(radius.value(), 10.0);
+    EXPECT_EQ(radius.prompt("radius", LengthUnit::Inch), "  [radius=0.393701 in]");
 }

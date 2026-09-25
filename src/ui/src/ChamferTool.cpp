@@ -12,6 +12,17 @@
 
 namespace hz::ui {
 
+namespace {
+
+/// The unit a typed length is in: the document's (Phase 154).
+math::LengthUnit lengthUnit(const ViewportWidget* viewport) {
+    return viewport != nullptr && viewport->document() != nullptr
+               ? viewport->document()->lengthUnit()
+               : math::LengthUnit::Millimetre;
+}
+
+}  // namespace
+
 void ChamferTool::activate(ViewportWidget* viewport) {
     Tool::activate(viewport);
     m_state = State::SelectFirstLine;
@@ -209,7 +220,7 @@ bool ChamferTool::keyPressEvent(QKeyEvent* event) {
     }
 
     // A distance typed while the tool runs.
-    return m_distance.key(event->key());
+    return m_distance.key(event->key(), lengthUnit(m_viewport));
 }
 
 void ChamferTool::cancel() {
@@ -252,7 +263,7 @@ std::string ChamferTool::promptText() const {
             base = "Select second line for chamfer";
             break;
     }
-    return base + m_distance.prompt("distance");
+    return base + m_distance.prompt("distance", lengthUnit(m_viewport));
 }
 
 bool ChamferTool::wantsCrosshair() const {

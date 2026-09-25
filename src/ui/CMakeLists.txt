@@ -73,6 +73,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/WorkerThread.h
     include/horizon/ui/TypedLength.h
     include/horizon/ui/TypedPoint.h
+    include/horizon/ui/TypedUnits.h
     include/horizon/ui/PdfExport.h
     include/horizon/ui/ChainDimensionTool.h
     src/Application.cpp
@@ -107,6 +108,7 @@ add_library(hz_ui STATIC
     src/ChamferTool.cpp
     src/TypedLength.cpp
     src/TypedPoint.cpp
+    src/TypedUnits.cpp
     src/PdfExport.cpp
     src/ChainDimensionTool.cpp
     src/BreakTool.cpp
