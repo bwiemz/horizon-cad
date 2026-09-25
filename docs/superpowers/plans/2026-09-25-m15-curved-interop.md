@@ -104,10 +104,47 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
 - The two tests of the exact faceted round trip ask for it
   (`asDesigned = false`).
 
-## Phase 152: STEP import of trimmed surfaces (outline)
-- A curved face with any boundary is built on its surface, trimmed in (u, v).
-  Today only a (u, v) rectangle is (`asRectangle`); any other face becomes
-  one flat facet.
+## Phase 152: STEP import of trimmed surfaces
+
+### As built
+- **Before this**, a curved face read from STEP was built on its surface only
+  when its outline was a rectangle of the surface's (u, v). Any other
+  outline, or any hole, became one flat facet, its outline. A cylinder cut
+  on a slant, or one with a pocket in its side, measured wrong.
+- **`loopInUV`**: any loop without a pole, unwrapped round the surface's
+  seams, each half-edge placed where the one before ends. A loop that
+  winds round the surface is refused.
+- **`trimmedFacets`** cuts the region in (u, v) into triangles, scaled to the
+  surface's own lengths in its middle:
+  - Its holes are bridged to the outline. Each bridge goes to the nearest
+    point it can see, crossing no edge of the outline, its hole or a hole
+    still to join. The textbook choice, the far end of the edge a ray meets,
+    ran across a seam to a far corner. Bridges are cut into points on the
+    surface, since one straight chord across a curved face cuts through
+    the part.
+  - It is cut by ears. An ear is clipped only if no point is in it or on
+    its edges: a point on a triangle's edge would be a vertex in the
+    middle of its neighbour's edge.
+  - It is made Delaunay by flips; the outline is never flipped. Ears leave
+    long diagonals where no point goes in near them.
+  - Points go in on a grid:
+    - as close as the surface turns by `maxAngle` across the region each
+      way (`piecesAcross`), and no further apart than the median of the
+      outline's own (its average was stretched by a long straight seam,
+      and the facets fell 1.4 % short);
+    - kept clear of the outline;
+    - each located by walking from the last, then flipped Delaunay.
+  - Its outline points are the edges' own, so the facets meet the faces
+    beside them.
+- **Still one facet:** a pole on a trimmed outline, and a hole across a seam.
+
+### Measured
+- A cylinder cut on the plane z = 1 + x/2, its side topped by an ellipse:
+  nothing outlined, the facets within 1 %, and the ideal volume π to 1e-8.
+- A cylinder of radius 2 with a pocket cut into its side (a face with a
+  hole): nothing outlined, the facets within 1 %, the ideal volume
+  16π − 0.525 to 1e-8, in half a second.
+
 
 ## Phase 153: STEP assemblies (outline)
 - `PRODUCT` / `NEXT_ASSEMBLY_USAGE_OCCURRENCE` read into an assembly of parts,

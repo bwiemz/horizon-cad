@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <set>
@@ -460,4 +461,252 @@ TEST(StepCurvedTest, AnEdgeWhoseEndsAreOffItsCircleIsNotWrittenOnIt) {
     EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 0u);
     const auto back = StepFormat::fromString(text);
     ASSERT_EQ(back.size(), 1u) << StepFormat::lastError();
+}
+
+// ---------------------------------------------------------------------------
+// Trimmed faces read (Phase 152)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A cylinder of radius 1 standing on z = 0, cut off by the plane
+/// z = 1 + x / 2: its side is a face on the cylinder whose top edge is an
+/// ellipse, in (u, v) a wave, no rectangle. Its volume is pi (its height is
+/// 1 on average), its side 2 pi, its top an ellipse of pi sqrt(1.25).
+std::string slantedCylinder() {
+    return step(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(1.,0.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(1.,0.,1.5));
+#9 = VERTEX_POINT('',#8);
+#10 = EDGE_CURVE('',#7,#7,#5,.T.);
+#11 = CARTESIAN_POINT('',(1.,0.,1.5));
+#12 = CARTESIAN_POINT('',(1.,1.,1.5));
+#13 = CARTESIAN_POINT('',(0.,1.,1.));
+#14 = CARTESIAN_POINT('',(-1.,1.,0.5));
+#15 = CARTESIAN_POINT('',(-1.,0.,0.5));
+#16 = CARTESIAN_POINT('',(-1.,-1.,0.5));
+#17 = CARTESIAN_POINT('',(0.,-1.,1.));
+#18 = CARTESIAN_POINT('',(1.,-1.,1.5));
+#19 = CARTESIAN_POINT('',(1.,0.,1.5));
+#20 = (BOUNDED_CURVE() B_SPLINE_CURVE(2,(#11,#12,#13,#14,#15,#16,#17,#18,#19),.UNSPECIFIED.,.T.,.F.) B_SPLINE_CURVE_WITH_KNOTS((3,2,2,2,3),(0.,0.25,0.5,0.75,1.),.UNSPECIFIED.) CURVE() GEOMETRIC_REPRESENTATION_ITEM() RATIONAL_B_SPLINE_CURVE((1.,@W,1.,@W,1.,@W,1.,@W,1.)) REPRESENTATION_ITEM(''));
+#21 = EDGE_CURVE('',#9,#9,#20,.T.);
+#22 = LINE('',#6,VECTOR('',#2,1.));
+#23 = EDGE_CURVE('',#7,#9,#22,.T.);
+#24 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#25 = CYLINDRICAL_SURFACE('',#24,1.);
+#26 = ORIENTED_EDGE('',*,*,#10,.T.);
+#27 = ORIENTED_EDGE('',*,*,#23,.T.);
+#28 = ORIENTED_EDGE('',*,*,#21,.F.);
+#29 = ORIENTED_EDGE('',*,*,#23,.F.);
+#30 = EDGE_LOOP('',(#26,#27,#28,#29));
+#31 = FACE_OUTER_BOUND('',#30,.T.);
+#32 = ADVANCED_FACE('',(#31),#25,.T.);
+#33 = CARTESIAN_POINT('',(0.,0.,1.));
+#34 = DIRECTION('',(-0.4472135954999579,0.,0.8944271909999159));
+#35 = DIRECTION('',(0.8944271909999159,0.,0.4472135954999579));
+#36 = AXIS2_PLACEMENT_3D('',#33,#34,#35);
+#37 = PLANE('',#36);
+#38 = ORIENTED_EDGE('',*,*,#21,.T.);
+#39 = EDGE_LOOP('',(#38));
+#40 = FACE_OUTER_BOUND('',#39,.T.);
+#41 = ADVANCED_FACE('',(#40),#37,.T.);
+#42 = PLANE('',#4);
+#43 = ORIENTED_EDGE('',*,*,#10,.F.);
+#44 = EDGE_LOOP('',(#43));
+#45 = FACE_OUTER_BOUND('',#44,.T.);
+#46 = ADVANCED_FACE('',(#45),#42,.F.);
+#47 = CLOSED_SHELL('',(#32,#41,#46));
+#48 = MANIFOLD_SOLID_BREP('slanted',#47);
+)");
+}
+
+}  // namespace
+
+// A curved face that is no rectangle of its surface (a cylinder's side cut
+// off on a slant) is cut into facets on the cylinder within its outline,
+// not left one flat facet: measured as the part it is.
+TEST(StepCurvedTest, ASlantCutCylindersSideIsCutWithinItsOutline) {
+    std::string text = slantedCylinder();
+    // The rational weights, written out.
+    for (std::size_t at = text.find("@W"); at != std::string::npos; at = text.find("@W")) {
+        text.replace(at, 2, "0.70710678118654757");
+    }
+    const auto m = measure(text);
+    EXPECT_EQ(m.outlined, 0u) << "every curved face in facets on its surface";
+    expectRelative(m.modelled, kPi, 0.01, "its facets, within 1 %");
+    EXPECT_TRUE(m.ideal.exact);
+    expectRelative(m.ideal.properties.volume, kPi, 1e-8, "the cut cylinder");
+}
+
+namespace {
+
+/// Part-21 text built entity by entity.
+class Entities {
+public:
+    int add(const std::string& rhs) {
+        m_text += "#" + std::to_string(m_next) + " = " + rhs + ";\n";
+        return m_next++;
+    }
+    int point(double x, double y, double z) {
+        return add("CARTESIAN_POINT('',(" + num(x) + "," + num(y) + "," + num(z) + "))");
+    }
+    int direction(double x, double y, double z) {
+        return add("DIRECTION('',(" + num(x) + "," + num(y) + "," + num(z) + "))");
+    }
+    int placement(int origin, int axis, int ref) {
+        return add("AXIS2_PLACEMENT_3D('',#" + std::to_string(origin) + ",#" +
+                   std::to_string(axis) + ",#" + std::to_string(ref) + ")");
+    }
+    int vertex(double x, double y, double z) {
+        return add("VERTEX_POINT('',#" + std::to_string(point(x, y, z)) + ")");
+    }
+    int edge(int from, int to, int curve) {
+        return add("EDGE_CURVE('',#" + std::to_string(from) + ",#" + std::to_string(to) + ",#" +
+                   std::to_string(curve) + ",.T.)");
+    }
+    /// A face on @p surface bounded by loops of (edge, forward); the first
+    /// its outer bound.
+    int face(const std::vector<std::vector<std::pair<int, bool>>>& loops, int surface,
+             bool sameSense) {
+        std::string bounds;
+        for (std::size_t l = 0; l < loops.size(); ++l) {
+            std::string edges;
+            for (const auto& [e, forward] : loops[l]) {
+                const int oriented = add("ORIENTED_EDGE('',*,*,#" + std::to_string(e) + "," +
+                                         (forward ? ".T." : ".F.") + ")");
+                edges += (edges.empty() ? "#" : ",#") + std::to_string(oriented);
+            }
+            const int loop = add("EDGE_LOOP('',(" + edges + "))");
+            const int bound = add(std::string(l == 0 ? "FACE_OUTER_BOUND" : "FACE_BOUND") +
+                                  "('',#" + std::to_string(loop) + ",.T.)");
+            bounds += (bounds.empty() ? "#" : ",#") + std::to_string(bound);
+        }
+        return add("ADVANCED_FACE('',(" + bounds + "),#" + std::to_string(surface) + "," +
+                   (sameSense ? ".T." : ".F.") + ")");
+    }
+    const std::string& text() const { return m_text; }
+
+private:
+    static std::string num(double v) {
+        std::ostringstream out;
+        out.precision(17);
+        out << v;
+        std::string s = out.str();
+        if (s.find_first_of(".eE") == std::string::npos) s += ".";
+        return s;
+    }
+    std::string m_text;
+    int m_next = 1;
+};
+
+/// A cylinder of radius 2 and height 4 with a pocket cut into its side:
+/// 0.6 radian wide about +x, from z = 1.5 to 2.5, down to radius 1.5. Its
+/// side is a face with a hole, the pocket's window. Its volume is 16 pi less
+/// the pocket's 0.3 (4 - 2.25) = 0.525.
+std::string pocketedCylinder() {
+    Entities e;
+    const double a = 0.3;
+    const double c = std::cos(a);
+    const double s = std::sin(a);
+    const int origin = e.point(0, 0, 0);
+    const int z = e.direction(0, 0, 1);
+    const int x = e.direction(1, 0, 0);
+    const auto circle = [&](double height, double radius) {
+        const int placement = e.placement(e.point(0, 0, height), z, x);
+        return e.add("CIRCLE('',#" + std::to_string(placement) + "," + std::to_string(radius) +
+                     ")");
+    };
+    const auto line = [&](int from, double dx, double dy, double dz) {
+        const int d = e.direction(dx, dy, dz);
+        return e.add("LINE('',#" + std::to_string(from) + ",VECTOR('',#" + std::to_string(d) +
+                     ",1.))");
+    };
+    // The whole cylinder: its seam at -x.
+    const int vb = e.vertex(-2, 0, 0);
+    const int vt = e.vertex(-2, 0, 4);
+    const int bottom = e.edge(vb, vb, circle(0, 2));
+    const int top = e.edge(vt, vt, circle(4, 2));
+    const int seamFrom = e.point(-2, 0, 0);
+    const int seam = e.edge(vb, vt, line(seamFrom, 0, 0, 1));
+    // The pocket's corners: at radius r, angle -a or +a, height h.
+    const auto corner = [&](double r, double sign, double h) {
+        return e.vertex(r * c, sign * r * s, h);
+    };
+    const int o1 = corner(2, -1, 1.5), o2 = corner(2, 1, 1.5), o3 = corner(2, 1, 2.5),
+              o4 = corner(2, -1, 2.5);
+    const int i1 = corner(1.5, -1, 1.5), i2 = corner(1.5, 1, 1.5), i3 = corner(1.5, 1, 2.5),
+              i4 = corner(1.5, -1, 2.5);
+    // Arcs, each from -a to +a.
+    const int arcOuterLow = e.edge(o1, o2, circle(1.5, 2));
+    const int arcOuterHigh = e.edge(o4, o3, circle(2.5, 2));
+    const int arcInnerLow = e.edge(i1, i2, circle(1.5, 1.5));
+    const int arcInnerHigh = e.edge(i4, i3, circle(2.5, 1.5));
+    // Up the pocket's corners.
+    const int upOuterMinus = e.edge(o1, o4, line(e.point(2 * c, -2 * s, 1.5), 0, 0, 1));
+    const int upOuterPlus = e.edge(o2, o3, line(e.point(2 * c, 2 * s, 1.5), 0, 0, 1));
+    const int upInnerMinus = e.edge(i1, i4, line(e.point(1.5 * c, -1.5 * s, 1.5), 0, 0, 1));
+    const int upInnerPlus = e.edge(i2, i3, line(e.point(1.5 * c, 1.5 * s, 1.5), 0, 0, 1));
+    // In from the side, from radius 2 to 1.5.
+    const int inLowMinus = e.edge(o1, i1, line(e.point(2 * c, -2 * s, 1.5), -c, s, 0));
+    const int inLowPlus = e.edge(o2, i2, line(e.point(2 * c, 2 * s, 1.5), -c, -s, 0));
+    const int inHighMinus = e.edge(o4, i4, line(e.point(2 * c, -2 * s, 2.5), -c, s, 0));
+    const int inHighPlus = e.edge(o3, i3, line(e.point(2 * c, 2 * s, 2.5), -c, -s, 0));
+
+    const auto cylinderSurface = [&](double radius) {
+        return e.add("CYLINDRICAL_SURFACE('',#" + std::to_string(e.placement(origin, z, x)) + "," +
+                     std::to_string(radius) + ")");
+    };
+    const auto plane = [&](int at, int normal, int ref) {
+        return e.add("PLANE('',#" + std::to_string(e.placement(at, normal, ref)) + ")");
+    };
+    std::vector<int> faces;
+    // The side: round the cylinder, and the window, clockwise in (u, v).
+    faces.push_back(e.face(
+        {{{bottom, true}, {seam, true}, {top, false}, {seam, false}},
+         {{upOuterMinus, true}, {arcOuterHigh, true}, {upOuterPlus, false}, {arcOuterLow, false}}},
+        cylinderSurface(2), true));
+    // The pocket's floor, facing out.
+    faces.push_back(e.face(
+        {{{arcInnerLow, true}, {upInnerPlus, true}, {arcInnerHigh, false}, {upInnerMinus, false}}},
+        cylinderSurface(1.5), true));
+    // Its low wall, facing up; its high wall, facing down.
+    faces.push_back(e.face(
+        {{{arcOuterLow, true}, {inLowPlus, true}, {arcInnerLow, false}, {inLowMinus, false}}},
+        plane(e.point(0, 0, 1.5), z, x), true));
+    faces.push_back(e.face(
+        {{{arcOuterHigh, false}, {inHighMinus, true}, {arcInnerHigh, true}, {inHighPlus, false}}},
+        plane(e.point(0, 0, 2.5), e.direction(0, 0, -1), x), true));
+    // Its sides: at +a, facing towards -a; at -a, facing towards +a.
+    faces.push_back(e.face(
+        {{{inLowPlus, false}, {upOuterPlus, true}, {inHighPlus, true}, {upInnerPlus, false}}},
+        plane(e.point(2 * c, 2 * s, 1.5), e.direction(s, -c, 0), e.direction(c, s, 0)), true));
+    faces.push_back(e.face(
+        {{{upInnerMinus, true}, {inHighMinus, false}, {upOuterMinus, false}, {inLowMinus, true}}},
+        plane(e.point(2 * c, -2 * s, 1.5), e.direction(s, c, 0), e.direction(c, -s, 0)), true));
+    // The caps.
+    faces.push_back(e.face({{{bottom, false}}}, plane(origin, z, x), false));
+    faces.push_back(e.face({{{top, true}}}, plane(e.point(0, 0, 4), z, x), true));
+    std::string list;
+    for (const int f : faces) list += (list.empty() ? "#" : ",#") + std::to_string(f);
+    const int shell = e.add("CLOSED_SHELL('',(" + list + "))");
+    e.add("MANIFOLD_SOLID_BREP('pocketed',#" + std::to_string(shell) + ")");
+    return step(e.text());
+}
+
+}  // namespace
+
+// A curved face with a hole in it (a cylinder's side, a pocket's window cut
+// into it) is cut into facets round the hole, not left one flat facet with
+// the hole ignored.
+TEST(StepCurvedTest, ACurvedFaceWithAHoleIsCutRoundIt) {
+    const auto m = measure(pocketedCylinder());
+    EXPECT_EQ(m.outlined, 0u);
+    expectRelative(m.modelled, 16.0 * kPi - 0.525, 0.01, "its facets, within 1 %");
+    EXPECT_TRUE(m.ideal.exact);
+    expectRelative(m.ideal.properties.volume, 16.0 * kPi - 0.525, 1e-8, "the pocketed cylinder");
 }
