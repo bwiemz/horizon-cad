@@ -132,8 +132,17 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
       way (`piecesAcross`), and no further apart than the median of the
       outline's own (its average was stretched by a long straight seam,
       and the facets fell 1.4 % short);
-    - kept clear of the outline;
-    - each located by walking from the last, then flipped Delaunay.
+    - only within the region: each column keeps the points where a line
+      up it has crossed the outline and holes an odd number of times (a
+      point in a hole was looked for in every triangle);
+    - kept clear of the outline, each checked against the edges listed in
+      its grid cell;
+    - put in coarse to fine, every 2^k-th corner before those between, so
+      each goes in among points about as far apart and changes a few
+      triangles (in columns, each went in beside the unfilled region);
+    - each located by walking from the last point's triangle across inner
+      edges, else from the point beside it's; one on an edge cuts the
+      triangles either side in two; then flipped Delaunay.
   - Its outline points are the edges' own, so the facets meet the faces
     beside them.
 - **Still one facet:** a pole on a trimmed outline, and a hole across a seam.
@@ -144,6 +153,9 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
 - A cylinder of radius 2 with a pocket cut into its side (a face with a
   hole): nothing outlined, the facets within 1 %, the ideal volume
   16π − 0.525 to 1e-8, in half a second.
+- A pocket over a third of the side, cut at 0.01 rad (55,000 points): 50 s
+  before the points in the hole were left out and put in coarse to fine;
+  under 5 s after (debug build), the same facets.
 
 
 ## Phase 153: STEP assemblies (outline)
