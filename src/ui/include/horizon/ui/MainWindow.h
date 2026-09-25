@@ -397,6 +397,8 @@ private:
     bool onWorker(bool large) override;
     void backgroundWorkChanged() override { updateBusyIndicator(); }
     void addTab(std::shared_ptr<doc::Document> document, const QString& title) override;
+    void runTool(std::unique_ptr<Tool> tool) override;
+    void endTool() override;
 
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);

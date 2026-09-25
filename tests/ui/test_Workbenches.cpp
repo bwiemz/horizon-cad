@@ -9,6 +9,7 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QFile>
+#include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <algorithm>
@@ -26,10 +27,12 @@
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/modeling/DrawingView.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/AssemblyWorkbench.h"
 #include "horizon/ui/DrawingWorkbench.h"
+#include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
 
@@ -55,6 +58,8 @@ public:
     std::vector<std::pair<std::shared_ptr<hz::doc::Document>, QString>> tabs;
     std::vector<QString> statuses;
     std::vector<std::string> fileErrors;
+    std::unique_ptr<hz::ui::Tool> tool;  ///< the last a workbench ran
+    int toolsEnded = 0;
     int rebuilds = 0;
 
     QWidget* dialogParent() override { return &m_viewport; }
@@ -79,6 +84,8 @@ public:
     void addTab(std::shared_ptr<hz::doc::Document> document, const QString& title) override {
         tabs.emplace_back(std::move(document), title);
     }
+    void runTool(std::unique_ptr<hz::ui::Tool> given) override { tool = std::move(given); }
+    void endTool() override { ++toolsEnded; }
     void reportFileError(const QString& /*summary*/, const std::string& path,
                          const std::string& reason) override {
         fileErrors.push_back(path + ": " + reason);
@@ -341,4 +348,68 @@ TEST(WorkbenchesTest, ASheetForgottenWhileAFormIsOpenLeavesTheOthers) {
         }
     }
     EXPECT_TRUE(atTwo);
+}
+
+// Move View's clicks through its tool, with no window: a click off every
+// view is refused and says why; the last click is handed over when its
+// button comes up, not before, and the tool is ended after it, not in it.
+TEST(WorkbenchesTest, AViewIsMovedByTheToolsClicks) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    hz::doc::Document& sheet = *host.tabs.back().first;
+
+    workbench.onMoveView();
+    ASSERT_NE(host.tool, nullptr);
+    hz::ui::Tool& tool = *host.tool;
+    const auto button = [&](QEvent::Type type, const hz::math::Vec2& at) {
+        QMouseEvent event(type, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton,
+                          type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton,
+                          Qt::NoModifier);
+        return type == QEvent::MouseButtonPress ? tool.mousePressEvent(&event, at)
+                                                : tool.mouseReleaseEvent(&event, at);
+    };
+    const auto clickAt = [&](const hz::math::Vec2& at) {
+        button(QEvent::MouseButtonPress, at);
+        button(QEvent::MouseButtonRelease, at);
+    };
+
+    clickAt({1.0, 1.0});  // the sheet's corner: no view there
+    EXPECT_NE(tool.promptText().find("Not on a view"), std::string::npos) << tool.promptText();
+
+    // The sheet's layout, as the workbench drew it: the Isometric view's middle.
+    hz::doc::Document part;
+    ASSERT_TRUE(hz::io::NativeFormat::load(cube.toStdString(), part));
+    ASSERT_TRUE(part.rebuildModel());
+    const auto layout = hz::model::DrawingGenerator::sheetLayout(*part.solid(), spec.sheet,
+                                                                 spec.titleBlock, spec.gap);
+    const auto& iso = layout.views[3];
+    const hz::math::Vec2 middle{iso.placement.x + iso.sheetWidth() / 2.0,
+                                iso.placement.y + iso.sheetHeight() / 2.0};
+    clickAt(middle);
+    EXPECT_EQ(tool.promptText().find("Not on a view"), std::string::npos);
+    button(QEvent::MouseButtonPress, {middle.x - 30.0, middle.y});
+    QCoreApplication::processEvents();
+    EXPECT_FALSE(sheet.isDirty()) << "not moved while the button is down";
+    button(QEvent::MouseButtonRelease, {middle.x - 30.0, middle.y});
+    EXPECT_EQ(host.toolsEnded, 0) << "not ended inside its own event";
+    QCoreApplication::processEvents();
+    EXPECT_EQ(host.toolsEnded, 1);
+    EXPECT_TRUE(sheet.isDirty()) << "moved";
+
+    const std::string moved = dir.filePath(QStringLiteral("moved.hzdwg")).toStdString();
+    std::string error;
+    ASSERT_TRUE(workbench.save(sheet, moved, &error)) << error;
+    hz::io::DrawingDocumentSpec read;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(moved, read));
+    ASSERT_EQ(read.views.size(), 4u);
+    EXPECT_NEAR(read.views[3].placement.x, iso.placement.x - 30.0, 1e-9);
+    EXPECT_NEAR(read.views[3].placement.y, iso.placement.y, 1e-9);
 }

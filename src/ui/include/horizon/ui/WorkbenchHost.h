@@ -15,6 +15,7 @@ class DocumentManager;
 
 namespace hz::ui {
 
+class Tool;
 class ViewportWidget;
 
 /// What a workbench asks of the window it works in (Phase 146).
@@ -69,6 +70,13 @@ public:
     virtual bool onWorker(bool large) = 0;
     /// Background work started or ended: the busy indicator follows.
     virtual void backgroundWorkChanged() = 0;
+
+    /// Make @p tool, made by a workbench, the view's active tool: the window
+    /// keeps it until another of its name replaces it.
+    virtual void runTool(std::unique_ptr<Tool> tool) = 0;
+    /// Back to the Select tool, as when a command's clicks are done. Not from
+    /// inside the tool's own mouse event, which would end it mid-event.
+    virtual void endTool() = 0;
 };
 
 }  // namespace hz::ui

@@ -221,3 +221,50 @@ TEST(DrawingViewTest, AChosenSheetScaleIsKept) {
     DrawingGenerator::sheetLayout(*box, sheet, tb, 10.0, &scale, 0.0);
     EXPECT_DOUBLE_EQ(scale, 1.0) << "none chosen: the largest that fits";
 }
+
+// A view added to a sheet goes where there is room: inside the border, clear
+// of the title block, and the gap from every view and caption. One too large
+// for any room goes beside the sheet, and says so.
+TEST(DrawingViewTest, AnAddedViewIsPlacedWhereThereIsRoom) {
+    auto box = PrimitiveFactory::makeBox(100.0, 50.0, 20.0);
+    hz::model::Sheet sheet;  // A3 landscape
+    hz::model::TitleBlock tb;
+    hz::model::Drawing d = DrawingGenerator::sheetLayout(*box, sheet, tb);
+    hz::model::DrawingView added;
+    added.label = "A";
+    added.boundsMax = {30.0, 30.0};
+    const double gap = 10.0;
+    bool fits = false;
+    added.placement = DrawingGenerator::freePlacement(d, added, sheet, tb, gap, &fits);
+    ASSERT_TRUE(fits);
+    const auto [low, high] = added.sheetFootprint();
+    EXPECT_NEAR(high.y - low.y, 30.0 + hz::model::DrawingView::kCaptionRoom, 1e-9)
+        << "its caption's room is below it";
+    EXPECT_GE(low.x, sheet.margin + gap - 1e-9);
+    EXPECT_GE(low.y, sheet.margin + gap - 1e-9);
+    EXPECT_LE(high.x, sheet.widthMm() - sheet.margin - gap + 1e-9);
+    EXPECT_LE(high.y, sheet.heightMm() - sheet.margin - gap + 1e-9);
+    const double tbLeft = sheet.widthMm() - sheet.margin - tb.width;
+    const double tbTop = sheet.margin + tb.height;
+    EXPECT_TRUE(high.x <= tbLeft - gap + 1e-9 || low.y >= tbTop + gap - 1e-9)
+        << "clear of the title block";
+    for (const auto& v : d.views) {
+        const auto [vl, vh] = v.sheetFootprint();
+        const bool apart = high.x <= vl.x - gap + 1e-9 || vh.x + gap <= low.x + 1e-9 ||
+                           high.y <= vl.y - gap + 1e-9 || vh.y + gap <= low.y + 1e-9;
+        EXPECT_TRUE(apart);
+    }
+
+    // Placed, it is taken: the next goes elsewhere.
+    d.views.push_back(added);
+    hz::model::DrawingView next = added;
+    next.placement = DrawingGenerator::freePlacement(d, next, sheet, tb, gap, &fits);
+    EXPECT_TRUE(fits);
+    EXPECT_FALSE(next.placement.x == added.placement.x && next.placement.y == added.placement.y);
+
+    hz::model::DrawingView huge;
+    huge.boundsMax = {1000.0, 1000.0};
+    huge.placement = DrawingGenerator::freePlacement(d, huge, sheet, tb, gap, &fits);
+    EXPECT_FALSE(fits);
+    EXPECT_GT(huge.placement.x, sheet.widthMm()) << "beside the sheet";
+}

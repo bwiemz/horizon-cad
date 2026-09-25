@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 
 #include "horizon/math/Vec2.h"
@@ -63,6 +64,13 @@ public:
     /// A canonical orthographic view direction/up. `origin` is the world origin;
     /// framing and scale are the caller's concern.
     static ViewProjection standardView(StandardView view);
+
+    /// Where the model point @p p lands in @p view's 2D coordinates, as
+    /// project() maps edges: along the view's right and up.
+    static math::Vec2 toView(const ViewProjection& view, const math::Vec3& p);
+    /// The model directions of @p view's right and up: unit, and square to
+    /// its direction and to each other.
+    static std::pair<math::Vec3, math::Vec3> axes(const ViewProjection& view);
 };
 
 }  // namespace hz::model

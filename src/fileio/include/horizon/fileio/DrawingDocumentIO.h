@@ -23,6 +23,13 @@ struct DrawingViewSpec {
     math::Vec2 placement;  ///< the sheet position of its lower-left corner
     bool showHidden = true;
     bool showTangentEdges = true;
+    /// A section (its plane: through `projection.origin`, looking along
+    /// `projection.dir`) or a detail of an earlier view (Phase 149).
+    model::ViewRole role = model::ViewRole::Projection;
+    std::string label;        ///< "A": section A-A, detail A
+    int source = -1;          ///< the view it was taken from; before it, and a projection
+    math::Vec2 detailCenter;  ///< a detail's circle, in its source's view space
+    double detailRadius = 0.0;
 };
 
 /// A drawing document's persisted specification: the part it draws, its
@@ -37,8 +44,9 @@ struct DrawingDocumentSpec {
     std::vector<DrawingViewSpec> views;
     double scale = 0.0;
     /// The format version it was read from: 1 lays out the standard views
-    /// by the gap at 1:1, as version 1 did; 2 is the sheet layout.
-    int version = 2;
+    /// by the gap at 1:1, as version 1 did; 2 is the sheet layout; 3 adds
+    /// sections and details.
+    int version = 3;
 };
 
 /// Reads/writes `.hzdwg` drawing documents.
@@ -48,8 +56,10 @@ struct DrawingDocumentSpec {
 /// the model as it is now rather than a stale snapshot.
 ///
 /// Version 2 (Phase 148) keeps the sheet, the title block and every view's
-/// direction, scale and placement. A version 1 file (part and gap only) still
-/// reads, as the four standard views laid out by its gap at 1:1.
+/// direction, scale and placement. Version 3 (Phase 149) adds each view's
+/// role, label and source: sections and details. A version 1 file (part and
+/// gap only) still reads, as the four standard views laid out by its gap at
+/// 1:1.
 class DrawingDocumentIO {
 public:
     /// Write a `.hzdwg` describing @p spec. The part's path is written relative

@@ -17,7 +17,7 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–148)
+## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–149)
 
 - **The Linux build opens a window (145).** It was built with a Qt that had
   no platform plugin and no font engine: every headless test passed, and the
@@ -55,6 +55,15 @@ work, not "post-1.0".
     another program.
   - PDF and SVG export of a sheet start on its paper at 1:1.
   - A view drawn at a scale states its lengths at 1:1.
+- **Sections and details on a sheet (149).**
+  - Drawing ▸ Add Section View cuts through a view where you say. The
+    section is hatched, captioned "SECTION A-A", and its cut is drawn on the
+    view with arrows and letters.
+  - Drawing ▸ Add Detail View: click the centre and the radius on a view.
+    The detail is circled there and drawn larger, at a standard scale.
+  - New views go where the sheet has room. Move View moves one by two
+    clicks. Remove View removes one, with the views taken from it.
+  - Choosing another scale keeps the sections and details.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**
