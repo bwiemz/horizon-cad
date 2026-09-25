@@ -238,9 +238,20 @@ Classified classify(const topo::Edge& edge, const Vec3& viewDir) {
     if (oneLogicalFace(left, right)) {
         // A seam between two facets of one curved face: drawn only where the
         // face turns from the viewer to away from it, as its outline.
-        const double l = topo::loopNormal(left).dot(viewDir);
-        const double r = topo::loopNormal(right).dot(viewDir);
-        if (l * r < 0.0) return {true, ProjectedEdge::Kind::Silhouette};
+        // Facing the viewer is -1, away +1, and edge-on (or degenerate) 0:
+        // a facet seen exactly edge-on, as an odd count of facets has in
+        // Front, is the outline itself, drawn once, by its seam with the
+        // neighbour that faces the viewer. (The product of the two was 0
+        // there, and the outline could go missing.)
+        const auto side = [&viewDir](const topo::Face* f) {
+            const double d = topo::loopNormal(f).dot(viewDir);
+            return d > 1e-9 ? 1 : (d < -1e-9 ? -1 : 0);
+        };
+        const int l = side(left);
+        const int r = side(right);
+        if (l * r < 0 || (l == 0 && r < 0) || (r == 0 && l < 0)) {
+            return {true, ProjectedEdge::Kind::Silhouette};
+        }
         return {false, ProjectedEdge::Kind::Edge};
     }
     // Faces whose facets meet at a clear angle meet sharply: only facets
@@ -258,36 +269,93 @@ bool same(const Vec3& a, const Vec3& b, double tolerance) {
     return (a - b).length() <= tolerance;
 }
 
+/// The span of @p curve from @p a to @p b, if it runs between them: its
+/// parameters at each end, and which way (the shorter way round a closed
+/// curve, as a full circle every chord of a rim shares is). False for a
+/// curve that does not pass through both ends, or whose span strays farther
+/// from the chord than the chord is long: it is not this edge's.
+bool spanBetween(const geo::NurbsCurve& curve, const Vec3& a, const Vec3& b, double tolerance,
+                 double& from, double& along, bool& closed) {
+    const double t0 = curve.tMin();
+    const double t1 = curve.tMax();
+    const double span = t1 - t0;
+    closed = same(curve.evaluate(t0), curve.evaluate(t1), tolerance);
+    // The ends first: a chord tagged with its own arc, the usual case; or a
+    // closed edge, whose one vertex is both ends of its whole curve.
+    if (same(curve.evaluate(t0), a, tolerance) && same(curve.evaluate(t1), b, tolerance)) {
+        from = t0;
+        along = span;
+        return true;
+    }
+    if (same(curve.evaluate(t1), a, tolerance) && same(curve.evaluate(t0), b, tolerance)) {
+        from = t1;
+        along = -span;
+        return true;
+    }
+    // Else each end found on the curve, to a millionth of the chord: a
+    // boolean's or an import's vertices sit that close, not closer.
+    const double near = std::max(tolerance, 1e-6 * (b - a).length());
+    const double ta = curve.closestPoint(a, 1e-12);
+    const double tb = curve.closestPoint(b, 1e-12);
+    if (!same(curve.evaluate(ta), a, near) || !same(curve.evaluate(tb), b, near)) {
+        return false;
+    }
+    const auto wrap = [&](double t) {
+        if (!closed) return std::clamp(t, t0, t1);
+        t = t0 + std::fmod(t - t0, span);
+        return t < t0 ? t + span : t;
+    };
+    const Vec3 middle = (a + b) * 0.5;
+    double d = tb - ta;
+    if (closed) {
+        const double other = d > 0.0 ? d - span : d + span;
+        if ((curve.evaluate(wrap(ta + 0.5 * other)) - middle).length() <
+            (curve.evaluate(wrap(ta + 0.5 * d)) - middle).length()) {
+            d = other;
+        }
+    }
+    if ((curve.evaluate(wrap(ta + 0.5 * d)) - middle).length() > (b - a).length()) return false;
+    from = ta;
+    along = d;
+    return true;
+}
+
 /// The points an edge is drawn through, from its start to its end: along the
-/// arc its chord records when that arc runs between the chord's own ends (a
-/// rim is drawn on its circle, not as a polygon); along its curve if it has
-/// one; else straight. In pieces about @p pieceLength long, 1 to 64 (at
-/// least 4 along a curve that strays from its chord); @p curved says which.
+/// ideal curve it records when that curve runs between its ends (a rim is
+/// drawn on its circle, not as a polygon, whether each chord records its own
+/// arc or all share the circle); along its curve if it has one; else
+/// straight. In pieces about @p pieceLength long, 1 to 64 (at least 4 along
+/// a curve that strays from its chord); @p curved says which.
 std::vector<Vec3> sampleEdge(const topo::Edge& edge, double pieceLength, double tolerance,
                              bool& curved) {
     const topo::HalfEdge* he = edge.halfEdge;
     const Vec3 a = he->origin->point;
     const Vec3 b = he->twin->origin->point;
     const geo::NurbsCurve* curve = nullptr;
-    bool reversed = false;
-    if (edge.analyticCurve) {
-        const Vec3 c0 = edge.analyticCurve->evaluate(edge.analyticCurve->tMin());
-        const Vec3 c1 = edge.analyticCurve->evaluate(edge.analyticCurve->tMax());
-        if (same(c0, a, tolerance) && same(c1, b, tolerance)) {
-            curve = edge.analyticCurve.get();
-        } else if (same(c0, b, tolerance) && same(c1, a, tolerance)) {
-            curve = edge.analyticCurve.get();
-            reversed = true;
-        }
+    double from = 0.0;
+    double along = 0.0;
+    bool closed = false;
+    if (edge.analyticCurve &&
+        spanBetween(*edge.analyticCurve, a, b, tolerance, from, along, closed)) {
+        curve = edge.analyticCurve.get();
+    } else if (edge.curve && edge.curve->degree() > 1) {
+        curve = edge.curve.get();
+        from = curve->tMin();
+        along = curve->tMax() - curve->tMin();
+        closed = false;
     }
-    if (curve == nullptr && edge.curve && edge.curve->degree() > 1) curve = edge.curve.get();
     curved = curve != nullptr;
 
     const auto at = [&](double s) {  // s in [0, 1], from the edge's start
         if (curve == nullptr) return a + (b - a) * s;
         const double t0 = curve->tMin();
-        const double t1 = curve->tMax();
-        return curve->evaluate(reversed ? t1 + (t0 - t1) * s : t0 + (t1 - t0) * s);
+        const double span = curve->tMax() - t0;
+        double t = from + along * s;
+        if (closed) {
+            t = t0 + std::fmod(t - t0, span);
+            if (t < t0) t += span;
+        }
+        return curve->evaluate(std::clamp(t, t0, t0 + span));
     };
     double length = (b - a).length();
     if (curved) {

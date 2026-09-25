@@ -6,8 +6,12 @@
 #include <cstdio>
 
 #include "../TimeLimits.h"
+#include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/DrawingProjection.h"
+#include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
@@ -234,4 +238,44 @@ TEST(DrawingProjectionTest, AFinelyFacetedCylinderProjectsQuickly) {
     EXPECT_LT(seconds, 2.0) << "unoptimized: a generous bound";
 #endif
 #endif
+}
+
+// An extruded circle's rim is drawn on its circle too. Extrude tags every
+// chord of a rim with the whole circle, not an arc of its own, and the arc
+// was only taken when it started and ended at the chord's ends.
+TEST(DrawingProjectionTest, AnExtrudedRimIsDrawnOnItsCircle) {
+    constexpr double r = 5.0;
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> profile{
+        std::make_shared<hz::draft::DraftCircle>(hz::math::Vec2(0, 0), r)};
+    auto cyl = hz::model::Extrude::execute(profile, hz::draft::SketchPlane{}, Vec3(0, 0, 1), 10.0,
+                                           "extrude_cyl");
+    ASSERT_NE(cyl, nullptr);
+    auto edges =
+        DrawingProjection::project(*cyl, DrawingProjection::standardView(StandardView::Top));
+    ASSERT_FALSE(edges.empty());
+    double worst = 0.0;
+    for (const auto& e : edges) {
+        EXPECT_NEAR(std::hypot(e.a.x, e.a.y), r, 1e-9);
+        EXPECT_NEAR(std::hypot(e.b.x, e.b.y), r, 1e-9);
+        worst = std::max(worst, r - std::hypot((e.a.x + e.b.x) / 2, (e.a.y + e.b.y) / 2));
+    }
+    EXPECT_LT(worst, 1e-3) << "drawn along the circle, not across it by the chord";
+}
+
+// A detail view keeps what each edge is: a silhouette cropped into it is
+// still one. It was made a plain edge.
+TEST(DrawingProjectionTest, ADetailViewKeepsEachEdgesKind) {
+    auto cyl = PrimitiveFactory::makeCylinder(3.0, 6.0, 32);
+    const auto front = hz::model::DrawingGenerator::makeView(*cyl, StandardView::Front);
+    const hz::model::ProjectedEdge* outline = nullptr;
+    for (const auto& e : front.edges) {
+        if (e.kind == ProjectedEdge::Kind::Silhouette) outline = &e;
+    }
+    ASSERT_NE(outline, nullptr);
+    const hz::math::Vec2 middle((outline->a.x + outline->b.x) / 2,
+                                (outline->a.y + outline->b.y) / 2);
+    const auto detail = hz::model::DrawingGenerator::detailView(front, middle, 0.5, 2.0);
+    int silhouettes = 0;
+    for (const auto& e : detail.edges) silhouettes += e.kind == ProjectedEdge::Kind::Silhouette;
+    EXPECT_GT(silhouettes, 0);
 }
