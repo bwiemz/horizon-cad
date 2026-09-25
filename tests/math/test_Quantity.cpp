@@ -148,3 +148,18 @@ TEST(QuantityTest, APlainNumberIsKeptInTheUnitItWasTypedIn) {
     EXPECT_EQ(kept("wall * wall + 1", QuantityKind::Length, LengthUnit::Inch, &why), "")
         << "a plain number added to an area has no unit to take";
 }
+
+// A power that is not a number, or a measure that grows past what a value
+// can hold (chained variables multiplying lengths), is refused: not cast,
+// not overflowed.
+TEST(QuantityTest, APowerOrAMeasureOutOfBoundsIsRefused) {
+    std::string why;
+    EXPECT_FALSE(measured("wall ^ ((0 - 4) ^ 0.5)", &why)) << "a power that is not a number";
+    EXPECT_FALSE(why.empty());
+    EXPECT_EQ(got(measured("wall ^ 12")).length, 12);
+    why.clear();
+    EXPECT_FALSE(measured("wall ^ 12 * wall", &why)) << "13 lengths";
+    EXPECT_FALSE(why.empty());
+    EXPECT_FALSE(measured("(wall ^ 12) ^ 12", &why));
+    EXPECT_FALSE(measured("1 / (wall ^ 12) / wall", &why));
+}
