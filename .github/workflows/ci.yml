@@ -180,6 +180,38 @@ jobs:
       - name: Test
         run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4
 
+      # The window tests are built only when Qt has an offscreen platform
+      # plugin. Qt without one skipped all of them, in every job, and said
+      # nothing: a gate must say what it ran.
+      - name: Check the window tests ran
+        if: always() && steps.configure.outcome == 'success'
+        shell: bash
+        run: |
+          count=$(ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} -N -L window \
+            | sed -n 's/^Total Tests: //p')
+          echo "### Window tests: ${count:-0}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Window tests: ${count:-0}"
+          test "${count:-0}" -gt 0
+
+      # The application must start and show a window on a real X server:
+      # every test runs headless, and a Qt with no platform plugin built,
+      # linked and passed them all, then could not open a window.
+      - name: Start the application
+        if: always() && steps.configure.outcome == 'success' && runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          Xvfb :99 -screen 0 1280x1024x24 &
+          xvfb=$!
+          sleep 2
+          set +e
+          DISPLAY=:99 QT_QPA_PLATFORM=xcb timeout 10 build/${{ matrix.preset }}/src/app/horizon
+          status=$?
+          set -e
+          kill "${xvfb}"
+          # Still running when the time was up (124): it started.
+          echo "horizon: exit status ${status} (124 = still running after 10 s)"
+          test "${status}" -eq 124
+
       # Saved even when a later step failed: vcpkg's packages (Qt above all)
       # are the slow part, and a failed job used to throw them away, so the
       # next run built them all again. Saved only once vcpkg has installed
