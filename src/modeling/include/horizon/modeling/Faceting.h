@@ -35,7 +35,12 @@ struct FacetedSolid {
 /// - A curved face bounded by a rectangle of its surface's (u, v), a seam
 ///   and a pole or an apex allowed, is a grid of facets, `<face>/facet:<k>`:
 ///   the whole of a cylinder, a cone, a sphere or a torus, and a fillet.
-/// - Another curved face is one facet, its outline, and is listed.
+/// - A curved face with any other outline, or with holes, is cut into
+///   facets within its trim (Phase 152): its region in (u, v) triangulated,
+///   its outline points the edges' own, points added inside as close as
+///   the surface turns by @p maxAngle.
+/// - One that cannot be (a pole on a trimmed outline, a hole across a seam)
+///   is one facet, its outline, and is listed.
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoPi / 32.0);
 
 }  // namespace hz::model

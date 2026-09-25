@@ -1,9 +1,14 @@
 #include "horizon/modeling/Faceting.h"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
+#include <functional>
+#include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -528,6 +533,676 @@ std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, Sur
     return facets;
 }
 
+// ---------------------------------------------------------------------------
+// Trimmed faces (Phase 152): any outline, holes too, cut into facets on the
+// surface within it.
+// ---------------------------------------------------------------------------
+
+/// A face's loop in (u, v), with no pole on it: each half-edge's points
+/// placed where the one before ends, round the surface's seams. Nullopt when
+/// a point is off the surface, a pole is on it, or the loop does not close
+/// in (u, v) (it winds round the surface).
+std::optional<std::vector<LoopPoint>> loopInUV(const std::vector<std::vector<Vec3>>& edges,
+                                               SurfaceMap& map) {
+    std::vector<LoopPoint> loop;
+    for (const auto& samples : edges) {
+        auto part = edgeInUV(samples, map);
+        if (!part || part->empty()) return std::nullopt;
+        for (const LoopPoint& p : *part) {
+            if (p.free >= 0) return std::nullopt;  // a pole: a rectangle's, if any
+        }
+        if (!loop.empty()) {
+            for (int dir = 0; dir < 2; ++dir) {
+                if (!map.closed(dir)) continue;
+                const double period = map.period(dir);
+                shift(*part, dir,
+                      period *
+                          std::round((coord(loop.back().uv, dir) - coord(part->front().uv, dir)) /
+                                     period));
+            }
+            loop.insert(loop.end(), part->begin() + 1, part->end());
+        } else {
+            loop = std::move(*part);
+        }
+    }
+    if (loop.size() < 4) return std::nullopt;
+    const LoopPoint& first = loop.front();
+    const LoopPoint& last = loop.back();
+    const double tol = 1e-9 * std::max({1.0, std::abs(first.uv.first), std::abs(first.uv.second)});
+    if (std::abs(first.uv.first - last.uv.first) > tol ||
+        std::abs(first.uv.second - last.uv.second) > tol) {
+        return std::nullopt;  // winds round the surface: no polygon in (u, v)
+    }
+    loop.pop_back();
+    return loop;
+}
+
+/// A vertex of a region being cut into triangles: where it is in (u, v),
+/// scaled to about the surface's own lengths, and on the surface.
+struct RegionVertex {
+    double x = 0.0;
+    double y = 0.0;
+    LoopPoint at;
+};
+
+double cross2(const RegionVertex& a, const RegionVertex& b, const RegionVertex& c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+/// Whether @p p is in the triangle a, b, c (anticlockwise), or on its edges.
+bool inOrOn(const RegionVertex& p, const RegionVertex& a, const RegionVertex& b,
+            const RegionVertex& c, double eps) {
+    return cross2(a, b, p) >= -eps && cross2(b, c, p) >= -eps && cross2(c, a, p) >= -eps;
+}
+
+/// The triangles of a region: its outer loop anticlockwise, its holes
+/// clockwise, each hole joined to the outside along a bridge (both ways, so
+/// the region is one polygon), then cut by ears. An ear is clipped only if
+/// no other point is in it or on its edges: a point left on a triangle's
+/// edge would be a vertex in the middle of a neighbour's edge. Nullopt when
+/// the polygon will not cut.
+struct Clipped {
+    std::vector<std::array<std::size_t, 3>> triangles;
+    /// The one polygon cut: the outline, holes joined in by their bridges.
+    std::vector<std::size_t> polygon;
+};
+
+std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<std::size_t> outer,
+                               std::vector<std::vector<std::size_t>> holes, double eps,
+                               double spacing,
+                               const std::function<RegionVertex(double, double)>& onSurface) {
+    // Holes, rightmost first, each bridged from its rightmost point to a
+    // point of the polygon it can see along +x.
+    std::sort(holes.begin(), holes.end(), [&](const auto& a, const auto& b) {
+        const auto right = [&](const std::vector<std::size_t>& h) {
+            double x = -1e300;
+            for (std::size_t i : h) x = std::max(x, vertices[i].x);
+            return x;
+        };
+        return right(a) > right(b);
+    });
+    std::vector<std::size_t> polygon = std::move(outer);
+    // Whether segments p-q and r-t cross, other than where they share an end.
+    const auto crosses = [&](const RegionVertex& p, const RegionVertex& q, const RegionVertex& r,
+                             const RegionVertex& t) {
+        const double d1 = cross2(p, q, r);
+        const double d2 = cross2(p, q, t);
+        const double d3 = cross2(r, t, p);
+        const double d4 = cross2(r, t, q);
+        return ((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) &&
+               ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps));
+    };
+    for (std::size_t h = 0; h < holes.size(); ++h) {
+        const auto& hole = holes[h];
+        std::size_t mAt = 0;
+        for (std::size_t k = 1; k < hole.size(); ++k) {
+            if (vertices[hole[k]].x > vertices[hole[mAt]].x) mAt = k;
+        }
+        const RegionVertex m = vertices[hole[mAt]];
+        // The nearest point of the polygon m can see: the bridge crosses no
+        // edge of it, of this hole, or of a hole still to join. (The
+        // furthest end of the edge a ray meets can be far: across a seam
+        // with no points between its corners.)
+        std::vector<std::size_t> order(polygon.size());
+        for (std::size_t k = 0; k < order.size(); ++k) order[k] = k;
+        std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            const auto d = [&](std::size_t k) {
+                const RegionVertex& v = vertices[polygon[k]];
+                return std::hypot(v.x - m.x, v.y - m.y);
+            };
+            return d(a) < d(b);
+        });
+        const auto clearOf = [&](const RegionVertex& v, std::size_t vIndex,
+                                 const std::vector<std::size_t>& loop, std::size_t skip) {
+            for (std::size_t k = 0; k < loop.size(); ++k) {
+                const std::size_t a = loop[k];
+                const std::size_t b = loop[(k + 1) % loop.size()];
+                if (a == vIndex || b == vIndex || a == skip || b == skip) continue;
+                if (crosses(m, v, vertices[a], vertices[b])) return false;
+            }
+            return true;
+        };
+        std::size_t to = polygon.size();
+        for (std::size_t k : order) {
+            const std::size_t candidate = polygon[k];
+            const RegionVertex& v = vertices[candidate];
+            bool seen = clearOf(v, candidate, polygon, polygon.size()) &&
+                        clearOf(v, candidate, hole, hole[mAt]);
+            for (std::size_t other = h + 1; seen && other < holes.size(); ++other) {
+                seen = clearOf(v, candidate, holes[other], polygon.size());
+            }
+            if (seen) {
+                to = candidate;
+                break;
+            }
+        }
+        if (to == polygon.size()) return std::nullopt;
+        // Splice: ... to, (bridge), m, round the hole, m', (bridge back), to', ...
+        // where m' and to' are copies of m and to. The bridge is cut into
+        // points on the surface as far apart as the outline's: one straight
+        // chord across it would cut through the part.
+        const auto at = std::find(polygon.begin(), polygon.end(), to);
+        std::vector<std::size_t> spliced(polygon.begin(), at + 1);
+        const RegionVertex mCopy = vertices[hole[mAt]];
+        const RegionVertex toCopy = vertices[to];
+        const double length = std::hypot(mCopy.x - toCopy.x, mCopy.y - toCopy.y);
+        const auto pieces =
+            spacing > 0.0 ? static_cast<std::size_t>(std::ceil(length / spacing)) : std::size_t{1};
+        const auto bridge = [&](bool back) {
+            for (std::size_t k = 1; k < pieces; ++k) {
+                const double t =
+                    static_cast<double>(back ? pieces - k : k) / static_cast<double>(pieces);
+                vertices.push_back(onSurface(toCopy.x + (mCopy.x - toCopy.x) * t,
+                                             toCopy.y + (mCopy.y - toCopy.y) * t));
+                spliced.push_back(vertices.size() - 1);
+            }
+        };
+        bridge(false);
+        for (std::size_t k = 0; k < hole.size(); ++k) {
+            spliced.push_back(hole[(mAt + k) % hole.size()]);
+        }
+        vertices.push_back(mCopy);
+        spliced.push_back(vertices.size() - 1);
+        bridge(true);
+        vertices.push_back(toCopy);
+        spliced.push_back(vertices.size() - 1);
+        spliced.insert(spliced.end(), at + 1, polygon.end());
+        polygon = std::move(spliced);
+    }
+
+    Clipped clipped;
+    clipped.polygon = polygon;
+    std::vector<std::array<std::size_t, 3>>& triangles = clipped.triangles;
+    std::vector<std::size_t> left = polygon;
+    std::size_t guard = 0;
+    while (left.size() > 3) {
+        bool cut = false;
+        for (std::size_t k = 0; k < left.size(); ++k) {
+            const std::size_t ia = left[(k + left.size() - 1) % left.size()];
+            const std::size_t ib = left[k];
+            const std::size_t ic = left[(k + 1) % left.size()];
+            const RegionVertex& a = vertices[ia];
+            const RegionVertex& b = vertices[ib];
+            const RegionVertex& c = vertices[ic];
+            if (cross2(a, b, c) <= eps) continue;  // reflex, or straight on
+            bool empty = true;
+            for (std::size_t other : left) {
+                if (other == ia || other == ib || other == ic) continue;
+                const RegionVertex& v = vertices[other];
+                // A copy at a corner (a bridge's ends) is that corner.
+                const auto same = [&](const RegionVertex& w) {
+                    return std::abs(v.x - w.x) <= eps && std::abs(v.y - w.y) <= eps;
+                };
+                if (same(a) || same(b) || same(c)) continue;
+                if (inOrOn(v, a, b, c, eps)) {
+                    empty = false;
+                    break;
+                }
+            }
+            if (!empty) continue;
+            triangles.push_back({ia, ib, ic});
+            left.erase(left.begin() + static_cast<std::ptrdiff_t>(k));
+            cut = true;
+            break;
+        }
+        if (!cut || ++guard > 1000000) return std::nullopt;
+    }
+    if (cross2(vertices[left[0]], vertices[left[1]], vertices[left[2]]) <= eps) {
+        return std::nullopt;
+    }
+    triangles.push_back({left[0], left[1], left[2]});
+    return clipped;
+}
+
+/// No point, or no triangle.
+constexpr std::size_t kNoPoint = std::numeric_limits<std::size_t>::max();
+
+/// Points inserted into @p triangles, each at @p inside, the mesh kept
+/// Delaunay in the plane by flips; an edge of the region's own outline is
+/// never flipped. @p boundary holds those edges, by their ends. @p beside
+/// holds, for each point, an earlier one next to it (kNoPoint if none):
+/// where to look for it when the outline is between it and the one before.
+void insertPoints(std::vector<RegionVertex>& vertices,
+                  std::vector<std::array<std::size_t, 3>>& triangles,
+                  const std::vector<RegionVertex>& inside, const std::vector<std::size_t>& beside,
+                  const std::set<std::pair<std::size_t, std::size_t>>& boundary, double eps) {
+    const auto key = [](std::size_t a, std::size_t b) {
+        return a < b ? std::make_pair(a, b) : std::make_pair(b, a);
+    };
+    std::map<std::pair<std::size_t, std::size_t>, std::vector<std::size_t>> edgeTriangles;
+    const auto index = [&](std::size_t t) {
+        const auto& tri = triangles[t];
+        for (std::size_t k = 0; k < 3; ++k) {
+            edgeTriangles[key(tri[k], tri[(k + 1) % 3])].push_back(t);
+        }
+    };
+    const auto unindex = [&](std::size_t t) {
+        const auto& tri = triangles[t];
+        for (std::size_t k = 0; k < 3; ++k) {
+            auto& list = edgeTriangles[key(tri[k], tri[(k + 1) % 3])];
+            list.erase(std::remove(list.begin(), list.end(), t), list.end());
+        }
+    };
+    for (std::size_t t = 0; t < triangles.size(); ++t) index(t);
+
+    // Whether d is inside the circle through a, b, c (anticlockwise).
+    const auto inCircle = [&](std::size_t ia, std::size_t ib, std::size_t ic, std::size_t id) {
+        const RegionVertex& a = vertices[ia];
+        const RegionVertex& b = vertices[ib];
+        const RegionVertex& c = vertices[ic];
+        const RegionVertex& d = vertices[id];
+        const double ax = a.x - d.x, ay = a.y - d.y;
+        const double bx = b.x - d.x, by = b.y - d.y;
+        const double cx = c.x - d.x, cy = c.y - d.y;
+        const double det = (ax * ax + ay * ay) * (bx * cy - cx * by) -
+                           (bx * bx + by * by) * (ax * cy - cx * ay) +
+                           (cx * cx + cy * cy) * (ax * by - bx * ay);
+        return det > eps * eps;
+    };
+    const auto legalize = [&](std::vector<std::pair<std::size_t, std::size_t>> stack) {
+        std::size_t guard = 0;
+        while (!stack.empty() && ++guard < 10000000) {
+            const std::size_t p = stack.back().first;
+            const std::size_t q = stack.back().second;
+            stack.pop_back();
+            if (boundary.count(key(p, q)) != 0) continue;
+            const auto found = edgeTriangles.find(key(p, q));
+            if (found == edgeTriangles.end() || found->second.size() != 2) continue;
+            const std::size_t t1 = found->second[0];
+            const std::size_t t2 = found->second[1];
+            const auto opposite = [&](std::size_t t) {
+                for (std::size_t v : triangles[t]) {
+                    if (v != p && v != q) return v;
+                }
+                return p;
+            };
+            const std::size_t c = opposite(t1);
+            const std::size_t d = opposite(t2);
+            // t1 anticlockwise as (a, b, c) with a, b the shared edge.
+            std::size_t a = p;
+            std::size_t b = q;
+            if (cross2(vertices[a], vertices[b], vertices[c]) < 0.0) std::swap(a, b);
+            if (!inCircle(a, b, c, d)) continue;
+            // The flip must leave two anticlockwise triangles: the four
+            // points a convex quadrilateral.
+            if (cross2(vertices[c], vertices[a], vertices[d]) <= eps ||
+                cross2(vertices[d], vertices[b], vertices[c]) <= eps) {
+                continue;
+            }
+            unindex(t1);
+            unindex(t2);
+            triangles[t1] = {c, a, d};
+            triangles[t2] = {d, b, c};
+            index(t1);
+            index(t2);
+            stack.push_back({a, d});
+            stack.push_back({d, b});
+            stack.push_back({b, c});
+            stack.push_back({c, a});
+        }
+    };
+
+    // Which of triangle t's edges a point is on (k, from tri[k] to
+    // tri[k + 1]); kWithin when strictly within it; kNoPoint when it is
+    // beyond an edge, or on two (at a corner).
+    constexpr std::size_t kWithin = 3;
+    const auto placeIn = [&](std::size_t t, const RegionVertex& point) {
+        const auto& tri = triangles[t];
+        std::size_t on = kWithin;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const double side = cross2(vertices[tri[k]], vertices[tri[(k + 1) % 3]], point);
+            if (side > eps) continue;
+            if (side < -eps || on != kWithin) return kNoPoint;
+            on = k;
+        }
+        return on;
+    };
+    // The triangle a point is in or on, walked to from triangle t across an
+    // edge the point is beyond; not across the outline, which may only be in
+    // the way (a hole, a notch). kNoPoint when every edge it is beyond is.
+    const auto walk = [&](std::size_t t, const RegionVertex& point) {
+        for (std::size_t steps = 0; steps < triangles.size(); ++steps) {
+            const auto& tri = triangles[t];
+            bool beyond = false;
+            std::size_t across = kNoPoint;
+            for (std::size_t k = 0; k < 3 && across == kNoPoint; ++k) {
+                const std::size_t a = tri[k];
+                const std::size_t b = tri[(k + 1) % 3];
+                if (cross2(vertices[a], vertices[b], point) >= -eps) continue;
+                beyond = true;
+                const auto found = edgeTriangles.find(key(a, b));
+                if (found == edgeTriangles.end()) continue;
+                for (std::size_t other : found->second) {
+                    if (other != t) across = other;
+                }
+            }
+            if (!beyond) return t;
+            if (across == kNoPoint) return kNoPoint;
+            t = across;
+        }
+        return kNoPoint;
+    };
+
+    // The cut by ears made Delaunay first: its long diagonals, where no
+    // point goes in near them, would stay.
+    {
+        std::vector<std::pair<std::size_t, std::size_t>> all;
+        for (const auto& [edge, list] : edgeTriangles) {
+            if (list.size() == 2) all.push_back(edge);
+        }
+        legalize(std::move(all));
+    }
+
+    // Each point's triangle, walked to from the last point's (they come in
+    // rows, each near the one before), else from the one beside it's, else
+    // looked for in every triangle.
+    std::vector<std::size_t> home(inside.size(), kNoPoint);
+    std::size_t last = 0;
+    for (std::size_t n = 0; n < inside.size(); ++n) {
+        const RegionVertex& point = inside[n];
+        std::size_t within = walk(std::min(last, triangles.size() - 1), point);
+        if (within == kNoPoint && beside[n] != kNoPoint && home[beside[n]] != kNoPoint) {
+            within = walk(home[beside[n]], point);
+        }
+        for (std::size_t t = 0; within == kNoPoint && t < triangles.size(); ++t) {
+            if (placeIn(t, point) != kNoPoint) within = t;
+        }
+        // Outside the region, or on a corner: left out.
+        const std::size_t on = within == kNoPoint ? kNoPoint : placeIn(within, point);
+        if (on == kNoPoint) continue;
+        const auto tri = triangles[within];
+        const std::size_t v = vertices.size();
+        if (on == kWithin) {
+            // Its triangle cut in three.
+            vertices.push_back(point);
+            unindex(within);
+            triangles[within] = {tri[0], tri[1], v};
+            triangles.push_back({tri[1], tri[2], v});
+            triangles.push_back({tri[2], tri[0], v});
+            index(within);
+            index(triangles.size() - 2);
+            index(triangles.size() - 1);
+            legalize({{tri[0], tri[1]}, {tri[1], tri[2]}, {tri[2], tri[0]}});
+        } else {
+            // On the edge from a to b (a corner of the grid's points often
+            // is, between two coarser ones): each triangle either side of it
+            // cut in two. Not on the outline, which stays as it is.
+            const std::size_t a = tri[on];
+            const std::size_t b = tri[(on + 1) % 3];
+            const std::size_t c = tri[(on + 2) % 3];
+            const auto found = edgeTriangles.find(key(a, b));
+            if (boundary.count(key(a, b)) != 0 || found == edgeTriangles.end() ||
+                found->second.size() != 2) {
+                continue;
+            }
+            const std::size_t other =
+                found->second[0] == within ? found->second[1] : found->second[0];
+            std::size_t d = a;
+            for (std::size_t corner : triangles[other]) {
+                if (corner != a && corner != b) d = corner;
+            }
+            vertices.push_back(point);
+            unindex(within);
+            unindex(other);
+            triangles[within] = {a, v, c};
+            triangles[other] = {b, v, d};
+            triangles.push_back({v, b, c});
+            triangles.push_back({v, a, d});
+            index(within);
+            index(other);
+            index(triangles.size() - 2);
+            index(triangles.size() - 1);
+            legalize({{b, c}, {c, a}, {a, d}, {d, b}});
+        }
+        home[n] = within;
+        last = within;
+    }
+}
+
+/// A curved face with any outline, and holes, cut into facets on its
+/// surface within it (Phase 152): the region in (u, v), scaled to about the
+/// surface's own lengths there, cut into triangles by ears, then points
+/// added inside as far apart as the outline's own, kept Delaunay. Its
+/// outline points are the edges' own, so the facets meet the faces beside.
+/// Nullopt when it cannot be (a pole on it, a hole across a seam).
+std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
+    std::vector<LoopPoint> outer, std::vector<std::vector<LoopPoint>> holes, SurfaceMap& map,
+    double maxAngle) {
+    const bool reversed = signedArea(outer) < 0.0;
+    if (reversed) std::reverse(outer.begin(), outer.end());
+    double u0 = 1e300, u1 = -1e300, v0 = 1e300, v1 = -1e300;
+    for (const LoopPoint& p : outer) {
+        u0 = std::min(u0, p.uv.first);
+        u1 = std::max(u1, p.uv.first);
+        v0 = std::min(v0, p.uv.second);
+        v1 = std::max(v1, p.uv.second);
+    }
+    if (!(u1 > u0) || !(v1 > v0)) return std::nullopt;
+    for (auto& hole : holes) {
+        // Onto the outer's side of each seam, and clockwise.
+        for (int dir = 0; dir < 2; ++dir) {
+            if (!map.closed(dir)) continue;
+            double mid = 0.0;
+            for (const LoopPoint& p : hole) mid += coord(p.uv, dir);
+            mid /= static_cast<double>(hole.size());
+            const double centre = dir == 0 ? 0.5 * (u0 + u1) : 0.5 * (v0 + v1);
+            shift(hole, dir, map.period(dir) * std::round((centre - mid) / map.period(dir)));
+        }
+        for (const LoopPoint& p : hole) {
+            if (p.uv.first < u0 || p.uv.first > u1 || p.uv.second < v0 || p.uv.second > v1) {
+                return std::nullopt;  // across the outline: a seam through it
+            }
+        }
+        if (signedArea(hole) > 0.0) std::reverse(hole.begin(), hole.end());
+    }
+
+    // Lengths on the surface per unit of u and of v, in the middle.
+    const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
+    const double du = 1e-4 * (u1 - u0);
+    const double dv = 1e-4 * (v1 - v0);
+    const double su =
+        (map.at({mid.first + du, mid.second}) - map.at({mid.first - du, mid.second})).length() /
+        (2.0 * du);
+    const double sv =
+        (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
+        (2.0 * dv);
+    if (!(su > 0.0) || !(sv > 0.0)) return std::nullopt;
+
+    std::vector<RegionVertex> vertices;
+    const auto add = [&](const std::vector<LoopPoint>& loop) {
+        std::vector<std::size_t> indices;
+        indices.reserve(loop.size());
+        for (const LoopPoint& p : loop) {
+            vertices.push_back({p.uv.first * su, p.uv.second * sv, p});
+            indices.push_back(vertices.size() - 1);
+        }
+        return indices;
+    };
+    const std::vector<std::size_t> outerIndices = add(outer);
+    std::vector<std::vector<std::size_t>> holeIndices;
+    holeIndices.reserve(holes.size());
+    for (const auto& hole : holes) holeIndices.push_back(add(hole));
+    const double extent = std::max((u1 - u0) * su, (v1 - v0) * sv);
+    const double eps = 1e-12 * extent;
+
+    // How far apart the points go: as near as the surface turns by
+    // @p maxAngle across the region each way (its straight ways not at all),
+    // and no further apart than most of the outline's own. (Its average was
+    // stretched by a long straight seam, and the facets fell short.)
+    std::vector<double> lengths;
+    const auto lengthsOf = [&](const std::vector<std::size_t>& loop) {
+        for (std::size_t k = 0; k < loop.size(); ++k) {
+            const RegionVertex& a = vertices[loop[k]];
+            const RegionVertex& b = vertices[loop[(k + 1) % loop.size()]];
+            lengths.push_back(std::hypot(a.x - b.x, a.y - b.y));
+        }
+    };
+    lengthsOf(outerIndices);
+    for (const auto& h : holeIndices) lengthsOf(h);
+    std::nth_element(lengths.begin(),
+                     lengths.begin() + static_cast<std::ptrdiff_t>(lengths.size() / 2),
+                     lengths.end());
+    double spacing = lengths.empty() ? 0.0 : lengths[lengths.size() / 2];
+    const UV low{u0, 0.5 * (v0 + v1)};
+    const UV high{u1, 0.5 * (v0 + v1)};
+    const UV lowV{0.5 * (u0 + u1), v0};
+    const UV highV{0.5 * (u0 + u1), v1};
+    const auto turnsU = piecesAcross(map, low, high, 0, maxAngle);
+    const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle);
+    if (turnsU > 1) spacing = std::min(spacing, (u1 - u0) * su / static_cast<double>(turnsU));
+    if (turnsV > 1) spacing = std::min(spacing, (v1 - v0) * sv / static_cast<double>(turnsV));
+
+    const auto onSurface = [&](double x, double y) {
+        const UV uv{x / su, y / sv};
+        return RegionVertex{x, y, {map.at(uv), uv, -1}};
+    };
+    auto clipped = earClip(vertices, outerIndices, holeIndices, eps, spacing, onSurface);
+    if (!clipped) return std::nullopt;
+    auto& triangles = clipped->triangles;
+    // The polygon's edges, the outline and the bridges to its holes: never
+    // flipped, and kept clear of the points added inside.
+    std::set<std::pair<std::size_t, std::size_t>> boundary;
+    for (std::size_t k = 0; k < clipped->polygon.size(); ++k) {
+        const std::size_t a = clipped->polygon[k];
+        const std::size_t b = clipped->polygon[(k + 1) % clipped->polygon.size()];
+        boundary.insert(a < b ? std::make_pair(a, b) : std::make_pair(b, a));
+    }
+
+    // Points inside, as far apart as the outline's own and as far from it:
+    // at a grid's corners. A column's are within the region where a line up
+    // it has crossed the outline and holes an odd number of times; each is
+    // clear of the region's edges near it, found by the grid's cells, each
+    // listing the edges that pass near it.
+    std::vector<RegionVertex> inside;
+    std::vector<std::size_t> beside;
+    const double x0 = u0 * su, x1 = u1 * su, y0 = v0 * sv, y1 = v1 * sv;
+    const auto nx = spacing > 0.0
+                        ? static_cast<std::size_t>(std::min(400.0, std::floor((x1 - x0) / spacing)))
+                        : 0;
+    const auto ny = spacing > 0.0
+                        ? static_cast<std::size_t>(std::min(400.0, std::floor((y1 - y0) / spacing)))
+                        : 0;
+    if (nx > 1 && ny > 1) {
+        const double cw = (x1 - x0) / static_cast<double>(nx);
+        const double ch = (y1 - y0) / static_cast<double>(ny);
+        const auto cell = [&](double at, double from, double size, std::size_t count) {
+            const double k = std::floor((at - from) / size);
+            return static_cast<std::size_t>(std::clamp(k, 0.0, static_cast<double>(count - 1)));
+        };
+        // An edge is listed in the cells round each point along it, a
+        // quarter-cell apart: a point within 0.6 spacing (less than a cell)
+        // of it finds it in its own cell.
+        std::vector<std::vector<std::pair<std::size_t, std::size_t>>> near(nx * ny);
+        std::vector<std::size_t> listed(nx * ny, kNoPoint);
+        const double step = 0.25 * std::min(cw, ch);
+        std::size_t edgeNumber = 0;
+        for (const auto& edge : boundary) {
+            const RegionVertex& p = vertices[edge.first];
+            const RegionVertex& q = vertices[edge.second];
+            const auto pieces =
+                static_cast<std::size_t>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
+            for (std::size_t k = 0; k <= pieces; ++k) {
+                const double t =
+                    pieces == 0 ? 0.0 : static_cast<double>(k) / static_cast<double>(pieces);
+                const std::size_t ci = cell(p.x + (q.x - p.x) * t, x0, cw, nx);
+                const std::size_t cj = cell(p.y + (q.y - p.y) * t, y0, ch, ny);
+                for (std::size_t i = ci == 0 ? 0 : ci - 1; i <= std::min(ci + 1, nx - 1); ++i) {
+                    for (std::size_t j = cj == 0 ? 0 : cj - 1; j <= std::min(cj + 1, ny - 1); ++j) {
+                        if (listed[i * ny + j] == edgeNumber) continue;
+                        listed[i * ny + j] = edgeNumber;
+                        near[i * ny + j].push_back(edge);
+                    }
+                }
+            }
+            ++edgeNumber;
+        }
+        const auto clear = [&](double x, double y) {
+            for (const auto& [a, b] : near[cell(x, x0, cw, nx) * ny + cell(y, y0, ch, ny)]) {
+                const RegionVertex& p = vertices[a];
+                const RegionVertex& q = vertices[b];
+                const double lx = q.x - p.x, ly = q.y - p.y;
+                const double len2 = lx * lx + ly * ly;
+                const double t =
+                    len2 > 0.0 ? std::clamp(((x - p.x) * lx + (y - p.y) * ly) / len2, 0.0, 1.0)
+                               : 0.0;
+                if (std::hypot(x - (p.x + lx * t), y - (p.y + ly * t)) < 0.6 * spacing) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        // Where a line up at x crosses the outline and the holes, upwards.
+        std::vector<double> crossings;
+        const auto crossingsAt = [&](double x) {
+            crossings.clear();
+            const auto of = [&](const std::vector<std::size_t>& loop) {
+                for (std::size_t k = 0; k < loop.size(); ++k) {
+                    const RegionVertex& p = vertices[loop[k]];
+                    const RegionVertex& q = vertices[loop[(k + 1) % loop.size()]];
+                    if ((p.x <= x) == (q.x <= x)) continue;
+                    crossings.push_back(p.y + (x - p.x) * (q.y - p.y) / (q.x - p.x));
+                }
+            };
+            of(outerIndices);
+            for (const auto& h : holeIndices) of(h);
+            std::sort(crossings.begin(), crossings.end());
+        };
+        const auto xAt = [&](std::size_t i) {
+            return x0 + (x1 - x0) * static_cast<double>(i) / static_cast<double>(nx);
+        };
+        const auto yAt = [&](std::size_t j) {
+            return y0 + (y1 - y0) * static_cast<double>(j) / static_cast<double>(ny);
+        };
+        // Each corner's level: the most times both its column and its row
+        // halve evenly.
+        struct Corner {
+            std::size_t i, j;
+            int level;
+        };
+        std::vector<Corner> corners;
+        for (std::size_t i = 1; i < nx; ++i) {
+            crossingsAt(xAt(i));
+            std::size_t below = 0;
+            for (std::size_t j = 1; j < ny; ++j) {
+                const double y = yAt(j);
+                while (below < crossings.size() && crossings[below] < y) ++below;
+                if (below % 2 == 0 || !clear(xAt(i), y)) continue;
+                corners.push_back({i, j, std::min(std::countr_zero(i), std::countr_zero(j))});
+            }
+        }
+        // Coarse to fine, every 2^k-th corner before those between: each
+        // point then goes in among others about as far apart as it, and only
+        // a few triangles change. (Column by column, each went in beside the
+        // triangles across the region not yet filled, and changed many.)
+        std::stable_sort(corners.begin(), corners.end(),
+                         [](const Corner& a, const Corner& b) { return a.level > b.level; });
+        std::vector<std::size_t> placed(nx * ny, kNoPoint);
+        inside.reserve(corners.size());
+        beside.reserve(corners.size());
+        for (const Corner& c : corners) {
+            // Beside it, in before it: a corner of its level or coarser.
+            const std::size_t step = std::size_t{1} << c.level;
+            std::size_t near = c.i > step ? placed[(c.i - step) * ny + c.j] : kNoPoint;
+            if (near == kNoPoint && c.j > step) near = placed[c.i * ny + c.j - step];
+            const UV uv{xAt(c.i) / su, yAt(c.j) / sv};
+            inside.push_back({xAt(c.i), yAt(c.j), {map.at(uv), uv, -1}});
+            beside.push_back(near);
+            placed[c.i * ny + c.j] = inside.size() - 1;
+        }
+    }
+    insertPoints(vertices, triangles, inside, beside, boundary, eps);
+
+    std::vector<std::vector<Vec3>> facets;
+    facets.reserve(triangles.size());
+    for (const auto& tri : triangles) {
+        std::vector<Vec3> facet{vertices[tri[0]].at.point, vertices[tri[1]].at.point,
+                                vertices[tri[2]].at.point};
+        if (reversed) std::reverse(facet.begin(), facet.end());
+        facets.push_back(std::move(facet));
+    }
+    return facets;
+}
+
 }  // namespace
 
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
@@ -585,22 +1260,51 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
         const auto& surface = face.surface;
         const bool curved = surface != nullptr && !isFlat(*surface);
 
-        if (curved && inner.empty()) {
+        if (curved) {
             SurfaceMap map(*surface);
-            std::vector<std::vector<Vec3>> edges;
-            edges.reserve(outer.size());
-            for (const HalfEdge* he : outer) edges.push_back(along(he));
-            if (const auto rectangle = faceInUV(edges, map)) {
-                if (auto facets = gridFacets(*rectangle, map, size, maxAngle)) {
-                    for (size_t k = 0; k < facets->size(); ++k) {
-                        SolidSewer::InputFace f;
-                        f.points = std::move((*facets)[k]);
-                        f.topoId = topo::TopologyID::fromTag(face.topoId.tag() +
-                                                             "/facet:" + std::to_string(k));
-                        f.analyticSurface = surface;
-                        faces.push_back(std::move(f));
+            const auto edgesOf = [&along](const std::vector<const HalfEdge*>& loop) {
+                std::vector<std::vector<Vec3>> edges;
+                edges.reserve(loop.size());
+                for (const HalfEdge* he : loop) edges.push_back(along(he));
+                return edges;
+            };
+            const auto emit = [&](std::vector<std::vector<Vec3>> facets) {
+                for (size_t k = 0; k < facets.size(); ++k) {
+                    SolidSewer::InputFace f;
+                    f.points = std::move(facets[k]);
+                    f.topoId = topo::TopologyID::fromTag(face.topoId.tag() +
+                                                         "/facet:" + std::to_string(k));
+                    f.analyticSurface = surface;
+                    faces.push_back(std::move(f));
+                }
+            };
+            const auto edges = edgesOf(outer);
+            if (inner.empty()) {
+                if (const auto rectangle = faceInUV(edges, map)) {
+                    if (auto facets = gridFacets(*rectangle, map, size, maxAngle)) {
+                        emit(std::move(*facets));
+                        continue;
                     }
-                    continue;
+                }
+            }
+            // Any other outline, and holes: cut within its trim (Phase 152).
+            if (auto outline = loopInUV(edges, map)) {
+                std::vector<std::vector<LoopPoint>> holes;
+                bool read = true;
+                for (const auto& loop : inner) {
+                    auto hole = loopInUV(edgesOf(loop), map);
+                    if (!hole) {
+                        read = false;
+                        break;
+                    }
+                    holes.push_back(std::move(*hole));
+                }
+                if (read) {
+                    if (auto facets =
+                            trimmedFacets(std::move(*outline), std::move(holes), map, maxAngle)) {
+                        emit(std::move(*facets));
+                        continue;
+                    }
                 }
             }
         }
