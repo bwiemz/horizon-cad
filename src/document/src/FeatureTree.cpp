@@ -729,7 +729,10 @@ std::unique_ptr<topo::Solid> ChamferFeature::execute(std::unique_ptr<topo::Solid
     }
     // The edges it did not touch keep their names (the sewer named them all
     // afresh, in the order it met them).
-    if (naming() == model::NamingScheme::Stable) model::keepEdgeNames(*result.solid, *inputSolid);
+    if (naming() == model::NamingScheme::Stable) {
+        model::nameBlendFaces(*result.solid, m_featureID + "/chamfer/");
+        model::keepEdgeNames(*result.solid, *inputSolid);
+    }
     return std::move(result.solid);
 }
 

@@ -43,9 +43,16 @@ inline bool namesFromGeometry(NamingScheme naming) {
 void nameEdgesByFaces(topo::Solid& solid);
 
 /// The logical face a face name belongs to: the name without its
-/// `/facet:<k>` (a facet of a curved face is `<face>/facet:<k>`). What
-/// follows the facet is kept: a pattern copy's facet,
-/// `<face>/facet:<k>/pattern:<n>`, belongs to the copy's face.
+/// `/facet:<k>` (a facet of a curved face is `<face>/facet:<k>`). A piece of
+/// a facet a boolean split, `<face>/facet:<k>/piece:<n>`, is of the face as
+/// well: a cylinder cut in two is one side. What else follows the facet is
+/// kept: a pattern copy's facet, `<face>/facet:<k>/pattern:<n>`, belongs to
+/// the copy's face.
+///
+/// Older names have it too: a loft's twisted level has always been cut into
+/// triangles named `<side>/facet:<k>`, in every scheme. They are facets of
+/// their side's ruled patch, which each carries as its ideal, and so of that
+/// side: a reference to it finds a triangle with the same ideal.
 std::string logicalFace(const std::string& faceTag);
 
 /// The logical edge an edge name belongs to: the name without its
@@ -80,6 +87,16 @@ void nameFacetsLogically(topo::Solid& solid);
 /// touch, where it renamed every edge in storage order. Used by the Stable
 /// scheme, so the rest are named logically (`nameEdgesLogically`).
 void keepEdgeNames(topo::Solid& result, const topo::Solid& input);
+
+/// Name the faces a fillet or chamfer added as the Stable scheme does: one
+/// face for each curve it rounds, not one for each chord and band of it.
+/// They are `<prefix><edge>:<n>`, @p prefix being `<feature>/fillet/` or
+/// `<feature>/chamfer/`; they become `<prefix><curve>/facet:<k>`, <curve>
+/// the logical edge of <edge>, or `<prefix><curve>` when it is one face.
+/// Named after their chords, the rounded rim of a cylinder was 256 faces,
+/// and the names of the edges between them held the chords' `/chord:`, which
+/// `logicalEdge` then took for theirs. Run before `keepEdgeNames`.
+void nameBlendFaces(topo::Solid& solid, const std::string& prefix);
 
 /// Scope every face and edge name of @p solid to the feature @p featureID:
 /// the source a name starts with (`box` in `box/top`) becomes @p featureID
