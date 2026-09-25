@@ -417,7 +417,8 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
     if (!viewport || !viewport->document()) return;
 
     // Lengths in the document's unit (Phase 154).
-    for (QuantitySpinBox* field : m_lengthFields) field->setUnit(viewport->document()->lengthUnit());
+    for (QuantitySpinBox* field : m_lengthFields)
+        field->setUnit(viewport->document()->lengthUnit());
 
     auto& doc = viewport->document()->activeDrawing();
 

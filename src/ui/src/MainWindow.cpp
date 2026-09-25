@@ -3347,7 +3347,7 @@ void MainWindow::onDimensionStyle() {
     auto* arrow =
         form.length(QStringLiteral("arrowSize"), tr("Arrow size:"), now.arrowSize, 0.0, 1000.0, 3);
     auto* angle = form.angle(QStringLiteral("arrowAngle"), tr("Arrow half-angle:"),
-                              now.arrowAngle * math::kRadToDeg, 1.0, 89.0, 1);
+                             now.arrowAngle * math::kRadToDeg, 1.0, 89.0, 1);
     auto* gap = form.length(QStringLiteral("extensionGap"), tr("Extension gap:"), now.extensionGap,
                             0.0, 1000.0, 3);
     auto* overshoot = form.length(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
@@ -4287,8 +4287,8 @@ void MainWindow::onDatumPlane() {
     auto* base = form.choice(QStringLiteral("base"), tr("From:"), names);
     auto* offset =
         form.length(QStringLiteral("offset"), tr("Offset along its normal:"), 10.0, -1e6, 1e6);
-    auto* angle = form.angle(QStringLiteral("angle"), tr("Turned about its x axis:"),
-                              0.0, -360.0, 360.0, 3);
+    auto* angle =
+        form.angle(QStringLiteral("angle"), tr("Turned about its x axis:"), 0.0, -360.0, 360.0, 3);
     if (!form.exec()) return;
     model::DatumPlane plane = bases[static_cast<size_t>(std::max(base->currentIndex(), 0))].second;
     if (angle->value() != 0.0) {
@@ -4784,7 +4784,8 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         return;
     }
 
-    FeatureForm form(this, tr("Edit %1").arg(QString::fromStdString(feat->name())), m_document->lengthUnit());
+    FeatureForm form(this, tr("Edit %1").arg(QString::fromStdString(feat->name())),
+                     m_document->lengthUnit());
     // Each field shows the stored value as it is — a floor would turn a legal
     // 0 (a pointed cone's radius) into something else before anyone touched
     // it; the feature refuses a value it cannot use. Angles are shown in

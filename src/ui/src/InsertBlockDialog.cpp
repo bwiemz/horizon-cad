@@ -24,8 +24,8 @@ InsertBlockDialog::InsertBlockDialog(const std::vector<std::string>& blockNames,
     form->addRow(tr("Block:"), m_blockCombo);
 
     // In degrees, or typed in radians (Phase 154).
-    m_rotation = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, math::LengthUnit::Millimetre,
-                                     2, this);
+    m_rotation =
+        new QuantitySpinBox(QuantitySpinBox::Kind::Angle, math::LengthUnit::Millimetre, 2, this);
     m_rotation->setRange(-360.0, 360.0);
     m_rotation->setValue(0.0);
     form->addRow(tr("Rotation:"), m_rotation);
