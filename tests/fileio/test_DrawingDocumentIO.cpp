@@ -252,6 +252,16 @@ TEST(DrawingDocumentIOTest, AScaledViewDrawsAtScaleAndStatesTrueLengths) {
     EXPECT_EQ(drafted->textOverride(), hz::draft::DimensionStyle{}.formatLength(40.0))
         << "40 long, drawn 20 long at 1:2";
 
+    // In the document's style: a drawing in inches states inches.
+    hz::draft::DimensionStyle inches;
+    inches.unit = "in";
+    inches.precision = 3;
+    inches.showUnits = true;
+    const auto styled = hz::io::DrawingDimensionRenderer::render(view, dim, 5.0, inches);
+    ASSERT_NE(styled, nullptr);
+    EXPECT_EQ(styled->textOverride(), inches.formatLength(40.0));
+    EXPECT_NE(styled->textOverride(), drafted->textOverride());
+
     Document sheet;
     Drawing drawing;
     drawing.views.push_back(view);
@@ -265,4 +275,23 @@ TEST(DrawingDocumentIOTest, AScaledViewDrawsAtScaleAndStatesTrueLengths) {
         EXPECT_NEAR(line->start().x, 100.0, 1e-9);
     }
     EXPECT_EQ(lines, 1) << "the hidden and the tangent edge are left out";
+}
+
+// A file asking for thousands of views is refused, not read: each is a
+// projection of the whole part, and the file's size did not bound them.
+TEST(DrawingDocumentIOTest, TooManyViewsAreRefused) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_views";
+    std::filesystem::create_directories(dir);
+    saveBox((dir / "box.hzpart").string());
+    std::string views = "[";
+    for (int i = 0; i < 5000; ++i) views += i == 0 ? "{}" : ",{}";
+    views += "]";
+    const std::string dwg = (dir / "d.hzdwg").string();
+    write(dwg, R"({"part": "box.hzpart", "version": 2, "views": )" + views + "}");
+    DrawingDocumentSpec spec;
+    Drawing drawing;
+    std::string error;
+    EXPECT_FALSE(DrawingDocumentIO::load(dwg, spec, drawing, &error));
+    EXPECT_NE(error.find("views"), std::string::npos) << error;
+    std::filesystem::remove_all(dir);
 }

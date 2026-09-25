@@ -103,10 +103,10 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
     if (!ec && !part.empty()) {
         const fs::path absolutePart = fs::absolute(pathFromUtf8(part), ec);
         if (!ec) {
-            const fs::path relative = absolutePart.lexically_relative(folder);
-            if (!relative.empty() && relative.native().rfind("..", 0) != 0) {
-                part = relative.generic_string();
-            }
+            // Compared as a generic (narrow, '/') string: native() is a wide
+            // string on Windows, and a narrow ".." does not compare with it.
+            const std::string relative = absolutePart.lexically_relative(folder).generic_string();
+            if (!relative.empty() && relative.rfind("..", 0) != 0) part = relative;
         }
     }
     root["part"] = part;
@@ -210,6 +210,13 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
             if (std::isfinite(h) && h > 0.0) t.height = h;
         }
         const auto views = root.find("views");
+        // Each view is a projection of the whole part: a file asking for
+        // thousands made its reading as long as it liked.
+        constexpr std::size_t kMaxViews = 256;
+        if (views != root.end() && views->is_array() && views->size() > kMaxViews) {
+            return fail("the drawing has " + std::to_string(views->size()) + " views; at most " +
+                        std::to_string(kMaxViews) + " are read");
+        }
         if (views != root.end() && views->is_array()) {
             for (const auto& v : *views) {
                 if (!v.is_object()) continue;

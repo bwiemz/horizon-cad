@@ -10,7 +10,8 @@
 namespace hz::io {
 
 std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
-    const model::DrawingView& view, const model::LinearDimension& dim, double offset) {
+    const model::DrawingView& view, const model::LinearDimension& dim, double offset,
+    const draft::DimensionStyle& style) {
     // Find the projected edge for this dimension's model edge in the view.
     const model::ProjectedEdge* edge = nullptr;
     for (const model::ProjectedEdge& e : view.edges) {
@@ -42,8 +43,7 @@ std::shared_ptr<draft::DraftLinearDimension> DrawingDimensionRenderer::render(
     // On a view drawn at a scale, the sheet length is not the part's: state
     // the length at 1:1, as the view drawn full size would.
     if (std::abs(view.scale - 1.0) > 1e-12 && view.scale > 0.0) {
-        dimension->setTextOverride(
-            draft::DimensionStyle{}.formatLength((p2 - p1).length() / view.scale));
+        dimension->setTextOverride(style.formatLength((p2 - p1).length() / view.scale));
     }
     return dimension;
 }

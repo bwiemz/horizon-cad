@@ -188,7 +188,8 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
         // Render this view's dimensions (the DXF writer decomposes them to
         // lines + text). Dimensions whose edge isn't in the view are skipped.
         for (const model::LinearDimension& dim : view.dimensions) {
-            auto drafted = DrawingDimensionRenderer::render(view, dim, kDimensionOffset);
+            auto drafted = DrawingDimensionRenderer::render(view, dim, kDimensionOffset,
+                                                            doc.draftDocument().dimensionStyle());
             if (drafted) {
                 drafted->setLayer(kDimensionLayer);
                 doc.addEntity(std::move(drafted));
