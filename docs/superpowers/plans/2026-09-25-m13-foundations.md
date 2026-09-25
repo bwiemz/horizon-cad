@@ -30,33 +30,65 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
 
 ## Phase 145: A safety net that catches
 
-### Plan
-1. **Qt as the product needs it** (`vcpkg.json`):
-   - add `freetype`, `harfbuzz` and `png` everywhere;
-   - add `fontconfig`, `xcb` and `xcb-xlib` on Linux.
-   CI already installs the system libraries these need. The first run
-   rebuilds Qt in every job.
-2. **The window tests run in CI**, in every job that builds them. Fix what
-   they find, since they have only ever run here.
-3. **The viewport is drawn in CI.** In the Linux Debug job, the OpenGL tests
-   (`ViewportGraphicsTest`, `OpenGLBackendTest`) run under Xvfb on xcb, with
-   Mesa's software renderer.
-4. **The application starts.** A smoke step starts the built `horizon` under
-   Xvfb, in CI and in the release workflow before packaging, and fails if it
-   exits within 10 s.
-5. **2D tools tested by what they draw**, through `ToolDriver`: each tool
-   the smoke test alone runs gets a test that checks the geometry it makes,
-   and that undo takes it away.
-6. **Coverage that cannot quietly fall.** A floor per module, set from the
-   first run that includes the window tests, fails the coverage job when a
-   module drops below it.
+### As built
+- **Qt as the product needs it.**
+  - `vcpkg.json` adds `freetype`, `harfbuzz` and `png` everywhere, and
+    `fontconfig`, `xcb` and `xcb-xlib` on Linux.
+  - Every CI job and the release install the X11 development packages
+    that Qt's xcb plugin builds against. The first attempt failed at Qt's
+    configure: x11-xcb, xcb-xinput and xcb-util were missing.
+  - The first run rebuilt Qt in every job (about 40–60 min); later runs
+    take it from the cache.
+- **The window tests run in CI**: 181 of them, on Linux Debug, Windows,
+  ASan and coverage. They all passed on their first run there.
+- **Every job says how many window tests it ran, and fails on none.** This
+  caught a second gap on its first run: the `linux-release` preset turns
+  tests off, so CI's Linux Release job and the release workflow ran none at
+  all ("No tests were found"). Both now configure with `HZ_BUILD_TESTS=ON`.
+- **`horizon --self-test`** shows the window, waits for the viewport to
+  draw a whole frame, prints what it found and exits:
+  - 0 when a frame was drawn;
+  - 3 when the viewport cannot draw (the reason is printed, and the
+    "Graphics Problem" box does not hold it);
+  - 4 when nothing was drawn within 20 s.
+  It opens no recovered session or files. CI's Linux jobs and the release
+  start the application this way on Xvfb with Mesa's software OpenGL. The
+  review found that the first version, "still running after 10 s", would
+  pass an application stuck in that box.
+- **The viewport is drawn on OpenGL in CI.** The Linux Debug job runs
+  `ViewportGraphicsTest` and `OpenGLBackendTest` on Xvfb, where a skip is a
+  failure. The backend tests had crashed at exit on every real platform:
+  their `QGuiApplication` was a function-local static, destroyed after Qt's
+  thread storage. A test environment now owns it.
+- **The 2D tools are tested by what they draw**
+  (`tests/ui/test_DraftingTools.cpp`, 24 tests). They cover Arc, Polyline,
+  Spline, Hatch, Leader, Offset, Break, Extend, Polyline Edit, Mirror,
+  Rotate, Scale, Move, Copy/Paste, Duplicate, Fillet, Chamfer and the
+  linear, radial and angular dimensions. Each has exact geometry, undo and
+  redo, and a locked or hidden layer left alone by every modifying tool.
+  They found two bugs:
+  - **Polyline Edit's Join kept the point where the two meet twice**: a
+    segment of no length, which Offset turned into two corners.
+  - **Tab never reached the dimension tools.** QWidget spent it on moving
+    focus first, so their kind could not be cycled, and the view lost the
+    keyboard. The viewport now offers Tab to the active tool first.
+- **Each window test starts from cleared settings and default
+  preferences.** The smoke test switches every drafting aid, and three
+  tests after it failed when the binary was run as a whole.
+- **Coverage floors** (`.github/coverage-floors.json`): one per module, set
+  one point under the first run with the window tests. UI went from 1.3% to
+  68.6%, and the total from 52% to 77%. The coverage job fails when a
+  module drops under its floor.
 
-### Tests
-- CI's test count rises by the window tests, and the job summary says how
-  many ran.
-- The GL tests pass under Xvfb and skip nowhere in that step.
-- The smoke step fails on a build without a platform plugin. This is shown
-  by the run before the `vcpkg.json` change, where it must fail.
+### Not done, found on the way
+- A new window opens in an isometric perspective close to the origin. A
+  drawing is drafted in plan, and clicks far from the origin there land
+  wide. A view kept per tab (plan for a drawing, isometric for a part)
+  belongs with the workbench split (146). The tests look from the top, as
+  View > Top does.
+- Rotate and Scale make a turned or scaled copy and keep the original,
+  where most CAD programs change the selection in place. This is left to
+  the owner.
 
 ## Phase 146: Workbench controllers
 
