@@ -301,6 +301,11 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                         !fromProjection) {
                         return fail(at + " is taken from a view that is not a projection");
                     }
+                    // A section with no view to mark its cut on is a caption
+                    // that says nothing of where it cuts.
+                    if (view.role == model::ViewRole::Section && !fromProjection) {
+                        return fail(at + " is a section of no view before it");
+                    }
                     if (view.role == model::ViewRole::Detail) {
                         const auto centre = v.find("detailCenter");
                         view.detailRadius = number(v, "detailRadius", 0.0);

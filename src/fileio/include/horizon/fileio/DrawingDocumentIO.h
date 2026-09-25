@@ -27,7 +27,7 @@ struct DrawingViewSpec {
     /// `projection.dir`) or a detail of an earlier view (Phase 149).
     model::ViewRole role = model::ViewRole::Projection;
     std::string label;        ///< "A": section A-A, detail A
-    int source = -1;          ///< the view it was taken from; before it, and a projection
+    int source = -1;          ///< the projection before it that it was taken from
     math::Vec2 detailCenter;  ///< a detail's circle, in its source's view space
     double detailRadius = 0.0;
 };

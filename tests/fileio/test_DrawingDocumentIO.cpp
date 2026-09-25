@@ -426,8 +426,8 @@ TEST(DrawingDocumentIOTest, SectionsAndDetailsAreKept) {
     std::filesystem::remove_all(dir);
 }
 
-// A section or detail taken from nothing, from a later view, or from another
-// section is refused with a reason; a detail needs a circle; a label is
+// A section or detail taken from nothing, from itself or a later view, or
+// from another section is refused with a reason; a detail needs a circle; a label is
 // kept to a few characters on one line.
 TEST(DrawingDocumentIOTest, ABrokenSectionOrDetailIsRefused) {
     const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_v3_bad";
@@ -452,6 +452,16 @@ TEST(DrawingDocumentIOTest, ABrokenSectionOrDetailIsRefused) {
          R"({"role": "section", "source": 1, "direction": [0, 0, 1]})");
     EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
     EXPECT_NE(error.find("not a projection"), std::string::npos) << error;
+
+    // A section says where it cuts, on a view before it: none, itself or a
+    // later one is refused. It was read: a caption marking nothing.
+    for (const std::string& source :
+         {std::string(), std::string(R"("source": -1, )"), std::string(R"("source": 1, )"),
+          std::string(R"("source": 5, )")}) {
+        file(front + R"(, {"role": "section", )" + source + R"("direction": [1, 0, 0]})");
+        EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << source;
+        EXPECT_NE(error.find("section of no view"), std::string::npos) << error;
+    }
 
     file(front + R"(, {"role": "section", "source": 0, "direction": [1, 0, 0],)" +
          R"( "label": "A\nBCDEFGHIJKLMNOP"})");

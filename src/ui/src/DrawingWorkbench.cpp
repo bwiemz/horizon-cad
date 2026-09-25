@@ -488,7 +488,7 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
             }
             ratio = v.scale / from.scale;
         }
-        if (v.role == model::ViewRole::Detail && kept.source < 0) continue;  // its view is gone
+        if (kept.source < 0) continue;  // its view is gone, and it with it
         kept.scale = chosen;
         if (v.role == model::ViewRole::Detail) {
             // As many times its view's as before, at the standard scale that
