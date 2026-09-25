@@ -75,13 +75,18 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
 - A part's stably named cylinder, and one moved, are the same.
 - A block with a boss joined on: exact, with the boss's foot circle
   recovered.
+- A plate with a hole cut through it as a part's features cut one (stably
+  named): 9 faces, and the plate less the hole to 1e-9.
 
 ### Not yet
-- **A hole cut by a Boolean** (and a blind hole) is kept in facets. The
-  cutter's side is in triangles, and cutting a triangle's diagonal leaves a
-  vertex on each rim chord, inside the circle. The plate's triangles share
-  those vertices, so no one circle goes through the rim. The fix belongs in
-  the Boolean: merge coplanar faces, and drop the in-line vertices.
+- **A hole cut by a Boolean named by position** (as older files are) is kept
+  in facets.
+  - Under stable naming, the Boolean puts each face's pieces back together
+    (`mergeFragments`), and a part's hole goes out as designed.
+  - By position, the cut's triangles stay. Cutting a triangle's diagonal
+    leaves a vertex on each rim chord, inside the circle, and the plate's
+    triangles share it.
+  - The fix would be the same merge for positional names.
 - Spheres, tori and cones with an apex are kept in facets: a face with a
   pole needs a degenerate edge, or a split into two faces.
 

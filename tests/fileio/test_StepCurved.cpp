@@ -377,9 +377,30 @@ TEST(StepCurvedTest, ABossJoinedToABlockIsWrittenAsDesigned) {
                    "block and boss");
 }
 
+// A hole cut through a plate as a part's features cut one (names kept
+// stably): its wall one face on the cylinder, its rims circles, and the
+// plate measured exactly with the hole out of it.
+TEST(StepCurvedTest, AHoleCutThroughAPlateIsWrittenAsDesigned) {
+    const auto plate = hz::model::PrimitiveFactory::makeBox(40, 40, 10);
+    const auto pin =
+        hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeCylinder(5, 30),
+                                        hz::math::Mat4::translation(hz::math::Vec3(20, 20, -10)));
+    const auto holed = hz::model::BooleanOp::execute(*plate, *pin, hz::model::BooleanType::Subtract,
+                                                     nullptr, hz::model::NamingScheme::Stable);
+    ASSERT_NE(holed, nullptr);
+    const auto [text, faceted] = designed(*holed);
+    EXPECT_TRUE(faceted.empty()) << faceted.front();
+    EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the hole's wall";
+    const auto m = measure(text);
+    EXPECT_TRUE(m.ideal.exact);
+    expectRelative(m.ideal.properties.volume, 40.0 * 40.0 * 10.0 - kPi * 25.0 * 10.0, 1e-9,
+                   "the plate less the hole");
+}
+
 // What cannot yet go out as designed goes out as its facets, and says why:
-// a sphere (closed all round), a cone (its apex inside it), and a hole a
-// Boolean cut (its rim's chords split off the circle). Each still reads back
+// a sphere (closed all round), a cone (its apex inside it), and a hole cut
+// by a Boolean named by position, as older files are (it leaves the cut's
+// triangles, its rim's chords split off the circle). Each still reads back
 // as the solid it is.
 TEST(StepCurvedTest, WhatCannotBeWrittenAsDesignedIsKeptInFacetsAndSaid) {
     const auto sphere = hz::model::PrimitiveFactory::makeSphere(5.0);

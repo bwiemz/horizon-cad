@@ -22,9 +22,9 @@ work, not "post-1.0".
 - **STEP export as designed (151).**
   - A cylinder now reaches another CAD system as a cylinder. Its side is one
     face on the cylinder, its rims circles. It used to be a 34-faced prism.
-  - Bosses and extrusions go out the same way.
-  - Faces that cannot yet (spheres, cone tips, holes cut by a Boolean) go
-    out as facets, and the export says which and why.
+  - Bosses, holes and extrusions go out the same way.
+  - Faces that cannot yet (spheres, cone tips) go out as facets, and the
+    export says which and why.
 - **Moved parts keep their curved faces whole.** A part moved, patterned
   or placed in an assembly had each facet of a curved face on a surface of
   its own.
