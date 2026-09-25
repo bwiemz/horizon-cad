@@ -1,10 +1,12 @@
 #include "horizon/document/ParameterRegistry.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <iomanip>
 #include <locale>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string_view>
 
@@ -71,30 +73,61 @@ void ParameterRegistry::setDefinitions(const std::map<std::string, std::string>&
 std::map<std::string, math::Quantity> ParameterRegistry::quantities(
     std::map<std::string, std::string>* errors) const {
     std::map<std::string, math::Quantity> out;
-    const std::vector<std::string> order = m_engine.evaluationOrder();
-    if (order.empty() && !m_engine.allValues().empty()) {
-        // A loop: none of them can be worked out in order.
-        if (errors != nullptr) {
-            for (const auto& [name, value] : m_engine.allValues()) {
-                (*errors)[name] = "it depends on itself: " + m_engine.describeCycle();
-            }
-        }
-        return out;
-    }
-    for (const std::string& name : order) {
+    std::map<std::string, std::string> failed;
+    // Each variable and the others it names; a literal names none.
+    std::map<std::string, std::unique_ptr<math::Expression>> expressions;
+    std::map<std::string, std::set<std::string>> needs;
+    for (const auto& [name, value] : m_engine.allValues()) {
         if (!m_engine.isExpression(name)) {
-            out[name] = math::Quantity{m_engine.getValue(name), 0, 0};
+            out[name] = math::Quantity{value, 0, 0};
             continue;
         }
-        const auto expression = math::Expression::parse(m_engine.getExpression(name));
-        std::string why;
-        const auto quantity =
-            expression ? math::evaluateQuantity(*expression, out, &why) : std::nullopt;
-        if (quantity) {
-            out[name] = *quantity;
-        } else if (errors != nullptr) {
-            (*errors)[name] = expression ? why : "it is not an expression";
+        auto expression = math::Expression::parse(m_engine.getExpression(name));
+        if (!expression) {
+            failed[name] = "it is not an expression";
+            continue;
         }
+        std::set<std::string> named;
+        for (const std::string& other : expression->variables()) {
+            if (m_engine.has(other)) named.insert(other);  // an unknown one fails when worked out
+        }
+        needs[name] = std::move(named);
+        expressions[name] = std::move(expression);
+    }
+    // In passes: each whose variables are all worked out (or failed), until
+    // none is left or none can be. What is left depends on itself, or on
+    // one that does; the rest are worked out whatever a loop elsewhere.
+    for (bool progress = true; progress && !expressions.empty();) {
+        progress = false;
+        for (auto it = expressions.begin(); it != expressions.end();) {
+            const std::string& name = it->first;
+            const auto& named = needs[name];
+            const bool ready = std::all_of(named.begin(), named.end(), [&](const std::string& o) {
+                return out.count(o) != 0 || failed.count(o) != 0;
+            });
+            if (!ready) {
+                ++it;
+                continue;
+            }
+            const auto broken = std::find_if(named.begin(), named.end(),
+                                             [&](const std::string& o) { return failed.count(o); });
+            std::string why;
+            if (broken != named.end()) {
+                failed[name] = "it depends on " + *broken + ", which cannot be worked out";
+            } else if (const auto quantity = math::evaluateQuantity(*it->second, out, &why)) {
+                out[name] = *quantity;
+            } else {
+                failed[name] = why;
+            }
+            it = expressions.erase(it);
+            progress = true;
+        }
+    }
+    for (const auto& [name, expression] : expressions) {
+        failed[name] = "it depends on itself, or on a variable that does";
+    }
+    if (errors != nullptr) {
+        for (auto& [name, why] : failed) (*errors)[name] = std::move(why);
     }
     return out;
 }

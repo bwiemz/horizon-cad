@@ -14,8 +14,20 @@ std::nullopt_t fail(std::string* why, std::string text) {
     return std::nullopt;
 }
 
-/// A power a length or an angle may be raised to: whole, and small.
+/// A power a length or an angle may be raised to: whole, and small; and
+/// the most lengths (or angles) a value may measure: chained variables
+/// (a1 = wall ^ 12, a2 = a1 ^ 12, ...) multiply them, and the count must
+/// not overflow.
 constexpr double kMaxPower = 12.0;
+constexpr int kMaxMeasure = 12;
+
+/// @p q, if it measures no more than kMaxMeasure lengths and angles.
+std::optional<Quantity> bounded(const Quantity& q, std::string* why) {
+    if (std::abs(q.length) > kMaxMeasure || std::abs(q.angle) > kMaxMeasure) {
+        return fail(why, "it measures " + measureName(q) + ", more than a value can");
+    }
+    return q;
+}
 
 std::optional<Quantity> evaluate(const Expression& e, const std::map<std::string, Quantity>& vars,
                                  std::string* why) {
@@ -57,19 +69,29 @@ std::optional<Quantity> evaluate(const Expression& e, const std::map<std::string
                                                                       : l->value - r->value,
                                 l->length, l->angle};
             case BinaryOpExpr::Op::Mul:
-                return Quantity{l->value * r->value, l->length + r->length, l->angle + r->angle};
+                return bounded(
+                    Quantity{l->value * r->value, l->length + r->length, l->angle + r->angle}, why);
             case BinaryOpExpr::Op::Div:
                 if (r->value == 0.0) return fail(why, "it divides by zero");
-                return Quantity{l->value / r->value, l->length - r->length, l->angle - r->angle};
+                return bounded(
+                    Quantity{l->value / r->value, l->length - r->length, l->angle - r->angle}, why);
             case BinaryOpExpr::Op::Pow: {
                 if (!r->pure()) return fail(why, "a power is a plain number");
+                if (!std::isfinite(r->value)) return fail(why, "the power is not a number");
                 if (l->pure()) return Quantity{std::pow(l->value, r->value), 0, 0};
                 const double n = std::round(r->value);
                 if (std::abs(r->value - n) > 1e-9 || std::abs(n) > kMaxPower) {
                     return fail(why, measureName(*l) + " is raised only to a whole power");
                 }
-                const int power = static_cast<int>(n);
-                return Quantity{std::pow(l->value, n), l->length * power, l->angle * power};
+                // Whole and small, and the measure it makes bounded before
+                // it is an int.
+                const double length = static_cast<double>(l->length) * n;
+                const double angle = static_cast<double>(l->angle) * n;
+                if (std::abs(length) > kMaxMeasure || std::abs(angle) > kMaxMeasure) {
+                    return fail(why, "it measures more than a value can");
+                }
+                return Quantity{std::pow(l->value, n), static_cast<int>(length),
+                                static_cast<int>(angle)};
             }
         }
         return fail(why, "not an operator");

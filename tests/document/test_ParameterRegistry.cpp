@@ -122,3 +122,20 @@ TEST(VariablesTest, AChangeOfVariablesIsUndone) {
     document.undoStack().redo();
     EXPECT_EQ(document.parameterRegistry().definitions(), kRig);
 }
+
+// A loop leaves out the variables in it, and those that depend on them;
+// the others are worked out as ever.
+TEST(VariablesTest, ALoopIsBlamedOnlyOnTheVariablesInIt) {
+    hz::doc::ParameterRegistry variables;
+    variables.setDefinitions(
+        {{"wall", "3 mm"}, {"width", "10 * wall"}, {"a", "b + 1"}, {"b", "a * 2"}, {"c", "a + 1"}});
+    std::map<std::string, std::string> errors;
+    const auto q = variables.quantities(&errors);
+    EXPECT_EQ(q.count("wall"), 1u);
+    EXPECT_EQ(q.count("width"), 1u) << "no part of the loop";
+    EXPECT_EQ(errors.count("wall"), 0u);
+    EXPECT_EQ(errors.count("width"), 0u);
+    EXPECT_EQ(errors.count("a"), 1u);
+    EXPECT_EQ(errors.count("b"), 1u);
+    EXPECT_EQ(errors.count("c"), 1u) << "it depends on the loop";
+}
