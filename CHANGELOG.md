@@ -37,6 +37,10 @@ work, not "post-1.0".
   as a tangent edge. Views of finely faceted parts are drawn up to 40 times
   faster. The Front view now looks from the front: it showed the part from
   behind, mirrored.
+- **The assembly commands are their own workbench (146).** They moved out
+  of the 5,600-line main window into `AssemblyWorkbench`. It reaches the
+  window through a narrow `WorkbenchHost` and is tested without one. No
+  behaviour changes. The part commands follow.
 - **CI now runs what it claimed to.** It ran no window test (181), none in
   the Linux Release job, and no OpenGL test. All of them run now, each job
   counts what it ran, and coverage floors hold.

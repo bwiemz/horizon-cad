@@ -23,6 +23,7 @@
 #include "horizon/ui/PendingAdds.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RebuildJob.h"
+#include "horizon/ui/WorkbenchHost.h"
 
 class QCloseEvent;
 class QComboBox;
@@ -48,10 +49,11 @@ class RibbonBar;
 class FeatureTreePanel;
 class RecoveryManager;
 class AssemblyTreePanel;
+class AssemblyWorkbench;
 class FeatureForm;
 
 /// The main application window for Horizon CAD.
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow, private WorkbenchHost {
     Q_OBJECT
 
 public:
@@ -71,7 +73,7 @@ public:
     /// Open @p fileName (a drawing, part, assembly or DXF) in a tab of its
     /// own, or show its tab if it is already open, and remember it in File ▸
     /// Open Recent. Reports a failure to the user and returns false.
-    bool openPath(const QString& fileName);
+    bool openPath(const QString& fileName) override;
 
     /// Open each of @p fileNames, as from the command line.
     void openFiles(const QStringList& fileNames);
@@ -89,11 +91,7 @@ public:
     /// A rebuild is running on a worker.
     bool rebuildRunning() const { return m_rebuildJob != nullptr; }
     /// Anything is running on a worker.
-    bool backgroundWorkRunning() const {
-        return m_rebuildJob != nullptr || m_importTask != nullptr ||
-               m_interferenceTask != nullptr || m_openTask != nullptr || m_massTask != nullptr ||
-               m_reloadTask != nullptr;
-    }
+    bool backgroundWorkRunning() const;
 
     /// What goes to a worker in Auto: a rebuild after one that took longer
     /// than this, a STEP file at least this big, an interference check of at
@@ -106,7 +104,6 @@ public:
     /// How many times a model has been tessellated for the view (for tests).
     std::uint64_t tessellations() const { return m_tessellations; }
     static constexpr qint64 kWorkerImportBytes = 1'000'000;  ///< and a file opened
-    static constexpr std::size_t kWorkerInterferenceFaces = 2000;
     /// Mass Properties measures the ideal on a worker, in Auto, for a part
     /// with at least this many faces on curved surfaces.
     static constexpr std::size_t kWorkerIdealFaces = 100;
@@ -145,22 +142,6 @@ private slots:
     /// Plot the drawing to a PDF (@p pdf) or an SVG file, on a paper, at a
     /// scale, chosen in a form.
     void onExportPlot(bool pdf);
-    void onInsertComponent();
-    void onAddMate();
-    void onCheckInterference();
-    // Placing components (Phase 143): on the component clicked or chosen in
-    // the assembly tree, or one chosen in the form.
-    void onMoveComponent();
-    void onRotateComponent();
-    void onRemoveComponent();
-    void onSuppressComponent();
-    void onRenameComponent();
-    void onEditMate();
-    void onRemoveMate();
-    // Living assemblies (Phase 144): the clicked or chosen component's part
-    // opened in its tab; the assembly's bill of materials.
-    void onOpenPart();
-    void onBillOfMaterials();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -368,9 +349,6 @@ private:
                     const QString& fallbackTitle, io::ImportReport report);
     void finishStepImport(const QString& fileName, StepLoad load);
     void onImportFinished();
-    void showInterference(const doc::AssemblyDocument& assembly,
-                          const doc::InterferenceReport& report);
-    void onInterferenceFinished();
     void onMassPropertiesFinished();
 
     /// The window's size and position and where its docks are, kept across
@@ -387,28 +365,6 @@ private:
     /// the sketch list as they are.
     void syncSketchView();
     void refreshSketchList();
-    /// Place @p asmDoc's components by its mates. A failure is said in the
-    /// status bar, and a success too unless @p reportSuccess is false.
-    bool solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess = true);
-    /// Change the assembly by @p edit, as one undo step named @p verb: its
-    /// mates are solved again after it, and if they cannot be, or @p edit
-    /// declines (returns false), the assembly is left as it was.
-    bool editAssembly(const QString& verb, const std::function<bool()>& edit);
-    /// The component a command acts on: the first clicked, else the one
-    /// current in the assembly tree; 0 when neither.
-    uint64_t targetComponent() const;
-    /// A "component" choice on @p form, @p target chosen; @p ids its rows'.
-    QComboBox* componentChoice(FeatureForm& form, uint64_t target,
-                               std::vector<uint64_t>& ids) const;
-    /// A "mate" choice on @p form, @p target chosen; @p ids its rows'.
-    QComboBox* mateChoice(FeatureForm& form, uint64_t target, std::vector<uint64_t>& ids) const;
-    /// Show the part at @p path anew wherever a component places it: its
-    /// components' meshes and documents read again, their mates solved
-    /// again, and the scene rebuilt if the active assembly is one of them.
-    /// Called when a part is saved here, found changed on disk, or its tab
-    /// closed with its edits discarded. @p report: say so in the status bar
-    /// (not over a message about the part's tab that matters more).
-    void refreshComponentsOf(const std::string& path, bool report = true);
     /// For every watched file changed on disk: its tabs read again, then
     /// the components placing it refreshed.
     void pollPartFiles();
@@ -427,17 +383,23 @@ private:
     /// changed meanwhile without @p asked.
     bool replaceTabDocument(const std::shared_ptr<doc::Document>& old, FileOpen read, bool asked);
     void onReloadFinished();
-    /// Open the part component @p id places, in its tab.
-    void openComponentPart(uint64_t id);
-    void removeComponent(uint64_t id);
-    void setComponentSuppressed(uint64_t id, bool suppressed);
-    void renameComponent(uint64_t id);
-    void editMate(uint64_t id);
-    void removeMate(uint64_t id);
+    // --- WorkbenchHost: what the workbenches ask of the window ---
+    QWidget* dialogParent() override { return this; }
+    doc::Document* currentDocument() override { return m_document.get(); }
+    std::shared_ptr<doc::AssemblyDocument> currentAssembly() override { return m_assembly; }
+    std::vector<std::shared_ptr<doc::AssemblyDocument>> openAssemblies() override;
+    doc::DocumentManager& documents() override { return m_docManager; }
+    ViewportWidget& viewport() override { return *m_viewport; }
+    void showStatus(const QString& message, int timeoutMs) override;
+    QString currentStatus() override;
+    void setPrompt(const QString& text) override;
+    bool onWorker(bool large) override;
+    void backgroundWorkChanged() override { updateBusyIndicator(); }
+
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
     void activateTabDocument();
-    void rebuildScene();
+    void rebuildScene() override;
     void refreshAllPanels();
     void updateWindowTitle();
 
@@ -449,15 +411,12 @@ private:
     const topo::Solid* solidToExport(const QString& format);
     /// Ask where to export; empty when cancelled.
     QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
-    /// Make the assembly edit just done (from `before`) one undo step on the
-    /// active tab. `wasDirty` is the assembly's flag before the edit.
-    void recordAssemblyEdit(doc::AssemblyState before, bool wasDirty, const QString& description);
     /// The feature at a panel row of the active part, or null.
     const doc::Feature* featureAt(int featureIndex) const;
     /// Undo (or redo) on the active document, and rebuild what it changed.
     void undoOrRedo(bool undo);
     /// Tab captions and the window title show which documents are modified.
-    void refreshModifiedIndicators();
+    void refreshModifiedIndicators() override;
     /// If the tab's document is modified, focus it and ask Save / Discard /
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
@@ -519,7 +478,7 @@ private:
     /// Tell the user a file operation failed and why, and log it.
     /// `summary` is e.g. "Could not open".
     void reportFileError(const QString& summary, const std::string& path,
-                         const std::string& reason);
+                         const std::string& reason) override;
     QString tabTitleForPath(const std::string& path, const QString& fallback) const;
 
     ViewportWidget* m_viewport = nullptr;
@@ -581,8 +540,9 @@ private:
     std::vector<std::pair<std::string, std::weak_ptr<doc::Document>>> m_reloadQueue;
     QString m_openFile;
     bool m_openDrawing = false;
-    std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
-    std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;
+    /// The assembly commands (Phase 146); they reach the window through
+    /// WorkbenchHost.
+    std::unique_ptr<AssemblyWorkbench> m_assemblies;
     /// The ideal mass properties being measured, the dialog waiting for them,
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;

@@ -46,6 +46,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Seeing.cpp
         test_GuiThreadFree.cpp
         test_Assemblies.cpp
+        test_Workbenches.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "horizon/document/FeatureTree.h"
+#include "horizon/math/Vec3.h"
 
 class QComboBox;
 class QDoubleSpinBox;
@@ -16,6 +17,10 @@ class QListWidget;
 class QSpinBox;
 
 namespace hz::ui {
+
+/// A point or direction as the forms and dialogs show it: "(10, 0, 2.5)",
+/// with rounding noise shown as 0.
+QString formatPoint(const math::Vec3& p);
 
 /// A modal form asking for a feature's inputs: labelled number and text
 /// fields, choices and checklists above OK / Cancel. Every field carries the object
