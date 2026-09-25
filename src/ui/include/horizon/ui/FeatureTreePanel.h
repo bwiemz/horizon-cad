@@ -39,6 +39,7 @@ public:
         uint64_t id = 0;
         std::string name;
         std::string usedBy;  ///< the feature that uses it, or empty
+        std::string face;    ///< the face it follows (Phase 157), or empty
         bool editing = false;
     };
     /// List the document's sketches, above the features (hidden when there

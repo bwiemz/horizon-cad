@@ -390,8 +390,10 @@ private:
     void saveWindowLayout() const;
     void restoreWindowLayout();
     std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
-    /// Add a sketch on @p plane (one undo step) and start editing it.
-    void newSketchOn(const draft::SketchPlane& plane, const QString& where);
+    /// Add a sketch on @p plane (one undo step) and start editing it; one
+    /// on a part's face follows @p face, its whole name (Phase 157).
+    void newSketchOn(const draft::SketchPlane& plane, const QString& where,
+                     const std::string& face = {});
     /// Edit @p sketch (null: stop editing), and show it.
     void editSketch(const std::shared_ptr<doc::Sketch>& sketch);
     /// Show what the document is editing: the sketch view, with the solids

@@ -5,8 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QListWidget>
 #include <QStatusBar>
+#include <QTreeWidget>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -24,6 +27,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/ViewportWidget.h"
 
@@ -179,6 +183,97 @@ TEST(SketchesTest, ASketchOnAFaceStandsOnIt) {
     EXPECT_NEAR(partVolume(doc), 1000.0 + facetedCircleArea(2.0) * 3.0, 1e-6)
         << w.statusBar()->currentMessage().toStdString();
     EXPECT_NEAR(boundsOf(*doc.solid()).hi.z, 13.0, 1e-9);
+}
+
+// Made taller, the box carries the sketch on its top face up with it, and
+// the boss drawn there with the sketch (Phase 157); undo brings both back.
+TEST(SketchesTest, ASketchOnAFaceFollowsItWhenThePartChanges) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    const auto sketch = doc.editedSketch();
+    ASSERT_NE(sketch, nullptr);
+    const std::string top = doc.featureTree().feature(0)->featureID() + "/top";
+    EXPECT_EQ(sketch->face(), top) << "the face it is on, by name";
+    circle(drive, w, Vec2(0, 0), 2.0);
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers().number(QStringLiteral("size"), 3.0).combine(hz::doc::BodyOperation::Join));
+    ASSERT_NEAR(boundsOf(*doc.solid()).hi.z, 13.0, 1e-9);
+
+    auto* list = w.findChild<QListWidget*>(QStringLiteral("sketchList"));
+    ASSERT_NE(list, nullptr);
+    ASSERT_EQ(list->count(), 1);
+    EXPECT_TRUE(list->item(0)->text().contains(QStringLiteral("on a face")))
+        << list->item(0)->text().toStdString();
+
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().number(QStringLiteral("depth"), 20.0));
+        auto* panel = w.findChild<hz::ui::FeatureTreePanel*>();
+        ASSERT_NE(panel, nullptr);
+        auto* tree = panel->findChild<QTreeWidget*>();
+        ASSERT_NE(tree, nullptr);
+        tree->setCurrentItem(tree->topLevelItem(0));
+        trigger(w, "editFeature");
+        ASSERT_TRUE(edit.seen());
+    }
+    EXPECT_NEAR(boundsOf(*doc.solid()).hi.z, 23.0, 1e-9)
+        << "the boss on the taller box: " << w.statusBar()->currentMessage().toStdString();
+    EXPECT_TRUE(near(sketch->plane().origin(), Vec3(5, 5, 20)));
+
+    trigger(w, "action_undo");
+    EXPECT_NEAR(boundsOf(*doc.solid()).hi.z, 13.0, 1e-9);
+    EXPECT_TRUE(near(sketch->plane().origin(), Vec3(5, 5, 10)));
+}
+
+// Built on a worker, from a copy: the part's own sketch is placed where the
+// copy's was, so it is drawn, and edited, on the face where it now is.
+TEST(SketchesTest, ASketchFollowsItsFaceWhenThePartIsBuiltOnAWorker) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    const auto settle = [&w] {
+        QElapsedTimer waited;
+        waited.start();
+        while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+    };
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    settle();
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    const auto sketch = doc.editedSketch();
+    ASSERT_NE(sketch, nullptr);
+    circle(drive, w, Vec2(0, 0), 2.0);
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers().number(QStringLiteral("size"), 3.0).combine(hz::doc::BodyOperation::Join));
+    settle();
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().number(QStringLiteral("depth"), 20.0));
+        auto* tree = w.findChild<hz::ui::FeatureTreePanel*>()->findChild<QTreeWidget*>();
+        tree->setCurrentItem(tree->topLevelItem(0));
+        trigger(w, "editFeature");
+        ASSERT_TRUE(edit.seen());
+    }
+    settle();
+    EXPECT_FALSE(doc.needsBuild());
+    EXPECT_NEAR(boundsOf(*doc.solid()).hi.z, 23.0, 1e-9);
+    EXPECT_TRUE(near(sketch->plane().origin(), Vec3(5, 5, 20)))
+        << "the part's own sketch, not only the worker's copy: z = " << sketch->plane().origin().z;
 }
 
 // Undoing the new sketch takes it away, and the window leaves it.

@@ -10,6 +10,7 @@ add_executable(hz_document_tests
     test_DocumentManager.cpp
     test_BillOfMaterials.cpp
     test_ConfigurationTable.cpp
+    test_SketchFollow.cpp
     test_UndoStack.cpp
     test_BodyOperations.cpp
     test_FeatureReasons.cpp

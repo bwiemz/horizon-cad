@@ -187,6 +187,11 @@ bool Document::applyBuild(BuildResult result) {
     m_failedFeatureIndex = result.failedFeatureIndex;
     m_built = true;
     m_builtRevision = m_featureTree.revision();
+    // Each sketch where the build placed it on its face (Phase 157): for a
+    // build of a copy, the copy's were placed, not these.
+    for (const auto& [id, plane] : result.placements) {
+        if (const auto sketch = findSketch(id)) sketch->setPlaced(plane);
+    }
     return m_failedFeatureIndex < 0;
 }
 

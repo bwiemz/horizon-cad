@@ -73,6 +73,7 @@
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
@@ -197,30 +198,10 @@ PickList edgesOf(const topo::Solid& solid) {
     return list;
 }
 
-/// +1 when the solid's face loops wind counterclockwise seen from outside, -1
-/// when they wind the other way: its volume by the divergence theorem, over
-/// each loop fanned from its first vertex, has that sign. A solid's loops all
-/// wind one way, but which way depends on how it was built.
-double outwardSign(const topo::Solid& solid) {
-    double sixVolume = 0.0;
-    for (const auto& face : solid.faces()) {
-        if (!face.outerLoop || !face.outerLoop->halfEdge) continue;
-        const topo::HalfEdge* start = face.outerLoop->halfEdge;
-        if (!start->origin || !start->next) continue;
-        const math::Vec3& p0 = start->origin->point;
-        for (const topo::HalfEdge* he = start->next; he && he->next && he->next != start;
-             he = he->next) {
-            if (!he->origin || !he->next->origin) break;
-            sixVolume += p0.dot(he->origin->point.cross(he->next->origin->point));
-        }
-    }
-    return sixVolume < 0.0 ? -1.0 : 1.0;
-}
-
 /// The part's faces, listed by which way they face and where their middle is.
 PickList facesOf(const topo::Solid& solid) {
     PickList list;
-    const double outward = outwardSign(solid);
+    const double outward = model::outwardSign(solid);
     struct Curved {
         int facets = 0;
         math::Vec3 centre;  ///< the sum of its facets' middles
@@ -333,38 +314,18 @@ struct PlaneChoice {
 /// be twisted) is left out.
 std::vector<PlaneChoice> planarFacesOf(const topo::Solid& solid) {
     std::vector<PlaneChoice> out;
-    const double outward = outwardSign(solid);
+    const double outward = model::outwardSign(solid);
     for (const auto& face : solid.faces()) {
-        if (!face.outerLoop || !face.outerLoop->halfEdge) continue;
-        std::vector<math::Vec3> points;
-        math::Vec3 normal, centre;
-        const topo::HalfEdge* start = face.outerLoop->halfEdge;
-        const topo::HalfEdge* he = start;
-        do {
-            if (!he->origin || !he->next || !he->next->origin) break;
-            const math::Vec3& a = he->origin->point;
-            const math::Vec3& b = he->next->origin->point;
-            normal.x += (a.y - b.y) * (a.z + b.z);
-            normal.y += (a.z - b.z) * (a.x + b.x);
-            normal.z += (a.x - b.x) * (a.y + b.y);
-            centre = centre + a;
-            points.push_back(a);
-            he = he->next;
-        } while (he && he != start && points.size() < 100000);
-        if (points.size() < 3 || normal.length() < 1e-12) continue;
-        normal = normal.normalized() * outward;
-        centre = centre / static_cast<double>(points.size());
-        double size = 0.0;
-        for (const auto& q : points) size = std::max(size, (q - centre).length());
-        const bool flat = std::all_of(points.begin(), points.end(), [&](const math::Vec3& q) {
-            return std::abs((q - centre).dot(normal)) <= 1e-7 * std::max(size, 1.0);
-        });
-        if (!flat) continue;
+        // As a build finds it again (Phase 157), so a sketch on it is placed
+        // where it was drawn.
+        const auto plane = model::planeOf(face, outward);
+        if (!plane) continue;
+        const math::Vec3& normal = plane->normal;
         const math::Vec3 across =
             std::abs(normal.dot(math::Vec3::UnitX)) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
         out.push_back(
-            {MainWindow::tr("facing %1 at %2").arg(formatPoint(normal), formatPoint(centre)),
-             draft::SketchPlane(centre, normal, across), face.topoId.tag()});
+            {MainWindow::tr("facing %1 at %2").arg(formatPoint(normal), formatPoint(plane->origin)),
+             draft::SketchPlane(plane->origin, normal, across), face.topoId.tag()});
     }
     return out;
 }
@@ -3889,13 +3850,15 @@ std::shared_ptr<doc::Sketch> MainWindow::resolveProfileSketch(bool& createdWrapp
     return sketch;
 }
 
-void MainWindow::newSketchOn(const draft::SketchPlane& plane, const QString& where) {
+void MainWindow::newSketchOn(const draft::SketchPlane& plane, const QString& where,
+                             const std::string& face) {
     if (m_assembly) {
         statusBar()->showMessage(tr("An assembly has no sketches: sketch in a part"));
         return;
     }
     auto sketch = std::make_shared<doc::Sketch>(plane);
     sketch->setName(tr("Sketch %1").arg(m_document->sketches().size() + 1).toStdString());
+    sketch->setFace(face);
     m_document->undoStack().push(std::make_unique<doc::AddSketchCommand>(*m_document, sketch));
     editSketch(sketch);
     statusBar()->showMessage(
@@ -3941,7 +3904,7 @@ void MainWindow::onNewSketchOnFace() {
             std::find_if(faces.begin(), faces.end(),
                          [&pick](const PlaneChoice& f) { return f.tag == pick.tag; });
         if (clicked != faces.end()) {
-            newSketchOn(clicked->plane, tr("a face"));
+            newSketchOn(clicked->plane, tr("a face"), model::wholeFaceName(clicked->tag));
             return;
         }
     }
@@ -3955,7 +3918,7 @@ void MainWindow::onNewSketchOnFace() {
     auto* choice = form.choice(QStringLiteral("face"), tr("Face:"), names);
     if (!form.exec()) return;
     const auto& picked = faces[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
-    newSketchOn(picked.plane, tr("a face"));
+    newSketchOn(picked.plane, tr("a face"), model::wholeFaceName(picked.tag));
 }
 
 void MainWindow::onNewSketchOnDatum() {
@@ -4424,21 +4387,15 @@ void MainWindow::refreshSketchList() {
         FeatureTreePanel::SketchRow row;
         row.id = sketch->id();
         row.name = sketch->name();
+        row.face = sketch->face();
         row.editing = sketch == m_document->editedSketch();
         for (size_t i = 0; i < tree.featureCount() && row.usedBy.empty(); ++i) {
             const doc::Feature* feature = tree.feature(i);
-            bool uses = false;
-            if (const auto* e = dynamic_cast<const doc::ExtrudeFeature*>(feature)) {
-                uses = e->sketch() == sketch;
-            } else if (const auto* r = dynamic_cast<const doc::RevolveFeature*>(feature)) {
-                uses = r->sketch() == sketch;
-            } else if (const auto* w = dynamic_cast<const doc::SweepFeature*>(feature)) {
-                uses = w->profile() == sketch || w->path() == sketch;
-            } else if (const auto* l = dynamic_cast<const doc::LoftFeature*>(feature)) {
-                const auto& sections = l->sections();
-                uses = std::find(sections.begin(), sections.end(), sketch) != sections.end();
+            if (feature == nullptr) continue;
+            const auto sketches = feature->sketches();
+            if (std::find(sketches.begin(), sketches.end(), sketch) != sketches.end()) {
+                row.usedBy = feature->name();
             }
-            if (uses) row.usedBy = feature->name();
         }
         rows.push_back(std::move(row));
     }
@@ -4468,13 +4425,15 @@ void MainWindow::onExtrudeSketch() {
     const auto extent = static_cast<doc::ExtrudeFeature::Extent>(goes->currentIndex());
     const doc::BodyOperation operation = FeatureForm::operation(result);
 
-    const math::Vec3 direction = sketch->plane().normal() * (way->currentIndex() == 1 ? -1.0 : 1.0);
+    // As the sketch was drawn: one placed on a face takes it along (Phase 157).
+    const draft::SketchPlane& drawn = sketch->drawnPlane();
+    const math::Vec3 direction = drawn.normal() * (way->currentIndex() == 1 ? -1.0 : 1.0);
 
     // Validate the profile BEFORE mutating the document: a failed extrude
     // must not leave a wrapper sketch or a dead feature behind.
     std::string why;
-    auto probe = model::Extrude::execute(sketch->entities(), sketch->plane(), direction, distance,
-                                         "probe", model::Extrude::kDefaultSegments, 0.0, &why);
+    auto probe = model::Extrude::execute(sketch->entities(), drawn, direction, distance, "probe",
+                                         model::Extrude::kDefaultSegments, 0.0, &why);
     if (!probe) {
         statusBar()->showMessage(tr("Extrude failed: %1").arg(QString::fromStdString(why)));
         return;
@@ -4514,14 +4473,14 @@ void MainWindow::onRevolveSketch() {
     const double angle = size->value() * std::numbers::pi / 180.0;
     const doc::BodyOperation operation = FeatureForm::operation(result);
 
-    const auto& plane = sketch->plane();
+    // As the sketch was drawn: one placed on a face takes it along (Phase 157).
+    const draft::SketchPlane& plane = sketch->drawnPlane();
     const math::Vec3 axisPoint = plane.origin();
     const math::Vec3 axisDir = axis->currentIndex() == 1 ? plane.xAxis() : plane.yAxis();
 
     std::string why;
-    auto probe =
-        model::Revolve::execute(sketch->entities(), sketch->plane(), axisPoint, axisDir, angle,
-                                "probe", model::Revolve::kDefaultSegments, 0.0, &why);
+    auto probe = model::Revolve::execute(sketch->entities(), plane, axisPoint, axisDir, angle,
+                                         "probe", model::Revolve::kDefaultSegments, 0.0, &why);
     if (!probe) {
         statusBar()->showMessage(tr("Revolve failed: %1").arg(QString::fromStdString(why)));
         return;
