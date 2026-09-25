@@ -63,6 +63,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/WorkbenchHost.h
     include/horizon/ui/FeatureForm.h
     include/horizon/ui/QuantitySpinBox.h
+    include/horizon/ui/VariablesDialog.h
     include/horizon/ui/LocaleManager.h
     include/horizon/ui/CommandPalette.h
     include/horizon/ui/RecentFiles.h
@@ -87,6 +88,7 @@ add_library(hz_ui STATIC
     src/MainWindow.cpp
     src/FeatureForm.cpp
     src/QuantitySpinBox.cpp
+    src/VariablesDialog.cpp
     src/LocaleManager.cpp
     src/CommandPalette.cpp
     src/ViewportWidget.cpp

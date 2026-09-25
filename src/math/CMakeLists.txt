@@ -9,6 +9,7 @@ add_library(hz_math STATIC
     src/BoundingBox.cpp
     src/Expression.cpp
     src/Units.cpp
+    src/Quantity.cpp
 )
 
 target_include_directories(hz_math

@@ -4,8 +4,10 @@
 #include <map>
 #include <memory>
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace hz::math {
@@ -147,6 +149,35 @@ public:
 private:
     std::string m_name;
     std::vector<std::unique_ptr<Expression>> m_args;
+};
+
+// ---------------------------------------------------------------------------
+// UnitExpr -- a number, or a bracketed expression, in a unit (Phase 155):
+// "2 in", "(a + b) mm", "30 deg". Its value is in the model's units:
+// millimetres for a length, radians for an angle.
+// ---------------------------------------------------------------------------
+class UnitExpr : public Expression {
+public:
+    UnitExpr(std::unique_ptr<Expression> child, std::string unit)
+        : m_child(std::move(child)), m_unit(std::move(unit)) {}
+
+    double evaluate(const std::map<std::string, double>& variables) const override;
+    std::set<std::string> variables() const override;
+    std::string toString() const override;
+    nlohmann::json toJson() const override;
+
+    const Expression& child() const { return *m_child; }
+    const std::string& unit() const { return m_unit; }
+
+    /// Millimetres or radians in one @p unit: mm, cm, m, in, ft, deg, rad.
+    /// Nullopt for a word that is not one.
+    static std::optional<double> factor(std::string_view unit);
+    /// Whether @p unit is an angle's (deg, rad), not a length's.
+    static bool isAngle(std::string_view unit);
+
+private:
+    std::unique_ptr<Expression> m_child;
+    std::string m_unit;
 };
 
 }  // namespace hz::math

@@ -183,12 +183,60 @@ The design, as planned:
 - "2 in", "50.8 mm" and "5.08 cm" typed into any length give one value.
 - Older files open in millimetres, as they did.
 
-## Phase 155: Variables and equations (outline)
-- A design-variables dialog.
-- A feature parameter as an expression of variables, re-evaluated on
-  rebuild.
-- Cycles refused.
-- Expressions take units ("2 * wall + 1 mm").
+## Phase 155: Variables and equations
+
+The question is what a number means. The model is in millimetres and
+radians; a document is shown in its unit; and a change of that unit must
+change nothing modelled (154). So an expression is kept with its units
+written, and a plain number means a plain number.
+
+### 155a: expressions with units (as built)
+- **`UnitExpr`**:
+  - a number, or a bracketed expression, followed by a unit word: mm, cm,
+    m, in, ft, deg, rad;
+  - its plain value is in millimetres or radians;
+  - parsed, printed and read from JSON. A unit word after a number used to
+    be a parse error, so no existing expression changes meaning.
+- **`evaluateQuantity`** gives a value and what it measures, as powers of
+  length and angle. It refuses:
+  - a length plus a number;
+  - a unit on something that already has one;
+  - a fractional power of a length;
+  - the sine of a length;
+  - an unknown variable or function;
+  - a division by zero.
+- **`normalized`** is the form in which an expression entered for a
+  parameter is kept:
+  - a plain number added to a length gets the document's unit written in
+    ("wall + 1" in inches becomes "wall + 1 in");
+  - a plain result for a length or an angle gets the unit ("2 * 3" becomes
+    "(2 * 3) in").
+  - Nothing kept then depends on the document's unit.
+
+### 155b: a document's variables (as built)
+- **`ParameterRegistry`**:
+  - `definitions()` and `setDefinitions()` treat the variables as a whole;
+  - `quantities()` evaluates each in dependency order, leaving out any that
+    can't be (with why);
+  - `check()` refuses a bad name (a unit, a function, pi), a bad
+    expression, a loop, or anything that can't be evaluated.
+- **`SetVariablesCommand`** changes them as one undo step, and marks the
+  part to be built again.
+- **Edit ▸ Variables** (`VariablesDialog`):
+  - a table of name, expression and value, with the value worked out as it
+    is typed;
+  - OK is refused with the reason shown, and the dialog stays open.
+- Saved as before (`designVariables`, with the expression). An older build
+  reads an expression with a unit as unparseable and keeps the value.
+
+### 155c: feature parameters as expressions
+- A length or angle field takes "=expression" ("=wall * 2"). It keeps the
+  expression, normalized, and shows its value.
+- In the Edit Feature form, a parameter given an expression keeps it
+  (`Feature::parameterExpressions`), saved beside the number, which an
+  older build reads.
+- On each build, a feature's expressions are evaluated against the
+  document's variables. A failure is that feature's build error.
 
 ## Phase 156: Configurations (outline)
 - A design table of variable values per configuration, saved.
