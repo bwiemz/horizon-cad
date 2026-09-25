@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -45,4 +46,29 @@ TEST(ExpressionsIOTest, AnExpressionIsSavedAndBuiltFromASnapshot) {
     const auto result = copy.buildWithDiagnostics();
     ASSERT_NE(result.solid, nullptr) << result.failureMessage;
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume, 1000.0, 1e-9);
+}
+
+// Phase 156: the design table, and which configuration is active, saved and
+// read back; a configuration that is not in it is left out.
+TEST(ExpressionsIOTest, ConfigurationsAreSavedAndReadBack) {
+    const auto owner = boxPart({{"wall", "3 mm"}});
+    Document& part = *owner;
+    part.configurations().setConfiguration("Thin", {{"wall", "1 mm"}});
+    part.configurations().setConfiguration("Thick", {{"wall", "5 mm"}, {"extra", "2"}});
+    part.configurations().setActive("Thick");
+    const std::string json = hz::io::NativeFormat::documentToJson(part, false);
+    Document copy;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(json, copy));
+    EXPECT_EQ(copy.configurations(), part.configurations());
+    EXPECT_EQ(copy.effectiveDefinitions().at("wall"), "5 mm");
+
+    // Read into a document that had some: they go; an active one that is
+    // not a configuration leaves none.
+    std::string edited = json;
+    const auto at = edited.find("\"active\":\"Thick\"");
+    ASSERT_NE(at, std::string::npos) << json;
+    edited.replace(at, 16, "\"active\":\"Gone\" ");
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(edited, copy));
+    EXPECT_EQ(copy.configurations().size(), 2u);
+    EXPECT_EQ(copy.configurations().active(), "");
 }

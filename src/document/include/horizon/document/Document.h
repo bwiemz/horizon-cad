@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/ExpressionEngine.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ParameterRegistry.h"
@@ -60,6 +61,24 @@ public:
 
     ParameterRegistry& parameterRegistry() { return m_parameterRegistry; }
     const ParameterRegistry& parameterRegistry() const { return m_parameterRegistry; }
+
+    // --- Configurations (Phase 156) ---
+
+    /// Its design table: configurations laid over its variables.
+    ConfigurationTable& configurations() { return m_configurations; }
+    const ConfigurationTable& configurations() const { return m_configurations; }
+
+    /// Its variables as the part is built: its own, with the active
+    /// configuration's laid over them.
+    std::map<std::string, std::string> effectiveDefinitions() const;
+    /// Those worked out (see ParameterRegistry::quantities).
+    std::map<std::string, math::Quantity> variables(
+        std::map<std::string, std::string>* errors = nullptr) const;
+    /// Their values as constraints read them, in the model's units.
+    std::map<std::string, double> variableValues() const;
+    /// Those as the constraint solver asks for them, by name (0 for a name
+    /// it has not): taken now, and kept by the command that solves.
+    std::function<double(const std::string&)> variableResolver() const;
 
     ExpressionEngine& expressionEngine() { return m_parameterRegistry.engine(); }
     const ExpressionEngine& expressionEngine() const { return m_parameterRegistry.engine(); }
@@ -207,6 +226,7 @@ private:
     draft::LayerManager m_layerManager;
     cstr::ConstraintSystem m_constraintSystem;
     ParameterRegistry m_parameterRegistry;
+    ConfigurationTable m_configurations;
     std::unique_ptr<UndoStack> m_undoStack;
     bool m_dirty = false;
     std::function<void()> m_onChange;

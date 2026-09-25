@@ -6,18 +6,22 @@
 
 namespace hz::doc {
 
-class ParameterRegistry;
-
-/// A design table: named configurations that each override a set of document
-/// parameters, so one feature tree can drive a whole family of part variants
-/// (e.g. bolt sizes, plate thicknesses). Applying a configuration writes its
-/// overrides into the document's ParameterRegistry before a rebuild.
+/// A design table: named configurations of one part, each giving some of
+/// its variables other values (bolt sizes, plate thicknesses), so one
+/// feature tree drives a family of variants (Phase 156).
+///
+/// A configuration overrides variables by expression ("diameter" = "8 mm").
+/// The active one is laid over the document's own variables when the part
+/// is built; none active, or a variable it leaves alone, is the document's
+/// own. The variables themselves are never written: choosing another
+/// configuration, or none, is all it takes to go back.
 class ConfigurationTable {
 public:
-    using Overrides = std::map<std::string, double>;
+    /// Variable name to the expression it takes in the configuration.
+    using Overrides = std::map<std::string, std::string>;
 
-    /// Define or replace the configuration @p name with the given parameter
-    /// @p overrides. Keeps insertion order for new names.
+    /// Define or replace the configuration @p name with @p overrides. Keeps
+    /// the order in which names were first defined.
     void setConfiguration(const std::string& name, const Overrides& overrides);
 
     /// Remove configuration @p name. Returns true if it existed. Clears the
@@ -33,20 +37,22 @@ public:
     /// Number of configurations.
     std::size_t size() const { return m_order.size(); }
 
-    /// The parameter overrides of configuration @p name (empty if it does not
-    /// exist).
+    /// The overrides of configuration @p name (empty if it does not exist).
     Overrides overrides(const std::string& name) const;
 
-    /// Write configuration @p name's overrides into @p params (via set()).
-    /// Returns false if the configuration does not exist.
-    bool apply(const std::string& name, ParameterRegistry& params) const;
+    /// @p definitions, a document's own variables, with configuration
+    /// @p name's overrides laid over them (as they are for no such name).
+    Overrides overlay(const Overrides& definitions, const std::string& name) const;
 
-    /// The active configuration name ("" if none).
+    /// The active configuration's name; "" when none is: the variables as
+    /// the document has them.
     const std::string& active() const { return m_active; }
 
-    /// Set the active configuration. Returns false (leaving the active
-    /// configuration unchanged) if @p name does not exist.
+    /// Make @p name the active configuration, or "" none. Returns false
+    /// (leaving it unchanged) for a name that is not a configuration.
     bool setActive(const std::string& name);
+
+    bool operator==(const ConfigurationTable& other) const = default;
 
 private:
     std::vector<std::string> m_order;

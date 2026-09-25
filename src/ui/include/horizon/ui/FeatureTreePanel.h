@@ -6,6 +6,7 @@
 #include <vector>
 
 class QAction;
+class QComboBox;
 class QLabel;
 class QListWidget;
 class QTreeWidget;
@@ -56,6 +57,10 @@ public:
     /// Set the rollback index.  Features after this index are grayed out.
     void setRollbackIndex(int index);
 
+    /// The part's configurations and the active one, "" for none (Phase
+    /// 156): chosen above the features. Hidden when it has none.
+    void setConfigurations(const std::vector<std::string>& names, const std::string& active);
+
     /// Where a feature dragged from row `from` ends up (its index after the
     /// move) when dropped over row `overRow` — on that row's lower half when
     /// `belowMiddle` — or below every row when `overRow` is -1, in a list of
@@ -69,6 +74,8 @@ signals:
     void featureDeleteRequested(int featureIndex);
     void featureSuppressRequested(int featureIndex, bool suppress);
     void rollbackChanged(int newIndex);
+    /// A configuration chosen above the features; "" for none (Phase 156).
+    void configurationChosen(const QString& name);
 
     /// Edit the sketch (double-click, or Edit Sketch in its menu).
     void sketchEditRequested(uint64_t sketchId);
@@ -90,6 +97,8 @@ private:
     QLabel* m_sketchTitle = nullptr;
     QListWidget* m_sketchList = nullptr;
     QStackedWidget* m_stack = nullptr;  ///< page 0 = tree, page 1 = empty state
+    QWidget* m_configurationRow = nullptr;
+    QComboBox* m_configuration = nullptr;
     QTreeWidget* m_treeWidget = nullptr;
     QAction* m_editAction = nullptr;
     QAction* m_suppressAction = nullptr;

@@ -165,8 +165,8 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
 
         if (afterClone && m_gripBeforeClone) {
             auto& cstrSys = m_viewport->document()->activeConstraints();
-            auto& pReg = m_viewport->document()->parameterRegistry();
-            auto varResolver = [&pReg](const std::string& n) { return pReg.get(n); };
+            // The variables as the part is built: its configuration's (156).
+            auto varResolver = m_viewport->document()->variableResolver();
             auto cmd = std::make_unique<doc::GripMoveCommand>(
                 doc, m_gripEntityId, m_gripBeforeClone, afterClone, cstrSys, varResolver);
             m_viewport->document()->undoStack().push(std::move(cmd));
@@ -421,8 +421,7 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
     if (!c) return false;
     c->setDimensionalValue(newValue);
 
-    auto& paramReg = m_viewport->document()->parameterRegistry();
-    auto resolver = [&paramReg](const std::string& name) { return paramReg.get(name); };
+    auto resolver = m_viewport->document()->variableResolver();
     auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, cstrSys, resolver);
 
     // Restore old value — ModifyConstraintValueCommand::execute() will re-apply it.

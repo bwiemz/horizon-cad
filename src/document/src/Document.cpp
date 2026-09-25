@@ -71,6 +71,7 @@ void Document::clear() {
     m_layerManager.clear();
     m_constraintSystem.clear();
     m_parameterRegistry.clear();
+    m_configurations = {};
     m_undoStack->clear();
     m_dirty = false;
     m_filePath.clear();
@@ -95,6 +96,31 @@ BuildResult Document::buildWithDiagnostics(BuildControl* control) {
     return m_featureTree.buildWithDiagnostics(control);
 }
 
+std::map<std::string, std::string> Document::effectiveDefinitions() const {
+    return m_configurations.overlay(m_parameterRegistry.definitions(), m_configurations.active());
+}
+
+std::map<std::string, math::Quantity> Document::variables(
+    std::map<std::string, std::string>* errors) const {
+    if (m_configurations.active().empty()) return m_parameterRegistry.quantities(errors);
+    ParameterRegistry laid;
+    laid.setDefinitions(effectiveDefinitions());
+    return laid.quantities(errors);
+}
+
+std::map<std::string, double> Document::variableValues() const {
+    std::map<std::string, double> values;
+    for (const auto& [name, quantity] : variables()) values[name] = quantity.value;
+    return values;
+}
+
+std::function<double(const std::string&)> Document::variableResolver() const {
+    return [values = variableValues()](const std::string& name) {
+        const auto found = values.find(name);
+        return found != values.end() ? found->second : 0.0;
+    };
+}
+
 void Document::applyExpressions() {
     std::map<std::string, math::Quantity> variables;
     bool worked = false;  // worked out once, if any feature has an expression
@@ -106,7 +132,7 @@ void Document::applyExpressions() {
             continue;
         }
         if (!worked) {
-            variables = m_parameterRegistry.quantities();
+            variables = this->variables();
             worked = true;
         }
         std::string error;

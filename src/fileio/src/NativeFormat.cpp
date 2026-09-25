@@ -650,6 +650,21 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
     }
     root["designVariables"] = designVars;
 
+    // --- Configurations (Phase 156): absent when there are none; an older
+    // build reads the variables as the document has them. ---
+    const auto& configurations = doc.configurations();
+    if (configurations.size() > 0) {
+        json table = json::array();
+        for (const std::string& name : configurations.configurationNames()) {
+            json overrides = json::object();
+            for (const auto& [variable, expression] : configurations.overrides(name)) {
+                overrides[variable] = expression;
+            }
+            table.push_back({{"name", name}, {"values", overrides}});
+        }
+        root["configurations"] = {{"active", configurations.active()}, {"table", table}};
+    }
+
     // --- Sketches ---
     json sketchesArray = json::array();
     for (const auto& sketch : doc.sketches()) {
@@ -1287,6 +1302,34 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
     // --- Load constraints (v5+) ---
     if (root.contains("constraints")) {
         constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem());
+    }
+
+    // --- Load configurations (Phase 156). What is not a configuration is
+    // left out; an active one that is not there leaves none active. ---
+    doc.configurations() = {};
+    if (const auto configurations = root.find("configurations");
+        configurations != root.end() && configurations->is_object()) {
+        if (const auto table = configurations->find("table");
+            table != configurations->end() && table->is_array()) {
+            for (const json& row : *table) {
+                if (!row.is_object() || !row.contains("name") || !row.at("name").is_string()) {
+                    continue;
+                }
+                doc::ConfigurationTable::Overrides overrides;
+                if (const auto values = row.find("values");
+                    values != row.end() && values->is_object()) {
+                    for (const auto& [variable, expression] : values->items()) {
+                        if (expression.is_string())
+                            overrides[variable] = expression.get<std::string>();
+                    }
+                }
+                doc.configurations().setConfiguration(row.at("name").get<std::string>(), overrides);
+            }
+        }
+        if (const auto active = configurations->find("active");
+            active != configurations->end() && active->is_string()) {
+            doc.configurations().setActive(active->get<std::string>());
+        }
     }
 
     // --- Load design variables (v13+, v14 nested format) ---

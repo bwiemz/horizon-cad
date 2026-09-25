@@ -254,9 +254,37 @@ written, and a plain number means a plain number.
   that normalizes in the document's unit, shows a stored expression, and
   passes changes to the command.
 
-## Phase 156: Configurations (outline)
-- A design table of variable values per configuration, saved.
-- The active configuration chosen in the feature tree.
+## Phase 156: Configurations
+
+### As built
+- **Before this,** `ConfigurationTable` existed, with numeric overrides
+  written into the variables destructively, but nothing saved it or
+  reached it.
+- **`ConfigurationTable`** now holds expression overrides ("diameter" =
+  "8 mm") and the active one ("" for none). `overlay()` lays a
+  configuration over the variables without writing them, so going back
+  needs nothing but choosing another.
+- **`Document`**:
+  - `effectiveDefinitions()` gives its own variables with the active
+    configuration laid over them;
+  - `variables()` gives those worked out, which builds and the Edit
+    form's expressions use;
+  - `variableResolver()` gives their values, which the constraint solver
+    uses at all five call sites (grip, move, constraint, edit and property
+    panel), so constraints follow the configuration too.
+- **`SetConfigurationsCommand`** changes the table, or which configuration
+  is active, as one undo step, and marks the part to be built again.
+- **Files:** saved as `configurations` (active, and each name with its
+  values). An active one that isn't there leaves none; an older build
+  ignores it.
+- **Edit ▸ Configurations** (`ConfigurationsDialog`):
+  - a row for each configuration, and a column for each variable, headed
+    with its own value;
+  - a blank cell keeps that variable's own value;
+  - OK is refused if two rows share a name, or a configuration laid over
+    the variables can't be evaluated.
+- **The feature tree** has a Configuration chooser above the features,
+  hidden while there are none; choosing one builds the part in it.
 
 ## Phase 157: Sketches that follow (outline)
 - A sketch on a face follows the face by its stable name.

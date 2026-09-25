@@ -138,6 +138,12 @@ private slots:
     /// Edit ▸ Variables: the document's variables, as one undo step
     /// (Phase 155).
     void onVariables();
+    /// Edit ▸ Configurations: the part's design table, as one undo step
+    /// (Phase 156).
+    void onConfigurations();
+    /// A configuration chosen in the feature tree, "" for none: the part
+    /// built in it, one undo step.
+    void onConfigurationChosen(const QString& name);
     void onAbout();
     void onSaveFile();
     void onSaveFileAs();

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
@@ -97,4 +98,32 @@ TEST(ParameterExpressionsTest, AnEditGivesAndTakesAnExpressionAsOneStep) {
     EXPECT_EQ(box->parameterExpressions().at("width"), "(wall * 2)");
     part.undoStack().undo();
     EXPECT_TRUE(box->parameterExpressions().empty());
+}
+
+// Phase 156: a configuration laid over the variables drives the part; the
+// document's own come back when none is active.
+TEST(ConfigurationsTest, TheActiveConfigurationDrivesThePart) {
+    const auto owner = boxPart({{"wall", "3 mm"}});
+    Document& part = *owner;
+    part.featureTree().feature(0)->setParameterExpression("width", "(wall * 2)");
+    hz::doc::ConfigurationTable table;
+    table.setConfiguration("Thin", {{"wall", "1 mm"}});
+    table.setConfiguration("Thick", {{"wall", "5 mm"}});
+    table.setActive("Thick");
+    part.undoStack().push(std::make_unique<hz::doc::SetConfigurationsCommand>(part, table));
+    EXPECT_TRUE(part.needsBuild());
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(part), 1000.0, 1e-9) << "wall 5 mm: width 10";
+    EXPECT_DOUBLE_EQ(part.variableResolver()("wall"), 5.0) << "as constraints read it";
+    EXPECT_EQ(part.parameterRegistry().definitions().at("wall"), "3 mm") << "not written";
+
+    table.setActive("");
+    part.undoStack().push(std::make_unique<hz::doc::SetConfigurationsCommand>(part, table));
+    ASSERT_TRUE(part.rebuildModel());
+    EXPECT_NEAR(volumeOf(part), 600.0, 1e-9) << "its own: wall 3 mm";
+
+    part.undoStack().undo();
+    ASSERT_TRUE(part.rebuildModel());
+    EXPECT_EQ(part.configurations().active(), "Thick");
+    EXPECT_NEAR(volumeOf(part), 1000.0, 1e-9);
 }

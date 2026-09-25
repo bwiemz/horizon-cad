@@ -4,6 +4,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
@@ -24,6 +25,7 @@
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/QuantitySpinBox.h"
@@ -238,4 +240,125 @@ TEST(VariablesDialogTest, AFeaturesSizeIsAnExpressionOfAVariable) {
     doc.undoStack().undo();  // the variable
     doc.undoStack().undo();  // the edit
     EXPECT_TRUE(box->parameterExpressions().empty());
+}
+
+namespace {
+
+/// Fills the next Configurations dialog: each row a name and, by variable
+/// name, its cells; then OK. When OK is refused, what it said is kept and
+/// the dialog cancelled.
+class ConfigurationsAnswer {
+public:
+    using Row = std::pair<QString, std::map<QString, QString>>;
+    explicit ConfigurationsAnswer(std::vector<Row> rows) : m_rows(std::move(rows)) {
+        QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
+        m_timer.start(5);
+        m_clock.start();
+    }
+    bool seen() const { return m_seen; }
+    const QString& refused() const { return m_refused; }
+
+private:
+    void poll() {
+        auto* dialog =
+            qobject_cast<hz::ui::ConfigurationsDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr) {
+            if (m_clock.elapsed() > 5000) m_timer.stop();
+            return;
+        }
+        m_timer.stop();
+        m_seen = true;
+        auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("configurations"));
+        auto* add = dialog->findChild<QPushButton*>(QStringLiteral("add"));
+        if (table == nullptr || add == nullptr) {
+            ADD_FAILURE() << "no design table";
+            dialog->reject();
+            return;
+        }
+        for (const auto& [name, cells] : m_rows) {
+            add->click();
+            const int row = table->rowCount() - 1;
+            table->item(row, 0)->setText(name);
+            for (int column = 1; column < table->columnCount(); ++column) {
+                // "wall (3 mm)": the variable's name before its own value.
+                const QString header = table->horizontalHeaderItem(column)->text();
+                const QString variable = header.section(QLatin1Char(' '), 0, 0);
+                const auto cell = cells.find(variable);
+                if (cell != cells.end()) table->item(row, column)->setText(cell->second);
+            }
+        }
+        dialog->accept();
+        if (dialog->isVisible()) {
+            m_refused = dialog->findChild<QLabel*>(QStringLiteral("problem"))->text();
+            dialog->reject();
+        }
+    }
+
+    std::vector<Row> m_rows;
+    bool m_seen = false;
+    QString m_refused;
+    QTimer m_timer;
+    QElapsedTimer m_clock;
+};
+
+}  // namespace
+
+// A design table: the part built in the configuration chosen in the feature
+// tree, its own variables when none is; each choice one undo step.
+TEST(VariablesDialogTest, TheConfigurationChosenBuildsThePart) {
+    MainWindow w;
+    {
+        FormFiller box(QStringLiteral("Box"), FormAnswers()
+                                                  .number(QStringLiteral("size0"), 10.0)
+                                                  .number(QStringLiteral("size1"), 10.0)
+                                                  .number(QStringLiteral("size2"), 10.0));
+        trigger(w, "action_box");
+        ASSERT_TRUE(box.seen());
+    }
+    hz::doc::Document& doc = *w.activeDocument();
+    {
+        VariablesAnswer answer({{QStringLiteral("wall"), QStringLiteral("3 mm")}});
+        trigger(w, "action_variables");
+        ASSERT_TRUE(answer.seen());
+    }
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().typed(QStringLiteral("width"), QStringLiteral("=wall * 2")));
+        editFirstFeature(w);
+        ASSERT_TRUE(edit.seen());
+    }
+    ASSERT_NEAR(partVolume(doc), 600.0, 1e-6);
+    {
+        ConfigurationsAnswer answer(
+            {{QStringLiteral("Thin"), {{QStringLiteral("wall"), QStringLiteral("1 mm")}}},
+             {QStringLiteral("Thick"), {{QStringLiteral("wall"), QStringLiteral("5 mm")}}}});
+        trigger(w, "action_configurations");
+        ASSERT_TRUE(answer.seen());
+        EXPECT_TRUE(answer.refused().isEmpty()) << answer.refused().toStdString();
+    }
+    ASSERT_EQ(doc.configurations().size(), 2u);
+
+    auto* chooser = w.findChild<QComboBox*>(QStringLiteral("configuration"));
+    ASSERT_NE(chooser, nullptr);
+    EXPECT_EQ(chooser->count(), 3) << "its own, Thin, Thick";
+    const int thick = chooser->findData(QStringLiteral("Thick"));
+    ASSERT_GE(thick, 0);
+    chooser->setCurrentIndex(thick);
+    emit chooser->activated(thick);
+    EXPECT_EQ(doc.configurations().active(), "Thick");
+    EXPECT_NEAR(partVolume(doc), 1000.0, 1e-6);
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(doc.configurations().active(), "");
+    EXPECT_NEAR(partVolume(doc), 600.0, 1e-6) << "undo builds it with its own again";
+    EXPECT_EQ(chooser->currentIndex(), 0) << "the chooser follows";
+}
+
+TEST(VariablesDialogTest, TwoConfigurationsOfOneNameAreRefused) {
+    MainWindow w;
+    ConfigurationsAnswer answer({{QStringLiteral("A"), {}}, {QStringLiteral("A"), {}}});
+    trigger(w, "action_configurations");
+    ASSERT_TRUE(answer.seen());
+    EXPECT_TRUE(answer.refused().contains(QStringLiteral("Two"))) << answer.refused().toStdString();
+    EXPECT_EQ(w.activeDocument()->configurations().size(), 0u);
 }

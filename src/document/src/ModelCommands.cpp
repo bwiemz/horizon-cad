@@ -277,6 +277,25 @@ std::string AddSketchCommand::description() const {
 
 // --- AssemblyEditCommand ---
 
+SetConfigurationsCommand::SetConfigurationsCommand(Document& document, ConfigurationTable after,
+                                                   std::string description)
+    : m_document(document), m_after(std::move(after)), m_description(std::move(description)) {}
+
+void SetConfigurationsCommand::execute() {
+    m_before = m_document.configurations();
+    m_document.configurations() = m_after;
+    m_document.featureTree().markChanged();
+}
+
+void SetConfigurationsCommand::undo() {
+    m_document.configurations() = m_before;
+    m_document.featureTree().markChanged();
+}
+
+std::string SetConfigurationsCommand::description() const {
+    return m_description;
+}
+
 SetVariablesCommand::SetVariablesCommand(Document& document,
                                          std::map<std::string, std::string> after)
     : m_document(document), m_after(std::move(after)) {}
