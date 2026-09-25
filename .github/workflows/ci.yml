@@ -134,6 +134,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -292,6 +301,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -412,6 +430,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -549,6 +576,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -639,6 +675,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -751,6 +796,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
