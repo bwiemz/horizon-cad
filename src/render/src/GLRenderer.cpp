@@ -624,6 +624,54 @@ void GLRenderer::drawLines(QOpenGLExtraFunctions* gl, const Camera& camera,
     m_lineShader.release();
 }
 
+void GLRenderer::uploadLineBuffer(QOpenGLExtraFunctions* gl, LineBuffer& buffer,
+                                  const std::vector<float>& vertices) {
+    if (!buffer.vao) {
+        gl->glGenVertexArrays(1, &buffer.vao);
+        gl->glGenBuffers(1, &buffer.vbo);
+        gl->glBindVertexArray(buffer.vao);
+        gl->glBindBuffer(GL_ARRAY_BUFFER, buffer.vbo);
+        gl->glEnableVertexAttribArray(0);
+        gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
+        gl->glEnableVertexAttribArray(1);
+        gl->glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                                  reinterpret_cast<void*>(3 * sizeof(float)));
+        gl->glBindVertexArray(0);
+    }
+    gl->glBindBuffer(GL_ARRAY_BUFFER, buffer.vbo);
+    gl->glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(float)),
+                     vertices.data(), GL_STATIC_DRAW);
+    gl->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    buffer.vertexCount = vertices.size() / 4;
+}
+
+void GLRenderer::drawLineBuffer(QOpenGLExtraFunctions* gl, const Camera& camera,
+                                const LineBuffer& buffer, const std::vector<LineRun>& runs,
+                                const math::Vec3& color, float lineWidth, int lineType,
+                                float patternScale) {
+    if (!m_initialized || !buffer.vao || runs.empty()) return;
+    m_lineShader.bind();
+    m_lineShader.setUniform("uMVP", camera.projectionMatrix() * camera.viewMatrix());
+    m_lineShader.setUniform("uLineColor", color);
+    m_lineShader.setUniform("uLineType", lineType);
+    m_lineShader.setUniform("uPatternScale", patternScale);
+    m_lineShader.setUniform("uClipPlane", math::Vec4(0.0, 0.0, 0.0, 0.0));
+    gl->glBindVertexArray(buffer.vao);
+    gl->glLineWidth(lineWidth);
+    for (const auto& run : runs) {
+        if (static_cast<size_t>(run.first) + run.second > buffer.vertexCount) continue;
+        gl->glDrawArrays(GL_LINES, static_cast<GLint>(run.first), static_cast<GLsizei>(run.second));
+    }
+    gl->glBindVertexArray(0);
+    m_lineShader.release();
+}
+
+void GLRenderer::releaseLineBuffer(QOpenGLExtraFunctions* gl, LineBuffer& buffer) {
+    if (buffer.vbo) gl->glDeleteBuffers(1, &buffer.vbo);
+    if (buffer.vao) gl->glDeleteVertexArrays(1, &buffer.vao);
+    buffer = LineBuffer{};
+}
+
 void GLRenderer::drawCircle(QOpenGLExtraFunctions* gl, const Camera& camera,
                             const std::vector<float>& circleVertices, const math::Vec3& color,
                             float lineWidth, int lineType, float patternScale) {

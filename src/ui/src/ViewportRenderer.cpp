@@ -6,7 +6,9 @@
 #include <QOpenGLExtraFunctions>
 #include <QPainter>
 #include <QPointF>
+#include <algorithm>
 #include <cmath>
+#include <optional>
 #include <set>
 
 #include "horizon/constraint/Constraint.h"
@@ -47,15 +49,6 @@ static hz::math::Vec3 argbToVec3(uint32_t argb) {
             static_cast<double>((argb >> 8) & 0xFF) / 255.0,
             static_cast<double>(argb & 0xFF) / 255.0};
 }
-
-struct BatchKey {
-    uint32_t colorARGB;
-    float lineWidth;
-    int lineType;
-    bool operator==(const BatchKey& o) const {
-        return colorARGB == o.colorARGB && lineWidth == o.lineWidth && lineType == o.lineType;
-    }
-};
 
 }  // anonymous namespace
 
@@ -104,13 +97,22 @@ void ViewportRenderer::initTextOverlayGL(QOpenGLExtraFunctions* gl) {
     gl->glDeleteShader(fs);
 
     // --- Fullscreen quad (NDC coords + UVs) ---
-    // Two triangles covering [-1,1] in clip space.
+    // Two triangles covering [-1,1] in clip space. The image's first row, its
+    // top, is the texture's v = 0: the top of the view samples v = 0. (The
+    // other way up, the overlay was drawn upside down: texts mirrored across
+    // the view from what they label, the view cube at the bottom.)
+    // clang-format off
     float quadVerts[] = {
         // pos        uv
-        -1.f, -1.f, 0.f, 0.f, 1.f, -1.f, 1.f, 0.f, 1.f,  1.f, 1.f, 1.f,
+        -1.f, -1.f,   0.f, 1.f,
+         1.f, -1.f,   1.f, 1.f,
+         1.f,  1.f,   1.f, 0.f,
 
-        -1.f, -1.f, 0.f, 0.f, 1.f, 1.f,  1.f, 1.f, -1.f, 1.f, 0.f, 1.f,
+        -1.f, -1.f,   0.f, 1.f,
+         1.f,  1.f,   1.f, 0.f,
+        -1.f,  1.f,   0.f, 0.f,
     };
+    // clang-format on
 
     gl->glGenVertexArrays(1, &m_textOverlayVAO);
     gl->glGenBuffers(1, &m_textOverlayVBO);
@@ -135,6 +137,11 @@ void ViewportRenderer::initTextOverlayGL(QOpenGLExtraFunctions* gl) {
 }
 
 void ViewportRenderer::destroyGL(QOpenGLExtraFunctions* gl) {
+    for (auto& buffer : m_lineBuffers) render::GLRenderer::releaseLineBuffer(gl, buffer);
+    m_lineBuffers.clear();
+    m_uploadedBuild = 0;  // a new context is sent the cache afresh
+    m_overlayUploaded = false;
+    m_overlayTextureSize = QSize();
     if (m_textOverlayTex) gl->glDeleteTextures(1, &m_textOverlayTex);
     if (m_textOverlayVAO) gl->glDeleteVertexArrays(1, &m_textOverlayVAO);
     if (m_textOverlayVBO) gl->glDeleteBuffers(1, &m_textOverlayVBO);
@@ -185,211 +192,42 @@ void ViewportRenderer::recomputeDOF(doc::Document* doc) {
 // Entity rendering
 // ---------------------------------------------------------------------------
 
+bool ViewportRenderer::prepareEntities(const doc::Document& doc,
+                                       const render::SelectionManager& selection) {
+    return m_drawing.update(doc, selection, m_dofAnalysis, m_dofComputations);
+}
+
 void ViewportRenderer::renderEntities(QOpenGLExtraFunctions* gl, render::GLRenderer& renderer,
                                       const render::Camera& camera, doc::Document& doc,
                                       const render::SelectionManager& selection) {
-    m_dimTexts.clear();
+    prepareEntities(doc, selection);
+    const auto& batches = m_drawing.batches();
 
-    const auto& entities = doc.activeDrawing().entities();
-    if (entities.empty()) return;
-
-    const auto& layerMgr = doc.layerManager();
-
-    // Batches keyed by (color, lineWidth).
-    std::vector<std::pair<BatchKey, std::vector<float>>> batches;
-
-    auto findOrCreateBatch = [&](const BatchKey& key) -> std::vector<float>& {
-        for (auto& [k, v] : batches) {
-            if (k == key) return v;
+    // The GPU's copy follows the cache: a buffer for each batch, sent again
+    // only after a build.
+    if (m_uploadedBuild != m_drawing.builds()) {
+        for (size_t i = batches.size(); i < m_lineBuffers.size(); ++i) {
+            render::GLRenderer::releaseLineBuffer(gl, m_lineBuffers[i]);
         }
-        batches.push_back({key, {}});
-        return batches.back().second;
-    };
-
-    for (const auto& entity : entities) {
-        // Layer visibility check.
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (lp && !lp->visible) continue;
-
-        bool selected = selection.isSelected(entity->id());
-
-        // Resolve color.
-        uint32_t resolvedColor;
-        if (selected) {
-            resolvedColor = 0xFFFF9900;  // orange
-        } else if (entity->color() == 0x00000000) {
-            resolvedColor = lp ? lp->color : 0xFFFFFFFF;
-        } else {
-            resolvedColor = entity->color();
+        m_lineBuffers.resize(batches.size());
+        for (size_t i = 0; i < batches.size(); ++i) {
+            renderer.uploadLineBuffer(gl, m_lineBuffers[i], batches[i].vertices);
         }
-
-        // Override color for DOF visualization (skip for selected entities).
-        if (!selected) {
-            auto dofIt = m_dofAnalysis.entityStatus.find(entity->id());
-            if (dofIt != m_dofAnalysis.entityStatus.end()) {
-                switch (dofIt->second) {
-                    case cstr::EntityDOFStatus::Free:
-                        resolvedColor = 0xFF00CC00;  // Green for under-constrained.
-                        break;
-                    case cstr::EntityDOFStatus::FullyConstrained:
-                        // Keep normal color.
-                        break;
-                    case cstr::EntityDOFStatus::OverConstrained:
-                        resolvedColor = 0xFFFF0000;  // Red for over-constrained.
-                        break;
-                }
-            }
-        }
-
-        // Resolve lineWidth.
-        float resolvedWidth;
-        if (entity->lineWidth() == 0.0) {
-            resolvedWidth = lp ? static_cast<float>(lp->lineWidth) : 1.0f;
-        } else {
-            resolvedWidth = static_cast<float>(entity->lineWidth());
-        }
-
-        // Resolve lineType.
-        int resolvedLineType;
-        if (entity->lineType() == 0) {
-            resolvedLineType = lp ? lp->lineType : 1;
-        } else {
-            resolvedLineType = entity->lineType();
-        }
-
-        BatchKey key{resolvedColor, resolvedWidth, resolvedLineType};
-
-        // Helper: emit a vertex (x, y, z=0, distance) into a batch.
-        auto emitVert = [](std::vector<float>& v, double x, double y, float dist) {
-            v.push_back(static_cast<float>(x));
-            v.push_back(static_cast<float>(y));
-            v.push_back(0.0f);
-            v.push_back(dist);
-        };
-
-        // Helper: emit a line segment with per-vertex distance for a point sequence.
-        auto emitPointSeq = [&emitVert](std::vector<float>& v, const std::vector<math::Vec2>& pts,
-                                        bool closed) {
-            double cumDist = 0.0;
-            for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                double segLen = pts[i].distanceTo(pts[i + 1]);
-                emitVert(v, pts[i].x, pts[i].y, static_cast<float>(cumDist));
-                cumDist += segLen;
-                emitVert(v, pts[i + 1].x, pts[i + 1].y, static_cast<float>(cumDist));
-            }
-            if (closed && pts.size() >= 2) {
-                double segLen = pts.back().distanceTo(pts[0]);
-                emitVert(v, pts.back().x, pts.back().y, static_cast<float>(cumDist));
-                cumDist += segLen;
-                emitVert(v, pts[0].x, pts[0].y, static_cast<float>(cumDist));
-            }
-        };
-
-        if (auto* line = dynamic_cast<const draft::DraftLine*>(entity.get())) {
-            auto& verts = findOrCreateBatch(key);
-            double len = line->start().distanceTo(line->end());
-            emitVert(verts, line->start().x, line->start().y, 0.0f);
-            emitVert(verts, line->end().x, line->end().y, static_cast<float>(len));
-        } else if (auto* circle = dynamic_cast<const draft::DraftCircle*>(entity.get())) {
-            auto verts = circleVertices(circle->center(), circle->radius());
-            renderer.drawCircle(gl, camera, verts, argbToVec3(resolvedColor), resolvedWidth,
-                                resolvedLineType);
-        } else if (auto* arc = dynamic_cast<const draft::DraftArc*>(entity.get())) {
-            auto verts =
-                arcVertices(arc->center(), arc->radius(), arc->startAngle(), arc->endAngle());
-            renderer.drawLines(gl, camera, verts, argbToVec3(resolvedColor), resolvedWidth,
-                               resolvedLineType);
-        } else if (auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
-            auto c = rect->corners();
-            auto& verts = findOrCreateBatch(key);
-            double cumDist = 0.0;
-            for (int i = 0; i < 4; ++i) {
-                int j = (i + 1) % 4;
-                double segLen = c[i].distanceTo(c[j]);
-                emitVert(verts, c[i].x, c[i].y, static_cast<float>(cumDist));
-                cumDist += segLen;
-                emitVert(verts, c[j].x, c[j].y, static_cast<float>(cumDist));
-            }
-        } else if (auto* polyline = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
-            auto& verts = findOrCreateBatch(key);
-            emitPointSeq(verts, polyline->points(), polyline->closed());
-        } else if (auto* spline = dynamic_cast<const draft::DraftSpline*>(entity.get())) {
-            auto& verts = findOrCreateBatch(key);
-            emitPointSeq(verts, spline->evaluate(), false);
-        } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(entity.get())) {
-            auto& verts = findOrCreateBatch(key);
-            // Draw boundary outline with cumulative distance.
-            const auto& bnd = hatch->boundary();
-            double cumDist = 0.0;
-            for (size_t i = 0; i < bnd.size(); ++i) {
-                size_t j = (i + 1) % bnd.size();
-                double segLen = bnd[i].distanceTo(bnd[j]);
-                emitVert(verts, bnd[i].x, bnd[i].y, static_cast<float>(cumDist));
-                cumDist += segLen;
-                emitVert(verts, bnd[j].x, bnd[j].y, static_cast<float>(cumDist));
-            }
-            // Draw hatch fill lines — each starts at distance 0.
-            auto hatchLines = hatch->generateHatchLines();
-            for (const auto& [a, b] : hatchLines) {
-                double segLen = a.distanceTo(b);
-                emitVert(verts, a.x, a.y, 0.0f);
-                emitVert(verts, b.x, b.y, static_cast<float>(segLen));
-            }
-        } else if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(entity.get())) {
-            auto& verts = findOrCreateBatch(key);
-            emitPointSeq(verts, ellipse->evaluate(), false);
-        } else if (auto* dim = dynamic_cast<const draft::DraftDimension*>(entity.get())) {
-            const auto& style = doc.activeDrawing().dimensionStyle();
-            auto& verts = findOrCreateBatch(key);
-
-            auto addSegments = [&](const std::vector<std::pair<math::Vec2, math::Vec2>>& segs) {
-                for (const auto& [a, b] : segs) {
-                    double segLen = a.distanceTo(b);
-                    emitVert(verts, a.x, a.y, 0.0f);
-                    emitVert(verts, b.x, b.y, static_cast<float>(segLen));
-                }
-            };
-
-            addSegments(dim->extensionLines(style));
-            addSegments(dim->dimensionLines(style));
-            addSegments(dim->arrowheadLines(style));
-
-            // Collect text for QPainter overlay.
-            m_dimTexts.push_back({dim->textPosition(), dim->displayText(style), resolvedColor});
-        } else if (auto* bref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
-            // The block's contents placed, as a plot draws them: every kind of
-            // entity (text, hatches and dimensions were left out), blocks
-            // within blocks too. What they leave ByBlock is the reference's,
-            // as resolved above, the selection's colour included.
-            const draft::PlotScene contents =
-                draft::plotBlockReference(*bref, layerMgr, doc.activeDrawing().dimensionStyle(),
-                                          resolvedColor, resolvedWidth, resolvedLineType);
-            for (const auto& stroke : contents.strokes) {
-                auto& v = findOrCreateBatch(
-                    BatchKey{stroke.color, static_cast<float>(stroke.width), stroke.lineType});
-                emitPointSeq(v, stroke.points, stroke.closed);
-            }
-            for (const auto& text : contents.texts) {
-                m_dimTexts.push_back({text.position, text.text, text.color, text.height,
-                                      text.rotation, static_cast<int>(text.alignment)});
-            }
-        } else if (auto* txt = dynamic_cast<const draft::DraftText*>(entity.get())) {
-            // Text entity — collect for QPainter overlay, a line at a time.
-            const auto lines = txt->lines();
-            for (size_t i = 0; i < lines.size(); ++i) {
-                m_dimTexts.push_back({txt->lineBaseline(i), lines[i], resolvedColor,
-                                      txt->textHeight(), txt->rotation(),
-                                      static_cast<int>(txt->alignment())});
-            }
-        }
+        m_uploadedBuild = m_drawing.builds();
     }
+    if (batches.empty()) return;
 
-    // Draw all batches.
-    for (const auto& [key, verts] : batches) {
-        if (!verts.empty()) {
-            renderer.drawLines(gl, camera, verts, argbToVec3(key.colorARGB), key.lineWidth,
-                               key.lineType);
+    // Only the chunks in view.
+    const std::vector<bool> visible = m_drawing.visibleChunks(camera.viewProjectionMatrix());
+    std::vector<render::GLRenderer::LineRun> runs;
+    for (size_t i = 0; i < batches.size(); ++i) {
+        runs.clear();
+        for (const auto& range : DrawingCache::visibleRanges(batches[i], visible)) {
+            runs.emplace_back(range.first, range.count);
         }
+        const DrawingCache::Pen& pen = batches[i].pen;
+        renderer.drawLineBuffer(gl, camera, m_lineBuffers[i], runs, argbToVec3(pen.color),
+                                pen.width, pen.lineType);
     }
 }
 
@@ -628,20 +466,38 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
         int alignment = 1;  // 0=Left, 1=Center, 2=Right
     };
 
+    // The font is made again only when the size or weight changes: most
+    // texts share one.
+    int fontSize = -1;
+    bool fontBold = false;
+    std::optional<QFontMetrics> metrics;
     auto drawItem = [&](const TextItem& item) {
         QPointF sp = worldToScreen(camera, item.worldPos, viewportWidth, viewportHeight);
+        // Off the view by more than the text could reach, it is not drawn: a
+        // character is under two font sizes wide, and each takes a byte or
+        // more.
+        const double reach =
+            2.0 * item.fontSize * (static_cast<double>(item.text.size()) + 1.0) + 2.0;
+        if (sp.x() < -reach || sp.y() < -reach || sp.x() > viewportWidth + reach ||
+            sp.y() > viewportHeight + reach) {
+            return;
+        }
         QColor qc(static_cast<int>((item.color >> 16) & 0xFF),
                   static_cast<int>((item.color >> 8) & 0xFF), static_cast<int>(item.color & 0xFF));
         painter.setPen(qc);
 
-        QFont font("Arial", item.fontSize);
-        font.setBold(item.bold);
-        painter.setFont(font);
+        if (item.fontSize != fontSize || item.bold != fontBold || !metrics) {
+            QFont font("Arial", item.fontSize);
+            font.setBold(item.bold);
+            painter.setFont(font);
+            metrics.emplace(painter.font());
+            fontSize = item.fontSize;
+            fontBold = item.bold;
+        }
 
         QString text = QString::fromUtf8(item.text.c_str());
-        QFontMetrics fm(painter.font());
-        int tw = fm.horizontalAdvance(text);
-        int th = fm.ascent();
+        int tw = metrics->horizontalAdvance(text);
+        int th = metrics->ascent();
 
         if (std::abs(item.rotation) > 1e-6) {
             painter.save();
@@ -670,18 +526,18 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
     };
 
     // --- Dimension + text entity text ---
-    if (!m_dimTexts.empty() && doc) {
+    if (!m_drawing.texts().empty() && doc) {
         const auto& style = doc->activeDrawing().dimensionStyle();
         double pxPerWorld = 1.0 / pixelToWorldScale;
         int defaultFontSize =
             std::max(8, std::min(48, static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
 
-        for (const auto& dt : m_dimTexts) {
+        for (const auto& dt : m_drawing.texts()) {
             int fs = defaultFontSize;
-            if (dt.textHeight > 0.0) {
-                fs = std::max(8, std::min(200, static_cast<int>(dt.textHeight * pxPerWorld * 0.4)));
+            if (dt.height > 0.0) {
+                fs = std::max(8, std::min(200, static_cast<int>(dt.height * pxPerWorld * 0.4)));
             }
-            drawItem({dt.worldPos, dt.text, dt.color, fs, false, dt.rotation, dt.alignment});
+            drawItem({dt.position, dt.text, dt.color, fs, false, dt.rotation, dt.alignment});
         }
     }
 
@@ -808,30 +664,72 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
     painter.end();
 }
 
+bool ViewportRenderer::prepareTextOverlay(const render::Camera& camera, doc::Document* doc,
+                                          const render::SelectionManager& selection,
+                                          int viewportWidth, int viewportHeight,
+                                          double pixelToWorldScale, qreal devicePixelRatio) {
+    if (viewportWidth <= 0 || viewportHeight <= 0) return false;
+    const qreal dpr = devicePixelRatio > 0.0 ? devicePixelRatio : 1.0;
+
+    // What it shows: the texts and annotations (the drawing cache is built
+    // again when they change, the selection's included), where the view
+    // puts them, and the view cube, which turns with the view.
+    OverlayStamp stamp;
+    const math::Mat4 viewProjection = camera.viewProjectionMatrix();
+    std::copy(viewProjection.data(), viewProjection.data() + 16, stamp.viewProjection.begin());
+    stamp.width = viewportWidth;
+    stamp.height = viewportHeight;
+    stamp.ratio = dpr;
+    stamp.pixelToWorld = pixelToWorldScale;
+    stamp.document = doc;
+    stamp.drawing = m_drawing.builds();
+    if (m_overlayPainted && stamp == m_overlayStamp) return false;
+    m_overlayStamp = stamp;
+    m_overlayPainted = true;
+    ++m_overlayPaints;
+    m_overlayUploaded = false;
+
+    // QPainter on a QImage is pure CPU, at device pixels: the painter keeps
+    // working in logical ones. The image is made anew only for a new size.
+    const QSize size(qRound(viewportWidth * dpr), qRound(viewportHeight * dpr));
+    if (m_overlayImage.size() != size) {
+        m_overlayImage = QImage(size, QImage::Format_RGBA8888_Premultiplied);
+    }
+    m_overlayImage.setDevicePixelRatio(dpr);
+    m_overlayImage.fill(Qt::transparent);
+    renderTextToImage(m_overlayImage, camera, doc, selection, viewportWidth, viewportHeight,
+                      pixelToWorldScale);
+    return true;
+}
+
 void ViewportRenderer::blitTextOverlay(QOpenGLExtraFunctions* gl, const render::Camera& camera,
                                        doc::Document* doc,
                                        const render::SelectionManager& selection, int viewportWidth,
                                        int viewportHeight, double pixelToWorldScale,
                                        qreal devicePixelRatio) {
     if (viewportWidth <= 0 || viewportHeight <= 0) return;
+    prepareTextOverlay(camera, doc, selection, viewportWidth, viewportHeight, pixelToWorldScale,
+                       devicePixelRatio);
+    if (m_overlayImage.isNull()) return;
 
-    // 1. Render text to a QImage (QPainter on QImage is pure CPU), at device
-    // pixels: the painter keeps working in logical ones.
-    const qreal dpr = devicePixelRatio > 0.0 ? devicePixelRatio : 1.0;
-    QImage image(qRound(viewportWidth * dpr), qRound(viewportHeight * dpr),
-                 QImage::Format_RGBA8888_Premultiplied);
-    image.setDevicePixelRatio(dpr);
-    image.fill(Qt::transparent);
-    renderTextToImage(image, camera, doc, selection, viewportWidth, viewportHeight,
-                      pixelToWorldScale);
-
-    // 2. Upload QImage pixels to the GL texture.
+    // The texture follows the image only when it was painted again.
     gl->glBindTexture(GL_TEXTURE_2D, m_textOverlayTex);
-    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, image.constBits());
+    if (!m_overlayUploaded) {
+        if (m_overlayTextureSize == m_overlayImage.size()) {
+            gl->glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_overlayImage.width(),
+                                m_overlayImage.height(), GL_RGBA, GL_UNSIGNED_BYTE,
+                                m_overlayImage.constBits());
+        } else {
+            gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_overlayImage.width(),
+                             m_overlayImage.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                             m_overlayImage.constBits());
+            m_overlayTextureSize = m_overlayImage.size();
+        }
+        m_overlayUploaded = true;
+    }
 
-    // 3. Draw a fullscreen quad with alpha blending.
-    // Use premultiplied-alpha blend (GL_ONE) since the QImage is premultiplied.
+    // A fullscreen quad with alpha blending: premultiplied (GL_ONE), as the
+    // image is.
     gl->glDisable(GL_DEPTH_TEST);
     gl->glEnable(GL_BLEND);
     gl->glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

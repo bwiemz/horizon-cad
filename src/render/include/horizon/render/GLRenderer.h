@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "horizon/math/Vec2.h"
@@ -55,6 +56,27 @@ public:
                    const std::vector<float>& lineVertices, const math::Vec3& color,
                    float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f,
                    bool clipped = false);
+
+    /// Line vertices kept on the GPU, in drawLines' format, for lines drawn
+    /// frame after frame unchanged: filled once by uploadLineBuffer, then
+    /// drawn a run or several at a time by drawLineBuffer.
+    struct LineBuffer {
+        GLuint vao = 0;
+        GLuint vbo = 0;
+        size_t vertexCount = 0;
+    };
+    /// A run of a LineBuffer's vertices: the first, and how many.
+    using LineRun = std::pair<std::uint32_t, std::uint32_t>;
+
+    /// Put @p vertices in @p buffer, in place of what it had.
+    void uploadLineBuffer(QOpenGLExtraFunctions* gl, LineBuffer& buffer,
+                          const std::vector<float>& vertices);
+    /// Draw the @p runs of @p buffer, as drawLines draws (not clipped).
+    void drawLineBuffer(QOpenGLExtraFunctions* gl, const Camera& camera, const LineBuffer& buffer,
+                        const std::vector<LineRun>& runs, const math::Vec3& color,
+                        float lineWidth = 1.5f, int lineType = 1, float patternScale = 1.0f);
+    /// Let go of @p buffer's GPU memory; the context must be current.
+    static void releaseLineBuffer(QOpenGLExtraFunctions* gl, LineBuffer& buffer);
 
     /// How solids are drawn by renderNodes().
     void setDisplayMode(DisplayMode mode) { m_displayMode = mode; }

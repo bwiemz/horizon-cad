@@ -6,11 +6,11 @@ SelectionManager::SelectionManager() = default;
 SelectionManager::~SelectionManager() = default;
 
 void SelectionManager::select(uint64_t id) {
-    m_selected.insert(id);
+    if (m_selected.insert(id).second) ++m_revision;
 }
 
 void SelectionManager::deselect(uint64_t id) {
-    m_selected.erase(id);
+    if (m_selected.erase(id) > 0) ++m_revision;
 }
 
 void SelectionManager::toggle(uint64_t id) {
@@ -20,10 +20,13 @@ void SelectionManager::toggle(uint64_t id) {
     } else {
         m_selected.insert(id);
     }
+    ++m_revision;
 }
 
 void SelectionManager::clearSelection() {
+    if (m_selected.empty()) return;
     m_selected.clear();
+    ++m_revision;
 }
 
 bool SelectionManager::isSelected(uint64_t id) const {

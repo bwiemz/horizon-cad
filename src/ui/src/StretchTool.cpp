@@ -306,16 +306,12 @@ void StretchTool::applyCurrentStretch() {
     math::Vec2 disp{m_currentPos.x - m_basePoint.x, m_currentPos.y - m_basePoint.y};
 
     for (const auto& se : m_stretchEntities) {
-        for (const auto& entity : doc.entities()) {
-            if (entity->id() != se.entityId) continue;
-
-            // Restore to before-state first.
-            restoreEntityState(*se.beforeClone, *entity);
-
-            // Then apply stretch with current displacement.
-            applyStretch(*entity, se.insideIndices, se.totalPoints, disp);
-            break;
-        }
+        draft::DraftEntity* entity = doc.findEntity(se.entityId);
+        if (!entity) continue;
+        // Back to the before-state, then stretched by the displacement now.
+        restoreEntityState(*se.beforeClone, *entity);
+        applyStretch(*entity, se.insideIndices, se.totalPoints, disp);
+        doc.updateEntityBounds(se.entityId);  // picked, snapped and drawn where it is
     }
 }
 
@@ -328,11 +324,10 @@ void StretchTool::restoreAllEntities() {
     auto& doc = m_viewport->document()->activeDrawing();
 
     for (const auto& se : m_stretchEntities) {
-        for (const auto& entity : doc.entities()) {
-            if (entity->id() != se.entityId) continue;
-            restoreEntityState(*se.beforeClone, *entity);
-            break;
-        }
+        draft::DraftEntity* entity = doc.findEntity(se.entityId);
+        if (!entity) continue;
+        restoreEntityState(*se.beforeClone, *entity);
+        doc.updateEntityBounds(se.entityId);
     }
 }
 
@@ -397,8 +392,10 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
                 return true;
             }
 
-            // Entities are already in stretched state from mouseMoveEvent.
-            // Clone after-states, then restore before-states, then push command.
+            // The entities are stretched already, from mouseMoveEvent, and
+            // stay so: a grip move's first execute takes the state as it
+            // finds it (putting the before-states back here undid the
+            // stretch as it was made).
             auto composite = std::make_unique<doc::CompositeCommand>("Stretch");
 
             for (auto& se : m_stretchEntities) {
@@ -406,7 +403,6 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
                     if (entity->id() != se.entityId) continue;
 
                     auto afterClone = entity->clone();
-                    restoreEntityState(*se.beforeClone, *entity);
 
                     auto& cstrSys = m_viewport->document()->activeConstraints();
                     composite->addCommand(std::make_unique<doc::GripMoveCommand>(

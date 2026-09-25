@@ -1,6 +1,7 @@
 #include "horizon/drafting/DraftDocument.h"
 
 #include <algorithm>
+#include <atomic>
 #include <unordered_set>
 #include <utility>
 
@@ -10,8 +11,14 @@ void DraftDocument::addEntity(std::shared_ptr<DraftEntity> entity) {
     insertEntity(npos, std::move(entity));
 }
 
+std::uint64_t DraftDocument::Revision::next() {
+    static std::atomic<std::uint64_t> counter{0};
+    return ++counter;
+}
+
 void DraftDocument::insertEntity(size_t position, std::shared_ptr<DraftEntity> entity) {
     if (!entity) return;
+    m_revision.bump();
     m_spatialIndex.insert(entity);
     m_byId[entity->id()] = entity;
     const size_t at = std::min(position, m_entities.size());
@@ -21,6 +28,7 @@ void DraftDocument::insertEntity(size_t position, std::shared_ptr<DraftEntity> e
 size_t DraftDocument::removeEntity(uint64_t id) {
     const auto found = m_byId.find(id);
     if (found == m_byId.end()) return npos;
+    m_revision.bump();
     const DraftEntity* target = found->second.get();
     m_byId.erase(found);
     m_spatialIndex.remove(id);
@@ -45,6 +53,7 @@ std::vector<PlacedEntity> DraftDocument::removeEntities(const std::vector<uint64
         m_spatialIndex.remove(id);
         m_byId.erase(found);
     }
+    if (!doomed.empty()) m_revision.bump();
 
     std::vector<PlacedEntity> removed;
     removed.reserve(doomed.size());
@@ -62,6 +71,7 @@ std::vector<PlacedEntity> DraftDocument::removeEntities(const std::vector<uint64
 }
 
 void DraftDocument::restoreEntities(const std::vector<PlacedEntity>& placed) {
+    if (!placed.empty()) m_revision.bump();
     std::vector<std::shared_ptr<DraftEntity>> merged;
     merged.reserve(m_entities.size() + placed.size());
     size_t next = 0;
@@ -87,6 +97,7 @@ bool DraftDocument::replaceEntity(uint64_t id, std::shared_ptr<DraftEntity> repl
     const auto it = std::find_if(m_entities.rbegin(), m_entities.rend(),
                                  [target](const auto& e) { return e.get() == target; });
     if (it == m_entities.rend()) return false;
+    m_revision.bump();
     m_byId.erase(found);
     m_spatialIndex.remove(id);
     *it = replacement;
@@ -107,10 +118,13 @@ std::shared_ptr<DraftEntity> DraftDocument::sharedEntity(uint64_t id) const {
 
 void DraftDocument::updateEntityBounds(uint64_t id) {
     const auto it = m_byId.find(id);
-    if (it != m_byId.end()) m_spatialIndex.update(it->second);
+    if (it == m_byId.end()) return;
+    m_revision.bump();
+    m_spatialIndex.update(it->second);
 }
 
 void DraftDocument::clear() {
+    m_revision.bump();
     m_entities.clear();
     m_byId.clear();
     m_spatialIndex.clear();
@@ -119,6 +133,7 @@ void DraftDocument::clear() {
 }
 
 void DraftDocument::rebuildSpatialIndex() {
+    m_revision.bump();
     m_spatialIndex.rebuild(m_entities);
     m_byId.clear();
     m_byId.reserve(m_entities.size());

@@ -368,6 +368,7 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 133 | Done | The missing commands: Loft, Sweep and datum plane/axis/point commands (datums drawn, sketches on them); loft and sweep failures say why; feature definitions edited with angles in degrees, labelled fields, and directions and axes chosen (from the axes or a clicked face or edge); rollback from the feature tree, undoable and saved |
 | 134 | Done | Extrude and pattern options: extrude both ways, through all (one way or both) and reversed; patterns of chosen features (a hole repeated, not the part); primitives placed at a point along an axis, editable and saved; features built knowing the part before them |
 | 135 | Done | Finding and seeing: every modelling command in the Model menu and the Ctrl+K palette, with shortcuts; Fit All frames solids; orthographic that survives a resize; Back, Bottom and Left views; shaded, shaded-with-edges and wireframe display; a section plane; mass properties with a material |
+| 136 | Done | A 2D view that scales: the drawing built once and kept until it changes, batched by pen (circles and arcs with the lines), only the chunks in view drawn, the text overlay painted only when it changes; the grid no longer hides the drawing, the overlay is the right way up, Stretch keeps what it stretches, and a tool changed mid-drag puts the drag back |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

@@ -148,11 +148,16 @@ void Grid::render(QOpenGLExtraFunctions* gl, const Camera& camera) {
     gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl->glEnable(GL_DEPTH_TEST);
     gl->glDepthFunc(GL_LEQUAL);
+    // The grid is a reference, drawn behind what is drawn after it, and
+    // hides none of it: the drawing lies on its plane, at its depth, and
+    // lost the depth test to it wherever its lines were close together.
+    gl->glDepthMask(GL_FALSE);
 
     m_quad.bind();
     m_quad.draw(gl);
     m_quad.release();
 
+    gl->glDepthMask(GL_TRUE);
     gl->glDepthFunc(GL_LESS);
 
     m_shader.release();

@@ -27,13 +27,10 @@ void PolylineEditTool::activate(ViewportWidget* viewport) {
 }
 
 void PolylineEditTool::deactivate() {
-    if (m_dragging && m_beforeClone) {
-        // Restore if mid-drag.
-        finishEditing();
-    }
-    m_editEntityId = 0;
-    m_dragging = false;
-    m_beforeClone = nullptr;
+    // A vertex drag not finished is put back, as Escape puts it back: it was
+    // left in the drawing with no command to undo it.
+    cancel();
+    finishEditing();
     Tool::deactivate();
 }
 
@@ -47,6 +44,7 @@ void PolylineEditTool::cancel() {
             if (poly && beforePoly) {
                 poly->setPoints(beforePoly->points());
                 poly->setClosed(beforePoly->closed());
+                doc.updateEntityBounds(m_editEntityId);
             }
         }
         m_dragging = false;
@@ -348,6 +346,7 @@ bool PolylineEditTool::mouseMoveEvent(QMouseEvent* /*event*/, const math::Vec2& 
             if (m_dragVertexIndex >= 0 && m_dragVertexIndex < static_cast<int>(pts.size())) {
                 pts[m_dragVertexIndex] = snappedPos;
                 poly->setPoints(pts);
+                doc.updateEntityBounds(m_editEntityId);  // picked, snapped and drawn where it is
             }
             break;
         }
