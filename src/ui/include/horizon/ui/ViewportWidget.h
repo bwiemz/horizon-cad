@@ -241,6 +241,11 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    /// Tab goes to the active tool first (the dimension tools cycle their
+    /// kind with it): QWidget spends it on moving focus before
+    /// keyPressEvent sees it. A tool that does not take it leaves it to
+    /// move focus, as before.
+    bool event(QEvent* event) override;
 
 private:
     /// Record a context Qt could not create at all, and tell the user once.
