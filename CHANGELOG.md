@@ -17,6 +17,18 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 15 (Phase 151)
+
+- **STEP export as designed (151).**
+  - A cylinder now reaches another CAD system as a cylinder. Its side is one
+    face on the cylinder, its rims circles. It used to be a 34-faced prism.
+  - Bosses, holes and extrusions go out the same way.
+  - Faces that cannot yet (spheres, cone tips) go out as facets, and the
+    export says which and why.
+- **Moved parts keep their curved faces whole.** A part moved, patterned
+  or placed in an assembly had each facet of a curved face on a surface of
+  its own.
+
 ## Unreleased — Professional workflows, Milestones 13–14 (Phases 145–150)
 
 - **The Linux build opens a window (145).** It was built with a Qt that had

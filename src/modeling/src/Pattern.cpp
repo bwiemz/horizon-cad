@@ -65,6 +65,22 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         const auto it = map.find(key);
         return it == map.end() ? Target{nullptr} : it->second;
     };
+    // An ideal shared by many facets or chords (one cylinder, one circle) is
+    // moved once, and stays shared: that sharing is what says they are one
+    // face or one curve (drawings, STEP export as designed). Moved one by
+    // one, each facet had a cylinder of its own.
+    std::unordered_map<const void*, std::shared_ptr<geo::NurbsSurface>> idealSurfaces;
+    std::unordered_map<const void*, std::shared_ptr<geo::NurbsCurve>> idealCurves;
+    const auto idealSurface = [&](const std::shared_ptr<geo::NurbsSurface>& ideal) {
+        auto& moved = idealSurfaces[ideal.get()];
+        if (!moved) moved = transformSurface(*ideal, xform);
+        return moved;
+    };
+    const auto idealCurve = [&](const std::shared_ptr<geo::NurbsCurve>& ideal) {
+        auto& moved = idealCurves[ideal.get()];
+        if (!moved) moved = transformCurve(*ideal, xform);
+        return moved;
+    };
 
     // What to copy: the faces, then the loops, half-edges, vertices and edges
     // they use.
@@ -116,7 +132,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Edge* ne = dst.allocEdge();
         ne->topoId = instanceId(e.topoId, instanceIndex);
         if (e.curve) ne->curve = transformCurve(*e.curve, xform);
-        if (e.analyticCurve) ne->analyticCurve = transformCurve(*e.analyticCurve, xform);
+        if (e.analyticCurve) ne->analyticCurve = idealCurve(e.analyticCurve);
         emap[&e] = ne;
     }
 
@@ -135,7 +151,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         if (f->surface) nf->surface = transformSurface(*f->surface, xform);
         // Each instance of a faceted boss must still resolve to its own
         // cylinder, so the ideal is carried and moved with the facets.
-        if (f->analyticSurface) nf->analyticSurface = transformSurface(*f->analyticSurface, xform);
+        if (f->analyticSurface) nf->analyticSurface = idealSurface(f->analyticSurface);
         fmap[f] = nf;
     }
 

@@ -322,3 +322,35 @@ TEST(ImportExportTest, APlotThatDoesNotFitIsSaidFirst) {
     EXPECT_TRUE(cancel.text().contains(QStringLiteral("cut off"))) << cancel.text().toStdString();
     EXPECT_FALSE(QFileInfo::exists(path));
 }
+
+// A part whose curved face cannot yet go out as designed (a sphere, closed
+// all round) is exported as its facets, and the user is told which and why;
+// one that can (a box has none to tell) says nothing.
+TEST(ImportExportTest, StepExportSaysWhatWentOutAsFacets) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    {
+        FormFiller filler(QStringLiteral("Sphere"),
+                          FormAnswers().number(QStringLiteral("size0"), 5.0));
+        action(w, "action_sphere")->trigger();
+        ASSERT_TRUE(filler.seen());
+    }
+    {
+        DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"));
+        FilePicker picker(dir.filePath(QStringLiteral("ball.step")));
+        action(w, "export_step")->trigger();
+        ASSERT_TRUE(told.seen());
+        EXPECT_TRUE(told.text().contains(QStringLiteral("facets"))) << told.text().toStdString();
+    }
+
+    MainWindow plain;
+    makeBox(plain);
+    DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"), 1000);
+    {
+        FilePicker picker(dir.filePath(QStringLiteral("box.step")));
+        action(plain, "export_step")->trigger();
+    }
+    EXPECT_FALSE(told.seen()) << "nothing to say";
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("box.step"))));
+}

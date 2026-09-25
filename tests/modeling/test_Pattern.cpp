@@ -272,3 +272,28 @@ TEST(PatternTest, ACavityStaysWithTheBodyAroundIt) {
     EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[0]).volume, volume, 1e-6);
     EXPECT_NEAR(MassPropertiesCalculator::compute(*bodies[1]).volume, 8.0, 1e-9);
 }
+
+// A part moved keeps its curved faces whole: the facets of one cylinder
+// still share one cylinder, moved once, and a rim's chords one circle.
+// Moved facet by facet, each had a cylinder of its own, and a moved part's
+// side was many faces to everything that asks which facets are one.
+TEST(PatternTest, AMovedPartsFacetsStillShareTheirSurface) {
+    auto cyl = PrimitiveFactory::makeCylinder(4.0, 10.0, 16);
+    std::set<const hz::geo::NurbsSurface*> before;
+    for (const auto& f : cyl->faces()) {
+        if (f.analyticSurface) before.insert(f.analyticSurface.get());
+    }
+    ASSERT_EQ(before.size(), 1u) << "a cylinder's side facets share one surface";
+
+    const auto moved = Pattern::transformed(*cyl, hz::math::Mat4::translation({7, 0, 3}));
+    std::set<const hz::geo::NurbsSurface*> after;
+    std::size_t facets = 0;
+    for (const auto& f : moved->faces()) {
+        if (!f.analyticSurface) continue;
+        after.insert(f.analyticSurface.get());
+        ++facets;
+    }
+    EXPECT_EQ(facets, 16u);
+    EXPECT_EQ(after.size(), 1u) << "still one, moved";
+    EXPECT_NE(*after.begin(), *before.begin()) << "a copy, not the original's";
+}

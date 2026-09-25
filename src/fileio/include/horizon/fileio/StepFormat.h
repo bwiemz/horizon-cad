@@ -10,12 +10,28 @@
 
 namespace hz::io {
 
+/// How StepFormat writes solids.
+struct StepWriteOptions {
+    /// Each curved face written once, on the surface its facets stand in
+    /// for, bounded by its edges' circles (Phase 151): the part as
+    /// designed, as other systems read it. False: each facet as it is,
+    /// the part as modelled, which reads back exactly.
+    bool asDesigned = true;
+};
+/// What a write as designed could not do: the curved faces kept in
+/// facets, each with why.
+struct StepWriteReport {
+    std::vector<std::string> faceted;
+};
+
 /// STEP AP242 (ISO 10303-21) import/export of B-Rep solids.
 ///
 /// The writer emits every Horizon solid as one MANIFOLD_SOLID_BREP per shell
 /// (grouped in a shared ADVANCED_BREP_SHAPE_REPRESENTATION) whose faces and
-/// edges carry exact (rational) B-spline geometry — Horizon's kernel is
-/// uniformly NURBS-backed, so the export is lossless.  The reader parses a
+/// edges carry exact (rational) B-spline geometry. A curved face, modelled as
+/// facets that record their surface, is written as designed (Phase 151): one
+/// face on that surface, bounded by circles, where it can be; otherwise as
+/// its facets, and reported.  The reader parses a
 /// practical AP242 subset: B-spline curves/surfaces (polynomial and rational),
 /// LINE and CIRCLE edge geometry (including OCC-style SURFACE_CURVE /
 /// SEAM_CURVE wrappers), PLANE / CYLINDRICAL_SURFACE face geometry, and the
@@ -41,12 +57,17 @@ namespace hz::io {
 ///   little to a volume, although the faces around it are drawn with it.
 class StepFormat {
 public:
+    using WriteOptions = StepWriteOptions;
+    using WriteReport = StepWriteReport;
+
     /// Write solids to an AP242 Part-21 file. Returns false on I/O failure or
     /// when @p solids is empty (see lastError()).
-    static bool save(const std::string& filePath, const std::vector<const topo::Solid*>& solids);
+    static bool save(const std::string& filePath, const std::vector<const topo::Solid*>& solids,
+                     const WriteOptions& options = {}, WriteReport* report = nullptr);
 
     /// Serialize solids to Part-21 text (the exact bytes save() would write).
-    static std::string toString(const std::vector<const topo::Solid*>& solids);
+    static std::string toString(const std::vector<const topo::Solid*>& solids,
+                                const WriteOptions& options = {}, WriteReport* report = nullptr);
 
     /// Read all MANIFOLD_SOLID_BREP solids from a Part-21 file, in
     /// millimetres whatever the file's length unit. A solid that cannot be
