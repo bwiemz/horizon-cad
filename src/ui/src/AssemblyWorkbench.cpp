@@ -331,7 +331,7 @@ void AssemblyWorkbench::onInterferenceFinished() {
     if (!m_interferenceTask || !m_interferenceTask->finished()) return;
     const std::unique_ptr<BackgroundTask<doc::InterferenceReport>> task =
         std::move(m_interferenceTask);
-    const std::shared_ptr<doc::AssemblyDocument> assembly = std::move(m_interferenceAssembly);
+    const std::shared_ptr<doc::AssemblyDocument> checked = std::move(m_interferenceAssembly);
     m_host.backgroundWorkChanged();
     m_host.setPrompt(tr("Ready"));
     if (task->cancelled()) {
@@ -343,7 +343,7 @@ void AssemblyWorkbench::onInterferenceFinished() {
             tr("The interference check failed: %1").arg(QString::fromStdString(task->error())));
         return;
     }
-    showInterference(*assembly, task->take());
+    showInterference(*checked, task->take());
 }
 
 void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
