@@ -136,7 +136,6 @@ constexpr int kWindowStateVersion = 1;
 
 namespace {
 
-/// A point or direction as the dialogs show it: "(10, 0, 2.5)".
 /// A component's bounds where it is placed, from its mesh; invalid when it
 /// has none.
 math::BoundingBox placedBounds(const doc::ComponentInstance& comp) {
@@ -186,6 +185,7 @@ QString mateTypeName(doc::MateType type) {
     return {};
 }
 
+/// A point or direction as the dialogs show it: "(10, 0, 2.5)".
 QString formatPoint(const math::Vec3& p) {
     const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
     return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
@@ -3113,7 +3113,8 @@ void MainWindow::onSuppressComponent() {
         if (!form.exec()) return;
         id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
     }
-    setComponentSuppressed(id, !m_assembly->component(id)->suppressed);
+    const auto* comp = m_assembly->component(id);
+    if (comp != nullptr) setComponentSuppressed(id, !comp->suppressed);
 }
 
 void MainWindow::onRenameComponent() {

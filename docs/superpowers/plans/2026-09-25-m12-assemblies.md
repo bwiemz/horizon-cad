@@ -68,6 +68,9 @@ File menu only.
     bound to the key.
   - Its current row and the view's selection follow each other. A
     component chosen in the tree is highlighted whole: a pick with no face.
+  - The current row is kept only within one assembly. Ids start at 1 in
+    each, so switching tabs made another assembly's #1 current, for Delete
+    to remove.
 - **Commands act on the component clicked or current in the tree.**
   - Move: by a vector. Rotate: about X, Y or Z, through the component's
     middle, by an angle.

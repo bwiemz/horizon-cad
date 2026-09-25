@@ -7,7 +7,10 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QApplication>
+#include <QKeyEvent>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QTemporaryDir>
 #include <QTreeWidget>
 #include <cmath>
@@ -292,4 +295,33 @@ TEST(AssembliesTest, ClickedCylindersBecomeConcentric) {
     EXPECT_TRUE(endsWith(m.b.faceId.tag(), "/side")) << m.b.faceId.tag();
     const Vec3 second = translationOf(assembly.components()[1]);
     EXPECT_NEAR(std::hypot(second.x, second.y), 0.0, 1e-6) << "on the first's axis";
+}
+
+// The tree's current row is not carried from one assembly to another: both
+// number their components from 1, and the other's #1 was made current, for
+// Delete to remove.
+TEST(AssembliesTest, TheTreeKeepsNoChoiceFromAnotherAssembly) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto* tabs = w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    ASSERT_NE(tabs, nullptr);
+    auto& first = newAssembly(w);
+    const int firstTab = tabs->currentIndex();
+    insert(w, block);
+    auto& second = newAssembly(w);
+    const int secondTab = tabs->currentIndex();
+    insert(w, block);
+    ASSERT_EQ(first.components().front().id, second.components().front().id);
+
+    tabs->setCurrentIndex(firstTab);
+    chooseInTree(w, first.components().front().id);
+    tabs->setCurrentIndex(secondTab);
+    auto* panel = w.findChild<hz::ui::AssemblyTreePanel*>();
+    EXPECT_EQ(panel->currentComponent(), 0u) << "nothing chosen in this assembly";
+
+    QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+    QApplication::sendEvent(panel->tree(), &del);
+    EXPECT_EQ(second.components().size(), 1u);
 }
