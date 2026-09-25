@@ -3828,8 +3828,11 @@ void MainWindow::onMassProperties() {
     FeatureForm form(this, verb);
     auto* choice = form.choice(QStringLiteral("material"), tr("Material:"), names);
     if (!form.exec()) return;
-    const auto& [materialName, material] =
-        materials[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
+    // Named, not a structured binding: the worker's lambda captures the
+    // material, and Clang before 16 (CI's clang-tidy) cannot capture those.
+    const auto& chosen = materials[static_cast<size_t>(std::max(choice->currentIndex(), 0))];
+    const QString& materialName = chosen.first;
+    const std::optional<model::Material>& material = chosen.second;
     const model::Material* density = material ? &*material : nullptr;
     const auto modelled = model::MassPropertiesCalculator::compute(*solid, density);
     if (!modelled.valid) {
