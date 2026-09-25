@@ -53,6 +53,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/OverlayRenderer.h
     include/horizon/ui/ViewportInputHandler.h
     include/horizon/ui/DrawingCache.h
+    include/horizon/ui/PendingAdds.h
     include/horizon/ui/ViewportRenderer.h
     include/horizon/ui/FeatureTreePanel.h
     include/horizon/ui/FeatureForm.h

@@ -18,6 +18,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/PendingAdds.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RebuildJob.h"
 
@@ -488,16 +489,7 @@ private:
     std::unique_ptr<RebuildJob> m_rebuildJob;
     std::shared_ptr<doc::Document> m_rebuildDocument;  ///< what the job builds; kept alive
     bool m_rebuildAgain = false;                       ///< the document changed while the job ran
-    /// A feature just added, whose build is yet to be seen (addModelFeature):
-    /// the step, as long as the history is where the add left it.
-    struct PendingAdd {
-        std::weak_ptr<doc::Document> document;
-        const doc::Command* step = nullptr;
-        const doc::Feature* feature = nullptr;
-        std::uint64_t history = 0;  ///< the undo revision the add left
-        QString verb;
-    };
-    std::optional<PendingAdd> m_pendingAdd;
+    PendingAdds m_pendingAdds;  ///< features added whose builds are yet to be seen
     bool m_addRefused = false;  ///< the last add was refused at once
     std::uint64_t m_tessellations = 0;
     QElapsedTimer m_rebuildClock;  ///< since the job started (monotonic)
