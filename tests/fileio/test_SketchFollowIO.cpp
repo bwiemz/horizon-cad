@@ -154,6 +154,6 @@ TEST(SketchFollowIOTest, AProjectedEdgeIsKeptAndDrawnAgainFromACopy) {
     const auto* line = dynamic_cast<const hz::draft::DraftLine*>(drawn->get());
     ASSERT_NE(line, nullptr);
     EXPECT_NEAR(line->start().x, 25.0, 1e-9) << "the document's own, drawn again";
-    EXPECT_TRUE(part.sketch->spatialIndex().query(line->boundingBox()).size() >= 1u)
+    EXPECT_FALSE(part.sketch->spatialIndex().query(line->boundingBox()).empty())
         << "and found where it now is";
 }
