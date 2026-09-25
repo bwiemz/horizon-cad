@@ -77,7 +77,9 @@ private:
     void redraw(Sheet& sheet, const QString& verb);
 
     WorkbenchHost& m_host;
-    std::vector<Sheet> m_sheets;
+    /// Each sheet where it was made: a form holds one while it is open, and
+    /// the list may lose a closed sheet meanwhile (refreshDrawingsOf).
+    std::vector<std::unique_ptr<Sheet>> m_sheets;
 };
 
 }  // namespace hz::ui

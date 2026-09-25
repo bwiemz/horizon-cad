@@ -5,8 +5,12 @@
 
 #include <gtest/gtest.h>
 
+#include <QApplication>
+#include <QComboBox>
+#include <QDialog>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -18,6 +22,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
@@ -281,4 +286,59 @@ TEST(WorkbenchesTest, AVersionOneSheetKeepsItsLayoutWhenSaved) {
     EXPECT_NEAR(again.min().y, drawn.min().y, 1e-9);
     EXPECT_NEAR(again.max().x, drawn.max().x, 1e-9);
     EXPECT_NEAR(again.max().y, drawn.max().y, 1e-9);
+}
+
+// A closed sheet forgotten while another's form is open (a reading on a
+// worker ends in the form's events and draws the part's sheets again) leaves
+// the form's sheet as it was: the form kept a pointer into the list of
+// sheets, and forgetting one shifted the rest under it.
+TEST(WorkbenchesTest, ASheetForgottenWhileAFormIsOpenLeavesTheOthers) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    const std::string first = dir.filePath(QStringLiteral("first.hzdwg")).toStdString();
+    const std::string second = dir.filePath(QStringLiteral("second.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(first, spec));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(second, spec));
+
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(first)));
+    ASSERT_TRUE(workbench.open(QString::fromStdString(second)));
+    // The first sheet's tab closed: the workbench still lists it.
+    host.documents().closeDocument(host.tabs.front().first);
+    host.tabs.erase(host.tabs.begin());
+    hz::doc::Document& shown = *host.tabs.back().first;
+
+    // While the Scale form is open, the part's sheets are drawn again (the
+    // closed one forgotten), then 2:1 is chosen.
+    bool answered = false;
+    QTimer answer;
+    QObject::connect(&answer, &QTimer::timeout, [&] {
+        auto* form = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (form == nullptr || form->windowTitle() != QStringLiteral("Drawing Scale")) return;
+        answer.stop();
+        workbench.refreshDrawingsOf(cube.toStdString());
+        auto* scale = form->findChild<QComboBox*>(QStringLiteral("scale"));
+        ASSERT_NE(scale, nullptr);
+        scale->setCurrentIndex(scale->findText(QStringLiteral("2:1")));
+        answered = true;
+        form->accept();
+    });
+    answer.start(5);
+    QTimer::singleShot(10'000, [&] {
+        if (auto* form = qobject_cast<QDialog*>(QApplication::activeModalWidget())) form->reject();
+    });
+    workbench.onScale();
+    ASSERT_TRUE(answered);
+    EXPECT_TRUE(shown.isDirty()) << "drawn at the scale chosen";
+    bool atTwo = false;
+    for (const auto& entity : shown.draftDocument().entities()) {
+        if (const auto* text = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+            atTwo = atTwo || text->text() == "SCALE: 2:1";
+        }
+    }
+    EXPECT_TRUE(atTwo);
 }

@@ -47,8 +47,8 @@ DrawingWorkbench::DrawingWorkbench(WorkbenchHost& host, QObject* parent)
 
 const DrawingWorkbench::Sheet* DrawingWorkbench::sheetOf(const doc::Document* document) const {
     if (document == nullptr) return nullptr;
-    for (const Sheet& sheet : m_sheets) {
-        if (sheet.document.lock().get() == document) return &sheet;
+    for (const auto& sheet : m_sheets) {
+        if (sheet->document.lock().get() == document) return sheet.get();
     }
     return nullptr;
 }
@@ -167,7 +167,7 @@ void DrawingWorkbench::onNewDrawingFromPart() {
         return;
     }
     document->setDirty(true);  // new, and not saved
-    m_sheets.push_back({document, spec});
+    m_sheets.push_back(std::make_unique<Sheet>(Sheet{document, spec}));
     m_host.documents().watch(partPath);
     m_host.addTab(document, tr("Drawing of %1").arg(stem));
     m_host.setPrompt(tr("Drawing made."));
@@ -189,7 +189,7 @@ bool DrawingWorkbench::open(const QString& fileName) {
     }
     document->setFilePath(path);
     document->setDirty(false);
-    m_sheets.push_back({document, spec});
+    m_sheets.push_back(std::make_unique<Sheet>(Sheet{document, spec}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.documents().watch(spec.partPath);
     m_host.addTab(document, QFileInfo(fileName).fileName());
@@ -252,11 +252,11 @@ void DrawingWorkbench::shown(doc::Document& document) {
 
 void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
     int redrawn = 0;
-    for (Sheet& sheet : m_sheets) {
-        const auto document = sheet.document.lock();
-        if (!document || !doc::DocumentManager::samePath(sheet.spec.partPath, path)) continue;
+    for (const auto& sheet : m_sheets) {
+        const auto document = sheet->document.lock();
+        if (!document || !doc::DocumentManager::samePath(sheet->spec.partPath, path)) continue;
         std::string error;
-        if (draw(*document, sheet.spec, &error)) {
+        if (draw(*document, sheet->spec, &error)) {
             ++redrawn;
         } else {
             m_host.showStatus(tr("A drawing of \"%1\" could not be drawn again: %2")
@@ -266,7 +266,7 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
         }
     }
     // Sheets whose tabs have closed are forgotten.
-    std::erase_if(m_sheets, [](const Sheet& sheet) { return sheet.document.expired(); });
+    std::erase_if(m_sheets, [](const auto& sheet) { return sheet->document.expired(); });
     if (redrawn > 0) m_host.viewport().update();
 }
 
@@ -286,9 +286,12 @@ void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
 
 void DrawingWorkbench::onTitleBlock() {
     const QString verb = tr("Title Block");
-    Sheet* sheet = activeSheet(verb);
-    if (sheet == nullptr) return;
-    model::TitleBlock& tb = sheet->spec.titleBlock;
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    // What the form starts from; the sheet is found again when it closes.
+    const std::shared_ptr<doc::Document> document = active->document.lock();
+    const model::TitleBlock tb = active->spec.titleBlock;
+    const model::Sheet paperWas = active->spec.sheet;
     FeatureForm form(m_host.dialogParent(), verb);
     const auto field = [&form](const char* name, const QString& label, const std::string& value) {
         return form.text(QString::fromLatin1(name), label, QString::fromStdString(value));
@@ -304,49 +307,57 @@ void DrawingWorkbench::onTitleBlock() {
     QStringList papers;
     int current = 0;
     for (const model::PaperSize size : paperSizes()) {
-        if (size == sheet->spec.sheet.size) current = static_cast<int>(papers.size());
+        if (size == paperWas.size) current = static_cast<int>(papers.size());
         papers << QString::fromStdString(model::paperSizeName(size));
     }
     auto* paper = form.choice(QStringLiteral("paper"), tr("Paper:"), papers);
     paper->setCurrentIndex(current);
     auto* orientation = form.choice(QStringLiteral("orientation"), tr("Orientation:"),
                                     {tr("Landscape"), tr("Portrait")});
-    orientation->setCurrentIndex(
-        sheet->spec.sheet.orientation == model::Orientation::Landscape ? 0 : 1);
+    orientation->setCurrentIndex(paperWas.orientation == model::Orientation::Landscape ? 0 : 1);
     if (!form.exec()) return;
+    // The form ran the events: the sheet is found again, not remembered.
+    Sheet* sheet = sheetOf(document.get());
+    if (sheet == nullptr) return;
 
     const auto read = [](QLineEdit* edit) { return edit->text().trimmed().toStdString(); };
-    tb.title = read(title);
-    tb.partNumber = read(number);
-    tb.revision = read(revision);
-    tb.drawnBy = read(drawnBy);
-    tb.date = read(date);
-    tb.material = read(material);
-    tb.company = read(company);
-    tb.sheetNumber = read(sheetNumber);
+    model::TitleBlock& fields = sheet->spec.titleBlock;
+    fields.title = read(title);
+    fields.partNumber = read(number);
+    fields.revision = read(revision);
+    fields.drawnBy = read(drawnBy);
+    fields.date = read(date);
+    fields.material = read(material);
+    fields.company = read(company);
+    fields.sheetNumber = read(sheetNumber);
     sheet->spec.sheet.size = paperSizes()[static_cast<size_t>(std::max(paper->currentIndex(), 0))];
     sheet->spec.sheet.orientation = orientation->currentIndex() == 1
                                         ? model::Orientation::Portrait
                                         : model::Orientation::Landscape;
     // A new paper: the automatic layout follows it.
     redraw(*sheet, verb);
-    if (auto document = sheet->document.lock()) shown(*document);
+    shown(*document);
 }
 
 void DrawingWorkbench::onScale() {
     const QString verb = tr("Drawing Scale");
-    Sheet* sheet = activeSheet(verb);
-    if (sheet == nullptr) return;
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    const std::shared_ptr<doc::Document> document = active->document.lock();
+    const double scaleWas = active->spec.scale;
     QStringList scales{tr("Largest that fits")};
     int current = 0;
     for (const double s : model::DrawingGenerator::standardScales()) {
-        if (std::abs(s - sheet->spec.scale) < 1e-12) current = static_cast<int>(scales.size());
+        if (std::abs(s - scaleWas) < 1e-12) current = static_cast<int>(scales.size());
         scales << QString::fromStdString(model::DrawingGenerator::scaleName(s));
     }
     FeatureForm form(m_host.dialogParent(), verb);
     auto* choice = form.choice(QStringLiteral("scale"), tr("Scale:"), scales);
     choice->setCurrentIndex(current);
     if (!form.exec()) return;
+    // The form ran the events: the sheet is found again, not remembered.
+    Sheet* sheet = sheetOf(document.get());
+    if (sheet == nullptr) return;
     const int index = choice->currentIndex();
     sheet->spec.scale =
         index <= 0 ? 0.0
