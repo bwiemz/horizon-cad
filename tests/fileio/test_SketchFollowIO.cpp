@@ -38,7 +38,10 @@ struct BossOnABox {
         EXPECT_TRUE(doc.rebuildModel());
         const std::string top = box->featureID() + "/top";
         const auto face = hz::model::planeOfFace(*doc.solid(), top);
-        EXPECT_TRUE(face.has_value());
+        if (!face) {
+            ADD_FAILURE() << "no plane for " << top;
+            return;
+        }
         sketch = std::make_shared<Sketch>(SketchPlane(face->origin, face->normal, Vec3::UnitX));
         sketch->setFace(top);
         sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(-1, -1), Vec2(1, 1)));

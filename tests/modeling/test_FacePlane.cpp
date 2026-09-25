@@ -31,13 +31,13 @@ TEST(FacePlaneTest, AFaceIsNamedWholeWithoutItsPieces) {
 TEST(FacePlaneTest, ABoxsFacesFaceOutOfIt) {
     const auto box = PrimitiveFactory::makeBox(10, 20, 30);
     const auto top = planeOfFace(*box, "box/top");
-    ASSERT_TRUE(top.has_value());
+    if (!top) FAIL() << "no plane for the top";
     EXPECT_NEAR(top->normal.z, 1.0, 1e-12);
     EXPECT_NEAR(top->origin.x, 5.0, 1e-12);
     EXPECT_NEAR(top->origin.y, 10.0, 1e-12);
     EXPECT_NEAR(top->origin.z, 30.0, 1e-12);
     const auto bottom = planeOfFace(*box, "box/bottom");
-    ASSERT_TRUE(bottom.has_value());
+    if (!bottom) FAIL() << "no plane for the bottom";
     EXPECT_NEAR(bottom->normal.z, -1.0, 1e-12) << "out of the part, not along the loop";
     EXPECT_NEAR(bottom->origin.z, 0.0, 1e-12);
 }
@@ -76,7 +76,7 @@ TEST(FacePlaneTest, ASplitFaceIsFoundWhole) {
     }
     ASSERT_EQ(pieces, 2) << "the top in two";
     const auto top = planeOfFace(*grooved, "box/top");
-    ASSERT_TRUE(top.has_value());
+    if (!top) FAIL() << "no plane for the top in two";
     EXPECT_NEAR(top->normal.z, 1.0, 1e-9);
     EXPECT_NEAR(top->origin.z, 5.0, 1e-9);
 }
