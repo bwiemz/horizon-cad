@@ -21,6 +21,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Faceting.h"
@@ -433,4 +434,30 @@ TEST(StepCurvedTest, WhatCannotBeWrittenAsDesignedIsKeptInFacetsAndSaid) {
     const auto [text, faceted] = designed(*box);
     EXPECT_TRUE(faceted.empty());
     EXPECT_EQ(count(text, "ADVANCED_FACE("), 6u);
+}
+
+// A rim's circle is shared by its chords, and a Boolean gives it to the
+// pieces of a chord it cuts, one end inside the circle: an edge whose own
+// ends are not on its circle is not written as an arc of it (the arc would
+// not end at its vertex), and its face goes out in facets, said.
+TEST(StepCurvedTest, AnEdgeWhoseEndsAreOffItsCircleIsNotWrittenOnIt) {
+    auto cyl = hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeCylinder(4.0, 6.0),
+                                               hz::math::Mat4::identity());
+    hz::topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        if (e.analyticCurve && e.halfEdge != nullptr &&
+            std::abs(e.halfEdge->origin->point.z) < 1e-12) {
+            rim = &e;
+            break;
+        }
+    }
+    ASSERT_NE(rim, nullptr) << "a bottom rim chord";
+    rim->analyticCurve = std::make_shared<hz::geo::NurbsCurve>(
+        hz::geo::NurbsCurve::makeCircle(hz::math::Vec3(0, 0, 0), 4.1));
+    const auto [text, faceted] = designed(*cyl);
+    ASSERT_EQ(faceted.size(), 1u);
+    EXPECT_NE(faceted.front().find("off its circle"), std::string::npos) << faceted.front();
+    EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 0u);
+    const auto back = StepFormat::fromString(text);
+    ASSERT_EQ(back.size(), 1u) << StepFormat::lastError();
 }

@@ -464,14 +464,13 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         // The outline in loops: from a half-edge on it to the next, round
         // the vertex it ends at, over the facets' own edges.
         std::unordered_set<const topo::HalfEdge*> left(outline.begin(), outline.end());
+        std::size_t nextStart = 0;
         while (!left.empty()) {
             std::vector<const topo::HalfEdge*> loop;
-            const topo::HalfEdge* he = *std::min_element(
-                left.begin(), left.end(), [&](const topo::HalfEdge* a, const topo::HalfEdge* b) {
-                    // The same start each time, whatever the set's order.
-                    return std::find(outline.begin(), outline.end(), a) <
-                           std::find(outline.begin(), outline.end(), b);
-                });
+            // The same start each time, whatever the set's order: the first
+            // of the outline, in its own order, still left.
+            while (left.count(outline[nextStart]) == 0) ++nextStart;
+            const topo::HalfEdge* he = outline[nextStart];
             bool closed = false;
             for (std::size_t guard = 0; guard <= halfEdges; ++guard) {
                 loop.push_back(he);
@@ -577,7 +576,22 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                 const Vec3& a = e->halfEdge->origin->point;
                 const Vec3& b = e->halfEdge->twin->origin->point;
                 if (e->analyticCurve) {
-                    if (circleOf(*e->analyticCurve)) continue;
+                    // A rim's circle is shared by its chords, and a Boolean
+                    // gives it to the pieces of a chord it cuts, whose cut
+                    // end is inside the circle: this edge's own ends on it.
+                    if (const auto circle = circleOf(*e->analyticCurve)) {
+                        const double tol = 1e-9 * std::max(1.0, circle->radius);
+                        const auto onIt = [&](const Vec3& p) {
+                            const Vec3 off = p - circle->center;
+                            return std::abs(off.length() - circle->radius) <= tol &&
+                                   std::abs(off.dot(circle->normal)) <= tol;
+                        };
+                        if (onIt(a) && onIt(b)) continue;
+                        face.why =
+                            "an edge of its outline has an end off its circle (a cut "
+                            "chord)";
+                        break;
+                    }
                     const Vec3 c0 = e->analyticCurve->evaluate(e->analyticCurve->tMin());
                     const Vec3 c1 = e->analyticCurve->evaluate(e->analyticCurve->tMax());
                     const double tol = 1e-9 * std::max(1.0, scale);
