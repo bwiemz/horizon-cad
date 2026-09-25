@@ -92,8 +92,10 @@ static int runSelfTest(QApplication& app, hz::ui::MainWindow& window) {
     QElapsedTimer clock;
     clock.start();
     QTimer poll;
+    bool drawn = false;  // seen here, not only inferred from the exit status
     QObject::connect(&poll, &QTimer::timeout, &app, [&] {
         if (viewport->hasDrawn()) {
+            drawn = true;
             app.exit(0);
         } else if (!viewport->graphicsProblem().isEmpty()) {
             app.exit(3);  // a "Graphics Problem" box may be up: exit() ends its loop too
@@ -102,7 +104,9 @@ static int runSelfTest(QApplication& app, hz::ui::MainWindow& window) {
         }
     });
     poll.start(100);
-    const int status = app.exec();
+    int status = app.exec();
+    // Quit for any other reason (the window closed, say): not a pass.
+    if (status == 0 && !drawn) status = 4;
     switch (status) {
         case 0:
             out << "self-test: the window is shown and its viewport draws ("
@@ -193,8 +197,9 @@ int main(int argc, char* argv[]) {
     // A release links vcpkg's fontconfig into the application, and it looks
     // for its configuration where it was built: "Cannot load default config
     // file" on every start, and the system's font settings unread. Point it
-    // at the system's, unless the user already chose one.
+    // at the system's, unless the user already chose one (a file or a path).
     if (qEnvironmentVariableIsEmpty("FONTCONFIG_FILE") &&
+        qEnvironmentVariableIsEmpty("FONTCONFIG_PATH") &&
         QFile::exists(QStringLiteral("/etc/fonts/fonts.conf"))) {
         qputenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf");
     }
