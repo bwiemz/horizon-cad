@@ -378,6 +378,24 @@ TEST(DxfFidelityTest, AHatchBoundaryOfEdgesFollowsItsArc) {
     EXPECT_TRUE(contains(in.report.approximated, "curved boundary brought in as segments"));
 }
 
+// An arc edge whose angles are absurd still ends, and stays on its circle.
+// A sweep of -1e88 degrees had a turn added until it was positive, which
+// never happened (the turn is below its last digit), and one of +1e89 made
+// a step count no int holds (undefined behaviour; found by fuzzing).
+TEST(DxfFidelityTest, AHatchArcEdgeWithAbsurdAnglesEndsOnItsCircle) {
+    for (const char* angles : {"50\n1e90\n51\n0\n", "50\n0\n51\n1e89\n"}) {
+        Loaded in(dxf(std::string("0\nHATCH\n8\n0\n10\n0\n20\n0\n30\n0\n2\nANSI31\n70\n0\n71\n0\n"
+                                  "91\n1\n92\n1\n93\n2\n"
+                                  "72\n1\n10\n-5\n20\n0\n11\n5\n21\n0\n"
+                                  "72\n2\n10\n0\n20\n0\n40\n5\n") +
+                      angles + "73\n1\n97\n0\n75\n1\n76\n1\n52\n45\n41\n1\n77\n0\n78\n0\n98\n0\n"));
+        ASSERT_TRUE(in.ok) << in.error;
+        for (const auto* hatch : in.all<hz::draft::DraftHatch>()) {
+            for (const Vec2& q : hatch->boundary()) EXPECT_LE(q.length(), 5.0 + 1e-9) << angles;
+        }
+    }
+}
+
 // Blocks that insert blocks, ten at a time, six deep: a million lines from a
 // few kilobytes. The import stops flattening at its budget and says so.
 TEST(DxfFidelityTest, NestedBlocksThatMultiplyAreCutAtTheBudget) {
