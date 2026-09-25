@@ -111,12 +111,14 @@ class EditFeatureCommand : public Command {
 public:
     /// @p vectors are directions and points to set (Feature::setVector);
     /// @p expressions parameters given as expressions (Phase 155), an empty
-    /// one given its number again.
+    /// one given its number again; @p references what it refers to by name
+    /// (Feature::setReference(), Phase 157).
     EditFeatureCommand(Document& doc, const Feature* feature,
                        std::map<std::string, double> parameters,
                        std::optional<BodyOperation> operation = std::nullopt,
                        std::map<std::string, math::Vec3> vectors = {},
-                       std::map<std::string, std::string> expressions = {});
+                       std::map<std::string, std::string> expressions = {},
+                       std::map<std::string, std::string> references = {});
 
     void execute() override;
     void undo() override;
@@ -125,7 +127,8 @@ public:
 private:
     void apply(const std::map<std::string, double>& parameters, BodyOperation operation,
                const std::map<std::string, math::Vec3>& vectors,
-               const std::map<std::string, std::string>& expressions);
+               const std::map<std::string, std::string>& expressions,
+               const std::map<std::string, std::string>& references);
 
     Document& m_doc;
     const Feature* m_feature;
@@ -137,6 +140,8 @@ private:
     std::map<std::string, math::Vec3> m_oldVectors;
     std::map<std::string, std::string> m_newExpressions;  ///< the changes
     std::map<std::string, std::string> m_oldExpressions;  ///< all of them, before
+    std::map<std::string, std::string> m_newReferences;
+    std::map<std::string, std::string> m_oldReferences;
 };
 
 /// Roll the part back to just after feature @p index (-1: to the end): the

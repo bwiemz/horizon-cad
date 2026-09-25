@@ -336,6 +336,46 @@ TEST(SketchesTest, AnEdgeProjectedIntoASketchFollowsThePart) {
     EXPECT_NEAR(moved->start().x, 25.0, 1e-9) << "the edge at x = 30 now";
 }
 
+// Phase 157c: a hole cut from a sketch on the top face up to the bottom face
+// goes through the box, and still does when the box is made taller: the
+// sketch follows the top, the cut goes to the bottom.
+TEST(SketchesTest, AHoleCutUpToTheBottomFaceStaysThrough) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    circle(drive, w, Vec2(0, 0), 2.0);
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers()
+            .choose(QStringLiteral("extent"), QStringLiteral("Up to a face"))
+            .chooseContaining(QStringLiteral("upToFace"), QStringLiteral("facing (0, 0, -1)"))
+            .choose(QStringLiteral("way"), QStringLiteral("Reversed"))
+            .combine(hz::doc::BodyOperation::Cut));
+    const double hole = facetedCircleArea(2.0);
+    EXPECT_NEAR(partVolume(doc), 1000.0 - hole * 10.0, 1e-6)
+        << w.statusBar()->currentMessage().toStdString();
+    const auto* cut = dynamic_cast<const hz::doc::ExtrudeFeature*>(doc.featureTree().feature(1));
+    ASSERT_NE(cut, nullptr);
+    EXPECT_EQ(cut->extent(), hz::doc::ExtrudeFeature::Extent::UpToFace);
+    EXPECT_EQ(cut->upToFace(), doc.featureTree().feature(0)->featureID() + "/bottom");
+
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().number(QStringLiteral("depth"), 20.0));
+        auto* tree = w.findChild<hz::ui::FeatureTreePanel*>()->findChild<QTreeWidget*>();
+        tree->setCurrentItem(tree->topLevelItem(0));
+        trigger(w, "editFeature");
+        ASSERT_TRUE(edit.seen());
+    }
+    EXPECT_NEAR(partVolume(doc), 2000.0 - hole * 20.0, 1e-6) << "still through";
+}
+
 // Undoing the new sketch takes it away, and the window leaves it.
 TEST(SketchesTest, UndoingANewSketchLeavesIt) {
     MainWindow w;

@@ -17,7 +17,16 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
+## Unreleased — Professional workflows, Milestone 16 (Phases 154–157)
+
+- **Extrude up to a face (157, part 3).**
+  - Extrude's "Goes" has "Up to a face": the extrusion goes as far as a
+    flat face of the part parallel to the sketch, wherever the part puts
+    that face. A hole cut from the top face up to the bottom face stays a
+    through hole when the part is made taller.
+  - Edit Feature shows the face and can change it.
+  - A face at a slant is refused, and the message says so.
+  - Files are saved as format version 22.
 
 - **Part edges projected into a sketch; construction geometry (157, part 2).**
   - Model ▸ Project Edges draws the part's chosen edges into the sketch

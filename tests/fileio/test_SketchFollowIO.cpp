@@ -124,7 +124,7 @@ TEST(SketchFollowIOTest, AProjectedEdgeIsKeptAndDrawnAgainFromACopy) {
     part.sketch->addEntity(guide);
 
     const std::string text = NativeFormat::documentToJson(part.doc, false);
-    EXPECT_EQ(nlohmann::json::parse(text).at("version").get<int>(), 21)
+    EXPECT_GE(nlohmann::json::parse(text).at("version").get<int>(), 21)
         << "an older build would take the guide for part of the profile";
     Document loaded;
     ASSERT_TRUE(NativeFormat::documentFromJson(text, loaded));
@@ -153,4 +153,23 @@ TEST(SketchFollowIOTest, AProjectedEdgeIsKeptAndDrawnAgainFromACopy) {
     EXPECT_NEAR(line->start().x, 25.0, 1e-9) << "the document's own, drawn again";
     EXPECT_TRUE(part.sketch->spatialIndex().query(line->boundingBox()).size() >= 1u)
         << "and found where it now is";
+}
+
+// Phase 157c: an extrusion up to a face keeps the face, and the extent.
+TEST(SketchFollowIOTest, AnExtrusionUpToAFaceIsKept) {
+    BossOnABox part;
+    auto* boss = dynamic_cast<hz::doc::ExtrudeFeature*>(part.doc.featureTree().feature(1));
+    ASSERT_NE(boss, nullptr);
+    boss->setExtent(hz::doc::ExtrudeFeature::Extent::UpToFace);
+    boss->setUpToFace(part.box->featureID() + "/bottom");
+    const std::string text = NativeFormat::documentToJson(part.doc, false);
+    EXPECT_EQ(nlohmann::json::parse(text).at("version").get<int>(), 22)
+        << "an older build would read the extent as its distance";
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, loaded));
+    const auto* kept =
+        dynamic_cast<const hz::doc::ExtrudeFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(kept, nullptr);
+    EXPECT_EQ(kept->extent(), hz::doc::ExtrudeFeature::Extent::UpToFace);
+    EXPECT_EQ(kept->upToFace(), boss->upToFace());
 }
