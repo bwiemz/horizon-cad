@@ -21,6 +21,7 @@
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/PendingAdds.h"
 
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
@@ -194,4 +195,58 @@ TEST(GuiThreadFreeTest, ALargeFileIsReadOnAWorker) {
     EXPECT_NE(w.activeDocument(), shown);
     ASSERT_TRUE(w.openPath(drawing));
     EXPECT_EQ(w.activeDocument(), shown) << "already open: its tab";
+}
+
+// The pending adds are one for each document: an add in one tab while
+// another's build still runs does not take the other's place. One for the
+// window let it, and the other's feature, failing itself, stayed.
+TEST(GuiThreadFreeTest, EachDocumentHasItsOwnPendingAdd) {
+    auto a = std::make_shared<hz::doc::Document>();
+    auto b = std::make_shared<hz::doc::Document>();
+    hz::ui::PendingAdds pending;
+    pending.put({a, nullptr, nullptr, 1, QStringLiteral("Cut")});
+    pending.put({b, nullptr, nullptr, 7, QStringLiteral("Box")});
+    EXPECT_EQ(pending.size(), 2u) << "b's does not take a's place";
+    const auto forA = pending.take(*a);
+    ASSERT_TRUE(forA.has_value());
+    EXPECT_EQ(forA->verb, QStringLiteral("Cut"));
+    EXPECT_FALSE(pending.take(*a).has_value()) << "taken";
+
+    // A document's next add replaces its last, which the push settled; a
+    // closed document's goes.
+    pending.put({b, nullptr, nullptr, 8, QStringLiteral("Fillet")});
+    EXPECT_EQ(pending.size(), 1u);
+    EXPECT_EQ(pending.take(*b)->verb, QStringLiteral("Fillet"));
+    pending.put({a, nullptr, nullptr, 2, QStringLiteral("Shell")});
+    a.reset();
+    pending.put({b, nullptr, nullptr, 9, QStringLiteral("Draft")});
+    EXPECT_EQ(pending.size(), 1u) << "the closed document's went";
+}
+
+// Two tabs' adds, one failing itself on the worker: each is settled for its
+// own document. (Whether the first's build returns before or after the
+// second add depends on timing; the per-document bookkeeping is tested
+// above.)
+TEST(GuiThreadFreeTest, AddsInTwoTabsAreEachSettled) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    box(w);
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+    auto* first = w.activeDocument();
+    box(w, 100.0, QStringLiteral("Keep the intersection"));  // fails itself, on the worker
+    ASSERT_TRUE(w.rebuildRunning());
+
+    for (QAction* a : w.findChildren<QAction*>()) {
+        if (a->text().remove(QLatin1Char('&')) == QStringLiteral("New Part")) {
+            a->trigger();
+            break;
+        }
+    }
+    ASSERT_NE(w.activeDocument(), first);
+    box(w);  // the new tab's, while the first's build still runs
+    ASSERT_TRUE(waitFor([&] { return !w.rebuildRunning(); }));
+
+    EXPECT_EQ(first->featureTree().featureCount(), 1u) << "the failing one withdrawn";
+    EXPECT_FALSE(first->undoStack().canRedo());
+    EXPECT_EQ(w.activeDocument()->featureTree().featureCount(), 1u) << "the new tab's box kept";
 }

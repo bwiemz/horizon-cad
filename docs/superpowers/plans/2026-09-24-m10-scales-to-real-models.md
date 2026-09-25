@@ -174,7 +174,11 @@ Also:
 - **A feature that fails itself is withdrawn** (a Cut that would leave
   nothing, an Intersect of bodies that do not touch).
   - The add leaves a pending mark: its document (held weakly), its step,
-    its feature, and the undo revision it left.
+    its feature, and the undo revision it left. There is one mark for each
+    document (`PendingAdds`). The review found a single mark for the window:
+    an add in another tab while a first tab's build still ran on the worker
+    took the first's place, and the first's failing feature was never
+    withdrawn.
   - When that document's build is shown or applied (`settlePendingAdd`, from
     `showBuildResult` and `onRebuildFinished`), the feature is refused if
     nothing has been done since and it is the failing one. It is taken back
@@ -205,9 +209,14 @@ Also:
 
 ### Tests
 
-7 new:
+9 new:
 - `UndoStack::withdraw`: undone and forgotten; only the newest step can be
   withdrawn; a saved state that had the step cannot be reached again.
+- `PendingAdds`: one for each document, taken for its own, replaced by that
+  document's next add, and let go of with a closed document. Also a window
+  test of adds in two tabs, one failing on the worker. That test does not
+  catch the race itself: whether the first build returns before the second
+  add depends on timing.
 - In the window (`GuiThreadFreeTest`):
   - an add builds once;
   - a feature that fails itself is withdrawn, with nothing to redo, here and

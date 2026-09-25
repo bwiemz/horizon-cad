@@ -35,6 +35,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -4139,7 +4140,7 @@ bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QS
     pending.verb = verb;
     m_document->undoStack().push(std::move(command));
     pending.history = m_document->undoStack().revision();
-    m_pendingAdd = std::move(pending);
+    m_pendingAdds.put(std::move(pending));
     m_addRefused = false;
     rebuildFeatureTree();
     if (m_addRefused) return false;
@@ -4155,10 +4156,9 @@ bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QS
 }
 
 bool MainWindow::settlePendingAdd(doc::Document& document) {
-    if (!m_pendingAdd) return false;
-    const auto held = m_pendingAdd->document.lock();
-    if (held.get() != &document) return false;  // another document's build
-    const PendingAdd pending = *std::exchange(m_pendingAdd, std::nullopt);
+    const auto taken = m_pendingAdds.take(document);
+    if (!taken) return false;  // nothing added to it waits
+    const PendingAdd& pending = *taken;
     // Anything done since the add (an undo, another step) settles it: the
     // feature, if it is still there, stays, failing like any other.
     if (document.undoStack().revision() != pending.history) return false;
