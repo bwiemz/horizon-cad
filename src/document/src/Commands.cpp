@@ -187,7 +187,7 @@ void DuplicateEntityCommand::execute() {
                 m_clones.push_back(clone);
             }
         }
-        remapCloneGroupIds(m_doc, m_clones);
+        adoptClones(m_doc, m_clones);
     }
     for (const auto& clone : m_clones) {
         m_doc.addEntity(clone);
@@ -229,7 +229,7 @@ void MirrorEntityCommand::execute() {
                 m_mirroredEntities.push_back(mirrored);
             }
         }
-        remapCloneGroupIds(m_doc, m_mirroredEntities);
+        adoptClones(m_doc, m_mirroredEntities);
     }
     for (const auto& e : m_mirroredEntities) {
         m_doc.addEntity(e);
@@ -271,7 +271,7 @@ void RotateEntityCommand::execute() {
                 m_rotatedEntities.push_back(rotated);
             }
         }
-        remapCloneGroupIds(m_doc, m_rotatedEntities);
+        adoptClones(m_doc, m_rotatedEntities);
     }
     for (const auto& e : m_rotatedEntities) {
         m_doc.addEntity(e);
@@ -313,7 +313,7 @@ void ScaleEntityCommand::execute() {
                 m_scaledEntities.push_back(scaled);
             }
         }
-        remapCloneGroupIds(m_doc, m_scaledEntities);
+        adoptClones(m_doc, m_scaledEntities);
     }
     for (const auto& e : m_scaledEntities) {
         m_doc.addEntity(e);
@@ -711,7 +711,10 @@ void CreateBlockCommand::execute() {
         math::BoundingBox bounds;
         for (uint64_t id : m_entityIds) {
             if (const auto e = m_doc.sharedEntity(id)) {
-                m_definition->entities.push_back(e->clone());
+                // A block's copy follows no edge of the part (Phase 157).
+                auto copy = e->clone();
+                copy->setSourceEdge({});
+                m_definition->entities.push_back(std::move(copy));
                 const auto bb = e->boundingBox();
                 if (bb.isValid()) bounds.expand(bb);
             }
@@ -759,6 +762,7 @@ void ExplodeBlockCommand::execute() {
     m_explodedEntities.clear();
     for (const auto& defEnt : ref->definition()->entities) {
         auto worldEnt = defEnt->clone();
+        worldEnt->setSourceEdge({});  // follows no edge of the part (Phase 157)
         // Apply the block ref transform: mirror, scale, rotate, translate.
         const math::Vec2& base = ref->definition()->basePoint;
         if (ref->mirrored()) worldEnt->mirror(base, base + math::Vec2(0.0, 1.0));
@@ -1325,13 +1329,14 @@ std::string UngroupEntitiesCommand::description() const {
 }
 
 // ---------------------------------------------------------------------------
-// remapCloneGroupIds
+// adoptClones
 // ---------------------------------------------------------------------------
 
-void remapCloneGroupIds(draft::DraftDocument& doc,
-                        std::vector<std::shared_ptr<draft::DraftEntity>>& clones) {
+void adoptClones(draft::DraftDocument& doc,
+                 std::vector<std::shared_ptr<draft::DraftEntity>>& clones) {
     std::unordered_map<uint64_t, uint64_t> remap;
     for (auto& clone : clones) {
+        clone->setSourceEdge({});
         uint64_t gid = clone->groupId();
         if (gid == 0) continue;
         auto it = remap.find(gid);

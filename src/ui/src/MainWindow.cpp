@@ -3271,7 +3271,7 @@ void MainWindow::onRectangularArray() {
         }
     }
 
-    doc::remapCloneGroupIds(m_document->activeDrawing(), allClones);
+    doc::adoptClones(m_document->activeDrawing(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -3325,7 +3325,7 @@ void MainWindow::onPolarArray() {
         }
     }
 
-    doc::remapCloneGroupIds(m_document->activeDrawing(), allClones);
+    doc::adoptClones(m_document->activeDrawing(), allClones);
     m_document->undoStack().push(std::move(composite));
 
     sel.clearSelection();
@@ -3884,7 +3884,19 @@ void MainWindow::onProjectEdges() {
         statusBar()->showMessage(tr("There is no part to project edges from"));
         return;
     }
-    const PickList edges = edgesOf(*solid);
+    // Each edge once, by the name it is kept by: a Boolean's pieces of one
+    // straight edge are listed apart by edgesOf, but are one edge here.
+    PickList edges;
+    {
+        const PickList all = edgesOf(*solid);
+        std::set<std::string> listed;
+        for (size_t row = 0; row < all.ids.size(); ++row) {
+            const std::string whole = model::wholeEdgeName(all.ids[row].tag());
+            if (!listed.insert(whole).second) continue;
+            edges.ids.push_back(topo::TopologyID::fromTag(whole));
+            edges.items.push_back(all.items[row]);
+        }
+    }
     if (edges.ids.empty()) {
         statusBar()->showMessage(tr("The part has no edges to project"));
         return;
@@ -3902,7 +3914,7 @@ void MainWindow::onProjectEdges() {
     QStringList missed;
     for (const int row : FeatureForm::checkedRows(list)) {
         // By its whole name, which lasts through a later feature's Boolean.
-        const std::string name = model::wholeEdgeName(edges.ids[static_cast<size_t>(row)].tag());
+        const std::string& name = edges.ids[static_cast<size_t>(row)].tag();
         std::string why;
         auto entity = model::projectEdge(*solid, name, sketch->plane(), &why);
         if (!entity) {
