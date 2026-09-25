@@ -185,6 +185,7 @@ void AssemblyDocument::clear() {
     m_nextMateId = 1;
     m_dirty = false;
     m_filePath.clear();
+    m_lengthUnit = math::LengthUnit::Millimetre;
 }
 
 }  // namespace hz::doc

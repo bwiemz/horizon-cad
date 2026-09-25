@@ -132,6 +132,9 @@ private slots:
     void onNewAssembly();
     void onOpenFile();
     void onPreferences();
+    /// Edit ▸ Document Units: the unit the active document shows and takes
+    /// lengths in (Phase 154), as one undo step.
+    void onDocumentUnits();
     void onAbout();
     void onSaveFile();
     void onSaveFileAs();

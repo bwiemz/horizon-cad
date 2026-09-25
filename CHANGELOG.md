@@ -17,6 +17,21 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 16 (Phase 154, in progress)
+
+- **Document units (154, part 1).**
+  - Each part, drawing, sheet and assembly has its own unit: millimetres,
+    centimetres, metres, inches or feet. It is saved with the file and set
+    with Edit ▸ Document Units, which you can undo.
+  - The model itself stays in millimetres, so changing the unit changes
+    nothing modelled.
+  - A new document takes the unit set in Preferences. Files saved before
+    this open in millimetres.
+  - The cursor coordinates, Measure Distance, Area and Angle, Mass
+    Properties, mate distances and interference volumes are all shown in
+    the document's unit. Mass Properties used to show millimetres whatever
+    the unit.
+
 ## Unreleased — Professional workflows, Milestone 15 (Phases 151–153) — complete
 
 - **STEP export as designed (151).**

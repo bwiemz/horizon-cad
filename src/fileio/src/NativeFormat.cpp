@@ -36,6 +36,7 @@
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/math/Units.h"
 #include "horizon/modeling/SolidTessellator.h"
 
 using json = nlohmann::json;
@@ -495,10 +496,28 @@ static void constraintsFromJson(const json& array, const draft::DraftDocument& d
     }
 }
 
+/// The unit a document shows and takes lengths in (Phase 154). An older
+/// build ignores it and reads the model as it is, in millimetres: no
+/// version bump.
+static json unitsJson(math::LengthUnit unit) {
+    return {{"length", std::string(math::symbolOf(unit))}};
+}
+
+/// A file's unit; millimetres when it names none (every file before Phase
+/// 154) or one that is not known.
+static math::LengthUnit unitsFrom(const json& root) {
+    const auto units = root.find("units");
+    if (units == root.end() || !units->is_object()) return math::LengthUnit::Millimetre;
+    const auto length = units->find("length");
+    if (length == units->end() || !length->is_string()) return math::LengthUnit::Millimetre;
+    return math::lengthUnitFrom(length->get<std::string>()).value_or(math::LengthUnit::Millimetre);
+}
+
 static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
     json root;
     root["version"] = kFormatVersion;
     root["type"] = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
+    root["units"] = unitsJson(doc.lengthUnit());
 
     // --- Dimension style ---
     const auto& ds = doc.draftDocument().dimensionStyle();
@@ -1059,6 +1078,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
         typeTag = root.at("type").get<std::string>();
     }
     doc.setType(typeTag == "hzpart" ? doc::DocumentType::Part : doc::DocumentType::Drawing);
+    doc.setLengthUnit(unitsFrom(root));
 
     // --- Load dimension style (v4+) ---
     if (root.contains("dimensionStyle")) {
@@ -1818,6 +1838,7 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
     json root;
     root["version"] = kFormatVersion;
     root["type"] = "hzasm";
+    root["units"] = unitsJson(asmDoc.lengthUnit());
 
     const std::filesystem::path asmDir = std::filesystem::path(filePath).parent_path();
 
@@ -1909,6 +1930,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     }
 
     asmDoc.clear();
+    asmDoc.setLengthUnit(unitsFrom(root));
 
     if (root.contains("components")) {
         size_t componentIndex = 0;

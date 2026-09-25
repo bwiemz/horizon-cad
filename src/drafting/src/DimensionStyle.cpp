@@ -4,18 +4,21 @@
 #include <locale>
 #include <sstream>
 
+#include "horizon/math/Units.h"
+
 namespace hz::draft {
 
 double millimetresPerUnit(const std::string& unit) {
-    if (unit == "cm") return 10.0;
-    if (unit == "m") return 1000.0;
-    if (unit == "in") return 25.4;
-    if (unit == "ft") return 304.8;
-    return 1.0;
+    const auto known = math::lengthUnitFrom(unit);
+    return known && isDimensionUnit(unit) ? math::millimetresPer(*known) : 1.0;
 }
 
 bool isDimensionUnit(const std::string& unit) {
-    return unit == "mm" || unit == "cm" || unit == "m" || unit == "in" || unit == "ft";
+    // By symbol only, as the file stores it: "inch" is not a style's unit.
+    for (const math::LengthUnit known : math::kLengthUnits) {
+        if (unit == math::symbolOf(known)) return true;
+    }
+    return false;
 }
 
 std::string DimensionStyle::formatLength(double mm) const {

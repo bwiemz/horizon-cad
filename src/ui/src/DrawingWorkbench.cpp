@@ -517,6 +517,7 @@ bool DrawingWorkbench::open(const QString& fileName) {
     }
     spec.annotations.reset();
     spec.frames.clear();
+    document->setLengthUnit(spec.lengthUnit);
     document->setFilePath(path);
     document->setDirty(false);
     for (const std::string& file : source->files) m_host.documents().watch(file);
@@ -536,6 +537,7 @@ bool DrawingWorkbench::save(doc::Document& document, const std::string& path, st
     }
     // Its spec, and what was drawn on it by hand.
     io::DrawingDocumentSpec written = sheet->spec;
+    written.lengthUnit = document.lengthUnit();
     written.annotations = annotationsOf(document);
     if (written.annotations) written.frames = framesOf(sheet->drawing);
     if (!io::DrawingDocumentIO::save(path, written)) {
@@ -574,6 +576,7 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     }
     spec.annotations.reset();
     spec.frames.clear();
+    document.setLengthUnit(spec.lengthUnit);
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
     for (const std::string& file : source->files) m_host.documents().watch(file);

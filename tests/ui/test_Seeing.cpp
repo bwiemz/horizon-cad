@@ -214,6 +214,30 @@ TEST(SeeingTest, TheMassPropertiesOfABox) {
     EXPECT_TRUE(answer.text().contains(QStringLiteral("(5, 5, 5)"))) << answer.text().toStdString();
 }
 
+// The same cube in a document in centimetres (Phase 154): its volume, area
+// and centre in them; its mass in grams still.
+TEST(SeeingTest, TheMassPropertiesOfABoxInTheDocumentsUnit) {
+    MainWindow w;
+    box(w);
+    {
+        FormFiller units(
+            QStringLiteral("Document Units"),
+            FormAnswers().choose(QStringLiteral("unit"), QStringLiteral("Centimetres (cm)")));
+        trigger(w, "action_document_units");
+        ASSERT_TRUE(units.seen());
+    }
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(QStringLiteral("Mass Properties"),
+                      FormAnswers().choose(QStringLiteral("material"), QStringLiteral("Steel")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_TRUE(answer.text().contains(QStringLiteral("Volume: 1 cm\u00B3"))) << text;
+    EXPECT_TRUE(answer.text().contains(QStringLiteral("Surface area: 6 cm\u00B2"))) << text;
+    EXPECT_TRUE(answer.text().contains(QStringLiteral("(0.5, 0.5, 0.5) cm"))) << text;
+    EXPECT_TRUE(answer.text().contains(QStringLiteral("Mass: 7.85 g"))) << text;
+}
+
 namespace {
 
 void cylinder(MainWindow& w) {

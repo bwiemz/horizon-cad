@@ -9,6 +9,7 @@
 
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/Units.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -186,6 +187,12 @@ public:
     const std::string& filePath() const { return m_filePath; }
     void setFilePath(const std::string& path) { m_filePath = path; }
 
+    // --- Unit (Phase 154) ---
+
+    /// The unit its lengths are shown and typed in, saved with it.
+    math::LengthUnit lengthUnit() const { return m_lengthUnit; }
+    void setLengthUnit(math::LengthUnit unit) { m_lengthUnit = unit; }
+
 private:
     std::vector<ComponentInstance> m_components;
     std::vector<Mate> m_mates;
@@ -193,6 +200,7 @@ private:
     uint64_t m_nextMateId = 1;
     bool m_dirty = false;
     std::string m_filePath;
+    math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;
 };
 
 }  // namespace hz::doc

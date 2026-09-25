@@ -42,12 +42,14 @@ void DocumentManager::releasePart(const std::string& path) {
 std::shared_ptr<Document> DocumentManager::newDocument(DocumentType type) {
     auto doc = std::make_shared<Document>();
     doc->setType(type);
+    doc->setLengthUnit(m_newUnit);
     m_documents.push_back(doc);
     return doc;
 }
 
 std::shared_ptr<AssemblyDocument> DocumentManager::newAssembly() {
     auto doc = std::make_shared<AssemblyDocument>();
+    doc->setLengthUnit(m_newUnit);
     m_assemblies.push_back(doc);
     return doc;
 }

@@ -14,6 +14,7 @@
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/Layer.h"
+#include "horizon/math/Units.h"
 
 namespace hz::doc {
 
@@ -184,6 +185,13 @@ public:
     const std::string& filePath() const { return m_filePath; }
     void setFilePath(const std::string& path) { m_filePath = path; }
 
+    // --- Unit (Phase 154) ---
+
+    /// The unit its lengths are shown and typed in, saved with it. The model
+    /// is in millimetres whatever it is.
+    math::LengthUnit lengthUnit() const { return m_lengthUnit; }
+    void setLengthUnit(math::LengthUnit unit) { m_lengthUnit = unit; }
+
 private:
     draft::DraftDocument m_draftDoc;
     draft::LayerManager m_layerManager;
@@ -204,6 +212,7 @@ private:
     bool m_built = false;          ///< a build has been applied...
     uint64_t m_builtRevision = 0;  ///< ...for this revision of the feature tree
     DocumentType m_type = DocumentType::Drawing;
+    math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;
 };
 
 }  // namespace hz::doc

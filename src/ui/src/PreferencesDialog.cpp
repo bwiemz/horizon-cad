@@ -76,7 +76,7 @@ PreferencesDialog::PreferencesDialog(const Preferences& prefs, const QStringList
     m_lengthUnit->setObjectName(QStringLiteral("lengthUnit"));
     for (const QString& unit : Preferences::lengthUnits()) m_lengthUnit->addItem(unit, unit);
     m_lengthUnit->setCurrentIndex(std::max(0, m_lengthUnit->findData(prefs.lengthUnit)));
-    draftingForm->addRow(tr("Show lengths in:"), m_lengthUnit);
+    draftingForm->addRow(tr("Unit for new documents:"), m_lengthUnit);
 
     m_decimals = new QSpinBox(drafting);
     m_decimals->setObjectName(QStringLiteral("decimals"));
@@ -84,8 +84,9 @@ PreferencesDialog::PreferencesDialog(const Preferences& prefs, const QStringList
     m_decimals->setValue(prefs.decimals);
     draftingForm->addRow(tr("Decimal places:"), m_decimals);
     auto* unitNote =
-        new QLabel(tr("The model is always in millimetres; this changes only how lengths are "
-                      "shown in coordinates and measurements."),
+        new QLabel(tr("Each document keeps its own unit (Edit \u25B8 Document Units). The model "
+                      "is always in millimetres; a unit changes only how lengths are shown and "
+                      "typed."),
                    drafting);
     unitNote->setWordWrap(true);
     draftingForm->addRow(QString(), unitNote);
