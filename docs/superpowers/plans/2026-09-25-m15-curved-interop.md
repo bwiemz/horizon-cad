@@ -158,9 +158,61 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
   under 5 s after (debug build), the same facets.
 
 
-## Phase 153: STEP assemblies (outline)
-- `PRODUCT` / `NEXT_ASSEMBLY_USAGE_OCCURRENCE` read into an assembly of parts,
-  and written from one.
+## Phase 153: STEP assemblies
+
+### As built
+- **Before this**, a STEP assembly came in with every part once, where it
+  was drawn: a part used four times was one solid, and none was where the
+  assembly put it. An assembly could not be exported.
+- **`readStructure`** walks a file's product structure:
+  - Each PRODUCT_DEFINITION's shape is its SHAPE_DEFINITION_REPRESENTATION's
+    representation, and those related to it without a transformation (OCC
+    relates a part's SHAPE_REPRESENTATION to the ADVANCED_BREP one holding
+    its solids). A definition with solids is a part.
+  - Each NEXT_ASSEMBLY_USAGE_OCCURRENCE places its part by the
+    ITEM_DEFINED_TRANSFORMATION of its CONTEXT_DEPENDENT_SHAPE_REPRESENTATION:
+    A(item2)·A(item1)⁻¹ takes rep_1's coordinates into rep_2's, each item's
+    origin in millimetres by its own representation's length unit; turned
+    round when the part is rep_2, as some writers have it.
+  - From each top assembly down, placements compound. A loop is followed
+    once; the walk stops at 20,000 placements or 1,000,000 assemblies, and
+    says so. A use with no placement is placed where drawn, and said.
+  - A file whose structure places nothing reads exactly as before, names
+    and order alike.
+- **`fromString`** returns each placement of each part. A solid's first
+  keeps its names; each copy after it is named as a solid of its own, so a
+  face of one bracket is not taken for another's.
+- **`assemblyFromString`** returns the parts once each and their placements,
+  named by the uses down to them ("Sub:1/Bolt:2").
+- **`assemblyToString`** writes a part product for each part and an
+  assembly product whose uses place them the same way:
+  - A part's shape is a SHAPE_REPRESENTATION holding its origin, related to
+    an ADVANCED_BREP representation for each of its solids, as OCC writes
+    one. Solids in one B-rep representation read back as the shells of one
+    solid.
+  - A placement that is not rigid, or of no part, is left out and said.
+- **Limits, in review:** the walk counts the solids it places, not only the
+  placements, so a part of many solids used many times is cut short too. Half
+  a UTF-16 pair in a name reads as U+FFFD.
+- **Names** travel as Part-21 text: quotes and backslashes doubled, all else
+  `\X2\`/`\X4\` escaped; those and `\X\`, `\S\` read back.
+- **The app:**
+  - File ▸ Import ▸ STEP as a New Part places each part.
+  - File ▸ Import ▸ STEP as an Assembly (`saveStepAssembly`) writes each part
+    as a part file, in "<assembly> parts" beside the assembly, never over
+    another file, and opens the assembly.
+  - File ▸ Export ▸ STEP from an assembly tab writes a STEP assembly, each
+    part once from its file; components whose parts cannot be read are
+    listed.
+- **Not read:** placements by MAPPED_ITEM (the other way AP214 allows).
+
+### Measured
+- A nested fixture (an assembly within the assembly, in centimetres; a part
+  written OCC's way; a placement written the other way round; an escaped
+  name): each tetrahedron's centroid where the assemblies together put it,
+  to 1e-9.
+- An assembly written and read back: its parts, names and placements to
+  1e-9; exported from an assembly tab and imported as files, the same.
 
 ## Tracking
 

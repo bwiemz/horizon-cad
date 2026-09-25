@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <map>
 #include <numbers>
 #include <set>
 #include <utility>
@@ -285,6 +286,35 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
                           .arg(QString::fromStdString(result.message.empty() ? "did not converge"
                                                                              : result.message)));
     return false;
+}
+
+AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
+    StepExport out;
+    if (!assembly()) return out;
+    // Each part read once, by its file, however many components place it.
+    const std::string dir = assemblyDir(*assembly());
+    std::map<std::string, std::size_t> partOf;
+    for (auto& comp : assembly()->components()) {
+        if (comp.suppressed) continue;
+        if (!comp.resolvedPart) {
+            m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, dir);
+        }
+        const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
+        if (solid == nullptr) {
+            out.unread.push_back(comp.name);
+            continue;
+        }
+        const std::string file =
+            std::filesystem::path(partFile(comp, dir)).lexically_normal().string();
+        const auto [known, added] = partOf.emplace(file, out.parts.size());
+        if (added) {
+            out.parts.push_back(
+                {QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString(),
+                 {solid}});
+        }
+        out.occurrences.push_back({known->second, comp.name, comp.transform});
+    }
+    return out;
 }
 
 void AssemblyWorkbench::onCheckInterference() {

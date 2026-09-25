@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/ui/BackgroundTask.h"
 
 class QComboBox;
@@ -59,6 +60,18 @@ public:
     void onEditMate();
     void onRemoveMate();
     void onCheckInterference();
+
+    /// What a STEP export of the active assembly writes (Phase 153): each
+    /// part once, from its file, and each unsuppressed component placed; the
+    /// components whose part could not be read, by name. The parts'
+    /// solids are the resolved components' own: valid while the assembly
+    /// is not changed.
+    struct StepExport {
+        std::vector<io::StepWritePart> parts;
+        std::vector<io::StepOccurrence> occurrences;
+        std::vector<std::string> unread;
+    };
+    StepExport stepExport();
     void onBillOfMaterials();
 
     // --- For the window ---

@@ -15,6 +15,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
@@ -37,6 +38,9 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/MainWindow.h"
@@ -705,4 +709,74 @@ TEST(AssembliesTest, TheTreeKeepsNoChoiceFromAnotherAssembly) {
     QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
     QApplication::sendEvent(panel->tree(), &del);
     EXPECT_EQ(second.components().size(), 1u);
+}
+
+// An assembly goes out as a STEP assembly (Phase 153): each part once, and
+// each component a use of it, by its name, where it is placed.
+TEST(AssembliesTest, AnAssemblyExportsAsAStepAssembly) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const QString pin = dir.filePath(QStringLiteral("pin.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    savePart(pin, hz::doc::PrimitiveFeature::makeCylinder(3.0, 10.0));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    insert(w, block);
+    insert(w, pin);
+    ASSERT_EQ(assembly.components().size(), 3u);
+
+    const QString step = dir.filePath(QStringLiteral("rig.step"));
+    DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"), 1000);
+    {
+        FilePicker picker(step);
+        trigger(w, "export_step");
+    }
+    EXPECT_FALSE(told.seen()) << "everything written as designed: nothing to say";
+    const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
+    ASSERT_EQ(read.parts.size(), 2u) << hz::io::StepFormat::lastError();
+    EXPECT_EQ(read.parts[0].name, "block");
+    EXPECT_EQ(read.parts[1].name, "pin");
+    ASSERT_EQ(read.occurrences.size(), 3u);
+    const std::size_t partOf[] = {0, 0, 1};
+    for (std::size_t k = 0; k < 3; ++k) {
+        const auto& component = assembly.components()[k];
+        EXPECT_EQ(read.occurrences[k].part, partOf[k]);
+        EXPECT_EQ(read.occurrences[k].name, component.name);
+        const Vec3 at = read.occurrences[k].transform.transformPoint(Vec3());
+        EXPECT_NEAR(at.x, translationOf(component).x, 1e-9) << component.name;
+        EXPECT_NEAR(at.y, translationOf(component).y, 1e-9) << component.name;
+    }
+}
+
+// A STEP assembly kept as an assembly (Phase 153): its parts as part files,
+// in a folder beside it, and it opened, placing them as the file did.
+TEST(AssembliesTest, ImportingAStepAssemblyKeepsItsPartsAsFiles) {
+    QTemporaryDir dir;
+    const auto bracket = hz::model::PrimitiveFactory::makeBox(10, 20, 30);
+    const auto pin = hz::model::PrimitiveFactory::makeCylinder(5, 10);
+    const QString step = dir.filePath(QStringLiteral("rig.step"));
+    ASSERT_TRUE(hz::io::StepFormat::saveAssembly(
+        step.toStdString(), "Rig", {{"Bracket", {bracket.get()}}, {"Pin", {pin.get()}}},
+        {{0, "Bracket:1", hz::math::Mat4::translation({100, 0, 0})},
+         {0, "Bracket:2", hz::math::Mat4::identity()},
+         {1, "Pin:1", hz::math::Mat4::translation({0, 50, 0})}}));
+
+    MainWindow w;
+    const QString kept = dir.filePath(QStringLiteral("Rig.hzasm"));
+    {
+        FilePicker picker(QStringList{step, kept});
+        trigger(w, "import_step_assembly");
+    }
+    hz::doc::AssemblyDocument* assembly = w.activeAssembly();
+    ASSERT_NE(assembly, nullptr);
+    EXPECT_FALSE(assembly->isDirty()) << "kept, as its files";
+    ASSERT_EQ(assembly->components().size(), 3u);
+    EXPECT_EQ(assembly->components()[0].name, "Bracket:1");
+    EXPECT_NEAR(translationOf(assembly->components()[0]).x, 100.0, 1e-9);
+    EXPECT_NEAR(translationOf(assembly->components()[2]).y, 50.0, 1e-9);
+    EXPECT_TRUE(QFileInfo::exists(kept));
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Bracket.hzpart"))));
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Pin.hzpart"))));
+    EXPECT_NE(assembly->components()[0].cachedMesh, nullptr) << "its parts' shapes are shown";
 }

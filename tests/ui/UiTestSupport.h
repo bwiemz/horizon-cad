@@ -17,6 +17,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QString>
@@ -279,10 +280,12 @@ private:
 /// Picks `path` in the next file dialog by typing it into the file name box.
 /// (QFileDialog::selectFile() leaves that box alone while it has focus, which
 /// a shown dialog gives it — the accept then finds no file and does nothing.)
-/// Gives up — rejecting the dialog — rather than hang the test.
+/// Given several, picks each in the next dialog in turn. Gives up —
+/// rejecting the dialog — rather than hang the test.
 class FilePicker {
 public:
-    explicit FilePicker(QString path) : m_path(std::move(path)) {
+    explicit FilePicker(QString path) : FilePicker(QStringList{std::move(path)}) {}
+    explicit FilePicker(QStringList paths) : m_paths(std::move(paths)) {
         QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
         m_timer.start(20);
         m_clock.start();
@@ -291,13 +294,17 @@ public:
 private:
     void poll() {
         auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
-        if (dialog == nullptr) {
-            if (m_seen || m_clock.elapsed() > 10'000) m_timer.stop();
+        // One answered and still closing is not the next: it is told by
+        // being the same object, alive (the next may be built where it was).
+        if (dialog == nullptr || dialog == m_answered) {
+            if (dialog == nullptr && (m_next >= m_paths.size() || m_clock.elapsed() > 10'000)) {
+                m_timer.stop();
+            }
             return;
         }
-        m_seen = true;
-        if (m_clock.elapsed() > 10'000) {
-            ADD_FAILURE() << "the file dialog would not take " << m_path.toStdString();
+        if (m_next >= m_paths.size() || m_clock.elapsed() > 10'000) {
+            ADD_FAILURE() << "a file dialog was left with nothing to pick, or would not take "
+                          << m_paths.value(m_next).toStdString();
             dialog->reject();
             m_timer.stop();
             return;
@@ -309,12 +316,14 @@ private:
             m_timer.stop();
             return;
         }
-        name->setText(m_path);
+        name->setText(m_paths[m_next++]);
+        m_answered = dialog;
         static_cast<QDialog*>(dialog)->accept();  // QFileDialog's own accept() is protected
     }
 
-    QString m_path;
-    bool m_seen = false;
+    QStringList m_paths;
+    qsizetype m_next = 0;
+    QPointer<QFileDialog> m_answered;
     QTimer m_timer;
     QElapsedTimer m_clock;
 };

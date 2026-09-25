@@ -44,6 +44,7 @@ public:
     //    allocated. Adding or removing through them breaks the pools'
     //    pointer stability; use the allocators. ---------------------------
 
+    std::deque<Vertex>& vertices() { return m_vertices; }
     std::deque<Edge>& edges() { return m_edges; }
     std::deque<Face>& faces() { return m_faces; }
 
