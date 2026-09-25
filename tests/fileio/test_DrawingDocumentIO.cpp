@@ -574,4 +574,12 @@ TEST(DrawingDocumentIOTest, ACircleIsDimensionedByItsOwnName) {
                           t->text().find("20.00") != std::string::npos);
     }
     EXPECT_TRUE(drawn) << "fitted to the whole circle";
+
+    // A circle is not straight: stated as a length it is not drawn, but said.
+    EXPECT_FALSE(hz::model::DrawingDimensioner::isStraight(*part.solid(), rim));
+    spec.views[1].dimensions = {{rim, hz::io::DrawingDimensionSpec::Kind::Length}};
+    lost.clear();
+    const Drawing asLength = DrawingDocumentIO::build(*part.solid(), spec, &lost);
+    EXPECT_TRUE(asLength.views[1].dimensions.empty()) << "not measured along one chord";
+    EXPECT_EQ(lost.size(), 1u);
 }

@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/FilletOp.h"
@@ -339,4 +341,16 @@ TEST(DrawingViewTest, AFilletHasNoCentreLines) {
     for (const StandardView v : {StandardView::Front, StandardView::Top, StandardView::Right}) {
         EXPECT_TRUE(DrawingGenerator::makeView(*rounded.solid, v).centreLines.empty());
     }
+}
+
+// A length is stated only for a straight edge: a box's edge is one, and a
+// name the part does not have is not. (A part's rim, a curve of chords by
+// one name, is not straight: DrawingDocumentIOTest builds one as the
+// application does.)
+TEST(DrawingViewTest, OnlyAStraightEdgeHasALength) {
+    auto box = PrimitiveFactory::makeBox(10, 20, 30);
+    for (const auto& e : box->edges()) {
+        EXPECT_TRUE(hz::model::DrawingDimensioner::isStraight(*box, e.topoId.tag()));
+    }
+    EXPECT_FALSE(hz::model::DrawingDimensioner::isStraight(*box, "no/such/edge"));
 }

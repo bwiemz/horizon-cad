@@ -472,8 +472,11 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
             const topo::TopologyID edge = edgeNamed(solid, d.edge);
             bool found = false;
             if (d.kind == DrawingDimensionSpec::Kind::Length) {
+                // A length only for a straight edge: a curve's chords would be
+                // measured along whichever came first.
                 model::LinearDimension dim;
-                found = model::DrawingDimensioner::dimensionEdge(solid, edge, dim);
+                found = model::DrawingDimensioner::isStraight(solid, d.edge) &&
+                        model::DrawingDimensioner::dimensionEdge(solid, edge, dim);
                 if (found) view.dimensions.push_back(dim);
             } else {
                 model::RadialDimension dim;

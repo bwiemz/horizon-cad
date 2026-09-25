@@ -6,6 +6,7 @@
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
@@ -49,6 +50,43 @@ bool DrawingDimensioner::measureEdge(const topo::Solid& solid, const topo::Topol
         return true;
     }
     return false;
+}
+
+bool DrawingDimensioner::isStraight(const topo::Solid& solid, const std::string& name) {
+    std::vector<math::Vec3> ends;
+    for (const topo::Edge& e : solid.edges()) {
+        const std::string& tag = e.topoId.tag();
+        if (tag != name && logicalEdge(tag) != name) continue;
+        const topo::HalfEdge* he = e.halfEdge;
+        if (he == nullptr || he->origin == nullptr || he->twin == nullptr ||
+            he->twin->origin == nullptr) {
+            return false;
+        }
+        ends.push_back(he->origin->point);
+        ends.push_back(he->twin->origin->point);
+    }
+    if (ends.empty()) return false;
+    // The line through the two ends farthest apart; every end on it.
+    std::size_t a = 0;
+    std::size_t b = 0;
+    double widest = -1.0;
+    for (std::size_t i = 0; i < ends.size(); ++i) {
+        for (std::size_t j = i + 1; j < ends.size(); ++j) {
+            const double d = ends[i].distanceTo(ends[j]);
+            if (d > widest) {
+                widest = d;
+                a = i;
+                b = j;
+            }
+        }
+    }
+    if (widest <= 0.0) return false;
+    const math::Vec3 along = (ends[b] - ends[a]) * (1.0 / widest);
+    const double tolerance = 1e-9 * std::max(1.0, widest);
+    return std::all_of(ends.begin(), ends.end(), [&](const math::Vec3& p) {
+        const math::Vec3 off = p - ends[a];
+        return (off - along * off.dot(along)).length() <= tolerance;
+    });
 }
 
 bool DrawingDimensioner::dimensionEdge(const topo::Solid& solid, const topo::TopologyID& edgeId,

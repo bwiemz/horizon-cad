@@ -1007,6 +1007,13 @@ void DrawingWorkbench::addDimension(const std::weak_ptr<doc::Document>& document
                                          [](const auto& end) { return end.second % 2 == 0; });
         dimension.kind = closed ? io::DrawingDimensionSpec::Kind::Diameter
                                 : io::DrawingDimensionSpec::Kind::Radius;
+    } else if (!model::DrawingDimensioner::isStraight(*solid, tag)) {
+        // Neither a circle nor straight (an ellipse, a lofted edge): no one
+        // number says how large it is.
+        m_host.showStatus(
+            tr("%1: that edge is curved, but not a circle or arc; its size is not stated")
+                .arg(verb));
+        return;
     } else if (!model::DrawingDimensioner::measureEdge(*solid, picked.edge, measured) ||
                measured < 1e-9) {
         m_host.showStatus(tr("%1: that edge has no length to state").arg(verb));

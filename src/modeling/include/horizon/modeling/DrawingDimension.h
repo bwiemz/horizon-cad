@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "horizon/topology/TopologyID.h"
 
 namespace hz::topo {
@@ -51,6 +53,13 @@ public:
     /// Returns false if the edge is not found.
     static bool dimensionEdge(const topo::Solid& solid, const topo::TopologyID& edgeId,
                               LinearDimension& out);
+
+    /// Whether the edge named @p name (an edge of that name, or a curve of
+    /// chords by that logical name) is straight: every chord's ends on one
+    /// line. Only a straight edge has a length a drawing can state; the
+    /// chords of an ellipse, say, would be measured along one of them.
+    /// False when @p solid has no edge by that name.
+    static bool isStraight(const topo::Solid& solid, const std::string& name);
 
     /// Unsigned angle (0..pi/2 radians) between the two model edges @p edgeA and
     /// @p edgeB. Returns false (leaving @p outRadians untouched) if either edge is
