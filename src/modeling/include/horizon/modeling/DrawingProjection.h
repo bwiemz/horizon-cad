@@ -28,11 +28,18 @@ struct ViewProjection {
 /// its visibility and the genealogy of the source edge for model association.
 struct ProjectedEdge {
     enum class Visibility { Visible, Hidden };
+    /// What the model edge is, seen in this view (Phase 147).
+    enum class Kind {
+        Edge,        ///< between two faces that meet at an angle
+        Tangent,     ///< between two faces that meet smoothly (a fillet and its face)
+        Silhouette,  ///< inside a curved face, where it turns from the viewer
+    };
 
     math::Vec2 a;                 ///< 2D start (u, v).
     math::Vec2 b;                 ///< 2D end (u, v).
     topo::TopologyID sourceEdge;  ///< TopologyID of the originating model edge.
     Visibility visibility = Visibility::Visible;
+    Kind kind = Kind::Edge;
 };
 
 /// Canonical orthographic views.
