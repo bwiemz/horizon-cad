@@ -1,10 +1,9 @@
 ISO-10303-21;
 HEADER;
 /* Hand-authored fixture: a two-part assembly with AP214 product structure
-   (PRODUCT / PRODUCT_DEFINITION / NEXT_ASSEMBLY_USAGE_OCCURRENCE).  Horizon's
-   importer does not map assembly structure yet (documented limitation) —
-   the expected behavior is that both parts import as independent solids and
-   the product structure is ignored.  Parts: two tetrahedra with legs 10,
+   (PRODUCT / PRODUCT_DEFINITION / NEXT_ASSEMBLY_USAGE_OCCURRENCE), but no
+   shape for any product and no placement for any use — so the structure
+   places nothing, and both parts import as independent solids where drawn.  Parts: two tetrahedra with legs 10,
    the second translated +20 in X.  Volume of each = 1000/6. */
 FILE_DESCRIPTION(('assembly fixture'),'2;1');
 FILE_NAME('assembly_two_parts.step','2026-07-06T12:00:00',('Horizon fixtures'),(''),

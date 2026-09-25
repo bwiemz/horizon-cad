@@ -113,10 +113,11 @@ TEST(StepFixtures, SolidWorksStyleScrambledOrderImportsIdentically) {
 }
 
 TEST(StepFixtures, AssemblyProductStructureIsFlattenedToParts) {
-    // Documented limitation: NEXT_ASSEMBLY_USAGE_OCCURRENCE product structure
-    // is not mapped.  The parts import as independent solids at their
-    // authored coordinates; assembly transforms are ignored.  If assembly
-    // support lands, this test should flip to assert the structure.
+    // This file's products name no shapes (no SHAPE_DEFINITION_REPRESENTATION)
+    // and its uses no placements, so its structure places nothing: the parts
+    // import as independent solids at their authored coordinates. A file
+    // whose structure does place its parts is read placed (Phase 153,
+    // test_StepAssembly.cpp).
     auto solids =
         StepFormat::load((kFixtureRoot / "import_ok" / "assembly_two_parts_nauo.step").string());
     ASSERT_EQ(solids.size(), 2u) << StepFormat::lastError();

@@ -5,6 +5,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string_view>
 #include <system_error>
@@ -33,6 +35,7 @@
 
 namespace hz::io {
 
+using hz::math::Mat4;
 using hz::math::Vec3;
 
 namespace {
@@ -2031,132 +2034,299 @@ double contextMillimetres(const StepParser& parser, int contextId, std::string* 
     return 1.0;
 }
 
-}  // namespace
-
 // ===========================================================================
-// Public API
+// Product structure (Phase 153)
 // ===========================================================================
 
-std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids,
-                                 const WriteOptions& options, WriteReport* report) {
-    StepWriter w;
-    if (report != nullptr) report->faceted.clear();
-
-    // Geometric representation context (SI millimetres) shared by all solids.
-    const int lengthUnit = w.add("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
-    const int angleUnit = w.add("(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))");
-    const int solidAngleUnit = w.add("(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())");
-    const int uncertainty =
-        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-7),#" + std::to_string(lengthUnit) +
-              ",'distance_accuracy_value','confusion accuracy')");
-    const int context = w.add(
-        "(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" +
-        std::to_string(uncertainty) + ")) GLOBAL_UNIT_ASSIGNED_CONTEXT((#" +
-        std::to_string(lengthUnit) + ",#" + std::to_string(angleUnit) + ",#" +
-        std::to_string(solidAngleUnit) + ")) REPRESENTATION_CONTEXT('Context #1','3D Context'))");
-
-    const int appContext = w.add("APPLICATION_CONTEXT('managed model based 3d engineering')");
-    w.add(
-        "APPLICATION_PROTOCOL_DEFINITION('international standard',"
-        "'ap242_managed_model_based_3d_engineering',2020,#" +
-        std::to_string(appContext) + ")");
-
-    const int productContext =
-        w.add("PRODUCT_CONTEXT('',#" + std::to_string(appContext) + ",'mechanical')");
-
-    int index = 0;
-    for (const topo::Solid* solid : solids) {
-        if (solid == nullptr) continue;
-        const std::vector<int> msbs = writeSolid(w, *solid, index, options.asDesigned,
-                                                 report != nullptr ? &report->faceted : nullptr);
-        if (msbs.empty()) continue;
-
-        const std::string name = "'part_" + std::to_string(index) + "'";
-        const int product = w.add("PRODUCT(" + name + "," + name + ",'',(#" +
-                                  std::to_string(productContext) + "))");
-        w.add("PRODUCT_RELATED_PRODUCT_CATEGORY('part',$,(#" + std::to_string(product) + "))");
-        const int formation =
-            w.add("PRODUCT_DEFINITION_FORMATION('',$,#" + std::to_string(product) + ")");
-        const int pdc = w.add("PRODUCT_DEFINITION_CONTEXT('part definition',#" +
-                              std::to_string(appContext) + ",'design')");
-        const int pd = w.add("PRODUCT_DEFINITION('design',$,#" + std::to_string(formation) + ",#" +
-                             std::to_string(pdc) + ")");
-        const int pds = w.add("PRODUCT_DEFINITION_SHAPE('',$,#" + std::to_string(pd) + ")");
-        const int rep = w.add("ADVANCED_BREP_SHAPE_REPRESENTATION(" + name + "," +
-                              StepWriter::refList(msbs) + ",#" + std::to_string(context) + ")");
-        w.add("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(pds) + ",#" +
-              std::to_string(rep) + ")");
-        ++index;
+/// A Part-21 string's text as UTF-8: its \\ and its \X2\...\X0\ (UTF-16),
+/// \X4\...\X0\ (UTF-32), \X\hh and \S\c (ISO 8859-1) escapes undone.
+std::string decodeStepText(const std::string& in) {
+    std::string out;
+    const auto put = [&out](std::uint32_t cp) {
+        if (cp < 0x80) {
+            out += static_cast<char>(cp);
+        } else if (cp < 0x800) {
+            out += static_cast<char>(0xC0 | (cp >> 6));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp < 0x110000) {
+            out += static_cast<char>(0xF0 | (cp >> 18));
+            out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    };
+    const auto hex = [&in](std::size_t at, std::size_t digits, std::uint32_t& value) {
+        if (at + digits > in.size()) return false;
+        value = 0;
+        for (std::size_t k = 0; k < digits; ++k) {
+            const char c = in[at + k];
+            const int d = std::isdigit(static_cast<unsigned char>(c)) != 0 ? c - '0'
+                          : (c >= 'A' && c <= 'F')                         ? c - 'A' + 10
+                          : (c >= 'a' && c <= 'f')                         ? c - 'a' + 10
+                                                                           : -1;
+            if (d < 0) return false;
+            value = value * 16 + static_cast<std::uint32_t>(d);
+        }
+        return true;
+    };
+    std::size_t i = 0;
+    while (i < in.size()) {
+        if (in[i] != '\\') {
+            out += in[i++];
+            continue;
+        }
+        if (in.compare(i, 2, "\\\\") == 0) {
+            out += '\\';
+            i += 2;
+        } else if (in.compare(i, 4, "\\X2\\") == 0 || in.compare(i, 4, "\\X4\\") == 0) {
+            const std::size_t digits = in[i + 2] == '2' ? 4 : 8;
+            std::size_t at = i + 4;
+            std::uint32_t unit = 0;
+            std::uint32_t high = 0;  // a UTF-16 high surrogate waiting for its low
+            while (at < in.size() && in[at] != '\\' && hex(at, digits, unit)) {
+                if (digits == 4 && unit >= 0xD800 && unit < 0xDC00) {
+                    high = unit;
+                } else if (digits == 4 && unit >= 0xDC00 && unit < 0xE000 && high != 0) {
+                    put(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00));
+                    high = 0;
+                } else {
+                    put(unit);
+                }
+                at += digits;
+            }
+            i = in.compare(at, 4, "\\X0\\") == 0 ? at + 4 : at;
+        } else if (in.compare(i, 3, "\\X\\") == 0) {
+            std::uint32_t byte = 0;
+            if (hex(i + 3, 2, byte)) {
+                put(byte);
+                i += 5;
+            } else {
+                out += in[i++];
+            }
+        } else if (in.compare(i, 3, "\\S\\") == 0 && i + 3 < in.size()) {
+            put(static_cast<unsigned char>(in[i + 3]) + 128U);
+            i += 4;
+        } else if (in.compare(i, 2, "\\P") == 0 && i + 3 < in.size() && in[i + 3] == '\\') {
+            i += 4;  // a code page chosen for \S\: taken as ISO 8859-1
+        } else {
+            out += in[i++];
+        }
     }
-
-    std::ostringstream out;
-    out << "ISO-10303-21;\n"
-        << "HEADER;\n"
-        << "FILE_DESCRIPTION(('Horizon CAD B-Rep model'),'2;1');\n"
-        << "FILE_NAME('','',('Horizon CAD'),(''),'Horizon STEP writer','Horizon CAD','');\n"
-        << "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 3 1 "
-           "4 }'));\n"
-        << "ENDSEC;\n"
-        << "DATA;\n"
-        << w.body() << "ENDSEC;\n"
-        << "END-ISO-10303-21;\n";
-    return out.str();
+    return out;
 }
 
-bool StepFormat::save(const std::string& filePath, const std::vector<const topo::Solid*>& solids,
-                      const WriteOptions& options, WriteReport* report) {
-    g_lastError.clear();
-    if (solids.empty()) {
-        g_lastError = "no solids to export";
-        return false;
+/// @p text (UTF-8) as a Part-21 string, quoted: its quote and backslash
+/// doubled, printable ASCII as it is, and all else \X2\ or \X4\ escaped.
+std::string stepText(const std::string& text) {
+    std::string out = "'";
+    std::string wide;  // a run of UTF-16 code units, in hex
+    const auto flush = [&] {
+        if (wide.empty()) return;
+        out += "\\X2\\" + wide + "\\X0\\";
+        wide.clear();
+    };
+    const auto hex = [](std::uint32_t v, int digits) {
+        std::string h(static_cast<std::size_t>(digits), '0');
+        for (int k = digits - 1; k >= 0; --k, v >>= 4) {
+            h[static_cast<std::size_t>(k)] = "0123456789ABCDEF"[v & 0xF];
+        }
+        return h;
+    };
+    std::size_t i = 0;
+    while (i < text.size()) {
+        const auto c = static_cast<unsigned char>(text[i]);
+        std::uint32_t cp = '?';
+        std::size_t length = 1;
+        if (c < 0x80) {
+            cp = c;
+        } else if ((c & 0xE0) == 0xC0) {
+            cp = c & 0x1FU;
+            length = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            cp = c & 0x0FU;
+            length = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            cp = c & 0x07U;
+            length = 4;
+        }
+        bool valid = c < 0x80 || length > 1;
+        for (std::size_t k = 1; valid && k < length; ++k) {
+            const auto next =
+                i + k < text.size() ? static_cast<unsigned char>(text[i + k]) : std::uint8_t{0};
+            valid = (next & 0xC0) == 0x80;
+            cp = (cp << 6) | (next & 0x3FU);
+        }
+        if (!valid) {
+            cp = '?';
+            length = 1;
+        }
+        i += length;
+        if (cp >= 0x20 && cp < 0x7F) {
+            flush();
+            if (cp == '\'')
+                out += "''";
+            else if (cp == '\\')
+                out += "\\\\";
+            else
+                out += static_cast<char>(cp);
+        } else if (cp < 0x10000) {
+            wide += hex(cp, 4);
+        } else {
+            flush();
+            out += "\\X4\\" + hex(cp, 8) + "\\X0\\";
+        }
     }
-    std::string error;
-    if (!writeFileAtomically(pathFromUtf8(filePath), toString(solids, options, report), &error)) {
-        g_lastError = error;
-        return false;
+    flush();
+    return out + "'";
+}
+
+/// The text of @p value when it is a string; empty when it is not.
+std::string textOf(const StepValue& value) {
+    return value.kind == StepValue::Str ? decodeStepText(value.text) : std::string();
+}
+
+/// Whether @p text is empty or only spaces.
+bool blank(const std::string& text) {
+    return std::all_of(text.begin(), text.end(),
+                       [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; });
+}
+
+/// The context of representation @p repId: the last attribute of any
+/// representation, simple or complex ('name', (items), #context).
+int representationContext(const StepParser& parser, int repId) {
+    const StepInstance* rep = parser.find(repId);
+    if (rep == nullptr) return 0;
+    for (const auto& [type, args] : rep->leaves) {
+        if (args.size() >= 3 && args[1].isList() && args[2].isRef()) return args[2].ref;
+    }
+    return 0;
+}
+
+/// A relationship between two representations, simple or complex:
+/// (name, description, rep_1, rep_2), and its transformation's id (0 for
+/// none).
+struct Relationship {
+    int rep1 = 0;
+    int rep2 = 0;
+    int transformation = 0;
+};
+
+std::optional<Relationship> relationshipOf(const StepInstance& inst) {
+    Relationship r;
+    const StepList* withTransform = inst.leaf("REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION");
+    if (withTransform != nullptr && !withTransform->empty()) {
+        // Complex: its own one attribute. Simple (as some write it): after
+        // the relationship's four.
+        const StepValue& t = withTransform->size() >= 5 ? (*withTransform)[4] : (*withTransform)[0];
+        if (t.isRef()) r.transformation = t.ref;
+    }
+    for (const char* type : {"REPRESENTATION_RELATIONSHIP", "SHAPE_REPRESENTATION_RELATIONSHIP",
+                             "REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION"}) {
+        const StepList* args = inst.leaf(type);
+        if (args != nullptr && args->size() >= 4 && (*args)[2].isRef() && (*args)[3].isRef()) {
+            r.rep1 = (*args)[2].ref;
+            r.rep2 = (*args)[3].ref;
+            return r;
+        }
+    }
+    return std::nullopt;
+}
+
+/// The matrix taking an AXIS2_PLACEMENT_3D's own coordinates into its
+/// representation's, its origin in millimetres by @p mm.
+std::optional<Mat4> axisMatrix(const StepParser& parser, int id, double mm) {
+    const auto triple = [&parser](const StepValue& value, const char* type) -> std::optional<Vec3> {
+        const StepInstance* inst = value.isRef() ? parser.find(value.ref) : nullptr;
+        const StepList* args = inst ? inst->leaf(type) : nullptr;
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isList() ||
+            (*args)[1].items->size() < 3) {
+            return std::nullopt;
+        }
+        const StepList& c = *(*args)[1].items;
+        const Vec3 v{c[0].num, c[1].num, c[2].num};
+        if (!std::isfinite(v.x) || !std::isfinite(v.y) || !std::isfinite(v.z)) return std::nullopt;
+        return v;
+    };
+    const StepInstance* inst = parser.find(id);
+    const StepList* args = inst ? inst->leaf("AXIS2_PLACEMENT_3D") : nullptr;
+    if (args == nullptr || args->size() < 2) return std::nullopt;
+    const auto origin = triple((*args)[1], "CARTESIAN_POINT");
+    if (!origin) return std::nullopt;
+    Vec3 z{0, 0, 1};
+    Vec3 x{1, 0, 0};
+    if (args->size() > 2) {
+        if (const auto d = triple((*args)[2], "DIRECTION"); d && d->length() > 1e-12) {
+            z = d->normalized();
+        }
+    }
+    if (args->size() > 3) {
+        if (const auto d = triple((*args)[3], "DIRECTION")) x = *d;
+    }
+    x = x - z * x.dot(z);
+    if (x.length() < 1e-9) {
+        const Vec3 seed = std::abs(z.x) < 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0};
+        x = seed - z * seed.dot(z);
+    }
+    x = x.normalized();
+    const Vec3 y = z.cross(x);
+    Mat4 m = Mat4::identity();
+    for (int row = 0; row < 3; ++row) {
+        m.at(row, 0) = row == 0 ? x.x : row == 1 ? x.y : x.z;
+        m.at(row, 1) = row == 0 ? y.x : row == 1 ? y.y : y.z;
+        m.at(row, 2) = row == 0 ? z.x : row == 1 ? z.y : z.z;
+    }
+    m.at(0, 3) = origin->x * mm;
+    m.at(1, 3) = origin->y * mm;
+    m.at(2, 3) = origin->z * mm;
+    return m;
+}
+
+/// The inverse of a rotation and a move: exact, as a general inverse is not.
+Mat4 rigidInverse(const Mat4& m) {
+    Mat4 inv = Mat4::identity();
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) inv.at(r, c) = m.at(c, r);
+    }
+    for (int r = 0; r < 3; ++r) {
+        inv.at(r, 3) =
+            -(inv.at(r, 0) * m.at(0, 3) + inv.at(r, 1) * m.at(1, 3) + inv.at(r, 2) * m.at(2, 3));
+    }
+    return inv;
+}
+
+bool isIdentity(const Mat4& m) {
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            if (m.at(r, c) != (r == c ? 1.0 : 0.0)) return false;
+        }
     }
     return true;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
-    const std::string& text, ImportReport* report, const std::atomic<bool>* cancelled) {
-    g_lastError.clear();
-    std::vector<std::unique_ptr<topo::Solid>> out;
-    const auto stopped = [cancelled] {
-        return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
-    };
+/// MANIFOLD_SOLID_BREPs that make one solid: the shells in one shape
+/// representation, with its context (which holds its units).
+struct SolidGroup {
+    std::vector<int> msbs;
+    int context = 0;
+    /// The ADVANCED_BREP_SHAPE_REPRESENTATION holding them; 0 for one
+    /// outside any.
+    int rep = 0;
+};
 
-    StepParser parser(text);
-    std::string error;
-    bool parsed = false;
-    try {
-        parsed = parser.parse(error, cancelled);
-    } catch (const std::exception& e) {
-        error = e.what();
-    }
-    if (stopped()) {
-        g_lastError = kCancelled;
-        return out;
-    }
-    if (!parsed) {
-        g_lastError = "STEP parse error: " + error;
-        return out;
-    }
-
-    // Group MANIFOLD_SOLID_BREPs by shape representation: sibling MSBs in one
-    // ADVANCED_BREP_SHAPE_REPRESENTATION are the shells of a single solid.
-    // Each group keeps its representation's context, which holds its units.
-    struct Group {
-        std::vector<int> msbs;
-        int context = 0;
-    };
-    std::vector<Group> groups;
+/// A file's solids, grouped into the shapes they make.
+std::vector<SolidGroup> solidGroups(const StepParser& parser) {
+    std::vector<SolidGroup> groups;
     std::unordered_set<int> grouped;
     for (int repId : parser.allOfType("ADVANCED_BREP_SHAPE_REPRESENTATION")) {
         const StepInstance* rep = parser.find(repId);
         const StepList* args = rep ? rep->leaf("ADVANCED_BREP_SHAPE_REPRESENTATION") : nullptr;
         if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
-        Group group;
+        SolidGroup group;
+        group.rep = repId;
         if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
         for (const StepValue& item : *(*args)[1].items) {
             if (!item.isRef() || grouped.count(item.ref) != 0) continue;
@@ -2176,31 +2346,352 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
         break;
     }
     for (int id : parser.allOfType("MANIFOLD_SOLID_BREP")) {
-        if (grouped.count(id) == 0) groups.push_back({{id}, fileContext});
+        if (grouped.count(id) == 0) groups.push_back({{id}, fileContext, 0});
+    }
+    return groups;
+}
+
+/// A file's product structure: its products with shapes, and every
+/// placement of each, found by walking its assemblies from the top.
+struct ProductStructure {
+    struct Product {
+        std::string name;
+        std::vector<std::size_t> groups;  ///< its solids: indices into the groups
+    };
+    std::vector<Product> products;
+    /// Each product's placements; StepOccurrence::part indexes products.
+    std::vector<StepOccurrence> placed;
+    /// Whether any product is placed by an assembly.
+    bool structured = false;
+    /// What could only be followed in part, and what was left out, said in
+    /// a report.
+    std::vector<std::string> notes;
+    std::vector<std::string> leftOut;
+};
+
+/// At most this many placements, and this many assemblies walked into: a
+/// file whose assemblies multiply beyond them (a part used ten times in each
+/// of ten nested levels) is cut short.
+constexpr std::size_t kMaxPlacements = 20000;
+constexpr std::size_t kMaxVisits = 1000000;
+/// Assemblies nested deeper than this are taken for a loop.
+constexpr int kMaxDepth = 64;
+
+ProductStructure readStructure(const StepParser& parser, const std::vector<SolidGroup>& groups) {
+    ProductStructure structure;
+    std::unordered_map<int, std::size_t> groupOfRep;
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+        if (groups[g].rep != 0) groupOfRep.emplace(groups[g].rep, g);
     }
 
-    if (groups.empty()) {
-        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
-        return out;
+    // Representations related without a transformation are one shape
+    // (a part's SHAPE_REPRESENTATION and the ADVANCED_BREP one holding its
+    // solids); those with one place one in the other.
+    std::unordered_map<int, std::vector<int>> joined;
+    std::map<int, Relationship> placing;  // by the relationship's id
+    std::set<int> relationships;
+    for (const char* type : {"REPRESENTATION_RELATIONSHIP", "SHAPE_REPRESENTATION_RELATIONSHIP",
+                             "REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION"}) {
+        for (int id : parser.allOfType(type)) relationships.insert(id);
+    }
+    for (int id : relationships) {
+        const auto r = relationshipOf(*parser.find(id));
+        if (!r) continue;
+        if (r->transformation != 0) {
+            placing.emplace(id, *r);
+        } else {
+            joined[r->rep1].push_back(r->rep2);
+            joined[r->rep2].push_back(r->rep1);
+        }
+    }
+    const auto shapeOf = [&](const std::vector<int>& reps) {
+        std::set<int> seen(reps.begin(), reps.end());
+        std::vector<int> stack(reps.begin(), reps.end());
+        while (!stack.empty()) {
+            const int rep = stack.back();
+            stack.pop_back();
+            const auto found = joined.find(rep);
+            if (found == joined.end()) continue;
+            for (int other : found->second) {
+                if (seen.insert(other).second) stack.push_back(other);
+            }
+        }
+        return seen;
+    };
+
+    // What each PRODUCT_DEFINITION_SHAPE defines: a product definition, or
+    // an occurrence of one in an assembly.
+    std::unordered_map<int, int> definedBy;
+    for (int id : parser.allOfType("PRODUCT_DEFINITION_SHAPE")) {
+        const StepList* args = parser.find(id)->leaf("PRODUCT_DEFINITION_SHAPE");
+        if (args != nullptr && args->size() >= 3 && (*args)[2].isRef()) {
+            definedBy.emplace(id, (*args)[2].ref);
+        }
+    }
+    // Each product definition's representations.
+    std::unordered_map<int, std::vector<int>> repsOf;
+    for (int id : parser.allOfType("SHAPE_DEFINITION_REPRESENTATION")) {
+        const StepList* args = parser.find(id)->leaf("SHAPE_DEFINITION_REPRESENTATION");
+        if (args == nullptr || args->size() < 2 || !(*args)[0].isRef() || !(*args)[1].isRef()) {
+            continue;
+        }
+        const auto definition = definedBy.find((*args)[0].ref);
+        if (definition != definedBy.end()) repsOf[definition->second].push_back((*args)[1].ref);
     }
 
+    // The product definitions, in the file's order, and their names.
+    std::set<int> definitions;
+    for (const char* type :
+         {"PRODUCT_DEFINITION", "PRODUCT_DEFINITION_WITH_ASSOCIATED_DOCUMENTS"}) {
+        for (int id : parser.allOfType(type)) definitions.insert(id);
+    }
+    const auto nameOf = [&parser](int definition) {
+        const StepInstance* pd = parser.find(definition);
+        const StepList* args = pd ? pd->leaf("PRODUCT_DEFINITION") : nullptr;
+        if (args == nullptr && pd != nullptr) {
+            args = pd->leaf("PRODUCT_DEFINITION_WITH_ASSOCIATED_DOCUMENTS");
+        }
+        const StepInstance* formation = args != nullptr && args->size() >= 3 && (*args)[2].isRef()
+                                            ? parser.find((*args)[2].ref)
+                                            : nullptr;
+        const StepList* fArgs =
+            formation ? formation->leaf("PRODUCT_DEFINITION_FORMATION") : nullptr;
+        if (fArgs == nullptr && formation != nullptr) {
+            fArgs = formation->leaf("PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE");
+        }
+        const StepInstance* product = fArgs != nullptr && fArgs->size() >= 3 && (*fArgs)[2].isRef()
+                                          ? parser.find((*fArgs)[2].ref)
+                                          : nullptr;
+        const StepList* pArgs = product ? product->leaf("PRODUCT") : nullptr;
+        if (pArgs == nullptr || pArgs->size() < 2) return std::string();
+        const std::string name = textOf((*pArgs)[1]);
+        return blank(name) ? textOf((*pArgs)[0]) : name;
+    };
+
+    // Products: the definitions with solids. Which rep of theirs each is,
+    // to tell which side of a placement a part is on.
+    std::unordered_map<int, std::size_t> productOf;
+    std::unordered_map<int, std::set<int>> shapeReps;
+    std::vector<bool> inProduct(groups.size(), false);
+    for (int definition : definitions) {
+        const auto reps = repsOf.find(definition);
+        if (reps == repsOf.end()) continue;
+        std::set<int> shape = shapeOf(reps->second);
+        ProductStructure::Product product;
+        for (int rep : shape) {
+            const auto group = groupOfRep.find(rep);
+            if (group != groupOfRep.end()) product.groups.push_back(group->second);
+        }
+        std::sort(product.groups.begin(), product.groups.end());
+        shapeReps.emplace(definition, std::move(shape));
+        if (product.groups.empty()) continue;
+        for (std::size_t g : product.groups) inProduct[g] = true;
+        product.name = nameOf(definition);
+        productOf.emplace(definition, structure.products.size());
+        structure.products.push_back(std::move(product));
+    }
+
+    // Each use of a product in an assembly, and the relationship placing it.
+    struct Use {
+        int occurrence = 0;
+        int parent = 0;
+        int child = 0;
+        /// What it calls this use of its part: its name, unless that is
+        /// blank or a writer's stock text; then the part's.
+        std::string name;
+    };
+    std::map<int, std::vector<Use>> usesIn;  // by the assembly's definition
+    std::set<int> used;
+    for (int id : parser.allOfType("NEXT_ASSEMBLY_USAGE_OCCURRENCE")) {
+        const StepList* args = parser.find(id)->leaf("NEXT_ASSEMBLY_USAGE_OCCURRENCE");
+        if (args == nullptr || args->size() < 5 || !(*args)[3].isRef() || !(*args)[4].isRef()) {
+            continue;
+        }
+        std::string name = textOf((*args)[1]);
+        if (blank(name) || name == "Next assembly relationship") name = nameOf((*args)[4].ref);
+        usesIn[(*args)[3].ref].push_back({id, (*args)[3].ref, (*args)[4].ref, std::move(name)});
+        used.insert((*args)[4].ref);
+    }
+    std::unordered_map<int, int> placedBy;  // occurrence → its relationship
+    for (int id : parser.allOfType("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION")) {
+        const StepList* args = parser.find(id)->leaf("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION");
+        if (args == nullptr || args->size() < 2 || !(*args)[0].isRef() || !(*args)[1].isRef()) {
+            continue;
+        }
+        const auto occurrence = definedBy.find((*args)[1].ref);
+        if (occurrence != definedBy.end()) placedBy.emplace(occurrence->second, (*args)[0].ref);
+    }
+    std::unordered_map<int, double> mmOfRep;
+    const auto mmOf = [&](int rep) {
+        const auto found = mmOfRep.find(rep);
+        if (found != mmOfRep.end()) return found->second;
+        const int context = representationContext(parser, rep);
+        double mm = context != 0 ? contextMillimetres(parser, context, nullptr) : 1.0;
+        if (!(mm > 0.0)) mm = 1.0;
+        mmOfRep.emplace(rep, mm);
+        return mm;
+    };
+    // The use's part's coordinates into its assembly's: the transformation
+    // takes rep_1's into rep_2's, the part's into the assembly's as written
+    // by most, inverted when the part is rep_2.
+    const auto placement = [&](const Use& use) -> std::optional<Mat4> {
+        const auto by = placedBy.find(use.occurrence);
+        if (by == placedBy.end()) return std::nullopt;
+        const auto r = placing.find(by->second);
+        if (r == placing.end()) return std::nullopt;
+        const StepInstance* idt = parser.find(r->second.transformation);
+        const StepList* args = idt ? idt->leaf("ITEM_DEFINED_TRANSFORMATION") : nullptr;
+        if (args == nullptr || args->size() < 4 || !(*args)[2].isRef() || !(*args)[3].isRef()) {
+            return std::nullopt;
+        }
+        const auto from = axisMatrix(parser, (*args)[2].ref, mmOf(r->second.rep1));
+        const auto to = axisMatrix(parser, (*args)[3].ref, mmOf(r->second.rep2));
+        if (!from || !to) return std::nullopt;
+        const Mat4 t = *to * rigidInverse(*from);
+        const auto part = shapeReps.find(use.child);
+        const bool partSecond = part != shapeReps.end() &&
+                                part->second.count(r->second.rep2) != 0 &&
+                                part->second.count(r->second.rep1) == 0;
+        return partSecond ? rigidInverse(t) : t;
+    };
+
+    // From each top assembly (a definition no assembly uses) down.
+    std::set<int> onPath;
+    std::vector<bool> placedProduct(structure.products.size(), false);
+    bool cut = false;
+    std::size_t visits = 0;
+    std::set<int> unplaced;  // uses with no placement that can be read
+    std::set<int> loops;     // uses of an assembly within itself
+    // Each placement is named by the uses down to it ("Sub:1/Bolt:2"); a
+    // top product by its own name.
+    std::function<void(int, const Mat4&, int, const std::string&)> walk =
+        [&](int definition, const Mat4& world, int depth, const std::string& path) {
+            if (structure.placed.size() >= kMaxPlacements || ++visits > kMaxVisits) {
+                cut = true;
+                return;
+            }
+            const auto product = productOf.find(definition);
+            if (product != productOf.end()) {
+                structure.placed.push_back(
+                    {product->second, depth > 0 ? path : structure.products[product->second].name,
+                     world});
+                placedProduct[product->second] = true;
+                if (depth > 0) structure.structured = true;
+            }
+            const auto uses = usesIn.find(definition);
+            if (uses == usesIn.end()) return;
+            onPath.insert(definition);
+            for (const Use& use : uses->second) {
+                if (onPath.count(use.child) != 0 || depth >= kMaxDepth) {
+                    loops.insert(use.occurrence);
+                    continue;
+                }
+                auto t = placement(use);
+                if (!t) {
+                    unplaced.insert(use.occurrence);
+                    t = Mat4::identity();
+                }
+                walk(use.child, world * *t, depth + 1,
+                     path.empty() ? use.name : path + "/" + use.name);
+            }
+            onPath.erase(definition);
+        };
+    for (int definition : definitions) {
+        if (used.count(definition) == 0) walk(definition, Mat4::identity(), 0, std::string());
+    }
+    // Which uses, by their ids: the first few.
+    const auto listed = [](const std::set<int>& ids) {
+        std::string text;
+        std::size_t n = 0;
+        for (int id : ids) {
+            if (n++ == 5) return text + ", ...";
+            text += (text.empty() ? "#" : ", #") + std::to_string(id);
+        }
+        return text;
+    };
+    if (!unplaced.empty()) {
+        structure.notes.push_back(
+            std::to_string(unplaced.size()) +
+            (unplaced.size() == 1 ? " use of a part has" : " uses of parts have") +
+            " no placement that can be read, and " + (unplaced.size() == 1 ? "is" : "are") +
+            " placed where drawn (" + listed(unplaced) + ")");
+    }
+    if (!loops.empty()) {
+        structure.notes.push_back("an assembly that contains itself is followed once (" +
+                                  listed(loops) + ")");
+    }
+    if (cut) {
+        structure.leftOut.push_back("the assembly places its parts more times than can be read (" +
+                                    std::to_string(structure.placed.size()) +
+                                    " placements read): the rest are left out");
+    }
+    // A product no walk reached (only under a loop, or under a missing
+    // assembly), where drawn; and solids of no product, each its own.
+    for (std::size_t p = 0; p < structure.products.size(); ++p) {
+        if (!placedProduct[p]) {
+            structure.placed.push_back({p, structure.products[p].name, Mat4::identity()});
+        }
+    }
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+        if (inProduct[g]) continue;
+        const StepInstance* msb = parser.find(groups[g].msbs.front());
+        const StepList* args = msb ? msb->leaf("MANIFOLD_SOLID_BREP") : nullptr;
+        std::string name = args != nullptr && !args->empty() ? textOf((*args)[0]) : std::string();
+        if (blank(name)) name = "solid " + std::to_string(g + 1);
+        structure.placed.push_back({structure.products.size(), name, Mat4::identity()});
+        structure.products.push_back({name, {g}});
+    }
+    return structure;
+}
+
+// ===========================================================================
+// Reading and writing, shared
+// ===========================================================================
+
+/// Parse @p text into @p parser; false, with g_lastError said, when it
+/// cannot be, or once @p cancelled is set.
+bool parseText(StepParser& parser, const std::atomic<bool>* cancelled) {
+    std::string error;
+    bool parsed = false;
+    try {
+        parsed = parser.parse(error, cancelled);
+    } catch (const std::exception& e) {
+        error = e.what();
+    }
+    if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+        g_lastError = kCancelled;
+        return false;
+    }
+    if (!parsed) g_lastError = "STEP parse error: " + error;
+    return parsed;
+}
+
+/// A file's solid groups, each built once, in millimetres: null where one
+/// could not be. What fell short, for a report.
+struct BuiltSolids {
+    std::vector<std::unique_ptr<topo::Solid>> solids;
+    std::vector<std::string> failures;
+    std::vector<std::string> approximated;
+    std::map<std::string, int> conversions;
+    std::string firstError;
+};
+
+BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>& groups,
+                        bool reporting, const std::atomic<bool>* cancelled) {
+    BuiltSolids built;
+    built.solids.resize(groups.size());
     // Each solid on its own: one that cannot be rebuilt is reported, and the
     // others still come in. Its index in the file names its topology, so a
     // solid's names do not depend on whether the ones before it were read.
-    std::vector<std::string> failures;
-    std::map<std::string, int> conversions;
-    std::string firstError;
     for (size_t index = 0; index < groups.size(); ++index) {
-        if (stopped()) {
-            g_lastError = kCancelled;
-            return {};
-        }
-        const Group& group = groups[index];
+        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
+        const SolidGroup& group = groups[index];
         const std::string which =
             "solid " + std::to_string(index + 1) + " (#" + std::to_string(group.msbs.front()) + ")";
         SolidBuilder builder(parser, static_cast<int>(index), cancelled,
                              group.context != 0 ? contextRadians(parser, group.context) : 1.0);
         std::unique_ptr<topo::Solid> solid;
+        std::string error;
         try {
             solid = builder.build(group.msbs, error);
         } catch (const std::exception& e) {
@@ -2209,11 +2700,11 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
             error = e.what();
         }
         if (solid == nullptr) {
-            if (firstError.empty()) {
-                firstError = "failed to reconstruct solid #" + std::to_string(group.msbs.front()) +
-                             ": " + error;
+            if (built.firstError.empty()) {
+                built.firstError = "failed to reconstruct solid #" +
+                                   std::to_string(group.msbs.front()) + ": " + error;
             }
-            failures.push_back(which + ": " + error);
+            built.failures.push_back(which + ": " + error);
             continue;
         }
 
@@ -2223,67 +2714,504 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
         const double mm =
             group.context != 0 ? contextMillimetres(parser, group.context, &unit) : 1.0;
         if (!(mm > 0.0)) {
-            ++conversions["the length unit could not be read; read as millimetres"];
+            ++built.conversions["the length unit could not be read; read as millimetres"];
         } else if (mm != 1.0) {
             solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
             std::ostringstream factor;
             factor << std::setprecision(10) << mm;
-            ++conversions["drawn in " + unit + ", scaled by " + factor.str() + " into millimetres"];
+            ++built.conversions["drawn in " + unit + ", scaled by " + factor.str() +
+                                " into millimetres"];
         }
         // Its curved faces go in as facets (ImportedBodyFeature): say where
         // that falls short.
-        if (report) {
+        if (reporting) {
             const auto faceted = model::facetCurved(*solid);
             if (!faceted.solid) {
-                report->approximated.push_back(
+                built.approximated.push_back(
                     which + ": its curved faces could not be cut into facets (" + faceted.error +
                     "), so its volume and Booleans follow its corners alone");
             } else if (!faceted.outlined.empty()) {
                 const size_t n = faceted.outlined.size();
-                report->approximated.push_back(
+                built.approximated.push_back(
                     which + ": " + std::to_string(n) +
                     (n == 1 ? " curved face is" : " curved faces are") +
                     " not bounded by its surface's own edges, and is one facet, its outline");
             }
         }
-        out.push_back(std::move(solid));
+        built.solids[index] = std::move(solid);
     }
-    if (stopped()) {  // during the last solid
+    return built;
+}
+
+/// What @p built and @p structure fell short of, into @p report.
+void reportRead(const BuiltSolids& built, const ProductStructure& structure, ImportReport* report) {
+    if (report == nullptr) return;
+    for (const auto& failure : built.failures) report->skipped.push_back(failure);
+    for (const auto& note : structure.leftOut) report->skipped.push_back(note);
+    for (const auto& note : structure.notes) report->approximated.push_back(note);
+    for (const auto& line : built.approximated) report->approximated.push_back(line);
+    for (const auto& [what, count] : built.conversions) {
+        const std::string line =
+            (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what;
+        if (what.rfind("the length unit", 0) == 0) {
+            report->approximated.push_back(line);
+        } else {
+            report->converted.push_back(line);
+        }
+    }
+}
+
+/// @p solid's names moved from solid @p from's to solid @p to's: a second
+/// placement of a part named as a solid of its own.
+void renameSolid(topo::Solid& solid, std::size_t from, std::size_t to) {
+    const std::string was = "step/solid:" + std::to_string(from) + "/";
+    const std::string now = "step/solid:" + std::to_string(to) + "/";
+    const auto rename = [&](topo::TopologyID& id) {
+        if (id.tag().rfind(was, 0) == 0) {
+            id = topo::TopologyID::fromTag(now + id.tag().substr(was.size()));
+        }
+    };
+    for (auto& v : solid.vertices()) rename(v.topoId);
+    for (auto& e : solid.edges()) rename(e.topoId);
+    for (auto& f : solid.faces()) rename(f.topoId);
+}
+
+/// The entities a file starts with: its units and context, its
+/// application. Their ids.
+struct Preamble {
+    int context = 0;
+    int appContext = 0;
+    int productContext = 0;
+};
+
+Preamble writePreamble(StepWriter& w) {
+    Preamble pre;
+    // Geometric representation context (SI millimetres) shared by all solids.
+    const int lengthUnit = w.add("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
+    const int angleUnit = w.add("(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))");
+    const int solidAngleUnit = w.add("(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())");
+    const int uncertainty =
+        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-7),#" + std::to_string(lengthUnit) +
+              ",'distance_accuracy_value','confusion accuracy')");
+    pre.context = w.add(
+        "(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" +
+        std::to_string(uncertainty) + ")) GLOBAL_UNIT_ASSIGNED_CONTEXT((#" +
+        std::to_string(lengthUnit) + ",#" + std::to_string(angleUnit) + ",#" +
+        std::to_string(solidAngleUnit) + ")) REPRESENTATION_CONTEXT('Context #1','3D Context'))");
+
+    pre.appContext = w.add("APPLICATION_CONTEXT('managed model based 3d engineering')");
+    w.add(
+        "APPLICATION_PROTOCOL_DEFINITION('international standard',"
+        "'ap242_managed_model_based_3d_engineering',2020,#" +
+        std::to_string(pre.appContext) + ")");
+
+    pre.productContext =
+        w.add("PRODUCT_CONTEXT('',#" + std::to_string(pre.appContext) + ",'mechanical')");
+    return pre;
+}
+
+/// A product and its definition: the definition's id, and its shape's.
+struct ProductIds {
+    int definition = 0;
+    int shape = 0;
+};
+
+/// A product, @p quoted its name as Part-21 text, of @p category.
+ProductIds writeProduct(StepWriter& w, const Preamble& pre, const std::string& quoted,
+                        const char* category) {
+    const int product = w.add("PRODUCT(" + quoted + "," + quoted + ",'',(#" +
+                              std::to_string(pre.productContext) + "))");
+    w.add(std::string("PRODUCT_RELATED_PRODUCT_CATEGORY('") + category + "',$,(#" +
+          std::to_string(product) + "))");
+    const int formation =
+        w.add("PRODUCT_DEFINITION_FORMATION('',$,#" + std::to_string(product) + ")");
+    const int pdc = w.add("PRODUCT_DEFINITION_CONTEXT('part definition',#" +
+                          std::to_string(pre.appContext) + ",'design')");
+    ProductIds ids;
+    ids.definition = w.add("PRODUCT_DEFINITION('design',$,#" + std::to_string(formation) + ",#" +
+                           std::to_string(pdc) + ")");
+    ids.shape = w.add("PRODUCT_DEFINITION_SHAPE('',$,#" + std::to_string(ids.definition) + ")");
+    return ids;
+}
+
+std::string fileText(const StepWriter& w) {
+    std::ostringstream out;
+    out << "ISO-10303-21;\n"
+        << "HEADER;\n"
+        << "FILE_DESCRIPTION(('Horizon CAD B-Rep model'),'2;1');\n"
+        << "FILE_NAME('','',('Horizon CAD'),(''),'Horizon STEP writer','Horizon CAD','');\n"
+        << "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 3 1 "
+           "4 }'));\n"
+        << "ENDSEC;\n"
+        << "DATA;\n"
+        << w.body() << "ENDSEC;\n"
+        << "END-ISO-10303-21;\n";
+    return out.str();
+}
+
+/// Whether @p m is a rotation and a move alone: what an axis placement
+/// can say.
+bool isRigid(const Mat4& m) {
+    constexpr double kTol = 1e-6;
+    if (std::abs(m.at(3, 0)) > kTol || std::abs(m.at(3, 1)) > kTol || std::abs(m.at(3, 2)) > kTol ||
+        std::abs(m.at(3, 3) - 1.0) > kTol) {
+        return false;
+    }
+    const Vec3 x{m.at(0, 0), m.at(1, 0), m.at(2, 0)};
+    const Vec3 y{m.at(0, 1), m.at(1, 1), m.at(2, 1)};
+    const Vec3 z{m.at(0, 2), m.at(1, 2), m.at(2, 2)};
+    for (double v : {m.at(0, 3), m.at(1, 3), m.at(2, 3)}) {
+        if (!std::isfinite(v)) return false;
+    }
+    return std::abs(x.length() - 1.0) < kTol && std::abs(y.length() - 1.0) < kTol &&
+           std::abs(z.length() - 1.0) < kTol && std::abs(x.dot(y)) < kTol &&
+           std::abs(y.dot(z)) < kTol && std::abs(z.dot(x)) < kTol && x.cross(y).dot(z) > 0.0;
+}
+
+}  // namespace
+
+// ===========================================================================
+// Public API
+// ===========================================================================
+
+std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids,
+                                 const WriteOptions& options, WriteReport* report) {
+    StepWriter w;
+    if (report != nullptr) {
+        report->faceted.clear();
+        report->leftOut.clear();
+    }
+    const Preamble pre = writePreamble(w);
+
+    int index = 0;
+    for (const topo::Solid* solid : solids) {
+        if (solid == nullptr) continue;
+        const std::vector<int> msbs = writeSolid(w, *solid, index, options.asDesigned,
+                                                 report != nullptr ? &report->faceted : nullptr);
+        if (msbs.empty()) continue;
+
+        const std::string name = "'part_" + std::to_string(index) + "'";
+        const ProductIds ids = writeProduct(w, pre, name, "part");
+        const int rep = w.add("ADVANCED_BREP_SHAPE_REPRESENTATION(" + name + "," +
+                              StepWriter::refList(msbs) + ",#" + std::to_string(pre.context) + ")");
+        w.add("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ids.shape) + ",#" +
+              std::to_string(rep) + ")");
+        ++index;
+    }
+    return fileText(w);
+}
+
+std::string StepFormat::assemblyToString(const std::string& name,
+                                         const std::vector<StepWritePart>& parts,
+                                         const std::vector<StepOccurrence>& occurrences,
+                                         const WriteOptions& options, WriteReport* report) {
+    StepWriter w;
+    if (report != nullptr) {
+        report->faceted.clear();
+        report->leftOut.clear();
+    }
+    const auto leaveOut = [report](const std::string& why) {
+        if (report != nullptr) report->leftOut.push_back(why);
+    };
+    const Preamble pre = writePreamble(w);
+    const auto direction = [&w](const Vec3& d) {
+        return w.add("DIRECTION('',(" + fmtReal(d.x) + "," + fmtReal(d.y) + "," + fmtReal(d.z) +
+                     "))");
+    };
+    // The frame @p m takes the part's own into: where it is placed.
+    const auto axis = [&](const Mat4& m) {
+        const int origin = w.addPoint({m.at(0, 3), m.at(1, 3), m.at(2, 3)});
+        const int z = direction(Vec3{m.at(0, 2), m.at(1, 2), m.at(2, 2)}.normalized());
+        const int x = direction(Vec3{m.at(0, 0), m.at(1, 0), m.at(2, 0)}.normalized());
+        return w.add("AXIS2_PLACEMENT_3D(''," + std::string("#") + std::to_string(origin) + ",#" +
+                     std::to_string(z) + ",#" + std::to_string(x) + ")");
+    };
+
+    // The occurrences that can be placed, and the parts they use.
+    std::vector<const StepOccurrence*> placeable;
+    std::vector<bool> used(parts.size(), false);
+    for (const StepOccurrence& occurrence : occurrences) {
+        const std::string what = "\"" + occurrence.name + "\"";
+        if (occurrence.part >= parts.size()) {
+            leaveOut(what + ": its part is not in the assembly");
+        } else if (!isRigid(occurrence.transform)) {
+            leaveOut(what + ": its placement is not a rotation and a move, which STEP places by");
+        } else {
+            placeable.push_back(&occurrence);
+            used[occurrence.part] = true;
+        }
+    }
+
+    // Each part used, once: its solids and its origin, the frame its
+    // placements move.
+    struct Written {
+        int definition = 0;
+        int rep = 0;
+        int origin = 0;
+    };
+    std::vector<std::optional<Written>> written(parts.size());
+    int index = 0;
+    for (std::size_t p = 0; p < parts.size(); ++p) {
+        if (!used[p]) continue;
+        std::vector<int> items;
+        for (const topo::Solid* body : parts[p].bodies) {
+            if (body == nullptr) continue;
+            const std::vector<int> msbs =
+                writeSolid(w, *body, index++, options.asDesigned,
+                           report != nullptr ? &report->faceted : nullptr);
+            items.insert(items.end(), msbs.begin(), msbs.end());
+        }
+        if (items.empty()) continue;
+        Written part;
+        part.origin = axis(Mat4::identity());
+        items.push_back(part.origin);
+        const std::string quoted = stepText(parts[p].name);
+        const ProductIds ids = writeProduct(w, pre, quoted, "part");
+        part.definition = ids.definition;
+        part.rep = w.add("ADVANCED_BREP_SHAPE_REPRESENTATION(" + quoted + "," +
+                         StepWriter::refList(items) + ",#" + std::to_string(pre.context) + ")");
+        w.add("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ids.shape) + ",#" +
+              std::to_string(part.rep) + ")");
+        written[p] = part;
+    }
+
+    // The assembly: its origin and a frame for each placement, and a use
+    // of each part at it.
+    std::vector<int> items{axis(Mat4::identity())};
+    struct Placement {
+        const StepOccurrence* occurrence = nullptr;
+        Written part;
+        int frame = 0;
+    };
+    std::vector<Placement> placements;
+    for (const StepOccurrence* occurrence : placeable) {
+        const auto& part = written[occurrence->part];
+        if (!part) {
+            leaveOut("\"" + occurrence->name + "\": its part has no solid to write");
+            continue;
+        }
+        placements.push_back({occurrence, *part, axis(occurrence->transform)});
+        items.push_back(placements.back().frame);
+    }
+    const std::string quoted = stepText(name);
+    const ProductIds assembly = writeProduct(w, pre, quoted, "assembly");
+    const int rep = w.add("SHAPE_REPRESENTATION(" + quoted + "," + StepWriter::refList(items) +
+                          ",#" + std::to_string(pre.context) + ")");
+    w.add("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(assembly.shape) + ",#" +
+          std::to_string(rep) + ")");
+    int number = 0;
+    for (const auto& [occurrence, part, frame] : placements) {
+        const int use =
+            w.add("NEXT_ASSEMBLY_USAGE_OCCURRENCE('" + std::to_string(++number) + "'," +
+                  stepText(occurrence->name) + ",'',#" + std::to_string(assembly.definition) +
+                  ",#" + std::to_string(part.definition) + ",$)");
+        const int shape = w.add("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(use) + ")");
+        const int transformation =
+            w.add("ITEM_DEFINED_TRANSFORMATION('','',#" + std::to_string(part.origin) + ",#" +
+                  std::to_string(frame) + ")");
+        const int relationship =
+            w.add("(REPRESENTATION_RELATIONSHIP('','',#" + std::to_string(part.rep) + ",#" +
+                  std::to_string(rep) + ") REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#" +
+                  std::to_string(transformation) + ") SHAPE_REPRESENTATION_RELATIONSHIP())");
+        w.add("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#" + std::to_string(relationship) + ",#" +
+              std::to_string(shape) + ")");
+    }
+    return fileText(w);
+}
+
+bool StepFormat::save(const std::string& filePath, const std::vector<const topo::Solid*>& solids,
+                      const WriteOptions& options, WriteReport* report) {
+    g_lastError.clear();
+    if (solids.empty()) {
+        g_lastError = "no solids to export";
+        return false;
+    }
+    std::string error;
+    if (!writeFileAtomically(pathFromUtf8(filePath), toString(solids, options, report), &error)) {
+        g_lastError = error;
+        return false;
+    }
+    return true;
+}
+
+bool StepFormat::saveAssembly(const std::string& filePath, const std::string& name,
+                              const std::vector<StepWritePart>& parts,
+                              const std::vector<StepOccurrence>& occurrences,
+                              const WriteOptions& options, WriteReport* report) {
+    g_lastError.clear();
+    WriteReport own;
+    WriteReport& said = report != nullptr ? *report : own;
+    const std::string text = assemblyToString(name, parts, occurrences, options, &said);
+    if (said.leftOut.size() >= occurrences.size()) {
+        g_lastError = "no component to place";
+        return false;
+    }
+    std::string error;
+    if (!writeFileAtomically(pathFromUtf8(filePath), text, &error)) {
+        g_lastError = error;
+        return false;
+    }
+    return true;
+}
+
+std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
+    const std::string& text, ImportReport* report, const std::atomic<bool>* cancelled) {
+    g_lastError.clear();
+    const auto stopped = [cancelled] {
+        return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
+    };
+    StepParser parser(text);
+    if (!parseText(parser, cancelled)) return {};
+    const std::vector<SolidGroup> groups = solidGroups(parser);
+    if (groups.empty()) {
+        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        return {};
+    }
+    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled);
+    if (stopped()) {
         g_lastError = kCancelled;
         return {};
     }
+    const ProductStructure structure = readStructure(parser, groups);
 
-    if (out.empty()) {
-        g_lastError = firstError;
-        return out;
-    }
-    if (report) {
-        for (const auto& failure : failures) report->skipped.push_back(failure);
-        for (const auto& [what, count] : conversions) {
-            const std::string line =
-                (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what;
-            if (what.rfind("the length unit", 0) == 0) {
-                report->approximated.push_back(line);
-            } else {
-                report->converted.push_back(line);
+    std::vector<std::unique_ptr<topo::Solid>> out;
+    if (!structure.structured) {
+        // Parts alone: each solid where it was drawn, as the file has them.
+        for (auto& solid : built.solids) {
+            if (solid) out.push_back(std::move(solid));
+        }
+    } else {
+        // Each placement of each part's solids. A solid's first keeps its
+        // names (as a file of the part alone names it); each after it is
+        // named as a solid of its own, numbered after the file's.
+        std::vector<std::size_t> uses(groups.size(), 0);
+        for (const StepOccurrence& placed : structure.placed) {
+            for (std::size_t g : structure.products[placed.part].groups) ++uses[g];
+        }
+        std::vector<bool> named(groups.size(), false);
+        std::size_t next = groups.size();
+        std::set<std::size_t> parts;  // the products placed
+        for (const StepOccurrence& placed : structure.placed) {
+            if (stopped()) {
+                g_lastError = kCancelled;
+                return {};
+            }
+            for (std::size_t g : structure.products[placed.part].groups) {
+                auto& solid = built.solids[g];
+                if (!solid) continue;
+                std::unique_ptr<topo::Solid> copy =
+                    --uses[g] == 0 && isIdentity(placed.transform)
+                        ? std::move(solid)
+                        : model::Pattern::transformed(*solid, placed.transform);
+                if (named[g]) renameSolid(*copy, g, next++);
+                named[g] = true;
+                out.push_back(std::move(copy));
+                parts.insert(placed.part);
             }
         }
+        if (report != nullptr && !out.empty()) {
+            report->converted.push_back("an assembly: " + std::to_string(parts.size()) +
+                                        (parts.size() == 1 ? " part placed" : " parts placed") +
+                                        " where it puts them, as " + std::to_string(out.size()) +
+                                        (out.size() == 1 ? " solid" : " solids"));
+        }
     }
+    if (out.empty()) {
+        g_lastError = built.firstError.empty() ? "no solid could be read" : built.firstError;
+        return out;
+    }
+    reportRead(built, structure, report);
     return out;
 }
+
+StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportReport* report,
+                                            const std::atomic<bool>* cancelled) {
+    g_lastError.clear();
+    StepAssembly assembly;
+    StepParser parser(text);
+    if (!parseText(parser, cancelled)) return assembly;
+    const std::vector<SolidGroup> groups = solidGroups(parser);
+    if (groups.empty()) {
+        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        return assembly;
+    }
+    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled);
+    if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+        g_lastError = kCancelled;
+        return {};
+    }
+    const ProductStructure structure = readStructure(parser, groups);
+
+    // Each product with a solid that could be read, a part; its solids
+    // moved into it, or copied when another product has them too.
+    std::vector<std::size_t> uses(groups.size(), 0);
+    for (const auto& product : structure.products) {
+        for (std::size_t g : product.groups) ++uses[g];
+    }
+    constexpr std::size_t kNone = std::numeric_limits<std::size_t>::max();
+    std::vector<std::size_t> partOf(structure.products.size(), kNone);
+    for (std::size_t p = 0; p < structure.products.size(); ++p) {
+        const auto& product = structure.products[p];
+        StepAssembly::Part part;
+        part.name = blank(product.name) ? "part " + std::to_string(p + 1) : product.name;
+        for (std::size_t g : product.groups) {
+            auto& solid = built.solids[g];
+            if (!solid) continue;
+            part.bodies.push_back(--uses[g] == 0
+                                      ? std::move(solid)
+                                      : model::Pattern::transformed(*solid, Mat4::identity()));
+        }
+        if (part.bodies.empty()) continue;
+        partOf[p] = assembly.parts.size();
+        assembly.parts.push_back(std::move(part));
+    }
+    for (const StepOccurrence& placed : structure.placed) {
+        if (partOf[placed.part] == kNone) continue;
+        StepOccurrence occurrence = placed;
+        occurrence.part = partOf[placed.part];
+        if (blank(occurrence.name)) occurrence.name = assembly.parts[occurrence.part].name;
+        assembly.occurrences.push_back(std::move(occurrence));
+    }
+    assembly.structured = structure.structured;
+    if (assembly.parts.empty()) {
+        g_lastError = built.firstError.empty() ? "no solid could be read" : built.firstError;
+        return assembly;
+    }
+    reportRead(built, structure, report);
+    return assembly;
+}
+
+namespace {
+
+/// The bytes of the file at @p filePath; nullopt, with g_lastError said,
+/// when it cannot be opened.
+std::optional<std::string> fileBytes(const std::string& filePath) {
+    std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
+    if (!file) {
+        g_lastError = "cannot open file: " + filePath;
+        return std::nullopt;
+    }
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    return ss.str();
+}
+
+}  // namespace
 
 std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath,
                                                            ImportReport* report,
                                                            const std::atomic<bool>* cancelled) {
     g_lastError.clear();
-    std::ifstream file(pathFromUtf8(filePath), std::ios::binary);
-    if (!file) {
-        g_lastError = "cannot open file: " + filePath;
-        return {};
-    }
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return fromString(ss.str(), report, cancelled);
+    const auto text = fileBytes(filePath);
+    return text ? fromString(*text, report, cancelled)
+                : std::vector<std::unique_ptr<topo::Solid>>{};
+}
+
+StepAssembly StepFormat::loadAssembly(const std::string& filePath, ImportReport* report,
+                                      const std::atomic<bool>* cancelled) {
+    g_lastError.clear();
+    const auto text = fileBytes(filePath);
+    return text ? assemblyFromString(*text, report, cancelled) : StepAssembly{};
 }
 
 const std::string& StepFormat::lastError() {

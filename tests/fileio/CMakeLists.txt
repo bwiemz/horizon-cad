@@ -9,6 +9,7 @@ add_executable(hz_fileio_tests
     test_StepFixtures.cpp
     test_StepFidelity.cpp
     test_StepCurved.cpp
+    test_StepAssembly.cpp
     test_GltfExport.cpp
     test_ImportExport.cpp
     test_DxfFidelity.cpp
