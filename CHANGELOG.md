@@ -65,6 +65,20 @@ work, not "post-1.0".
     are now built in facets that record their surface, like the kernel's
     own.
 
+- **Boolean robustness (142).**
+  - A Boolean either gives a valid solid that conserves volume or says why
+    it cannot. Tests cover random placements, parts a million millimetres
+    from the origin, very small and very large parts, and faces in exact
+    contact.
+    - Far from the origin, a Boolean could turn a part inside out:
+      Subtract gave the intersection.
+    - A very small part's Boolean could fail to join up.
+  - Tolerances scale with the parts.
+  - A Boolean on a finely faceted part no longer risks overflowing the
+    stack.
+  - A face cut by more than 60 holes is put back together, where it was
+    left in hundreds of fragments.
+
 ## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
 
 - **A 2D view that scales (136).**

@@ -276,22 +276,64 @@ Cases:
   fuzzed Booleans. Nothing tests far-from-origin coordinates, very small or
   large scales, exact face contact, or deep BSPs.
 
-### Plan
-1. **An iterative BSP.** Explicit stacks for build, clip, invert and
-   collect, and an iterative teardown. It is tested at 100,000 triangles
-   under a 1 MB stack, as on Windows.
-2. **A balanced split.** The plane is chosen from a sample of up to 16
-   candidates, to minimise splits plus the front/back imbalance.
-3. **One relative tolerance model.**
-   - A `Tolerance` taken from the operands' extent: plane, weld and area
-     tolerances in one place, relative with an absolute floor.
-   - It is passed through MeshCsg, FragmentMerge, SolidSewer and the
-     validators.
-4. **Strict robustness tests:**
-   - every one of the random transforms either succeeds with a valid,
-     volume-conserving result, or refuses with a reason (no silent null);
-   - the same at 1e6 from the origin, at 1e-3 and 1e5 scale, with exact
-     coplanar contact, and with shared faces.
+### As built
+- **Held to strict terms, Booleans failed three ways**, all now fixed. The
+  new tests require every case to give a valid solid that conserves volume,
+  or to refuse with a reason.
+  - **A million out, a box came back inside out.**
+    `extractFacePolygons` judged orientation by a signed volume summed about
+    the origin. A triple product's rounding grows as the cube of the
+    distance; there it was larger than the box, so the sign was chance.
+    Subtract returned the intersection. Every such sum is now taken about a
+    point of the solid's own: BoundaryMesh, RingStack, PrimitiveFactory,
+    FilletOp, MeshCsg and topology's `signedVolume`. Newell normals are
+    likewise (MeshCsg, FragmentMerge, SolidSewer, BoundaryMesh,
+    `loopNormal`). About the origin, a triangle there tilted by 2e-10 rad,
+    which moved its plane 2e-4.
+  - **Far out, a face's fragments did not merge.** FragmentMerge grouped
+    them by plane offset n·p. Two normals' rounding times a lever of 2.7e6 is
+    0.016. It now measures a fragment's distance from the plane at a point
+    of the plane.
+  - **A part a hundredth of a millimetre across did not sew.** The
+    tolerances were absolute (1e-6). `CsgTolerance` takes them from the
+    operands: 1e-8 of their extent, never under 64 ulps of their largest
+    coordinate. The one value serves as the BSP's on-plane band,
+    FragmentMerge's tolerance and the sewer's weld.
+- **An iterative BSP.** The tree is a flat node array, and every traversal
+  is a loop over an explicit stack. Its output is bit-identical to the
+  recursive one's across 75 mixed Booleans. A Boolean whose tree is 1,024
+  deep runs on a 128 KB stack; the recursive version crashed there.
+- **FragmentMerge cuts through any number of holes.** A bit per hole in as
+  many words as it takes. It gave up past 60, leaving a drilled plate in
+  fragments.
+- **The balanced split was tried and left out.** A plane chosen from 16
+  candidates, to split least and balance most, was 8% slower on a
+  2,048-facet cylinder and no faster on a plate of 81 pins. A convex
+  solid's own planes each have all its other faces behind them, so its tree
+  is a chain whatever the choice.
+- **The validators already had a relative tolerance.** The feature tree's
+  gate uses 1e-9 of the part's size, with a floor of 1e-7.
+
+### Tests
+- `BooleanRobustness`:
+  - 20 random rigid placements of a cylinder against a box, all three
+    types;
+  - the same a million millimetres out;
+  - the same at 1e-3 and 1e5 scale;
+  - face-to-face contact, contact over part of a face, a face shared in
+    part, and flush faces;
+  - a plate cut by 81 pins at once;
+  - a 1,024-deep tree on a 128 KB stack.
+- The old threshold tests are strict: all 20 random transforms, and all
+  18 random overlaps. They asked for 5, and for 1.
+
+### Not done
+- Building the tree of a convex solid is quadratic in its facet count: 2.6
+  s for a 2,048-facet cylinder in a debug build. A tree that is not a chain
+  needs planes other than the polygons' own, and then leaves that record
+  inside or out.
+- Solids of 100,000 triangles were not tested, as the plan asked. They run
+  but take minutes, for the reason above.
 
 ## Tracking
 

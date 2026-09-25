@@ -207,7 +207,7 @@ public:
             stack.pop_back();
             if (polys.empty()) continue;
             if (!m_nodes[static_cast<size_t>(index)].hasPlane) {
-                m_nodes[static_cast<size_t>(index)].plane = splitPlane(polys, m_eps);
+                m_nodes[static_cast<size_t>(index)].plane = polys[0].plane;
                 m_nodes[static_cast<size_t>(index)].hasPlane = true;
             }
             std::vector<Poly> frontList;
@@ -231,44 +231,6 @@ public:
     }
 
 private:
-    /// The plane to split @p polys by: of up to 16 of their own, evenly
-    /// spaced, the one that splits fewest and leaves front and back most
-    /// even, judged on up to 256 of them. The first polygon's plane, as
-    /// csg.js takes, made a prism's tree a chain as deep as its triangle
-    /// count, and every clip walk all of it.
-    static Plane splitPlane(const std::vector<Poly>& polys, double eps) {
-        constexpr size_t kCandidates = 16;
-        constexpr size_t kJudged = 256;
-        const size_t n = polys.size();
-        if (n <= 2) return polys[0].plane;
-        const size_t candidates = std::min(n, kCandidates);
-        const size_t judged = std::min(n, kJudged);
-        size_t best = 0;
-        double bestScore = std::numeric_limits<double>::infinity();
-        for (size_t c = 0; c < candidates; ++c) {
-            const Plane& plane = polys[c * n / candidates].plane;
-            double front = 0.0;
-            double back = 0.0;
-            double spanning = 0.0;
-            for (size_t k = 0; k < judged; ++k) {
-                int type = 0;
-                for (const Vec3& q : polys[k * n / judged].data.points) {
-                    const double t = plane.normal.dot(q) - plane.w;
-                    type |= (t < -eps) ? BACK : (t > eps) ? FRONT : COPLANAR;
-                }
-                front += type == FRONT ? 1.0 : 0.0;
-                back += type == BACK ? 1.0 : 0.0;
-                spanning += type == SPANNING ? 1.0 : 0.0;
-            }
-            const double score = 8.0 * spanning + std::abs(front - back);
-            if (score < bestScore) {
-                bestScore = score;
-                best = c * n / candidates;
-            }
-        }
-        return polys[best].plane;
-    }
-
     struct Node {
         Plane plane;
         bool hasPlane = false;

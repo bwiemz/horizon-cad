@@ -54,11 +54,12 @@ struct CsgPolygon {
 /// triangulations from BoundaryMesh satisfy this.
 ///
 /// The tree is a flat array walked with explicit stacks, so no traversal
-/// recurses. Each split plane is the best of a sample of the polygons' own
-/// (fewest splits, most even sides). A convex solid's own planes each have
-/// all its other faces behind them, so its tree is a chain whatever the
-/// choice, and building it is quadratic in its facet count: a cylinder of
-/// 2,048 facets takes seconds in a debug build.
+/// recurses. Each node splits by its first polygon's plane, as csg.js does. A
+/// convex solid's own planes each have all its other faces behind them, so
+/// its tree is a chain whatever the choice, and building it is quadratic in
+/// its facet count: a cylinder of 2,048 facets takes seconds in a debug
+/// build. (A plane chosen from a sample to split least and balance most was
+/// tried: 8% slower on that cylinder, and no faster on a plate of 81 pins.)
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
                                    double planeEps = kCsgPlaneEps);

@@ -6,6 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <pthread.h>
+#endif
+
 #include <cmath>
 #include <memory>
 #include <numbers>
@@ -29,6 +33,17 @@ using hz::model::MassPropertiesCalculator;
 using hz::model::NamingScheme;
 using hz::model::Pattern;
 using hz::model::PrimitiveFactory;
+
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define HZ_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define HZ_SANITIZED 1
+#endif
+#endif
+#ifndef HZ_SANITIZED
+#define HZ_SANITIZED 0
+#endif
 
 namespace {
 
@@ -170,4 +185,65 @@ TEST(BooleanRobustnessTest, AFaceWithManyHolesIsMerged) {
     }
     EXPECT_GT(top, 0u);
     EXPECT_LE(top, 2u * 81u + 2u) << "strips between the holes, not fragments";
+}
+
+namespace {
+
+/// Runs @p work on a thread whose stack is @p bytes; whether it could.
+bool onStackOf(size_t bytes, void (*work)(void*), void* arg) {
+#if defined(__unix__) || defined(__APPLE__)
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) != 0) return false;
+    const bool sized = pthread_attr_setstacksize(&attr, bytes) == 0;
+    pthread_t thread;
+    struct Call {
+        void (*work)(void*);
+        void* arg;
+    } call{work, arg};
+    const bool started = sized && pthread_create(
+                                      &thread, &attr,
+                                      [](void* p) -> void* {
+                                          auto* c = static_cast<Call*>(p);
+                                          c->work(c->arg);
+                                          return nullptr;
+                                      },
+                                      &call) == 0;
+    pthread_attr_destroy(&attr);
+    if (started) pthread_join(thread, nullptr);
+    return started;
+#else
+    (void)bytes;
+    (void)work;
+    (void)arg;
+    return false;
+#endif
+}
+
+}  // namespace
+
+// No part of a Boolean recurses as deep as its BSP: a cylinder of 1,024
+// facets, whose tree is a chain 1,024 nodes deep, is cut from a box on a
+// 128 KB stack. The recursive traversal needed several hundred.
+TEST(BooleanRobustnessTest, ADeepTreeNeedsNoDeepStack) {
+    struct Case {
+        std::unique_ptr<hz::topo::Solid> result;
+        std::string reason;
+    } c;
+    // Sanitizers' frames are several times larger.
+    const size_t stack = HZ_SANITIZED ? size_t{1} << 20 : size_t{128} << 10;
+    const bool ran = onStackOf(
+        stack,
+        [](void* p) {
+            auto& c = *static_cast<Case*>(p);
+            const auto box = PrimitiveFactory::makeBox(20, 20, 10);
+            const auto pin = moved(*PrimitiveFactory::makeCylinder(5.0, 20.0, 1024),
+                                   Mat4::translation(Vec3(10, 10, -5)));
+            c.result = BooleanOp::execute(*box, *pin, BooleanType::Subtract, &c.reason,
+                                          NamingScheme::Stable);
+        },
+        &c);
+    if (!ran) GTEST_SKIP() << "a thread's stack size is set here with POSIX threads";
+    ASSERT_NE(c.result, nullptr) << c.reason;
+    const double hole = 0.5 * 1024 * 25.0 * std::sin(2.0 * std::numbers::pi / 1024);
+    EXPECT_NEAR(volumeOf(*c.result), 4000.0 - 10.0 * hole, 1e-6);
 }
