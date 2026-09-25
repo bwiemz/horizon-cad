@@ -808,3 +808,36 @@ TEST(PersistentNamingTest, AnOlderLoftsTwistedSideIsOneFace) {
         EXPECT_EQ(found->analyticSurface.get(), *surfaces.begin()) << side;
     }
 }
+
+// A pattern copy's side a later cut parts is still one side (Phase 139
+// review): the piece comes after the copy's `/pattern:1`, where it was kept,
+// so the copy's side was two, and a mate saved on it found neither.
+TEST(PersistentNamingTest, ACutPatternCopyIsStillOneSide) {
+    hz::doc::FeatureTree tree;
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+    const std::string id = cylinder->featureID();
+    tree.addFeature(std::move(cylinder));
+    tree.addFeature(hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 20.0, 2));  // apart
+    // Across the +y side of both, and part of the way round the first.
+    auto notch = hz::doc::PrimitiveFeature::makeBox(50, 8, 2);
+    ASSERT_TRUE(notch->setVector("basePoint", Vec3(3, 2, 4)));
+    notch->setOperation(BodyOperation::Cut);
+    tree.addFeature(std::move(notch));
+    const auto built = tree.buildWithDiagnostics();
+    ASSERT_NE(built.solid, nullptr) << built.failureMessage;
+
+    bool pieces = false;
+    std::set<std::string> sides;
+    for (const auto& face : built.solid->faces()) {
+        const std::string& tag = face.topoId.tag();
+        if (tag.rfind(id + "/side/", 0) != 0) continue;
+        pieces = pieces || tag.find("/pattern:1/piece:") != std::string::npos;
+        sides.insert(hz::model::logicalFace(tag));
+    }
+    EXPECT_TRUE(pieces) << "the notch parts the copy's facets";
+    EXPECT_EQ(sides, (std::set<std::string>{id + "/side", id + "/side/pattern:1"}));
+    const hz::topo::Face* found = hz::model::MateGeometry::findFace(
+        *built.solid, TopologyID::fromTag(id + "/side/pattern:1"));
+    ASSERT_NE(found, nullptr);
+    EXPECT_NE(found->topoId.tag().find("/pattern:1"), std::string::npos) << "the copy's";
+}

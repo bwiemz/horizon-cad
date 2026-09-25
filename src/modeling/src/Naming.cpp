@@ -59,17 +59,23 @@ std::pair<std::string, std::string> facePair(const topo::Edge& edge) {
 namespace {
 
 /// @p tag without its `/<part>:<k>` component, if it has one, and the
-/// `/piece:<n>` of a piece of it: what else follows it (a pattern copy's
-/// `/pattern:1`) is kept, so a copy's curve is its own.
+/// `/piece:<n>` of any piece of it after that (a boolean appends it, after a
+/// pattern copy's `/pattern:1` too): what else follows is kept, so a copy's
+/// curve is its own.
 std::string without(const std::string& tag, const char* part) {
     const size_t at = tag.find(part);
     if (at == std::string::npos) return tag;
     static constexpr std::string_view kPiece = "/piece:";
-    size_t end = tag.find('/', at + 1);
-    while (end != std::string::npos && tag.compare(end, kPiece.size(), kPiece) == 0) {
-        end = tag.find('/', end + 1);
+    std::string out = tag.substr(0, at);
+    size_t from = tag.find('/', at + 1);
+    while (from != std::string::npos) {
+        const size_t next = tag.find('/', from + 1);
+        if (tag.compare(from, kPiece.size(), kPiece) != 0) {
+            out += tag.substr(from, next == std::string::npos ? std::string::npos : next - from);
+        }
+        from = next;
     }
-    return tag.substr(0, at) + (end == std::string::npos ? std::string() : tag.substr(end));
+    return out;
 }
 
 }  // namespace
