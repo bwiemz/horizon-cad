@@ -153,7 +153,23 @@ The design, as planned:
 - **Tests:** `FormAnswers::typed(name, text)` types text into a named number
   field, so a test can enter "2 in".
 
-### 154c: typing in the view
+### 154c: typing in the view (as built)
+- **`TypedUnits`**: `typeUnitKey` appends a letter, a space, `'`, `"`, `/` or
+  `°` once something is typed. A letter first is still the view's, a
+  shortcut. `takeBack` removes a whole UTF-8 character.
+- **`TypedPoint`**:
+  - Keys: the above.
+  - `resolve` and `take` read each coordinate and length with
+    `parseLength` in the document's unit, and each angle with `parseAngle`.
+  - `prompt` shows the unit: "Point (in): 2,3".
+  - `ViewportInputHandler` and the window pass the document's unit.
+- **`TypedLength`** (fillet radius, chamfer distance) parses with
+  `parseLength`. Its prompt shows the unit, as "Radius (in): …" and
+  "[radius=0.75 mm]".
+- **Rotate's typed angle** is parsed with `parseAngle`, so "0.5 rad" works.
+  A text that is not an angle is dropped.
+
+The design, as planned:
 - **`TypedPoint`** accepts letters, spaces, quotes and "°". Each coordinate
   or length may carry a unit ("2in,3in", "@50 mm<30 deg"). A bare number is
   in the document's unit.

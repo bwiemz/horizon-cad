@@ -5,6 +5,7 @@
 #include <QOpenGLWidget>
 #include <QWheelEvent>
 
+#include "horizon/document/Document.h"
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/TypedPoint.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -125,7 +126,10 @@ void ViewportInputHandler::handleKeyPress(QKeyEvent* event, ViewportWidget* view
         if ((key == Qt::Key_Return || key == Qt::Key_Enter) && typed.typing()) {
             std::optional<math::Vec2> toward;
             if (const auto cursor = viewport->cursorWorld()) toward = viewport->snap(*cursor).point;
-            if (const auto point = typed.take(tool->basePoint(), toward)) {
+            // Bare lengths in the document's unit (Phase 154).
+            const math::LengthUnit unit = viewport->document() ? viewport->document()->lengthUnit()
+                                                               : math::LengthUnit::Millimetre;
+            if (const auto point = typed.take(tool->basePoint(), toward, unit)) {
                 viewport->applyTypedPoint(*point);
             }
             emit viewport->typedInputChanged();

@@ -15,6 +15,17 @@
 
 namespace hz::ui {
 
+namespace {
+
+/// The unit a typed length is in: the document's (Phase 154).
+math::LengthUnit lengthUnit(const ViewportWidget* viewport) {
+    return viewport != nullptr && viewport->document() != nullptr
+               ? viewport->document()->lengthUnit()
+               : math::LengthUnit::Millimetre;
+}
+
+}  // namespace
+
 void FilletTool::activate(ViewportWidget* viewport) {
     Tool::activate(viewport);
     m_state = State::SelectFirstLine;
@@ -249,7 +260,7 @@ bool FilletTool::keyPressEvent(QKeyEvent* event) {
     }
 
     // A radius typed while the tool runs.
-    return m_radius.key(event->key());
+    return m_radius.key(event->key(), lengthUnit(m_viewport));
 }
 
 void FilletTool::cancel() {
@@ -294,7 +305,7 @@ std::string FilletTool::promptText() const {
             base = "Select second line for fillet";
             break;
     }
-    return base + m_radius.prompt("radius");
+    return base + m_radius.prompt("radius", lengthUnit(m_viewport));
 }
 
 bool FilletTool::wantsCrosshair() const {

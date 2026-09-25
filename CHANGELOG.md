@@ -17,7 +17,7 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 16 (Phase 154, in progress)
+## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
 
 - **Document units (154, part 1).**
   - Each part, drawing, sheet and assembly has its own unit: millimetres,
@@ -40,6 +40,13 @@ work, not "post-1.0".
   - Angle fields show degrees and also accept "0.5 rad".
   - Add Mate has its own distance and angle fields. One field used to
     serve both.
+- **Typing in the view takes units (154, part 3).**
+  - A typed point may give its unit: "2in,3in", "@50 mm<30",
+    "@1' 6\",0", "@1<0.5 rad".
+  - So may a fillet or chamfer size ("1 cm"), and Rotate's typed angle
+    ("0.5 rad").
+  - The prompts show the unit a bare number is in: "Point (in): 2,3",
+    "[radius=0.75 mm]".
 
 ## Unreleased — Professional workflows, Milestone 15 (Phases 151–153) — complete
 

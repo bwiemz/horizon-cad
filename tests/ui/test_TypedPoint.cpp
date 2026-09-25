@@ -57,8 +57,8 @@ TEST(TypedPointTest, KeysBuildTheTextAndEnterTakesOrRefusesIt) {
         EXPECT_TRUE(typed.key(key));
     }
     EXPECT_EQ(typed.text(), "@5<90");
-    EXPECT_EQ(typed.prompt(), "  Point: @5<90");
-    EXPECT_FALSE(typed.key(Qt::Key_A)) << "not a key of a point";
+    EXPECT_EQ(typed.prompt(), "  Point (mm): @5<90");
+    EXPECT_FALSE(TypedPoint().key(Qt::Key_A)) << "a letter first is the view's, a shortcut";
     EXPECT_TRUE(typed.key(Qt::Key_Backspace));
     EXPECT_EQ(typed.text(), "@5<9");
     EXPECT_TRUE(near(typed.take(Vec2(0, 0), std::nullopt),
@@ -71,7 +71,36 @@ TEST(TypedPointTest, KeysBuildTheTextAndEnterTakesOrRefusesIt) {
     EXPECT_FALSE(typed.take(Vec2(0, 0), std::nullopt));
     EXPECT_NE(typed.prompt().find("'3,,4' is not a point"), std::string::npos) << typed.prompt();
     EXPECT_TRUE(typed.key(Qt::Key_1)) << "typing again drops the refusal";
-    EXPECT_EQ(typed.prompt(), "  Point: 1");
+    EXPECT_EQ(typed.prompt(hz::math::LengthUnit::Inch), "  Point (in): 1");
     EXPECT_FALSE(typed.key(Qt::Key_Backspace) && typed.key(Qt::Key_Backspace))
         << "Backspace with nothing typed is not the point's";
+}
+
+// Phase 154: each length in the document's unit, or its own; each angle in
+// degrees, or radians.
+TEST(TypedPointTest, LengthsAndAnglesMayCarryTheirUnits) {
+    using hz::math::LengthUnit;
+    const auto inInches = [](const std::string& text) {
+        return TypedPoint::resolve(text, Vec2(10, 20), Vec2(10, 30), nullptr, LengthUnit::Inch);
+    };
+    EXPECT_TRUE(near(inInches("1,2"), Vec2(25.4, 50.8))) << "bare: the document's unit";
+    EXPECT_TRUE(near(inInches("25.4 mm,2"), Vec2(25.4, 50.8)));
+    EXPECT_TRUE(near(inInches("@1' 6\",0"), Vec2(10 + 457.2, 20)));
+    EXPECT_TRUE(near(inInches("@50.8 mm<90 deg"), Vec2(10, 70.8)));
+    EXPECT_TRUE(near(inInches("@1<3.14159265358979323846 rad"), Vec2(10 - 25.4, 20)));
+    EXPECT_TRUE(near(inInches("1 cm"), Vec2(10, 30))) << "a length toward the cursor";
+    std::string why;
+    EXPECT_FALSE(TypedPoint::resolve("2 furlongs,0", Vec2(0, 0), std::nullopt, &why));
+    EXPECT_FALSE(TypedPoint::resolve("@5<30 in", Vec2(0, 0), std::nullopt, &why))
+        << "an angle is not a length";
+
+    // Typed as keys: a unit after a number, its degree sign taken back whole.
+    TypedPoint typed;
+    for (int key : {Qt::Key_2, Qt::Key_Space, Qt::Key_I, Qt::Key_N, Qt::Key_Comma, Qt::Key_1,
+                    Qt::Key_Less, Qt::Key_9, Qt::Key_0, Qt::Key_degree}) {
+        EXPECT_TRUE(typed.key(key)) << key;
+    }
+    EXPECT_EQ(typed.text(), "2 in,1<90\xC2\xB0");
+    EXPECT_TRUE(typed.key(Qt::Key_Backspace));
+    EXPECT_EQ(typed.text(), "2 in,1<90");
 }
