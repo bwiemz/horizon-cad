@@ -362,3 +362,52 @@ TEST(VariablesDialogTest, TwoConfigurationsOfOneNameAreRefused) {
     EXPECT_TRUE(answer.refused().contains(QStringLiteral("Two"))) << answer.refused().toStdString();
     EXPECT_EQ(w.activeDocument()->configurations().size(), 0u);
 }
+
+// Built on a worker, from a copy: the part's own feature still holds the
+// value its expression works out to, and a save writes that beside it.
+TEST(VariablesDialogTest, AnExpressionWorkedOutOnAWorkerIsKeptInThePart) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    {
+        FormFiller box(QStringLiteral("Box"), FormAnswers()
+                                                  .number(QStringLiteral("size0"), 10.0)
+                                                  .number(QStringLiteral("size1"), 10.0)
+                                                  .number(QStringLiteral("size2"), 10.0));
+        trigger(w, "action_box");
+        ASSERT_TRUE(box.seen());
+    }
+    const auto settle = [&w] {
+        QElapsedTimer waited;
+        waited.start();
+        while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+    };
+    settle();
+    hz::doc::Document& doc = *w.activeDocument();
+    {
+        VariablesAnswer answer({{QStringLiteral("wall"), QStringLiteral("3 mm")}});
+        trigger(w, "action_variables");
+        ASSERT_TRUE(answer.seen());
+    }
+    settle();
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().typed(QStringLiteral("width"), QStringLiteral("=wall * 2")));
+        editFirstFeature(w);
+        ASSERT_TRUE(edit.seen());
+    }
+    settle();
+    // wall to 5 mm; then undone and done again from the menu, which builds
+    // the part on the worker each time.
+    doc.undoStack().push(std::make_unique<hz::doc::SetVariablesCommand>(
+        doc, std::map<std::string, std::string>{{"wall", "5 mm"}}));
+    trigger(w, "action_undo");
+    settle();
+    trigger(w, "action_redo");
+    settle();
+    EXPECT_FALSE(doc.needsBuild());
+    EXPECT_DOUBLE_EQ(doc.featureTree().feature(0)->parameters().at("width"), 10.0)
+        << "the part's own feature, not only the worker's copy";
+    EXPECT_NEAR(partVolume(doc), 1000.0, 1e-6);
+}

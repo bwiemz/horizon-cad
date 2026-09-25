@@ -5117,6 +5117,10 @@ void MainWindow::startRebuild() {
         return;
     }
     m_rebuildDocument = m_document;
+    // Expressions worked out here, on the document itself (Phase 155): the
+    // worker works them out on its copy, which goes when it is done, and
+    // the parameters kept (and saved) are these.
+    m_document->applyExpressions();
     m_rebuildJob = std::make_unique<RebuildJob>(*m_document);
     m_rebuildClock.start();
     // Posted from the worker to this window's thread. The destructor waits
