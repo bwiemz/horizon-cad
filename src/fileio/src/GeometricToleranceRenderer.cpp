@@ -28,10 +28,7 @@ bool anchorPoint(const model::DrawingView& view, const topo::TopologyID& feature
     if (edge == nullptr) return false;
 
     // Map view-space coordinates onto the sheet (same mapping DrawingExport uses).
-    auto toSheet = [&](const math::Vec2& p) {
-        return math::Vec2((p.x - view.boundsMin.x) + view.placement.x,
-                          (p.y - view.boundsMin.y) + view.placement.y);
-    };
+    const auto toSheet = [&view](const math::Vec2& p) { return view.toSheet(p); };
     const math::Vec2 p1 = toSheet(edge->a);
     const math::Vec2 p2 = toSheet(edge->b);
 

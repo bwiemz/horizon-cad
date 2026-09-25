@@ -105,22 +105,33 @@ bool fitProjectedCircle(const model::DrawingView& view, const topo::TopologyID& 
     return outRadius > 1e-12;
 }
 
-// Populate @p doc with the drawing's views, dimensions, GD&T and balloons.
-void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
+}  // namespace
+
+void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
+                             const model::Sheet* sheet, const model::TitleBlock* titleBlock) {
+    addDrawingLayers(doc);
+    // Sheet frame and title block first, then the drawing content.
+    if (sheet != nullptr) {
+        for (auto& e : TitleBlockRenderer::renderBorder(*sheet)) doc.addEntity(std::move(e));
+        if (titleBlock != nullptr) {
+            for (auto& e : TitleBlockRenderer::renderTitleBlock(*sheet, *titleBlock)) {
+                doc.addEntity(std::move(e));
+            }
+        }
+    }
     for (const model::DrawingView& view : drawing.views) {
-        // Map view-space coordinates onto the sheet: shift the view's lower-left
-        // corner (boundsMin) to its placement, so views never overlap.
-        const auto toSheet = [&view](const math::Vec2& p) {
-            return math::Vec2{(p.x - view.boundsMin.x) + view.placement.x,
-                              (p.y - view.boundsMin.y) + view.placement.y};
-        };
+        // Onto the sheet: each view's lower-left corner at its placement, at
+        // its scale (DrawingView::toSheet), so views never overlap.
+        const auto toSheet = [&view](const math::Vec2& p) { return view.toSheet(p); };
 
         for (const model::ProjectedEdge& e : view.edges) {
+            const bool visible = e.visibility == model::ProjectedEdge::Visibility::Visible;
+            if (!visible && !view.showHidden) continue;
+            if (e.kind == model::ProjectedEdge::Kind::Tangent && !view.showTangentEdges) continue;
             const math::Vec2 a = toSheet(e.a);
             const math::Vec2 b = toSheet(e.b);
 
             auto line = std::make_shared<draft::DraftLine>(a, b);
-            const bool visible = e.visibility == model::ProjectedEdge::Visibility::Visible;
             line->setLayer(visible ? kVisibleLayer : kHiddenLayer);
             line->setLineType(
                 static_cast<int>(visible ? draft::LineType::Continuous : draft::LineType::Hidden));
@@ -153,11 +164,13 @@ void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
 
             const double kInvSqrt2 = 0.7071067811865476;
             const math::Vec2 dir{kInvSqrt2, kInvSqrt2};
-            const math::Vec2 onCircle{center.x + dir.x * radius, center.y + dir.y * radius};
-            const math::Vec2 textPos{center.x + dir.x * (radius + kDimensionOffset),
-                                     center.y + dir.y * (radius + kDimensionOffset)};
+            // The leader's length is the sheet's, whatever the view's scale.
+            const math::Vec2 onCircle =
+                toSheet({center.x + dir.x * radius, center.y + dir.y * radius});
+            const math::Vec2 textPos{onCircle.x + dir.x * kDimensionOffset,
+                                     onCircle.y + dir.y * kDimensionOffset};
 
-            auto leader = std::make_shared<draft::DraftLine>(toSheet(onCircle), toSheet(textPos));
+            auto leader = std::make_shared<draft::DraftLine>(onCircle, textPos);
             leader->setLayer(kDimensionLayer);
             doc.addEntity(std::move(leader));
 
@@ -167,8 +180,7 @@ void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
             } else {
                 std::snprintf(buf, sizeof(buf), "R%.2f", dim.value);
             }
-            auto text =
-                std::make_shared<draft::DraftText>(toSheet(textPos), buf, kRadialTextHeight);
+            auto text = std::make_shared<draft::DraftText>(textPos, buf, kRadialTextHeight);
             text->setLayer(kDimensionLayer);
             doc.addEntity(std::move(text));
         }
@@ -211,27 +223,16 @@ void populateDrawing(doc::Document& doc, const model::Drawing& drawing) {
     }
 }
 
-}  // namespace
-
 bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing) {
     doc::Document doc;  // defaults to DocumentType::Drawing
-    addDrawingLayers(doc);
-    populateDrawing(doc, drawing);
+    populate(doc, drawing);
     return DxfFormat::save(path, doc);
 }
 
 bool DrawingExport::toDxf(const std::string& path, const model::Drawing& drawing,
                           const model::Sheet& sheet, const model::TitleBlock& titleBlock) {
     doc::Document doc;  // defaults to DocumentType::Drawing
-    addDrawingLayers(doc);
-
-    // Sheet frame + title block first, then the drawing content.
-    for (auto& e : TitleBlockRenderer::renderBorder(sheet)) doc.addEntity(std::move(e));
-    for (auto& e : TitleBlockRenderer::renderTitleBlock(sheet, titleBlock)) {
-        doc.addEntity(std::move(e));
-    }
-    populateDrawing(doc, drawing);
-
+    populate(doc, drawing, &sheet, &titleBlock);
     return DxfFormat::save(path, doc);
 }
 

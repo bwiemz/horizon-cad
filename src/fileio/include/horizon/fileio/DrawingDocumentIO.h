@@ -1,37 +1,70 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Sheet.h"
+#include "horizon/modeling/TitleBlock.h"
+
+namespace hz::topo {
+class Solid;
+}  // namespace hz::topo
 
 namespace hz::io {
 
-/// A drawing document's persisted specification: which part it draws and how its
-/// views are spaced. The drawing geometry itself is *not* stored — it is
-/// regenerated from the referenced part on load, so the drawing stays associated
-/// with (and updates from) the 3D model.
+/// One view of a drawing, as saved: how it looks at the part, and where and
+/// how large it sits on the sheet. Its geometry is not saved: it is projected
+/// again from the part when the drawing is read (Principle 9).
+struct DrawingViewSpec {
+    model::StandardView kind = model::StandardView::Front;  ///< its label
+    model::ViewProjection projection;
+    double scale = 1.0;    ///< sheet mm per model mm
+    math::Vec2 placement;  ///< the sheet position of its lower-left corner
+    bool showHidden = true;
+    bool showTangentEdges = true;
+};
+
+/// A drawing document's persisted specification: the part it draws, its
+/// sheet and title block, and its views.
 struct DrawingDocumentSpec {
-    std::string partPath;  ///< path to the source .hzpart
-    double gap = 10.0;     ///< inter-view spacing on the sheet
+    std::string partPath;  ///< the source .hzpart; saved relative to the drawing
+    double gap = 10.0;     ///< spacing between views when they are laid out
+    model::Sheet sheet;
+    model::TitleBlock titleBlock;
+    /// The views. None: the standard sheet layout (DrawingGenerator::sheetLayout).
+    std::vector<DrawingViewSpec> views;
 };
 
 /// Reads/writes `.hzdwg` drawing documents.
 ///
 /// A `.hzdwg` is a small JSON file that references a part file. Loading it opens
-/// and rebuilds that part, then regenerates the standard four-view drawing — so
-/// the drawing reflects the current state of the model rather than a stale
-/// snapshot.
+/// and rebuilds that part, then projects its views again, so the drawing shows
+/// the model as it is now rather than a stale snapshot.
+///
+/// Version 2 (Phase 148) keeps the sheet, the title block and every view's
+/// direction, scale and placement. A version 1 file (part and gap only) still
+/// reads, as the four standard views laid out by its gap at 1:1.
 class DrawingDocumentIO {
 public:
-    /// Write a `.hzdwg` describing @p spec. Returns false on I/O failure.
+    /// Write a `.hzdwg` describing @p spec. The part's path is written relative
+    /// to the drawing's folder when it can be. Returns false on I/O failure.
     static bool save(const std::string& path, const DrawingDocumentSpec& spec);
 
     /// Load a `.hzdwg`: read the spec, open and rebuild the referenced part, and
-    /// regenerate its standard four-view drawing into @p outDrawing. @p outSpec
-    /// receives the parsed spec. Returns false on I/O failure, a missing/broken
-    /// part reference, or a rebuild that produces no solid.
+    /// project its views into @p outDrawing. @p outSpec receives the spec, its
+    /// part path as found (relative paths are the drawing folder's). Returns
+    /// false, with the reason in @p error when given, on I/O failure, a file
+    /// that is not a drawing, a missing or broken part, or a rebuild that
+    /// makes no solid.
     static bool load(const std::string& path, DrawingDocumentSpec& outSpec,
-                     model::Drawing& outDrawing);
+                     model::Drawing& outDrawing, std::string* error = nullptr);
+
+    /// The drawing @p spec describes, projected from @p solid.
+    static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec);
+
+    /// The spec that saves @p drawing as it is laid out.
+    static std::vector<DrawingViewSpec> viewsOf(const model::Drawing& drawing);
 };
 
 }  // namespace hz::io

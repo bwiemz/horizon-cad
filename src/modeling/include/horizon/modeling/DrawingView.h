@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -8,6 +9,8 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/GeometricTolerance.h"
+#include "horizon/modeling/Sheet.h"
+#include "horizon/modeling/TitleBlock.h"
 
 namespace hz::topo {
 class Solid;
@@ -18,9 +21,10 @@ namespace hz::model {
 /// One placed view in a 2D drawing: the projected/classified geometry, its 2D
 /// bounding box in view space, and where it sits on the sheet.
 ///
-/// A view-space point `p` renders on the sheet at `(p - boundsMin) + placement`,
-/// so `placement` is the sheet position of the view's lower-left corner and each
-/// view occupies `[placement, placement + (boundsMax - boundsMin)]`.
+/// A view-space point `p` renders on the sheet at `(p - boundsMin) * scale +
+/// placement` (toSheet), so `placement` is the sheet position of the view's
+/// lower-left corner and each view occupies `[placement, placement +
+/// (boundsMax - boundsMin) * scale]`.
 struct DrawingView {
     StandardView kind = StandardView::Front;  ///< label; meaningful for standard views
     ViewProjection projection;                ///< the camera this view was projected through
@@ -38,9 +42,26 @@ struct DrawingView {
     math::Vec2 boundsMin{0.0, 0.0};
     math::Vec2 boundsMax{0.0, 0.0};
     math::Vec2 placement{0.0, 0.0};
+    /// Sheet millimetres per model millimetre: 0.5 for 1:2, 2 for 2:1.
+    double scale = 1.0;
+    /// Whether the view draws its hidden edges, and its tangent edges (where
+    /// a fillet meets a face). A new drawing sheet leaves tangent edges out.
+    bool showHidden = true;
+    bool showTangentEdges = true;
 
+    /// Where a view-space point lands on the sheet. Every renderer maps with
+    /// this, so a view's scale reaches all it draws.
+    math::Vec2 toSheet(const math::Vec2& p) const {
+        return {(p.x - boundsMin.x) * scale + placement.x,
+                (p.y - boundsMin.y) * scale + placement.y};
+    }
+
+    /// Model-space extents.
     double width() const { return boundsMax.x - boundsMin.x; }
     double height() const { return boundsMax.y - boundsMin.y; }
+    /// Extents on the sheet.
+    double sheetWidth() const { return width() * scale; }
+    double sheetHeight() const { return height() * scale; }
 };
 
 /// A 2D drawing: a set of placed orthographic/isometric views of one solid.
@@ -70,6 +91,22 @@ public:
     /// right (right of front), and isometric (upper-right), placed without
     /// overlap and separated by @p gap.
     static Drawing standardViews(const topo::Solid& solid, double gap = 10.0);
+
+    /// The standard scales, largest first: 10:1 down to 1:100 (ISO 5455).
+    static const std::vector<double>& standardScales();
+
+    /// A sheet of the four standard views in third-angle projection: Front
+    /// at the lower left, Top above it, Right to its right, Isometric above
+    /// that. They are centred in the space above the title block, @p gap
+    /// apart, at the largest standard scale at which they fit
+    /// (@p chosenScale receives it). Tangent edges are left out, as drawings
+    /// show them.
+    static Drawing sheetLayout(const topo::Solid& solid, const Sheet& sheet,
+                               const TitleBlock& titleBlock, double gap = 10.0,
+                               double* chosenScale = nullptr);
+
+    /// A scale as a drawing states it: "1:2", "1:1", "5:1".
+    static std::string scaleName(double scale);
 
     /// A detail view: crop @p source's geometry to the circle (@p center,
     /// @p radius) in view space and enlarge it by @p scale about that center.

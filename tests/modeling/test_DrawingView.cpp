@@ -134,3 +134,75 @@ TEST(DrawingViewTest, DetailViewEmptyWhenCircleMissesGeometry) {
     DrawingView detail = DrawingGenerator::detailView(front, Vec2(1000.0, 1000.0), 1.0, 2.0);
     EXPECT_TRUE(detail.edges.empty());
 }
+
+// ---------------------------------------------------------------------------
+// A drawing sheet (Phase 148): views laid out on a sheet at a standard scale.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct SheetBox {
+    double x0, y0, x1, y1;
+};
+
+SheetBox onSheet(const hz::model::DrawingView& v) {
+    const Vec2 lo = v.toSheet(v.boundsMin);
+    return {lo.x, lo.y, lo.x + v.sheetWidth(), lo.y + v.sheetHeight()};
+}
+
+bool overlap(const SheetBox& a, const SheetBox& b) {
+    return a.x0 < b.x1 - 1e-9 && b.x0 < a.x1 - 1e-9 && a.y0 < b.y1 - 1e-9 && b.y0 < a.y1 - 1e-9;
+}
+
+}  // namespace
+
+// Four views on an A3 sheet at the largest standard scale they fit at: inside
+// the border, above the title block, apart from each other, with Top over
+// Front and Right beside it, aligned as third-angle projection has them.
+TEST(DrawingViewTest, TheSheetLayoutFitsAtAStandardScale) {
+    auto box = PrimitiveFactory::makeBox(100.0, 50.0, 20.0);
+    hz::model::Sheet sheet;  // A3 landscape, 10 mm margin
+    hz::model::TitleBlock tb;
+    double scale = 0.0;
+    const auto d = DrawingGenerator::sheetLayout(*box, sheet, tb, 10.0, &scale);
+    ASSERT_EQ(d.views.size(), 4u);
+    EXPECT_DOUBLE_EQ(scale, 1.0) << "2:1 is too wide for A3; 1:1 fits";
+    for (const auto& v : d.views) {
+        EXPECT_DOUBLE_EQ(v.scale, scale);
+        EXPECT_FALSE(v.showTangentEdges) << "a drawing leaves tangent edges out";
+        const SheetBox b = onSheet(v);
+        EXPECT_GE(b.x0, sheet.margin);
+        EXPECT_LE(b.x1, sheet.widthMm() - sheet.margin);
+        EXPECT_GE(b.y0, sheet.margin + tb.height) << "above the title block";
+        EXPECT_LE(b.y1, sheet.heightMm() - sheet.margin);
+    }
+    for (size_t i = 0; i < d.views.size(); ++i) {
+        for (size_t j = i + 1; j < d.views.size(); ++j) {
+            EXPECT_FALSE(overlap(onSheet(d.views[i]), onSheet(d.views[j]))) << i << " and " << j;
+        }
+    }
+    const auto& front = d.views[0];
+    const auto& top = d.views[1];
+    const auto& right = d.views[2];
+    EXPECT_NEAR(front.toSheet(front.boundsMin).x, top.toSheet(top.boundsMin).x, 1e-9)
+        << "Top above Front, x aligned";
+    EXPECT_NEAR(front.toSheet(front.boundsMin).y, right.toSheet(right.boundsMin).y, 1e-9)
+        << "Right beside Front, z aligned";
+}
+
+// A large part is drawn smaller, a small one larger, at standard scales.
+TEST(DrawingViewTest, TheSheetScaleFollowsThePartsSize) {
+    hz::model::Sheet sheet;
+    hz::model::TitleBlock tb;
+    double scale = 0.0;
+    auto big = PrimitiveFactory::makeBox(2000.0, 1000.0, 400.0);
+    DrawingGenerator::sheetLayout(*big, sheet, tb, 10.0, &scale);
+    EXPECT_LE(scale, 0.1);
+    auto small = PrimitiveFactory::makeBox(5.0, 3.0, 2.0);
+    DrawingGenerator::sheetLayout(*small, sheet, tb, 10.0, &scale);
+    EXPECT_DOUBLE_EQ(scale, 10.0);
+    EXPECT_EQ(DrawingGenerator::scaleName(0.5), "1:2");
+    EXPECT_EQ(DrawingGenerator::scaleName(0.01), "1:100");
+    EXPECT_EQ(DrawingGenerator::scaleName(1.0), "1:1");
+    EXPECT_EQ(DrawingGenerator::scaleName(5.0), "5:1");
+}

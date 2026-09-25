@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "horizon/topology/Solid.h"
 
@@ -80,6 +81,67 @@ Drawing DrawingGenerator::standardViews(const topo::Solid& solid, double gap) {
 
     Drawing d;
     d.views = {front, top, right, iso};
+    return d;
+}
+
+const std::vector<double>& DrawingGenerator::standardScales() {
+    static const std::vector<double> scales{10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01};
+    return scales;
+}
+
+std::string DrawingGenerator::scaleName(double scale) {
+    const auto whole = [](double v) {
+        const double r = std::round(v);
+        return std::abs(v - r) < 1e-9 ? std::to_string(static_cast<long long>(r))
+                                      : std::to_string(v);
+    };
+    if (scale >= 1.0) return whole(scale) + ":1";
+    return "1:" + whole(1.0 / scale);
+}
+
+Drawing DrawingGenerator::sheetLayout(const topo::Solid& solid, const Sheet& sheet,
+                                      const TitleBlock& titleBlock, double gap,
+                                      double* chosenScale) {
+    DrawingView front = makeView(solid, StandardView::Front);
+    DrawingView top = makeView(solid, StandardView::Top);
+    DrawingView right = makeView(solid, StandardView::Right);
+    DrawingView iso = makeView(solid, StandardView::Isometric);
+
+    // The space the views have: inside the margin, above the title block.
+    const double x0 = sheet.margin + gap;
+    const double y0 = sheet.margin + titleBlock.height + gap;
+    const double spaceW = sheet.widthMm() - sheet.margin - gap - x0;
+    const double spaceH = sheet.heightMm() - sheet.margin - gap - y0;
+
+    // A two-by-two grid: Front and Top share a column (their x agrees), Front
+    // and Right a row (their z agrees).
+    const double col1 = std::max(front.width(), top.width());
+    const double col2 = std::max(right.width(), iso.width());
+    const double row1 = std::max(front.height(), right.height());
+    const double row2 = std::max(top.height(), iso.height());
+    double scale = standardScales().back();
+    for (const double s : standardScales()) {
+        if (s * (col1 + col2) + gap <= spaceW && s * (row1 + row2) + gap <= spaceH) {
+            scale = s;
+            break;
+        }
+    }
+    const double usedW = scale * (col1 + col2) + gap;
+    const double usedH = scale * (row1 + row2) + gap;
+    const double left = x0 + std::max(0.0, (spaceW - usedW) / 2.0);
+    const double bottom = y0 + std::max(0.0, (spaceH - usedH) / 2.0);
+    front.placement = {left, bottom};
+    right.placement = {left + scale * col1 + gap, bottom};
+    top.placement = {left, bottom + scale * row1 + gap};
+    iso.placement = {left + scale * col1 + gap, bottom + scale * row1 + gap};
+
+    Drawing d;
+    d.views = {front, top, right, iso};
+    for (DrawingView& v : d.views) {
+        v.scale = scale;
+        v.showTangentEdges = false;
+    }
+    if (chosenScale != nullptr) *chosenScale = scale;
     return d;
 }
 
