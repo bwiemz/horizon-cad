@@ -68,6 +68,7 @@ void Document::clear() {
     m_undoStack->clear();
     m_dirty = false;
     m_filePath.clear();
+    m_lengthUnit = math::LengthUnit::Millimetre;
 
     m_editedSketch.reset();
     m_sketches.clear();
