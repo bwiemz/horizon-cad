@@ -1,6 +1,5 @@
 #include "horizon/ui/SelectTool.h"
 
-#include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <algorithm>
@@ -15,7 +14,9 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/ui/FeatureForm.h"
 #include "horizon/ui/GripManager.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -395,19 +396,17 @@ bool SelectTool::editConstraintDimension(uint64_t constraintId, double currentVa
 
     const double pi = std::numbers::pi;
 
-    // Convert to display units (degrees for angles).
-    double displayValue = isAngle ? (currentValue * 180.0 / pi) : currentValue;
-    QString label = isAngle ? QStringLiteral("Angle (degrees):") : QStringLiteral("Distance:");
-
-    bool ok = false;
-    double newDisplay =
-        QInputDialog::getDouble(m_viewport, QStringLiteral("Edit Constraint"), label, displayValue,
-                                isAngle ? 0.001 : 0.001,  // min
-                                isAngle ? 359.999 : 1e9,  // max
-                                4,                        // decimals
-                                &ok);
-
-    if (!ok) return false;
+    // An angle in degrees; a distance in the document's unit, or typed in
+    // another (Phase 154).
+    FeatureForm form(m_viewport, QObject::tr("Edit Constraint"),
+                     m_viewport->document()->lengthUnit());
+    QuantitySpinBox* field = isAngle
+                                 ? form.angle(QStringLiteral("value"), QObject::tr("Angle:"),
+                                              currentValue * 180.0 / pi, 0.001, 359.999, 4)
+                                 : form.length(QStringLiteral("value"), QObject::tr("Distance:"),
+                                               currentValue, 0.001, 1e9, 4);
+    if (!form.exec()) return false;
+    const double newDisplay = field->value();
 
     double newValue = isAngle ? (newDisplay * pi / 180.0) : newDisplay;
     if (std::abs(newValue - currentValue) < 1e-12) return false;

@@ -41,6 +41,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -52,6 +53,19 @@ PropertyPanel::PropertyPanel(MainWindow* mainWindow, QWidget* parent)
 }
 
 void PropertyPanel::createWidgets() {
+    // A length, shown in the document's unit, and an angle, in degrees; each
+    // takes a value typed in any unit, when it is entered (Phase 154).
+    const auto lengthField = [this](QWidget* parent, int decimals) {
+        auto* field = new QuantitySpinBox(QuantitySpinBox::Kind::Length,
+                                          math::LengthUnit::Millimetre, decimals, parent);
+        m_lengthFields.push_back(field);
+        return field;
+    };
+    const auto angleField = [](QWidget* parent, int decimals) {
+        return new QuantitySpinBox(QuantitySpinBox::Kind::Angle, math::LengthUnit::Millimetre,
+                                   decimals, parent);
+    };
+
     auto* container = new QWidget(this);
     auto* layout = new QVBoxLayout(container);
     auto* form = new QFormLayout();
@@ -123,10 +137,8 @@ void PropertyPanel::createWidgets() {
     m_blockNameLabel = new QLabel(m_blockPropsWidget);
     blockForm->addRow(tr("Block:"), m_blockNameLabel);
 
-    m_blockRotationSpin = new QDoubleSpinBox(m_blockPropsWidget);
+    m_blockRotationSpin = angleField(m_blockPropsWidget, 2);
     m_blockRotationSpin->setRange(-360.0, 360.0);
-    m_blockRotationSpin->setDecimals(2);
-    m_blockRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
     connect(m_blockRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onBlockRotationChanged);
     blockForm->addRow(tr("Rotation:"), m_blockRotationSpin);
@@ -152,18 +164,14 @@ void PropertyPanel::createWidgets() {
     m_textContentEdit->installEventFilter(this);
     textForm->addRow(tr("Content:"), m_textContentEdit);
 
-    m_textHeightSpin = new QDoubleSpinBox(m_textPropsWidget);
+    m_textHeightSpin = lengthField(m_textPropsWidget, 2);
     m_textHeightSpin->setRange(0.1, 1000.0);
-    m_textHeightSpin->setDecimals(2);
-    m_textHeightSpin->setSingleStep(0.5);
     connect(m_textHeightSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onTextHeightChanged);
     textForm->addRow(tr("Height:"), m_textHeightSpin);
 
-    m_textRotationSpin = new QDoubleSpinBox(m_textPropsWidget);
+    m_textRotationSpin = angleField(m_textPropsWidget, 2);
     m_textRotationSpin->setRange(-360.0, 360.0);
-    m_textRotationSpin->setDecimals(2);
-    m_textRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
     connect(m_textRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onTextRotationChanged);
     textForm->addRow(tr("Rotation:"), m_textRotationSpin);
@@ -208,18 +216,14 @@ void PropertyPanel::createWidgets() {
             &PropertyPanel::onHatchPatternChanged);
     hatchForm->addRow(tr("Pattern:"), m_hatchPatternCombo);
 
-    m_hatchAngleSpin = new QDoubleSpinBox(m_hatchPropsWidget);
+    m_hatchAngleSpin = angleField(m_hatchPropsWidget, 2);
     m_hatchAngleSpin->setRange(-360.0, 360.0);
-    m_hatchAngleSpin->setDecimals(2);
-    m_hatchAngleSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
     connect(m_hatchAngleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onHatchAngleChanged);
     hatchForm->addRow(tr("Angle:"), m_hatchAngleSpin);
 
-    m_hatchSpacingSpin = new QDoubleSpinBox(m_hatchPropsWidget);
+    m_hatchSpacingSpin = lengthField(m_hatchPropsWidget, 3);
     m_hatchSpacingSpin->setRange(0.01, 100.0);
-    m_hatchSpacingSpin->setDecimals(3);
-    m_hatchSpacingSpin->setSingleStep(0.1);
     connect(m_hatchSpacingSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onHatchSpacingChanged);
     hatchForm->addRow(tr("Spacing:"), m_hatchSpacingSpin);
@@ -231,26 +235,20 @@ void PropertyPanel::createWidgets() {
     auto* ellipseForm = new QFormLayout(m_ellipsePropsWidget);
     ellipseForm->setContentsMargins(0, 0, 0, 0);
 
-    m_ellipseSemiMajorSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseSemiMajorSpin = lengthField(m_ellipsePropsWidget, 4);
     m_ellipseSemiMajorSpin->setRange(0.001, 1e6);
-    m_ellipseSemiMajorSpin->setDecimals(4);
-    m_ellipseSemiMajorSpin->setSingleStep(0.1);
     connect(m_ellipseSemiMajorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onEllipseSemiMajorChanged);
     ellipseForm->addRow(tr("Semi-Major:"), m_ellipseSemiMajorSpin);
 
-    m_ellipseSemiMinorSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseSemiMinorSpin = lengthField(m_ellipsePropsWidget, 4);
     m_ellipseSemiMinorSpin->setRange(0.001, 1e6);
-    m_ellipseSemiMinorSpin->setDecimals(4);
-    m_ellipseSemiMinorSpin->setSingleStep(0.1);
     connect(m_ellipseSemiMinorSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onEllipseSemiMinorChanged);
     ellipseForm->addRow(tr("Semi-Minor:"), m_ellipseSemiMinorSpin);
 
-    m_ellipseRotationSpin = new QDoubleSpinBox(m_ellipsePropsWidget);
+    m_ellipseRotationSpin = angleField(m_ellipsePropsWidget, 2);
     m_ellipseRotationSpin->setRange(-360.0, 360.0);
-    m_ellipseRotationSpin->setDecimals(2);
-    m_ellipseRotationSpin->setSuffix(QString::fromUtf8("\xC2\xB0"));
     connect(m_ellipseRotationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &PropertyPanel::onEllipseRotationChanged);
     ellipseForm->addRow(tr("Rotation:"), m_ellipseRotationSpin);
@@ -260,18 +258,17 @@ void PropertyPanel::createWidgets() {
     // Geometry: lines, circles and arcs. Keyboard tracking is off, so a
     // value is taken when it is entered (Enter, or leaving the field), not at
     // each keystroke: typing 12.5 is one edit, not four.
-    const auto number = [this](QFormLayout* form, const QString& label, double low, double high) {
-        auto* spin = new QDoubleSpinBox(form->parentWidget());
+    const auto number = [&](QFormLayout* form, const QString& label, double low, double high,
+                            bool angle = false) {
+        QuantitySpinBox* spin =
+            angle ? angleField(form->parentWidget(), 4) : lengthField(form->parentWidget(), 4);
         spin->setRange(low, high);
-        spin->setDecimals(4);
-        spin->setKeyboardTracking(false);
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
                 &PropertyPanel::onGeometryEdited);
         form->addRow(label, spin);
         return spin;
     };
     constexpr double kFar = 1e9;
-    const QString degrees = QString::fromUtf8("\xC2\xB0");
 
     m_lineGeomWidget = new QWidget(this);
     auto* lineForm = new QFormLayout(m_lineGeomWidget);
@@ -281,8 +278,7 @@ void PropertyPanel::createWidgets() {
     m_lineEndX = number(lineForm, tr("End X:"), -kFar, kFar);
     m_lineEndY = number(lineForm, tr("End Y:"), -kFar, kFar);
     m_lineLength = number(lineForm, tr("Length:"), 0.0001, kFar);
-    m_lineAngle = number(lineForm, tr("Angle:"), -360.0, 360.0);
-    m_lineAngle->setSuffix(degrees);
+    m_lineAngle = number(lineForm, tr("Angle:"), -360.0, 360.0, true);
     m_lineGeomWidget->hide();
 
     m_circleGeomWidget = new QWidget(this);
@@ -299,10 +295,8 @@ void PropertyPanel::createWidgets() {
     m_arcCenterX = number(arcForm, tr("Center X:"), -kFar, kFar);
     m_arcCenterY = number(arcForm, tr("Center Y:"), -kFar, kFar);
     m_arcRadius = number(arcForm, tr("Radius:"), 0.0001, kFar);
-    m_arcStartAngle = number(arcForm, tr("Start Angle:"), -360.0, 360.0);
-    m_arcEndAngle = number(arcForm, tr("End Angle:"), -360.0, 360.0);
-    m_arcStartAngle->setSuffix(degrees);
-    m_arcEndAngle->setSuffix(degrees);
+    m_arcStartAngle = number(arcForm, tr("Start Angle:"), -360.0, 360.0, true);
+    m_arcEndAngle = number(arcForm, tr("End Angle:"), -360.0, 360.0, true);
     m_arcGeomWidget->hide();
     const std::pair<QDoubleSpinBox*, const char*> names[] = {
         {m_lineStartX, "lineStartX"},       {m_lineStartY, "lineStartY"},
@@ -421,6 +415,10 @@ void PropertyPanel::updateForSelection(const std::vector<uint64_t>& selectedIds)
 
     auto* viewport = m_mainWindow->findChild<ViewportWidget*>();
     if (!viewport || !viewport->document()) return;
+
+    // Lengths in the document's unit (Phase 154).
+    for (QuantitySpinBox* field : m_lengthFields)
+        field->setUnit(viewport->document()->lengthUnit());
 
     auto& doc = viewport->document()->activeDrawing();
 

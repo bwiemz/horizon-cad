@@ -1,6 +1,5 @@
 #include "horizon/ui/ConstraintTool.h"
 
-#include <QInputDialog>
 #include <QMouseEvent>
 #include <cmath>
 
@@ -16,6 +15,8 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/MathUtils.h"
+#include "horizon/ui/FeatureForm.h"
+#include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::ui {
@@ -290,10 +291,13 @@ void ConstraintTool::commitConstraint() {
             const auto p2 = cstr::pointOf(m_hoveredRef, *e2);
             if (!p1 || !p2) return;
             double dist = p1->distanceTo(*p2);
-            bool ok = false;
-            double val = QInputDialog::getDouble(m_viewport, "Distance Constraint",
-                                                 "Distance:", dist, 0.0, 1e9, 4, &ok);
-            if (!ok) return;
+            // In the document's unit, or typed in another (Phase 154).
+            FeatureForm form(m_viewport, QObject::tr("Distance Constraint"),
+                             m_viewport->document()->lengthUnit());
+            auto* field =
+                form.length(QStringLiteral("value"), QObject::tr("Distance:"), dist, 0.0, 1e9, 4);
+            if (!form.exec()) return;
+            const double val = field->value();
             constraint = std::make_shared<cstr::DistanceConstraint>(m_firstRef, m_hoveredRef, val);
             break;
         }
@@ -308,11 +312,11 @@ void ConstraintTool::commitConstraint() {
             math::Vec2 d1 = l1->second - l1->first, d2 = l2->second - l2->first;
             double angle = std::atan2(d1.cross(d2), d1.dot(d2));
             double angleDeg = math::radToDeg(angle);
-            bool ok = false;
-            double val =
-                QInputDialog::getDouble(m_viewport, "Angle Constraint",
-                                        "Angle (degrees):", angleDeg, -360.0, 360.0, 2, &ok);
-            if (!ok) return;
+            FeatureForm form(m_viewport, QObject::tr("Angle Constraint"));
+            auto* field = form.angle(QStringLiteral("value"), QObject::tr("Angle:"), angleDeg,
+                                     -360.0, 360.0, 2);
+            if (!form.exec()) return;
+            const double val = field->value();
             double angleRad = math::degToRad(val);
             constraint =
                 std::make_shared<cstr::AngleConstraint>(m_firstRef, m_hoveredRef, angleRad);

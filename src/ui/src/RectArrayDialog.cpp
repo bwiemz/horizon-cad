@@ -6,9 +6,11 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include "horizon/ui/QuantitySpinBox.h"
+
 namespace hz::ui {
 
-RectArrayDialog::RectArrayDialog(QWidget* parent) : QDialog(parent) {
+RectArrayDialog::RectArrayDialog(QWidget* parent, math::LengthUnit unit) : QDialog(parent) {
     setWindowTitle(tr("Rectangular Array"));
 
     auto* layout = new QVBoxLayout(this);
@@ -24,15 +26,13 @@ RectArrayDialog::RectArrayDialog(QWidget* parent) : QDialog(parent) {
     m_rows->setValue(3);
     form->addRow(tr("Rows:"), m_rows);
 
-    m_spacingX = new QDoubleSpinBox(this);
+    m_spacingX = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, this);
     m_spacingX->setRange(-1000.0, 1000.0);
-    m_spacingX->setDecimals(3);
     m_spacingX->setValue(2.0);
     form->addRow(tr("Spacing X:"), m_spacingX);
 
-    m_spacingY = new QDoubleSpinBox(this);
+    m_spacingY = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, this);
     m_spacingY->setRange(-1000.0, 1000.0);
-    m_spacingY->setDecimals(3);
     m_spacingY->setValue(2.0);
     form->addRow(tr("Spacing Y:"), m_spacingY);
 

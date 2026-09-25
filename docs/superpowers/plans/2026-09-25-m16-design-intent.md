@@ -104,7 +104,37 @@ The design, as planned:
   - the assembly tree's mate distances;
   - interference volumes.
 
-### 154b: fields that show and take it
+### 154b: fields that show and take it (as built)
+- **`QuantitySpinBox`** (Length or Angle):
+  - Its `value()` is millimetres or degrees, as before, so callers and
+    `FormFiller` read what they did.
+  - It shows the unit ("1.000 in", "30.00°"), keeping ten decimals inside.
+  - `validate` takes only a whole value in range; anything else waits, and
+    the field goes back to its value.
+  - `setUnit` re-shows a field kept across tabs.
+  - Keyboard tracking is off: a value is taken when entered.
+- **`FeatureForm(parent, title, unit)`** with `length()` and `angle()`:
+  - every MainWindow form, and its length and angle fields: primitives,
+    Extrude, Revolve, Fillet/Chamfer, Shell, Draft, patterns, datums,
+    section plane, block base, Dimension Style;
+  - the generic Edit Feature form (Length, Angle and point fields);
+  - the assembly's Move, Rotate and Edit Mate;
+  - Add Mate, now a distance field and an angle field, each enabled for
+    its mate type;
+  - a drawing's section offset.
+  Angle labels lost "(degrees)": the field shows °.
+- **The property panel:**
+  - line, circle and arc geometry, text height, hatch spacing and ellipse
+    axes are lengths in the document's unit, set as the selection shows;
+  - the rotations are angles;
+  - line width (a plot width) and block scale (a factor) stay plain.
+- **Dialogs:** the rectangular and polar array dialogs take the unit, Insert
+  Block's rotation is an angle, and the constraint value prompts
+  (`QInputDialog`) are forms with a length or an angle.
+- **Tests:** `FormAnswers::typed(name, text)` types into a number field and
+  enters it.
+
+The design, as planned:
 - **`QuantitySpinBox`**, a `QDoubleSpinBox`:
   - Its `value()` stays in millimetres (or degrees, for an angle), so
     callers keep reading what they read today.

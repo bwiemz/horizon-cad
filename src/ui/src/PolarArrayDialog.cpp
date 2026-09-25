@@ -7,9 +7,11 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include "horizon/ui/QuantitySpinBox.h"
+
 namespace hz::ui {
 
-PolarArrayDialog::PolarArrayDialog(QWidget* parent) : QDialog(parent) {
+PolarArrayDialog::PolarArrayDialog(QWidget* parent, math::LengthUnit unit) : QDialog(parent) {
     setWindowTitle(tr("Polar Array"));
 
     auto* layout = new QVBoxLayout(this);
@@ -20,21 +22,18 @@ PolarArrayDialog::PolarArrayDialog(QWidget* parent) : QDialog(parent) {
     m_count->setValue(6);
     form->addRow(tr("Count:"), m_count);
 
-    m_centerX = new QDoubleSpinBox(this);
+    m_centerX = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, this);
     m_centerX->setRange(-10000.0, 10000.0);
-    m_centerX->setDecimals(3);
     m_centerX->setValue(0.0);
     form->addRow(tr("Center X:"), m_centerX);
 
-    m_centerY = new QDoubleSpinBox(this);
+    m_centerY = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, this);
     m_centerY->setRange(-10000.0, 10000.0);
-    m_centerY->setDecimals(3);
     m_centerY->setValue(0.0);
     form->addRow(tr("Center Y:"), m_centerY);
 
-    m_totalAngle = new QDoubleSpinBox(this);
+    m_totalAngle = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, unit, 1, this);
     m_totalAngle->setRange(0.1, 360.0);
-    m_totalAngle->setDecimals(1);
     m_totalAngle->setValue(360.0);
     form->addRow(tr("Total Angle:"), m_totalAngle);
 
