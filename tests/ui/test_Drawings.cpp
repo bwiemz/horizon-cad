@@ -23,8 +23,10 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 
 #include "UiTestSupport.h"
+#include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -33,12 +35,15 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/PartsList.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
 
+using hz::math::Vec3;
 using hz::test::FilePicker;
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
@@ -768,4 +773,93 @@ TEST(DrawingsTest, ACylindersDiameterAndCentreLines) {
     }
     EXPECT_LT(countOn(*sheet, "Hidden"), hiddenBefore);
     EXPECT_EQ(countOn(*sheet, "CentreLines"), 2u) << "Front's own switch, not Top's";
+}
+
+// ---------------------------------------------------------------------------
+// Assembly drawings (Phase 150, part 2)
+// ---------------------------------------------------------------------------
+
+// An assembly's drawing: its components drawn together, a balloon on each
+// part, and a parts list on the title block counting them; saved and opened
+// again; drawn again when one of its parts changes on disk.
+TEST(DrawingsTest, AnAssemblysDrawingHasBalloonsAndAPartsList) {
+    QTemporaryDir dir;
+    saveBlock(dir.filePath(QStringLiteral("block.hzpart")), 10);
+    saveCylinder(dir.filePath(QStringLiteral("pin.hzpart")));
+    hz::doc::AssemblyDocument bench;
+    for (const auto& [part, at] :
+         {std::pair{"block.hzpart", Vec3(0, 0, 0)}, std::pair{"block.hzpart", Vec3(60, 0, 0)},
+          std::pair{"pin.hzpart", Vec3(20, 40, 0)}}) {
+        hz::doc::ComponentInstance c;
+        c.partPath = part;
+        c.transform = hz::math::Mat4::translation(at);
+        bench.addComponent(c);
+    }
+    const QString asmPath = dir.filePath(QStringLiteral("bench.hzasm"));
+    ASSERT_TRUE(hz::io::NativeFormat::saveAssembly(asmPath.toStdString(), bench));
+
+    MainWindow w;
+    ASSERT_TRUE(w.openPath(asmPath));
+    ASSERT_NE(w.activeAssembly(), nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
+    trigger(w, "action_new_drawing_from_part");
+    ASSERT_EQ(w.activeAssembly(), nullptr) << "the sheet's tab";
+    hz::doc::Document* sheet = w.activeDocument();
+    EXPECT_TRUE(tabBar(w)->tabText(tabBar(w)->currentIndex()).startsWith("Drawing of bench"));
+    EXPECT_GT(countOn(*sheet, "Visible"), 0u);
+
+    // The parts list: a line for each part, counted.
+    QStringList listed;
+    for (const auto& e : sheet->draftDocument().entities()) {
+        if (e->layer() != "PartsList") continue;
+        if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get())) {
+            listed << QString::fromStdString(t->text());
+        }
+    }
+    for (const char* expected : {"ITEM", "PART", "QTY", "block", "pin", "2", "1"}) {
+        EXPECT_TRUE(listed.contains(QString::fromLatin1(expected)))
+            << expected << " in " << listed.join(", ").toStdString();
+    }
+    // The views keep clear of it: laid out above the title block and the list.
+    const hz::model::Sheet paper;
+    const double listTop = paper.margin + hz::model::TitleBlock{}.height +
+                           hz::model::PartsList::kRowHeight * 3.0;  // header, block, pin
+    for (const auto& e : sheet->draftDocument().entities()) {
+        if (e->layer() == "Visible") {
+            EXPECT_GT(e->boundingBox().min().y, listTop);
+        }
+    }
+
+    // A balloon for each part, numbered as the list is.
+    QStringList balloons;
+    int circles = 0;
+    for (const auto& e : sheet->draftDocument().entities()) {
+        if (e->layer() != "Balloons") continue;
+        if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get())) {
+            balloons << QString::fromStdString(t->text());
+        }
+        circles += dynamic_cast<const hz::draft::DraftCircle*>(e.get()) != nullptr ? 1 : 0;
+    }
+    EXPECT_EQ(circles, 2);
+    EXPECT_TRUE(balloons.contains(QStringLiteral("1")));
+    EXPECT_TRUE(balloons.contains(QStringLiteral("2")));
+
+    // Saved and opened again, drawn from the assembly again.
+    const QString file = dir.filePath(QStringLiteral("bench.hzdwg"));
+    {
+        FilePicker picker(file);
+        trigger(w, "action_save");
+    }
+    ASSERT_TRUE(QFile::exists(file));
+    emit tabBar(w)->tabCloseRequested(tabBar(w)->currentIndex());
+    ASSERT_TRUE(w.openPath(file));
+    sheet = w.activeDocument();
+    EXPECT_EQ(countOn(*sheet, "Balloons"), static_cast<size_t>(3 * circles));
+
+    // A part changed on disk: the sheet drawn again from it.
+    const auto drawnAt = sheet->draftDocument().revision();
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    deepenOnDisk(dir.filePath(QStringLiteral("block.hzpart")), 30);
+    EXPECT_TRUE(waitUntil([&] { return sheet->draftDocument().revision() != drawnAt; }, 5000));
+    EXPECT_EQ(countOn(*sheet, "Balloons"), static_cast<size_t>(3 * circles));
 }

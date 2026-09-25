@@ -82,6 +82,11 @@ work, not "post-1.0".
     session.
   - A note drawn in a view moves with the view: when you move the view,
     when you change the scale or paper, and when the part changes size.
+- **Assembly drawings (150).**
+  - Drawing ▸ New Drawing from Part or Assembly draws an assembly: its
+    components together, a numbered balloon on each part, and a parts list
+    above the title block counting them.
+  - It is drawn again when the assembly or any of its parts changes.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**

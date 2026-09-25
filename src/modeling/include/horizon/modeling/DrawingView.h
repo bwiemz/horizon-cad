@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -135,6 +136,13 @@ public:
 
     /// A scale as a drawing states it: "1:2", "1:1", "5:1".
     static std::string scaleName(double scale);
+
+    /// A balloon numbered @p item on @p view, for the component whose names
+    /// start with @p namePrefix (Phase 150): on the longest edge of it the
+    /// view shows, its circle outside the view, away from the view's centre.
+    /// None when the view shows none of it.
+    static std::optional<DrawingBalloon> balloonFor(const DrawingView& view,
+                                                    const std::string& namePrefix, int item);
 
     /// Where @p view can go on @p sheet (its placement): inside the border,
     /// clear of the title block, and @p gap from every view of @p drawing

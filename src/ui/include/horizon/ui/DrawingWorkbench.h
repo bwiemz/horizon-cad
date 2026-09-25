@@ -5,9 +5,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/fileio/DrawingDocumentIO.h"
+#include "horizon/modeling/PartsList.h"
 
 namespace hz::doc {
 class Document;
@@ -83,6 +85,23 @@ private:
         io::DrawingDocumentSpec spec;
         /// The views as last drawn: what a click on the sheet finds.
         model::Drawing drawing;
+        /// The part files it was drawn from: its part's, or its assembly's
+        /// parts'. It is drawn again when one changes.
+        std::vector<std::string> files;
+        /// The room its parts list takes above the title block (an assembly's).
+        double partsListHeight = 0.0;
+    };
+    /// What a sheet is drawn from (Phase 150): a part's solid, or an
+    /// assembly's components gathered into one, with its parts list and a
+    /// balloon for each part.
+    struct Source {
+        const topo::Solid* solid = nullptr;
+        std::unique_ptr<topo::Solid> gathered;             ///< an assembly's components
+        std::vector<std::unique_ptr<doc::Document>> read;  ///< parts read from their files
+        model::PartsList partsList;
+        std::vector<std::pair<std::string, int>> balloons;  ///< a component's name prefix, its item
+        std::vector<std::string> files;
+        std::vector<uint64_t> missing;  ///< components with no part to draw
     };
     /// An edge clicked on a sheet: the view it is in, and its name.
     struct PickedEdge {
@@ -99,7 +118,14 @@ private:
     /// the reason, when the part cannot be read or built. A version 1 spec
     /// is given the views it was drawn with. The views drawn go to @p drawn.
     bool draw(doc::Document& document, io::DrawingDocumentSpec& spec, std::string* error,
-              model::Drawing* drawn = nullptr);
+              model::Drawing* drawn = nullptr, std::vector<std::string>* files = nullptr,
+              double* partsListHeight = nullptr);
+    /// What the sheet of @p path (a part, or an assembly) is drawn from, as
+    /// it is now. False, with the reason, when it cannot be read.
+    bool sourceOf(const std::string& path, Source& source, std::string* error);
+    /// @p sheet's title block with the room its parts list takes: what its
+    /// views are laid out and placed around.
+    static model::TitleBlock roomFor(const Sheet& sheet);
     /// The part at @p path as it is now: its tab's solid when it is open and
     /// built, else its file's, built in @p holder. Null, with the reason.
     const topo::Solid* partSolid(const std::string& path, doc::Document& holder,

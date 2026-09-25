@@ -1,11 +1,13 @@
 #include "horizon/document/AssemblyDocument.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
 #include "horizon/document/Document.h"
 #include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/topology/Solid.h"
 
 namespace hz::doc {
 
@@ -26,6 +28,40 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
         input.ids.push_back(comp.id);
     }
     return input;
+}
+
+std::string AssemblyDocument::namePrefix(uint64_t id) {
+    return "c" + std::to_string(id) + "/";
+}
+
+std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
+    const std::function<const topo::Solid*(const ComponentInstance&)>& partOf,
+    std::vector<uint64_t>* missing) const {
+    std::unique_ptr<topo::Solid> gathered;
+    for (const auto& comp : m_components) {
+        if (comp.suppressed) continue;
+        const topo::Solid* part = partOf(comp);
+        if (part == nullptr) {
+            if (missing != nullptr) missing->push_back(comp.id);
+            continue;
+        }
+        auto placed = model::Pattern::transformed(*part, comp.transform);
+        if (!placed) {
+            if (missing != nullptr) missing->push_back(comp.id);
+            continue;
+        }
+        // Its names its own: a balloon or dimension on one instance of a
+        // part names that instance, not every instance of the part.
+        const std::string prefix = namePrefix(comp.id);
+        for (topo::Face& f : placed->faces()) {
+            f.topoId = topo::TopologyID::fromTag(prefix + f.topoId.tag());
+        }
+        for (topo::Edge& e : placed->edges()) {
+            e.topoId = topo::TopologyID::fromTag(prefix + e.topoId.tag());
+        }
+        gathered = gathered ? model::Pattern::collect(*gathered, *placed) : std::move(placed);
+    }
+    return gathered;
 }
 
 std::size_t AssemblyDocument::InterferenceInput::faceCount() const {

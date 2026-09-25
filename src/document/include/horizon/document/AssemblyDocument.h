@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -158,6 +159,18 @@ public:
         std::size_t faceCount() const;
     };
     InterferenceInput interferenceInput() const;
+
+    /// The unsuppressed components as one solid, for a drawing (Phase 150):
+    /// each part placed by its component's transform, its names prefixed
+    /// with the component's ("c7/"), so two instances of one part are told
+    /// apart, and the bodies gathered, not merged. @p partOf gives a
+    /// component's part solid; one it gives none for is left out and listed
+    /// in @p missing. Null when no component has a solid.
+    std::unique_ptr<topo::Solid> drawingSolid(
+        const std::function<const topo::Solid*(const ComponentInstance&)>& partOf,
+        std::vector<uint64_t>* missing = nullptr) const;
+    /// The prefix drawingSolid() gives the names of component @p id.
+    static std::string namePrefix(uint64_t id);
     /// Measure @p input. Once @p cancelled is set, measuring stops between
     /// pairs, and the report holds only the pairs measured by then.
     static InterferenceReport measureInterference(const InterferenceInput& input,

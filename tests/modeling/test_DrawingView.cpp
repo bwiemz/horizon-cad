@@ -354,3 +354,39 @@ TEST(DrawingViewTest, OnlyAStraightEdgeHasALength) {
     }
     EXPECT_FALSE(hz::model::DrawingDimensioner::isStraight(*box, "no/such/edge"));
 }
+
+// A balloon goes on the longest edge the view shows of its component, its
+// circle outside the view; a component the view does not show has none.
+TEST(DrawingViewTest, ABalloonPointsAtItsComponentFromOutsideTheView) {
+    auto a = PrimitiveFactory::makeBox(10, 10, 10);
+    auto b = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(20, 10, 10),
+                                             hz::math::Mat4::translation(Vec3(30, 0, 0)));
+    for (auto& e : a->edges()) e.topoId = hz::topo::TopologyID::fromTag("c1/" + e.topoId.tag());
+    for (auto& e : b->edges()) e.topoId = hz::topo::TopologyID::fromTag("c2/" + e.topoId.tag());
+    const auto both = hz::model::Pattern::collect(*a, *b);
+    DrawingView front = DrawingGenerator::makeView(*both, StandardView::Front);
+    front.scale = 2.0;
+    front.placement = {100.0, 100.0};
+
+    const auto balloon = DrawingGenerator::balloonFor(front, "c2/", 3);
+    ASSERT_TRUE(balloon.has_value());
+    EXPECT_EQ(balloon->item, 3);
+    EXPECT_EQ(balloon->feature.tag().rfind("c2/", 0), 0u) << "on the second component";
+    // Its circle, as BalloonRenderer places it: off the first piece's middle.
+    const hz::model::ProjectedEdge* first = nullptr;
+    for (const auto& e : front.edges) {
+        if (e.sourceEdge == balloon->feature) {
+            first = &e;
+            break;
+        }
+    }
+    ASSERT_NE(first, nullptr);
+    const Vec2 tip = front.toSheet((first->a + first->b) * 0.5);
+    const Vec2 circle = tip + balloon->offset;
+    const bool outside = circle.x + balloon->radius < front.placement.x ||
+                         circle.x - balloon->radius > front.placement.x + front.sheetWidth() ||
+                         circle.y + balloon->radius < front.placement.y ||
+                         circle.y - balloon->radius > front.placement.y + front.sheetHeight();
+    EXPECT_TRUE(outside) << "clear of the view";
+    EXPECT_FALSE(DrawingGenerator::balloonFor(front, "c9/", 1).has_value());
+}

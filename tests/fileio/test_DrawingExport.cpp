@@ -18,6 +18,7 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/GeometricTolerance.h"
+#include "horizon/modeling/PartsList.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SectionView.h"
 #include "horizon/topology/Solid.h"
@@ -298,4 +299,47 @@ TEST(DrawingExportTest, CentreLinesRunPastTheOutline) {
     Document without;
     DrawingExport::populate(without, drawing);
     for (const auto& e : without.draftDocument().entities()) EXPECT_NE(e->layer(), "CentreLines");
+}
+
+// A parts list sits on the title block, as wide as it: its header next to
+// it, the items numbered upward; a name too long for its column is cut.
+TEST(DrawingExportTest, APartsListSitsOnTheTitleBlock) {
+    hz::model::Sheet sheet;
+    hz::model::TitleBlock tb;
+    hz::model::PartsList list;
+    list.rows = {{1, "base", 1}, {2, std::string(200, 'x'), 4}};
+    Document doc;
+    DrawingExport::populate(doc, Drawing{}, &sheet, &tb, &list);
+    const auto& own = DrawingExport::layers();
+    EXPECT_NE(std::find(own.begin(), own.end(), "PartsList"), own.end());
+
+    const double left = sheet.widthMm() - sheet.margin - tb.width;
+    const double bottom = sheet.margin + tb.height;
+    double top = -1e300;
+    std::vector<std::pair<std::string, double>> texts;
+    for (const auto& e : doc.draftDocument().entities()) {
+        if (e->layer() != "PartsList") continue;
+        const auto box = e->boundingBox();
+        EXPECT_GE(box.min().x, left - 1e-9);
+        EXPECT_GE(box.min().y, bottom - 1e-9) << "above the title block";
+        top = std::max(top, box.max().y);
+        if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(e.get())) {
+            texts.emplace_back(t->text(), t->position().y);
+        }
+    }
+    EXPECT_NEAR(top, bottom + list.height(), 1e-9);
+    const auto at = [&](const std::string& s) {
+        for (const auto& [text, y] : texts) {
+            if (text == s) return y;
+        }
+        ADD_FAILURE() << "no " << s;
+        return 0.0;
+    };
+    EXPECT_LT(at("ITEM"), at("base")) << "the header next to the title block";
+    EXPECT_LT(at("base"), at("4")) << "item 2 above item 1";
+    const bool cut = std::any_of(texts.begin(), texts.end(), [](const auto& t) {
+        return t.first.size() < 200 && t.first.size() > 3 &&
+               t.first.compare(t.first.size() - 3, 3, "...") == 0;
+    });
+    EXPECT_TRUE(cut) << "the long name cut short";
 }
