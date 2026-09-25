@@ -471,6 +471,8 @@ MainWindow::MainWindow(QWidget* parent)
     // The assembly commands, which wire the tree to themselves (Phase 146).
     m_assemblies = std::make_unique<AssemblyWorkbench>(static_cast<WorkbenchHost&>(*this),
                                                        *m_assemblyTreePanel);
+    // A component dragged in the view, its mates solved as it moves (158).
+    m_viewport->setComponentDragger(m_assemblies.get());
     // Drawing sheets made from parts (Phase 148).
     m_drawings = std::make_unique<DrawingWorkbench>(static_cast<WorkbenchHost&>(*this));
 
@@ -533,6 +535,7 @@ MainWindow::~MainWindow() {
     // Stop work on workers before anything it could report to is gone.
     m_rebuildJob.reset();
     m_importTask.reset();
+    m_viewport->setComponentDragger(nullptr);
     m_assemblies.reset();
     m_openTask.reset();
     m_reloadTask.reset();

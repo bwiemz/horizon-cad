@@ -17,6 +17,18 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 17 (Phases 158–161, in progress)
+
+- **Drag with the mates (158, part 1).**
+  - In an assembly, drag a component in the view: it goes where the cursor
+    takes it, and its mates are solved as it moves.
+  - Where the mates can't follow (a lid pulled up off its base), it slides
+    as far as they let it.
+  - A component held by a Fixed mate isn't dragged, and the status bar says
+    why.
+  - Release is one undo step. Escape puts everything back. A click without
+    moving still selects the component.
+
 ## Unreleased — Professional workflows, Milestone 16 (Phases 154–157)
 
 - **Extrude up to a face (157, part 3).**

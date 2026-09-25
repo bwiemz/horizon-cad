@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/document/AssemblyMates.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -112,41 +113,14 @@ TEST(AssemblyMatesIntegrationTest, MatedStackSolvesAfterReload) {
 
     const std::string asmDir = fs::path(asmPath).parent_path().string();
 
-    std::vector<hz::model::SolverComponent> solverComponents;
     for (auto& comp : asmDoc->components()) {
         ASSERT_TRUE(mgr.resolveComponent(comp, ComponentState::Resolved, asmDir));
-        hz::model::SolverComponent sc;
-        sc.id = comp.id;
-        sc.transform = comp.transform;
-        solverComponents.push_back(sc);
     }
-
-    std::vector<hz::model::SolverMate> solverMates;
-    for (const auto& mate : asmDoc->mates()) {
-        hz::model::SolverMate sm;
-        sm.type = mate.type;
-        sm.componentA = mate.a.componentId;
-        sm.componentB = mate.b.componentId;
-        sm.value = mate.value;
-        if (mate.type != MateType::Fixed) {
-            for (auto [ref, frame] :
-                 {std::pair{&mate.a, &sm.frameA}, std::pair{&mate.b, &sm.frameB}}) {
-                const auto* comp = asmDoc->component(ref->componentId);
-                ASSERT_NE(comp, nullptr);
-                ASSERT_NE(comp->resolvedPart, nullptr);
-                const auto* face =
-                    hz::model::MateGeometry::findFace(*comp->resolvedPart->solid(), ref->faceId);
-                ASSERT_NE(face, nullptr) << "face " << ref->faceId.tag() << " not found";
-                auto extracted = hz::model::MateGeometry::frameForFace(*face);
-                ASSERT_TRUE(extracted.has_value());
-                *frame = *extracted;
-            }
-        }
-        solverMates.push_back(sm);
-    }
-
-    hz::model::AssemblySolver solver;
-    auto result = solver.solve(solverComponents, solverMates);
+    // The solve the application runs (Phase 158: one for everyone).
+    std::string why;
+    const auto mates = hz::doc::AssemblyMates::gather(*asmDoc, &why);
+    if (!mates) FAIL() << why;
+    const auto result = mates->solve();
     ASSERT_EQ(result.status, hz::model::AssemblySolveStatus::Success)
         << "iterations=" << result.iterations << " residual=" << result.residualNorm
         << " message=" << result.message;
@@ -160,7 +134,7 @@ TEST(AssemblyMatesIntegrationTest, MatedStackSolvesAfterReload) {
         *topComp.resolvedPart->solid(), hz::topo::TopologyID::make(featureTag, "cap_bottom"));
     ASSERT_NE(face, nullptr);
     auto localFrame = hz::model::MateGeometry::frameForFace(*face);
-    ASSERT_TRUE(localFrame.has_value());
+    if (!localFrame) FAIL() << "no frame for the top plate's bottom";
     auto placed = localFrame->transformed(result.transforms.at(topComp.id));
     EXPECT_NEAR(placed.origin.z, 2.0, 1e-6);
     EXPECT_NEAR(std::abs(placed.direction.z), 1.0, 1e-6);

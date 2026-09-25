@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/AssemblyMates.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/math/Mat4.h"
@@ -355,4 +356,61 @@ TEST(AssemblyDocumentTest, TheDrawingSolidIsTheComponentsEachNamedApart) {
 
     AssemblyDocument empty;
     EXPECT_EQ(empty.drawingSolid([](const ComponentInstance&) { return nullptr; }), nullptr);
+}
+
+// Phase 158: an assembly's mates gathered once and solved as a drag moves: a
+// component held where the drag puts it; what grounds the assembly without a
+// hold (here its first component) grounds it still.
+TEST(AssemblyMatesTest, AComponentIsHeldWhereADragPutsIt) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    const uint64_t base = place(asmDoc, block, Vec3(0, 0, 0));
+    const uint64_t lid = place(asmDoc, block, Vec3(12, 0, 10));
+    const std::string feature = block->featureTree().feature(0)->featureID();
+    Mate on;
+    on.type = MateType::Coincident;
+    on.a = {base, hz::topo::TopologyID::fromTag(feature + "/top")};
+    on.b = {lid, hz::topo::TopologyID::fromTag(feature + "/bottom")};
+    asmDoc.addMate(on);
+
+    std::string why;
+    auto mates = AssemblyMates::gather(asmDoc, &why);
+    if (!mates) FAIL() << why;
+    EXPECT_EQ(mates->solve().status, hz::model::AssemblySolveStatus::Success);
+
+    // Along the base's top: held there, and the base where it is.
+    const Mat4 along = Mat4::translation(Vec3(30, 5, 10));
+    auto result = mates->solve({AssemblyMates::Hold{lid, along}, false});
+    ASSERT_EQ(result.status, hz::model::AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(lid).transformPoint(Vec3()).x, 30.0, 1e-9);
+    EXPECT_NEAR((result.transforms.at(base).transformPoint(Vec3())).length(), 0.0, 1e-9);
+
+    // Up off it: the mate cannot be met with the lid held there; the base is
+    // not lifted to meet it.
+    const Mat4 up = Mat4::translation(Vec3(30, 5, 25));
+    result = mates->solve({AssemblyMates::Hold{lid, up}, false});
+    EXPECT_NE(result.status, hz::model::AssemblySolveStatus::Success);
+
+    // Let go from there, it comes back down onto the top.
+    mates->place({{lid, up}});
+    result = mates->solve({std::nullopt, false});
+    ASSERT_EQ(result.status, hz::model::AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(lid).transformPoint(Vec3()).z, 10.0, 1e-6);
+    EXPECT_NEAR(result.transforms.at(lid).transformPoint(Vec3()).x, 30.0, 1e-6);
+}
+
+TEST(AssemblyMatesTest, AMateOnAFaceThatIsGoneIsSaidSo) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    const uint64_t base = place(asmDoc, block, Vec3(0, 0, 0));
+    const uint64_t lid = place(asmDoc, block, Vec3(12, 0, 10));
+    Mate on;
+    on.type = MateType::Coincident;
+    on.a = {base, hz::topo::TopologyID::fromTag("nosuch/top")};
+    on.b = {lid, hz::topo::TopologyID::fromTag("nosuch/bottom")};
+    const uint64_t id = asmDoc.addMate(on);
+    std::string why;
+    EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
+    EXPECT_EQ(why,
+              "mate " + std::to_string(id) + " references geometry that could not be resolved");
 }

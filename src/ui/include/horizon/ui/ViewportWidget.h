@@ -37,6 +37,7 @@ class Document;
 namespace hz::ui {
 
 class Tool;
+class ComponentDragger;
 
 /// Saved camera state for restoring after sketch editing.
 struct CameraState {
@@ -217,6 +218,19 @@ public:
     /// without @p add clears the choice.
     void chooseModel(const std::optional<ModelPick>& pick, bool add);
     void clearModelSelection();
+    /// Where on the model the ray through @p at first meets a face, in world
+    /// coordinates; nothing when it meets none (Phase 158: the point a drag
+    /// grabs).
+    std::optional<math::Vec3> pickModelPoint(const QPointF& at) const;
+
+    /// What moves an assembly's components under the cursor (Phase 158): a
+    /// plain left press on a component, with the select tool, arms a drag;
+    /// moved past the start distance, the dragger takes it. A press and
+    /// release in place still chooses the component. Null: none.
+    void setComponentDragger(ComponentDragger* dragger) { m_componentDragger = dragger; }
+    /// A component is being dragged.
+    bool draggingComponent() const { return m_componentDrag == ComponentDrag::Dragging; }
+
     /// What the cursor is over, drawn highlighted.
     void setModelHover(const std::optional<ModelPick>& pick);
     const std::optional<ModelPick>& modelHover() const { return m_modelHover; }
@@ -279,6 +293,15 @@ private:
     /// release is swallowed instead of reaching the active tool (which would
     /// otherwise pick/clear the selection at the release point).
     bool m_viewCubeCapturedPress = false;
+
+    /// A component drag (Phase 158): armed by a press on a component, taken
+    /// by the dragger once the cursor has moved far enough, or refused.
+    /// While not None, the press was the drag's, and so is its release.
+    enum class ComponentDrag { None, Armed, Dragging, Refused };
+    ComponentDragger* m_componentDragger = nullptr;
+    ComponentDrag m_componentDrag = ComponentDrag::None;
+    ModelPick m_dragPick;
+    QPointF m_dragFrom;
 
     // Camera
     render::Camera m_camera;

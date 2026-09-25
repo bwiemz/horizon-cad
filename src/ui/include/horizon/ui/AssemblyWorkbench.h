@@ -5,13 +5,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/AssemblyMates.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/ui/BackgroundTask.h"
+#include "horizon/ui/ComponentDragger.h"
 
 class QComboBox;
 
@@ -29,8 +33,9 @@ class WorkbenchHost;
 ///
 /// Each command acts on the active tab's assembly, and says so in the status
 /// bar when the tab shows none. Every edit is one undo step, with the mates
-/// solved again after it.
-class AssemblyWorkbench : public QObject {
+/// solved again after it. A component is dragged in the view too (Phase
+/// 158), the mates solved as it moves.
+class AssemblyWorkbench : public QObject, public ComponentDragger {
     Q_OBJECT
 
 public:
@@ -90,6 +95,18 @@ public:
     /// over a message about the part's tab that matters more).
     void refreshComponentsOf(const std::string& path, bool report = true);
 
+    // --- Dragging a component (Phase 158, ComponentDragger) ---
+    /// The component moves in the plane through the point grabbed, facing
+    /// the view. At each move the mates are solved with it held where the
+    /// cursor puts it; if they cannot be, with it let go from there, so it
+    /// slides as far as they allow; if not even that, it stays. Release is
+    /// one undo step; Escape puts everything back. A component held by a
+    /// Fixed mate is not dragged.
+    bool beginDrag(std::uint64_t component, const QPointF& at) override;
+    void dragTo(const QPointF& at) override;
+    void endDrag() override;
+    void cancelDrag() override;
+
     /// An interference check is running on a worker.
     bool busy() const { return m_interferenceTask != nullptr; }
     /// Stop it; it reports "cancelled" when it ends.
@@ -133,6 +150,24 @@ private:
     void openComponentPart(uint64_t id);
     void showInterference(const doc::AssemblyDocument& assembly,
                           const doc::InterferenceReport& report);
+
+    /// Each component's node in the view placed where the component is now,
+    /// without building the scene again.
+    void showPlacements(const doc::AssemblyDocument& assembly);
+
+    /// A drag under way (Phase 158).
+    struct Drag {
+        std::shared_ptr<doc::AssemblyDocument> assembly;  ///< the one dragged in
+        std::uint64_t component = 0;
+        math::Mat4 start = math::Mat4::identity();  ///< its placement when grabbed
+        math::Vec3 grabbed;                         ///< the point grabbed, in the world
+        math::Vec3 facing;                          ///< the plane it moves in faces this way
+        std::optional<doc::AssemblyMates> mates;    ///< gathered once; none: moved freely
+        doc::AssemblyState before;
+        bool wasDirty = false;
+        bool moved = false;
+    };
+    std::optional<Drag> m_drag;
 
     WorkbenchHost& m_host;
     AssemblyTreePanel& m_tree;

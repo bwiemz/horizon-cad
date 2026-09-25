@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QApplication>
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -22,6 +23,7 @@
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshPicker.h"
+#include "horizon/ui/ComponentDragger.h"
 #include "horizon/ui/Tool.h"
 
 namespace hz::ui {
@@ -645,6 +647,7 @@ void ViewportWidget::paintGL() {
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
     m_viewCubeCapturedPress = false;
+    m_componentDrag = ComponentDrag::None;
     // A left-click on the orientation gizmo snaps the view instead of drawing.
     if (event->button() == Qt::LeftButton) {
         const ViewCube::Region region =
@@ -656,7 +659,34 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
             return;
         }
     }
+    // A plain left press on an assembly's component, with the select tool,
+    // arms a drag of it (Phase 158). Shift keeps its meaning: add to the
+    // choice.
+    const bool selecting = m_activeTool == nullptr || m_activeTool->name() == "Select";
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
+        m_componentDragger != nullptr && selecting) {
+        const auto pick = pickModel(event->position());
+        if (pick && pick->owner != 0) {
+            m_componentDrag = ComponentDrag::Armed;
+            m_dragPick = *pick;
+            m_dragFrom = event->position();
+            return;
+        }
+    }
     m_inputHandler.handleMousePress(event, this);
+}
+
+std::optional<math::Vec3> ViewportWidget::pickModelPoint(const QPointF& at) const {
+    if (m_activeSketch || width() <= 0 || height() <= 0) return std::nullopt;
+    const auto [origin, direction] = m_camera.screenToRay(at.x(), at.y(), width(), height());
+    std::optional<render::MeshHit> face;
+    for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {
+        const auto hit =
+            render::MeshPicker::pickFace(node->mesh(), node->worldTransform(), origin, direction);
+        if (hit && (!face || hit->distance < face->distance)) face = hit;
+    }
+    if (!face) return std::nullopt;
+    return face->point;
 }
 
 void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
@@ -690,6 +720,29 @@ void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
+    switch (m_componentDrag) {
+        case ComponentDrag::Armed:
+            // Far enough to be a drag, not a click: the dragger takes it,
+            // from where it was pressed.
+            if ((event->position() - m_dragFrom).manhattanLength() <
+                QApplication::startDragDistance()) {
+                return;
+            }
+            if (!m_componentDragger->beginDrag(m_dragPick.owner, m_dragFrom)) {
+                m_componentDrag = ComponentDrag::Refused;  // the dragger says why
+                return;
+            }
+            m_componentDrag = ComponentDrag::Dragging;
+            [[fallthrough]];
+        case ComponentDrag::Dragging:
+            m_componentDragger->dragTo(event->position());
+            update();
+            return;
+        case ComponentDrag::Refused:
+            return;
+        case ComponentDrag::None:
+            break;
+    }
     m_inputHandler.handleMouseMove(event, this);
 }
 
@@ -700,6 +753,19 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
         m_viewCubeCapturedPress = false;
         return;
     }
+    // The release of a press a component drag took: the tool never saw the
+    // press, so it must not see this (it would clear the choice here).
+    if (event->button() == Qt::LeftButton && m_componentDrag != ComponentDrag::None) {
+        const ComponentDrag was = m_componentDrag;
+        m_componentDrag = ComponentDrag::None;
+        if (was == ComponentDrag::Dragging) {
+            m_componentDragger->endDrag();
+        } else if (was == ComponentDrag::Armed) {
+            chooseModel(m_dragPick, false);  // pressed and released in place: a click
+        }
+        update();
+        return;
+    }
     m_inputHandler.handleMouseRelease(event, this);
 }
 
@@ -708,6 +774,13 @@ void ViewportWidget::wheelEvent(QWheelEvent* event) {
 }
 
 void ViewportWidget::keyPressEvent(QKeyEvent* event) {
+    // Escape during a component drag puts everything back (Phase 158).
+    if (event->key() == Qt::Key_Escape && m_componentDrag != ComponentDrag::None) {
+        if (m_componentDrag == ComponentDrag::Dragging) m_componentDragger->cancelDrag();
+        m_componentDrag = ComponentDrag::Refused;  // the release that follows is still its
+        update();
+        return;
+    }
     m_inputHandler.handleKeyPress(event, this);
 }
 
