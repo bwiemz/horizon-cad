@@ -67,8 +67,12 @@ bool magenta(const QColor& c) {
 }
 
 /// A text's pixels, or a light line's.
+/// Over 150, not more: a one-pixel line that lies on the boundary between two
+/// rows of pixels is drawn across both at part strength by some rasterizers
+/// (Mesa's llvmpipe gives 166 each), where others fill one row. The grid
+/// stays under 100.
 bool light(const QColor& c) {
-    return c.red() > 170 && c.green() > 170 && c.blue() > 170;
+    return c.red() > 150 && c.green() > 150 && c.blue() > 150;
 }
 
 }  // namespace

@@ -73,6 +73,15 @@ jobs:
             libxcb-xfixes0-dev \
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libfontconfig1-dev \
@@ -89,13 +98,35 @@ jobs:
       # Scripting is not shipped until it is sandboxed (Phase 120). The
       # translations are: a package without them is refused at configure.
       - name: Configure
-        run: cmake --preset linux-release -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+        # Tests on: the preset turns them off, and the Test step below ran none.
+        run: cmake --preset linux-release -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build/linux-release --config Release
 
       - name: Test
         run: ctest --test-dir build/linux-release -C Release --output-on-failure
+
+      # What is shipped must start and draw: a Qt with no platform plugin
+      # passed every headless test and could not open a window. As in CI.
+      - name: Start the application
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri
+          Xvfb :99 -screen 0 1280x1024x24 &
+          xvfb=$!
+          sleep 2
+          set +e
+          DISPLAY=:99 QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout 60 build/linux-release/src/app/horizon --self-test 2>&1 | tee self-test.log
+          status=${PIPESTATUS[0]}
+          set -e
+          kill "${xvfb}"
+          # Its fonts found through the system's configuration, not a fallback.
+          if grep -q 'Fontconfig error' self-test.log; then
+            echo "::error::fontconfig could not load its configuration"
+            exit 1
+          fi
+          test "${status}" -eq 0
 
       - name: Package a tarball
         run: cpack --config build/linux-release/CPackConfig.cmake -B dist -G TGZ

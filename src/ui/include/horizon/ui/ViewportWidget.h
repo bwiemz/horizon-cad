@@ -69,6 +69,10 @@ public:
     /// 3.3 context, or the shaders failed to compile). Known after the first
     /// show; the user is told once.
     const QString& graphicsProblem() const { return m_graphicsProblem; }
+    /// The viewport has drawn a whole frame with OpenGL 3.3: a context, its
+    /// shaders, and a paint that reached the end. (A context alone is not
+    /// enough: some platforms give one and then have nothing to draw into.)
+    bool hasDrawn() const { return m_framesDrawn > 0; }
 
     // ---- Document ----
 
@@ -241,6 +245,11 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    /// Tab goes to the active tool first (the dimension tools cycle their
+    /// kind with it): QWidget spends it on moving focus before
+    /// keyPressEvent sees it. A tool that does not take it leaves it to
+    /// move focus, as before.
+    bool event(QEvent* event) override;
 
 private:
     /// Record a context Qt could not create at all, and tell the user once.
@@ -256,7 +265,8 @@ private:
     /// initializeGL() got an OpenGL 3.3 context and built the renderer:
     /// paintGL() and resizeGL() may use it.
     bool m_glReady = false;
-    bool m_dofQueued = false;  ///< the DOF analysis is to run after this paint
+    std::uint64_t m_framesDrawn = 0;  ///< whole frames painted with OpenGL 3.3
+    bool m_dofQueued = false;         ///< the DOF analysis is to run after this paint
     bool m_graphicsCheckScheduled = false;
     bool m_graphicsProblemReported = false;
     /// Snap the camera to the standard view requested by a view-cube click.

@@ -287,22 +287,32 @@ bool PolylineEditTool::mousePressEvent(QMouseEvent* event, const math::Vec2& wor
             double minD = std::min({d00, d01, d10, d11});
 
             std::vector<math::Vec2> joined;
+            // Where the two meet, the point they share once: twice made a
+            // segment of no length, which Offset then turned into two corners.
+            const auto append = [&joined](std::vector<math::Vec2> tail) {
+                if (!tail.empty() && !joined.empty() &&
+                    joined.back().distanceTo(tail.front()) <=
+                        1e-9 * std::max(1.0, joined.back().length())) {
+                    tail.erase(tail.begin());
+                }
+                joined.insert(joined.end(), tail.begin(), tail.end());
+            };
             if (minD == d10) {
                 // my.back → other.front: append other after my
                 joined = myPts;
-                joined.insert(joined.end(), otherPts.begin(), otherPts.end());
+                append(otherPts);
             } else if (minD == d11) {
                 // my.back → other.back: append reversed other
                 joined = myPts;
-                joined.insert(joined.end(), otherPts.rbegin(), otherPts.rend());
+                append({otherPts.rbegin(), otherPts.rend()});
             } else if (minD == d00) {
                 // my.front → other.front: prepend reversed other
                 joined.assign(otherPts.rbegin(), otherPts.rend());
-                joined.insert(joined.end(), myPts.begin(), myPts.end());
+                append(myPts);
             } else {
                 // my.front → other.back: prepend other
                 joined = otherPts;
-                joined.insert(joined.end(), myPts.begin(), myPts.end());
+                append(myPts);
             }
 
             // Apply join as composite: modify current + remove other.

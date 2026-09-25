@@ -636,6 +636,7 @@ void ViewportWidget::paintGL() {
     // qpixmap_win.cpp assertion triggered by QPainter on QOpenGLWidget.
     m_viewportRenderer.blitTextOverlay(gl, m_camera, m_document, m_selectionManager, width(),
                                        height(), pixelToWorldScale(), devicePixelRatioF());
+    ++m_framesDrawn;
 }
 
 // ---------------------------------------------------------------------------
@@ -708,6 +709,19 @@ void ViewportWidget::wheelEvent(QWheelEvent* event) {
 
 void ViewportWidget::keyPressEvent(QKeyEvent* event) {
     m_inputHandler.handleKeyPress(event, this);
+}
+
+bool ViewportWidget::event(QEvent* event) {
+    if (event->type() == QEvent::KeyPress && m_activeTool != nullptr) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) &&
+            m_activeTool->keyPressEvent(key)) {
+            emit selectionChanged();
+            update();
+            return true;
+        }
+    }
+    return QOpenGLWidget::event(event);
 }
 
 }  // namespace hz::ui

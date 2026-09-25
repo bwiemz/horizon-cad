@@ -1049,6 +1049,10 @@ std::vector<PolyVertex> lwPolylineVertices(const std::vector<DxfPair>& groups) {
 /// a boundary's next edge supplies it.
 void appendArcPoints(std::vector<math::Vec2>& out, const math::Vec2& c, double r, double from,
                      double sweep) {
+    // An arc turns once at most. A file's sweep of 1e89 made a step count no
+    // int can hold (undefined behaviour, found by fuzzing); a NaN, none.
+    if (!std::isfinite(from) || !std::isfinite(sweep) || !std::isfinite(r)) return;
+    sweep = std::clamp(sweep, -2.0 * math::kPi, 2.0 * math::kPi);
     const int steps = std::max(2, static_cast<int>(std::ceil(std::abs(sweep) / (math::kPi / 16))));
     for (int k = 1; k <= steps; ++k) {
         const double a = from + sweep * k / steps;
@@ -1141,8 +1145,12 @@ std::vector<HatchLoop> hatchLoops(const std::vector<DxfPair>& g, bool& curves) {
                     if (type == 3 && (!take(11, mx) || !take(21, my))) break;
                     if (!take(40, r) || !take(50, start) || !take(51, end)) break;
                     take(73, ccw);
-                    double sweep = (end - start) * math::kDegToRad;
-                    while (sweep <= 0.0) sweep += 2.0 * math::kPi;
+                    // Into (0, 2 pi]. Adding a turn until it was positive never
+                    // ended for a sweep of -1e88: the turn is lost below its last
+                    // digit.
+                    double sweep = std::fmod((end - start) * math::kDegToRad, 2.0 * math::kPi);
+                    if (!std::isfinite(sweep)) break;
+                    if (sweep <= 0.0) sweep += 2.0 * math::kPi;
                     // Clockwise edges run the other way: their angles are
                     // written as for the counter-clockwise arc.
                     double from = start * math::kDegToRad;

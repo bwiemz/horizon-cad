@@ -17,6 +17,23 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 13 (Phases 145–146)
+
+- **The Linux build opens a window (145).** It was built with a Qt that had
+  no platform plugin and no font engine: every headless test passed, and the
+  application could not start. Qt is now built with FreeType, HarfBuzz and,
+  on Linux, fontconfig and xcb. The release starts the application with
+  `horizon --self-test` before packaging it.
+- **`horizon --self-test`** checks that the window opens and the viewport
+  draws, and says what it found.
+- **Polyline Edit's Join** no longer leaves a segment of no length where
+  the two polylines met.
+- **Tab cycles the kind of dimension** being placed (horizontal, vertical,
+  aligned; radius or diameter), as the tools always meant it to. The view
+  no longer loses the keyboard to it.
+- **CI now runs what it claimed to.** It ran no window test (181), none in
+  the Linux Release job, and no OpenGL test. All of them run now, each job
+  counts what it ran, and coverage floors hold.
 ## Unreleased — Product completeness, Milestone 12 (Phases 143–144)
 
 - **Placing components (143).**
