@@ -4,12 +4,14 @@
 #include <cassert>
 #include <cmath>
 #include <map>
+#include <optional>
 #include <set>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 
@@ -114,6 +116,20 @@ struct FilletEdgeInfo {
     Vec3 offsetA;  ///< Direction on faceA from the edge inward.
     Vec3 offsetB;  ///< Direction on faceB from the edge inward.
 
+    // The wedge the rolling ball sits in, between offsetA and offsetB: the
+    // material for a convex edge, the empty side for a concave one.
+    double theta = hz::math::kPi / 2.0;  ///< its angle
+    Vec3 inA;                            ///< faceA's normal into the wedge
+    double cotHalf = 1.0;                ///< setback per unit radius, cot(theta/2)
+    double arcWeight = 0.0;              ///< the blend arc's middle weight, sin(theta/2)
+    bool concave = false;                ///< the blend adds material
+
+    /// Where a blend ends on a face it does not run along (the end face at an
+    /// unfilleted vertex), its end section lies on that face's plane, not
+    /// perpendicular to the edge: this is that plane's normal.
+    std::optional<Vec3> endFrontNormal;
+    std::optional<Vec3> endBackNormal;
+
     std::vector<FilletStop> stops;  ///< ≥ 2, increasing t; ends define topology.
 
     /// A mitered end (Phase 94): the blend's end section lies on the plane
@@ -175,17 +191,25 @@ static bool computeFilletFrame(const Edge* edge, double outwardSign, FilletEdgeI
     info.offsetA = candidateA * (1.0 / lenA);
     info.offsetB = candidateB * (1.0 / lenB);
 
-    // Only perpendicular, CONVEX dihedral edges are supported: every formula
-    // below (tangent offset = r, arc center at offsetA+offsetB, cos 45° arc
-    // weight) is exact only there. At a convex right angle each inward offset
-    // is exactly anti-parallel to the other face's OUTWARD normal; anything
-    // else (oblique dihedrals, reentrant edges, curved faces) must be refused
-    // rather than silently emitting wrong geometry.
-    const Vec3 outwardB = nB * outwardSign;
-    const Vec3 outwardA = nA * outwardSign;
-    if (info.offsetA.dot(outwardB) > -1.0 + 1e-6 || info.offsetB.dot(outwardA) > -1.0 + 1e-6) {
-        return false;
-    }
+    // The ball rolls in the wedge between the two in-face directions, at any
+    // angle: in the material for a convex edge, on the empty side for a
+    // concave one (the blend then adds material). It touches each face a
+    // setback r cot(theta/2) from the edge, its centre one radius off faceA
+    // into the wedge, and the arc between the touch points spans pi - theta.
+    // (It was refused at anything but a convex right angle, where every
+    // formula here reduces to the old one.) Faces that nearly continue one
+    // another, or meet in a knife edge, leave no wedge to roll in.
+    const double cosTheta = std::clamp(info.offsetA.dot(info.offsetB), -1.0, 1.0);
+    info.theta = std::acos(cosTheta);
+    constexpr double kMinWedge = hz::math::kPi / 180.0;  // one degree
+    if (info.theta < kMinWedge || info.theta > hz::math::kPi - kMinWedge) return false;
+    const Vec3 across = info.offsetB - info.offsetA * cosTheta;
+    if (across.length() < 1e-12) return false;
+    info.inA = across * (1.0 / across.length());
+    info.cotHalf = 1.0 / std::tan(info.theta / 2.0);
+    info.arcWeight = std::sin(info.theta / 2.0);
+    // Concave: faceB's in-face direction leaves faceA on its outward side.
+    info.concave = info.offsetB.dot(nA * outwardSign) > 0.0;
     return true;
 }
 
@@ -195,9 +219,10 @@ static FilletStop makeStop(const FilletEdgeInfo& info, double t, double r) {
     s.t = t;
     s.r = r;
     const Vec3 p = info.v1->point + info.edgeDir * (t * info.edgeLen);
-    s.posA = p + info.offsetA * r;
-    s.posB = p + info.offsetB * r;
-    s.arcCenter = p + (info.offsetA + info.offsetB) * r;
+    const double setback = r * info.cotHalf;
+    s.posA = p + info.offsetA * setback;
+    s.posB = p + info.offsetB * setback;
+    s.arcCenter = s.posA + info.inA * r;
     return s;
 }
 
@@ -207,16 +232,14 @@ static FilletStop makeStop(const FilletEdgeInfo& info, double t, double r) {
 /// extent (unlike a full-cylinder carrier).
 static std::shared_ptr<geo::NurbsSurface> makeArcLoft(const FilletEdgeInfo& info,
                                                       const FilletStop& s0, const FilletStop& s1) {
-    const double w = std::cos(hz::math::kPi / 4.0);  // 90° arc middle weight
+    // The arc's middle weight, cos of half the arc (pi - theta): sin(theta/2).
+    const double w = info.arcWeight;
 
     // Arc control points at a stop: from the faceA tangent to the faceB
-    // tangent, bulging toward the edge. Directions from the arc center:
-    // toward posA is -offsetB, toward posB is -offsetA (perpendicular pair).
+    // tangent; the tangents there meet on the edge, the middle point.
     auto arcRow = [&](const FilletStop& s) {
-        const Vec3 dirA = info.offsetB * (-1.0);
-        const Vec3 dirB = info.offsetA * (-1.0);
-        return std::vector<Vec3>{s.arcCenter + dirA * s.r, s.arcCenter + (dirA + dirB) * s.r,
-                                 s.arcCenter + dirB * s.r};
+        const Vec3 onEdge = info.v1->point + info.edgeDir * (s.t * info.edgeLen);
+        return std::vector<Vec3>{s.posA, onEdge, s.posB};
     };
 
     std::vector<std::vector<Vec3>> cps{arcRow(s0), arcRow(s1)};
@@ -292,8 +315,16 @@ static std::vector<std::vector<Vec3>> stopSamples(const FilletEdgeInfo& fe, int 
         const double denom = fe.edgeDir.dot(normal);
         for (auto& p : samples) p = p + fe.edgeDir * ((through - p).dot(normal) / denom);
     };
-    if (fe.miterFront) project(out.front(), fe.v1->point, fe.miterFrontNormal);
-    if (fe.miterBack) project(out.back(), fe.v2->point, fe.miterBackNormal);
+    if (fe.miterFront) {
+        project(out.front(), fe.v1->point, fe.miterFrontNormal);
+    } else if (fe.endFrontNormal && std::abs(fe.edgeDir.dot(*fe.endFrontNormal)) > 1e-9) {
+        project(out.front(), fe.v1->point, *fe.endFrontNormal);  // onto the end face
+    }
+    if (fe.miterBack) {
+        project(out.back(), fe.v2->point, fe.miterBackNormal);
+    } else if (fe.endBackNormal && std::abs(fe.edgeDir.dot(*fe.endBackNormal)) > 1e-9) {
+        project(out.back(), fe.v2->point, *fe.endBackNormal);
+    }
     return out;
 }
 
@@ -352,6 +383,18 @@ static bool buildCornerBlend(std::vector<FilletEdgeInfo>& filletEdges,
     for (size_t k : indices) {
         if (std::abs(radiusAtVertex(filletEdges[k], v) - r) > 1e-9) {
             error = "Vertex blend requires equal fillet radii at the shared corner";
+            return false;
+        }
+    }
+    // The corner's sphere sits one radius along each edge: a convex right-
+    // angled corner only.
+    for (size_t k : indices) {
+        const auto& fe = filletEdges[k];
+        if (fe.concave || std::abs(fe.theta - hz::math::kPi / 2.0) > 1e-6) {
+            error =
+                "A corner blend of three fillets needs square, convex edges; this corner "
+                "is oblique or concave (edge " +
+                fe.originalEdge->topoId.tag() + ")";
             return false;
         }
     }
@@ -434,6 +477,13 @@ static bool buildMiter(std::vector<FilletEdgeInfo>& filletEdges, const std::vect
     auto& b = filletEdges[indices[1]];
     if (std::abs(radiusAtVertex(a, v) - radiusAtVertex(b, v)) > 1e-9) {
         error = "Mitered fillet chain requires equal radii where two edges meet";
+        return false;
+    }
+    // Two blends meet on the miter plane in one section only if they have
+    // the same section: the same wedge, the same side of the material.
+    if (std::abs(a.theta - b.theta) > 1e-6 || a.concave != b.concave) {
+        error = "A chain of fillets across corners of different angles is not supported: " +
+                a.originalEdge->topoId.tag() + " and " + b.originalEdge->topoId.tag();
         return false;
     }
 
@@ -537,6 +587,34 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         return result;
     }
 
+    // An end at a vertex no blend or miter joins lies on the end face there
+    // (the face at the vertex the blend does not run along), which need not be
+    // square to the edge.
+    for (auto& fe : filletEdges) {
+        const auto endFaceNormal = [&fe](const Vertex* v) -> std::optional<Vec3> {
+            std::optional<Vec3> found;
+            const HalfEdge* start = v->halfEdge;
+            const HalfEdge* he = start;
+            int guard = 0;
+            do {
+                if (he->face != nullptr && he->face != fe.faceA && he->face != fe.faceB) {
+                    if (found) return std::nullopt;  // more than one: not a simple end
+                    const Vec3 n = newellNormal(he->face);
+                    if (n.length() > 1e-12) found = n * (1.0 / n.length());
+                }
+                he = he->twin->next;
+            } while (he != start && ++guard < 64);
+            return found;
+        };
+        const auto joined = [&](const Vertex* v) {
+            return miters.count(v) != 0 ||
+                   std::any_of(blends.begin(), blends.end(),
+                               [v](const CornerBlend& b) { return b.vertex == v; });
+        };
+        if (!joined(fe.v1)) fe.endFrontNormal = endFaceNormal(fe.v1);
+        if (!joined(fe.v2)) fe.endBackNormal = endFaceNormal(fe.v2);
+    }
+
     // Every blend's arc samples, carried onto its miter planes.  A miter must
     // not fold: each sample has to travel forward along its edge from one
     // end section to the other, or the blend passes through itself (a turn
@@ -577,7 +655,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
             return reach;
         };
         const double limit = std::min(reachOf(fe.faceA, fe.offsetA), reachOf(fe.faceB, fe.offsetB));
-        if (fe.maxRadius() > limit + 1e-9) {
+        if (fe.maxRadius() * fe.cotHalf > limit + 1e-9) {  // the setback, not the radius
             result.errorMessage =
                 "Fillet radius too large for edge: " + fe.originalEdge->topoId.tag();
             return result;
@@ -725,8 +803,9 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
                     // The end face carries the whole arc, not just its chord:
                     // the blend is faceted across the arc, so anything less
                     // leaves the two boundaries disagreeing and the shell open.
-                    const FilletStop& end = (fe.v1 == v) ? fe.front() : fe.back();
-                    auto chain = arcSamples(end, arcSegments);  // posA .. posB
+                    // As the blend's own end section, carried onto this face.
+                    const auto& feSamples = samples[endIt->second];
+                    auto chain = (fe.v1 == v) ? feSamples.front() : feSamples.back();
                     if (arrivingFace == fe.faceB) {
                         std::reverse(chain.begin(), chain.end());
                     }
@@ -1086,6 +1165,46 @@ int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
     return std::clamp(static_cast<int>(std::ceil(n - 1e-9)), 1, 1024);
 }
 
+/// A part of several bodies (as Pattern::collect makes them): each body with
+/// edges to round is rounded alone, and the bodies put back together, names
+/// kept. The rebuild puts every face in one shell, which another body's faces
+/// cannot join. Nothing for a part of one body.
+template <typename Op>
+static std::optional<FilletResult> perBody(const Solid& input, const std::vector<TopologyID>& ids,
+                                           Op op) {
+    auto bodies = Pattern::separate(input);
+    if (bodies.size() < 2) return std::nullopt;
+    std::vector<bool> found(ids.size(), false);
+    std::unique_ptr<Solid> out;
+    for (auto& body : bodies) {
+        std::vector<TopologyID> mine;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (!findEdges(*body, ids[i]).empty()) {
+                mine.push_back(ids[i]);
+                found[i] = true;
+            }
+        }
+        std::unique_ptr<Solid> done;
+        if (mine.empty()) {
+            done = std::move(body);
+        } else {
+            FilletResult rounded = op(*body, mine);
+            if (!rounded.solid) return rounded;
+            done = std::move(rounded.solid);
+        }
+        out = out ? Pattern::collect(*out, *done) : std::move(done);
+    }
+    FilletResult result;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (!found[i]) {
+            result.errorMessage = "Edge not found: " + ids[i].tag();
+            return result;
+        }
+    }
+    result.solid = std::move(out);
+    return result;
+}
+
 FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
                                double radius, const std::string& featureID, int arcSegments,
                                NamingScheme naming) {
@@ -1098,6 +1217,12 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
     if (edgeIds.empty()) {
         result.errorMessage = "No edges specified for fillet";
         return result;
+    }
+    if (auto split = perBody(inputSolid, edgeIds,
+                             [&](const Solid& body, const std::vector<TopologyID>& mine) {
+                                 return execute(body, mine, radius, featureID, arcSegments, naming);
+                             })) {
+        return std::move(*split);
     }
 
     const double outwardSign = signedLoopVolume(inputSolid) >= 0.0 ? 1.0 : -1.0;

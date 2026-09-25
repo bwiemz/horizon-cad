@@ -33,6 +33,18 @@ work, not "post-1.0".
   - Documents saved before keep their names. A document saved now needs
     this version or later (format 19).
 
+- **Fillet and chamfer at any angle (140).**
+  - Fillet and chamfer work on edges between flat faces at any angle, where
+    only square corners worked. On a concave (inside) edge they add
+    material. The volumes are exact.
+  - A fillet or chamfer that ends on a slanted face now meets it. The
+    chamfer was refused there, and the fillet built a face that was not
+    flat.
+  - A part made of several bodies can be filleted; it failed. Chamfers
+    already worked.
+  - A three-edge corner that is not square, or a chain of fillets across
+    edges at different angles, is refused with the reason.
+
 ## Unreleased — Product completeness, Milestone 10 (Phases 136–138)
 
 - **A 2D view that scales (136).**

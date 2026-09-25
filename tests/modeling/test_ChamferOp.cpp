@@ -1,13 +1,19 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/ChamferOp.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
@@ -469,4 +475,109 @@ TEST(ChamferOpTest, CapacityIsTheFaceWidthNotHalfItsShortestEdge) {
     auto past = ChamferOp::executeEqual(*box, edgeIds, 10.5, "c");
     EXPECT_EQ(past.solid, nullptr);
     EXPECT_NE(past.errorMessage.find("exceeds the width"), std::string::npos) << past.errorMessage;
+}
+
+// ---------------------------------------------------------------------------
+// Any angle (Phase 140): a chamfer on an oblique or a concave edge. It steps
+// back d along each face and cuts along the plane through the two lines: it
+// takes away (or, concave, adds) the triangle between the edge and the two
+// setback lines, d^2 sin(theta) / 2 across, theta the angle between the
+// faces on the side the triangle is.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::shared_ptr<hz::draft::DraftEntity>> loopOf(
+    const std::vector<hz::math::Vec2>& pts) {
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> out;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        out.push_back(std::make_shared<hz::draft::DraftLine>(pts[i], pts[(i + 1) % pts.size()]));
+    }
+    return out;
+}
+
+TopologyID verticalAt(const hz::topo::Solid& solid, double x, double y) {
+    for (const auto& e : solid.edges()) {
+        const auto& a = e.halfEdge->origin->point;
+        const auto& b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.x - x) < 1e-9 && std::abs(a.y - y) < 1e-9 && std::abs(b.x - x) < 1e-9 &&
+            std::abs(b.y - y) < 1e-9) {
+            return e.topoId;
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+TEST(ChamferOpTest, AnObliqueEdgeChamfersExactly) {
+    auto prism =
+        hz::model::Extrude::execute(loopOf({{0, 0}, {10, 0}, {0, 10}}), hz::draft::SketchPlane(),
+                                    hz::math::Vec3(0, 0, 1), 10.0, "prism");
+    ASSERT_NE(prism, nullptr);
+    const TopologyID oblique = verticalAt(*prism, 10.0, 0.0);  // 45 degrees
+    auto result = ChamferOp::executeEqual(*prism, {oblique}, 1.0, "c");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*result.solid).volume,
+                500.0 - 10.0 * 0.5 * std::sin(kPi / 4.0), 1e-9);
+}
+
+TEST(ChamferOpTest, AConcaveEdgeChamfersAddingMaterial) {
+    auto prism = hz::model::Extrude::execute(
+        loopOf({{0, 0}, {10, 0}, {10, 1}, {1, 1}, {1, 10}, {0, 10}}), hz::draft::SketchPlane(),
+        hz::math::Vec3(0, 0, 1), 5.0, "lprism");
+    ASSERT_NE(prism, nullptr);
+    const TopologyID reentrant = verticalAt(*prism, 1.0, 1.0);
+    auto result = ChamferOp::executeEqual(*prism, {reentrant}, 0.5, "c");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*result.solid).volume, 95.0 + 5.0 * 0.5 * 0.25,
+                1e-9);
+}
+
+// A part of two bodies (Phase 140): the chamfer cuts the edge on its body and
+// leaves the other whole.
+TEST(ChamferOpTest, OneBodyOfTwoIsChamfered) {
+    auto first = PrimitiveFactory::makeBox(10, 10, 10);
+    auto second = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(10, 10, 10),
+                                                  hz::math::Mat4::translation({20, 0, 0}));
+    for (auto& face : second->faces()) face.topoId = face.topoId.child("second", 0);
+    for (auto& edge : second->edges()) edge.topoId = edge.topoId.child("second", 0);
+    auto both = hz::model::Pattern::collect(*first, *second);
+    auto result = ChamferOp::executeEqual(*both, {second->edges().front().topoId}, 1.0, "c");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(result.solid->isValid()) << result.solid->validationReport();
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*result.solid).volume, 2000.0 - 10.0 * 0.5, 1e-9);
+    EXPECT_EQ(hz::model::Pattern::separate(*result.solid).size(), 2u);
+}
+
+TEST(ChamferOpTest, AChamferMeetsAnObliqueEndFace) {
+    // The prism's bottom edge along the hypotenuse runs between two 45-degree
+    // end faces. The chamfer's section, the right triangle of legs d, is swept
+    // along it; each ruling a from the edge across the base starts a along the
+    // edge on an end face: area times length, less twice the first moment.
+    auto prism =
+        hz::model::Extrude::execute(loopOf({{0, 0}, {10, 0}, {0, 10}}), hz::draft::SketchPlane(),
+                                    hz::math::Vec3(0, 0, 1), 10.0, "prism");
+    ASSERT_NE(prism, nullptr);
+    TopologyID hypotenuse;
+    for (const auto& e : prism->edges()) {
+        const auto& a = e.halfEdge->origin->point;
+        const auto& b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.z) < 1e-9 && std::abs(b.z) < 1e-9 && std::abs(a.x + a.y - 10.0) < 1e-9 &&
+            std::abs(b.x + b.y - 10.0) < 1e-9) {
+            hypotenuse = e.topoId;
+        }
+    }
+    ASSERT_TRUE(hypotenuse.isValid());
+    auto result = ChamferOp::executeEqual(*prism, {hypotenuse}, 1.0, "c");
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
+        << hz::topo::GeometryValidator::report(*result.solid);
+    // The triangle's area 1/2, its first moment in a: 1/6.
+    EXPECT_NEAR(500.0 - MassPropertiesCalculator::compute(*result.solid).volume,
+                0.5 * 10.0 * std::sqrt(2.0) - 2.0 / 6.0, 1e-9);
 }
