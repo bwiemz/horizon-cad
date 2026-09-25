@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -117,7 +118,7 @@ std::map<std::string, double> Document::variableValues() const {
 std::function<double(const std::string&)> Document::variableResolver() const {
     return [values = variableValues()](const std::string& name) {
         const auto found = values.find(name);
-        return found != values.end() ? found->second : 0.0;
+        return found != values.end() ? found->second : std::numeric_limits<double>::quiet_NaN();
     };
 }
 

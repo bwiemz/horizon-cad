@@ -29,7 +29,9 @@ public:
     std::vector<std::shared_ptr<Constraint>> removeConstraintsForEntity(uint64_t entityId);
 
     /// Resolve all variable-referenced constraints.
-    /// The resolver function maps variable names to double values.
+    /// The resolver function maps variable names to double values. A name
+    /// it cannot give a value for (NaN, or not finite) leaves that
+    /// constraint's value as it is, never a made-up one.
     void resolveVariables(const std::function<double(const std::string&)>& resolver);
 
     int totalEquations() const;

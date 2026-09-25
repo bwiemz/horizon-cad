@@ -3,10 +3,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
 
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
@@ -126,4 +129,34 @@ TEST(ConfigurationsTest, TheActiveConfigurationDrivesThePart) {
     ASSERT_TRUE(part.rebuildModel());
     EXPECT_EQ(part.configurations().active(), "Thick");
     EXPECT_NEAR(volumeOf(part), 1000.0, 1e-9);
+}
+
+// A configuration that cannot be worked out (it names a variable that is
+// gone) gives constraints no value: one tied to that variable keeps its own,
+// never 0.
+TEST(ConfigurationsTest, AConstraintKeepsItsValueWhenItsVariableCannotBeWorkedOut) {
+    const auto owner = boxPart({{"wall", "3 mm"}, {"length", "wall * 5"}});
+    Document& part = *owner;
+    hz::doc::ConfigurationTable table;
+    table.setConfiguration("Long", {{"length", "gone * 5"}});
+    table.setActive("Long");
+    part.undoStack().push(std::make_unique<hz::doc::SetConfigurationsCommand>(part, table));
+
+    const auto resolver = part.variableResolver();
+    EXPECT_TRUE(std::isnan(resolver("length"))) << "no value, not 0";
+    EXPECT_TRUE(std::isnan(resolver("nosuch")));
+    EXPECT_DOUBLE_EQ(resolver("wall"), 3.0) << "what it can work out, it gives";
+
+    hz::cstr::ConstraintSystem constraints;
+    const hz::cstr::GeometryRef a{1, hz::cstr::FeatureType::Point, 0};
+    const hz::cstr::GeometryRef b{1, hz::cstr::FeatureType::Point, 1};
+    auto tied = std::make_shared<hz::cstr::DistanceConstraint>(a, b, 7.0);
+    tied->setVariableReference("length");
+    auto wall = std::make_shared<hz::cstr::DistanceConstraint>(a, b, 1.0);
+    wall->setVariableReference("wall");
+    constraints.addConstraint(tied);
+    constraints.addConstraint(wall);
+    constraints.resolveVariables(resolver);
+    EXPECT_DOUBLE_EQ(tied->dimensionalValue(), 7.0) << "left as it was";
+    EXPECT_DOUBLE_EQ(wall->dimensionalValue(), 3.0);
 }

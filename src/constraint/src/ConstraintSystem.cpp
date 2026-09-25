@@ -1,6 +1,7 @@
 #include "horizon/constraint/ConstraintSystem.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace hz::cstr {
 
@@ -74,8 +75,8 @@ void ConstraintSystem::resolveVariables(const std::function<double(const std::st
     if (!resolver) return;
     for (auto& c : m_constraints) {
         if (c->hasVariableReference() && c->hasDimensionalValue()) {
-            double value = resolver(c->variableReference());
-            c->setDimensionalValue(value);
+            const double value = resolver(c->variableReference());
+            if (std::isfinite(value)) c->setDimensionalValue(value);
         }
     }
 }

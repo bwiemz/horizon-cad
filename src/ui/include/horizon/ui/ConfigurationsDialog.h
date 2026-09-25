@@ -33,7 +33,10 @@ public:
     void accept() override;
 
 private:
-    void addRow(const QString& name, const doc::ConfigurationTable::Overrides& overrides);
+    /// A row; @p existing for one the table had, which, renamed, is still
+    /// that configuration (the active one stays active).
+    void addRow(const QString& name, const doc::ConfigurationTable::Overrides& overrides,
+                bool existing);
     bool collect(doc::ConfigurationTable& out, QString* why) const;
 
     QTableWidget* m_table;

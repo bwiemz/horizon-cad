@@ -76,8 +76,10 @@ public:
         std::map<std::string, std::string>* errors = nullptr) const;
     /// Their values as constraints read them, in the model's units.
     std::map<std::string, double> variableValues() const;
-    /// Those as the constraint solver asks for them, by name (0 for a name
-    /// it has not): taken now, and kept by the command that solves.
+    /// Those as the constraint solver asks for them, by name: taken now, and
+    /// kept by the command that solves. NaN for a name it has not (one that
+    /// is gone, or that the active configuration cannot work out), so the
+    /// solver leaves that constraint's value as it is.
     std::function<double(const std::string&)> variableResolver() const;
 
     ExpressionEngine& expressionEngine() { return m_parameterRegistry.engine(); }

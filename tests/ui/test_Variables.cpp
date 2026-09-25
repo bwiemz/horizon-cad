@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "UiTestSupport.h"
+#include "horizon/document/ConfigurationTable.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
@@ -38,9 +39,9 @@ using hz::ui::VariablesDialog;
 
 namespace {
 
-/// Fills the next Variables dialog: each {name, expression} added as a row,
-/// then OK. When OK is refused (the dialog says why and stays), what it
-/// said is kept and the dialog is cancelled.
+/// Fills the next Variables dialog: each {name, expression} added as a row
+/// (or, for a name the table has, given that expression), then OK. When OK is refused (the dialog
+/// says why and stays), what it said is kept and the dialog is cancelled.
 class VariablesAnswer {
 public:
     explicit VariablesAnswer(std::vector<std::pair<QString, QString>> rows)
@@ -72,9 +73,12 @@ private:
             return;
         }
         for (const auto& [name, expression] : m_rows) {
-            add->click();
-            const int row = table->rowCount() - 1;
-            table->item(row, 0)->setText(name);
+            int row = 0;
+            while (row < table->rowCount() && table->item(row, 0)->text() != name) ++row;
+            if (row == table->rowCount()) {
+                add->click();
+                table->item(row, 0)->setText(name);
+            }
             table->item(row, 1)->setText(expression);
         }
         for (int row = 0; row < table->rowCount(); ++row) {
@@ -250,7 +254,10 @@ namespace {
 class ConfigurationsAnswer {
 public:
     using Row = std::pair<QString, std::map<QString, QString>>;
-    explicit ConfigurationsAnswer(std::vector<Row> rows) : m_rows(std::move(rows)) {
+    /// Each of @p rows added; each row named a key of @p renames given its
+    /// value as its name.
+    explicit ConfigurationsAnswer(std::vector<Row> rows, std::map<QString, QString> renames = {})
+        : m_rows(std::move(rows)), m_renames(std::move(renames)) {
         QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
         m_timer.start(5);
         m_clock.start();
@@ -287,6 +294,10 @@ private:
                 if (cell != cells.end()) table->item(row, column)->setText(cell->second);
             }
         }
+        for (int row = 0; row < table->rowCount(); ++row) {
+            const auto renamed = m_renames.find(table->item(row, 0)->text());
+            if (renamed != m_renames.end()) table->item(row, 0)->setText(renamed->second);
+        }
         dialog->accept();
         if (dialog->isVisible()) {
             m_refused = dialog->findChild<QLabel*>(QStringLiteral("problem"))->text();
@@ -295,6 +306,7 @@ private:
     }
 
     std::vector<Row> m_rows;
+    std::map<QString, QString> m_renames;
     bool m_seen = false;
     QString m_refused;
     QTimer m_timer;
@@ -361,6 +373,46 @@ TEST(VariablesDialogTest, TwoConfigurationsOfOneNameAreRefused) {
     ASSERT_TRUE(answer.seen());
     EXPECT_TRUE(answer.refused().contains(QStringLiteral("Two"))) << answer.refused().toStdString();
     EXPECT_EQ(w.activeDocument()->configurations().size(), 0u);
+}
+
+// A change of the variables that one configuration could no longer be
+// worked out with is refused, as one that breaks the variables themselves is.
+TEST(VariablesDialogTest, AChangeThatBreaksAConfigurationIsRefused) {
+    MainWindow w;
+    hz::doc::Document& doc = *w.activeDocument();
+    const std::map<std::string, std::string> own{{"gap", "1 mm"}, {"wall", "3 mm"}};
+    doc.undoStack().push(std::make_unique<hz::doc::SetVariablesCommand>(doc, own));
+    hz::doc::ConfigurationTable table;
+    table.setConfiguration("Thick", {{"wall", "gap * 2"}});
+    doc.undoStack().push(std::make_unique<hz::doc::SetConfigurationsCommand>(doc, table));
+
+    VariablesAnswer answer({{QStringLiteral("gap"), QStringLiteral("wall")}});
+    trigger(w, "action_variables");
+    ASSERT_TRUE(answer.seen());
+    EXPECT_TRUE(answer.refused().contains(QStringLiteral("Thick")))
+        << "in Thick, wall and gap are each other: " << answer.refused().toStdString();
+    EXPECT_EQ(doc.parameterRegistry().definitions(), own) << "nothing changed";
+}
+
+// The active configuration, renamed, is still the one the part is built in.
+TEST(VariablesDialogTest, TheActiveConfigurationRenamedStaysActive) {
+    MainWindow w;
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.undoStack().push(std::make_unique<hz::doc::SetVariablesCommand>(
+        doc, std::map<std::string, std::string>{{"wall", "3 mm"}}));
+    hz::doc::ConfigurationTable table;
+    table.setConfiguration("M8", {{"wall", "5 mm"}});
+    table.setConfiguration("M10", {{"wall", "6 mm"}});
+    table.setActive("M8");
+    doc.undoStack().push(std::make_unique<hz::doc::SetConfigurationsCommand>(doc, table));
+
+    ConfigurationsAnswer answer({}, {{QStringLiteral("M8"), QStringLiteral("M8x1.25")}});
+    trigger(w, "action_configurations");
+    ASSERT_TRUE(answer.seen());
+    EXPECT_TRUE(answer.refused().isEmpty()) << answer.refused().toStdString();
+    EXPECT_EQ(doc.configurations().configurationNames(),
+              (std::vector<std::string>{"M8x1.25", "M10"}));
+    EXPECT_EQ(doc.configurations().active(), "M8x1.25");
 }
 
 // Built on a worker, from a copy: the part's own feature still holds the

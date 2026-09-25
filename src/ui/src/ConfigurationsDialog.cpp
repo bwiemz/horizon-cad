@@ -1,6 +1,7 @@
 #include "horizon/ui/ConfigurationsDialog.h"
 
 #include <QDialogButtonBox>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -12,6 +13,13 @@
 #include "horizon/document/ParameterRegistry.h"
 
 namespace hz::ui {
+
+namespace {
+
+/// The name a row had when the dialog opened; none on a row added since.
+constexpr int kWasNamed = Qt::UserRole;
+
+}  // namespace
 
 ConfigurationsDialog::ConfigurationsDialog(const doc::ConfigurationTable& table,
                                            const std::map<std::string, std::string>& variables,
@@ -52,7 +60,7 @@ ConfigurationsDialog::ConfigurationsDialog(const doc::ConfigurationTable& table,
     m_table->verticalHeader()->hide();
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     for (const std::string& configuration : table.configurationNames()) {
-        addRow(QString::fromStdString(configuration), table.overrides(configuration));
+        addRow(QString::fromStdString(configuration), table.overrides(configuration), true);
     }
     layout->addWidget(m_table);
 
@@ -66,7 +74,7 @@ ConfigurationsDialog::ConfigurationsDialog(const doc::ConfigurationTable& table,
     rowButtons->addStretch();
     layout->addLayout(rowButtons);
     connect(add, &QPushButton::clicked, this,
-            [this] { addRow(tr("Configuration %1").arg(m_table->rowCount() + 1), {}); });
+            [this] { addRow(tr("Configuration %1").arg(m_table->rowCount() + 1), {}, false); });
     connect(remove, &QPushButton::clicked, this, [this] {
         const int row = m_table->currentRow();
         if (row >= 0) m_table->removeRow(row);
@@ -86,10 +94,19 @@ ConfigurationsDialog::ConfigurationsDialog(const doc::ConfigurationTable& table,
 }
 
 void ConfigurationsDialog::addRow(const QString& name,
-                                  const doc::ConfigurationTable::Overrides& overrides) {
+                                  const doc::ConfigurationTable::Overrides& overrides,
+                                  bool existing) {
     const int row = m_table->rowCount();
     m_table->insertRow(row);
-    m_table->setItem(row, 0, new QTableWidgetItem(name));
+    auto* named = new QTableWidgetItem(name);
+    if (existing) named->setData(kWasNamed, name);
+    if (existing && name.toStdString() == m_active) {
+        QFont font = named->font();
+        font.setBold(true);
+        named->setFont(font);
+        named->setToolTip(tr("The configuration the part is built in"));
+    }
+    m_table->setItem(row, 0, named);
     for (std::size_t k = 0; k < m_variables.size(); ++k) {
         const auto given = overrides.find(m_variables[k]);
         m_table->setItem(
@@ -101,6 +118,7 @@ void ConfigurationsDialog::addRow(const QString& name,
 
 bool ConfigurationsDialog::collect(doc::ConfigurationTable& out, QString* why) const {
     out = {};
+    std::string active;
     for (int row = 0; row < m_table->rowCount(); ++row) {
         const QString name = m_table->item(row, 0)->text().trimmed();
         if (name.isEmpty()) {
@@ -117,8 +135,13 @@ bool ConfigurationsDialog::collect(doc::ConfigurationTable& out, QString* why) c
             if (!text.isEmpty()) overrides[m_variables[k]] = text.toStdString();
         }
         out.setConfiguration(name.toStdString(), overrides);
+        // The active one renamed is still the active one.
+        if (!m_active.empty() &&
+            m_table->item(row, 0)->data(kWasNamed).toString() == QString::fromStdString(m_active)) {
+            active = name.toStdString();
+        }
     }
-    out.setActive(m_active);  // false, and none active, once it is gone
+    out.setActive(active);  // none active once it is removed
     return true;
 }
 

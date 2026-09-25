@@ -1891,6 +1891,7 @@ void MainWindow::onVariables() {
     }
     const auto before = m_document->parameterRegistry().definitions();
     VariablesDialog dialog(before, m_document->lengthUnit(), this);
+    dialog.setConfigurations(m_document->configurations());
     if (dialog.exec() != QDialog::Accepted) return;
     auto after = dialog.definitions();
     if (after == before) return;
