@@ -47,7 +47,7 @@ void nameEdgesByFaces(topo::Solid& solid);
 /// a facet a boolean split, `<face>/facet:<k>/piece:<n>`, is of the face as
 /// well: a cylinder cut in two is one side. What else follows the facet is
 /// kept: a pattern copy's facet, `<face>/facet:<k>/pattern:<n>`, belongs to
-/// the copy's face.
+/// the copy's face, and a piece of it, `.../pattern:<n>/piece:<j>`, too.
 ///
 /// Older names have it too: a loft's twisted level has always been cut into
 /// triangles named `<side>/facet:<k>`, in every scheme. They are facets of
