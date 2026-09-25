@@ -149,6 +149,7 @@ void placeAnnotations(doc::Document& sheet, const doc::Document& notes) {
 /// Where @p drawing's views are on the sheet, as saved with its annotations.
 std::vector<io::DrawingViewFrame> framesOf(const model::Drawing& drawing) {
     std::vector<io::DrawingViewFrame> frames;
+    frames.reserve(drawing.views.size());
     for (const model::DrawingView& v : drawing.views) {
         frames.push_back({v.role,
                           v.kind,
@@ -163,6 +164,7 @@ std::vector<io::DrawingViewFrame> framesOf(const model::Drawing& drawing) {
 /// was drawn in it (carryAnnotations).
 model::Drawing drawingOf(const std::vector<io::DrawingViewFrame>& frames) {
     model::Drawing drawing;
+    drawing.views.reserve(frames.size());
     for (const io::DrawingViewFrame& f : frames) {
         model::DrawingView v;
         v.role = f.role;
