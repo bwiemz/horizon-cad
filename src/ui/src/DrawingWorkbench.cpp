@@ -546,8 +546,8 @@ QString DrawingWorkbench::nextLabel(const Sheet& sheet) {
     return QStringLiteral("Z1");
 }
 
-void DrawingWorkbench::addView(Sheet& sheet, model::DrawingView view, io::DrawingViewSpec spec,
-                               const QString& verb) {
+void DrawingWorkbench::addView(Sheet& sheet, const model::DrawingView& view,
+                               io::DrawingViewSpec spec, const QString& verb) {
     // An automatic sheet becomes the views it shows, and this one with them.
     if (sheet.spec.views.empty()) sheet.spec.views = io::DrawingDocumentIO::viewsOf(sheet.drawing);
     sheet.spec.version = 3;
@@ -634,7 +634,7 @@ void DrawingWorkbench::onAddSectionView() {
     section.role = spec.role;
     section.label = spec.label;
     section.scale = spec.scale;
-    addView(*sheet, std::move(section), std::move(spec), verb);
+    addView(*sheet, section, std::move(spec), verb);
 }
 
 void DrawingWorkbench::onAddDetailView() {
@@ -740,7 +740,7 @@ void DrawingWorkbench::addDetail(const std::weak_ptr<doc::Document>& document, i
     detail.role = spec.role;
     detail.label = spec.label;
     detail.scale = spec.scale;
-    addView(*sheet, std::move(detail), std::move(spec), verb);
+    addView(*sheet, detail, std::move(spec), verb);
 }
 
 void DrawingWorkbench::onMoveView() {

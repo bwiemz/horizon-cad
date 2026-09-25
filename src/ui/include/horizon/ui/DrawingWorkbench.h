@@ -107,7 +107,7 @@ private:
                    const math::Vec2& centre, const math::Vec2& onCircle);
     /// Add @p view (built, sized) to @p sheet as @p spec says, where there is
     /// room, and draw the sheet again.
-    void addView(Sheet& sheet, model::DrawingView view, io::DrawingViewSpec spec,
+    void addView(Sheet& sheet, const model::DrawingView& view, io::DrawingViewSpec spec,
                  const QString& verb);
     /// Draw the active sheet again after its spec changed, and mark it
     /// modified.
