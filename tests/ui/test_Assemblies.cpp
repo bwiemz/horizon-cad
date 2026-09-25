@@ -525,14 +525,23 @@ TEST(AssembliesTest, APartIsReadAgainOnAWorker) {
     ASSERT_NE(part, nullptr);
     ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000)) << "opened, built";
     w.setRebuildMode(MainWindow::RebuildMode::Always);
-    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
     auto* prompt = w.findChild<QLabel*>(QStringLiteral("statusPrompt"));
     ASSERT_NE(prompt, nullptr);
     const auto reading = [&] { return prompt->text().contains(QStringLiteral("again...")); };
+    // The watch looked now, not on its timer: a small file is read so fast
+    // that its reading could start and end within one turn of the events,
+    // and a wait for it to be under way never saw it.
+    auto* watch = w.findChild<QTimer*>(QStringLiteral("partWatchTimer"));
+    ASSERT_NE(watch, nullptr);
+    watch->stop();
+    const auto look = [watch] {
+        return QMetaObject::invokeMethod(watch, "timeout", Qt::DirectConnection);
+    };
 
     // Read on a worker: the tab's document is the old one until it is done.
     rewriteOnDisk(block, 25);
-    ASSERT_TRUE(waitUntil(reading, 5000));
+    ASSERT_TRUE(look());
+    ASSERT_TRUE(reading()) << "under way; its end is not delivered until the events turn";
     EXPECT_EQ(w.activeDocument(), part);
     ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
     EXPECT_NEAR(depthOf(*w.activeDocument()), 25.0, 1e-12);
@@ -545,7 +554,8 @@ TEST(AssembliesTest, APartIsReadAgainOnAWorker) {
     ASSERT_NE(fresh, nullptr);
     ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
     rewriteOnDisk(block, 30);
-    ASSERT_TRUE(waitUntil(reading, 5000));
+    ASSERT_TRUE(look());
+    ASSERT_TRUE(reading());
     deepen(*fresh, 40);
     ASSERT_TRUE(waitUntil([&] { return !reading(); }, 5000));
     ASSERT_EQ(w.activeDocument(), fresh) << "kept";
