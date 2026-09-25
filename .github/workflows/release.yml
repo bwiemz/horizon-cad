@@ -117,10 +117,15 @@ jobs:
           sleep 2
           set +e
           DISPLAY=:99 QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 \
-            timeout 60 build/linux-release/src/app/horizon --self-test
-          status=$?
+            timeout 60 build/linux-release/src/app/horizon --self-test 2>&1 | tee self-test.log
+          status=${PIPESTATUS[0]}
           set -e
           kill "${xvfb}"
+          # Its fonts found through the system's configuration, not a fallback.
+          if grep -q 'Fontconfig error' self-test.log; then
+            echo "::error::fontconfig could not load its configuration"
+            exit 1
+          fi
           test "${status}" -eq 0
 
       - name: Package a tarball

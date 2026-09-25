@@ -189,6 +189,17 @@ int main(int argc, char* argv[]) {
 #endif
     hz::ui::Application::installTerminateHandler();
 
+#if defined(__linux__)
+    // A release links vcpkg's fontconfig into the application, and it looks
+    // for its configuration where it was built: "Cannot load default config
+    // file" on every start, and the system's font settings unread. Point it
+    // at the system's, unless the user already chose one.
+    if (qEnvironmentVariableIsEmpty("FONTCONFIG_FILE") &&
+        QFile::exists(QStringLiteral("/etc/fonts/fonts.conf"))) {
+        qputenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf");
+    }
+#endif
+
     // Request an OpenGL 3.3 Core Profile context.
     QSurfaceFormat format;
     format.setVersion(3, 3);

@@ -59,7 +59,15 @@ Roadmap: [2026-09-25-professional-workflows-roadmap.md](../specs/2026-09-25-prof
   `ViewportGraphicsTest` and `OpenGLBackendTest` on Xvfb, where a skip is a
   failure. The backend tests had crashed at exit on every real platform:
   their `QGuiApplication` was a function-local static, destroyed after Qt's
-  thread storage. A test environment now owns it.
+  thread storage. A test environment now owns it. On Mesa's llvmpipe, a
+  one-pixel line on the boundary between two pixel rows is drawn across both
+  at part strength (166 of 255). The test's "light" threshold is now 150
+  instead of 170. The grid stays under 100.
+- **Fonts from the system's configuration.** vcpkg's fontconfig, linked
+  into a release, looked for its configuration where it was built ("Cannot
+  load default config file" on every start). On Linux the application now
+  points it at `/etc/fonts/fonts.conf` unless `FONTCONFIG_FILE` is set. The
+  start-up check fails on that error.
 - **The 2D tools are tested by what they draw**
   (`tests/ui/test_DraftingTools.cpp`, 24 tests). They cover Arc, Polyline,
   Spline, Hatch, Leader, Offset, Break, Extend, Polyline Edit, Mirror,
