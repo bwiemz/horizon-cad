@@ -295,3 +295,32 @@ TEST(DrawingDocumentIOTest, TooManyViewsAreRefused) {
     EXPECT_NE(error.find("views"), std::string::npos) << error;
     std::filesystem::remove_all(dir);
 }
+
+// The scale chosen for the sheet is kept; none, or one that is no scale,
+// reads as the largest that fits. The spec reads without its part, which
+// need not be there yet.
+TEST(DrawingDocumentIOTest, TheSheetScaleIsKeptAndReadWithoutThePart) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_scale";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    DrawingDocumentSpec spec;
+    spec.partPath = (dir / "not-yet.hzpart").string();
+    spec.scale = 0.5;
+    ASSERT_TRUE(DrawingDocumentIO::save(dwg, spec));
+    DrawingDocumentSpec read;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
+    EXPECT_DOUBLE_EQ(read.scale, 0.5);
+    EXPECT_EQ(read.version, 2);
+    EXPECT_TRUE(
+        std::filesystem::equivalent(dir, std::filesystem::path(read.partPath).parent_path()));
+    Drawing drawing;
+    EXPECT_FALSE(DrawingDocumentIO::load(dwg, read, drawing, &error)) << "load needs the part";
+
+    for (const char* scale : {"-2", "0", "1e300", "\"big\""}) {
+        write(dwg, std::string(R"({"part": "p.hzpart", "version": 2, "scale": )") + scale + "}");
+        ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read)) << scale;
+        EXPECT_DOUBLE_EQ(read.scale, 0.0) << scale;
+    }
+    std::filesystem::remove_all(dir);
+}

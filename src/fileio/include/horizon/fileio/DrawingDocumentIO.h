@@ -32,8 +32,13 @@ struct DrawingDocumentSpec {
     double gap = 10.0;     ///< spacing between views when they are laid out
     model::Sheet sheet;
     model::TitleBlock titleBlock;
-    /// The views. None: the standard sheet layout (DrawingGenerator::sheetLayout).
+    /// The views. None: the standard sheet layout (DrawingGenerator::sheetLayout),
+    /// at @p scale when it is positive, else at the largest that fits.
     std::vector<DrawingViewSpec> views;
+    double scale = 0.0;
+    /// The format version it was read from: 1 lays out the standard views
+    /// by the gap at 1:1, as version 1 did; 2 is the sheet layout.
+    int version = 2;
 };
 
 /// Reads/writes `.hzdwg` drawing documents.
@@ -59,6 +64,11 @@ public:
     /// makes no solid.
     static bool load(const std::string& path, DrawingDocumentSpec& outSpec,
                      model::Drawing& outDrawing, std::string* error = nullptr);
+
+    /// Read a `.hzdwg`'s spec alone, its part path resolved as load() resolves
+    /// it; the part is not read. False, with the reason, as load().
+    static bool readSpec(const std::string& path, DrawingDocumentSpec& outSpec,
+                         std::string* error = nullptr);
 
     /// The drawing @p spec describes, projected from @p solid.
     static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec);

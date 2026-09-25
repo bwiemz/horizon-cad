@@ -107,6 +107,19 @@ bool fitProjectedCircle(const model::DrawingView& view, const topo::TopologyID& 
 
 }  // namespace
 
+const std::vector<std::string>& DrawingExport::layers() {
+    static const std::vector<std::string> names{kVisibleLayer,
+                                                kHiddenLayer,
+                                                kDimensionLayer,
+                                                kToleranceLayer,
+                                                kBalloonLayer,
+                                                kSectionLayer,
+                                                kHatchLayer,
+                                                TitleBlockRenderer::kBorderLayer,
+                                                TitleBlockRenderer::kTitleBlockLayer};
+    return names;
+}
+
 void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
                              const model::Sheet* sheet, const model::TitleBlock* titleBlock) {
     addDrawingLayers(doc);

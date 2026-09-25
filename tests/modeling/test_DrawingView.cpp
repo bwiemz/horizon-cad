@@ -206,3 +206,18 @@ TEST(DrawingViewTest, TheSheetScaleFollowsThePartsSize) {
     EXPECT_EQ(DrawingGenerator::scaleName(1.0), "1:1");
     EXPECT_EQ(DrawingGenerator::scaleName(5.0), "5:1");
 }
+
+// A scale the user chose is used as chosen, even where the views do not fit:
+// the sheet says so by what it shows, not by choosing again.
+TEST(DrawingViewTest, AChosenSheetScaleIsKept) {
+    hz::model::Sheet sheet;
+    hz::model::TitleBlock tb;
+    auto box = PrimitiveFactory::makeBox(100.0, 50.0, 20.0);
+    double scale = 0.0;
+    const auto d = DrawingGenerator::sheetLayout(*box, sheet, tb, 10.0, &scale, 5.0);
+    EXPECT_DOUBLE_EQ(scale, 5.0);
+    ASSERT_EQ(d.views.size(), 4u);
+    for (const auto& v : d.views) EXPECT_DOUBLE_EQ(v.scale, 5.0);
+    DrawingGenerator::sheetLayout(*box, sheet, tb, 10.0, &scale, 0.0);
+    EXPECT_DOUBLE_EQ(scale, 1.0) << "none chosen: the largest that fits";
+}

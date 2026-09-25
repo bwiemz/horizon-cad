@@ -98,12 +98,13 @@ public:
     /// A sheet of the four standard views in third-angle projection: Front
     /// at the lower left, Top above it, Right to its right, Isometric above
     /// that. They are centred in the space above the title block, @p gap
-    /// apart, at the largest standard scale at which they fit
-    /// (@p chosenScale receives it). Tangent edges are left out, as drawings
-    /// show them.
+    /// apart, at the largest standard scale at which they fit, or at
+    /// @p fixedScale when it is positive (the user chose it; it may not fit).
+    /// @p chosenScale receives the scale used. Tangent edges are left out, as
+    /// drawings show them.
     static Drawing sheetLayout(const topo::Solid& solid, const Sheet& sheet,
                                const TitleBlock& titleBlock, double gap = 10.0,
-                               double* chosenScale = nullptr);
+                               double* chosenScale = nullptr, double fixedScale = 0.0);
 
     /// A scale as a drawing states it: "1:2", "1:1", "5:1".
     static std::string scaleName(double scale);

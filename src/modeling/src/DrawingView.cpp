@@ -100,8 +100,8 @@ std::string DrawingGenerator::scaleName(double scale) {
 }
 
 Drawing DrawingGenerator::sheetLayout(const topo::Solid& solid, const Sheet& sheet,
-                                      const TitleBlock& titleBlock, double gap,
-                                      double* chosenScale) {
+                                      const TitleBlock& titleBlock, double gap, double* chosenScale,
+                                      double fixedScale) {
     DrawingView front = makeView(solid, StandardView::Front);
     DrawingView top = makeView(solid, StandardView::Top);
     DrawingView right = makeView(solid, StandardView::Right);
@@ -120,10 +120,14 @@ Drawing DrawingGenerator::sheetLayout(const topo::Solid& solid, const Sheet& she
     const double row1 = std::max(front.height(), right.height());
     const double row2 = std::max(top.height(), iso.height());
     double scale = standardScales().back();
-    for (const double s : standardScales()) {
-        if (s * (col1 + col2) + gap <= spaceW && s * (row1 + row2) + gap <= spaceH) {
-            scale = s;
-            break;
+    if (std::isfinite(fixedScale) && fixedScale > 0.0) {
+        scale = fixedScale;
+    } else {
+        for (const double s : standardScales()) {
+            if (s * (col1 + col2) + gap <= spaceW && s * (row1 + row2) + gap <= spaceH) {
+                scale = s;
+                break;
+            }
         }
     }
     const double usedW = scale * (col1 + col2) + gap;

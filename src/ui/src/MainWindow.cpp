@@ -40,6 +40,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -74,6 +75,7 @@
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
@@ -88,6 +90,7 @@
 #include "horizon/ui/Clipboard.h"
 #include "horizon/ui/CommandPalette.h"
 #include "horizon/ui/ConstraintTool.h"
+#include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
 #include "horizon/ui/FeatureForm.h"
@@ -498,6 +501,8 @@ MainWindow::MainWindow(QWidget* parent)
     // The assembly commands, which wire the tree to themselves (Phase 146).
     m_assemblies = std::make_unique<AssemblyWorkbench>(static_cast<WorkbenchHost&>(*this),
                                                        *m_assemblyTreePanel);
+    // Drawing sheets made from parts (Phase 148).
+    m_drawings = std::make_unique<DrawingWorkbench>(static_cast<WorkbenchHost&>(*this));
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
@@ -810,6 +815,18 @@ void MainWindow::createMenus() {
                  [this] { m_assemblies->onCheckInterference(); });
     sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
                  [this] { m_assemblies->onBillOfMaterials(); });
+
+    // ---- Drawing sheets (Phase 148) ----
+    QMenu* drawingMenu = menuBar()->addMenu(tr("Drawin&g"));
+    sketchAction(drawingMenu, tr("&New Drawing from Part..."), "action_new_drawing_from_part",
+                 [this] { m_drawings->onNewDrawingFromPart(); });
+    drawingMenu->addSeparator();
+    sketchAction(drawingMenu, tr("&Title Block..."), "action_drawing_title_block",
+                 [this] { m_drawings->onTitleBlock(); });
+    sketchAction(drawingMenu, tr("&Scale..."), "action_drawing_scale",
+                 [this] { m_drawings->onScale(); });
+    sketchAction(drawingMenu, tr("&Update from Part"), "action_update_drawing",
+                 [this] { m_drawings->onUpdateFromPart(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1345,6 +1362,17 @@ void MainWindow::activateTabDocument() {
     }
     refreshAllPanels();
     updateWindowTitle();
+    // A sheet is paper, seen from above.
+    if (m_drawings && m_drawings->isSheet(m_document.get())) m_drawings->shown(*m_document);
+}
+
+void MainWindow::addTab(std::shared_ptr<doc::Document> document, const QString& title) {
+    addDocumentTab(std::move(document), nullptr, title);
+}
+
+void MainWindow::refreshUsersOf(const std::string& path, bool report) {
+    m_assemblies->refreshComponentsOf(path, report);
+    m_drawings->refreshDrawingsOf(path);
 }
 
 void MainWindow::onTabChanged(int /*index*/) {
@@ -1379,7 +1407,7 @@ void MainWindow::onTabCloseRequested(int index) {
     // A part closed with its edits discarded: components that shared its
     // document, or its model's mesh, had them. They show its file again.
     if (!tab.assembly && tab.document->isDirty() && !tab.document->filePath().empty()) {
-        m_assemblies->refreshComponentsOf(tab.document->filePath());
+        refreshUsersOf(tab.document->filePath());
     }
 }
 
@@ -1795,9 +1823,10 @@ void MainWindow::onAbout() {
 void MainWindow::onOpenFile() {
     QString fileName = QFileDialog::getOpenFileName(
         this, tr("Open File"), QString(),
-        tr("All Supported Files (*.hcad *.hzpart *.hzasm *.dxf);;"
+        tr("All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;"
            "Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;"
-           "Horizon Assemblies (*.hzasm);;DXF Files (*.dxf);;All Files (*)"));
+           "Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;"
+           "DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
     openPath(fileName);
 }
@@ -1818,6 +1847,12 @@ bool MainWindow::openPath(const QString& fileName) {
             RecentFiles::add(fileName);
             return true;
         }
+    }
+
+    if (fileName.endsWith(".hzdwg", Qt::CaseInsensitive)) {
+        if (!m_drawings->open(fileName)) return false;
+        RecentFiles::add(fileName);
+        return true;
     }
 
     if (fileName.endsWith(".hzasm", Qt::CaseInsensitive)) {
@@ -2042,6 +2077,21 @@ bool MainWindow::saveActiveDocument() {
         onSaveFileAs();
         return !m_document->isDirty();
     }
+    if (m_drawings->isSheet(m_document.get())) {
+        const std::string sheetPath = m_document->filePath();
+        std::string error;
+        if (!m_drawings->save(*m_document, sheetPath, &error)) {
+            reportFileError(tr("Could not save"), sheetPath, error);
+            return false;
+        }
+        m_document->setDirty(false);
+        m_docManager.noteSaved(m_document);
+        forgetSnapshot(*tab);
+        RecentFiles::add(QString::fromStdString(sheetPath));
+        m_statusPrompt->setText(tr("Drawing saved."));
+        updateWindowTitle();
+        return true;
+    }
     std::string path = m_document->filePath();
     bool ok = false;
     std::string error;
@@ -2062,7 +2112,7 @@ bool MainWindow::saveActiveDocument() {
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
         // The assemblies placing it show it as saved.
-        m_assemblies->refreshComponentsOf(path);
+        refreshUsersOf(path);
         return true;
     }
     reportFileError(tr("Could not save"), path, error);
@@ -2090,8 +2140,11 @@ void MainWindow::onSaveFile() {
 
 void MainWindow::onSaveFileAs() {
     QString filter;
+    const bool sheet = !m_assembly && m_drawings->isSheet(m_document.get());
     if (m_assembly) {
         filter = tr("Horizon Assemblies (*.hzasm);;All Files (*)");
+    } else if (sheet) {
+        filter = tr("Horizon Drawing Sheets (*.hzdwg);;All Files (*)");
     } else if (m_document->type() == doc::DocumentType::Part) {
         filter =
             tr("Horizon Parts (*.hzpart);;Horizon CAD Drawings (*.hcad);;"
@@ -2114,6 +2167,15 @@ void MainWindow::onSaveFileAs() {
         if (!saveActiveDocument()) {
             m_assembly->setFilePath(oldPath);
         }
+        return;
+    }
+
+    if (sheet) {
+        // A sheet is only ever a .hzdwg: that is how it is opened again.
+        if (!fileName.endsWith(".hzdwg", Qt::CaseInsensitive)) fileName += QStringLiteral(".hzdwg");
+        const std::string oldPath = m_document->filePath();
+        m_document->setFilePath(fileName.toStdString());
+        if (!saveActiveDocument()) m_document->setFilePath(oldPath);
         return;
     }
 
@@ -2408,6 +2470,20 @@ void MainWindow::onExportPlot(bool pdf) {
                      QStringLiteral("2:1"), QStringLiteral("5:1"), QStringLiteral("10:1")});
     auto* colours =
         form.choice(QStringLiteral("colours"), tr("Colours:"), {tr("As drawn"), tr("Black")});
+    // A drawing sheet is drawn to size: plotted on its own paper, at 1:1.
+    if (const model::Sheet* sheet = m_drawings->paperOf(m_document.get())) {
+        const double shortSide = std::min(sheet->widthMm(), sheet->heightMm());
+        const double longSide = std::max(sheet->widthMm(), sheet->heightMm());
+        const auto& sizes = draft::standardPaperSizes();
+        for (size_t i = 0; i < sizes.size(); ++i) {
+            if (std::abs(sizes[i].widthMm - shortSide) < 0.5 &&
+                std::abs(sizes[i].heightMm - longSide) < 0.5) {
+                paper->setCurrentIndex(static_cast<int>(i));
+            }
+        }
+        orientation->setCurrentIndex(sheet->widthMm() >= sheet->heightMm() ? 0 : 1);
+        scale->setCurrentIndex(scale->findText(QStringLiteral("1:1")));
+    }
     if (!form.exec()) return;
 
     draft::PlotLayout layout;
@@ -2466,7 +2542,7 @@ void MainWindow::pollPartFiles() {
     for (const std::string& path : m_docManager.pollExternalChanges()) {
         // A tab showing the file first: a component of a part open in a tab
         // takes the tab's document, which is as old as its read.
-        if (!reloadTabsOf(path)) m_assemblies->refreshComponentsOf(path);
+        if (!reloadTabsOf(path)) refreshUsersOf(path);
     }
 }
 
@@ -2516,6 +2592,10 @@ bool MainWindow::reloadTabsOf(const std::string& path) {
 
 void MainWindow::reloadTab(size_t index, bool asked) {
     const std::shared_ptr<doc::Document> old = m_tabs[index].document;
+    if (m_drawings->isSheet(old.get())) {
+        m_drawings->readAgain(*old);  // a small file, and its part: read here
+        return;
+    }
     const std::string path = old->filePath();
     const QString fileName = QString::fromStdString(path);
     const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
@@ -2523,7 +2603,7 @@ void MainWindow::reloadTab(size_t index, bool asked) {
     // again froze the window every time another program saved it.
     if (!openOnWorker(fileName)) {
         const bool replaced = replaceTabDocument(old, readFile(path, drawing), asked);
-        m_assemblies->refreshComponentsOf(path, replaced);
+        refreshUsersOf(path, replaced);
         return;
     }
     if (m_reloadTask) {
@@ -2563,7 +2643,7 @@ void MainWindow::onReloadFinished() {
         if (!task->error().empty()) read.error = task->error();
         replaced = replaceTabDocument(old, std::move(read), m_reloadAsked);
     }
-    m_assemblies->refreshComponentsOf(path, replaced);
+    refreshUsersOf(path, replaced);
     // The files waiting, until one is read on a worker again.
     while (!m_reloadTask && !m_reloadQueue.empty()) {
         const auto [next, givenUp] = m_reloadQueue.front();
@@ -2574,7 +2654,7 @@ void MainWindow::onReloadFinished() {
         if (askedAbout && i < m_tabs.size()) {
             reloadTab(i, true);  // its changes given up already
         } else if (!reloadTabsOf(next)) {
-            m_assemblies->refreshComponentsOf(next);
+            refreshUsersOf(next);
         }
     }
 }

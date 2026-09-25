@@ -50,6 +50,7 @@ class FeatureTreePanel;
 class RecoveryManager;
 class AssemblyTreePanel;
 class AssemblyWorkbench;
+class DrawingWorkbench;
 class FeatureForm;
 
 /// The main application window for Horizon CAD.
@@ -395,6 +396,7 @@ private:
     void setPrompt(const QString& text) override;
     bool onWorker(bool large) override;
     void backgroundWorkChanged() override { updateBusyIndicator(); }
+    void addTab(std::shared_ptr<doc::Document> document, const QString& title) override;
 
     int addDocumentTab(std::shared_ptr<doc::Document> document,
                        std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
@@ -417,6 +419,10 @@ private:
     void undoOrRedo(bool undo);
     /// Tab captions and the window title show which documents are modified.
     void refreshModifiedIndicators() override;
+    /// The file of the part at @p path changed (saved, read again, changed
+    /// by another program, or its edits discarded): the assemblies placing
+    /// it and the drawings of it follow. @p report as refreshComponentsOf.
+    void refreshUsersOf(const std::string& path, bool report = true);
     /// If the tab's document is modified, focus it and ask Save / Discard /
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
@@ -543,6 +549,8 @@ private:
     /// The assembly commands (Phase 146); they reach the window through
     /// WorkbenchHost.
     std::unique_ptr<AssemblyWorkbench> m_assemblies;
+    /// The drawing sheets made from parts (Phase 148), likewise.
+    std::unique_ptr<DrawingWorkbench> m_drawings;
     /// The ideal mass properties being measured, the dialog waiting for them,
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;

@@ -1,22 +1,30 @@
 // Workbenches (Phase 146): the assembly commands, moved out of MainWindow,
-// work through WorkbenchHost alone. Here they run against a stand-in host
-// with no window at all, which is what the interface is for.
+// work through WorkbenchHost alone, as do the drawing sheets (Phase 148).
+// Here they run against a stand-in host with no window at all, which is what
+// the interface is for.
 
 #include <gtest/gtest.h>
 
+#include <QFile>
 #include <QTemporaryDir>
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/AssemblyWorkbench.h"
+#include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
 
@@ -38,11 +46,16 @@ public:
 
     std::shared_ptr<hz::doc::AssemblyDocument> assembly;
     hz::doc::Document backing;
+    /// The tabs the workbenches added, the last of them shown.
+    std::vector<std::pair<std::shared_ptr<hz::doc::Document>, QString>> tabs;
     std::vector<QString> statuses;
+    std::vector<std::string> fileErrors;
     int rebuilds = 0;
 
     QWidget* dialogParent() override { return &m_viewport; }
-    hz::doc::Document* currentDocument() override { return &backing; }
+    hz::doc::Document* currentDocument() override {
+        return tabs.empty() ? &backing : tabs.back().first.get();
+    }
     std::shared_ptr<hz::doc::AssemblyDocument> currentAssembly() override { return assembly; }
     std::vector<std::shared_ptr<hz::doc::AssemblyDocument>> openAssemblies() override {
         if (!assembly) return {};
@@ -58,8 +71,13 @@ public:
     void rebuildScene() override { ++rebuilds; }
     void refreshModifiedIndicators() override {}
     bool openPath(const QString& /*fileName*/) override { return false; }
-    void reportFileError(const QString& /*summary*/, const std::string& /*path*/,
-                         const std::string& /*reason*/) override {}
+    void addTab(std::shared_ptr<hz::doc::Document> document, const QString& title) override {
+        tabs.emplace_back(std::move(document), title);
+    }
+    void reportFileError(const QString& /*summary*/, const std::string& path,
+                         const std::string& reason) override {
+        fileErrors.push_back(path + ": " + reason);
+    }
     bool onWorker(bool /*large*/) override { return false; }
     void backgroundWorkChanged() override {}
 
@@ -139,4 +157,128 @@ TEST(WorkbenchesTest, TheWorkbenchPlacesAndRefreshesThroughItsHost) {
     EXPECT_NEAR(height(), 25.0, 1e-6) << "the mates solved again on the new part";
     EXPECT_TRUE(host.assembly->isDirty());
     EXPECT_GE(host.rebuilds, 1) << "the host rebuilt its scene";
+}
+
+// A sheet opened and drawn from its part, and drawn again when the part
+// changes, with no window: its own layers locked and as they were set, what
+// was drawn on it by hand kept, and it no more modified than it was.
+TEST(WorkbenchesTest, TheDrawingWorkbenchDrawsASheetThroughItsHost) {
+    QTemporaryDir dir;
+    const QString cube = dir.filePath(QStringLiteral("cube.hzpart"));
+    saveCube(cube);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = cube.toStdString();
+    spec.scale = 1.0;  // so that a larger part draws larger
+    const std::string sheetPath = dir.filePath(QStringLiteral("cube.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(QString::fromStdString(sheetPath)));
+    ASSERT_EQ(host.tabs.size(), 1u);
+    EXPECT_EQ(host.tabs.back().second, QStringLiteral("cube.hzdwg"));
+    hz::doc::Document& sheet = *host.tabs.back().first;
+    EXPECT_TRUE(workbench.isSheet(&sheet));
+    EXPECT_FALSE(workbench.isSheet(&host.backing));
+    EXPECT_EQ(sheet.filePath(), sheetPath);
+    EXPECT_FALSE(sheet.isDirty());
+    ASSERT_NE(sheet.layerManager().getLayer("Visible"), nullptr);
+    EXPECT_TRUE(sheet.layerManager().getLayer("Visible")->locked);
+
+    // The height of what the views draw.
+    const auto drawnHeight = [&] {
+        double low = 1e300;
+        double high = -1e300;
+        for (const auto& entity : sheet.draftDocument().entities()) {
+            if (entity->layer() != "Visible") continue;
+            const auto box = entity->boundingBox();
+            low = std::min(low, box.min().y);
+            high = std::max(high, box.max().y);
+        }
+        return high - low;
+    };
+    const double before = drawnHeight();
+    ASSERT_GT(before, 10.0);
+
+    // Set by the user: a line drawn by hand, and the hidden edges not shown.
+    auto line = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 0), hz::math::Vec2(5, 5));
+    line->setLayer("0");
+    sheet.draftDocument().addEntity(line);
+    sheet.layerManager().getLayer("Hidden")->visible = false;
+    sheet.setDirty(false);
+
+    // The cube made taller in its file.
+    {
+        hz::doc::Document part;
+        ASSERT_TRUE(hz::io::NativeFormat::load(cube.toStdString(), part));
+        ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", 25.0));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(cube.toStdString(), part));
+    }
+    workbench.refreshDrawingsOf(cube.toStdString());
+    EXPECT_GT(drawnHeight(), before + 10.0) << "drawn from the taller part";
+    const auto& entities = sheet.draftDocument().entities();
+    EXPECT_NE(std::find(entities.begin(), entities.end(), line), entities.end()) << "kept";
+    EXPECT_FALSE(sheet.layerManager().getLayer("Hidden")->visible) << "as the user set it";
+    EXPECT_TRUE(sheet.layerManager().getLayer("Hidden")->locked);
+    EXPECT_FALSE(sheet.isDirty()) << "the part changed, not the sheet";
+    EXPECT_TRUE(host.fileErrors.empty());
+}
+
+// A sheet whose part is gone does not open, and says why.
+TEST(WorkbenchesTest, ASheetWithoutItsPartSaysWhy) {
+    QTemporaryDir dir;
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = dir.filePath(QStringLiteral("gone.hzpart")).toStdString();
+    const std::string sheetPath = dir.filePath(QStringLiteral("gone.hzdwg")).toStdString();
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetPath, spec));
+
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    EXPECT_FALSE(workbench.open(QString::fromStdString(sheetPath)));
+    EXPECT_TRUE(host.tabs.empty());
+    ASSERT_EQ(host.fileErrors.size(), 1u);
+    EXPECT_NE(host.fileErrors[0].find("part"), std::string::npos) << host.fileErrors[0];
+}
+
+// A version 1 sheet (its part and gap alone) is drawn as version 1 laid it
+// out, and saved so: opened again, it is the same. Saved without its views,
+// it opened again laid out anew.
+TEST(WorkbenchesTest, AVersionOneSheetKeepsItsLayoutWhenSaved) {
+    QTemporaryDir dir;
+    saveCube(dir.filePath(QStringLiteral("cube.hzpart")));
+    const QString v1 = dir.filePath(QStringLiteral("v1.hzdwg"));
+    {
+        QFile out(v1);
+        ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+        out.write(R"({"format": "hzdwg", "version": 1, "part": "cube.hzpart", "gap": 15})");
+    }
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(v1));
+    ASSERT_EQ(host.tabs.size(), 1u);
+    const auto visibleBox = [](const hz::doc::Document& sheet) {
+        hz::math::BoundingBox box;
+        for (const auto& entity : sheet.draftDocument().entities()) {
+            if (entity->layer() == "Visible") box.expand(entity->boundingBox());
+        }
+        return box;
+    };
+    const hz::math::BoundingBox drawn = visibleBox(*host.tabs[0].first);
+    ASSERT_TRUE(drawn.isValid());
+
+    const std::string v2 = dir.filePath(QStringLiteral("v2.hzdwg")).toStdString();
+    std::string error;
+    ASSERT_TRUE(workbench.save(*host.tabs[0].first, v2, &error)) << error;
+    hz::io::DrawingDocumentSpec spec;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(v2, spec));
+    EXPECT_EQ(spec.views.size(), 4u) << "its views, as laid out";
+
+    ASSERT_TRUE(workbench.open(QString::fromStdString(v2)));
+    ASSERT_EQ(host.tabs.size(), 2u);
+    const hz::math::BoundingBox again = visibleBox(*host.tabs[1].first);
+    EXPECT_NEAR(again.min().x, drawn.min().x, 1e-9);
+    EXPECT_NEAR(again.min().y, drawn.min().y, 1e-9);
+    EXPECT_NEAR(again.max().x, drawn.max().x, 1e-9);
+    EXPECT_NEAR(again.max().y, drawn.max().y, 1e-9);
 }
