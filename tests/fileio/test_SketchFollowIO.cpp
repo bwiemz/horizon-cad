@@ -41,7 +41,10 @@ struct BossOnABox {
         EXPECT_TRUE(doc.rebuildModel());
         const std::string top = box->featureID() + "/top";
         const auto face = hz::model::planeOfFace(*doc.solid(), top);
-        EXPECT_TRUE(face.has_value());
+        if (!face) {
+            ADD_FAILURE() << "no plane for " << top;
+            return;
+        }
         sketch = std::make_shared<Sketch>(SketchPlane(face->origin, face->normal, Vec3::UnitX));
         sketch->setFace(top);
         sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(-1, -1), Vec2(1, 1)));
@@ -151,7 +154,7 @@ TEST(SketchFollowIOTest, AProjectedEdgeIsKeptAndDrawnAgainFromACopy) {
     const auto* line = dynamic_cast<const hz::draft::DraftLine*>(drawn->get());
     ASSERT_NE(line, nullptr);
     EXPECT_NEAR(line->start().x, 25.0, 1e-9) << "the document's own, drawn again";
-    EXPECT_TRUE(part.sketch->spatialIndex().query(line->boundingBox()).size() >= 1u)
+    EXPECT_FALSE(part.sketch->spatialIndex().query(line->boundingBox()).empty())
         << "and found where it now is";
 }
 
