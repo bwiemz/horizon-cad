@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <vector>
 
 #include "horizon/drafting/DraftLine.h"
@@ -901,4 +902,50 @@ TEST(FilletOpTest, OneBodyOfTwoIsFilleted) {
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume,
                 2000.0 - 10.0 * faceted(1.0, kPi / 2.0, n), 1e-9);
     EXPECT_EQ(hz::model::Pattern::separate(*result.solid).size(), 2u) << "two bodies still";
+}
+
+// Two bodies rounded in one fillet are named apart (Phase 140 review): each
+// body is rebuilt alone, and each rebuild numbered its corner blends and new
+// edges from 0, so both bodies had a `f/blend/corner:0`. The second body's
+// are named under `f/body:1`.
+TEST(FilletOpTest, TwoBodiesRoundedAtOnceAreNamedApart) {
+    auto first = PrimitiveFactory::makeBox(10, 10, 10);
+    auto second = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(10, 10, 10),
+                                                  hz::math::Mat4::translation(Vec3(20, 0, 0)));
+    for (auto& face : second->faces()) face.topoId = face.topoId.child("second", 0);
+    for (auto& edge : second->edges()) edge.topoId = edge.topoId.child("second", 0);
+    // The three edges at each box's top far corner: a corner blend each.
+    const auto cornerEdges = [](const hz::topo::Solid& box, const Vec3& corner) {
+        std::vector<TopologyID> ids;
+        for (const auto& e : box.edges()) {
+            const Vec3& a = e.halfEdge->origin->point;
+            const Vec3& b = e.halfEdge->twin->origin->point;
+            if ((a - corner).length() < 1e-9 || (b - corner).length() < 1e-9)
+                ids.push_back(e.topoId);
+        }
+        return ids;
+    };
+    auto ids = cornerEdges(*first, Vec3(10, 10, 10));
+    const auto more = cornerEdges(*second, Vec3(30, 10, 10));
+    ASSERT_EQ(ids.size(), 3u);
+    ASSERT_EQ(more.size(), 3u);
+    ids.insert(ids.end(), more.begin(), more.end());
+    auto both = hz::model::Pattern::collect(*first, *second);
+
+    auto alone = FilletOp::execute(*first, cornerEdges(*first, Vec3(10, 10, 10)), 1.0, "f", 8);
+    ASSERT_NE(alone.solid, nullptr) << alone.errorMessage;
+    auto result = FilletOp::execute(*both, ids, 1.0, "f", 8);
+    ASSERT_NE(result.solid, nullptr) << result.errorMessage;
+    EXPECT_TRUE(result.solid->isValid()) << result.solid->validationReport();
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*result.solid).volume,
+                2.0 * hz::model::MassPropertiesCalculator::compute(*alone.solid).volume, 1e-9);
+
+    std::map<std::string, int> faces;
+    std::map<std::string, int> edges;
+    for (const auto& face : result.solid->faces()) ++faces[face.topoId.tag()];
+    for (const auto& edge : result.solid->edges()) ++edges[edge.topoId.tag()];
+    for (const auto& [tag, count] : faces) EXPECT_EQ(count, 1) << tag;
+    for (const auto& [tag, count] : edges) EXPECT_EQ(count, 1) << tag;
+    EXPECT_TRUE(faces.count("f/blend/corner:0")) << "the first body's, as when alone";
+    EXPECT_TRUE(faces.count("f/body:1/blend/corner:0")) << "the second's, apart";
 }

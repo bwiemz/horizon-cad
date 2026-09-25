@@ -1169,13 +1169,20 @@ int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
 /// edges to round is rounded alone, and the bodies put back together, names
 /// kept. The rebuild puts every face in one shell, which another body's faces
 /// cannot join. Nothing for a part of one body.
+///
+/// @p op is given the body, its edges and the feature's ID to name what it
+/// makes by: the first body rounded, @p featureID; the k-th after it,
+/// `<featureID>/body:<k>`. Each rebuild numbers its corner blends and new
+/// edges from 0, so two bodies rounded under one ID made two faces named
+/// `<featureID>/blend/corner:0`.
 template <typename Op>
 static std::optional<FilletResult> perBody(const Solid& input, const std::vector<TopologyID>& ids,
-                                           Op op) {
+                                           const std::string& featureID, Op op) {
     auto bodies = Pattern::separate(input);
     if (bodies.size() < 2) return std::nullopt;
     std::vector<bool> found(ids.size(), false);
     std::unique_ptr<Solid> out;
+    int rounded = 0;
     for (auto& body : bodies) {
         std::vector<TopologyID> mine;
         for (size_t i = 0; i < ids.size(); ++i) {
@@ -1188,9 +1195,12 @@ static std::optional<FilletResult> perBody(const Solid& input, const std::vector
         if (mine.empty()) {
             done = std::move(body);
         } else {
-            FilletResult rounded = op(*body, mine);
-            if (!rounded.solid) return rounded;
-            done = std::move(rounded.solid);
+            const std::string id =
+                rounded == 0 ? featureID : featureID + "/body:" + std::to_string(rounded);
+            ++rounded;
+            FilletResult part = op(*body, mine, id);
+            if (!part.solid) return part;
+            done = std::move(part.solid);
         }
         out = out ? Pattern::collect(*out, *done) : std::move(done);
     }
@@ -1218,10 +1228,11 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
         result.errorMessage = "No edges specified for fillet";
         return result;
     }
-    if (auto split = perBody(inputSolid, edgeIds,
-                             [&](const Solid& body, const std::vector<TopologyID>& mine) {
-                                 return execute(body, mine, radius, featureID, arcSegments, naming);
-                             })) {
+    if (auto split = perBody(
+            inputSolid, edgeIds, featureID,
+            [&](const Solid& body, const std::vector<TopologyID>& mine, const std::string& id) {
+                return execute(body, mine, radius, id, arcSegments, naming);
+            })) {
         return std::move(*split);
     }
 
