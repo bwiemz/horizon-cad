@@ -128,6 +128,11 @@ File menu only.
     (the default). Kept, the assemblies show your version.
   - An assembly's own tab is not read again; the status bar says to reopen
     it.
+  - A large file is read on a worker, as it is opened, and the tab swapped
+    when it is done. Files changed meanwhile wait their turn, by path. Edits
+    made while it was read are kept, and the status bar says so.
+  - The refresh that follows says it only when the tab was read again, so
+    it does not hide why not; the mate solve reports only failures in it.
 - **A part read again is tessellated again.** Each `Document` has a serial
   unique in the process, and a model mesh is shared under the path and that
   serial. Under the path alone, a new read built as many times as the old
@@ -165,6 +170,8 @@ File menu only.
     mates follow;
   - one with unsaved changes asks, keeping them by default, and reads the
     file again when told to;
+  - read on a worker, the tab is swapped when the reading is done, and edits
+    made meanwhile are kept;
   - Open Part from the menu and from the tree;
   - the BOM lists and exports.
 - The window tests that need a hook each fail with it switched off.

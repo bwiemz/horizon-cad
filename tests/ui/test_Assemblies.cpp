@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QPushButton>
 #include <QStatusBar>
 #include <QTabBar>
@@ -493,7 +494,7 @@ TEST(AssembliesTest, APartWithUnsavedChangesAsksBeforeReadingAgain) {
         ASSERT_TRUE(keep.seen());
         EXPECT_EQ(keep.defaultButton(), QMessageBox::Ignore) << "keeping is the default";
     }
-    EXPECT_EQ(w.activeDocument(), part) << "kept";
+    ASSERT_EQ(w.activeDocument(), part) << "kept";
     EXPECT_TRUE(part->isDirty());
     EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 20.0, 1e-6) << "on the user's version";
 
@@ -506,6 +507,51 @@ TEST(AssembliesTest, APartWithUnsavedChangesAsksBeforeReadingAgain) {
     ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
     EXPECT_NEAR(depthOf(*w.activeDocument()), 30.0, 1e-12);
     EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 30.0, 1e-6) << "on the file's";
+}
+
+// A file read again on a worker, as a large one is (every file, here),
+// swaps its tab when the reading is done, and the assembly follows; one
+// edited while it was read keeps the edits. It was read on the GUI thread,
+// freezing the window each time another program saved a large part.
+TEST(AssembliesTest, APartIsReadAgainOnAWorker) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000)) << "opened, built";
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    auto* prompt = w.findChild<QLabel*>(QStringLiteral("statusPrompt"));
+    ASSERT_NE(prompt, nullptr);
+    const auto reading = [&] { return prompt->text().contains(QStringLiteral("again...")); };
+
+    // Read on a worker: the tab's document is the old one until it is done.
+    rewriteOnDisk(block, 25);
+    ASSERT_TRUE(waitUntil(reading, 5000));
+    EXPECT_EQ(w.activeDocument(), part);
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 25.0, 1e-12);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 25.0, 1e-6);
+
+    // Edited while it is read: the edits are kept, and the assembly shows them.
+    hz::doc::Document* fresh = openPartOf(w, base);
+    ASSERT_NE(fresh, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
+    rewriteOnDisk(block, 30);
+    ASSERT_TRUE(waitUntil(reading, 5000));
+    deepen(*fresh, 40);
+    ASSERT_TRUE(waitUntil([&] { return !reading(); }, 5000));
+    ASSERT_EQ(w.activeDocument(), fresh) << "kept";
+    EXPECT_NEAR(depthOf(*fresh), 40.0, 1e-12);
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("kept")))
+        << w.statusBar()->currentMessage().toStdString();
 }
 
 // A part edited in its tab and closed unsaved leaves the assembly as its

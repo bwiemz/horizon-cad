@@ -648,6 +648,7 @@ MainWindow::~MainWindow() {
     m_importTask.reset();
     m_interferenceTask.reset();
     m_openTask.reset();
+    m_reloadTask.reset();
     m_massTask.reset();
 }
 
@@ -1261,6 +1262,7 @@ void MainWindow::createStatusBar() {
         if (m_importTask) m_importTask->cancel();
         if (m_interferenceTask) m_interferenceTask->cancel();
         if (m_openTask) m_openTask->cancel();  // dropped once it is read
+        if (m_reloadTask) m_reloadTask->cancel();
         if (m_massTask) m_massTask->cancel();
     });
     sb->addPermanentWidget(m_rebuildCancel);
@@ -2595,7 +2597,7 @@ void MainWindow::onInsertComponent() {
     m_statusPrompt->setText(tr("Component inserted."));
 }
 
-bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
+bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
     if (asmDoc.mates().empty()) return true;
 
     const std::string asmDir =
@@ -2659,7 +2661,7 @@ bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
             status += tr("; %1 component(s) not connected to ground")
                           .arg(result.ungroundedComponents.size());
         }
-        statusBar()->showMessage(status);
+        if (reportSuccess) statusBar()->showMessage(status);
         return true;
     }
 
@@ -3202,7 +3204,7 @@ void MainWindow::onRemoveMate() {
 // Living assemblies (Phase 144)
 // ---------------------------------------------------------------------------
 
-void MainWindow::refreshComponentsOf(const std::string& path) {
+void MainWindow::refreshComponentsOf(const std::string& path, bool report) {
     if (path.empty()) return;
     // What was read of the file is out of date: the next component to
     // resolve it reads it again. (A part open in a tab stays: it is the part.)
@@ -3227,7 +3229,7 @@ void MainWindow::refreshComponentsOf(const std::string& path) {
         // Its faces may be elsewhere now: the mates place the components
         // again. That is a change to the assembly, to be saved.
         const doc::AssemblyState placed = tab.assembly->snapshot();
-        solved = solveAssemblyMates(*tab.assembly) && solved;
+        solved = solveAssemblyMates(*tab.assembly, /*reportSuccess=*/false) && solved;
         if (placementsDiffer(placed, *tab.assembly)) {
             tab.assembly->setDirty(true);
             moved = true;
@@ -3238,7 +3240,7 @@ void MainWindow::refreshComponentsOf(const std::string& path) {
     if (shown) rebuildScene();  // reads the meshes again
     if (moved) refreshModifiedIndicators();
     // A mate the part no longer has a face for is reported by the solve.
-    if (solved) {
+    if (solved && report) {
         statusBar()->showMessage(
             tr("\"%1\" changed: the assemblies placing it show it as it is now")
                 .arg(QFileInfo(QString::fromStdString(path)).fileName()),
@@ -3252,12 +3254,11 @@ void MainWindow::pollPartFiles() {
     for (const std::string& path : m_docManager.pollExternalChanges()) {
         // A tab showing the file first: a component of a part open in a tab
         // takes the tab's document, which is as old as its read.
-        reloadTabsOf(path);
-        refreshComponentsOf(path);
+        if (!reloadTabsOf(path)) refreshComponentsOf(path);
     }
 }
 
-void MainWindow::reloadTabsOf(const std::string& path) {
+bool MainWindow::reloadTabsOf(const std::string& path) {
     const QString name = QFileInfo(QString::fromStdString(path)).fileName();
     for (size_t i = 0; i < m_tabs.size(); ++i) {
         const DocTab& tab = m_tabs[i];
@@ -3272,7 +3273,8 @@ void MainWindow::reloadTabsOf(const std::string& path) {
                 15000);
             continue;
         }
-        if (isTabModified(tab)) {
+        const bool modified = isTabModified(tab);
+        if (modified) {
             // Never lose the user's edits unasked: keeping them is the default.
             m_tabBar->setCurrentIndex(static_cast<int>(i));
             const std::shared_ptr<doc::Document> asked = tab.document;
@@ -3288,27 +3290,104 @@ void MainWindow::reloadTabsOf(const std::string& path) {
             box.button(QMessageBox::Ignore)->setText(tr("Keep Mine"));
             box.setDefaultButton(QMessageBox::Ignore);
             box.setEscapeButton(QMessageBox::Ignore);
-            if (box.exec() != QMessageBox::Discard) continue;
+            if (box.exec() != QMessageBox::Discard) return false;
             // Its place, found again: the tabs may have changed meanwhile.
             i = 0;
             while (i < m_tabs.size() && m_tabs[i].document != asked) ++i;
-            if (i == m_tabs.size()) return;
+            if (i == m_tabs.size()) return false;
         }
-        reloadTab(i);
+        reloadTab(i, modified);
+        return true;  // one tab shows a file
+    }
+    return false;
+}
+
+void MainWindow::reloadTab(size_t index, bool asked) {
+    const std::shared_ptr<doc::Document> old = m_tabs[index].document;
+    const std::string path = old->filePath();
+    const QString fileName = QString::fromStdString(path);
+    const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
+    // A large file is read on a worker, as it is opened: here, reading it
+    // again froze the window every time another program saved it.
+    if (!openOnWorker(fileName)) {
+        const bool replaced = replaceTabDocument(old, readFile(path, drawing), asked);
+        refreshComponentsOf(path, replaced);
+        return;
+    }
+    if (m_reloadTask) {
+        // Its turn comes. Queued by path: the running reading may be of this
+        // file, and may have read it before this change.
+        m_reloadQueue.emplace_back(path, asked ? old : nullptr);
+        return;
+    }
+    m_reloadDocument = old;
+    m_reloadAsked = asked;
+    m_reloadTask = std::make_unique<BackgroundTask<FileOpen>>(
+        [path, drawing](const std::atomic<bool>& /*cancelled*/) {
+            return readFile(path, drawing);
+        });
+    m_reloadTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onReloadFinished, Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Reading %1 again...").arg(QFileInfo(fileName).fileName()));
+    updateBusyIndicator();
+}
+
+void MainWindow::onReloadFinished() {
+    if (!m_reloadTask || !m_reloadTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<FileOpen>> task = std::move(m_reloadTask);
+    const std::shared_ptr<doc::Document> old = std::move(m_reloadDocument);
+    updateBusyIndicator();
+    m_statusPrompt->setText(tr("Ready"));
+    const std::string path = old->filePath();
+    bool replaced = false;
+    if (task->cancelled()) {
+        statusBar()->showMessage(
+            tr("Reading \"%1\" again was cancelled: its tab shows it as it was read before")
+                .arg(QFileInfo(QString::fromStdString(path)).fileName()),
+            10000);
+    } else {
+        FileOpen read = task->take();
+        if (!task->error().empty()) read.error = task->error();
+        replaced = replaceTabDocument(old, std::move(read), m_reloadAsked);
+    }
+    refreshComponentsOf(path, replaced);
+    // The files waiting, until one is read on a worker again.
+    while (!m_reloadTask && !m_reloadQueue.empty()) {
+        const auto [next, givenUp] = m_reloadQueue.front();
+        m_reloadQueue.erase(m_reloadQueue.begin());
+        const std::shared_ptr<doc::Document> askedAbout = givenUp.lock();
+        size_t i = 0;
+        while (i < m_tabs.size() && m_tabs[i].document != askedAbout) ++i;
+        if (askedAbout && i < m_tabs.size()) {
+            reloadTab(i, true);  // its changes given up already
+        } else if (!reloadTabsOf(next)) {
+            refreshComponentsOf(next);
+        }
     }
 }
 
-bool MainWindow::reloadTab(size_t index) {
+bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, FileOpen read,
+                                    bool asked) {
+    size_t index = 0;
+    while (index < m_tabs.size() && m_tabs[index].document != old) ++index;
+    if (index == m_tabs.size()) return false;  // closed meanwhile
     DocTab& tab = m_tabs[index];
-    const std::shared_ptr<doc::Document> old = tab.document;
     const std::string path = old->filePath();
     const QString name = QFileInfo(QString::fromStdString(path)).fileName();
-    FileOpen read =
-        readFile(path, QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive));
     if (!read.document) {
         statusBar()->showMessage(
             tr("\"%1\" was changed by another program, and could not be read again: %2")
                 .arg(name, QString::fromStdString(read.error)),
+            15000);
+        return false;
+    }
+    // Edited while it was read on a worker, and not given up: kept.
+    if (!asked && isTabModified(tab)) {
+        statusBar()->showMessage(
+            tr("\"%1\" was changed by another program; the changes you made meanwhile are "
+               "kept, and saving them replaces the other program's")
+                .arg(name),
             15000);
         return false;
     }
@@ -5516,7 +5595,10 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask) return;
+    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask ||
+        m_reloadTask) {
+        return;
+    }
     const int total = m_rebuildJob->total();
     if (total > 0) {
         m_rebuildProgress->setRange(0, total);
