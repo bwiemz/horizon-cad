@@ -53,6 +53,16 @@ InterferenceReport AssemblyDocument::measureInterference(const InterferenceInput
 }
 
 void AssemblyDocument::restore(AssemblyState state) {
+    // A snapshot records where the components are and what they are, not
+    // the geometry loaded for them: a component still here keeps what it has
+    // now. (An undo after its part changed brought back the old mesh.)
+    for (auto& comp : state.components) {
+        const auto* now = component(comp.id);
+        if (now == nullptr || now->partPath != comp.partPath) continue;
+        comp.cachedMesh = now->cachedMesh;
+        comp.resolvedPart = now->resolvedPart;
+        comp.state = now->state;
+    }
     m_components = std::move(state.components);
     m_mates = std::move(state.mates);
     // Ids handed out since the snapshot are not reused.

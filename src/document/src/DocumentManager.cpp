@@ -19,6 +19,20 @@ std::string DocumentManager::canonicalPath(const std::string& path) {
     return canonical.string();
 }
 
+bool DocumentManager::samePath(const std::string& a, const std::string& b) {
+    return !a.empty() && !b.empty() && canonicalPath(a) == canonicalPath(b);
+}
+
+void DocumentManager::releasePart(const std::string& path) {
+    const std::string key = canonicalPath(path);
+    const auto it = m_documentsByPath.find(key);
+    if (it == m_documentsByPath.end()) return;
+    const auto open = it->second.lock();
+    const bool inTab =
+        open && std::find(m_documents.begin(), m_documents.end(), open) != m_documents.end();
+    if (!inTab) m_documentsByPath.erase(it);
+}
+
 std::shared_ptr<Document> DocumentManager::newDocument(DocumentType type) {
     auto doc = std::make_shared<Document>();
     doc->setType(type);
@@ -181,10 +195,14 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     const std::string fullPath = partPath.string();
 
     const std::string key = canonicalPath(fullPath);
-    // A mesh from a part's model is as new as its last build; one from the
-    // file (its cache, or a model built from it apart) as the file.
+    // Watched while the manager lives: a tab of the part closing does not
+    // stop an assembly placing it from seeing it change.
+    m_placedFiles.insert(key);
+    // A mesh from a part's model is as new as its last build, of that
+    // document (the file read again is another, built as often maybe); one
+    // from the file (its cache, or a model built from it apart) as the file.
     const auto modelMesh = [this, &key](const Document& part) {
-        return sharedMesh(key + "#model", part.builds(), [&part] {
+        return sharedMesh(key + "#model/" + std::to_string(part.serial()), part.builds(), [&part] {
             return std::make_shared<const geo::MeshData>(
                 model::SolidTessellator::tessellate(*part.solid()));
         });
@@ -210,6 +228,9 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     // Demoting a Resolved instance releases its reference to the full part
     // document — Lightweight means "cached tessellation + transform only".
     instance.resolvedPart.reset();
+    // Its file watched, as a resolved part's is: an assembly shows it, and
+    // should show it changed.
+    if (m_watchedFiles.count(key) == 0) watchFile(key);
 
     if (instance.cachedMesh) {
         instance.state = ComponentState::Lightweight;
@@ -273,7 +294,7 @@ void DocumentManager::watchFile(const std::string& canonical) {
 }
 
 void DocumentManager::unwatchFile(const std::string& canonical) {
-    m_watchedFiles.erase(canonical);
+    if (m_placedFiles.count(canonical) == 0) m_watchedFiles.erase(canonical);
 }
 
 std::vector<std::string> DocumentManager::pollExternalChanges() {

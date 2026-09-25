@@ -16,9 +16,10 @@ namespace hz::ui {
 
 /// Dock panel listing an assembly's components and mates (Phase 143), where
 /// a part shows its feature tree. From its context menu and the Delete key:
-/// remove, suppress or unsuppress and rename a component; edit a mate's
-/// value, or remove it. Like the feature tree, the panel only asks: the
-/// owner makes each change, as an undoable edit, and refreshes the panel.
+/// open a component's part (Phase 144), remove, suppress or unsuppress and
+/// rename a component; edit a mate's value, or remove it. Like the feature
+/// tree, the panel only asks: the owner makes each change, as an undoable
+/// edit, and refreshes the panel.
 class AssemblyTreePanel : public QDockWidget {
     Q_OBJECT
 
@@ -48,6 +49,8 @@ signals:
     void removeComponentRequested(uint64_t id);
     void suppressRequested(uint64_t id, bool suppress);
     void renameRequested(uint64_t id);
+    /// Open the part a component places, in its tab (Phase 144).
+    void openPartRequested(uint64_t id);
     void editMateRequested(uint64_t id);
     void removeMateRequested(uint64_t id);
 
@@ -60,6 +63,7 @@ private:
     QAction* m_suppressAction = nullptr;
     QAction* m_renameAction = nullptr;
     QAction* m_editMateAction = nullptr;
+    QAction* m_openPartAction = nullptr;
     bool m_currentSuppressed = false;
     /// The assembly the rows are of (identity only; never dereferenced).
     const doc::AssemblyDocument* m_shown = nullptr;

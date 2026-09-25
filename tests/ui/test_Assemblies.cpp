@@ -3,23 +3,38 @@
 // listed with its mates in the assembly tree, which removes, suppresses and
 // renames, and can be clicked at once: two clicked cylinders make a
 // concentric mate.
+//
+// Living assemblies (Phase 144): a part saved here or changed on disk shows
+// changed in the assemblies placing it, with their mates solved again; one
+// closed unsaved leaves them as its file is; a component's part opens in its
+// tab; and the bill of materials lists and exports.
 
 #include <gtest/gtest.h>
 
 #include <QAction>
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QFile>
 #include <QKeyEvent>
+#include <QLabel>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTabBar>
+#include <QTableWidget>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTreeWidget>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <functional>
 #include <numbers>
 #include <string>
 
 #include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/topology/Solid.h"
@@ -28,6 +43,7 @@
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::math::Vec3;
+using hz::test::DialogResponder;
 using hz::test::FilePicker;
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
@@ -94,6 +110,70 @@ void chooseInTree(MainWindow& w, uint64_t id) {
         }
     }
     ADD_FAILURE() << "no row for component " << id;
+}
+
+/// How tall a component's mesh is (0 with none).
+double heightOf(const hz::doc::ComponentInstance& comp) {
+    if (!comp.cachedMesh || comp.cachedMesh->positions.empty()) return 0.0;
+    const auto& p = comp.cachedMesh->positions;
+    double low = p[2];
+    double high = p[2];
+    for (size_t i = 2; i < p.size(); i += 3) {
+        low = std::min(low, static_cast<double>(p[i]));
+        high = std::max(high, static_cast<double>(p[i]));
+    }
+    return high - low;
+}
+
+/// Run the event loop until @p done, or @p ms elapse; whether it was.
+bool waitUntil(const std::function<bool()>& done, int ms) {
+    QElapsedTimer clock;
+    clock.start();
+    while (!done() && clock.elapsed() < ms) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    return done();
+}
+
+QTabBar* tabBar(MainWindow& w) {
+    return w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+}
+
+/// Two 10 mm blocks inserted from @p block, the second on the first's top
+/// (Coincident, then placed by a move): their ids.
+std::pair<uint64_t, uint64_t> stackTwo(MainWindow& w, hz::doc::AssemblyDocument& assembly,
+                                       const QString& block, const std::string& top) {
+    insert(w, block);
+    insert(w, block);
+    const uint64_t base = assembly.components()[0].id;
+    const uint64_t lid = assembly.components()[1].id;
+    hz::doc::Mate on;
+    on.type = hz::doc::MateType::Coincident;
+    on.a = {base, hz::topo::TopologyID::fromTag(top)};
+    on.b = {lid, hz::topo::TopologyID::fromTag(top.substr(0, top.size() - 3) + "bottom")};
+    assembly.addMate(on);
+    chooseInTree(w, lid);
+    FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 1));
+    trigger(w, "action_move_component");
+    EXPECT_TRUE(move.seen());
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 10.0, 1e-6);
+    return {base, lid};
+}
+
+/// Opens the part @p id places, from the Assembly menu; its document.
+hz::doc::Document* openPartOf(MainWindow& w, uint64_t id) {
+    chooseInTree(w, id);
+    trigger(w, "action_open_part");
+    EXPECT_EQ(w.activeAssembly(), nullptr) << "the part's tab is shown";
+    return w.activeDocument();
+}
+
+/// Makes a box part's block @p depth deep, as an edit in its tab does.
+void deepen(hz::doc::Document& part, double depth) {
+    ASSERT_GT(part.featureTree().featureCount(), 0u);
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", depth));
+    ASSERT_TRUE(part.rebuildModel());
+    part.setDirty(true);
 }
 
 }  // namespace
@@ -295,6 +375,297 @@ TEST(AssembliesTest, ClickedCylindersBecomeConcentric) {
     EXPECT_TRUE(endsWith(m.b.faceId.tag(), "/side")) << m.b.faceId.tag();
     const Vec3 second = translationOf(assembly.components()[1]);
     EXPECT_NEAR(std::hypot(second.x, second.y), 0.0, 1e-6) << "on the first's axis";
+}
+
+// A part saved in its tab shows saved in the assembly: both blocks taller,
+// and the one on top moved up with the other's top (the mate solved again).
+TEST(AssembliesTest, SavingAPartChangesTheAssembly) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    deepen(*part, 20);
+    trigger(w, "action_save");
+    EXPECT_FALSE(part->isDirty());
+
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    ASSERT_EQ(w.activeAssembly(), &assembly);
+    EXPECT_NEAR(heightOf(*assembly.component(base)), 20.0, 1e-9);
+    EXPECT_NEAR(heightOf(*assembly.component(lid)), 20.0, 1e-9);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 20.0, 1e-6) << "on the taller top";
+    EXPECT_TRUE(assembly.isDirty()) << "moved, to be saved";
+}
+
+// A part changed on disk by another program is picked up by the watch.
+TEST(AssembliesTest, APartChangedOnDiskIsPickedUp) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    ASSERT_EQ(assembly.components().size(), 1u);
+    EXPECT_NEAR(heightOf(assembly.components()[0]), 10.0, 1e-9);
+
+    auto* watch = w.findChild<QTimer*>(QStringLiteral("partWatchTimer"));
+    ASSERT_NE(watch, nullptr);
+    EXPECT_TRUE(watch->isActive());
+    watch->setInterval(10);
+
+    // Another program's save; its time moved on, however coarse the clock.
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 25));
+    const std::filesystem::path file(block.toStdString());
+    std::filesystem::last_write_time(
+        file, std::filesystem::last_write_time(file) + std::chrono::seconds(2));
+
+    EXPECT_TRUE(waitUntil([&] { return heightOf(assembly.components()[0]) > 20.0; }, 5000));
+    EXPECT_NEAR(heightOf(assembly.components()[0]), 25.0, 1e-9);
+}
+
+/// Edits @p block as another program would: its box made @p depth deep,
+/// its features (and so its faces' names) kept, and its time moved on
+/// however coarse the clock.
+void rewriteOnDisk(const QString& block, double depth) {
+    hz::doc::Document part;
+    ASSERT_TRUE(hz::io::NativeFormat::load(block.toStdString(), part));
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", depth));
+    ASSERT_TRUE(part.rebuildModel());
+    ASSERT_TRUE(hz::io::NativeFormat::save(block.toStdString(), part));
+    const std::filesystem::path file(block.toStdString());
+    std::filesystem::last_write_time(
+        file, std::filesystem::last_write_time(file) + std::chrono::seconds(2));
+}
+
+double depthOf(const hz::doc::Document& part) {
+    if (part.featureTree().featureCount() == 0) return 0.0;
+    return part.featureTree().feature(0)->parameters().at("depth");
+}
+
+// A part open in its tab and changed on disk is read again there, and the
+// assembly follows. The tab's document was kept as the part, and the mates
+// were solved on it, as it was before the change.
+TEST(AssembliesTest, APartOpenInATabAndChangedOnDiskIsReadAgain) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    const hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+
+    rewriteOnDisk(block, 25);
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000)) << "read again";
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 25.0, 1e-12);
+    EXPECT_FALSE(w.activeDocument()->isDirty());
+
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    EXPECT_NEAR(heightOf(*assembly.component(base)), 25.0, 1e-9);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 25.0, 1e-6) << "on the new top";
+}
+
+// A part changed on disk while it has unsaved changes here asks first:
+// kept, the tab and the assembly stay with the user's version; read again,
+// they take the file's.
+TEST(AssembliesTest, APartWithUnsavedChangesAsksBeforeReadingAgain) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    deepen(*part, 20);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+
+    {
+        DialogResponder keep(QMessageBox::Ignore, QStringLiteral("File Changed on Disk"));
+        rewriteOnDisk(block, 25);
+        keep.waitForDialog(5000);
+        ASSERT_TRUE(keep.seen());
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Ignore) << "keeping is the default";
+    }
+    ASSERT_EQ(w.activeDocument(), part) << "kept";
+    EXPECT_TRUE(part->isDirty());
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 20.0, 1e-6) << "on the user's version";
+
+    {
+        DialogResponder readAgain(QMessageBox::Discard, QStringLiteral("File Changed on Disk"));
+        rewriteOnDisk(block, 30);
+        readAgain.waitForDialog(5000);
+        ASSERT_TRUE(readAgain.seen());
+    }
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 30.0, 1e-12);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 30.0, 1e-6) << "on the file's";
+}
+
+// A file read again on a worker, as a large one is (every file, here),
+// swaps its tab when the reading is done, and the assembly follows; one
+// edited while it was read keeps the edits. It was read on the GUI thread,
+// freezing the window each time another program saved a large part.
+TEST(AssembliesTest, APartIsReadAgainOnAWorker) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000)) << "opened, built";
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    auto* prompt = w.findChild<QLabel*>(QStringLiteral("statusPrompt"));
+    ASSERT_NE(prompt, nullptr);
+    const auto reading = [&] { return prompt->text().contains(QStringLiteral("again...")); };
+
+    // Read on a worker: the tab's document is the old one until it is done.
+    rewriteOnDisk(block, 25);
+    ASSERT_TRUE(waitUntil(reading, 5000));
+    EXPECT_EQ(w.activeDocument(), part);
+    ASSERT_TRUE(waitUntil([&] { return w.activeDocument() != part; }, 5000));
+    EXPECT_NEAR(depthOf(*w.activeDocument()), 25.0, 1e-12);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 25.0, 1e-6);
+
+    // Edited while it is read: the edits are kept, and the assembly shows them.
+    hz::doc::Document* fresh = openPartOf(w, base);
+    ASSERT_NE(fresh, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 10000));
+    rewriteOnDisk(block, 30);
+    ASSERT_TRUE(waitUntil(reading, 5000));
+    deepen(*fresh, 40);
+    ASSERT_TRUE(waitUntil([&] { return !reading(); }, 5000));
+    ASSERT_EQ(w.activeDocument(), fresh) << "kept";
+    EXPECT_NEAR(depthOf(*fresh), 40.0, 1e-12);
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("kept")))
+        << w.statusBar()->currentMessage().toStdString();
+}
+
+// A part edited in its tab and closed unsaved leaves the assembly as its
+// file is: the components shared its document, and the mates were solved on
+// its edits after it was gone.
+TEST(AssembliesTest, APartClosedUnsavedLeavesTheAssemblyAsSaved) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+
+    hz::doc::Document* part = openPartOf(w, base);
+    ASSERT_NE(part, nullptr);
+    deepen(*part, 20);
+    {
+        DialogResponder discard(QMessageBox::Discard);
+        emit tabBar(w)->tabCloseRequested(tabBar(w)->currentIndex());
+        EXPECT_TRUE(discard.seen());
+    }
+    ASSERT_EQ(w.activeAssembly(), &assembly);
+
+    chooseInTree(w, lid);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 1));
+        trigger(w, "action_move_component");
+        ASSERT_TRUE(move.seen());
+    }
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 10.0, 1e-6) << "the file's top";
+    EXPECT_NEAR(heightOf(*assembly.component(base)), 10.0, 1e-9);
+}
+
+// A component's part opens in its tab, from the menu or the tree; a second
+// time, the tab it has is shown.
+TEST(AssembliesTest, AComponentsPartOpensInItsTab) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    const uint64_t id = assembly.components()[0].id;
+    const int assemblyTab = tabBar(w)->currentIndex();
+    const int tabs = tabBar(w)->count();
+
+    const hz::doc::Document* part = openPartOf(w, id);
+    ASSERT_NE(part, nullptr);
+    EXPECT_EQ(tabBar(w)->count(), tabs + 1);
+    EXPECT_TRUE(hz::doc::DocumentManager::samePath(part->filePath(), block.toStdString()));
+    EXPECT_GT(part->featureTree().featureCount(), 0u) << "the part, features and all";
+
+    tabBar(w)->setCurrentIndex(assemblyTab);
+    chooseInTree(w, id);
+    auto* panel = w.findChild<hz::ui::AssemblyTreePanel*>();
+    QAction* open = nullptr;
+    for (QAction* action : panel->tree()->actions()) {
+        if (action->text() == QStringLiteral("Open Part")) open = action;
+    }
+    ASSERT_NE(open, nullptr);
+    ASSERT_TRUE(open->isEnabled());
+    open->trigger();
+    EXPECT_EQ(tabBar(w)->count(), tabs + 1) << "its tab again, not another";
+    EXPECT_EQ(w.activeDocument(), part);
+}
+
+// The bill of materials lists each part once with its count, and exports.
+TEST(AssembliesTest, TheBillOfMaterialsListsAndExports) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const QString pin = dir.filePath(QStringLiteral("pin.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    savePart(pin, hz::doc::PrimitiveFeature::makeCylinder(3.0, 10.0));
+    MainWindow w;
+    newAssembly(w);
+    insert(w, block);
+    insert(w, pin);
+    insert(w, block);
+
+    const QString csv = dir.filePath(QStringLiteral("bom.csv"));
+    QStringList rows;
+    bool seen = false;
+    QTimer poll;
+    QElapsedTimer clock;
+    clock.start();
+    FilePicker picker(csv);
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr || dialog->windowTitle() != QStringLiteral("Bill of Materials")) {
+            if (clock.elapsed() > 10'000) poll.stop();
+            return;
+        }
+        poll.stop();
+        seen = true;
+        auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("bom"));
+        for (int row = 0; table != nullptr && row < table->rowCount(); ++row) {
+            rows << table->item(row, 1)->text() + " x" + table->item(row, 2)->text();
+        }
+        if (auto* exportButton = dialog->findChild<QPushButton*>(QStringLiteral("exportBom"))) {
+            exportButton->click();
+        }
+        dialog->reject();
+    });
+    poll.start(5);
+    trigger(w, "action_bill_of_materials");
+    ASSERT_TRUE(seen);
+    EXPECT_EQ(rows, QStringList({QStringLiteral("block x2"), QStringLiteral("pin x1")}));
+
+    QFile file(csv);
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+    const QString text = QString::fromUtf8(file.readAll());
+    EXPECT_TRUE(text.startsWith(QStringLiteral("Item,Part,Quantity,Path"))) << text.toStdString();
+    EXPECT_TRUE(text.contains(QStringLiteral("1,block,2,"))) << text.toStdString();
+    EXPECT_TRUE(text.contains(QStringLiteral("2,pin,1,"))) << text.toStdString();
 }
 
 // The tree's current row is not carried from one assembly to another: both

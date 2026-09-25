@@ -16,6 +16,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QHeaderView>
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
@@ -25,12 +26,14 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QSysInfo>
 #include <QTabBar>
+#include <QTableWidget>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -47,10 +50,12 @@
 
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/fileio/BomExport.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -184,6 +189,24 @@ QString mateTypeName(doc::MateType type) {
     }
     return {};
 }
+
+/// The folder an assembly's relative part paths are in: its file's; none
+/// while it is unsaved.
+std::string assemblyDir(const doc::AssemblyDocument& assembly) {
+    return assembly.filePath().empty()
+               ? std::string()
+               : std::filesystem::path(assembly.filePath()).parent_path().string();
+}
+
+/// The file @p comp places, found as DocumentManager::resolveComponent finds it.
+std::string partFile(const doc::ComponentInstance& comp, const std::string& dir) {
+    std::filesystem::path path(comp.partPath);
+    if (path.is_relative() && !dir.empty()) path = std::filesystem::path(dir) / path;
+    return path.string();
+}
+
+/// How often the files open or placed are looked at for changes on disk.
+constexpr int kPartWatchMs = 2000;
 
 /// A point or direction as the dialogs show it: "(10, 0, 2.5)".
 QString formatPoint(const math::Vec3& p) {
@@ -487,6 +510,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_autosaveTimer = new QTimer(this);
     m_autosaveTimer->setObjectName(QStringLiteral("autosaveTimer"));
     connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
+    // A part changed on disk, by another program, reaches the assemblies
+    // that place it (Phase 144).
+    m_partWatch = new QTimer(this);
+    m_partWatch->setObjectName(QStringLiteral("partWatchTimer"));
+    connect(m_partWatch, &QTimer::timeout, this, &MainWindow::pollPartFiles);
+    m_partWatch->start(kPartWatchMs);
 
     // Central area: document tab bar above the shared viewport.
     m_viewport = new ViewportWidget(this);
@@ -544,6 +573,8 @@ MainWindow::MainWindow(QWidget* parent)
             [this](uint64_t id, bool suppress) { setComponentSuppressed(id, suppress); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::renameRequested, this,
             [this](uint64_t id) { renameComponent(id); });
+    connect(m_assemblyTreePanel, &AssemblyTreePanel::openPartRequested, this,
+            [this](uint64_t id) { openComponentPart(id); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::editMateRequested, this,
             [this](uint64_t id) { editMate(id); });
     connect(m_assemblyTreePanel, &AssemblyTreePanel::removeMateRequested, this,
@@ -617,6 +648,7 @@ MainWindow::~MainWindow() {
     m_importTask.reset();
     m_interferenceTask.reset();
     m_openTask.reset();
+    m_reloadTask.reset();
     m_massTask.reset();
 }
 
@@ -844,6 +876,7 @@ void MainWindow::createMenus() {
     QMenu* assemblyMenu = menuBar()->addMenu(tr("&Assembly"));
     sketchAction(assemblyMenu, tr("&Insert Component..."), "action_insert_component",
                  [this] { onInsertComponent(); });
+    sketchAction(assemblyMenu, tr("&Open Part"), "action_open_part", [this] { onOpenPart(); });
     sketchAction(assemblyMenu, tr("&Move Component..."), "action_move_component",
                  [this] { onMoveComponent(); });
     sketchAction(assemblyMenu, tr("R&otate Component..."), "action_rotate_component",
@@ -862,6 +895,8 @@ void MainWindow::createMenus() {
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("Check &Interference"), "action_check_interference",
                  [this] { onCheckInterference(); });
+    sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
+                 [this] { onBillOfMaterials(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -1227,6 +1262,7 @@ void MainWindow::createStatusBar() {
         if (m_importTask) m_importTask->cancel();
         if (m_interferenceTask) m_interferenceTask->cancel();
         if (m_openTask) m_openTask->cancel();  // dropped once it is read
+        if (m_reloadTask) m_reloadTask->cancel();
         if (m_massTask) m_massTask->cancel();
     });
     sb->addPermanentWidget(m_rebuildCancel);
@@ -1426,6 +1462,11 @@ void MainWindow::onTabCloseRequested(int index) {
         addDocumentTab(std::move(document), nullptr, tr("Drawing 1"));
     } else {
         activateTabDocument();
+    }
+    // A part closed with its edits discarded: components that shared its
+    // document, or its model's mesh, had them. They show its file again.
+    if (!tab.assembly && tab.document->isDirty() && !tab.document->filePath().empty()) {
+        refreshComponentsOf(tab.document->filePath());
     }
 }
 
@@ -2119,6 +2160,8 @@ bool MainWindow::saveActiveDocument() {
         RecentFiles::add(QString::fromStdString(path));
         m_statusPrompt->setText(tr("File saved."));
         updateWindowTitle();
+        // The assemblies placing it show it as saved.
+        refreshComponentsOf(path);
         return true;
     }
     reportFileError(tr("Could not save"), path, error);
@@ -2554,7 +2597,7 @@ void MainWindow::onInsertComponent() {
     m_statusPrompt->setText(tr("Component inserted."));
 }
 
-bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
+bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
     if (asmDoc.mates().empty()) return true;
 
     const std::string asmDir =
@@ -2618,7 +2661,7 @@ bool MainWindow::solveAssemblyMates(doc::AssemblyDocument& asmDoc) {
             status += tr("; %1 component(s) not connected to ground")
                           .arg(result.ungroundedComponents.size());
         }
-        statusBar()->showMessage(status);
+        if (reportSuccess) statusBar()->showMessage(status);
         return true;
     }
 
@@ -3155,6 +3198,304 @@ void MainWindow::onRemoveMate() {
     auto* which = mateChoice(form, m_assemblyTreePanel->currentMate(), ids);
     if (!form.exec()) return;
     removeMate(ids[static_cast<size_t>(std::max(which->currentIndex(), 0))]);
+}
+
+// ---------------------------------------------------------------------------
+// Living assemblies (Phase 144)
+// ---------------------------------------------------------------------------
+
+void MainWindow::refreshComponentsOf(const std::string& path, bool report) {
+    if (path.empty()) return;
+    // What was read of the file is out of date: the next component to
+    // resolve it reads it again. (A part open in a tab stays: it is the part.)
+    m_docManager.releasePart(path);
+    int refreshed = 0;
+    bool solved = true;
+    bool moved = false;
+    bool shown = false;
+    for (DocTab& tab : m_tabs) {
+        if (!tab.assembly) continue;
+        const std::string dir = assemblyDir(*tab.assembly);
+        bool places = false;
+        for (auto& comp : tab.assembly->components()) {
+            if (!doc::DocumentManager::samePath(partFile(comp, dir), path)) continue;
+            comp.cachedMesh.reset();
+            comp.resolvedPart.reset();
+            comp.state = doc::ComponentState::Lightweight;
+            places = true;
+        }
+        if (!places) continue;
+        ++refreshed;
+        // Its faces may be elsewhere now: the mates place the components
+        // again. That is a change to the assembly, to be saved.
+        const doc::AssemblyState placed = tab.assembly->snapshot();
+        solved = solveAssemblyMates(*tab.assembly, /*reportSuccess=*/false) && solved;
+        if (placementsDiffer(placed, *tab.assembly)) {
+            tab.assembly->setDirty(true);
+            moved = true;
+        }
+        shown = shown || tab.assembly == m_assembly;
+    }
+    if (refreshed == 0) return;
+    if (shown) rebuildScene();  // reads the meshes again
+    if (moved) refreshModifiedIndicators();
+    // A mate the part no longer has a face for is reported by the solve.
+    if (solved && report) {
+        statusBar()->showMessage(
+            tr("\"%1\" changed: the assemblies placing it show it as it is now")
+                .arg(QFileInfo(QString::fromStdString(path)).fileName()),
+            10000);
+    }
+}
+
+void MainWindow::pollPartFiles() {
+    // Not under a dialog: one may be choosing among the components' faces.
+    if (QApplication::activeModalWidget() != nullptr) return;
+    for (const std::string& path : m_docManager.pollExternalChanges()) {
+        // A tab showing the file first: a component of a part open in a tab
+        // takes the tab's document, which is as old as its read.
+        if (!reloadTabsOf(path)) refreshComponentsOf(path);
+    }
+}
+
+bool MainWindow::reloadTabsOf(const std::string& path) {
+    const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+    for (size_t i = 0; i < m_tabs.size(); ++i) {
+        const DocTab& tab = m_tabs[i];
+        const std::string& tabPath =
+            tab.assembly ? tab.assembly->filePath() : tab.document->filePath();
+        if (!doc::DocumentManager::samePath(tabPath, path)) continue;
+        if (tab.assembly) {
+            statusBar()->showMessage(
+                tr("\"%1\" was changed by another program: close it and open it again to "
+                   "see the change")
+                    .arg(name),
+                15000);
+            continue;
+        }
+        const bool modified = isTabModified(tab);
+        if (modified) {
+            // Never lose the user's edits unasked: keeping them is the default.
+            m_tabBar->setCurrentIndex(static_cast<int>(i));
+            const std::shared_ptr<doc::Document> asked = tab.document;
+            QMessageBox box(QMessageBox::Warning, tr("File Changed on Disk"),
+                            tr("\"%1\" was changed by another program, and has unsaved "
+                               "changes here.")
+                                .arg(name),
+                            QMessageBox::Discard | QMessageBox::Ignore, this);
+            box.setInformativeText(
+                tr("Read it again, losing your changes, or keep your version? Saving yours "
+                   "replaces the other program's."));
+            box.button(QMessageBox::Discard)->setText(tr("Read Again"));
+            box.button(QMessageBox::Ignore)->setText(tr("Keep Mine"));
+            box.setDefaultButton(QMessageBox::Ignore);
+            box.setEscapeButton(QMessageBox::Ignore);
+            if (box.exec() != QMessageBox::Discard) return false;
+            // Its place, found again: the tabs may have changed meanwhile.
+            i = 0;
+            while (i < m_tabs.size() && m_tabs[i].document != asked) ++i;
+            if (i == m_tabs.size()) return false;
+        }
+        reloadTab(i, modified);
+        return true;  // one tab shows a file
+    }
+    return false;
+}
+
+void MainWindow::reloadTab(size_t index, bool asked) {
+    const std::shared_ptr<doc::Document> old = m_tabs[index].document;
+    const std::string path = old->filePath();
+    const QString fileName = QString::fromStdString(path);
+    const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
+    // A large file is read on a worker, as it is opened: here, reading it
+    // again froze the window every time another program saved it.
+    if (!openOnWorker(fileName)) {
+        const bool replaced = replaceTabDocument(old, readFile(path, drawing), asked);
+        refreshComponentsOf(path, replaced);
+        return;
+    }
+    if (m_reloadTask) {
+        // Its turn comes. Queued by path: the running reading may be of this
+        // file, and may have read it before this change.
+        m_reloadQueue.emplace_back(path, asked ? old : nullptr);
+        return;
+    }
+    m_reloadDocument = old;
+    m_reloadAsked = asked;
+    m_reloadTask = std::make_unique<BackgroundTask<FileOpen>>(
+        [path, drawing](const std::atomic<bool>& /*cancelled*/) {
+            return readFile(path, drawing);
+        });
+    m_reloadTask->start([this] {
+        QMetaObject::invokeMethod(this, &MainWindow::onReloadFinished, Qt::QueuedConnection);
+    });
+    m_statusPrompt->setText(tr("Reading %1 again...").arg(QFileInfo(fileName).fileName()));
+    updateBusyIndicator();
+}
+
+void MainWindow::onReloadFinished() {
+    if (!m_reloadTask || !m_reloadTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<FileOpen>> task = std::move(m_reloadTask);
+    const std::shared_ptr<doc::Document> old = std::move(m_reloadDocument);
+    updateBusyIndicator();
+    m_statusPrompt->setText(tr("Ready"));
+    const std::string path = old->filePath();
+    bool replaced = false;
+    if (task->cancelled()) {
+        statusBar()->showMessage(
+            tr("Reading \"%1\" again was cancelled: its tab shows it as it was read before")
+                .arg(QFileInfo(QString::fromStdString(path)).fileName()),
+            10000);
+    } else {
+        FileOpen read = task->take();
+        if (!task->error().empty()) read.error = task->error();
+        replaced = replaceTabDocument(old, std::move(read), m_reloadAsked);
+    }
+    refreshComponentsOf(path, replaced);
+    // The files waiting, until one is read on a worker again.
+    while (!m_reloadTask && !m_reloadQueue.empty()) {
+        const auto [next, givenUp] = m_reloadQueue.front();
+        m_reloadQueue.erase(m_reloadQueue.begin());
+        const std::shared_ptr<doc::Document> askedAbout = givenUp.lock();
+        size_t i = 0;
+        while (i < m_tabs.size() && m_tabs[i].document != askedAbout) ++i;
+        if (askedAbout && i < m_tabs.size()) {
+            reloadTab(i, true);  // its changes given up already
+        } else if (!reloadTabsOf(next)) {
+            refreshComponentsOf(next);
+        }
+    }
+}
+
+bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, FileOpen read,
+                                    bool asked) {
+    size_t index = 0;
+    while (index < m_tabs.size() && m_tabs[index].document != old) ++index;
+    if (index == m_tabs.size()) return false;  // closed meanwhile
+    DocTab& tab = m_tabs[index];
+    const std::string path = old->filePath();
+    const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+    if (!read.document) {
+        statusBar()->showMessage(
+            tr("\"%1\" was changed by another program, and could not be read again: %2")
+                .arg(name, QString::fromStdString(read.error)),
+            15000);
+        return false;
+    }
+    // Edited while it was read on a worker, and not given up: kept.
+    if (!asked && isTabModified(tab)) {
+        statusBar()->showMessage(
+            tr("\"%1\" was changed by another program; the changes you made meanwhile are "
+               "kept, and saving them replaces the other program's")
+                .arg(name),
+            15000);
+        return false;
+    }
+    const std::shared_ptr<doc::Document> fresh = std::move(read.document);
+    fresh->setFilePath(path);
+    fresh->setDirty(false);
+
+    // The old document goes: its build, if one runs, is of no use.
+    if (m_rebuildJob && m_rebuildDocument == old) m_rebuildJob->cancel();
+    old->setChangeCallback(nullptr);
+    forgetSnapshot(tab);
+    m_docManager.closeDocument(old);
+    m_docManager.adoptDocument(fresh);
+    m_docManager.noteSaved(fresh);  // found by its path, and watched from now
+    watchDocument(fresh);
+    fresh->undoStack().setLimit(static_cast<std::size_t>(Preferences::current().undoLimit));
+    tab.document = fresh;
+    tab.mesh.reset();
+    tab.meshBuild = 0;
+    tab.lastBuildMs = kBuildTimeUnknown;
+    tab.modelStale = fresh->needsBuild();
+
+    if (&tab == activeTab()) activateTabDocument();
+    refreshModifiedIndicators();
+    statusBar()->showMessage(
+        tr("\"%1\" was changed by another program, and has been read again").arg(name), 10000);
+    return true;
+}
+
+void MainWindow::openComponentPart(uint64_t id) {
+    const auto* comp = m_assembly ? m_assembly->component(id) : nullptr;
+    if (comp == nullptr) {
+        statusBar()->showMessage(
+            tr("Open Part: click a component, or choose one in the assembly tree"));
+        return;
+    }
+    if (comp->partPath.empty()) {
+        statusBar()->showMessage(tr("Open Part: the component has no part file"));
+        return;
+    }
+    openPath(QString::fromStdString(partFile(*comp, assemblyDir(*m_assembly))));
+}
+
+void MainWindow::onOpenPart() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Open Part is only available in an assembly document"));
+        return;
+    }
+    openComponentPart(targetComponent());
+}
+
+void MainWindow::onBillOfMaterials() {
+    if (!m_assembly) {
+        statusBar()->showMessage(tr("Bill of Materials is only available in an assembly document"));
+        return;
+    }
+    const doc::BillOfMaterials bom = doc::BomGenerator::generate(*m_assembly);
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Bill of Materials"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* table = new QTableWidget(static_cast<int>(bom.lines.size()), 3, &dialog);
+    table->setObjectName(QStringLiteral("bom"));
+    table->setHorizontalHeaderLabels({tr("Item"), tr("Part"), tr("Quantity")});
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->verticalHeader()->hide();
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    for (size_t i = 0; i < bom.lines.size(); ++i) {
+        const doc::BomLine& line = bom.lines[i];
+        const int row = static_cast<int>(i);
+        table->setItem(row, 0, new QTableWidgetItem(QString::number(line.item)));
+        auto* part = new QTableWidgetItem(QString::fromStdString(line.partName));
+        part->setToolTip(QString::fromStdString(line.partPath));
+        table->setItem(row, 1, part);
+        table->setItem(row, 2, new QTableWidgetItem(QString::number(line.quantity)));
+    }
+    layout->addWidget(table);
+    layout->addWidget(new QLabel(
+        tr("%n component(s) in all; suppressed ones are left out.", "", bom.totalQuantity()),
+        &dialog));
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    QPushButton* exportButton =
+        buttons->addButton(tr("Export CSV..."), QDialogButtonBox::ActionRole);
+    exportButton->setObjectName(QStringLiteral("exportBom"));
+    exportButton->setEnabled(!bom.lines.empty());
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    const QString assemblyPath = QString::fromStdString(m_assembly->filePath());
+    connect(exportButton, &QPushButton::clicked, &dialog, [this, &dialog, &bom, assemblyPath] {
+        const QFileInfo from(assemblyPath);
+        const QString suggested = assemblyPath.isEmpty()
+                                      ? QStringLiteral("bom.csv")
+                                      : from.dir().filePath(from.completeBaseName() + "-bom.csv");
+        const QString file =
+            QFileDialog::getSaveFileName(&dialog, tr("Export Bill of Materials"), suggested,
+                                         tr("CSV Files (*.csv);;All Files (*)"));
+        if (file.isEmpty()) return;
+        if (!io::BomExport::toCsv(file.toStdString(), bom)) {
+            reportFileError(tr("Could not export"), file.toStdString(),
+                            "the file could not be written");
+            return;
+        }
+        statusBar()->showMessage(
+            tr("Bill of materials exported to \"%1\"").arg(QFileInfo(file).fileName()));
+    });
+    layout->addWidget(buttons);
+    dialog.resize(480, 320);
+    dialog.exec();
 }
 
 // ---------------------------------------------------------------------------
@@ -5257,7 +5598,10 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask) return;
+    if (!m_rebuildJob || m_importTask || m_interferenceTask || m_openTask || m_massTask ||
+        m_reloadTask) {
+        return;
+    }
     const int total = m_rebuildJob->total();
     if (total > 0) {
         m_rebuildProgress->setRange(0, total);
