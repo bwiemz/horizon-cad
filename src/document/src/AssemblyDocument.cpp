@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/modeling/InterferenceChecker.h"
@@ -65,11 +66,34 @@ std::shared_ptr<geo::MeshData> AssemblyDocument::drawingMesh() const {
                 merged->positions.end(),
                 {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
         }
-        for (size_t i = 0; i + 2 < mesh.normals.size(); i += 3) {
-            const math::Vec3 n = placed
-                                     .transformDirection(math::Vec3(
-                                         mesh.normals[i], mesh.normals[i + 1], mesh.normals[i + 2]))
-                                     .normalized();
+        // Its normals, one to each vertex: its own, or, for a mesh without
+        // them (a part's cached tessellation may have none), made from its
+        // triangles, so each vertex keeps its own and not the next part's.
+        std::vector<math::Vec3> normals(mesh.positions.size() / 3);
+        if (mesh.normals.size() == mesh.positions.size()) {
+            for (size_t v = 0; v < normals.size(); ++v) {
+                normals[v] = math::Vec3(mesh.normals[3 * v], mesh.normals[3 * v + 1],
+                                        mesh.normals[3 * v + 2]);
+            }
+        } else {
+            const auto at = [&mesh](uint32_t v) {
+                return math::Vec3(mesh.positions[3 * v], mesh.positions[3 * v + 1],
+                                  mesh.positions[3 * v + 2]);
+            };
+            for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+                const uint32_t a = mesh.indices[t];
+                const uint32_t b = mesh.indices[t + 1];
+                const uint32_t c = mesh.indices[t + 2];
+                if (a >= normals.size() || b >= normals.size() || c >= normals.size()) continue;
+                const math::Vec3 area = (at(b) - at(a)).cross(at(c) - at(a));  // weighted
+                normals[a] = normals[a] + area;
+                normals[b] = normals[b] + area;
+                normals[c] = normals[c] + area;
+            }
+        }
+        for (const math::Vec3& own : normals) {
+            const math::Vec3 turned = placed.transformDirection(own);
+            const math::Vec3 n = turned.length() > 0.0 ? turned.normalized() : turned;
             merged->normals.insert(
                 merged->normals.end(),
                 {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)});
@@ -170,6 +194,8 @@ void AssemblyDocument::restore(AssemblyState state) {
         if (now == nullptr || now->partPath != comp.partPath) continue;
         comp.cachedMesh = now->cachedMesh;
         comp.resolvedPart = now->resolvedPart;
+        comp.resolvedAssembly = now->resolvedAssembly;  // a subassembly's (Phase 159)
+        comp.assemblySolid = now->assemblySolid;
         comp.state = now->state;
     }
     m_components = std::move(state.components);
