@@ -10,6 +10,7 @@
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QFileOpenEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -123,6 +124,29 @@ TEST(AppEssentialsTest, OpenedFilesAreFirstInOpenRecent) {
     entry->trigger();
     EXPECT_EQ(tabCount(w), before + 2);
     EXPECT_EQ(QFileInfo(RecentFiles::list()[0]).fileName(), QStringLiteral("first.dxf"));
+    RecentFiles::clear();
+}
+
+// On macOS a document opened from the Finder, or dropped on the Dock icon,
+// reaches the running application as an event, not on its command line.
+TEST(AppEssentialsTest, AFileTheSystemAsksToOpenOpensInATab) {
+    RecentFiles::clear();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString drawing = dir.filePath(QStringLiteral("from-finder.dxf"));
+    writeDrawing(drawing);
+
+    MainWindow w;
+    const int before = tabCount(w);
+    QFileOpenEvent event(drawing);
+    QCoreApplication::sendEvent(QCoreApplication::instance(), &event);
+    EXPECT_EQ(tabCount(w), before + 1);
+    ASSERT_EQ(RecentFiles::list().size(), 1);
+    EXPECT_EQ(QFileInfo(RecentFiles::list()[0]).fileName(), QStringLiteral("from-finder.dxf"));
+
+    QFileOpenEvent empty{QString()};
+    QCoreApplication::sendEvent(QCoreApplication::instance(), &empty);
+    EXPECT_EQ(tabCount(w), before + 1) << "an event naming no file opens nothing";
     RecentFiles::clear();
 }
 

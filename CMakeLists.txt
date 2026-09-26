@@ -72,6 +72,20 @@ if(HZ_BUILD_TESTS)
     enable_testing()
 endif()
 
+# Where the files the application ships (translation catalogs, samples) are
+# placed, in the build tree and in a package: next to the executable, except
+# in the macOS application bundle src/app makes, whose Contents/Resources
+# holds them (a signature takes everything in Contents/MacOS for code).
+# Application::shippedFilesDirectory() looks in the same place.
+if(APPLE)
+    set(HZ_BUNDLE_NAME HorizonCAD)
+    set(HZ_SHIPPED_DIR "$<TARGET_BUNDLE_CONTENT_DIR:horizon>/Resources")
+    set(HZ_INSTALL_SHIPPED_DIR "${HZ_BUNDLE_NAME}.app/Contents/Resources")
+else()
+    set(HZ_SHIPPED_DIR "$<TARGET_FILE_DIR:horizon>")
+    set(HZ_INSTALL_SHIPPED_DIR bin)
+endif()
+
 # All source libraries
 add_subdirectory(src)
 

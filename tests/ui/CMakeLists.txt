@@ -31,11 +31,12 @@ target_compile_definitions(hz_ui_tests
         # Location of the shipped .ts catalog sources, for coverage checks.
         HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations"
         HZ_CRASH_CHILD="$<TARGET_FILE:hz_crash_child>")
-# Where the compiled catalogs are placed, next to the executable (Phase 166):
-# a test loads each one. None there (no lrelease), and the test says so.
+# Where the compiled catalogs are placed, where the application looks (Phase
+# 166; HZ_SHIPPED_DIR): a test loads each one. None there (no lrelease), and
+# the test says so.
 if(TARGET horizon)
     target_compile_definitions(hz_ui_tests
-        PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+        PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="${HZ_SHIPPED_DIR}/translations")
 endif()
 
 include(GoogleTest)
@@ -87,13 +88,13 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         # The catalogs the application ships, to check a window in another
         # language.
         target_compile_definitions(hz_ui_window_tests
-            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="${HZ_SHIPPED_DIR}/translations")
     endif()
     if(TARGET horizon_samples)
         # The samples the application ships (Phase 168b), made before the
         # tests that open them.
         target_compile_definitions(hz_ui_window_tests
-            PRIVATE HZ_BUILT_SAMPLES_DIR="$<TARGET_FILE_DIR:horizon>/samples")
+            PRIVATE HZ_BUILT_SAMPLES_DIR="${HZ_SHIPPED_DIR}/samples")
         add_dependencies(hz_ui_window_tests horizon_samples)
     endif()
     get_target_property(_hz_qt_core_type Qt6::Core TYPE)

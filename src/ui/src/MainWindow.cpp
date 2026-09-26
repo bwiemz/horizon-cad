@@ -85,6 +85,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AngularDimensionTool.h"
+#include "horizon/ui/Application.h"
 #include "horizon/ui/ArcTool.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/AssemblyWorkbench.h"
@@ -582,6 +583,13 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Wire up selection changes to property panel.
     connect(m_viewport, &ViewportWidget::selectionChanged, this, &MainWindow::onSelectionChanged);
+
+    // A document the system asks to open (on macOS, from the Finder or the
+    // Dock) opens in a tab, as one named on the command line does.
+    if (auto* application = qobject_cast<Application*>(QCoreApplication::instance())) {
+        connect(application, &Application::fileOpenRequested, this,
+                [this](const QString& file) { openFiles({file}); });
+    }
 
     // Start with the Select tool active.
     onSelectTool();
@@ -1940,7 +1948,8 @@ void MainWindow::applyPreferences(const Preferences& prefs) {
 }
 
 void MainWindow::onPreferences() {
-    const QString translations = QDir(QApplication::applicationDirPath()).filePath("translations");
+    const QString translations =
+        QDir(Application::shippedFilesDirectory()).filePath(QStringLiteral("translations"));
     PreferencesDialog dialog(Preferences::current(), LocaleManager::availableLocales(translations),
                              this);
     if (dialog.exec() != QDialog::Accepted) return;
@@ -2353,7 +2362,7 @@ void MainWindow::rebuildRecentMenu() {
 QString MainWindow::sampleDirectory() {
     QString forced = qEnvironmentVariable("HZ_SAMPLES_DIR");
     if (!forced.isEmpty()) return forced;
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("samples"));
+    return QDir(Application::shippedFilesDirectory()).filePath(QStringLiteral("samples"));
 }
 
 QString MainWindow::sampleCopiesDirectory() {

@@ -1,9 +1,13 @@
 name: Release
 
-# A tag vX.Y.Z builds, tests and packages Horizon CAD on Windows and Linux,
-# writes SHA-256 checksums, and opens a DRAFT GitHub release with them: the
-# owner reviews and publishes it. Run by hand (workflow_dispatch) to try the
-# packaging without releasing; the artifacts are then kept on the run.
+# A tag vX.Y.Z builds, tests and packages Horizon CAD on Windows, Linux and
+# macOS, writes SHA-256 checksums, and opens a DRAFT GitHub release with them:
+# the owner reviews and publishes it. Run by hand (workflow_dispatch) to try
+# the packaging without releasing; the artifacts are then kept on the run.
+#
+# The Windows installer and the macOS disk image are signed (and the disk
+# image notarized) when the repository has the secrets for it; without them
+# they are not, and the release says so. docs/RELEASING.md lists the secrets.
 on:
   push:
     tags: ['v*']
@@ -168,6 +172,11 @@ jobs:
     timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: x64-windows
+      # A step's `if:` cannot read secrets, so whether there are any is said
+      # here; only the signing steps are given the secrets themselves.
+      HZ_WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+    outputs:
+      signed: ${{ steps.sign-installer.outputs.signed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -219,9 +228,45 @@ jobs:
       - name: Test
         run: ctest --test-dir build/ci-windows-release -C Release --output-on-failure
 
+      # The executable is signed before it is packed, then the installer.
+      # signtool is on the path msvc-dev-cmd set up.
+      - name: Sign the executable
+        if: env.HZ_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERTIFICATE))
+          signtool sign /f $pfx /p $env:CERTIFICATE_PASSWORD /fd SHA256 `
+            /tr http://timestamp.digicert.com /td SHA256 build/ci-windows-release/src/app/horizon.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # NSIS is installed on GitHub's Windows images.
       - name: Package an installer
         run: cpack --config build/ci-windows-release/CPackConfig.cmake -B dist -G NSIS
+
+      - name: Sign the installer
+        id: sign-installer
+        if: env.HZ_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
+          $installer = (Get-ChildItem dist/*.exe).FullName
+          signtool sign /f $pfx /p $env:CERTIFICATE_PASSWORD /fd SHA256 `
+            /tr http://timestamp.digicert.com /td SHA256 $installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          signtool verify /pa $installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "signed=true" >> $env:GITHUB_OUTPUT
+
+      - name: Forget the certificate
+        if: always()
+        shell: pwsh
+        run: Remove-Item (Join-Path $env:RUNNER_TEMP 'certificate.pfx') -ErrorAction SilentlyContinue
 
       - name: Keep the installer
         uses: actions/upload-artifact@v7
@@ -230,9 +275,142 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
 
+  macos:
+    name: macOS (disk image)
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_TRIPLET: arm64-osx
+      # As on Windows: whether the secrets are there, not the secrets.
+      HZ_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.MACOS_SIGNING_IDENTITY != '' }}
+      HZ_MACOS_NOTARIZING: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    outputs:
+      signed: ${{ steps.package.outputs.signed }}
+      notarized: ${{ steps.notarize.outputs.notarized }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-arm64-osx-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-arm64-osx-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      # Qt from Homebrew (with macdeployqt and the Linguist tools), and Ninja.
+      - name: Install macOS dependencies
+        run: |
+          brew install qt ninja
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt)" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake --preset macos-release -DHZ_BUILD_TESTS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+
+      - name: Build
+        run: cmake --build build/macos-release
+
+      - name: Test
+        run: ctest --test-dir build/macos-release --output-on-failure --timeout 900
+
+      # The Developer ID certificate in a keychain of this run's own, which
+      # codesign finds it in.
+      - name: Import the signing certificate
+        if: env.HZ_MACOS_SIGNING == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="${RUNNER_TEMP}/signing.keychain-db"
+          password="$(uuidgen)"
+          certificate="${RUNNER_TEMP}/certificate.p12"
+          echo "${CERTIFICATE}" | base64 --decode > "${certificate}"
+          security create-keychain -p "${password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${password}" "${keychain}"
+          security import "${certificate}" -P "${CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain}"
+          security set-key-partition-list -S apple-tool:,apple: -k "${password}" "${keychain}"
+          # shellcheck disable=SC2046 # the list is one keychain path per word
+          security list-keychains -d user -s "${keychain}" $(security list-keychains -d user | tr -d '"')
+          rm -f "${certificate}"
+
+      # Signed with the Developer ID when there is one, ad hoc otherwise
+      # (packaging/macos/make-dmg.sh).
+      - name: Package a disk image
+        id: package
+        env:
+          HZ_MACOS_SIGNING_IDENTITY: ${{ env.HZ_MACOS_SIGNING == 'true' && secrets.MACOS_SIGNING_IDENTITY || '' }}
+        run: |
+          packaging/macos/make-dmg.sh build/macos-release "${PWD}/dist"
+          if [[ -n "${HZ_MACOS_SIGNING_IDENTITY}" ]]; then echo "signed=true" >> "$GITHUB_OUTPUT"; fi
+
+      # What is shipped must start: the application from the disk image, so
+      # with only the Qt macdeployqt put in it. --self-test exits 0 once the
+      # viewport has drawn, 3 on a graphics problem.
+      - name: Start the application from the disk image
+        run: |
+          mount="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "${mount}" dist/*.dmg
+          set +e
+          perl -e 'alarm shift; exec @ARGV' 60 \
+            "${mount}/HorizonCAD.app/Contents/MacOS/HorizonCAD" --self-test 2>&1 | tee self-test.log
+          status=${PIPESTATUS[0]}
+          set -e
+          hdiutil detach "${mount}"
+          if [[ "${status}" -eq 3 ]]; then
+            # The runner is a virtual machine; its OpenGL may not draw.
+            echo "::warning::the application started, but its viewport could not draw on this runner"
+            exit 0
+          fi
+          test "${status}" -eq 0
+
+      - name: Notarize the disk image
+        id: notarize
+        if: env.HZ_MACOS_SIGNING == 'true' && env.HZ_MACOS_NOTARIZING == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          dmg=$(ls dist/*.dmg)
+          credentials=(--apple-id "${APPLE_ID}" --team-id "${APPLE_TEAM_ID}" --password "${APPLE_APP_PASSWORD}")
+          xcrun notarytool submit "${dmg}" "${credentials[@]}" --wait --output-format json > notarization.json
+          cat notarization.json
+          id=$(python3 -c 'import json; print(json.load(open("notarization.json"))["id"])')
+          status=$(python3 -c 'import json; print(json.load(open("notarization.json"))["status"])')
+          if [[ "${status}" != "Accepted" ]]; then
+            xcrun notarytool log "${id}" "${credentials[@]}"
+            echo "::error::notarization ended ${status}"
+            exit 1
+          fi
+          xcrun stapler staple "${dmg}"
+          xcrun stapler validate "${dmg}"
+          echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      - name: Forget the signing keychain
+        if: always() && env.HZ_MACOS_SIGNING == 'true'
+        run: security delete-keychain "${RUNNER_TEMP}/signing.keychain-db" || true
+
+      - name: Keep the disk image
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
   release:
     name: Draft the release
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     timeout-minutes: 15
@@ -249,6 +427,26 @@ jobs:
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
 
+      # A package that is not signed is said so, above the generated notes,
+      # with what a user does to run it.
+      - name: Say what is not signed
+        env:
+          WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
+          MACOS_SIGNED: ${{ needs.macos.outputs.signed }}
+          MACOS_NOTARIZED: ${{ needs.macos.outputs.notarized }}
+        run: |
+          {
+            if [[ "${WINDOWS_SIGNED}" != "true" ]]; then
+              echo "- The Windows installer is not signed. Windows SmartScreen warns before it runs: choose **More info**, then **Run anyway**."
+            fi
+            if [[ "${MACOS_SIGNED}" != "true" ]]; then
+              echo "- The macOS disk image is not signed or notarized, so macOS will not open the application at first. After the first try, open **System Settings ▸ Privacy & Security** and choose **Open Anyway**."
+            elif [[ "${MACOS_NOTARIZED}" != "true" ]]; then
+              echo "- The macOS disk image is signed but not notarized, so macOS will not open the application at first. After the first try, open **System Settings ▸ Privacy & Security** and choose **Open Anyway**."
+            fi
+          } > unsigned.md
+          cat unsigned.md
+
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -257,4 +455,5 @@ jobs:
             --repo "${{ github.repository }}" \
             --draft \
             --title "Horizon CAD ${GITHUB_REF_NAME#v}" \
+            --notes-file unsigned.md \
             --generate-notes

@@ -26,14 +26,43 @@ if (WIN32)
     target_sources(horizon PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/horizon.rc)
 endif()
 
+# On macOS the application is a bundle, HorizonCAD.app: its Info.plist names
+# it, gives its icon, and says which documents it opens (the Finder hands them
+# over as events; see Application::fileOpenRequested).
+if (APPLE)
+    # Built without a deployment target, the executable needs the macOS it was
+    # built on, and so does Homebrew's Qt, which is built for it.
+    if (CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(HZ_MACOS_MINIMUM ${CMAKE_OSX_DEPLOYMENT_TARGET})
+    else()
+        execute_process(COMMAND sw_vers -productVersion
+                        OUTPUT_VARIABLE _hz_macos_version
+                        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX MATCH "^[0-9]+" _hz_macos_major "${_hz_macos_version}")
+        set(HZ_MACOS_MINIMUM "${_hz_macos_major}.0")
+    endif()
+    configure_file(${CMAKE_SOURCE_DIR}/packaging/macos/Info.plist.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
+    set(HZ_APP_ICNS "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.icns")
+    target_sources(horizon PRIVATE ${HZ_APP_ICNS})
+    set_source_files_properties(${HZ_APP_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(horizon PROPERTIES
+        MACOSX_BUNDLE ON
+        OUTPUT_NAME ${HZ_BUNDLE_NAME}
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
+endif()
+
 install(TARGETS horizon
     RUNTIME DESTINATION bin
+    BUNDLE DESTINATION .
 )
 
-# The Qt runtime next to the executable in a Windows package: Qt's DLLs and
-# the plugins it needs (the build tree deploys them itself; see below). Linux
-# packages get Qt from linuxdeploy's Qt plugin (packaging/linux).
-if (WIN32 AND COMMAND qt_generate_deploy_app_script)
+# The Qt runtime in a Windows or macOS package: on Windows Qt's DLLs and the
+# plugins it needs next to the executable (the build tree deploys them itself;
+# see below), on macOS Qt's frameworks and plugins inside the bundle, by
+# macdeployqt. Linux packages get Qt from linuxdeploy's Qt plugin
+# (packaging/linux).
+if ((WIN32 OR APPLE) AND COMMAND qt_generate_deploy_app_script)
     qt_generate_deploy_app_script(
         TARGET horizon
         OUTPUT_SCRIPT _hz_deploy_script
@@ -101,21 +130,20 @@ else()
 endif()
 if (HZ_QM_FILES)
     message(STATUS "Horizon translations: ENABLED (${HZ_LRELEASE_USED})")
-    # Compile the catalogs and copy them next to the executable, where
-    # LocaleManager looks (<exe dir>/translations), in every build: a copy
+    # Compile the catalogs and copy them where the application looks
+    # (<shipped files>/translations; see HZ_SHIPPED_DIR), in every build: a copy
     # hung on the executable's POST_BUILD ran only when it was relinked, so an
     # edited catalog did not reach it. A generator expression in a source
     # file's OUTPUT_LOCATION property is not evaluated; in a COMMAND it is.
     add_custom_target(horizon_translations ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-                $<TARGET_FILE_DIR:horizon>/translations
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${HZ_SHIPPED_DIR}/translations
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HZ_QM_FILES}
-                $<TARGET_FILE_DIR:horizon>/translations
+                ${HZ_SHIPPED_DIR}/translations
         DEPENDS ${HZ_QM_FILES}
-        COMMENT "Placing the .qm catalogs next to the horizon executable"
+        COMMENT "Placing the .qm catalogs where the horizon executable looks"
         VERBATIM)
     # ... and in a package, where LocaleManager looks for them the same way.
-    install(FILES ${HZ_QM_FILES} DESTINATION bin/translations)
+    install(FILES ${HZ_QM_FILES} DESTINATION ${HZ_INSTALL_SHIPPED_DIR}/translations)
     # Every catalog is where the application looks for it.
     if (HZ_BUILD_TESTS)
         set(HZ_QM_NAMES)
@@ -125,7 +153,7 @@ if (HZ_QM_FILES)
         endforeach()
         add_test(NAME TranslationsAreNextToTheExecutable
             COMMAND ${CMAKE_COMMAND}
-                -DDIR=$<TARGET_FILE_DIR:horizon>/translations
+                -DDIR=${HZ_SHIPPED_DIR}/translations
                 "-DNAMES=${HZ_QM_NAMES}"
                 -P ${CMAKE_SOURCE_DIR}/cmake/CheckTranslations.cmake)
     endif()
@@ -139,8 +167,8 @@ endif()
 
 # Samples (Phase 168b): documents made by a program that uses the same API as
 # the application, so they always open in the version that ships them. Made
-# at build time, placed next to the executable (<exe dir>/samples, where File
-# > Open Sample looks), and installed there.
+# at build time, placed where File > Open Sample looks (<shipped
+# files>/samples; see HZ_SHIPPED_DIR), and installed there.
 add_executable(hz_make_samples samples/MakeSamples.cpp)
 target_link_libraries(hz_make_samples
     PRIVATE
@@ -163,10 +191,10 @@ add_custom_command(OUTPUT ${HZ_SAMPLE_FILES}
     COMMENT "Making the sample documents"
     VERBATIM)
 add_custom_target(horizon_samples ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:horizon>/samples
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${HZ_SHIPPED_DIR}/samples
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HZ_SAMPLE_FILES}
-            $<TARGET_FILE_DIR:horizon>/samples
+            ${HZ_SHIPPED_DIR}/samples
     DEPENDS ${HZ_SAMPLE_FILES}
-    COMMENT "Placing the samples next to the horizon executable"
+    COMMENT "Placing the samples where the horizon executable looks"
     VERBATIM)
-install(FILES ${HZ_SAMPLE_FILES} DESTINATION bin/samples)
+install(FILES ${HZ_SAMPLE_FILES} DESTINATION ${HZ_INSTALL_SHIPPED_DIR}/samples)
