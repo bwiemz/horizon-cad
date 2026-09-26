@@ -80,7 +80,8 @@ TEST(CrashReportTest, ACrashLeavesAReportOfWhatHappened) {
     EXPECT_TRUE(report.contains(QStringLiteral("Log: ") + log)) << report.toStdString();
     // A backtrace that goes past where the signal stopped the thread: a
     // frame for that, and for its callers (the raise, the crash, main...).
-    const qsizetype frames = report.indexOf(QStringLiteral("Backtrace:\n"));
+    // Its heading is "Backtrace:", or on Windows "Backtrace (addresses; ...)".
+    const qsizetype frames = report.indexOf(QStringLiteral("Backtrace"));
     ASSERT_GE(frames, 0) << report.toStdString();
     const qsizetype tail = report.indexOf(QStringLiteral("The log's last lines"), frames);
     const QString trace = report.mid(frames, tail < 0 ? -1 : tail - frames);
