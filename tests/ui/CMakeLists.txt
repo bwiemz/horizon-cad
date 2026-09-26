@@ -75,6 +75,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Units.cpp
         test_Variables.cpp
         test_Help.cpp
+        test_Samples.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE
@@ -87,6 +88,13 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         # language.
         target_compile_definitions(hz_ui_window_tests
             PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+    endif()
+    if(TARGET horizon_samples)
+        # The samples the application ships (Phase 168b), made before the
+        # tests that open them.
+        target_compile_definitions(hz_ui_window_tests
+            PRIVATE HZ_BUILT_SAMPLES_DIR="$<TARGET_FILE_DIR:horizon>/samples")
+        add_dependencies(hz_ui_window_tests horizon_samples)
     endif()
     get_target_property(_hz_qt_core_type Qt6::Core TYPE)
     if(_hz_qt_core_type STREQUAL "STATIC_LIBRARY")

@@ -18,7 +18,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 appdir="${work}/AppDir"
 
-# The install tree: executable, translations, desktop entry, metadata, icons,
+# The install tree: executable, translations, samples, desktop entry, metadata, icons,
 # licences. Then linuxdeploy adds the libraries and Qt plugins it needs.
 cmake --install "${build}" --prefix "${appdir}/usr"
 

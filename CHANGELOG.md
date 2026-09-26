@@ -60,6 +60,14 @@ work, not "post-1.0".
     polyline) switched to the Arc, Linear dimension and Circle tools
     instead. They now work.
 
+- **Samples (168b).**
+  - File ▸ Open Sample lists samples to open and learn from: an L-shaped
+    bracket, a plate with a row of counterbored holes, a pin, an assembly
+    of the plate and the pin held by mates, a drawing sheet of the bracket,
+    and a 2D gasket.
+  - A sample opens as a copy in "Horizon CAD Samples" in your documents,
+    so you can change and save it; a copy you have changed is kept.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

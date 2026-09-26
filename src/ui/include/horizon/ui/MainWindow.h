@@ -134,6 +134,18 @@ public slots:
     /// The guide's window, when it has been opened.
     HelpWindow* helpWindow() const { return m_help; }
 
+    /// File > Open Sample (Phase 168b). The samples shipped with the
+    /// application: <exe dir>/samples, or HZ_SAMPLES_DIR.
+    static QString sampleDirectory();
+    /// Where they are copied to be opened, and so saved: "Horizon CAD
+    /// Samples" in the user's documents, or HZ_SAMPLE_COPIES_DIR.
+    static QString sampleCopiesDirectory();
+    /// Open the sample @p fileName ("bracket.hzpart"): the samples are copied
+    /// into sampleCopiesDirectory() (all of them, so an assembly finds its
+    /// parts; none over a copy already there, which may have been changed),
+    /// and the copy opened. False, and said, when it cannot be.
+    bool openSample(const QString& fileName);
+
 protected:
     /// Offers to save every modified document; ignores the close if the user
     /// cancels or a save fails.
@@ -348,6 +360,7 @@ private:
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();
+    void rebuildSampleMenu();
 
     /// Show what the active document's last build gave: failures in the
     /// feature tree panel, and the model in the viewport.
@@ -583,6 +596,7 @@ private:
     /// are unique across documents, so another document's is simply not found.
     uint64_t m_profileSketchId = 0;
     QMenu* m_recentMenu = nullptr;
+    QMenu* m_sampleMenu = nullptr;
 
     // Model rebuilds on a worker thread (Phase 114).
     RebuildMode m_rebuildMode = RebuildMode::Auto;
