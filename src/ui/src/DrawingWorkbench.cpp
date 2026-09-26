@@ -283,6 +283,21 @@ const topo::Solid* DrawingWorkbench::partSolid(const std::string& path, doc::Doc
     return holder.solid();
 }
 
+namespace {
+
+/// Every file @p assembly places, at every depth, added to @p files: what a
+/// drawing of it follows (Phase 159).
+void filesOf(const doc::AssemblyDocument& assembly, std::vector<std::string>& files) {
+    const std::filesystem::path folder = std::filesystem::path(assembly.filePath()).parent_path();
+    for (const auto& c : assembly.components()) {
+        const std::filesystem::path part(c.partPath);
+        files.push_back((part.is_relative() ? folder / part : part).lexically_normal().string());
+        if (c.resolvedAssembly) filesOf(*c.resolvedAssembly, files);
+    }
+}
+
+}  // namespace
+
 std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const std::string& path,
                                                                            std::string* error) {
     auto source = std::make_shared<Source>();
@@ -319,11 +334,29 @@ std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const
         return (part.is_relative() ? folder / part : part).lexically_normal().string();
     };
     std::vector<std::unique_ptr<doc::Document>> read;
+    std::vector<std::shared_ptr<const topo::Solid>> subassemblies;  // held while gathered
     std::map<std::string, const topo::Solid*> parts;
     const auto partOf = [&](const doc::ComponentInstance& c) -> const topo::Solid* {
         const std::string file = resolved(c.partPath);
         const auto known = parts.find(file);
         if (known != parts.end()) return known->second;
+        if (c.isAssembly()) {
+            // A subassembly (Phase 159): its components gathered, drawn as
+            // one; its files, at every depth, the drawing's too.
+            doc::ComponentInstance sub = c;
+            sub.partPath = file;
+            const topo::Solid* solid = nullptr;
+            if (m_host.documents().resolveComponent(sub, doc::ComponentState::Resolved, {}, nullptr,
+                                                    {doc::DocumentManager::canonicalPath(path)}) &&
+                sub.assemblySolid) {
+                subassemblies.push_back(sub.assemblySolid);
+                solid = subassemblies.back().get();
+                filesOf(*sub.resolvedAssembly, source->files);
+            }
+            parts.emplace(file, solid);
+            source->files.push_back(file);
+            return solid;
+        }
         read.push_back(std::make_unique<doc::Document>());
         const topo::Solid* solid = partSolid(file, *read.back(), nullptr);
         parts.emplace(file, solid);

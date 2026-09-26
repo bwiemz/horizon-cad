@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <memory>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -413,4 +415,59 @@ TEST(AssemblyMatesTest, AMateOnAFaceThatIsGoneIsSaidSo) {
     EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
     EXPECT_EQ(why,
               "mate " + std::to_string(id) + " references geometry that could not be resolved");
+}
+
+namespace {
+
+/// A one-triangle mesh in the XY plane at @p z, with its normals (+z) or
+/// without.
+std::shared_ptr<hz::geo::MeshData> triangleAt(float z, bool withNormals) {
+    auto mesh = std::make_shared<hz::geo::MeshData>();
+    mesh->positions = {0, 0, z, 1, 0, z, 0, 1, z};
+    if (withNormals) mesh->normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+    mesh->indices = {0, 1, 2};
+    return mesh;
+}
+
+}  // namespace
+
+// Phase 159: a subassembly's mesh is its components' merged. One whose mesh
+// has no normals (a part's cached tessellation may have none) gets them
+// from its triangles, so every vertex after it keeps its own.
+TEST(AssemblyDocumentTest, TheDrawingMeshKeepsANormalForEveryVertex) {
+    AssemblyDocument asmDoc;
+    for (const bool normals : {true, false, true}) {
+        ComponentInstance c;
+        c.cachedMesh = triangleAt(0.0f, normals);
+        c.transform = Mat4::rotationX(std::numbers::pi);  // upside down: normals -z
+        asmDoc.addComponent(c);
+    }
+    const auto merged = asmDoc.drawingMesh();
+    ASSERT_NE(merged, nullptr);
+    ASSERT_EQ(merged->normals.size(), merged->positions.size());
+    for (size_t i = 0; i + 2 < merged->normals.size(); i += 3) {
+        EXPECT_NEAR(merged->normals[i + 2], -1.0f, 1e-6f) << "vertex " << i / 3;
+    }
+    EXPECT_EQ(merged->indices.size(), 9u);
+    EXPECT_EQ(merged->indices[8], 8u) << "the third triangle's own vertices";
+}
+
+// An undo keeps what a subassembly component has resolved since, as it
+// keeps a part's.
+TEST(AssemblyDocumentTest, RestoringKeepsASubassemblysResolvedGeometry) {
+    AssemblyDocument asmDoc;
+    ComponentInstance c;
+    c.partPath = "pair.hzasm";
+    const uint64_t id = asmDoc.addComponent(c);
+    const AssemblyState before = asmDoc.snapshot();
+    auto* comp = asmDoc.component(id);
+    comp->resolvedAssembly = std::make_shared<AssemblyDocument>();
+    comp->assemblySolid = std::make_shared<hz::topo::Solid>();
+    comp->state = ComponentState::Resolved;
+    asmDoc.restore(before);
+    comp = asmDoc.component(id);
+    ASSERT_NE(comp, nullptr);
+    EXPECT_NE(comp->resolvedAssembly, nullptr);
+    EXPECT_NE(comp->assemblySolid, nullptr);
+    EXPECT_EQ(comp->state, ComponentState::Resolved);
 }

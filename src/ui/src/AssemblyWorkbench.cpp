@@ -8,6 +8,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -16,6 +17,7 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <filesystem>
@@ -58,6 +60,21 @@ math::BoundingBox placedBounds(const doc::ComponentInstance& comp) {
         box.expand(comp.transform.transformPoint(math::Vec3(p[i], p[i + 1], p[i + 2])));
     }
     return box;
+}
+
+/// Whether @p comp places the file at @p path: is it, or, a subassembly,
+/// places it at any depth (Phase 159). @p dir: the folder of the assembly
+/// @p comp is in.
+bool placesFile(const doc::ComponentInstance& comp, const std::string& dir,
+                const std::string& path) {
+    const std::string file = AssemblyWorkbench::partFile(comp, dir);
+    if (doc::DocumentManager::samePath(file, path)) return true;
+    if (!comp.resolvedAssembly) return false;
+    const std::string subDir = std::filesystem::path(file).parent_path().string();
+    const auto& children = comp.resolvedAssembly->components();
+    return std::any_of(children.begin(), children.end(), [&](const doc::ComponentInstance& child) {
+        return placesFile(child, subDir, path);
+    });
 }
 
 /// Whether any component of @p now is placed other than in @p before.
@@ -184,9 +201,11 @@ void AssemblyWorkbench::onInsertComponent() {
         return;
     }
 
-    QString fileName =
-        QFileDialog::getOpenFileName(m_host.dialogParent(), tr("Insert Component"), QString(),
-                                     tr("Horizon Parts (*.hzpart);;All Files (*)"));
+    // A part, or an assembly placed whole (Phase 159): a subassembly.
+    QString fileName = QFileDialog::getOpenFileName(
+        m_host.dialogParent(), tr("Insert Component"), QString(),
+        tr("Parts and Assemblies (*.hzpart *.hzasm);;Horizon Parts (*.hzpart);;Horizon "
+           "Assemblies (*.hzasm);;All Files (*)"));
     if (fileName.isEmpty()) return;
 
     doc::ComponentInstance comp;
@@ -194,9 +213,19 @@ void AssemblyWorkbench::onInsertComponent() {
     comp.name = std::filesystem::path(comp.partPath).stem().string();
 
     const std::string asmDir = assemblyDir(*assembly());
-    if (!m_host.documents().resolveComponent(comp, doc::ComponentState::Lightweight, asmDir)) {
-        QMessageBox::warning(m_host.dialogParent(), tr("Error"),
-                             tr("Failed to load the part (no geometry could be produced)."));
+    // Not this assembly, nor one that places it: an assembly inside itself.
+    std::vector<std::string> within;
+    if (!assembly()->filePath().empty()) {
+        within.push_back(doc::DocumentManager::canonicalPath(assembly()->filePath()));
+    }
+    std::string why;
+    if (!m_host.documents().resolveComponent(comp, doc::ComponentState::Lightweight, asmDir, &why,
+                                             within)) {
+        QMessageBox::warning(
+            m_host.dialogParent(), tr("Insert Component"),
+            why.empty() ? tr("Failed to load the part (no geometry could be produced).")
+                        : tr("%1 is not inserted: %2")
+                              .arg(QString::fromStdString(comp.name), QString::fromStdString(why)));
         return;
     }
 
@@ -228,7 +257,7 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
     // Frames come from B-Rep faces, so mate solving needs resolved parts.
     const std::string asmDir = assemblyDir(asmDoc);
     for (auto& comp : asmDoc.components()) {
-        if (!comp.resolvedPart) {
+        if (comp.solid() == nullptr) {
             m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
         }
     }
@@ -362,7 +391,7 @@ bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
         // Frames come from the parts: found once, for every move.
         const std::string dir = assemblyDir(*asmDoc);
         for (auto& c : asmDoc->components()) {
-            if (!c.resolvedPart) {
+            if (c.solid() == nullptr) {
                 m_host.documents().resolveComponent(c, doc::ComponentState::Resolved, dir);
             }
         }
@@ -481,25 +510,42 @@ AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
     // Each part read once, by its file, however many components place it.
     const std::string dir = assemblyDir(*assembly());
     std::map<std::string, std::size_t> partOf;
+    // A subassembly (Phase 159) is written as its own parts, each placed by
+    // its transform within it composed with the subassembly's: one level.
+    std::function<void(const doc::ComponentInstance&, const std::string&, const math::Mat4&,
+                       const std::string&)>
+        place = [&](const doc::ComponentInstance& comp, const std::string& in,
+                    const math::Mat4& outer, const std::string& name) {
+            const std::string file =
+                std::filesystem::path(partFile(comp, in)).lexically_normal().string();
+            if (comp.resolvedAssembly) {
+                const std::string subDir = std::filesystem::path(file).parent_path().string();
+                for (const auto& child : comp.resolvedAssembly->components()) {
+                    if (!child.suppressed) {
+                        place(child, subDir, outer * comp.transform, name + "/" + child.name);
+                    }
+                }
+                return;
+            }
+            const topo::Solid* solid = comp.solid();
+            if (solid == nullptr) {
+                out.unread.push_back(name);
+                return;
+            }
+            const auto [known, added] = partOf.emplace(file, out.parts.size());
+            if (added) {
+                out.parts.push_back(
+                    {QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString(),
+                     {solid}});
+            }
+            out.occurrences.push_back({known->second, name, outer * comp.transform});
+        };
     for (auto& comp : assembly()->components()) {
         if (comp.suppressed) continue;
-        if (!comp.resolvedPart) {
+        if (comp.solid() == nullptr) {
             m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, dir);
         }
-        const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
-        if (solid == nullptr) {
-            out.unread.push_back(comp.name);
-            continue;
-        }
-        const std::string file =
-            std::filesystem::path(partFile(comp, dir)).lexically_normal().string();
-        const auto [known, added] = partOf.emplace(file, out.parts.size());
-        if (added) {
-            out.parts.push_back(
-                {QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString(),
-                 {solid}});
-        }
-        out.occurrences.push_back({known->second, comp.name, comp.transform});
+        place(comp, dir, math::Mat4::identity(), comp.name);
     }
     return out;
 }
@@ -513,7 +559,7 @@ void AssemblyWorkbench::onCheckInterference() {
     // Interference is measured on the B-Rep, so every component is resolved.
     const std::string asmDir = assemblyDir(*assembly());
     for (auto& comp : assembly()->components()) {
-        if (!comp.suppressed && !comp.resolvedPart) {
+        if (!comp.suppressed && comp.solid() == nullptr) {
             m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
         }
     }
@@ -618,7 +664,7 @@ void AssemblyWorkbench::onAddMate() {
     // Resolve parts so faces are available for picking.
     const std::string asmDir = assemblyDir(*assembly());
     for (auto& comp : assembly()->components()) {
-        if (!comp.resolvedPart) {
+        if (comp.solid() == nullptr) {
             m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
         }
     }
@@ -628,9 +674,9 @@ void AssemblyWorkbench::onAddMate() {
     // row's data. Raw facet names made a cylinder a row per facet, and a
     // clicked curved face matched none of them.
     auto addFaces = [](const doc::ComponentInstance& comp, QComboBox* combo) {
-        if (!comp.resolvedPart || !comp.resolvedPart->solid()) return;
+        if (comp.solid() == nullptr) return;
         std::set<std::string> seen;
-        for (const auto& face : comp.resolvedPart->solid()->faces()) {
+        for (const auto& face : comp.solid()->faces()) {
             if (!face.topoId.isValid()) continue;
             const std::string logical = model::logicalFace(face.topoId.tag());
             if (!seen.insert(logical).second) continue;
@@ -1037,9 +1083,11 @@ void AssemblyWorkbench::refreshComponentsOf(const std::string& path, bool report
         const std::string dir = assemblyDir(*tabAssembly);
         bool places = false;
         for (auto& comp : tabAssembly->components()) {
-            if (!doc::DocumentManager::samePath(partFile(comp, dir), path)) continue;
+            if (!placesFile(comp, dir, path)) continue;  // at any depth (Phase 159)
             comp.cachedMesh.reset();
             comp.resolvedPart.reset();
+            comp.resolvedAssembly.reset();
+            comp.assemblySolid.reset();
             comp.state = doc::ComponentState::Lightweight;
             places = true;
         }
@@ -1092,30 +1140,57 @@ void AssemblyWorkbench::onBillOfMaterials() {
         m_host.showStatus(tr("Bill of Materials is only available in an assembly document"));
         return;
     }
-    const doc::BillOfMaterials bom = doc::BomGenerator::generate(*assembly());
+    doc::BillOfMaterials bom = doc::BomGenerator::generate(*assembly());
 
     QDialog dialog(m_host.dialogParent());
     dialog.setWindowTitle(tr("Bill of Materials"));
     auto* layout = new QVBoxLayout(&dialog);
-    auto* table = new QTableWidget(static_cast<int>(bom.lines.size()), 3, &dialog);
+    // Which BOM (Phase 159): the assembly's own components, each
+    // subassembly's under it, or the parts at every depth.
+    auto* kind = new QComboBox(&dialog);
+    kind->setObjectName(QStringLiteral("bomKind"));
+    kind->addItems({tr("Top level"), tr("Indented"), tr("Parts only")});
+    auto* shows = new QHBoxLayout();
+    shows->addWidget(new QLabel(tr("Show:"), &dialog));
+    shows->addWidget(kind);
+    shows->addStretch();
+    layout->addLayout(shows);
+    auto* table = new QTableWidget(0, 3, &dialog);
     table->setObjectName(QStringLiteral("bom"));
     table->setHorizontalHeaderLabels({tr("Item"), tr("Part"), tr("Quantity")});
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->verticalHeader()->hide();
     table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    for (size_t i = 0; i < bom.lines.size(); ++i) {
-        const doc::BomLine& line = bom.lines[i];
-        const int row = static_cast<int>(i);
-        table->setItem(row, 0, new QTableWidgetItem(QString::number(line.item)));
-        auto* part = new QTableWidgetItem(QString::fromStdString(line.partName));
-        part->setToolTip(QString::fromStdString(line.partPath));
-        table->setItem(row, 1, part);
-        table->setItem(row, 2, new QTableWidgetItem(QString::number(line.quantity)));
-    }
     layout->addWidget(table);
-    layout->addWidget(new QLabel(
-        tr("%n component(s) in all; suppressed ones are left out.", "", bom.totalQuantity()),
-        &dialog));
+    auto* total = new QLabel(&dialog);
+    layout->addWidget(total);
+    const auto fill = [&bom, table, total] {
+        table->setRowCount(static_cast<int>(bom.lines.size()));
+        for (size_t i = 0; i < bom.lines.size(); ++i) {
+            const doc::BomLine& line = bom.lines[i];
+            const int row = static_cast<int>(i);
+            table->setItem(
+                row, 0,
+                new QTableWidgetItem(line.index.empty() ? QString::number(line.item)
+                                                        : QString::fromStdString(line.index)));
+            // Under its assembly: indented as deep as it is.
+            auto* part = new QTableWidgetItem(QString(line.level * 4, QLatin1Char(' ')) +
+                                              QString::fromStdString(line.partName));
+            part->setToolTip(QString::fromStdString(line.partPath));
+            table->setItem(row, 1, part);
+            table->setItem(row, 2, new QTableWidgetItem(QString::number(line.quantity)));
+        }
+        total->setText(
+            tr("%n component(s) in all; suppressed ones are left out.", "", bom.totalQuantity()));
+    };
+    fill();
+    connect(kind, &QComboBox::currentIndexChanged, &dialog, [this, &bom, fill](int index) {
+        const std::array kinds{doc::BomKind::TopLevel, doc::BomKind::Indented,
+                               doc::BomKind::PartsOnly};
+        bom = doc::BomGenerator::generate(*assembly(),
+                                          kinds.at(static_cast<size_t>(std::clamp(index, 0, 2))));
+        fill();
+    });
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
     QPushButton* exportButton =

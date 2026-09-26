@@ -1,8 +1,11 @@
 #include "horizon/document/AssemblyDocument.h"
 
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/modeling/InterferenceChecker.h"
@@ -19,7 +22,7 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
     InterferenceInput input;
     for (const auto& comp : m_components) {
         if (comp.suppressed) continue;
-        const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
+        const topo::Solid* solid = comp.solid();  // a part's, or a subassembly's
         if (solid == nullptr) {
             input.unchecked.push_back(comp.id);
             continue;
@@ -32,6 +35,98 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
 
 std::string AssemblyDocument::namePrefix(uint64_t id) {
     return "c" + std::to_string(id) + "/";
+}
+
+bool ComponentInstance::isAssembly() const {
+    std::string extension = std::filesystem::path(partPath).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return extension == ".hzasm";
+}
+
+const topo::Solid* ComponentInstance::solid() const {
+    if (resolvedPart) return resolvedPart->solid();
+    return assemblySolid.get();
+}
+
+std::shared_ptr<geo::MeshData> AssemblyDocument::drawingMesh() const {
+    auto merged = std::make_shared<geo::MeshData>();
+    bool any = false;
+    for (const auto& comp : m_components) {
+        if (comp.suppressed || !comp.cachedMesh) continue;
+        const geo::MeshData& mesh = *comp.cachedMesh;
+        const math::Mat4& placed = comp.transform;
+        const std::string prefix = namePrefix(comp.id);
+        const auto firstVertex = static_cast<uint32_t>(merged->positions.size() / 3);
+        const auto firstFace = static_cast<uint32_t>(merged->faceTags.size());
+        for (size_t i = 0; i + 2 < mesh.positions.size(); i += 3) {
+            const math::Vec3 p = placed.transformPoint(
+                math::Vec3(mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]));
+            merged->positions.insert(
+                merged->positions.end(),
+                {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
+        }
+        // Its normals, one to each vertex: its own, or, for a mesh without
+        // them (a part's cached tessellation may have none), made from its
+        // triangles, so each vertex keeps its own and not the next part's.
+        std::vector<math::Vec3> normals(mesh.positions.size() / 3);
+        if (mesh.normals.size() == mesh.positions.size()) {
+            for (size_t v = 0; v < normals.size(); ++v) {
+                normals[v] = math::Vec3(mesh.normals[3 * v], mesh.normals[3 * v + 1],
+                                        mesh.normals[3 * v + 2]);
+            }
+        } else {
+            const auto at = [&mesh](uint32_t v) {
+                return math::Vec3(mesh.positions[3 * v], mesh.positions[3 * v + 1],
+                                  mesh.positions[3 * v + 2]);
+            };
+            for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+                const uint32_t a = mesh.indices[t];
+                const uint32_t b = mesh.indices[t + 1];
+                const uint32_t c = mesh.indices[t + 2];
+                if (a >= normals.size() || b >= normals.size() || c >= normals.size()) continue;
+                const math::Vec3 area = (at(b) - at(a)).cross(at(c) - at(a));  // weighted
+                normals[a] = normals[a] + area;
+                normals[b] = normals[b] + area;
+                normals[c] = normals[c] + area;
+            }
+        }
+        for (const math::Vec3& own : normals) {
+            const math::Vec3 turned = placed.transformDirection(own);
+            const math::Vec3 n = turned.length() > 0.0 ? turned.normalized() : turned;
+            merged->normals.insert(
+                merged->normals.end(),
+                {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)});
+        }
+        for (const uint32_t index : mesh.indices) merged->indices.push_back(firstVertex + index);
+        // Its faces' names, for a pick. A mesh without them leaves some
+        // triangles unnamed, and the whole unnamed at the end.
+        if (mesh.hasFaces()) {
+            for (const uint32_t face : mesh.triangleFaces) {
+                merged->triangleFaces.push_back(firstFace + face);
+            }
+            for (const auto& tag : mesh.faceTags) merged->faceTags.push_back(prefix + tag);
+        }
+        for (const auto& edge : mesh.edges) {
+            geo::MeshData::Edge placedEdge;
+            placedEdge.tag = prefix + edge.tag;
+            for (size_t i = 0; i + 2 < edge.points.size(); i += 3) {
+                const math::Vec3 q = placed.transformPoint(
+                    math::Vec3(edge.points[i], edge.points[i + 1], edge.points[i + 2]));
+                placedEdge.points.insert(
+                    placedEdge.points.end(),
+                    {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
+            }
+            merged->edges.push_back(std::move(placedEdge));
+        }
+        any = true;
+    }
+    // Names for some triangles and not others would name the wrong faces.
+    if (!merged->hasFaces()) {
+        merged->triangleFaces.clear();
+        merged->faceTags.clear();
+    }
+    return any ? merged : nullptr;
 }
 
 std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
@@ -99,6 +194,8 @@ void AssemblyDocument::restore(AssemblyState state) {
         if (now == nullptr || now->partPath != comp.partPath) continue;
         comp.cachedMesh = now->cachedMesh;
         comp.resolvedPart = now->resolvedPart;
+        comp.resolvedAssembly = now->resolvedAssembly;  // a subassembly's (Phase 159)
+        comp.assemblySolid = now->assemblySolid;
         comp.state = now->state;
     }
     m_components = std::move(state.components);

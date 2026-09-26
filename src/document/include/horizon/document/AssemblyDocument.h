@@ -16,6 +16,7 @@
 namespace hz::doc {
 
 class Document;
+class AssemblyDocument;
 
 /// How much of a referenced part is held in memory.
 enum class ComponentState {
@@ -41,6 +42,20 @@ struct ComponentInstance {
     /// Display mesh: shared by every instance of the part (DocumentManager).
     std::shared_ptr<const geo::MeshData> cachedMesh;
     std::shared_ptr<Document> resolvedPart;  ///< Non-null when Resolved.
+    /// Non-null for a component that is an assembly (Phase 159): that
+    /// assembly, read for its components alone, each resolved as this one
+    /// is. Rigid here: placed by this component's transform as it was saved.
+    std::shared_ptr<AssemblyDocument> resolvedAssembly;
+    /// A Resolved subassembly's components gathered into one solid
+    /// (AssemblyDocument::drawingSolid, "c<id>/" before each name): what its
+    /// parent's mates, interference check and exports take it as.
+    std::shared_ptr<const topo::Solid> assemblySolid;
+
+    /// Whether its file is an assembly (Phase 159): by its extension.
+    bool isAssembly() const;
+    /// The solid it places: its part's, or a subassembly's gathered one;
+    /// null when neither is resolved.
+    const topo::Solid* solid() const;
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).
@@ -172,6 +187,11 @@ public:
         std::vector<uint64_t>* missing = nullptr) const;
     /// The prefix drawingSolid() gives the names of component @p id.
     static std::string namePrefix(uint64_t id);
+    /// The unsuppressed components as one mesh (Phase 159): each one's mesh
+    /// placed by its transform, its faces and edges named as drawingSolid()
+    /// names them. What a parent assembly shows of this one, as one of its
+    /// components. Null when no component has a mesh.
+    std::shared_ptr<geo::MeshData> drawingMesh() const;
     /// Measure @p input. Once @p cancelled is set, measuring stops between
     /// pairs, and the report holds only the pairs measured by then.
     static InterferenceReport measureInterference(const InterferenceInput& input,

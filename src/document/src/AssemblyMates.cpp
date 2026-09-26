@@ -15,11 +15,11 @@ namespace {
 std::optional<model::MateFrame> frameOf(const AssemblyDocument& assembly,
                                         const MateReference& ref) {
     const ComponentInstance* comp = assembly.component(ref.componentId);
-    if (comp == nullptr || !comp->resolvedPart || comp->resolvedPart->solid() == nullptr) {
-        return std::nullopt;
-    }
-    const topo::Face* face =
-        model::MateGeometry::findFace(*comp->resolvedPart->solid(), ref.faceId);
+    // A part's solid, or a subassembly's gathered one (Phase 159), whose
+    // faces are named "c<id>/..." after its own components.
+    const topo::Solid* solid = comp != nullptr ? comp->solid() : nullptr;
+    if (solid == nullptr) return std::nullopt;
+    const topo::Face* face = model::MateGeometry::findFace(*solid, ref.faceId);
     if (face == nullptr) return std::nullopt;
     return model::MateGeometry::frameForFace(*face);
 }

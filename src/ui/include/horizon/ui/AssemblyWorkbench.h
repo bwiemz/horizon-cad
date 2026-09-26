@@ -70,7 +70,8 @@ public:
     /// part once, from its file, and each unsuppressed component placed; the
     /// components whose part could not be read, by name. The parts'
     /// solids are the resolved components' own: valid while the assembly
-    /// is not changed.
+    /// is not changed. A subassembly's parts are placed in one level with
+    /// the rest, their transforms composed with its (Phase 159).
     struct StepExport {
         std::vector<io::StepWritePart> parts;
         std::vector<io::StepOccurrence> occurrences;

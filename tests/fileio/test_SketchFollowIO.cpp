@@ -166,7 +166,7 @@ TEST(SketchFollowIOTest, AnExtrusionUpToAFaceIsKept) {
     boss->setExtent(hz::doc::ExtrudeFeature::Extent::UpToFace);
     boss->setUpToFace(part.box->featureID() + "/bottom");
     const std::string text = NativeFormat::documentToJson(part.doc, false);
-    EXPECT_EQ(nlohmann::json::parse(text).at("version").get<int>(), 22)
+    EXPECT_GE(nlohmann::json::parse(text).at("version").get<int>(), 22)
         << "an older build would read the extent as its distance";
     Document loaded;
     ASSERT_TRUE(NativeFormat::documentFromJson(text, loaded));

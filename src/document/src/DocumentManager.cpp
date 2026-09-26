@@ -195,7 +195,8 @@ void DocumentManager::noteSaved(const std::shared_ptr<AssemblyDocument>& doc) {
 }
 
 bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentState mode,
-                                       const std::string& assemblyDir) {
+                                       const std::string& assemblyDir, std::string* why,
+                                       const std::vector<std::string>& within) {
     fs::path partPath(instance.partPath);
     if (partPath.is_relative() && !assemblyDir.empty()) {
         partPath = fs::path(assemblyDir) / partPath;
@@ -206,6 +207,11 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     // Watched while the manager lives: a tab of the part closing does not
     // stop an assembly placing it from seeing it change.
     m_placedFiles.insert(key);
+    if (instance.isAssembly()) {
+        if (m_watchedFiles.count(key) == 0) watchFile(key);
+        bool cycle = false;
+        return resolveSubassembly(instance, mode, fullPath, key, within, why, &cycle);
+    }
     // A mesh from a part's model is as new as its last build, of that
     // document (the file read again is another, built as often maybe); one
     // from the file (its cache, or a model built from it apart) as the file.
@@ -276,6 +282,71 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         return true;
     }
     return false;
+}
+
+bool DocumentManager::resolveSubassembly(ComponentInstance& instance, ComponentState mode,
+                                         const std::string& fullPath, const std::string& key,
+                                         const std::vector<std::string>& within, std::string* why,
+                                         bool* cycle) {
+    const auto nameOf = [](const std::string& path) { return fs::path(path).stem().string(); };
+    // It places itself, at some depth: the chain of assemblies down to it.
+    if (std::find(within.begin(), within.end(), key) != within.end()) {
+        *cycle = true;
+        if (why != nullptr) {
+            std::string chain;
+            const auto first = std::find(within.begin(), within.end(), key);
+            for (auto it = first; it != within.end(); ++it) chain += nameOf(*it) + " > ";
+            *why = nameOf(key) + " is placed inside itself (" + chain + nameOf(key) + ")";
+        }
+        return false;
+    }
+    if (!m_assemblyLoader) {
+        if (why != nullptr) *why = nameOf(key) + " is an assembly, and none can be read here";
+        return false;
+    }
+    auto sub = std::make_shared<AssemblyDocument>();
+    if (!m_assemblyLoader(fullPath, *sub)) {
+        if (why != nullptr) *why = nameOf(key) + " could not be read";
+        return false;
+    }
+    if (sub->filePath().empty()) sub->setFilePath(fullPath);
+    std::vector<std::string> inside = within;
+    inside.push_back(key);
+    const std::string dir = fs::path(fullPath).parent_path().string();
+    for (auto& child : sub->components()) {
+        if (child.suppressed) continue;
+        fs::path childPath(child.partPath);
+        if (childPath.is_relative()) childPath = fs::path(dir) / childPath;
+        const std::string childKey = canonicalPath(childPath.string());
+        m_placedFiles.insert(childKey);
+        if (child.isAssembly()) {
+            if (m_watchedFiles.count(childKey) == 0) watchFile(childKey);
+            bool childCycle = false;
+            if (!resolveSubassembly(child, mode, childPath.string(), childKey, inside, why,
+                                    &childCycle) &&
+                childCycle) {
+                *cycle = true;
+                return false;
+            }
+            continue;
+        }
+        // A part it places that cannot be read is left out, as an
+        // assembly's own are.
+        resolveComponent(child, mode, dir);
+    }
+    instance.resolvedAssembly = sub;
+    instance.resolvedPart.reset();
+    instance.cachedMesh = sub->drawingMesh();
+    instance.assemblySolid.reset();
+    if (mode == ComponentState::Resolved) {
+        instance.assemblySolid =
+            sub->drawingSolid([](const ComponentInstance& c) { return c.solid(); });
+    }
+    instance.state = mode;
+    if (instance.cachedMesh == nullptr && why != nullptr) {
+        *why = nameOf(key) + " places nothing that can be shown";
+    }
+    return instance.cachedMesh != nullptr;
 }
 
 std::shared_ptr<const geo::MeshData> DocumentManager::sharedMesh(
