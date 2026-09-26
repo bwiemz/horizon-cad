@@ -232,14 +232,17 @@ void mateResiduals(const SolverMate& mate, const MateFrame& a, const MateFrame& 
     out.insert(out.end(), eq->rows.begin(), eq->rows.end());
     int taken = eq->rank;
     if (eq->measure && target) {
-        // An angle held at 0 or 180 degrees is the directions parallel: two
-        // freedoms, not one, and the angle's slope there is none.
-        const bool parallel =
-            mate.type == MateType::Angle &&
-            (std::abs(*target) < 1e-9 || std::abs(*target - std::numbers::pi) < 1e-9);
-        if (parallel) {
-            const Vec3 cross = a.direction.cross(b.direction);
-            out.insert(out.end(), {cross.x, cross.y, cross.z});
+        // An angle held at 0 or 180 degrees is the directions the same way,
+        // or opposite: two freedoms, not one, and the angle's slope there is
+        // none. Their difference (0) or sum (180) is held at nothing: a
+        // cross product would hold them parallel either way, and take one
+        // for the other.
+        const bool same = mate.type == MateType::Angle && std::abs(*target) < 1e-9;
+        const bool opposite =
+            mate.type == MateType::Angle && std::abs(*target - std::numbers::pi) < 1e-9;
+        if (same || opposite) {
+            const Vec3 apart = same ? a.direction - b.direction : a.direction + b.direction;
+            out.insert(out.end(), {apart.x, apart.y, apart.z});
             taken += 2;
         } else {
             out.push_back(*eq->measure - *target);
