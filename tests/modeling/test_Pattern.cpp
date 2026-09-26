@@ -4,12 +4,16 @@
 #include <numbers>
 #include <set>
 
+#include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/GeometryValidator.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -296,4 +300,125 @@ TEST(PatternTest, AMovedPartsFacetsStillShareTheirSurface) {
     EXPECT_EQ(facets, 16u);
     EXPECT_EQ(after.size(), 1u) << "still one, moved";
     EXPECT_NE(*after.begin(), *before.begin()) << "a copy, not the original's";
+}
+
+// ---------------------------------------------------------------------------
+// Mirrored copies (Phase 162)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double enclosed(const hz::topo::Solid& solid) {
+    double v = 0.0;
+    for (const auto& shell : solid.shells()) v += hz::topo::signedVolume(shell);
+    return v;
+}
+
+/// For each face, whether its carrier faces the way its loop does.
+std::vector<bool> carriersAgree(const hz::topo::Solid& solid) {
+    std::vector<bool> out;
+    for (const auto& face : solid.faces()) {
+        if (!face.surface) continue;
+        const auto& s = *face.surface;
+        const Vec3 n = s.normal(0.5 * (s.uMin() + s.uMax()), 0.5 * (s.vMin() + s.vMax()));
+        out.push_back(n.dot(hz::topo::loopNormal(&face)) > 0.0);
+    }
+    return out;
+}
+
+}  // namespace
+
+// Through a mirror, a copy is reversed as it is made: it encloses what the
+// original does, with the same sign (not inside out), each carrier facing
+// as its loop does, and each edge's curve still running from its
+// half-edge's origin.
+TEST(PatternTest, AMirrorImageFacesOutAsTheOriginalDoes) {
+    auto box = PrimitiveFactory::makeBox(2.0, 3.0, 4.0);
+    ASSERT_NE(box, nullptr);
+    const hz::math::Mat4 mirror = hz::math::Mat4::reflection(Vec3(5, 0, 0), Vec3(1, 0, 0));
+    auto image = Pattern::transformed(*box, mirror);
+    ASSERT_NE(image, nullptr);
+    EXPECT_TRUE(image->checkManifold());
+    EXPECT_TRUE(image->checkEulerFormula());
+    ASSERT_GT(std::abs(enclosed(*box)), 1.0);
+    EXPECT_NEAR(enclosed(*image), enclosed(*box), 1e-9) << "the same sign: not inside out";
+    EXPECT_EQ(carriersAgree(*image), carriersAgree(*box));
+    for (const auto& v : image->vertices()) {
+        EXPECT_GE(v.point.x, 8.0 - 1e-9);
+        EXPECT_LE(v.point.x, 10.0 + 1e-9);
+    }
+    for (const auto& edge : image->edges()) {
+        if (!edge.curve || edge.halfEdge == nullptr) continue;
+        const Vec3 start = edge.curve->evaluate(edge.curve->tMin());
+        EXPECT_NEAR((start - edge.halfEdge->origin->point).length(), 0.0, 1e-9);
+    }
+}
+
+// A cylinder's true surface is mirrored facing out too: a mate still takes
+// its side for a cylinder, and its normal points away from the axis.
+TEST(PatternTest, AMirroredCylinderKeepsItsTrueSurfaceFacingOut) {
+    auto cylinder = PrimitiveFactory::makeCylinder(2.0, 5.0);
+    ASSERT_NE(cylinder, nullptr);
+    // A plane through the axis: the image is where the original is.
+    auto image =
+        Pattern::transformed(*cylinder, hz::math::Mat4::reflection(Vec3(0, 0, 0), Vec3(1, 1, 0)));
+    ASSERT_NE(image, nullptr);
+    EXPECT_NEAR(enclosed(*image), enclosed(*cylinder), 1e-9);
+    const auto outward = [](const hz::topo::Solid& solid) {
+        int out = 0;
+        int in = 0;
+        for (const auto& face : solid.faces()) {
+            if (!face.analyticSurface) continue;
+            const auto& s = *face.analyticSurface;
+            const double u = 0.5 * (s.uMin() + s.uMax());
+            const double v = 0.5 * (s.vMin() + s.vMax());
+            const Vec3 at = s.evaluate(u, v);
+            const Vec3 radial(at.x, at.y, 0.0);
+            if (radial.length() < 1e-9) continue;  // a cap's centre
+            (s.normal(u, v).dot(radial) > 0.0 ? out : in) += 1;
+        }
+        return std::pair<int, int>{out, in};
+    };
+    EXPECT_EQ(outward(*image), outward(*cylinder));
+    int cylinders = 0;
+    for (const auto& face : image->faces()) {
+        if (!face.analyticSurface) continue;
+        const auto frame = MateGeometry::frameForFace(face);
+        if (frame && frame->kind == MateFrameKind::Cylindrical) {
+            EXPECT_NEAR(frame->radius, 2.0, 1e-6);
+            ++cylinders;
+        }
+    }
+    EXPECT_GT(cylinders, 0);
+}
+
+// A block and its mirror in its own side join into one solid twice its
+// size; a drilled block mirrored keeps its volume and its bore.
+TEST(PatternTest, AMirrorImageJoinsItsOriginal) {
+    auto box = PrimitiveFactory::makeBox(2.0, 3.0, 4.0);
+    ASSERT_NE(box, nullptr);
+    double maxX = -1e9;
+    for (const auto& v : box->vertices()) maxX = std::max(maxX, v.point.x);
+    auto image =
+        Pattern::transformed(*box, hz::math::Mat4::reflection(Vec3(maxX, 0, 0), Vec3(1, 0, 0)));
+    ASSERT_NE(image, nullptr);
+    auto joined = BooleanOp::execute(*box, *image, BooleanType::Union);
+    ASSERT_NE(joined, nullptr);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*joined).volume, 48.0, 1e-6);
+    EXPECT_EQ(joined->shellCount(), 1u);
+
+    auto block = PrimitiveFactory::makeBox(10.0, 10.0, 10.0);
+    auto bore = PrimitiveFactory::makeCylinder(2.0, 30.0);
+    ASSERT_NE(block, nullptr);
+    ASSERT_NE(bore, nullptr);
+    auto drilled = BooleanOp::execute(*block, *bore, BooleanType::Subtract);
+    ASSERT_NE(drilled, nullptr);
+    const double volume = MassPropertiesCalculator::compute(*drilled).volume;
+    auto mirrored =
+        Pattern::transformed(*drilled, hz::math::Mat4::reflection(Vec3(20, 0, 0), Vec3(1, 0, 0)));
+    ASSERT_NE(mirrored, nullptr);
+    EXPECT_NEAR(enclosed(*mirrored), enclosed(*drilled), 1e-6);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*mirrored).volume, volume, 1e-6);
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*mirrored))
+        << hz::topo::GeometryValidator::report(*mirrored);
 }

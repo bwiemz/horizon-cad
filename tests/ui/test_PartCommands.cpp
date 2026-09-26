@@ -238,3 +238,42 @@ TEST(PartCommandsTest, APrimitiveIsPlacedFromItsForm) {
     EXPECT_NEAR(hiY, 6.0, 1e-9) << "its length along y";
     EXPECT_NEAR(loX, 4.0, 1e-9) << "its axis through x = 5";
 }
+
+// Phase 162: Model ▸ Mirror, in the box's face facing +X, makes one solid
+// twice its size, hole and all, as one undo step. (A feature mirrored alone
+// is checked in the document's tests.)
+TEST(PartCommandsTest, AMirrorInAFaceDoublesThePart) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    rectangle(drive, w, Vec2(-4, -4), Vec2(-2, -2));
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers()
+            .number(QStringLiteral("size"), 1.0)
+            .choose(QStringLiteral("extent"), QStringLiteral("Through all"))
+            .choose(QStringLiteral("way"), QStringLiteral("Reversed"))
+            .combine(hz::doc::BodyOperation::Cut));
+    ASSERT_NEAR(partVolume(doc), 1000.0 - 40.0, 1e-6);
+
+    // The box's side at x = 10, not the hole's wall at x = 1, which faces +X
+    // too.
+    run(w, "action_mirror-3d", QStringLiteral("Mirror"),
+        FormAnswers().chooseContaining(QStringLiteral("plane"),
+                                       QStringLiteral("facing (1, 0, 0) at (10,")));
+    ASSERT_EQ(doc.featureTree().featureCount(), 3u)
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_NEAR(partVolume(doc), 2 * (1000.0 - 40.0), 1e-6) << "the part and its image";
+    ASSERT_NE(doc.solid(), nullptr);
+    EXPECT_EQ(doc.solid()->shellCount(), 1u) << "joined at the face";
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(doc.featureTree().featureCount(), 2u);
+    EXPECT_NEAR(partVolume(doc), 1000.0 - 40.0, 1e-6);
+}

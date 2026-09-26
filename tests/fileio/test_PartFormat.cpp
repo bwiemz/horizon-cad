@@ -1101,3 +1101,40 @@ TEST(PartFormatTest, ExtentsPatternedFeaturesAndPlacementsAreKept) {
     ASSERT_NE(repeated, nullptr);
     EXPECT_EQ(repeated->targets(), std::vector<std::string>{cutId});
 }
+
+// Phase 162: a mirror keeps its plane, the face it follows and what it
+// mirrors; a plane of nothing is a damaged feature, left out and said.
+TEST(PartFormatTest, AMirrorRoundTrips) {
+    Document doc;
+    doc.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    auto mirror = hz::doc::MirrorFeature::make(Vec3(1, 2, 3), Vec3(0, 0, 2));
+    mirror->setReference("planeFace", "primitive_1/top");
+    mirror->setTargets({"extrude_4"});
+    const std::string id = mirror->featureID();
+    doc.featureTree().addFeature(std::move(mirror));
+
+    const std::string text = NativeFormat::documentToJson(doc, false);
+    Document back;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, back, &error)) << error;
+    ASSERT_EQ(back.featureTree().featureCount(), 2u);
+    const auto* kept = dynamic_cast<const hz::doc::MirrorFeature*>(back.featureTree().feature(1));
+    ASSERT_NE(kept, nullptr);
+    EXPECT_EQ(kept->featureID(), id);
+    EXPECT_NEAR((kept->planePoint() - Vec3(1, 2, 3)).length(), 0.0, 1e-12);
+    EXPECT_NEAR((kept->planeNormal() - Vec3(0, 0, 1)).length(), 0.0, 1e-12) << "unit";
+    EXPECT_EQ(kept->planeFace(), "primitive_1/top");
+    EXPECT_EQ(kept->targets(), std::vector<std::string>{"extrude_4"});
+
+    std::string broken = text;
+    const std::string normal = "\"planeNormal\":[0.0,0.0,1.0]";
+    const auto at = broken.find(normal);
+    ASSERT_NE(at, std::string::npos) << text;
+    broken.replace(at, normal.size(), "\"planeNormal\":[0.0,0.0,0.0]");
+    Document damaged;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::documentFromJson(broken, damaged, &error, &report)) << error;
+    EXPECT_EQ(damaged.featureTree().featureCount(), 1u);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("mirror"), std::string::npos) << report.skipped.front();
+}

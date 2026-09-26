@@ -70,6 +70,27 @@ Mat4 Mat4::scale(double s) {
     return scale({s, s, s});
 }
 
+Mat4 Mat4::reflection(const Vec3& point, const Vec3& normal) {
+    const Vec3 n = normal.normalized();
+    const double c[3] = {n.x, n.y, n.z};
+    Mat4 r;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) r.m[i][j] = (i == j ? 1.0 : 0.0) - 2.0 * c[i] * c[j];
+    }
+    // Through the point: p' = p - 2n((p - point).n).
+    const double d = 2.0 * point.dot(n);
+    r.m[0][3] = d * n.x;
+    r.m[1][3] = d * n.y;
+    r.m[2][3] = d * n.z;
+    return r;
+}
+
+double Mat4::determinant3() const {
+    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+           m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+           m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+}
+
 Mat4 Mat4::lookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
     Vec3 f = (target - eye).normalized();
     Vec3 r = f.cross(up).normalized();

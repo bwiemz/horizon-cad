@@ -57,7 +57,10 @@ public:
 
     /// A deep copy of @p source moved by the rigid transform @p xform, with
     /// every carrier and ideal moved with it and every TopologyID kept.  This
-    /// is how a component is placed in an assembly's world space.
+    /// is how a component is placed in an assembly's world space. A mirror
+    /// (Phase 162: a transform whose determinant is negative) reverses every
+    /// loop and surface as it copies them, so the copy faces out as the
+    /// original does; `append` does the same.
     static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
                                                     const math::Mat4& xform);
 

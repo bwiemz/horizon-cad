@@ -160,6 +160,13 @@ public:
     static NurbsSurface makeCone(const math::Vec3& apex, const math::Vec3& axis, double halfAngle,
                                  double height);
 
+    /// The same surface with its U direction reversed: rows and weights
+    /// reversed, the U knots mirrored. Its normal points the other way.
+    /// The kernel keeps a face's surface normal its outward normal, so a
+    /// face reversed (a mirror, a STEP face of the other sense) reverses
+    /// its surface with it.
+    NurbsSurface reversedU() const;
+
 private:
     std::vector<std::vector<math::Vec3>> m_controlPoints;  // [row_u][col_v]
     std::vector<std::vector<double>> m_weights;            // same layout

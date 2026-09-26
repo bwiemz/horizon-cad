@@ -92,22 +92,11 @@ std::shared_ptr<geo::NurbsCurve> makeArcInFrame(const Vec3& center, double radiu
                                              2);
 }
 
-/// Reverse a surface's U direction: rows and weights reversed, U knot vector
-/// mirrored. Flips the surface normal while describing identical geometry —
-/// used to honour ADVANCED_FACE same_sense = .F. on import (the kernel's
-/// convention is surface normal == outward face normal).
+/// Reverse a surface's U direction (NurbsSurface::reversedU): used to honour
+/// ADVANCED_FACE same_sense = .F. on import (the kernel's convention is
+/// surface normal == outward face normal).
 std::shared_ptr<geo::NurbsSurface> reverseSurfaceU(const geo::NurbsSurface& s) {
-    auto cps = s.controlPoints();
-    auto wts = s.weights();
-    std::reverse(cps.begin(), cps.end());
-    std::reverse(wts.begin(), wts.end());
-    const auto& k = s.knotsU();
-    const double lo = k.front();
-    const double hi = k.back();
-    std::vector<double> rk(k.rbegin(), k.rend());
-    for (double& v : rk) v = lo + hi - v;
-    return std::make_shared<geo::NurbsSurface>(std::move(cps), std::move(wts), std::move(rk),
-                                               s.knotsV(), s.degreeU(), s.degreeV());
+    return std::make_shared<geo::NurbsSurface>(s.reversedU());
 }
 
 // ===========================================================================

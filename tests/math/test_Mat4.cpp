@@ -208,3 +208,22 @@ TEST(Mat4Test, RotationFromQuaternion) {
     // Both should produce the same matrix
     expectMat4Near(Rq, Rz, 1e-10);
 }
+
+// Phase 162: a reflection mirrors a point in its plane, and has determinant
+// -1; a rotation's is 1.
+TEST(Mat4Test, AReflectionMirrorsInItsPlane) {
+    const Mat4 mirror = Mat4::reflection(Vec3(5, 0, 0), Vec3(2, 0, 0));
+    const Vec3 image = mirror.transformPoint(Vec3(1, 2, 3));
+    EXPECT_NEAR(image.x, 9.0, 1e-12);
+    EXPECT_NEAR(image.y, 2.0, 1e-12);
+    EXPECT_NEAR(image.z, 3.0, 1e-12);
+    EXPECT_NEAR(mirror.determinant3(), -1.0, 1e-12);
+    // Twice is nothing.
+    expectMat4Near(mirror * mirror, Mat4::identity());
+    // A slanted plane: a point on it stays.
+    const Mat4 slanted = Mat4::reflection(Vec3(1, 1, 0), Vec3(1, 1, 0));
+    const Vec3 on = slanted.transformPoint(Vec3(2, 0, 7));
+    EXPECT_NEAR(on.x, 2.0, 1e-12);
+    EXPECT_NEAR(on.y, 0.0, 1e-12);
+    EXPECT_NEAR(Mat4::rotationZ(0.7).determinant3(), 1.0, 1e-12);
+}

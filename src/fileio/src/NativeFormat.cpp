@@ -82,7 +82,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// patterns, "patterns", whose instances are components with a "pattern"
 /// (Phase 161). An older build would drop the views, and take the instances
 /// for components of their own, which no longer follow their seeds.
-static constexpr int kFormatVersion = 25;
+/// 26: a part may have a Mirror feature, "type": "mirror" (Phase 162). An
+/// older build would leave it out, and build a part half the size.
+static constexpr int kFormatVersion = 26;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -830,6 +832,15 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["suppressed"] = pat->suppressedInstances();
             // The features it repeats (Phase 134); none, the whole part.
             if (!pat->targets().empty()) fObj["features"] = pat->targets();
+        } else if (const auto* mirror = dynamic_cast<const doc::MirrorFeature*>(feat)) {
+            // Phase 162: its plane, a face it follows, and what it mirrors.
+            fObj["type"] = "mirror";
+            fObj["planePoint"] = {mirror->planePoint().x, mirror->planePoint().y,
+                                  mirror->planePoint().z};
+            fObj["planeNormal"] = {mirror->planeNormal().x, mirror->planeNormal().y,
+                                   mirror->planeNormal().z};
+            if (!mirror->planeFace().empty()) fObj["planeFace"] = mirror->planeFace();
+            if (!mirror->targets().empty()) fObj["features"] = mirror->targets();
         } else if (const auto* imported = dynamic_cast<const doc::ImportedBodyFeature*>(feat)) {
             // The body itself travels with the part, as STEP text, so the part
             // does not depend on the file it was imported from.
@@ -1689,6 +1700,35 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     } else {
                         feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
                                                                std::move(suppressed));
+                    }
+                    if (const auto targets = fObj.find("features");
+                        targets != fObj.end() && targets->is_array()) {
+                        std::vector<std::string> ids;
+                        for (const json& id : *targets) {
+                            if (id.is_string()) ids.push_back(id.get<std::string>());
+                        }
+                        feat->setTargets(std::move(ids));
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    addLoaded(std::move(feat));
+                    continue;
+                }
+                if (ftype == "mirror") {
+                    const auto readVec = [&fObj](const char* key) {
+                        const json& v = fObj.at(key);
+                        return math::Vec3(v.at(0).get<double>(), v.at(1).get<double>(),
+                                          v.at(2).get<double>());
+                    };
+                    auto feat = doc::MirrorFeature::make(math::Vec3(), math::Vec3::UnitX);
+                    // Each checked as an edit checks it: a point that is no
+                    // number, or a normal of nothing, is a damaged file.
+                    if (!feat->setVector("planePoint", readVec("planePoint")) ||
+                        !feat->setVector("planeNormal", readVec("planeNormal"))) {
+                        throw std::runtime_error("its plane is not one");
+                    }
+                    if (const auto face = fObj.find("planeFace");
+                        face != fObj.end() && face->is_string()) {
+                        feat->setReference("planeFace", face->get<std::string>());
                     }
                     if (const auto targets = fObj.find("features");
                         targets != fObj.end() && targets->is_array()) {

@@ -1666,6 +1666,122 @@ std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& conte
     return part;
 }
 
+// ---------------------------------------------------------------------------
+// MirrorFeature (Phase 162)
+// ---------------------------------------------------------------------------
+
+math::IdCounter<int> MirrorFeature::s_nextID{1};
+
+std::unique_ptr<MirrorFeature> MirrorFeature::make(const math::Vec3& planePoint,
+                                                   const math::Vec3& planeNormal) {
+    std::unique_ptr<MirrorFeature> f(new MirrorFeature());
+    f->m_point = planePoint;
+    if (const auto unit = unitDirection(planeNormal)) f->m_normal = *unit;
+    f->m_featureID = "mirror_" + std::to_string(s_nextID.next());
+    return f;
+}
+
+void MirrorFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "mirror_");
+}
+
+std::map<std::string, math::Vec3> MirrorFeature::vectors() const {
+    return {{"planePoint", m_point}, {"planeNormal", m_normal}};
+}
+
+bool MirrorFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name == "planePoint" && finite(value)) {
+        m_point = value;
+        return true;
+    }
+    if (name != "planeNormal") return false;
+    const auto unit = unitDirection(value);
+    if (!unit) return false;
+    m_normal = *unit;
+    return true;
+}
+
+bool MirrorFeature::setReference(const std::string& name, const std::string& value) {
+    if (name != "planeFace") return false;
+    m_face = value;
+    return true;
+}
+
+void MirrorFeature::setTargets(std::vector<std::string> targets) {
+    m_targets.clear();
+    for (auto& id : targets) {
+        if (std::find(m_targets.begin(), m_targets.end(), id) == m_targets.end()) {
+            m_targets.push_back(std::move(id));
+        }
+    }
+}
+
+std::optional<math::Mat4> MirrorFeature::mirrorIn(const topo::Solid& part, std::string* why) const {
+    if (m_face.empty()) return math::Mat4::reflection(m_point, m_normal);
+    const auto plane = model::planeOfFace(part, m_face, why);
+    if (!plane) return std::nullopt;
+    return math::Mat4::reflection(plane->origin, plane->normal);
+}
+
+void MirrorFeature::nameImage(topo::Solid& image) const {
+    for (auto& face : image.faces()) {
+        if (face.topoId.isValid()) face.topoId = face.topoId.child(featureID(), 1);
+    }
+    for (auto& edge : image.edges()) {
+        if (edge.topoId.isValid()) edge.topoId = edge.topoId.child(featureID(), 1);
+    }
+}
+
+std::unique_ptr<topo::Solid> MirrorFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                    std::string* reason) const {
+    return executeIn(BuildContext{}, std::move(inputSolid), reason);
+}
+
+std::unique_ptr<topo::Solid> MirrorFeature::executeIn(const BuildContext& context,
+                                                      std::unique_ptr<topo::Solid> inputSolid,
+                                                      std::string* reason) const {
+    if (!inputSolid) return failWith(reason, "there is no body to mirror");
+    std::string why;
+    const auto mirror = mirrorIn(*inputSolid, &why);
+    if (!mirror) return failWith(reason, "the plane to mirror in: " + why);
+    std::unique_ptr<topo::Solid> part = std::move(inputSolid);
+    if (m_targets.empty()) {
+        // The whole part and its image, one body where they meet.
+        auto image = model::Pattern::transformed(*part, *mirror);
+        nameImage(*image);
+        return combine(BodyOperation::Join, std::move(part), std::move(image), reason, naming());
+    }
+    for (const std::string& id : m_targets) {
+        const Feature* target = nullptr;
+        for (const Feature* feature : context.before) {
+            if (feature->featureID() == id) target = feature;
+        }
+        if (!target) {
+            return failWith(reason, "the feature to mirror (" + id +
+                                        ") is not before the mirror, or is suppressed");
+        }
+        if (!target->createsNewBody()) {
+            return failWith(reason, target->name() +
+                                        " cannot be mirrored: only a feature that adds or cuts "
+                                        "material can be");
+        }
+        // Its body as it was built, against the part as it stands now, as a
+        // pattern repeats it.
+        BuildContext targetContext;
+        targetContext.part = part.get();
+        targetContext.before = context.before;
+        auto tool = target->executeIn(targetContext, nullptr, &why);
+        if (!tool) return failWith(reason, target->name() + " to mirror: " + why);
+        auto image = model::Pattern::transformed(*tool, *mirror);
+        nameImage(*image);
+        part = combine(target->operation(), std::move(part), std::move(image), reason, naming());
+        if (!part) return nullptr;
+    }
+    return part;
+}
+
 const char* bodyOperationName(BodyOperation operation) {
     switch (operation) {
         case BodyOperation::NewBody:
