@@ -132,6 +132,9 @@ TEST(CharConvPortableTest, AgreesWithTheStandardOne) {
             hz::math::detail::fromCharsPortable(text.data(), text.data() + text.size(), portable);
         EXPECT_EQ(p.ec, s.ec) << '"' << text << '"';
         EXPECT_EQ(p.ptr - text.data(), s.ptr - text.data()) << '"' << text << '"';
+        // The value only when read: out of range, MSVC's gives infinity or
+        // zero where libstdc++'s (and the portable one) leave it as it was.
+        if (s.ec != std::errc()) continue;
         if (std::isnan(standard)) {
             EXPECT_TRUE(std::isnan(portable)) << text;
         } else {

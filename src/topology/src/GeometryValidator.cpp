@@ -41,11 +41,20 @@ std::vector<Vec3> loopPoints(const Wire* wire) {
     return pts;
 }
 
+/// A loop's area vector (Newell), from its points taken relative to its
+/// first: the same vector, but from small numbers. From the points as they
+/// are, a million millimetres out, each term was about 4e12 and its rounding
+/// about 1e-3, where the closed-shell check allows about 1e-6; it held only
+/// while each edge's term in one face was exactly the negative of its term
+/// in the other, which a fused multiply-add (Apple silicon) does not keep,
+/// and every far result was taken for an open shell (Phase 169).
 Vec3 newell(const std::vector<Vec3>& pts) {
     Vec3 a(0, 0, 0);
+    if (pts.empty()) return a;
+    const Vec3& origin = pts.front();
     for (size_t i = 0; i < pts.size(); ++i) {
-        const Vec3& p = pts[i];
-        const Vec3& q = pts[(i + 1) % pts.size()];
+        const Vec3 p = pts[i] - origin;
+        const Vec3 q = pts[(i + 1) % pts.size()] - origin;
         a = a + p.cross(q);
     }
     return a * 0.5;

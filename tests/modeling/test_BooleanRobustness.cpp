@@ -171,13 +171,14 @@ bool combinesSoundly(const hz::topo::Solid& a, const hz::topo::Solid& b, double 
 
 // How often a random placement comes out unsound, over a hundred of each
 // kind: the tests above see only the few placements their seeds draw.
-// Measured over two thousand (Phase 169): at the origin 1 fails; a million
-// millimetres out 26 do (a sliver the operation makes is too thin to exist
-// that far out, where a coordinate keeps a ten-billionth of a millimetre);
-// at a thousandth of the size 14; at a hundred thousand times, none. The
-// bounds leave room for another platform's arithmetic, and catch a slide:
-// the validator's crossing test, before it was measured in lengths, failed
-// one small placement in five.
+// Measured over two thousand of each (Phase 169): none at the origin, none a
+// million millimetres out, none at a hundred thousand times the size, and 14
+// at a thousandth of it. The bounds leave room for another platform's
+// arithmetic, and catch a slide: two validator faults did, one small
+// placement in five (its crossing test compared lengths squared with a
+// length) and every far one on Apple silicon (its area vectors, taken from
+// coordinates a million millimetres out, did not survive a fused
+// multiply-add).
 TEST(BooleanRobustnessTest, HowOftenARandomPlacementIsUnsound) {
     const auto box = PrimitiveFactory::makeBox(10, 10, 10);
     const auto cylinder = PrimitiveFactory::makeCylinder(3.0, 12.0, 24);
@@ -200,7 +201,7 @@ TEST(BooleanRobustnessTest, HowOftenARandomPlacementIsUnsound) {
     std::printf("[   INFO   ] unsound of 100: at the origin %d, far %d, small %d, large %d\n",
                 origin, far, small, large);
     EXPECT_LE(origin, 2) << "at the origin";
-    EXPECT_LE(far, 6) << "far from it";
+    EXPECT_LE(far, 2) << "far from it";
     EXPECT_LE(small, 4) << "a thousandth of the size";
     EXPECT_LE(large, 2) << "a hundred thousand times";
 }

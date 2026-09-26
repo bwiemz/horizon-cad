@@ -196,6 +196,45 @@ TEST(GeometryValidatorTest, SelfIntersectingLoopIsCaught) {
     EXPECT_NE(GV::report(*solid).find("Self-intersecting loops"), std::string::npos);
 }
 
+// A closed box is closed wherever it is: here turned, 10 mm across and a
+// million millimetres out. Its faces' area vectors were taken from the
+// coordinates as they were, each term about 4e12; the shell summed to zero
+// only while each edge's two terms were exact negatives, which a fused
+// multiply-add (Apple silicon) does not keep, and it read as open.
+TEST(GeometryValidatorTest, ABoxFarFromTheOriginIsClosed) {
+    const Vec3 axis = Vec3(1, 2, 3).normalized();
+    const double angle = 0.7;
+    const Vec3 out(1e6, -2e6, 1.5e6);
+    std::vector<Vec3> pts = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
+                             {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
+    for (Vec3& p : pts) {
+        const Vec3 v = p * 10.0;
+        // Rodrigues: v turned by angle about axis.
+        const Vec3 turned = v * std::cos(angle) + axis.cross(v) * std::sin(angle) +
+                            axis * (axis.dot(v) * (1.0 - std::cos(angle)));
+        p = turned + out;
+    }
+    const std::vector<std::vector<int>> faces = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4},
+                                                 {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+    auto box = Assembler::build(pts, faces);
+    ASSERT_NE(box, nullptr);
+    const auto issues = GV::check(*box);
+    EXPECT_EQ(issues.openShells, 0) << GV::report(*box);
+    EXPECT_TRUE(issues.ok()) << GV::report(*box);
+}
+
+// A crossing a thousandth the size of the one above is still caught: the
+// crossing test measures a point's distance from a line, so it holds at any
+// size (it compared a length squared with a length, and a small part's
+// segments all read as collinear).
+TEST(GeometryValidatorTest, ASmallCrossingIsCaught) {
+    const std::vector<Vec3> pts = {{0, 0, 0}, {3e-3, 0, 0}, {0, 1e-3, 0}, {1e-3, 1e-3, 0}};
+    const std::vector<std::vector<int>> faces = {{0, 1, 2, 3}, {3, 2, 1, 0}};
+    auto solid = Assembler::build(pts, faces);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_EQ(GV::check(*solid).selfIntersectingLoops, 2) << GV::report(*solid);
+}
+
 TEST(GeometryValidatorTest, DegenerateEdgeAndFaceAreCaught) {
     // Collapse the whole top face onto one point: four zero-length edges and
     // a zero-area face, with the structure left intact.
