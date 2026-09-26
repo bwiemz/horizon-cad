@@ -350,6 +350,16 @@ TEST(OffsetShellTest, WhatCannotBeShelledIsSaid) {
     EXPECT_FALSE(thick.ok);
     EXPECT_NE(thick.message.find("too thick"), std::string::npos) << thick.message;
     EXPECT_FALSE(offsetShell(*box, 1.0, {}).ok);
+    // A fin thinner than two walls: its faces' offsets pass each other.
+    const auto base = PrimitiveFactory::makeBox(20, 20, 2);
+    const auto fin = Pattern::transformed(*PrimitiveFactory::makeBox(2, 20, 10),
+                                          hz::math::Mat4::translation(Vec3(9, 0, 2)));
+    const auto tee =
+        BooleanOp::execute(*base, *fin, BooleanType::Union, nullptr, NamingScheme::Stable);
+    ASSERT_NE(tee, nullptr);
+    const auto thin = offsetShell(*tee, 1.5, {TopologyID::make("box", "bottom")});
+    EXPECT_FALSE(thin.ok) << "a fin 2 thick cannot take walls of 1.5";
+    EXPECT_NE(thin.message.find("too thick"), std::string::npos) << thin.message;
     const auto missing = offsetShell(*box, 1.0, {TopologyID::make("box", "lid")});
     EXPECT_FALSE(missing.ok);
     EXPECT_NE(missing.message.find("not there"), std::string::npos) << missing.message;

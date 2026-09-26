@@ -26,6 +26,7 @@
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Shell.h"
 #include "horizon/modeling/SolidSewer.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -331,7 +332,9 @@ ShellResult Shell::executeOffset(const Solid& solid, double thickness,
             // wall turns a face over, or shrinks it to nothing.
             const Vec3 was = newell(loops[k]) * outward;
             const Vec3 is = newell(points);
-            if (k == 0 && !(is.dot(was) > 1e-9 * was.lengthSquared())) {
+            // A hole's too: one bounded by several faces has no face of its
+            // own whose check stands for it.
+            if (!(is.dot(was) > 1e-9 * was.lengthSquared())) {
                 return fail("the wall is too thick for this part: a face of the cavity collapses");
             }
             if (k == 0) {
@@ -359,9 +362,16 @@ ShellResult Shell::executeOffset(const Solid& solid, double thickness,
             return fail("the wall is too thick for this part: an edge of the cavity turns over");
         }
     }
+    // Its linkage is the part's, so the manifold check is no check here: it
+    // is the geometry that can go wrong. A loop that crosses itself, or leaves
+    // its plane, is caught; two faces crossing each other is not (no check
+    // in the kernel sees that yet), past the local checks above.
     auto hollow = SolidSewer::sew(cavity);
     if (!hollow || !hollow->checkManifold()) {
-        return fail("the cavity could not be made: its faces cross (the wall is too thick here)");
+        return fail("the cavity could not be made from the part's faces");
+    }
+    if (!topo::GeometryValidator::isGeometricallyValid(*hollow)) {
+        return fail("the wall is too thick for this part: a face of the cavity crosses itself");
     }
     std::string why;
     auto shelled = BooleanOp::execute(solid, *hollow, BooleanType::Subtract, &why, naming);

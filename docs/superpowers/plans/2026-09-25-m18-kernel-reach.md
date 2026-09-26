@@ -205,9 +205,14 @@ In three PRs.
   - a face opened in part;
   - several bodies;
   - a face that is not there;
-  - a wall too thick for the part (a cavity face turns over or shrinks
-    to nothing, or an edge reverses);
-  - a cavity whose faces cross, which is caught when it is sewn.
+  - a wall too thick for the part: a face or hole of the cavity turns
+    over or shrinks to nothing, an edge reverses, or a face's loop crosses
+    itself (GeometryValidator on the cavity, before the cut). A fin
+    thinner than two walls is caught this way.
+  - Not caught: two faces of the cavity crossing each other past those
+    local checks. No check in the kernel sees faces crossing yet. Review
+    found the first version claimed the sewer's manifold check did, and it
+    reads no coordinate.
 - **Old files build as they did.** `ShellFeature::Method`: a new shell
   offsets (saved as `"method": "offset"`, format version 29). One read
   without it is built as the prism's, so its part and its names are
