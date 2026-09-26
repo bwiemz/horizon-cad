@@ -14,6 +14,12 @@ target_link_libraries(hz_ui_tests
 # Location of the shipped .ts catalog sources, for coverage checks.
 target_compile_definitions(hz_ui_tests
     PRIVATE HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations")
+# Where the compiled catalogs are placed, next to the executable (Phase 166):
+# a test loads each one. None there (no lrelease), and the test says so.
+if(TARGET horizon)
+    target_compile_definitions(hz_ui_tests
+        PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(hz_ui_tests)
