@@ -207,6 +207,10 @@ public:
             stack.pop_back();
             if (polys.empty()) continue;
             if (!m_nodes[static_cast<size_t>(index)].hasPlane) {
+                // A new node given a convex set: the chain, in one pass
+                // (Phase 165). Few polygons are built as ever: the check
+                // would cost more than it saves.
+                if (polys.size() >= kChainAtLeast && buildChain(index, polys)) continue;
                 m_nodes[static_cast<size_t>(index)].plane = polys[0].plane;
                 m_nodes[static_cast<size_t>(index)].hasPlane = true;
             }
@@ -231,6 +235,69 @@ public:
     }
 
 private:
+    /// Below this many polygons a new node is built as ever.
+    static constexpr size_t kChainAtLeast = 32;
+
+    /// Build @p list from the new node @p index as a chain, if it is convex
+    /// (Phase 165), and say whether it was. build() takes a new node's plane
+    /// from the first polygon, keeps there every polygon in that plane, and
+    /// sends the rest on; when nothing is in front of any plane it meets, the
+    /// rest all go behind, and the tree is a chain of the distinct planes in
+    /// the order they first appear. Each polygon, in order, joins the first
+    /// of those planes it lies in, or begins the next: the same chain, made
+    /// without splitting every polygon against every plane before it. It is
+    /// the chain only if no point is in front of a node's plane; else nothing
+    /// is made, and build() builds it as ever.
+    bool buildChain(int index, std::vector<Poly>& list) {
+        // In a plane as splitPolygon judges it: every point within m_eps.
+        const auto inPlane = [this](const Plane& plane, const Poly& poly) {
+            for (const Vec3& p : poly.data.points) {
+                if (std::abs(plane.normal.dot(p) - plane.w) > m_eps) return false;
+            }
+            return true;
+        };
+        std::vector<Plane> planes;
+        std::vector<size_t> nodeOf(list.size());
+        for (size_t i = 0; i < list.size(); ++i) {
+            size_t k = 0;
+            while (k < planes.size() && !inPlane(planes[k], list[i])) ++k;
+            if (k == planes.size()) planes.push_back(list[i].plane);
+            nodeOf[i] = k;
+        }
+        // Nothing in front of any node's plane: each point once.
+        std::vector<Vec3> points;
+        for (const auto& poly : list) {
+            points.insert(points.end(), poly.data.points.begin(), poly.data.points.end());
+        }
+        std::sort(points.begin(), points.end(), [](const Vec3& a, const Vec3& b) {
+            return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
+        });
+        points.erase(std::unique(points.begin(), points.end(),
+                                 [](const Vec3& a, const Vec3& b) {
+                                     return a.x == b.x && a.y == b.y && a.z == b.z;
+                                 }),
+                     points.end());
+        for (const Plane& plane : planes) {
+            for (const Vec3& p : points) {
+                if (plane.normal.dot(p) - plane.w > m_eps) return false;
+            }
+        }
+        // The chain: node k's plane, its polygons in order, then behind.
+        std::vector<int> nodes;
+        nodes.reserve(planes.size());
+        for (size_t k = 0; k < planes.size(); ++k) {
+            if (k > 0) index = childOf(index, false);
+            m_nodes[static_cast<size_t>(index)].plane = planes[k];
+            m_nodes[static_cast<size_t>(index)].hasPlane = true;
+            nodes.push_back(index);
+        }
+        for (size_t i = 0; i < list.size(); ++i) {
+            m_nodes[static_cast<size_t>(nodes[nodeOf[i]])].polygons.push_back(std::move(list[i]));
+        }
+        list.clear();
+        return true;
+    }
+
     struct Node {
         Plane plane;
         bool hasPlane = false;
