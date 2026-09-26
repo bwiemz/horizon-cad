@@ -35,6 +35,7 @@ VariablesDialog::VariablesDialog(const std::map<std::string, std::string>& defin
     layout->addWidget(note);
 
     m_table->setObjectName(QStringLiteral("variables"));
+    m_table->setAccessibleName(tr("Variables"));
     m_table->setHorizontalHeaderLabels({tr("Name"), tr("Expression"), tr("Value")});
     m_table->horizontalHeader()->setSectionResizeMode(kExpression, QHeaderView::Stretch);
     m_table->verticalHeader()->hide();

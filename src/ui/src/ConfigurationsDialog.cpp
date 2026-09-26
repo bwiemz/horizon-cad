@@ -47,6 +47,7 @@ ConfigurationsDialog::ConfigurationsDialog(const doc::ConfigurationTable& table,
     layout->addWidget(note);
 
     m_table->setObjectName(QStringLiteral("configurations"));
+    m_table->setAccessibleName(tr("Configurations"));
     m_table->setColumnCount(static_cast<int>(m_variables.size()) + 1);
     QStringList headers{tr("Configuration")};
     for (const std::string& name : m_variables) {

@@ -1085,11 +1085,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+6"/>
+        <location line="+16"/>
         <source>Bill of Materials</source>
         <translation type="unfinished">部品表</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="-10"/>
         <source>Top level</source>
         <translation type="unfinished">トップレベルのみ</translation>
     </message>
@@ -1104,7 +1105,7 @@ Details are in the log:
         <translation type="unfinished">部品のみ</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+11"/>
         <source>Item</source>
         <translation type="unfinished">項目</translation>
     </message>
@@ -1163,21 +1164,32 @@ Details are in the log:
         <source>Type a command…  (e.g. line, extrude, export)</source>
         <translation type="unfinished">コマンドを入力…  (例: 直線、押し出し、エクスポート)</translation>
     </message>
+    <message>
+        <location line="+2"/>
+        <source>Search commands</source>
+        <translation type="unfinished">コマンドを検索</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Commands</source>
+        <translation type="unfinished">コマンド</translation>
+    </message>
 </context>
 <context>
     <name>hz::ui::ConfigurationsDialog</name>
     <message>
         <location filename="../src/ui/src/ConfigurationsDialog.cpp" line="+32"/>
+        <location line="+18"/>
         <source>Configurations</source>
         <translation type="unfinished">コンフィギュレーション</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="-7"/>
         <source>Each row is a configuration of the part: the values it gives its variables. A blank cell keeps the variable&apos;s own.</source>
         <translation type="unfinished">各行は部品のコンフィギュレーションで、変数に与える値を表します。空白のセルでは変数自体の値が使われます。</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Configuration</source>
         <translation type="unfinished">コンフィギュレーション</translation>
     </message>
@@ -3224,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3989"/>
+        <location line="+3991"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4065"/>
+        <location line="-4067"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3246,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3838"/>
+        <location line="+3840"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-3903"/>
         <location line="+64"/>
-        <location line="+3837"/>
+        <location line="+3839"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3900"/>
+        <location line="-3902"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3313,12 +3325,12 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+2575"/>
+        <location line="+2577"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4171"/>
+        <location line="-4173"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3475,61 +3487,61 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3625"/>
+        <location line="+3627"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3670"/>
-        <location line="+3689"/>
+        <location line="-3672"/>
+        <location line="+3691"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3715"/>
-        <location line="+4045"/>
+        <location line="-3717"/>
+        <location line="+4047"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4043"/>
+        <location line="-4045"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3796"/>
+        <location line="+3798"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3795"/>
-        <location line="+3799"/>
+        <location line="-3797"/>
+        <location line="+3801"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3798"/>
-        <location line="+3802"/>
+        <location line="-3800"/>
+        <location line="+3804"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3797"/>
-        <location line="+3866"/>
+        <location line="-3799"/>
+        <location line="+3868"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3865"/>
-        <location line="+3885"/>
+        <location line="-3867"/>
+        <location line="+3887"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3883"/>
+        <location line="-3885"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3562,14 +3574,14 @@ begin building your part.</source>
         <location line="+942"/>
         <location line="+404"/>
         <location line="+466"/>
-        <location line="+1420"/>
+        <location line="+1422"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4505"/>
+        <location line="-4507"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3590,12 +3602,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4174"/>
+        <location line="+4176"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4168"/>
+        <location line="-4170"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -4538,22 +4550,22 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+683"/>
+        <location line="+685"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1434"/>
-        <location line="+683"/>
+        <location line="-1436"/>
+        <location line="+685"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1433"/>
+        <location line="-1435"/>
         <source>Standing along:</source>
         <translation type="unfinished">軸方向:</translation>
     </message>
@@ -4575,12 +4587,12 @@ begin building your part.</source>
     <message>
         <location line="+7"/>
         <location line="+7"/>
-        <location line="+971"/>
+        <location line="+973"/>
         <source>Radius:</source>
         <translation type="unfinished">半径:</translation>
     </message>
     <message>
-        <location line="-978"/>
+        <location line="-980"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">高さ:</translation>
@@ -4648,12 +4660,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+864"/>
+        <location line="+866"/>
         <source>Edges:</source>
         <translation type="unfinished">エッジ:</translation>
     </message>
     <message>
-        <location line="-862"/>
+        <location line="-864"/>
         <source>As:</source>
         <translation type="unfinished">種類:</translation>
     </message>
@@ -4806,18 +4818,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+770"/>
+        <location line="+772"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">直線パターン</translation>
     </message>
     <message>
-        <location line="-768"/>
-        <location line="+788"/>
+        <location line="-770"/>
+        <location line="+790"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">円形パターン</translation>
     </message>
     <message>
-        <location line="-771"/>
+        <location line="-773"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">質量特性(&amp;M)...</translation>
     </message>
@@ -4969,12 +4981,12 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
     </message>
     <message>
         <location line="+10"/>
-        <location line="+52"/>
+        <location line="+54"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">計算できませんでした。</translation>
     </message>
     <message>
-        <location line="-48"/>
+        <location line="-50"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">質量特性は既に計測中です</translation>
     </message>
@@ -4984,7 +4996,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">計測しています...</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+13"/>
         <source>Measuring mass properties...</source>
         <translation type="unfinished">質量特性を計測しています...</translation>
     </message>
@@ -5556,7 +5568,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4521"/>
+        <location line="-4523"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
@@ -6031,16 +6043,17 @@ view and edit its properties.</source>
     <name>hz::ui::VariablesDialog</name>
     <message>
         <location filename="../src/ui/src/VariablesDialog.cpp" line="+28"/>
+        <location line="+10"/>
         <source>Variables</source>
         <translation type="unfinished">変数</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="-7"/>
         <source>Each variable is an expression: &quot;3 mm&quot;, &quot;10 * wall&quot;, &quot;4&quot;. A number without a unit is a plain number. A feature&apos;s size can then be &quot;=wall * 2&quot;.</source>
         <translation type="unfinished">各変数は式です: &quot;3 mm&quot;、&quot;10 * wall&quot;、&quot;4&quot;。単位のない数値は単なる数値です。フィーチャーのサイズには &quot;=wall * 2&quot; のように指定できます。</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+8"/>
         <source>Name</source>
         <translation type="unfinished">名前</translation>
     </message>

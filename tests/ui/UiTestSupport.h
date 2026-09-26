@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <QAbstractButton>
+#include <QAccessible>
+#include <QAccessibleInterface>
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
@@ -27,6 +29,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -36,6 +39,46 @@
 #include "horizon/ui/ViewportWidget.h"
 
 namespace hz::test {
+
+/// What a screen reader would call @p widget; empty when nothing names it.
+inline QString accessibleName(QWidget* widget) {
+    QAccessibleInterface* face = QAccessible::queryAccessibleInterface(widget);
+    return face != nullptr ? face->text(QAccessible::Name) : QString();
+}
+
+/// The controls under @p root that take focus or are clicked, with no name,
+/// shown or not (a dock tabbed behind another is still reached): "Class
+/// (objectName) in Parent (objectName) under the nearest named ancestor".
+inline std::vector<std::string> unnamedControls(QWidget& root) {
+    std::vector<std::string> out;
+    for (QWidget* widget : root.findChildren<QWidget*>()) {
+        // Qt's own parts of a control (a spin box's line edit, a toolbar's
+        // overflow button, a combo box's popup list, a line edit's clear
+        // button) are reached through it.
+        if (widget->objectName().startsWith(QLatin1String("qt_")) ||
+            widget->inherits("QComboBoxListView") || widget->inherits("QLineEditIconButton")) {
+            continue;
+        }
+        const bool control = widget->focusPolicy() != Qt::NoFocus ||
+                             qobject_cast<QAbstractButton*>(widget) != nullptr;
+        if (!control || !accessibleName(widget).trimmed().isEmpty()) continue;
+        std::string where = widget->metaObject()->className();
+        where += " (" + widget->objectName().toStdString() + ")";
+        if (QWidget* parent = widget->parentWidget()) {
+            where += std::string(" in ") + parent->metaObject()->className() + " (" +
+                     parent->objectName().toStdString() + ")";
+        }
+        for (QWidget* up = widget->parentWidget(); up != nullptr; up = up->parentWidget()) {
+            if (!up->objectName().isEmpty() && up != widget->parentWidget()) {
+                where += " under " + up->objectName().toStdString();
+                break;
+            }
+        }
+
+        out.push_back(where);
+    }
+    return out;
+}
 
 /// Answers the next modal message box with `button`, and records whether one
 /// appeared and what it said. With a `title`, only a box with that window
