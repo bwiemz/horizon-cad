@@ -684,6 +684,7 @@ TEST(AssembliesTest, TheBillOfMaterialsListsAndExports) {
 
     const QString csv = dir.filePath(QStringLiteral("bom.csv"));
     QStringList rows;
+    std::vector<std::string> unnamed;
     bool seen = false;
     QTimer poll;
     QElapsedTimer clock;
@@ -697,6 +698,7 @@ TEST(AssembliesTest, TheBillOfMaterialsListsAndExports) {
         }
         poll.stop();
         seen = true;
+        unnamed = hz::test::unnamedControls(*dialog);  // a screen reader names each
         auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("bom"));
         for (int row = 0; table != nullptr && row < table->rowCount(); ++row) {
             rows << table->item(row, 1)->text() + " x" + table->item(row, 2)->text();
@@ -710,6 +712,7 @@ TEST(AssembliesTest, TheBillOfMaterialsListsAndExports) {
     trigger(w, "action_bill_of_materials");
     ASSERT_TRUE(seen);
     EXPECT_EQ(rows, QStringList({QStringLiteral("block x2"), QStringLiteral("pin x1")}));
+    for (const auto& control : unnamed) ADD_FAILURE() << "no accessible name: " << control;
 
     QFile file(csv);
     ASSERT_TRUE(file.open(QIODevice::ReadOnly));

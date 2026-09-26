@@ -1818,12 +1818,15 @@ void AssemblyWorkbench::onBillOfMaterials() {
     kind->setObjectName(QStringLiteral("bomKind"));
     kind->addItems({tr("Top level"), tr("Indented"), tr("Parts only")});
     auto* shows = new QHBoxLayout();
-    shows->addWidget(new QLabel(tr("Show:"), &dialog));
+    auto* showLabel = new QLabel(tr("Show:"), &dialog);
+    showLabel->setBuddy(kind);  // names it, for a screen reader
+    shows->addWidget(showLabel);
     shows->addWidget(kind);
     shows->addStretch();
     layout->addLayout(shows);
     auto* table = new QTableWidget(0, 3, &dialog);
     table->setObjectName(QStringLiteral("bom"));
+    table->setAccessibleName(tr("Bill of Materials"));
     table->setHorizontalHeaderLabels({tr("Item"), tr("Part"), tr("Quantity")});
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->verticalHeader()->hide();
