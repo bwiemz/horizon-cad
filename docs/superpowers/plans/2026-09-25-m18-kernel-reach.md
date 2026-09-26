@@ -285,6 +285,9 @@ In three PRs.
     is wider work.
   - Cone rims have the same exact section, untested.
   - Chamfers on rims keep their prism sections.
+  - A rim filleted in part (an open chain of its chords) fails with
+    invalid geometry, as it did before this phase. `makeRimTorus` works
+    from either mitered end, ready for when it can be.
 
 ## Phase 165: Booleans at scale
 

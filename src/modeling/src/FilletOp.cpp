@@ -416,14 +416,17 @@ static std::vector<std::vector<Vec3>> stopSamples(const FilletEdgeInfo& fe, int 
 /// round the rim's circle, so the rim's bands are one torus, not a ruled
 /// patch each. Its spine is the circle through the exact sections' centres
 /// about the rim's axis; its tube, the radius. Null for an edge that is no
-/// rim chord mitered at its start, or a radius that varies.
+/// rim chord mitered at an end, or a radius that varies.
 static std::shared_ptr<geo::NurbsSurface> makeRimTorus(const FilletEdgeInfo& info) {
-    if (!info.miterFront || info.stops.size() < 2) return nullptr;
+    if ((!info.miterFront && !info.miterBack) || info.stops.size() < 2) return nullptr;
     const double r = info.stops.front().r;
     for (const auto& stop : info.stops) {
         if (std::abs(stop.r - r) > 1e-12 * std::max(1.0, r)) return nullptr;
     }
-    const auto section = rimSection(info, info.v1, info.miterFrontNormal, r);
+    // From whichever end is mitered: the last chord of a rim chosen in part
+    // may be mitered only at its back.
+    const auto section = info.miterFront ? rimSection(info, info.v1, info.miterFrontNormal, r)
+                                         : rimSection(info, info.v2, info.miterBackNormal, r);
     if (!section) return nullptr;
     const auto circle = circleOf(*info.originalEdge->analyticCurve);
     if (!circle) return nullptr;
