@@ -16,7 +16,9 @@ if(WIN32)
     set(CPACK_NSIS_DISPLAY_NAME "Horizon CAD ${PROJECT_VERSION}")
     set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.ico")
     set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/packaging/icons/horizon-cad.ico")
-    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\horizon.exe")
+    # Written into CPackConfig.cmake and read back, so escaped twice, as the
+    # shortcut lines below are: "bin\\horizon.exe" failed to read ("\h").
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\horizon.exe")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
     set(CPACK_NSIS_CREATE_ICONS_EXTRA
         "CreateShortCut '$DESKTOP\\\\Horizon CAD.lnk' '$INSTDIR\\\\bin\\\\horizon.exe'"

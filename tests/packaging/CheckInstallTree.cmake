@@ -8,7 +8,7 @@ file(REMOVE_RECURSE "${WORK_DIR}")
 execute_process(
     COMMAND ${CMAKE_COMMAND} --install "${BUILD_DIR}" --prefix "${WORK_DIR}" --config "${CONFIG}"
     RESULT_VARIABLE result
-    OUTPUT_QUIET
+    OUTPUT_VARIABLE output
     ERROR_VARIABLE errors)
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "cmake --install failed:\n${errors}")
@@ -36,11 +36,24 @@ if(APPLE)
         "${contents}/Resources/samples/bracket.hzpart"
         "${contents}/Resources/samples/plate-and-pin.hzasm"
         "${contents}/Resources/doc/LICENSE"
-        "${contents}/Resources/doc/THIRD_PARTY_NOTICES.md")
+        "${contents}/Resources/doc/THIRD_PARTY_NOTICES.md"
+        "${contents}/Resources/qt.conf"
+        "${contents}/PlugIns/platforms/libqcocoa.dylib")
 endif()
 foreach(file IN LISTS expected)
+    if(IS_SYMLINK "${WORK_DIR}/${file}" AND NOT EXISTS "${WORK_DIR}/${file}")
+        file(READ_SYMLINK "${WORK_DIR}/${file}" target)
+        message(FATAL_ERROR "a link to nothing in the install tree: ${file} -> ${target}")
+    endif()
     if(NOT EXISTS "${WORK_DIR}/${file}")
-        message(FATAL_ERROR "missing from the install tree: ${file}")
+        # What is there, and what the install said (the deployment tool's
+        # output with it), to see why.
+        file(GLOB_RECURSE installed RELATIVE "${WORK_DIR}" LIST_DIRECTORIES false "${WORK_DIR}/*")
+        list(FILTER installed EXCLUDE REGEX "\\.framework/|/third-party/")
+        list(JOIN installed "\n  " installed)
+        message(FATAL_ERROR "missing from the install tree: ${file}\n"
+                            "It holds (frameworks and licences left out):\n  ${installed}\n"
+                            "The install said:\n${output}\n${errors}")
     endif()
 endforeach()
 

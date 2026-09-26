@@ -330,7 +330,10 @@ In three parts: 168a the guide, 168b the samples, 168c Getting Started.
   and runs anywhere; `render.sh` calls it.
 - **The disk image** (`packaging/macos/make-dmg.sh`, a `macos` job in
   `release.yml`): `cmake --install` runs Qt's deployment script, which on
-  macOS is macdeployqt. The script then removes every search path outside
+  macOS is macdeployqt, with `-no-plugins`: only the platform and style
+  plugins are installed (every plugin of Homebrew's Qt brought QML and
+  libraries macdeployqt could not find), with a `qt.conf` so Qt finds
+  them in the bundle. The script then removes every search path outside
   the bundle (a Mac with Homebrew's Qt would load that Qt instead of the
   bundle's), fails if anything loads a library from outside the bundle
   and the system, signs the bundle inside out, and makes the disk image

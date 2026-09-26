@@ -29,6 +29,15 @@ cmake --install "${build}" --prefix "${stage}"
 app="${stage}/HorizonCAD.app"
 test -x "${app}/Contents/MacOS/HorizonCAD"
 
+# A link to nothing (a package manager's link, copied as a link) leaves the
+# bundle without the file. A framework's own links point inside it.
+dangling="$(find "${app}" -type l ! -exec test -e {} \; -print)"
+if [[ -n "${dangling}" ]]; then
+    echo "error: links to nothing in the bundle:" >&2
+    echo "${dangling}" >&2
+    exit 1
+fi
+
 # Every Mach-O file in the bundle: the executable, frameworks, plugins.
 binaries=()
 while IFS= read -r -d '' file; do
@@ -46,7 +55,9 @@ for binary in "${binaries[@]}"; do
     done < <(otool -l "${binary}" | awk '$1 == "cmd" && $2 == "LC_RPATH" { getline; getline; print $2 }')
 done
 
-# Everything they load is in the bundle or the system's.
+# Everything they load is in the bundle or the system's. What a binary loads
+# is in its LC_LOAD_* commands; `otool -L` would also list a library's own
+# install name, which it does not load.
 outside=0
 for binary in "${binaries[@]}"; do
     while IFS= read -r dependency; do
@@ -57,7 +68,7 @@ for binary in "${binaries[@]}"; do
                 outside=1
                 ;;
         esac
-    done < <(otool -L "${binary}" | tail -n +2 | awk '{ print $1 }')
+    done < <(otool -l "${binary}" | awk '$1 == "cmd" && $2 ~ /^LC_(LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB$/ { getline; getline; print $2 }')
 done
 if [[ "${outside}" -ne 0 ]]; then exit 1; fi
 
