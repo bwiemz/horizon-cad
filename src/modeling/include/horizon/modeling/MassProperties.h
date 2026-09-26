@@ -69,7 +69,9 @@ struct IdealMassProperties {
 class MassPropertiesCalculator {
 public:
     /// Compute mass properties from the solid's triangulated boundary. When
-    /// @p material is null a unit density is used.
+    /// @p material is null a unit density is used. A solid described by
+    /// curves, as read from a STEP file, is measured in facets
+    /// (describedByCurves, facetCurved).
     static MassProperties compute(const topo::Solid& solid, const Material* material = nullptr);
 
     /// The ideal mass properties (IdealMassProperties): refined until the
@@ -78,7 +80,9 @@ public:
     /// ideals part, at eight pieces an edge. The default gives the closed
     /// forms of the primitives to 1e-9. Far slower than compute(): for a
     /// request, not for every rebuild. Set @p cancelled to stop it, and its
-    /// result is not valid.
+    /// result is not valid. A solid described by curves is measured in
+    /// facets that record its surfaces; one that cannot be cut into them is
+    /// measured by its corners, and is not exact.
     static IdealMassProperties computeIdeal(const topo::Solid& solid,
                                             const Material* material = nullptr,
                                             double tolerance = 1e-10,
