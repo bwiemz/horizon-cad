@@ -45,6 +45,7 @@
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
@@ -1321,5 +1322,67 @@ TEST(AssembliesTest, APatternsInstancesFollowTheirSeed) {
     trigger(w, "action_undo");  // the move
     trigger(w, "action_undo");  // the pattern
     EXPECT_TRUE(assembly.patterns().empty());
+    EXPECT_EQ(assembly.components().size(), 1u);
+}
+
+// Phase 162: Mirror Components adds each checked component's mirror image:
+// its part mirrored, placed rigidly (a block at the origin mirrored in
+// x = 20 stands at x 30..40), as one undo step. It is a line of its own in
+// the bill of materials and a part of its own in STEP, read back mirrored
+// and facing out.
+TEST(AssembliesTest, AMirroredComponentIsItsPartMirrored) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 4, 2));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    const uint64_t original = assembly.components()[0].id;
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+    chooseInTree(w, original);
+    {
+        FormFiller mirror(QStringLiteral("Mirror Components"),
+                          FormAnswers()
+                              .choose(QStringLiteral("plane"), QStringLiteral("YZ (across X)"))
+                              .number(QStringLiteral("x"), 20.0)
+                              .number(QStringLiteral("y"), 0.0)
+                              .number(QStringLiteral("z"), 0.0));
+        trigger(w, "action_mirror_components");
+        ASSERT_TRUE(mirror.seen());
+    }
+    ASSERT_EQ(assembly.components().size(), 2u) << w.statusBar()->currentMessage().toStdString();
+    const auto& image = assembly.components()[1];
+    EXPECT_TRUE(image.mirrored);
+    EXPECT_EQ(image.name, "block (mirrored)");
+    expectAt(image, Vec3(40, 0, 0), "R I S: a move of 40");
+    EXPECT_NEAR(image.transform.determinant3(), 1.0, 1e-12) << "rigid";
+    const auto mesh = image.mesh();
+    ASSERT_NE(mesh, nullptr);
+    for (size_t i = 0; i < mesh->positions.size(); i += 3) {
+        const double worldX = mesh->positions[i] + 40.0;
+        EXPECT_GE(worldX, 30.0 - 1e-5);
+        EXPECT_LE(worldX, 40.0 + 1e-5);
+    }
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+    const auto bom = hz::doc::BomGenerator::generate(assembly);
+    ASSERT_EQ(bom.lines.size(), 2u);
+    EXPECT_EQ(bom.lines[1].partName, "block (mirrored)");
+
+    const QString step = dir.filePath(QStringLiteral("pair.step"));
+    DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"), 1000);
+    {
+        FilePicker picker(step);
+        trigger(w, "export_step");
+    }
+    const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
+    ASSERT_EQ(read.parts.size(), 2u) << hz::io::StepFormat::lastError();
+    EXPECT_EQ(read.parts[1].name, "block (mirrored)");
+    ASSERT_EQ(read.parts[1].bodies.size(), 1u);
+    double lowest = 0.0;
+    for (const auto& v : read.parts[1].bodies[0]->vertices()) lowest = std::min(lowest, v.point.x);
+    EXPECT_NEAR(lowest, -10.0, 1e-6) << "the part mirrored in its own frame";
+    EXPECT_GT(hz::model::MassPropertiesCalculator::compute(*read.parts[1].bodies[0]).volume, 79.0);
+
+    trigger(w, "action_undo");
     EXPECT_EQ(assembly.components().size(), 1u);
 }

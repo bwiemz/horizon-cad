@@ -340,7 +340,7 @@ bool DocumentManager::resolveSubassembly(ComponentInstance& instance, ComponentS
     instance.assemblySolid.reset();
     if (mode == ComponentState::Resolved) {
         instance.assemblySolid =
-            sub->drawingSolid([](const ComponentInstance& c) { return c.solid(); });
+            sub->drawingSolid([](const ComponentInstance& c) { return c.ownSolid(); });
     }
     instance.state = mode;
     if (instance.cachedMesh == nullptr && why != nullptr) {

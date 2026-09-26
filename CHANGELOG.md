@@ -19,6 +19,14 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
 
+- **Mirrored components (162, part 3).**
+  - Assembly ▸ Mirror Components adds each checked component's mirror
+    image in a plane: its part mirrored, placed as any component is, so
+    it can be mated, dragged and checked for interference.
+  - The bill of materials lists a mirrored part as its own line, and STEP
+    export writes it as its own part.
+  - Files are saved as format version 28.
+
 - **Hole (162, part 2).**
   - Model ▸ Hole drills a simple, counterbored or countersunk hole into a
     flat face of the part at a point: as deep as its depth (with a drill

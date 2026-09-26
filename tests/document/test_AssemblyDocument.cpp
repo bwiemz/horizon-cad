@@ -9,11 +9,14 @@
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/ReferenceGeometry.h"
+#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -693,4 +696,89 @@ TEST(AssemblyMatesTest, APatternsInstanceIsNotMated) {
     asmDoc.restore(after);
     EXPECT_EQ(instancesOf(asmDoc, id).size(), 1u);
     EXPECT_NE(asmDoc.component(first), nullptr);
+}
+
+namespace {
+
+double enclosed(const hz::topo::Solid& solid) {
+    double v = 0.0;
+    for (const auto& shell : solid.shells()) v += hz::topo::signedVolume(shell);
+    return v;
+}
+
+/// The volume a mesh's triangles enclose, signed by their winding.
+double enclosed(const hz::geo::MeshData& mesh) {
+    double v = 0.0;
+    const auto at = [&mesh](uint32_t i) {
+        return Vec3(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
+    };
+    for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        v += at(mesh.indices[t]).dot(at(mesh.indices[t + 1]).cross(at(mesh.indices[t + 2]))) / 6.0;
+    }
+    return v;
+}
+
+}  // namespace
+
+// Phase 162: a mirrored component places its part mirrored in its own YZ
+// plane, rigidly: its solid and its mesh are the part's mirror images,
+// facing out as the part's do; the drawing's solid mirrors it too; and the
+// bill of materials lists it as a part of its own.
+TEST(AssemblyDocumentTest, AMirroredComponentIsItsPartMirrored) {
+    auto part = std::make_shared<Document>();
+    part->setType(DocumentType::Part);
+    part->featureTree().addFeature(PrimitiveFeature::makeBox(10, 4, 2));
+    ASSERT_TRUE(part->rebuildModel());
+    AssemblyDocument asmDoc;
+    ComponentInstance plain;
+    plain.name = "block";
+    plain.partPath = "block.hzpart";
+    plain.resolvedPart = part;
+    plain.state = ComponentState::Resolved;
+    plain.cachedMesh = std::make_shared<const hz::geo::MeshData>(
+        hz::model::SolidTessellator::tessellate(*part->solid()));
+    asmDoc.addComponent(plain);
+    ComponentInstance image = plain;
+    image.mirrored = true;
+    // Mirrored in x = 20: R I S is a move of 40 along x.
+    image.transform = Mat4::translation(Vec3(40, 0, 0));
+    const uint64_t id = asmDoc.addComponent(image);
+    const ComponentInstance& placed = *asmDoc.component(id);
+
+    const hz::topo::Solid* solid = placed.solid();
+    ASSERT_NE(solid, nullptr);
+    ASSERT_NE(solid, part->solid()) << "its own mirror";
+    EXPECT_EQ(placed.ownSolid(), part->solid());
+    EXPECT_NEAR(enclosed(*solid), enclosed(*part->solid()), 1e-9) << "facing out";
+    for (const auto& v : solid->vertices()) {
+        EXPECT_LE(v.point.x, 1e-9);
+        EXPECT_GE(v.point.x, -10.0 - 1e-9);
+    }
+    EXPECT_EQ(placed.solid(), solid) << "made once";
+
+    const auto mesh = placed.mesh();
+    ASSERT_NE(mesh, nullptr);
+    EXPECT_NEAR(enclosed(*mesh), enclosed(*plain.cachedMesh), 1e-6) << "its triangles face out";
+    for (size_t i = 0; i < mesh->positions.size(); i += 3) EXPECT_LE(mesh->positions[i], 1e-6f);
+
+    // The drawing's solid: the block where it is, and its image at x 30..40.
+    const auto drawn = asmDoc.drawingSolid([](const ComponentInstance& c) { return c.ownSolid(); });
+    ASSERT_NE(drawn, nullptr);
+    EXPECT_NEAR(enclosed(*drawn), 2.0 * enclosed(*part->solid()), 1e-9);
+    double far = 0.0;
+    for (const auto& v : drawn->vertices()) far = std::max(far, v.point.x);
+    EXPECT_NEAR(far, 40.0, 1e-9);
+
+    const auto bom = BomGenerator::generate(asmDoc);
+    ASSERT_EQ(bom.lines.size(), 2u);
+    EXPECT_EQ(bom.lines[0].partName, "block");
+    EXPECT_EQ(bom.lines[1].partName, "block (mirrored)");
+
+    // The part rebuilt wider: its mirror is made again, whatever address
+    // the new solid has (a freed one's may be reused).
+    ASSERT_TRUE(part->featureTree().feature(0)->setParameter("width", 20.0));
+    ASSERT_TRUE(part->rebuildModel());
+    double widest = 0.0;
+    for (const auto& v : placed.solid()->vertices()) widest = std::min(widest, v.point.x);
+    EXPECT_NEAR(widest, -20.0, 1e-9) << "the new part, mirrored";
 }

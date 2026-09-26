@@ -862,6 +862,8 @@ void MainWindow::createMenus() {
                  [this] { m_assemblies->onPatternComponents(); });
     sketchAction(assemblyMenu, tr("Edit Component Pa&ttern..."), "action_edit_component_pattern",
                  [this] { m_assemblies->onEditComponentPattern(); });
+    sketchAction(assemblyMenu, tr("Mirror Com&ponents..."), "action_mirror_components",
+                 [this] { m_assemblies->onMirrorComponents(); });
     sketchAction(assemblyMenu, tr("Remove Component Patter&n..."),
                  "action_remove_component_pattern",
                  [this] { m_assemblies->onRemoveComponentPattern(); });
@@ -1518,7 +1520,9 @@ void MainWindow::rebuildScene() {
             if (!comp.cachedMesh) continue;
             auto node =
                 std::make_shared<render::SceneNode>(comp.name.empty() ? "Component" : comp.name);
-            node->shareMesh(comp.cachedMesh);  // one mesh for every instance of a part
+            // One mesh for every instance of a part; a mirrored one's own
+            // mirror of it (Phase 162).
+            node->shareMesh(comp.mesh());
             // Where it is drawn: moved by the exploded view shown (Phase 161).
             node->setLocalTransform(m_assembly->displayTransform(comp));
             node->setOwnerId(comp.id);  // a click on it names the component
