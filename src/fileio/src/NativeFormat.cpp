@@ -71,7 +71,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// build a different part.
 /// 21: an entity may carry "construction" and "sourceEdge" (Phase 157). An
 /// older build would take a construction line for part of a profile.
-static constexpr int kFormatVersion = 21;
+/// 22: an extrusion may go up to a face: "extent": 4 and "upToFace" (Phase
+/// 157). An older build would read 4 as its distance.
+static constexpr int kFormatVersion = 22;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -733,6 +735,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             if (ext->extent() != doc::ExtrudeFeature::Extent::Blind) {
                 fObj["extent"] = static_cast<int>(ext->extent());
             }
+            // The face it goes up to (Phase 157), by its whole name.
+            if (!ext->upToFace().empty()) fObj["upToFace"] = ext->upToFace();
         } else if (const auto* rev = dynamic_cast<const doc::RevolveFeature*>(feat)) {
             fObj["type"] = "revolve";
             fObj["angle"] = rev->angle();
@@ -1790,7 +1794,11 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     }
                     if (const auto extent = fObj.find("extent");
                         extent != fObj.end() && extent->is_number()) {
-                        feat->setParameter("extent", extent->get<double>());  // 0-3, else ignored
+                        feat->setParameter("extent", extent->get<double>());  // 0-4, else ignored
+                    }
+                    if (const auto face = fObj.find("upToFace");
+                        face != fObj.end() && face->is_string()) {
+                        feat->setUpToFace(face->get<std::string>());
                     }
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));

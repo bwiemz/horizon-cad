@@ -395,20 +395,27 @@ projected into a sketch (157b), and extrude up to a face (157c).
 - Not done: Move and grips can still drag a projected entity (the next
   build puts it back), and there is no Offset Entities.
 
-### 157c: extrude up to a face (plan)
-- **The data.** `ExtrudeFeature::Extent::UpToFace` and a face (by whole
-  name). They are saved as "extent": 4 and "upToFace", and the format
-  version becomes 21, because an older build would read 4 as Blind.
-- **The build.** The face is found in the part before the extrude
-  (`planeOfFace`).
-  - A face parallel to the sketch gives the distance.
-  - A face that is not parallel gives each profile point its own distance
-    to the face's plane, making a slanted top. It is refused where a point
-    would not reach the face.
-  - A curved face is refused for now.
-- **The Extrude form** gets "Up to a face" with a list of the part's flat
-  faces, the one clicked before already chosen. The Edit form shows the
-  face.
+### 157c: extrude up to a face (as built)
+- **`ExtrudeFeature::Extent::UpToFace`** (code 4) and `upToFace()`, a face
+  by its whole name.
+  - The build finds the face in the part before the extrusion
+    (`planeOfFace`), and goes as far as it along the direction. The part
+    may put the face anywhere; the distance is not used.
+  - A face that is not there, not flat, at a slant to the sketch, or behind
+    it, fails the feature, which says which.
+- **Named references.** `Feature::references()` and `setReference()` hold
+  what a feature refers to by name; the first is "upToFace".
+  `EditFeatureCommand` carries them, and undo restores them.
+- **The Extrude form** has "Up to a face", with a list of the part's flat
+  faces parallel to the sketch, the one clicked first. **The Edit form**
+  shows the face, and offers the part's flat faces in its place.
+- **Files:** "extent": 4 and "upToFace", at format version 22, because an
+  older build would read 4 as its distance.
+- **Not done: a face at a slant.** An extrusion's top is built as a
+  translate of its bottom (`Extrude`: top = bottom + offset). A slanted
+  top needs its own carriers, and its circles become ellipses. That is a
+  kernel change of its own, not a new extent, and it is left for Milestone
+  18. Until then the feature says the face is at a slant.
 
 ## Tracking
 

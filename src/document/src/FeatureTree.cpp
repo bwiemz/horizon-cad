@@ -140,7 +140,7 @@ bool ExtrudeFeature::setParameter(const std::string& name, double value) {
     }
     if (name == "extent") {
         int code = 0;
-        if (!countParameter(value, 0, 3, code)) return false;
+        if (!countParameter(value, 0, static_cast<int>(Extent::UpToFace), code)) return false;
         m_extent = static_cast<Extent>(code);
         return true;
     }
@@ -164,9 +164,16 @@ Feature::ParameterKind ExtrudeFeature::parameterKind(const std::string& name) co
 
 std::vector<std::string> ExtrudeFeature::parameterChoices(const std::string& name) const {
     if (name == "extent") {
-        return {"To the distance", "Both ways, half each", "Through all", "Through all, both ways"};
+        return {"To the distance", "Both ways, half each", "Through all", "Through all, both ways",
+                "Up to a face"};
     }
     return Feature::parameterChoices(name);
+}
+
+bool ExtrudeFeature::setReference(const std::string& name, const std::string& value) {
+    if (name != "upToFace") return false;
+    m_upToFace = value;
+    return true;
 }
 
 std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
@@ -256,6 +263,31 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
             }
             const double back = std::min(lo, 0.0) - margin;
             return extrude(moved(unit * back), std::max(hi, 0.0) + margin - back);
+        }
+        case Extent::UpToFace: {
+            // Phase 157: as far as a flat face of the part, parallel to the
+            // sketch, where the part now puts it.
+            if (m_upToFace.empty()) return failWith(reason, "no face is chosen to go up to");
+            const std::string face = "the face it goes up to (" + m_upToFace + ")";
+            if (!context.part) {
+                return failWith(reason, face + " is not there: there is no part before it");
+            }
+            std::string why;
+            const auto to = model::planeOfFace(*context.part, m_upToFace, &why);
+            if (!to) return failWith(reason, face + " " + why);
+            if (to->normal.cross(plane.normal()).length() > 1e-9) {
+                return failWith(reason, face +
+                                            " is at a slant to the sketch: it goes up to a face "
+                                            "parallel to the sketch");
+            }
+            // Parallel, so every point of the profile is as far from it.
+            const double reach =
+                (to->origin - plane.origin()).dot(to->normal) / unit.dot(to->normal);
+            const double size = std::max(1.0, (to->origin - plane.origin()).length());
+            if (!(reach > 1e-9 * size)) {
+                return failWith(reason, face + " is not in front of the sketch that way");
+            }
+            return extrude(plane, reach / direction.length());
         }
     }
     return extrude(plane, m_distance);

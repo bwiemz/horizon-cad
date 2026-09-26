@@ -283,6 +283,7 @@ QString parameterLabel(const std::string& name) {
         {"thickness", QT_TRANSLATE_NOOP("MainWindow", "Thickness")},
         {"operation", QT_TRANSLATE_NOOP("MainWindow", "Operation")},
         {"extent", QT_TRANSLATE_NOOP("MainWindow", "Goes")},
+        {"upToFace", QT_TRANSLATE_NOOP("MainWindow", "Up to face")},
         {"count", QT_TRANSLATE_NOOP("MainWindow", "Count")},
         {"spacing", QT_TRANSLATE_NOOP("MainWindow", "Spacing")},
         {"width", QT_TRANSLATE_NOOP("MainWindow", "Width")},
@@ -4517,11 +4518,33 @@ void MainWindow::onExtrudeSketch() {
         return;
     }
 
+    // The part's flat faces parallel to the sketch, to go up to (Phase 157):
+    // the one clicked, if any, first.
+    std::vector<PlaneChoice> faces;
+    if (const topo::Solid* part = m_document->solid()) {
+        for (auto& face : planarFacesOf(*part)) {
+            if (face.plane.normal().cross(sketch->plane().normal()).length() > 1e-9) continue;
+            faces.push_back(std::move(face));
+        }
+    }
+    const auto clicked = std::find_if(faces.begin(), faces.end(), [this](const PlaneChoice& f) {
+        const auto& picks = m_viewport->modelSelection();
+        return std::any_of(picks.begin(), picks.end(), [&f](const ViewportWidget::ModelPick& p) {
+            return p.owner == 0 && !p.edge && p.tag == f.tag;
+        });
+    });
+    if (clicked != faces.end()) std::rotate(faces.begin(), clicked, clicked + 1);
+
     FeatureForm form(this, tr("Extrude"), m_document->lengthUnit());
     auto* size = form.length(QStringLiteral("size"), tr("Distance:"), 10.0, 0.01, 1e6, 2);
     auto* goes = form.choice(QStringLiteral("extent"), tr("Goes:"),
                              {tr("To the distance"), tr("Both ways, half each"), tr("Through all"),
-                              tr("Through all, both ways")});
+                              tr("Through all, both ways"), tr("Up to a face")});
+    QStringList faceNames;
+    for (const auto& face : faces) faceNames << face.text;
+    if (faceNames.isEmpty())
+        faceNames << tr("(no flat face of the part is parallel to the sketch)");
+    auto* upTo = form.choice(QStringLiteral("upToFace"), tr("Up to face:"), faceNames);
     auto* way = form.choice(QStringLiteral("way"), tr("Direction:"),
                             {tr("Out of the sketch"), tr("Reversed")});
     auto* result = form.operationChoice(proposedOperation());
@@ -4529,6 +4552,16 @@ void MainWindow::onExtrudeSketch() {
     const double distance = size->value();
     const auto extent = static_cast<doc::ExtrudeFeature::Extent>(goes->currentIndex());
     const doc::BodyOperation operation = FeatureForm::operation(result);
+    std::string upToFace;
+    if (extent == doc::ExtrudeFeature::Extent::UpToFace) {
+        if (faces.empty()) {
+            statusBar()->showMessage(
+                tr("Extrude not added: no flat face of the part is parallel to the sketch"));
+            return;
+        }
+        const auto& chosen = faces[static_cast<size_t>(std::max(upTo->currentIndex(), 0))];
+        upToFace = model::wholeFaceName(chosen.tag);
+    }
 
     // As the sketch was drawn: one placed on a face takes it along (Phase 157).
     const draft::SketchPlane& drawn = sketch->drawnPlane();
@@ -4546,6 +4579,7 @@ void MainWindow::onExtrudeSketch() {
 
     auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
     feature->setExtent(extent);
+    feature->setUpToFace(upToFace);
     feature->setOperation(operation);
     if (!addModelFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
         return;
@@ -5048,6 +5082,30 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
             return directions[static_cast<size_t>(index)];
         };
     }
+    // What it refers to by name (Phase 157): a face of the part, kept as it
+    // is or another of its flat faces.
+    const auto references = feat->references();
+    std::map<std::string, std::function<std::optional<std::string>()>> referenceFields;
+    if (!references.empty()) {
+        const std::vector<PlaneChoice> flat =
+            m_document->solid() ? planarFacesOf(*m_document->solid()) : std::vector<PlaneChoice>{};
+        for (const auto& [name, value] : references) {
+            QStringList names{
+                value.empty() ? tr("None") : tr("As it is, %1").arg(QString::fromStdString(value))};
+            std::vector<std::string> kept{value};
+            for (const auto& face : flat) {
+                names << face.text;
+                kept.push_back(model::wholeFaceName(face.tag));
+            }
+            auto* choice = form.choice(QString::fromStdString(name),
+                                       parameterLabel(name) + QStringLiteral(":"), names);
+            referenceFields[name] = [choice, kept]() -> std::optional<std::string> {
+                const int index = choice->currentIndex();
+                if (index <= 0 || index >= static_cast<int>(kept.size())) return std::nullopt;
+                return kept[static_cast<size_t>(index)];
+            };
+        }
+    }
     QComboBox* result = buildsBody ? form.operationChoice(feat->operation()) : nullptr;
     if (!form.exec()) return;
 
@@ -5062,6 +5120,12 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     std::map<std::string, math::Vec3> changedVectors;
     for (const auto& [name, read] : vectorFields) {
         if (const auto value = read()) changedVectors[name] = *value;
+    }
+    std::map<std::string, std::string> changedReferences;
+    for (const auto& [name, read] : referenceFields) {
+        if (const auto value = read(); value && *value != references.at(name)) {
+            changedReferences[name] = *value;
+        }
     }
     // Leave out what the feature refuses (a zero distance, too few segments,
     // an extrusion along its own sketch), and say so.
@@ -5087,13 +5151,14 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
         const auto chosen = FeatureForm::operation(result);
         if (chosen != feat->operation()) operation = chosen;
     }
-    if (changed.empty() && changedVectors.empty() && !operation && changedExpressions.empty()) {
+    if (changed.empty() && changedVectors.empty() && !operation && changedExpressions.empty() &&
+        changedReferences.empty()) {
         return;
     }
 
     m_document->undoStack().push(std::make_unique<doc::EditFeatureCommand>(
         *m_document, feat, std::move(changed), operation, std::move(changedVectors),
-        std::move(changedExpressions)));
+        std::move(changedExpressions), std::move(changedReferences)));
     rebuildFeatureTree();
 }
 

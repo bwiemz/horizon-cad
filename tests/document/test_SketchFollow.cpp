@@ -6,12 +6,14 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <string>
 
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/ModelCommands.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
@@ -290,4 +292,91 @@ TEST(SketchFollowTest, AProjectedEdgeThatIsGoneFailsTheFeatureOnlyIfItShapesTheP
     EXPECT_FALSE(part.doc.rebuildModel());
     EXPECT_NE(part.doc.lastBuildMessage().find("primitive_nosuch/edge"), std::string::npos)
         << part.doc.lastBuildMessage();
+}
+
+namespace {
+
+/// A 10 x 10 x 10 box, and a 2 x 2 column extruded down from z = 20 up to
+/// the face named @p face (the box's top, by default), joined to it.
+struct ColumnUpToAFace {
+    Document doc;
+    hz::doc::Feature* box = nullptr;
+    hz::doc::ExtrudeFeature* column = nullptr;
+
+    explicit ColumnUpToAFace(const std::string& face = "top", const Vec3& way = Vec3(0, 0, -1)) {
+        doc.setType(hz::doc::DocumentType::Part);
+        doc.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+        box = doc.featureTree().feature(0);
+        auto sketch =
+            std::make_shared<Sketch>(SketchPlane(Vec3(5, 5, 20), Vec3::UnitZ, Vec3::UnitX));
+        sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(-1, -1), Vec2(1, 1)));
+        doc.addSketch(sketch);
+        auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, way, 1.0);
+        extrude->setExtent(hz::doc::ExtrudeFeature::Extent::UpToFace);
+        extrude->setUpToFace(face.empty() ? std::string() : box->featureID() + "/" + face);
+        extrude->setOperation(BodyOperation::Join);
+        column = extrude.get();
+        doc.featureTree().addFeature(std::move(extrude));
+    }
+};
+
+}  // namespace
+
+// Phase 157c: an extrusion up to a face goes as far as the face, wherever the
+// part puts it; its distance is not used.
+TEST(ExtrudeUpToFaceTest, ItGoesAsFarAsTheFaceWhereverItIs) {
+    ColumnUpToAFace part;
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(part.doc), 1000.0 + 4.0 * 10.0, 1e-6) << "down to the top at 10";
+    EXPECT_NEAR(topOf(part.doc), 20.0, 1e-9);
+
+    ASSERT_TRUE(part.box->setParameter("depth", 15.0));
+    part.doc.featureTree().markChanged();
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(part.doc), 1500.0 + 4.0 * 5.0, 1e-6) << "down to the top at 15";
+}
+
+TEST(ExtrudeUpToFaceTest, AFaceItCannotGoUpToIsSaidSo) {
+    const auto failure = [](ColumnUpToAFace& part) {
+        EXPECT_FALSE(part.doc.rebuildModel());
+        return part.doc.lastBuildMessage();
+    };
+    {
+        ColumnUpToAFace part("right");  // facing x: across the way it goes
+        const std::string why = failure(part);
+        EXPECT_NE(why.find("at a slant"), std::string::npos) << why;
+    }
+    {
+        ColumnUpToAFace part("top", Vec3::UnitZ);  // up, away from the box
+        const std::string why = failure(part);
+        EXPECT_NE(why.find("not in front"), std::string::npos) << why;
+    }
+    {
+        ColumnUpToAFace part("");
+        const std::string why = failure(part);
+        EXPECT_NE(why.find("no face is chosen"), std::string::npos) << why;
+    }
+    {
+        ColumnUpToAFace part("nosuch");
+        const std::string why = failure(part);
+        EXPECT_NE(why.find("is not there"), std::string::npos) << why;
+    }
+}
+
+// The face it goes up to is changed by Edit Feature, and undone as one step.
+TEST(ExtrudeUpToFaceTest, TheFaceIsEditedAndUndone) {
+    ColumnUpToAFace part;
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    const std::string top = part.column->upToFace();
+    const std::string bottom = part.box->featureID() + "/bottom";
+    part.doc.undoStack().push(std::make_unique<hz::doc::EditFeatureCommand>(
+        part.doc, part.column, std::map<std::string, double>{}, std::nullopt,
+        std::map<std::string, Vec3>{}, std::map<std::string, std::string>{},
+        std::map<std::string, std::string>{{"upToFace", bottom}}));
+    EXPECT_EQ(part.column->upToFace(), bottom);
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(part.doc), 1000.0 + 4.0 * 10.0, 1e-6)
+        << "down through the box to its bottom: joined, only what is above it adds";
+    part.doc.undoStack().undo();
+    EXPECT_EQ(part.column->upToFace(), top);
 }

@@ -168,6 +168,17 @@ public:
         (void)value;
         return false;
     }
+    /// What it refers to by name (Phase 157): an extrusion's face to go up
+    /// to, by its whole name (model::wholeFaceName()), "" for none. Each is a
+    /// face of the part.
+    virtual std::map<std::string, std::string> references() const { return {}; }
+    /// Refer to @p value as @p name. Returns false for a name it has not.
+    virtual bool setReference(const std::string& name, const std::string& value) {
+        (void)name;
+        (void)value;
+        return false;
+    }
+
     /// Whether vector @p name is a point (not a direction).
     static bool isPoint(const std::string& name) {
         return name.size() >= 5 && name.compare(name.size() - 5, 5, "Point") == 0;
@@ -227,10 +238,19 @@ public:
     ExtrudeFeature(std::shared_ptr<Sketch> sketch, const math::Vec3& direction, double distance);
 
     /// How far it goes: the distance along the direction; half of it each
-    /// way; or through the part (one way, or both), whatever the distance.
-    enum class Extent { Blind, Symmetric, ThroughAll, ThroughAllBoth };
+    /// way; through the part (one way, or both), whatever the distance; or up
+    /// to a flat face of the part parallel to the sketch (Phase 157).
+    enum class Extent { Blind, Symmetric, ThroughAll, ThroughAllBoth, UpToFace };
     Extent extent() const { return m_extent; }
     void setExtent(Extent extent) { m_extent = extent; }
+    /// The face it goes up to, by its whole name; "" for none. Used only
+    /// when the extent is UpToFace. A reference, "upToFace".
+    const std::string& upToFace() const { return m_upToFace; }
+    void setUpToFace(std::string face) { m_upToFace = std::move(face); }
+    std::map<std::string, std::string> references() const override {
+        return {{"upToFace", m_upToFace}};
+    }
+    bool setReference(const std::string& name, const std::string& value) override;
 
     std::string name() const override;
     std::string featureID() const override;
@@ -270,6 +290,7 @@ private:
     math::Vec3 m_direction;
     double m_distance;
     Extent m_extent = Extent::Blind;
+    std::string m_upToFace;
     int m_segments = model::Extrude::kDefaultSegments;
     double m_chordTolerance = 0.0;
     std::string m_featureID;
