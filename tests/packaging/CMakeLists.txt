@@ -1,6 +1,7 @@
 # The install tree a package is made from holds what a package needs (Phase
 # 116). Not on Windows yet: a Windows install runs Qt's deployment tool, which
-# the release workflow (Phase 117) exercises when it builds the installer.
+# the release workflow (Phase 117) exercises when it builds the installer. A
+# macOS install runs it too (macdeployqt), so this test is its check in CI.
 if(NOT WIN32)
     add_test(NAME PackagingInstallTree
         COMMAND ${CMAKE_COMMAND}

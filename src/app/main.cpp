@@ -164,7 +164,7 @@ static int run(int argc, char* argv[]) {
     // An explicit choice in settings wins; otherwise follow the system locale.
     hz::ui::LocaleManager localeManager;
     const QString translationsDir =
-        QDir(QApplication::applicationDirPath()).filePath("translations");
+        QDir(hz::ui::Application::shippedFilesDirectory()).filePath("translations");
     const QString uiLanguage =
         QSettings().value("ui/language", QLocale::system().name()).toString();
     if (localeManager.apply(translationsDir, uiLanguage)) {

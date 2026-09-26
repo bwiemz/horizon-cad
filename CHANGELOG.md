@@ -77,6 +77,20 @@ work, not "post-1.0".
     the status bar) and says what it is for. Help ▸ Getting Started shows
     it again.
 
+- **macOS (169).**
+  - Horizon CAD builds and is tested on macOS (Apple silicon) in CI.
+  - A release now includes a macOS disk image. The application is a proper
+    bundle, with its icon, and a document opened from the Finder or dropped
+    on the Dock icon opens in it.
+  - Found by the first macOS builds: the file readers used a number parser
+    that Apple's C++ library does not have, and the check that judges a
+    Boolean's result was wrong for very small parts and, on Apple silicon,
+    for parts far from the origin. All fixed.
+  - Release packages are signed when the project has the certificates:
+    the Windows installer, and the macOS disk image, which is notarized
+    too. Until then the release notes say which are not, and how to open
+    them.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

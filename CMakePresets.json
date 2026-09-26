@@ -111,6 +111,16 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "macos-release",
+      "displayName": "macOS release against Homebrew's Qt 6",
+      "description": "What the release workflow packages into a disk image (packaging/macos/make-dmg.sh).",
+      "inherits": "macos-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HZ_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -143,6 +153,10 @@
     {
       "name": "macos-debug",
       "configurePreset": "macos-debug"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release"
     }
   ],
   "testPresets": [

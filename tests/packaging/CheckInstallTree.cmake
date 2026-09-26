@@ -1,7 +1,8 @@
 # Installs the build into a scratch prefix and checks that what a package
-# needs is there: the executable, its samples, the licence and notices, and on Linux the
-# desktop entry, AppStream metadata and icons. The desktop entry is validated
-# when desktop-file-validate is installed.
+# needs is there: the executable, its samples, the licence and notices, and on
+# Linux the desktop entry, AppStream metadata and icons, on macOS the bundle's
+# Info.plist and icon. The desktop entry is validated when
+# desktop-file-validate is installed.
 #   cmake -DBUILD_DIR=<build> -DCONFIG=<config> -DWORK_DIR=<scratch> -P CheckInstallTree.cmake
 file(REMOVE_RECURSE "${WORK_DIR}")
 execute_process(
@@ -26,8 +27,16 @@ set(expected
     "share/icons/hicolor/256x256/apps/${app_id}.png"
     "share/icons/hicolor/scalable/apps/${app_id}.svg")
 if(APPLE)
-    set(expected "bin/horizon" "bin/samples/bracket.hzpart" "bin/samples/plate-and-pin.hzasm"
-        "share/doc/horizon-cad/LICENSE" "share/doc/horizon-cad/THIRD_PARTY_NOTICES.md")
+    # The bundle, with what it ships in Contents/Resources.
+    set(contents "HorizonCAD.app/Contents")
+    set(expected
+        "${contents}/MacOS/HorizonCAD"
+        "${contents}/Info.plist"
+        "${contents}/Resources/horizon-cad.icns"
+        "${contents}/Resources/samples/bracket.hzpart"
+        "${contents}/Resources/samples/plate-and-pin.hzasm"
+        "${contents}/Resources/doc/LICENSE"
+        "${contents}/Resources/doc/THIRD_PARTY_NOTICES.md")
 endif()
 foreach(file IN LISTS expected)
     if(NOT EXISTS "${WORK_DIR}/${file}")
@@ -36,7 +45,15 @@ foreach(file IN LISTS expected)
 endforeach()
 
 # The metadata carries the version it was installed with.
-if(NOT APPLE)
+if(APPLE)
+    file(READ "${WORK_DIR}/${contents}/Info.plist" plist)
+    if(plist MATCHES "@[A-Z_]+@")
+        message(FATAL_ERROR "the Info.plist was not configured: ${plist}")
+    endif()
+    if(NOT plist MATCHES "<key>CFBundleExecutable</key>[ \t\r\n]*<string>HorizonCAD</string>")
+        message(FATAL_ERROR "the Info.plist does not name the executable: ${plist}")
+    endif()
+else()
     file(READ "${WORK_DIR}/share/metainfo/${app_id}.metainfo.xml" metainfo)
     if(metainfo MATCHES "@[A-Z_]+@")
         message(FATAL_ERROR "the AppStream metadata was not configured: ${metainfo}")

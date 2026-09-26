@@ -3,9 +3,11 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QEvent>
 #include <QMessageBox>
 #include <QObject>
+#include <QTemporaryDir>
 #include <stdexcept>
 
 #include "UiTestSupport.h"
@@ -86,4 +88,34 @@ TEST(ApplicationTest, TheViewportAsksForDesktopOpenGL) {
     EXPECT_EQ(format.minorVersion(), 3);
     EXPECT_EQ(format.profile(), QSurfaceFormat::CoreProfile);
     EXPECT_EQ(format.depthBufferSize(), 24);
+}
+
+// The catalogs and samples are found where CMake puts them (HZ_SHIPPED_DIR):
+// next to the executable, or in a macOS bundle's Contents/Resources.
+TEST(ApplicationTest, ShippedFilesAreNextToTheExecutableOrInTheBundle) {
+    using hz::ui::Application;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString bin = dir.filePath(QStringLiteral("bin"));
+    const QString contents = dir.filePath(QStringLiteral("HorizonCAD.app/Contents"));
+    const QString lone = dir.filePath(QStringLiteral("lone/MacOS"));
+    for (const QString& made : {bin, contents + QStringLiteral("/MacOS"),
+                                contents + QStringLiteral("/Resources"), lone}) {
+        ASSERT_TRUE(QDir().mkpath(made));
+    }
+
+    EXPECT_EQ(Application::shippedFilesDirectory(bin), QDir(bin).absolutePath());
+    const QString inBundle =
+        Application::shippedFilesDirectory(contents + QStringLiteral("/MacOS"));
+#if defined(Q_OS_MACOS)
+    EXPECT_EQ(inBundle, QDir(contents + QStringLiteral("/Resources")).absolutePath());
+#else
+    EXPECT_EQ(inBundle, QDir(contents + QStringLiteral("/MacOS")).absolutePath())
+        << "a bundle is macOS's alone";
+#endif
+    EXPECT_EQ(Application::shippedFilesDirectory(lone), QDir(lone).absolutePath())
+        << "a folder named MacOS with no Resources beside it is no bundle";
+    // The test binary is in no bundle.
+    EXPECT_EQ(Application::shippedFilesDirectory(),
+              QDir(QCoreApplication::applicationDirPath()).absolutePath());
 }

@@ -118,6 +118,23 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-system-qt
 ./build/linux-system-qt/src/app/horizon
 ```
 
+**macOS** (Apple silicon, with Homebrew):
+
+```bash
+# Qt from Homebrew; vcpkg provides the small libraries.
+brew install qt ninja
+export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+cmake --preset macos-debug
+cmake --build build/macos-debug
+ctest --test-dir build/macos-debug
+open build/macos-debug/src/app/HorizonCAD.app
+
+# A disk image, as a release makes (signed ad hoc unless
+# HZ_MACOS_SIGNING_IDENTITY names a Developer ID):
+cmake --preset macos-release && cmake --build build/macos-release
+packaging/macos/make-dmg.sh build/macos-release dist
+```
+
 **Build options:**
 
 | Option | Default | Effect |
@@ -405,6 +422,8 @@ sets out six milestones from Phase 122 on, starting with the crashes.
 | 168b | Done | Samples: a bracket, a drilled plate, a pin, an assembly of the plate and pin held by mates, a drawing sheet of the bracket and a 2D gasket, made at build time by a program using the document API (a sample that does not build fails the build), installed, and listed by File ▸ Open Sample, which opens a copy in the user's documents so it can be saved. Tests open and build every sample |
 | 168c | Done | Getting Started: a short tour of the window (Help ▸ Getting Started), each step outlining the ribbon, the feature tree, the view, Properties, the status bar or the menus and saying what it is for; offered once, at first start. Phase 168 complete |
 | 166c | Done | Strings a translation could not put right, fixed in the code: a label no longer lowercased into a sentence (wrong for German nouns), "Center" and "Linear" each two messages for their two meanings, and a sentence split across two messages made two whole sentences; all translated |
+| 169a | Done | macOS in CI: a `macos-14` (Apple silicon) job builds and runs every test, with Homebrew's Qt. What it found is fixed: Apple's C++ library has no floating-point `from_chars` (the units, DXF and STEP readers now use a portable reader, tested against the standard one), a GL constant missing from Apple's headers, tests waiting for message-box titles macOS drops, and two bugs in the check that judges a Boolean's result, for small parts and, with a fused multiply-add, far from the origin. Tests draw their randoms the same on every platform, and a test bounds how often a random Boolean is unsound |
+| 169b | Done | A macOS disk image in every release: the application is a bundle (`HorizonCAD.app`) with its icon, its documents declared, and a document opened from the Finder opened in a tab. Qt is put in by macdeployqt; a script then makes sure nothing loads from outside the bundle and the system, signs it, and makes the disk image, and the release starts the application from it. Packages are signed when the repository has the secrets (Windows with signtool; macOS with a Developer ID, and notarized), and the release notes list any that are not. Phase 169 and Milestone 19 complete |
 
 The full multi-year design is in
 [docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md](docs/superpowers/specs/2026-04-05-horizon-cad-roadmap-design.md),

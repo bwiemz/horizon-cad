@@ -280,15 +280,76 @@ In three parts: 168a the guide, 168b the samples, 168c Getting Started.
   and Escape closes the tour; it is offered at the first start only, and
   the Help menu shows it again.
 
-## Phase 169: macOS, and signed installers
+## Phase 169: macOS, and signed installers (as built)
 
-- **A macOS job in CI** (macos-14, Apple silicon) that builds and runs the
-  tests, with Homebrew's Qt.
-- **`release.yml` gains a DMG**, built with `macdeployqt`.
-- **Signing:** each platform's signing step runs when its secrets are there
-  (Windows: a certificate for signtool; macOS: a Developer ID, and
-  notarization), and is skipped, with a note in the release, when they are
-  not. The owner provides the certificates (roadmap decision 2).
+### 169a: a macOS job in CI (as built)
+
+- **A `macos-14` (Apple silicon) entry in CI's build matrix**, through a
+  `macos-debug` preset: Qt and its Linguist tools from Homebrew, the rest
+  from vcpkg. Apple clang's warnings are reported, not failed on. ctest
+  has a 15-minute limit per test, so a hang fails its test, not the job.
+- **What the first macOS builds found:**
+  - Apple's libc++ has no floating-point `std::from_chars`. The units,
+    DXF and STEP readers call `hz::math::fromChars`: the standard one
+    where it exists, else a reader of the same grammar over `strtod_l` in
+    the C locale, compiled and tested everywhere.
+  - `GL_ALL_BARRIER_BITS` is not in Apple's GL 4.1 headers; it is defined
+    where missing.
+  - A message box on macOS has no title, so the tests' dialog helper takes
+    an untitled box as a match there, and the mass-properties box is found
+    by an object name.
+  - Qt on macOS is built without exceptions: the two containment tests
+    skip there.
+  - The memory test reads the Mach task, as macOS has no `/proc`.
+  - Two validator bugs: `orient2d` compared a length squared with a
+    length (small parts), and the Newell area vector lost its precision
+    far from the origin once a fused multiply-add was used (Apple clang on
+    arm64). Tests draw their randoms portably (`hz::test::Uniform`), and a
+    rate test bounds unsound Boolean placements over 100 of each kind.
+
+### 169b: an application bundle, a disk image, and signing (as built)
+
+- **The application is a bundle on macOS**, `HorizonCAD.app`. Its
+  Info.plist (`packaging/macos/Info.plist.in`) names it, gives its icon,
+  its minimum macOS (the one it was built on, as Homebrew's Qt is), and
+  the documents it opens: its own four types, declared by it, and DXF.
+- **Shipped files in `Contents/Resources`.** A signature takes everything
+  in `Contents/MacOS` for code, so the catalogs, samples and licences go
+  in `Contents/Resources`. One CMake variable, `HZ_SHIPPED_DIR`, places
+  them in the build tree, the tests and the install, and
+  `Application::shippedFilesDirectory()` finds them the same way.
+- **Documents from the Finder.** macOS hands a document opened from the
+  Finder or dropped on the Dock icon to the running application as an
+  event, not on the command line. `Application` turns the event into
+  `fileOpenRequested`, and the window opens the file in a tab.
+- **The icon** is packed into `horizon-cad.icns` by
+  `packaging/icons/make-icns.py`, which does what Apple's `iconutil` does
+  and runs anywhere; `render.sh` calls it.
+- **The disk image** (`packaging/macos/make-dmg.sh`, a `macos` job in
+  `release.yml`): `cmake --install` runs Qt's deployment script, which on
+  macOS is macdeployqt. The script then removes every search path outside
+  the bundle (a Mac with Homebrew's Qt would load that Qt instead of the
+  bundle's), fails if anything loads a library from outside the bundle
+  and the system, signs the bundle inside out, and makes the disk image
+  with a link to Applications. The job starts the application from the
+  mounted disk image (`--self-test`) before keeping it.
+- **Signing**, when the repository has the secrets (listed in
+  `docs/RELEASING.md`); only the signing steps are given them:
+  - Windows: `signtool` signs `horizon.exe` before it is packed, then the
+    installer.
+  - macOS: a Developer ID in a keychain made for the run, the hardened
+    runtime and a timestamp; with the Apple ID secrets too, the disk image
+    is notarized and stapled. Without a Developer ID the bundle is signed
+    ad hoc, which Apple silicon needs to run it at all.
+  - The release notes list a package that is not signed, with what a user
+    does to open it.
+- **Found on the way:** `build-appimage.sh` was stored without its
+  executable bit, so the release workflow, which had never run, would have
+  failed at the AppImage. It, `make-dmg.sh`, `render.sh` and
+  `make-icns.py` are executable now.
+- **Why a script, not CPack.** CPack's DragNDrop generator packs the
+  bundle straight after the install. The bundle has to be checked and
+  signed between macdeployqt and packing, so a script does it.
 
 ## Tracking
 

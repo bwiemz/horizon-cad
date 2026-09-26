@@ -22,6 +22,13 @@ public:
 
     bool notify(QObject* receiver, QEvent* event) override;
 
+    /// Where the files shipped with the application are: the translation
+    /// catalogs and the samples. Next to the executable, except in a macOS
+    /// application bundle, where they are in Contents/Resources.
+    static QString shippedFilesDirectory();
+    /// The same, for an executable in `executableDir`.
+    static QString shippedFilesDirectory(const QString& executableDir);
+
     /// Log the reason before the process aborts through std::terminate (an
     /// exception thrown outside any event handler, or from a destructor).
     static void installTerminateHandler();
@@ -34,6 +41,15 @@ public:
 
     /// Number of exceptions contained since start-up.
     int containedExceptionCount() const { return m_containedCount; }
+
+signals:
+    /// The system asked for a file to be opened: on macOS, a document opened
+    /// from the Finder or dropped on the Dock icon arrives as an event, not
+    /// on the command line.
+    void fileOpenRequested(const QString& file);
+
+protected:
+    bool event(QEvent* event) override;
 
 private:
     void reportException(const QString& what);
