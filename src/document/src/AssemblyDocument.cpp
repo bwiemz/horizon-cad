@@ -3,11 +3,15 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <map>
+#include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/math/Quaternion.h"
 #include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/topology/Solid.h"
@@ -201,13 +205,184 @@ void AssemblyDocument::restore(AssemblyState state) {
     m_components = std::move(state.components);
     m_mates = std::move(state.mates);
     m_views = std::move(state.views);
+    m_patterns = std::move(state.patterns);
     // Ids handed out since the snapshot are not reused.
     for (const auto& comp : m_components) {
         m_nextComponentId = std::max(m_nextComponentId, comp.id + 1);
     }
     for (const auto& mate : m_mates) m_nextMateId = std::max(m_nextMateId, mate.id + 1);
     for (const auto& view : m_views) m_nextViewId = std::max(m_nextViewId, view.id + 1);
+    for (const auto& owner : m_patterns) {
+        m_nextPatternId = std::max(m_nextPatternId, owner.id + 1);
+    }
     if (explodedView(m_shownView) == nullptr) m_shownView = 0;  // it is gone
+}
+
+math::Mat4 ComponentPattern::instanceTransform(int k) const {
+    const double at = static_cast<double>(k);
+    if (kind == Kind::Linear) return math::Mat4::translation(direction * (spacing * at));
+    return math::Mat4::translation(axisPoint) *
+           math::Mat4::rotation(math::Quaternion::fromAxisAngle(direction, spacing * at)) *
+           math::Mat4::translation(axisPoint * -1.0);
+}
+
+bool ComponentPattern::skips(int k) const {
+    return std::find(skipped.begin(), skipped.end(), k) != skipped.end();
+}
+
+int ComponentPattern::kept() const {
+    int n = 1;
+    for (int k = 1; k < count; ++k) n += skips(k) ? 0 : 1;
+    return n;
+}
+
+uint64_t AssemblyDocument::addPattern(ComponentPattern added) {
+    if (added.id == 0 || pattern(added.id) != nullptr) added.id = m_nextPatternId;
+    m_nextPatternId = std::max(m_nextPatternId, added.id + 1);
+    const uint64_t id = added.id;
+    m_patterns.push_back(std::move(added));
+    m_dirty = true;
+    return id;
+}
+
+bool AssemblyDocument::removePattern(uint64_t id) {
+    const auto it = std::find_if(m_patterns.begin(), m_patterns.end(),
+                                 [id](const ComponentPattern& p) { return p.id == id; });
+    if (it == m_patterns.end()) return false;
+    m_patterns.erase(it);
+    m_dirty = true;
+    updatePatterns();
+    return true;
+}
+
+ComponentPattern* AssemblyDocument::pattern(uint64_t id) {
+    const auto it = std::find_if(m_patterns.begin(), m_patterns.end(),
+                                 [id](const ComponentPattern& p) { return p.id == id; });
+    return it == m_patterns.end() ? nullptr : &*it;
+}
+
+const ComponentPattern* AssemblyDocument::pattern(uint64_t id) const {
+    const auto it = std::find_if(m_patterns.begin(), m_patterns.end(),
+                                 [id](const ComponentPattern& p) { return p.id == id; });
+    return it == m_patterns.end() ? nullptr : &*it;
+}
+
+bool AssemblyDocument::updatePatterns() {
+    bool changed = false;
+    // Seeds that are components, and not instances: a pattern of an
+    // instance would be placed from what it places.
+    for (auto& owner : m_patterns) {
+        const size_t had = owner.seeds.size();
+        std::erase_if(owner.seeds, [this](uint64_t seed) {
+            const ComponentInstance* comp = component(seed);
+            return comp == nullptr || comp->isPatternInstance();
+        });
+        // Each once.
+        std::vector<uint64_t> once;
+        for (const uint64_t seed : owner.seeds) {
+            if (std::find(once.begin(), once.end(), seed) == once.end()) once.push_back(seed);
+        }
+        owner.seeds = std::move(once);
+        changed = changed || owner.seeds.size() != had;
+    }
+    changed =
+        std::erase_if(m_patterns, [](const ComponentPattern& p) { return p.seeds.empty(); }) > 0 ||
+        changed;
+
+    // Each instance wanted: its pattern, seed and index, in order.
+    using Key = std::tuple<uint64_t, uint64_t, int>;
+    std::vector<Key> wanted;
+    for (const auto& owner : m_patterns) {
+        for (const uint64_t seed : owner.seeds) {
+            for (int k = 1; k < owner.count; ++k) {
+                if (!owner.skips(k)) wanted.emplace_back(owner.id, seed, k);
+            }
+        }
+    }
+    const std::set<Key> wantedSet(wanted.begin(), wanted.end());
+    // Instances not wanted go; so does a second of one.
+    std::set<Key> seen;
+    std::vector<uint64_t> gone;
+    std::erase_if(m_components, [&](const ComponentInstance& comp) {
+        if (!comp.isPatternInstance()) return false;
+        const Key key{comp.patternId, comp.seedId, comp.patternIndex};
+        if (wantedSet.count(key) != 0 && seen.insert(key).second) return false;
+        gone.push_back(comp.id);
+        return true;
+    });
+    if (!gone.empty()) {
+        changed = true;
+        const auto isGone = [&gone](const Mate& m) {
+            return std::find(gone.begin(), gone.end(), m.a.componentId) != gone.end() ||
+                   std::find(gone.begin(), gone.end(), m.b.componentId) != gone.end();
+        };
+        std::erase_if(m_mates, isGone);
+        for (auto& view : m_views) {
+            for (auto& step : view.steps) {
+                std::erase_if(step.components, [&gone](uint64_t id) {
+                    return std::find(gone.begin(), gone.end(), id) != gone.end();
+                });
+            }
+        }
+    }
+
+    // The instances made, then placed from their seeds.
+    for (const auto& [patternId, seedId, k] : wanted) {
+        const auto found = std::find_if(m_components.begin(), m_components.end(),
+                                        [&](const ComponentInstance& comp) {
+                                            return comp.patternId == patternId &&
+                                                   comp.seedId == seedId && comp.patternIndex == k;
+                                        });
+        if (found != m_components.end()) continue;
+        const ComponentInstance* seed = component(seedId);
+        ComponentInstance made;
+        made.id = m_nextComponentId++;
+        made.name = seed->name + " (" + std::to_string(k + 1) + ")";
+        made.patternId = patternId;
+        made.seedId = seedId;
+        made.patternIndex = k;
+        m_components.push_back(std::move(made));  // seed is not used after this
+        changed = true;
+    }
+    std::map<uint64_t, const ComponentInstance*> seeds;
+    for (const auto& comp : m_components) {
+        if (!comp.isPatternInstance()) seeds[comp.id] = &comp;
+    }
+    for (auto& comp : m_components) {
+        if (!comp.isPatternInstance()) continue;
+        const ComponentInstance& seed = *seeds.at(comp.seedId);
+        const math::Mat4 at =
+            pattern(comp.patternId)->instanceTransform(comp.patternIndex) * seed.transform;
+        bool differs = comp.suppressed != seed.suppressed || comp.partPath != seed.partPath;
+        for (int r = 0; r < 4 && !differs; ++r) {
+            for (int c = 0; c < 4 && !differs; ++c)
+                differs = comp.transform.at(r, c) != at.at(r, c);
+        }
+        // The seed's geometry, when it has some: one part, one mesh.
+        const bool share = seed.cachedMesh && comp.cachedMesh != seed.cachedMesh;
+        if (!differs && !share) continue;
+        if (differs) changed = true;
+        if (comp.partPath != seed.partPath) {
+            // Another part: what it had resolved is not it.
+            comp.state = ComponentState::Lightweight;
+            comp.cachedMesh.reset();
+            comp.resolvedPart.reset();
+            comp.resolvedAssembly.reset();
+            comp.assemblySolid.reset();
+        }
+        comp.transform = at;
+        comp.suppressed = seed.suppressed;
+        comp.partPath = seed.partPath;
+        if (seed.cachedMesh) {
+            comp.state = seed.state;
+            comp.cachedMesh = seed.cachedMesh;
+            comp.resolvedPart = seed.resolvedPart;
+            comp.resolvedAssembly = seed.resolvedAssembly;
+            comp.assemblySolid = seed.assemblySolid;
+        }
+    }
+    if (changed) m_dirty = true;
+    return changed;
 }
 
 uint64_t AssemblyDocument::addExplodedView(ExplodedView view) {
@@ -277,6 +452,13 @@ bool AssemblyDocument::removeComponent(uint64_t id) {
     auto it = std::find_if(m_components.begin(), m_components.end(),
                            [id](const ComponentInstance& c) { return c.id == id; });
     if (it == m_components.end()) return false;
+    // A pattern's instance: its index is left out, or it would be made
+    // again (Phase 161).
+    if (it->isPatternInstance()) {
+        if (ComponentPattern* owner = pattern(it->patternId)) {
+            if (!owner->skips(it->patternIndex)) owner->skipped.push_back(it->patternIndex);
+        }
+    }
     m_components.erase(it);
     // Its mates go with it: one left referring to it made every later solve
     // fail (InvalidReference).
@@ -286,6 +468,9 @@ bool AssemblyDocument::removeComponent(uint64_t id) {
     for (auto& view : m_views) {
         for (auto& step : view.steps) std::erase(step.components, id);
     }
+    // A seed leaves its patterns, and its instances go (Phase 161).
+    for (auto& owner : m_patterns) std::erase(owner.seeds, id);
+    updatePatterns();
     m_dirty = true;
     return true;
 }
@@ -341,6 +526,8 @@ void AssemblyDocument::clear() {
     m_nextMateId = 1;
     m_views.clear();
     m_nextViewId = 1;
+    m_patterns.clear();
+    m_nextPatternId = 1;
     m_shownView = 0;
     m_dirty = false;
     m_filePath.clear();

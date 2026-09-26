@@ -65,6 +65,9 @@ std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assem
     AssemblyMates out;
     out.m_components.reserve(assembly.components().size());
     for (const auto& comp : assembly.components()) {
+        // A pattern's instance is placed from its seed (Phase 161), not
+        // solved: it follows the seed after.
+        if (comp.isPatternInstance()) continue;
         model::SolverComponent sc;
         sc.id = comp.id;
         sc.transform = comp.transform;
@@ -72,6 +75,16 @@ std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assem
     }
     out.m_mates.reserve(assembly.mates().size());
     for (const auto& mate : assembly.mates()) {
+        for (const uint64_t side : {mate.a.componentId, mate.b.componentId}) {
+            const ComponentInstance* comp = assembly.component(side);
+            if (comp != nullptr && comp->isPatternInstance()) {
+                if (why != nullptr) {
+                    *why = "mate " + std::to_string(mate.id) + " is on " + comp->name +
+                           ", which its pattern places: mate its seed";
+                }
+                return std::nullopt;
+            }
+        }
         model::SolverMate sm;
         sm.type = mate.type;
         sm.componentA = mate.a.componentId;

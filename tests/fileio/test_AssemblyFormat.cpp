@@ -315,3 +315,63 @@ TEST(AssemblyFormatTest, ExplodedViewsRoundTrip) {
     EXPECT_NE(report.skipped.front().find("exploded view 1"), std::string::npos)
         << report.skipped.front();
 }
+
+// Phase 161: component patterns round-trip, and their instances keep their
+// ids (an exploded view's step names one). A pattern this build cannot read
+// is left out and said, and its instances go with it.
+TEST(AssemblyFormatTest, ComponentPatternsRoundTripWithTheirInstances) {
+    AssemblyDocument original;
+    ComponentInstance pin;
+    pin.name = "pin";
+    pin.partPath = "pin.hzpart";
+    const uint64_t seed = original.addComponent(pin);
+    ComponentPattern ring;
+    ring.name = "Ring";
+    ring.kind = ComponentPattern::Kind::Circular;
+    ring.seeds = {seed};
+    ring.direction = Vec3::UnitZ;
+    ring.axisPoint = Vec3(1, 2, 0);
+    ring.spacing = 0.5;
+    ring.count = 4;
+    ring.skipped = {2};
+    const uint64_t id = original.addPattern(ring);
+    original.updatePatterns();
+    ASSERT_EQ(original.components().size(), 3u) << "the seed and two instances";
+    const uint64_t last = original.components().back().id;
+    ExplodedView view;
+    view.steps.push_back({{last}, Vec3::UnitZ, 5.0});
+    original.addExplodedView(view);
+
+    std::string text = NativeFormat::assemblyToJson(original, "");
+    AssemblyDocument loaded;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, loaded, ""));
+    ASSERT_EQ(loaded.patterns().size(), 1u);
+    const ComponentPattern& kept = loaded.patterns().front();
+    EXPECT_EQ(kept.id, id);
+    EXPECT_EQ(kept.name, "Ring");
+    EXPECT_EQ(kept.kind, ComponentPattern::Kind::Circular);
+    EXPECT_NEAR(kept.axisPoint.y, 2.0, 1e-12);
+    EXPECT_DOUBLE_EQ(kept.spacing, 0.5);
+    EXPECT_EQ(kept.count, 4);
+    EXPECT_EQ(kept.skipped, std::vector<int>{2});
+    ASSERT_EQ(loaded.components().size(), 3u);
+    const ComponentInstance* instance = loaded.component(last);
+    ASSERT_NE(instance, nullptr) << "the same id";
+    EXPECT_EQ(instance->patternId, id);
+    EXPECT_EQ(instance->patternIndex, 3);
+    EXPECT_EQ(loaded.explodedViews().front().steps[0].components, std::vector<uint64_t>{last});
+    EXPECT_FALSE(loaded.isDirty());
+
+    // A kind from a later build: the pattern left out, and said; its
+    // instances not kept as components of their own.
+    const auto at = text.find("\"circular\"");
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, 10, "\"helical\"");
+    AssemblyDocument later;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, later, "", nullptr, &report));
+    EXPECT_TRUE(later.patterns().empty());
+    EXPECT_EQ(later.components().size(), 1u) << "the seed alone";
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("helical"), std::string::npos) << report.skipped.front();
+}

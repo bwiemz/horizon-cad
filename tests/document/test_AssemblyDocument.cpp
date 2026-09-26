@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -565,4 +566,131 @@ TEST(AssemblyDocumentTest, AnExplodedViewMovesWhereAComponentIsDrawn) {
     EXPECT_NEAR(drawnAt(lidId).z, 10.0, 1e-12);
     // Ids are not handed out again.
     EXPECT_GT(asmDoc.addExplodedView({}), viewId + 1);
+}
+
+namespace {
+
+Vec3 placedAt(const AssemblyDocument& asmDoc, uint64_t id) {
+    return asmDoc.component(id)->transform.transformPoint(Vec3());
+}
+
+/// The instances of pattern @p id, by index.
+std::map<int, const ComponentInstance*> instancesOf(const AssemblyDocument& asmDoc, uint64_t id) {
+    std::map<int, const ComponentInstance*> out;
+    for (const auto& comp : asmDoc.components()) {
+        if (comp.patternId == id) out[comp.patternIndex] = &comp;
+    }
+    return out;
+}
+
+}  // namespace
+
+// Phase 161: a linear pattern's instances are components placed from their
+// seed, named after it; they follow it as it moves, keep their ids, and one
+// removed is left out, not made again. The seed removed takes them with it.
+TEST(AssemblyDocumentTest, APatternsInstancesFollowTheirSeed) {
+    AssemblyDocument asmDoc;
+    ComponentInstance bolt;
+    bolt.name = "bolt";
+    bolt.partPath = "bolt.hzpart";
+    const uint64_t seed = asmDoc.addComponent(bolt);
+    ComponentPattern row;
+    row.name = "Row";
+    row.seeds = {seed, seed, 999};  // once each; 999 is none
+    row.direction = Vec3::UnitX;
+    row.spacing = 20.0;
+    row.count = 3;
+    const uint64_t id = asmDoc.addPattern(row);
+    EXPECT_TRUE(asmDoc.updatePatterns());
+    ASSERT_EQ(asmDoc.pattern(id)->seeds, std::vector<uint64_t>{seed});
+    auto instances = instancesOf(asmDoc, id);
+    ASSERT_EQ(instances.size(), 2u);
+    EXPECT_EQ(instances[1]->name, "bolt (2)");
+    EXPECT_EQ(instances[2]->partPath, "bolt.hzpart");
+    EXPECT_NEAR(placedAt(asmDoc, instances[2]->id).x, 40.0, 1e-12);
+    const uint64_t third = instances[2]->id;
+    EXPECT_FALSE(asmDoc.updatePatterns()) << "nothing to change";
+
+    // The seed moved: they follow, the same components.
+    asmDoc.component(seed)->transform = Mat4::translation(Vec3(0, 5, 0));
+    EXPECT_TRUE(asmDoc.updatePatterns());
+    EXPECT_NEAR(placedAt(asmDoc, third).x, 40.0, 1e-12);
+    EXPECT_NEAR(placedAt(asmDoc, third).y, 5.0, 1e-12);
+
+    // One removed: its index left out, and it stays out.
+    ASSERT_TRUE(asmDoc.removeComponent(instances[1]->id));
+    EXPECT_EQ(asmDoc.pattern(id)->skipped, std::vector<int>{1});
+    asmDoc.updatePatterns();
+    EXPECT_EQ(instancesOf(asmDoc, id).size(), 1u);
+    EXPECT_EQ(asmDoc.pattern(id)->kept(), 2);
+    EXPECT_NE(asmDoc.component(third), nullptr) << "the other kept";
+
+    // The seed removed: the pattern goes, and its instances.
+    ASSERT_TRUE(asmDoc.removeComponent(seed));
+    EXPECT_TRUE(asmDoc.patterns().empty());
+    EXPECT_TRUE(asmDoc.components().empty());
+}
+
+// A circular pattern turns its seed about the axis, step by step.
+TEST(AssemblyDocumentTest, ACircularPatternTurnsAboutItsAxis) {
+    AssemblyDocument asmDoc;
+    ComponentInstance pin;
+    pin.name = "pin";
+    pin.partPath = "pin.hzpart";
+    pin.transform = Mat4::translation(Vec3(15, 5, 2));
+    const uint64_t seed = asmDoc.addComponent(pin);
+    ComponentPattern ring;
+    ring.kind = ComponentPattern::Kind::Circular;
+    ring.seeds = {seed};
+    ring.direction = Vec3::UnitZ;
+    ring.axisPoint = Vec3(5, 5, 0);
+    ring.spacing = std::numbers::pi / 2.0;
+    ring.count = 4;
+    const uint64_t id = asmDoc.addPattern(ring);
+    asmDoc.updatePatterns();
+    auto instances = instancesOf(asmDoc, id);
+    ASSERT_EQ(instances.size(), 3u);
+    const Vec3 quarter = placedAt(asmDoc, instances[1]->id);
+    EXPECT_NEAR(quarter.x, 5.0, 1e-9);
+    EXPECT_NEAR(quarter.y, 15.0, 1e-9);
+    EXPECT_NEAR(quarter.z, 2.0, 1e-9);
+    const Vec3 half = placedAt(asmDoc, instances[2]->id);
+    EXPECT_NEAR(half.x, -5.0, 1e-9);
+    EXPECT_NEAR(half.y, 5.0, 1e-9);
+}
+
+// An instance is not solved: the mates hold its seed, and a mate on it is
+// refused, said so. Undo puts a pattern back with its instances.
+TEST(AssemblyMatesTest, APatternsInstanceIsNotMated) {
+    AssemblyDocument asmDoc;
+    ComponentInstance a;
+    a.name = "a";
+    const uint64_t first = asmDoc.addComponent(a);
+    ComponentInstance b;
+    b.name = "b";
+    const uint64_t second = asmDoc.addComponent(b);
+    const AssemblyState before = asmDoc.snapshot();
+    ComponentPattern row;
+    row.seeds = {second};
+    row.count = 2;
+    const uint64_t id = asmDoc.addPattern(row);
+    asmDoc.updatePatterns();
+    const uint64_t instance = instancesOf(asmDoc, id).at(1)->id;
+
+    Mate fixed;
+    fixed.type = MateType::Fixed;
+    fixed.a = {instance, {}};
+    asmDoc.addMate(fixed);
+    std::string why;
+    EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
+    EXPECT_NE(why.find("b (2)"), std::string::npos) << why;
+    EXPECT_NE(why.find("mate its seed"), std::string::npos) << why;
+
+    const AssemblyState after = asmDoc.snapshot();
+    asmDoc.restore(before);
+    EXPECT_TRUE(asmDoc.patterns().empty());
+    EXPECT_EQ(asmDoc.components().size(), 2u);
+    asmDoc.restore(after);
+    EXPECT_EQ(instancesOf(asmDoc, id).size(), 1u);
+    EXPECT_NE(asmDoc.component(first), nullptr);
 }

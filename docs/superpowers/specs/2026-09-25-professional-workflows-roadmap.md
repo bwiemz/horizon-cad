@@ -151,13 +151,13 @@ is worse than refused, and the user's clock is the GUI thread. Two more:
 | 158 | Drag with the mates | Drag a component in the view, or with a triad, with the mates solved live and held components refused (A2) | M–L |
 | 159 | Subassemblies | An assembly as a component, resolved recursively with cycles refused; a multi-level BOM (A1) | L |
 | 160 | More to mate | Mates on edges, axes, points and datums; cones and spheres; distance and angle limits (A3) | M–L |
-| 161 | Exploded views and patterns | Named exploded views with steps; linear and circular component patterns; mirrored components (A4) | M |
+| 161 | Exploded views and patterns | Named exploded views with steps; linear and circular component patterns (A4). Mirrored components moved to after Phase 162: they need a mirrored body | M |
 
 ### Milestone 18 — Kernel reach (Phases 162–165)
 
 | Phase | Title | Scope | Effort |
 |------:|-------|-------|:------:|
-| 162 | Hole and Mirror | A Hole feature (simple, counterbore, countersink; through, blind, up to face) placed on a face; Mirror of features and bodies (K3) | M |
+| 162 | Hole and Mirror | A Hole feature (simple, counterbore, countersink; through, blind, up to face) placed on a face; Mirror of features and bodies (K3); with the mirrored body, mirrored components in an assembly (A4, from 161) | M |
 | 163 | Shell, part 2 | Shell with several open faces, on bodies with holes and bosses, by offsetting each face, refusing what it cannot offset (K1) | L |
 | 164 | Fillets on curved faces | Edges where a planar face meets a cylinder or cone, including a revolve's rim chain (K2) | L |
 | 165 | Booleans at scale | Clip only the polygons near the other operand, found through a bounding-volume tree, so the cost follows the intersection and not the facet count (K4) | M–L |

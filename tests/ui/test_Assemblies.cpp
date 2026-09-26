@@ -37,6 +37,7 @@
 
 #include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -1243,4 +1244,82 @@ TEST(AssembliesTest, AnExplodedViewDrawsComponentsApart) {
 
     trigger(w, "action_undo");
     EXPECT_TRUE(assembly.explodedViews().empty());
+}
+
+// Phase 161: Pattern Components repeats the component chosen. Its instances
+// are components placed from it: drawn, counted in the bill of materials,
+// listed under the tree's patterns. They follow it as it moves, and are not
+// moved on their own. Edited, the pattern makes more; undone, it is gone,
+// instances and all.
+TEST(AssembliesTest, APatternsInstancesFollowTheirSeed) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    const uint64_t seed = assembly.components()[0].id;
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+
+    chooseInTree(w, seed);
+    {
+        FormFiller pattern(QStringLiteral("Pattern Components"),
+                           FormAnswers()
+                               .choose(QStringLiteral("kind"), QStringLiteral("Linear"))
+                               .choose(QStringLiteral("direction"), QStringLiteral("+Y"))
+                               .number(QStringLiteral("spacing"), 15.0)
+                               .number(QStringLiteral("count"), 3));
+        trigger(w, "action_pattern_components");
+        ASSERT_TRUE(pattern.seen());
+    }
+    ASSERT_EQ(assembly.patterns().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    ASSERT_EQ(assembly.components().size(), 3u);
+    const hz::doc::ComponentInstance& made = assembly.components()[2];
+    const uint64_t third = made.id;
+    EXPECT_TRUE(made.isPatternInstance());
+    expectAt(made, Vec3(0, 30, 0), "two spacings along +Y");
+    EXPECT_NE(made.cachedMesh, nullptr) << "drawn";
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+    const auto bom = hz::doc::BomGenerator::generate(assembly);
+    ASSERT_EQ(bom.lines.size(), 1u);
+    EXPECT_EQ(bom.lines[0].quantity, 3);
+    auto* tree = w.findChild<hz::ui::AssemblyTreePanel*>()->tree();
+    ASSERT_EQ(tree->topLevelItemCount(), 3);
+    EXPECT_TRUE(tree->topLevelItem(2)->text(0).startsWith(QStringLiteral("Patterns (1)")));
+
+    // The seed moved: they follow.
+    chooseInTree(w, seed);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 5));
+        trigger(w, "action_move_component");
+        ASSERT_TRUE(move.seen());
+    }
+    expectAt(*assembly.component(third), Vec3(5, 30, 0), "followed the seed");
+
+    // An instance is not moved on its own.
+    chooseInTree(w, third);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 5));
+        trigger(w, "action_move_component");
+        ASSERT_TRUE(move.seen());
+    }
+    expectAt(*assembly.component(third), Vec3(5, 30, 0), "not moved");
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("placed by its pattern")))
+        << w.statusBar()->currentMessage().toStdString();
+
+    // Edited (the instance chosen names its pattern): four.
+    {
+        FormFiller edit(QStringLiteral("Edit Component Pattern"),
+                        FormAnswers().number(QStringLiteral("count"), 4));
+        trigger(w, "action_edit_component_pattern");
+        ASSERT_TRUE(edit.seen());
+    }
+    EXPECT_EQ(assembly.components().size(), 4u);
+    EXPECT_NE(assembly.component(third), nullptr) << "the instances there kept";
+
+    trigger(w, "action_undo");  // the edit
+    trigger(w, "action_undo");  // the move
+    trigger(w, "action_undo");  // the pattern
+    EXPECT_TRUE(assembly.patterns().empty());
+    EXPECT_EQ(assembly.components().size(), 1u);
 }

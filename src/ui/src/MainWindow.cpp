@@ -811,6 +811,14 @@ void MainWindow::createMenus() {
                  [this] { m_assemblies->onShowExplodedView(); });
     sketchAction(assemblyMenu, tr("Remove Exp&loded View..."), "action_remove_exploded_view",
                  [this] { m_assemblies->onRemoveExplodedView(); });
+    assemblyMenu->addSeparator();
+    sketchAction(assemblyMenu, tr("&Pattern Components..."), "action_pattern_components",
+                 [this] { m_assemblies->onPatternComponents(); });
+    sketchAction(assemblyMenu, tr("Edit Component Pa&ttern..."), "action_edit_component_pattern",
+                 [this] { m_assemblies->onEditComponentPattern(); });
+    sketchAction(assemblyMenu, tr("Remove Component Patter&n..."),
+                 "action_remove_component_pattern",
+                 [this] { m_assemblies->onRemoveComponentPattern(); });
     sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
                  [this] { m_assemblies->onBillOfMaterials(); });
 

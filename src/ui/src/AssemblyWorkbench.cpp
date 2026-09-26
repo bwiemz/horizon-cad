@@ -15,6 +15,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -187,6 +188,10 @@ AssemblyWorkbench::AssemblyWorkbench(WorkbenchHost& host, AssemblyTreePanel& tre
             [this](uint64_t id) { editMate(id); });
     connect(&m_tree, &AssemblyTreePanel::removeMateRequested, this,
             [this](uint64_t id) { removeMate(id); });
+    connect(&m_tree, &AssemblyTreePanel::editPatternRequested, this,
+            [this](uint64_t id) { editPattern(id); });
+    connect(&m_tree, &AssemblyTreePanel::removePatternRequested, this,
+            [this](uint64_t id) { removePattern(id); });
     // A component clicked in the view is the tree's current row.
     connect(&m_host.viewport(), &ViewportWidget::modelSelectionChanged, this, [this] {
         if (assembly() == nullptr) return;
@@ -322,6 +327,7 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
             auto it = result.transforms.find(comp.id);
             if (it != result.transforms.end()) comp.transform = it->second;
         }
+        asmDoc.updatePatterns();  // their instances follow the seeds (Phase 161)
         QString status = tr("Mates solved (%1 iterations)").arg(result.iterations);
         if (result.redundantCount > 0) {
             status += tr("; %1 redundant constraint(s)").arg(result.redundantCount);
@@ -377,6 +383,7 @@ std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const 
         if (pick.owner == 0) continue;
         const doc::ComponentInstance* comp = asmDoc->component(pick.owner);
         if (comp == nullptr || comp->suppressed || !comp->cachedMesh) continue;
+        if (comp->isPatternInstance()) return std::nullopt;  // not dragged (Phase 161)
         const math::BoundingBox box = placedBounds(*comp);
         if (!box.isValid()) continue;
         TriadPose pose;
@@ -398,6 +405,10 @@ bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
     const doc::ComponentInstance* comp = asmDoc->component(component);
     if (comp == nullptr || comp->suppressed) return false;
     const QString name = QString::fromStdString(comp->name);
+    if (comp->isPatternInstance()) {
+        m_host.showStatus(tr("%1 is placed by its pattern: drag its seed").arg(name));
+        return false;
+    }
     if (asmDoc->shownView() != 0) {
         // Drawn moved, it would be dragged from where it is not.
         m_host.showStatus(
@@ -514,6 +525,7 @@ void AssemblyWorkbench::dragTo(const QPointF& at) {
         const auto found = placed.find(comp.id);
         if (found != placed.end()) comp.transform = found->second;
     }
+    m_drag->assembly->updatePatterns();  // instances follow (Phase 161)
     m_drag->moved = true;
     showPlacements(*m_drag->assembly);
 }
@@ -701,7 +713,10 @@ void AssemblyWorkbench::onAddMate() {
         m_host.showStatus(tr("Add Mate is only available in an assembly document"));
         return;
     }
-    if (assembly()->components().size() < 2) {
+    const auto& all = assembly()->components();
+    if (std::count_if(all.begin(), all.end(), [](const doc::ComponentInstance& comp) {
+            return !comp.isPatternInstance();
+        }) < 2) {
         m_host.showStatus(tr("Insert at least two components first"));
         return;
     }
@@ -797,6 +812,9 @@ void AssemblyWorkbench::onAddMate() {
     compACombo->setObjectName("componentA");
     compBCombo->setObjectName("componentB");
     for (const auto& comp : assembly()->components()) {
+        // A pattern's instance is placed by its pattern (Phase 161): its seed
+        // is mated.
+        if (comp.isPatternInstance()) continue;
         QString label =
             QString("%1 (#%2)")
                 .arg(QString::fromStdString(comp.name.empty() ? "component" : comp.name))
@@ -932,6 +950,7 @@ bool AssemblyWorkbench::editAssembly(const QString& verb, const std::function<bo
     const bool wasDirty = assembly()->isDirty();
     doc::AssemblyState before = assembly()->snapshot();
     const bool made = edit();
+    if (made) assembly()->updatePatterns();  // instances follow (Phase 161)
     if (made && solveAssemblyMates(*assembly())) {
         recordAssemblyEdit(std::move(before), wasDirty, verb);
         m_host.rebuildScene();
@@ -1010,6 +1029,7 @@ void AssemblyWorkbench::onMoveComponent() {
     auto* dz = form.length(QStringLiteral("dz"), tr("Move Z:"), 0.0, -1e6, 1e6);
     if (!form.exec()) return;
     const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
+    if (refusedAsInstance(verb, id)) return;
     if (isFixed(*assembly(), id)) {
         m_host.showStatus(tr("%1: a Fixed mate holds it; remove the mate to move it").arg(verb));
         return;
@@ -1037,6 +1057,7 @@ void AssemblyWorkbench::onRotateComponent() {
     auto* angle = form.angle(QStringLiteral("angle"), tr("Angle:"), 90.0, -360.0, 360.0);
     if (!form.exec()) return;
     const uint64_t id = ids[static_cast<size_t>(std::max(which->currentIndex(), 0))];
+    if (refusedAsInstance(verb, id)) return;
     if (isFixed(*assembly(), id)) {
         m_host.showStatus(tr("%1: a Fixed mate holds it; remove the mate to turn it").arg(verb));
         return;
@@ -1241,6 +1262,227 @@ void AssemblyWorkbench::onRemoveExplodedView() {
     m_host.showStatus(tr("%1 removed").arg(names.at(static_cast<int>(row))));
 }
 
+bool AssemblyWorkbench::refusedAsInstance(const QString& verb, uint64_t id) {
+    const doc::ComponentInstance* comp = assembly()->component(id);
+    if (comp == nullptr || !comp->isPatternInstance()) return false;
+    const doc::ComponentInstance* seed = assembly()->component(comp->seedId);
+    m_host.showStatus(
+        tr("%1: %2 is placed by its pattern; edit the pattern, or %3")
+            .arg(verb, QString::fromStdString(comp->name),
+                 seed != nullptr ? QString::fromStdString(seed->name) : tr("its seed")));
+    return true;
+}
+
+uint64_t AssemblyWorkbench::targetPattern() const {
+    const doc::AssemblyDocument* asmDoc = assembly();
+    if (asmDoc == nullptr || asmDoc->patterns().empty()) return 0;
+    if (const uint64_t row = m_tree.currentPattern(); asmDoc->pattern(row) != nullptr) return row;
+    if (const doc::ComponentInstance* comp = asmDoc->component(targetComponent())) {
+        if (comp->isPatternInstance()) return comp->patternId;
+        for (const auto& pattern : asmDoc->patterns()) {
+            const auto& seeds = pattern.seeds;
+            if (std::find(seeds.begin(), seeds.end(), comp->id) != seeds.end()) return pattern.id;
+        }
+    }
+    return asmDoc->patterns().front().id;
+}
+
+std::optional<doc::ComponentPattern> AssemblyWorkbench::askPattern(
+    const QString& title, const doc::ComponentPattern& initial) {
+    const doc::AssemblyDocument& asmDoc = *assembly();
+    const bool circular = initial.kind == doc::ComponentPattern::Kind::Circular;
+    FeatureForm form(m_host.dialogParent(), title, m_host.currentDocument()->lengthUnit());
+    auto* name =
+        form.text(QStringLiteral("name"), tr("Name:"), QString::fromStdString(initial.name));
+    auto* kind =
+        form.choice(QStringLiteral("kind"), tr("Pattern:"), {tr("Linear"), tr("Circular")});
+    kind->setCurrentIndex(circular ? 1 : 0);
+
+    // Its seeds: components that are not an instance themselves.
+    std::vector<std::pair<QString, QString>> rows;
+    std::vector<uint64_t> ids;
+    for (const auto& comp : asmDoc.components()) {
+        if (comp.isPatternInstance()) continue;
+        rows.emplace_back(componentLabel(comp), QString());
+        ids.push_back(comp.id);
+    }
+    auto* components = form.checklist(QStringLiteral("components"), tr("Components:"), rows);
+    for (size_t i = 0; i < ids.size(); ++i) {
+        const auto& seeds = initial.seeds;
+        if (std::find(seeds.begin(), seeds.end(), ids[i]) != seeds.end()) {
+            components->item(static_cast<int>(i))->setCheckState(Qt::Checked);
+        }
+    }
+
+    QStringList directionNames;
+    int nearest = 0;
+    double best = -2.0;
+    for (size_t i = 0; i < kExplodeDirections.size(); ++i) {
+        directionNames << QString::fromLatin1(kExplodeDirections.at(i).name);
+        const double along = kExplodeDirections.at(i).direction().dot(initial.direction);
+        if (along > best) {
+            best = along;
+            nearest = static_cast<int>(i);
+        }
+    }
+    auto* direction =
+        form.choice(QStringLiteral("direction"), tr("Along, or about:"), directionNames);
+    direction->setCurrentIndex(nearest);
+    auto* spacing = form.length(QStringLiteral("spacing"), tr("Spacing:"),
+                                circular ? 10.0 : initial.spacing, 0.0, 1e6);
+    auto* angle =
+        form.angle(QStringLiteral("angle"), tr("Angle between:"),
+                   circular ? initial.spacing * 180.0 / std::numbers::pi : 90.0, -360.0, 360.0);
+    auto* axisX =
+        form.length(QStringLiteral("axisX"), tr("Axis through X:"), initial.axisPoint.x, -1e6, 1e6);
+    auto* axisY =
+        form.length(QStringLiteral("axisY"), tr("Axis through Y:"), initial.axisPoint.y, -1e6, 1e6);
+    auto* axisZ =
+        form.length(QStringLiteral("axisZ"), tr("Axis through Z:"), initial.axisPoint.z, -1e6, 1e6);
+    auto* count = form.count(QStringLiteral("count"), tr("Instances:"), initial.count, 2,
+                             doc::ComponentPattern::kMaxCount);
+    QStringList skippedNumbers;
+    for (const int k : initial.skipped) skippedNumbers << QString::number(k + 1);
+    auto* skip = form.text(QStringLiteral("skip"), tr("Leave out (numbers, 2 on):"),
+                           skippedNumbers.join(QStringLiteral(", ")));
+    const auto offer = [kind, spacing, angle, axisX, axisY, axisZ] {
+        const bool about = kind->currentIndex() == 1;
+        spacing->setEnabled(!about);
+        for (QWidget* field : {static_cast<QWidget*>(angle), static_cast<QWidget*>(axisX),
+                               static_cast<QWidget*>(axisY), static_cast<QWidget*>(axisZ)}) {
+            field->setEnabled(about);
+        }
+    };
+    connect(kind, &QComboBox::currentIndexChanged, &form.dialog(), offer);
+    offer();
+    if (!form.exec()) return std::nullopt;
+
+    doc::ComponentPattern pattern = initial;
+    pattern.name = name->text().trimmed().toStdString();
+    if (pattern.name.empty()) pattern.name = initial.name;
+    pattern.kind = kind->currentIndex() == 1 ? doc::ComponentPattern::Kind::Circular
+                                             : doc::ComponentPattern::Kind::Linear;
+    pattern.seeds.clear();
+    for (const int row : FeatureForm::checkedRows(components)) {
+        pattern.seeds.push_back(ids.at(static_cast<size_t>(row)));
+    }
+    pattern.direction =
+        kExplodeDirections.at(static_cast<size_t>(std::max(direction->currentIndex(), 0)))
+            .direction();
+    pattern.count = count->value();
+    if (pattern.kind == doc::ComponentPattern::Kind::Linear) {
+        pattern.spacing = spacing->value();
+        pattern.axisPoint = math::Vec3();
+    } else {
+        pattern.spacing = angle->value() * std::numbers::pi / 180.0;
+        pattern.axisPoint = math::Vec3(axisX->value(), axisY->value(), axisZ->value());
+    }
+    pattern.skipped.clear();
+    const QStringList numbers =
+        skip->text().split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
+    for (const QString& number : numbers) {
+        bool ok = false;
+        const int n = number.toInt(&ok);
+        if (!ok || n < 2 || n > pattern.count) {
+            m_host.showStatus(tr("%1: leave out numbers from 2 to %2, not \"%3\"")
+                                  .arg(title)
+                                  .arg(pattern.count)
+                                  .arg(number));
+            return std::nullopt;
+        }
+        if (!pattern.skips(n - 1)) pattern.skipped.push_back(n - 1);
+    }
+    std::sort(pattern.skipped.begin(), pattern.skipped.end());
+    if (pattern.seeds.empty()) {
+        m_host.showStatus(tr("%1: check the components to repeat").arg(title));
+        return std::nullopt;
+    }
+    if (!(std::abs(pattern.spacing) > 1e-12)) {
+        m_host.showStatus(tr("%1: the instances must be apart").arg(title));
+        return std::nullopt;
+    }
+    return pattern;
+}
+
+void AssemblyWorkbench::onPatternComponents() {
+    m_host.viewport().cancelComponentDrag();
+    const QString verb = tr("Pattern Components");
+    if (!assembly() || assembly()->components().empty()) {
+        m_host.showStatus(tr("%1 works on an assembly's components").arg(verb));
+        return;
+    }
+    doc::ComponentPattern initial;
+    initial.name = tr("Pattern %1").arg(assembly()->patterns().size() + 1).toStdString();
+    initial.count = 3;
+    // The components chosen, or the tree's; an instance stands for its seed.
+    std::set<uint64_t> chosen;
+    for (const auto& pick : m_host.viewport().modelSelection()) {
+        if (pick.owner != 0) chosen.insert(pick.owner);
+    }
+    if (chosen.empty() && targetComponent() != 0) chosen.insert(targetComponent());
+    math::BoundingBox bounds;
+    for (const uint64_t id : chosen) {
+        const doc::ComponentInstance* comp = assembly()->component(id);
+        if (comp == nullptr) continue;
+        if (comp->isPatternInstance()) comp = assembly()->component(comp->seedId);
+        if (comp == nullptr) continue;
+        if (std::find(initial.seeds.begin(), initial.seeds.end(), comp->id) ==
+            initial.seeds.end()) {
+            initial.seeds.push_back(comp->id);
+        }
+        bounds.expand(placedBounds(*comp));
+    }
+    // Spaced a little more than they are wide, at first.
+    if (bounds.isValid()) initial.spacing = 1.2 * std::max(bounds.max().x - bounds.min().x, 1e-3);
+    const auto pattern = askPattern(verb, initial);
+    if (!pattern) return;
+    uint64_t made = 0;
+    editAssembly(verb, [this, &pattern, &made] {
+        made = assembly()->addPattern(*pattern);
+        return made != 0;
+    });
+    if (const doc::ComponentPattern* added = assembly()->pattern(made)) {
+        m_host.showStatus(tr("%1: %2 made").arg(verb, QString::fromStdString(added->name)));
+    }
+}
+
+void AssemblyWorkbench::onEditComponentPattern() {
+    m_host.viewport().cancelComponentDrag();
+    if (const uint64_t id = targetPattern()) {
+        editPattern(id);
+    } else {
+        m_host.showStatus(tr("Edit Component Pattern: the assembly has no component pattern"));
+    }
+}
+
+void AssemblyWorkbench::onRemoveComponentPattern() {
+    m_host.viewport().cancelComponentDrag();
+    if (const uint64_t id = targetPattern()) {
+        removePattern(id);
+    } else {
+        m_host.showStatus(tr("Remove Component Pattern: the assembly has no component pattern"));
+    }
+}
+
+void AssemblyWorkbench::editPattern(uint64_t id) {
+    if (!assembly() || assembly()->pattern(id) == nullptr) return;
+    const QString verb = tr("Edit Component Pattern");
+    const auto pattern = askPattern(verb, *assembly()->pattern(id));
+    if (!pattern) return;
+    editAssembly(verb, [this, id, &pattern] {
+        doc::ComponentPattern* edited = assembly()->pattern(id);
+        if (edited == nullptr) return false;
+        *edited = *pattern;
+        return true;
+    });
+}
+
+void AssemblyWorkbench::removePattern(uint64_t id) {
+    if (!assembly() || assembly()->pattern(id) == nullptr) return;
+    editAssembly(tr("Remove Component Pattern"),
+                 [this, id] { return assembly()->removePattern(id); });
+}
+
 void AssemblyWorkbench::removeComponent(uint64_t id) {
     if (!assembly() || assembly()->component(id) == nullptr) return;
     editAssembly(tr("Remove Component"), [this, id] { return assembly()->removeComponent(id); });
@@ -1248,11 +1490,12 @@ void AssemblyWorkbench::removeComponent(uint64_t id) {
 
 void AssemblyWorkbench::setComponentSuppressed(uint64_t id, bool suppressed) {
     if (!assembly() || assembly()->component(id) == nullptr) return;
-    editAssembly(suppressed ? tr("Suppress Component") : tr("Unsuppress Component"),
-                 [this, id, suppressed] {
-                     assembly()->component(id)->suppressed = suppressed;
-                     return true;
-                 });
+    const QString verb = suppressed ? tr("Suppress Component") : tr("Unsuppress Component");
+    if (refusedAsInstance(verb, id)) return;
+    editAssembly(verb, [this, id, suppressed] {
+        assembly()->component(id)->suppressed = suppressed;
+        return true;
+    });
 }
 
 void AssemblyWorkbench::renameComponent(uint64_t id) {

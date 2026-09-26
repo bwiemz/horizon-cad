@@ -34,6 +34,8 @@ public:
     /// The component (or mate) of the current row; 0 when the row is not one.
     uint64_t currentComponent() const;
     uint64_t currentMate() const;
+    /// The component pattern of the current row (Phase 161); 0 when none.
+    uint64_t currentPattern() const;
 
     /// Make @p id's row current, without asking the owner to select it.
     void showComponent(uint64_t id);
@@ -53,6 +55,9 @@ signals:
     void openPartRequested(uint64_t id);
     void editMateRequested(uint64_t id);
     void removeMateRequested(uint64_t id);
+    /// A component pattern's row double-clicked, or removed (Phase 161).
+    void editPatternRequested(uint64_t id);
+    void removePatternRequested(uint64_t id);
 
 private:
     /// Enable the actions for the current row, and name the suppress one.

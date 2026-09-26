@@ -78,8 +78,10 @@ static std::string dumpJson(const json& root, int indent) {
 /// 24: a mate may refer to an edge or a datum ("kind"), and have limits
 /// ("minimum", "maximum") (Phase 160). An older build would take an edge's
 /// name for a face's, and hold a limited distance at its value.
-/// 25: an assembly may have exploded views, "explodedViews" (Phase 161). An
-/// older build would drop them when it saved the assembly again.
+/// 25: an assembly may have exploded views, "explodedViews", and component
+/// patterns, "patterns", whose instances are components with a "pattern"
+/// (Phase 161). An older build would drop the views, and take the instances
+/// for components of their own, which no longer follow their seeds.
 static constexpr int kFormatVersion = 25;
 
 /// A sketch's plane: its origin, normal and x axis.
@@ -1969,6 +1971,11 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
         }
         cObj["transform"] = transformArray;
         cObj["suppressed"] = comp.suppressed;
+        // A pattern's instance (Phase 161): placed from its seed on load.
+        if (comp.isPatternInstance()) {
+            cObj["pattern"] = {
+                {"id", comp.patternId}, {"seed", comp.seedId}, {"index", comp.patternIndex}};
+        }
 
         componentsArray.push_back(cObj);
     }
@@ -2017,6 +2024,28 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
         matesArray.push_back(mObj);
     }
     root["mates"] = matesArray;
+
+    // --- Component patterns (Phase 161) ---
+    if (!asmDoc.patterns().empty()) {
+        json patterns = json::array();
+        for (const auto& pattern : asmDoc.patterns()) {
+            const bool linear = pattern.kind == doc::ComponentPattern::Kind::Linear;
+            json pObj = {
+                {"id", pattern.id},
+                {"name", pattern.name},
+                {"kind", linear ? "linear" : "circular"},
+                {"seeds", pattern.seeds},
+                {"direction", {pattern.direction.x, pattern.direction.y, pattern.direction.z}},
+                {"spacing", pattern.spacing},
+                {"count", pattern.count},
+                {"skipped", pattern.skipped}};
+            if (!linear) {
+                pObj["axisPoint"] = {pattern.axisPoint.x, pattern.axisPoint.y, pattern.axisPoint.z};
+            }
+            patterns.push_back(pObj);
+        }
+        root["patterns"] = patterns;
+    }
 
     // --- Exploded views (Phase 161): which is shown is not kept ---
     if (!asmDoc.explodedViews().empty()) {
@@ -2070,6 +2099,11 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 comp.name = cObj.value("name", "");
                 comp.partPath = cObj.value("partPath", "");
                 comp.suppressed = cObj.value("suppressed", false);
+                if (const auto of = cObj.find("pattern"); of != cObj.end() && of->is_object()) {
+                    comp.patternId = of->at("id").get<uint64_t>();
+                    comp.seedId = of->at("seed").get<uint64_t>();
+                    comp.patternIndex = of->at("index").get<int>();
+                }
 
                 // Component paths are stored relative to the assembly file;
                 // hold them absolute in memory so the reference stays valid
@@ -2156,6 +2190,52 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             }
         }
     }
+
+    // --- Component patterns (Phase 161) ---
+    if (const auto patterns = root.find("patterns");
+        patterns != root.end() && patterns->is_array()) {
+        size_t patternIndex = 0;
+        for (const auto& pObj : *patterns) {
+            const size_t thisPattern = patternIndex++;
+            try {
+                doc::ComponentPattern pattern;
+                pattern.id = pObj.at("id").get<uint64_t>();
+                pattern.name = pObj.value("name", "");
+                const std::string kind = pObj.at("kind").get<std::string>();
+                if (kind != "linear" && kind != "circular") {
+                    throw std::runtime_error("its kind, " + kind + ", is not one this build knows");
+                }
+                pattern.kind = kind == "linear" ? doc::ComponentPattern::Kind::Linear
+                                                : doc::ComponentPattern::Kind::Circular;
+                pattern.seeds = pObj.at("seeds").get<std::vector<uint64_t>>();
+                const auto vec = [&pObj](const char* name) {
+                    const auto& v = pObj.at(name);
+                    return math::Vec3(v.at(0).get<double>(), v.at(1).get<double>(),
+                                      v.at(2).get<double>());
+                };
+                const math::Vec3 direction = vec("direction");
+                if (pattern.kind == doc::ComponentPattern::Kind::Circular) {
+                    pattern.axisPoint = vec("axisPoint");
+                }
+                pattern.spacing = pObj.at("spacing").get<double>();
+                pattern.count = pObj.at("count").get<int>();
+                pattern.skipped = pObj.value("skipped", std::vector<int>{});
+                const double length = direction.length();
+                if (!std::isfinite(length) || length < 1e-12 || !std::isfinite(pattern.spacing) ||
+                    !std::isfinite(pattern.axisPoint.x) || !std::isfinite(pattern.axisPoint.y) ||
+                    !std::isfinite(pattern.axisPoint.z) || pattern.count < 1 ||
+                    pattern.count > doc::ComponentPattern::kMaxCount) {
+                    throw std::runtime_error("its direction, spacing or count is not one");
+                }
+                pattern.direction = direction / length;
+                asmDoc.addPattern(std::move(pattern));
+            } catch (const std::exception& e) {
+                noteSkipped(report, "component pattern", thisPattern, pObj, jsonMessage(e));
+            }
+        }
+    }
+    // Instances placed from their seeds; those of a pattern left out go.
+    asmDoc.updatePatterns();
 
     // --- Exploded views (Phase 161) ---
     if (const auto views = root.find("explodedViews"); views != root.end() && views->is_array()) {

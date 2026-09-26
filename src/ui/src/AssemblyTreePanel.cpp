@@ -21,7 +21,8 @@ constexpr int kIdRole = Qt::UserRole + 1;
 constexpr int kSuppressedRole = Qt::UserRole + 2;
 /// A row's kind. Inner: a subassembly's own component (Phase 159), shown,
 /// not acted on here: it is edited in its assembly's tab.
-enum Kind : int { Heading = 0, Component = 1, Mate = 2, Inner = 3 };
+/// Pattern: a component pattern (Phase 161).
+enum Kind : int { Heading = 0, Component = 1, Mate = 2, Inner = 3, Pattern = 4 };
 
 /// Rows under @p parent for @p sub's components, and theirs in turn.
 void addInner(QTreeWidgetItem* parent, const hz::doc::AssemblyDocument& sub) {
@@ -81,6 +82,7 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
     connect(m_removeAction, &QAction::triggered, this, [this] {
         if (const uint64_t id = currentComponent()) emit removeComponentRequested(id);
         if (const uint64_t id = currentMate()) emit removeMateRequested(id);
+        if (const uint64_t id = currentPattern()) emit removePatternRequested(id);
     });
     connect(m_suppressAction, &QAction::triggered, this, [this] {
         if (const uint64_t id = currentComponent())
@@ -104,6 +106,7 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
         const uint64_t id = item->data(0, kIdRole).toULongLong();
         if (item->data(0, kKindRole).toInt() == Mate) emit editMateRequested(id);
         if (item->data(0, kKindRole).toInt() == Component) emit renameRequested(id);
+        if (item->data(0, kKindRole).toInt() == Pattern) emit editPatternRequested(id);
     });
     updateActions();
 }
@@ -114,6 +117,7 @@ void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
     const bool same = assembly == m_shown;
     const uint64_t component = same ? currentComponent() : 0;
     const uint64_t mate = same ? currentMate() : 0;
+    const uint64_t pattern = same ? currentPattern() : 0;
     m_shown = assembly;
     const QSignalBlocker quiet(m_tree);
     m_tree->clear();
@@ -175,6 +179,30 @@ void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
         item->setData(0, kIdRole, QVariant::fromValue<qulonglong>(m.id));
         if (m.id == mate) current = item;
     }
+
+    // Component patterns (Phase 161), when there are any.
+    if (!assembly->patterns().empty()) {
+        auto* patterns =
+            new QTreeWidgetItem(m_tree, {tr("Patterns (%1)").arg(assembly->patterns().size())});
+        patterns->setData(0, kKindRole, Heading);
+        for (const auto& p : assembly->patterns()) {
+            QStringList seeds;
+            for (const uint64_t seed : p.seeds) seeds << nameOf(seed);
+            const bool linear = p.kind == doc::ComponentPattern::Kind::Linear;
+            const QString step =
+                linear ? Preferences::current().formatLength(p.spacing, assembly->lengthUnit())
+                       : QStringLiteral("%1%2")
+                             .arg(p.spacing * 180.0 / std::numbers::pi)
+                             .arg(QChar(0x00B0));
+            const QString text = tr("%1: %2 of %3, %4 apart")
+                                     .arg(QString::fromStdString(p.name), QString::number(p.kept()),
+                                          seeds.join(QStringLiteral(", ")), step);
+            auto* item = new QTreeWidgetItem(patterns, {text});
+            item->setData(0, kKindRole, Pattern);
+            item->setData(0, kIdRole, QVariant::fromValue<qulonglong>(p.id));
+            if (p.id == pattern) current = item;
+        }
+    }
     m_tree->expandAll();
     if (current != nullptr) m_tree->setCurrentItem(current);
     updateActions();
@@ -201,6 +229,12 @@ uint64_t AssemblyTreePanel::currentMate() const {
     return item->data(0, kIdRole).toULongLong();
 }
 
+uint64_t AssemblyTreePanel::currentPattern() const {
+    const QTreeWidgetItem* item = m_tree->currentItem();
+    if (item == nullptr || item->data(0, kKindRole).toInt() != Pattern) return 0;
+    return item->data(0, kIdRole).toULongLong();
+}
+
 void AssemblyTreePanel::showComponent(uint64_t id) {
     const QSignalBlocker quiet(m_tree);
     for (int top = 0; top < m_tree->topLevelItemCount(); ++top) {
@@ -221,8 +255,9 @@ void AssemblyTreePanel::updateActions() {
     const QTreeWidgetItem* item = m_tree->currentItem();
     const bool component = currentComponent() != 0;
     const bool mate = currentMate() != 0;
+    const bool pattern = currentPattern() != 0;
     m_currentSuppressed = component && item->data(0, kSuppressedRole).toBool();
-    m_removeAction->setEnabled(component || mate);
+    m_removeAction->setEnabled(component || mate || pattern);
     m_suppressAction->setEnabled(component);
     m_suppressAction->setText(m_currentSuppressed ? tr("Unsuppress") : tr("Suppress"));
     m_renameAction->setEnabled(component);
