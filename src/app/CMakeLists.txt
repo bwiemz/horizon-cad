@@ -85,8 +85,13 @@ if ((WIN32 OR APPLE) AND COMMAND qt_generate_deploy_app_script)
             if (NOT _hz_plugin_file)
                 get_target_property(_hz_plugin_file ${_hz_plugin_target} IMPORTED_LOCATION)
             endif()
+            # Homebrew's qt prefix links each plugin into the package that has
+            # it, and install(FILES) copies a link as a link, left dangling in
+            # the bundle: the file it points at goes in, under the link's name.
             get_filename_component(_hz_plugin_name "${_hz_plugin_file}" NAME)
-            install(FILES "${_hz_plugin_file}" DESTINATION "${_hz_plugins_dir}/${_hz_plugin_dir}")
+            file(REAL_PATH "${_hz_plugin_file}" _hz_plugin_real)
+            install(FILES "${_hz_plugin_real}" DESTINATION "${_hz_plugins_dir}/${_hz_plugin_dir}"
+                    RENAME "${_hz_plugin_name}")
             list(APPEND _hz_deploy_options
                  "-executable=${_hz_plugins_dir}/${_hz_plugin_dir}/${_hz_plugin_name}")
         endwhile()

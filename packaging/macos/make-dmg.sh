@@ -29,6 +29,15 @@ cmake --install "${build}" --prefix "${stage}"
 app="${stage}/HorizonCAD.app"
 test -x "${app}/Contents/MacOS/HorizonCAD"
 
+# A link to nothing (a package manager's link, copied as a link) leaves the
+# bundle without the file. A framework's own links point inside it.
+dangling="$(find "${app}" -type l ! -exec test -e {} \; -print)"
+if [[ -n "${dangling}" ]]; then
+    echo "error: links to nothing in the bundle:" >&2
+    echo "${dangling}" >&2
+    exit 1
+fi
+
 # Every Mach-O file in the bundle: the executable, frameworks, plugins.
 binaries=()
 while IFS= read -r -d '' file; do

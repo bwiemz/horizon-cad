@@ -41,6 +41,10 @@ if(APPLE)
         "${contents}/PlugIns/platforms/libqcocoa.dylib")
 endif()
 foreach(file IN LISTS expected)
+    if(IS_SYMLINK "${WORK_DIR}/${file}" AND NOT EXISTS "${WORK_DIR}/${file}")
+        file(READ_SYMLINK "${WORK_DIR}/${file}" target)
+        message(FATAL_ERROR "a link to nothing in the install tree: ${file} -> ${target}")
+    endif()
     if(NOT EXISTS "${WORK_DIR}/${file}")
         # What is there, and what the install said (the deployment tool's
         # output with it), to see why.
