@@ -85,7 +85,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// 26: a part may have a Mirror feature, "type": "mirror" (Phase 162). An
 /// older build would leave it out, and build a part half the size.
 /// 27: a part may have a Hole feature, "type": "hole" (Phase 162).
-static constexpr int kFormatVersion = 27;
+/// 28: an assembly's component may be mirrored, "mirrored" (Phase 162). An
+/// older build would place its part unmirrored.
+static constexpr int kFormatVersion = 28;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -2061,6 +2063,7 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
         }
         cObj["transform"] = transformArray;
         cObj["suppressed"] = comp.suppressed;
+        if (comp.mirrored) cObj["mirrored"] = true;  // Phase 162
         // A pattern's instance (Phase 161): placed from its seed on load.
         if (comp.isPatternInstance()) {
             cObj["pattern"] = {
@@ -2189,6 +2192,10 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 comp.name = cObj.value("name", "");
                 comp.partPath = cObj.value("partPath", "");
                 comp.suppressed = cObj.value("suppressed", false);
+                if (const auto mirror = cObj.find("mirrored");
+                    mirror != cObj.end() && mirror->is_boolean()) {
+                    comp.mirrored = mirror->get<bool>();
+                }
                 if (const auto of = cObj.find("pattern"); of != cObj.end() && of->is_object()) {
                     comp.patternId = idFrom(of->at("id"));
                     comp.seedId = idFrom(of->at("seed"));

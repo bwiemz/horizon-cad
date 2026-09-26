@@ -86,6 +86,13 @@ public:
     void onEditComponentPattern();
     void onRemoveComponentPattern();
 
+    // --- Mirrored components (Phase 162) ---
+    /// Add a mirror image of each component checked (those chosen, at
+    /// first) in a base plane through a point: its part mirrored, placed
+    /// rigidly. One undo step. A subassembly or a pattern's instance is not
+    /// mirrored, and the status bar says so.
+    void onMirrorComponents();
+
     /// What a STEP export of the active assembly writes (Phase 153): each
     /// part once, from its file, and each unsuppressed component placed; the
     /// components whose part could not be read, by name. The parts'

@@ -387,3 +387,20 @@ TEST(AssemblyFormatTest, ComponentPatternsRoundTripWithTheirInstances) {
     EXPECT_TRUE(hostile.patterns().empty());
     EXPECT_EQ(said.skipped.size(), 1u);
 }
+
+// Phase 162: a mirrored component stays mirrored.
+TEST(AssemblyFormatTest, AMirroredComponentRoundTrips) {
+    AssemblyDocument original;
+    ComponentInstance plain;
+    plain.partPath = "block.hzpart";
+    original.addComponent(plain);
+    ComponentInstance image = plain;
+    image.mirrored = true;
+    const uint64_t id = original.addComponent(image);
+    AssemblyDocument loaded;
+    ASSERT_TRUE(
+        NativeFormat::assemblyFromJson(NativeFormat::assemblyToJson(original, ""), loaded, ""));
+    ASSERT_EQ(loaded.components().size(), 2u);
+    EXPECT_FALSE(loaded.components()[0].mirrored);
+    EXPECT_TRUE(loaded.component(id)->mirrored);
+}

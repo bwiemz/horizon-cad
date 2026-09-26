@@ -58,8 +58,9 @@ namespace {
 /// has none.
 math::BoundingBox placedBounds(const doc::ComponentInstance& comp) {
     math::BoundingBox box;
-    if (!comp.cachedMesh) return box;
-    const auto& p = comp.cachedMesh->positions;
+    const auto mesh = comp.mesh();  // mirrored, for a mirrored one
+    if (!mesh) return box;
+    const auto& p = mesh->positions;
     for (size_t i = 0; i + 2 < p.size(); i += 3) {
         box.expand(comp.transform.transformPoint(math::Vec3(p[i], p[i + 1], p[i + 2])));
     }
@@ -597,11 +598,14 @@ AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
                 out.unread.push_back(name);
                 return;
             }
-            const auto [known, added] = partOf.emplace(file, out.parts.size());
+            // A mirrored one (Phase 162) is a part of its own: its mirror.
+            const auto [known, added] =
+                partOf.emplace(comp.mirrored ? file + "#mirrored" : file, out.parts.size());
             if (added) {
-                out.parts.push_back(
-                    {QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString(),
-                     {solid}});
+                std::string partName =
+                    QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString();
+                if (comp.mirrored) partName += " (mirrored)";
+                out.parts.push_back({std::move(partName), {solid}});
             }
             out.occurrences.push_back({known->second, name, outer * comp.transform});
         };
@@ -1481,6 +1485,93 @@ void AssemblyWorkbench::removePattern(uint64_t id) {
     if (!assembly() || assembly()->pattern(id) == nullptr) return;
     editAssembly(tr("Remove Component Pattern"),
                  [this, id] { return assembly()->removePattern(id); });
+}
+
+void AssemblyWorkbench::onMirrorComponents() {
+    m_host.viewport().cancelComponentDrag();
+    const QString verb = tr("Mirror Components");
+    if (!assembly() || assembly()->components().empty()) {
+        m_host.showStatus(tr("%1 works on an assembly's components").arg(verb));
+        return;
+    }
+    doc::AssemblyDocument& asmDoc = *assembly();
+    std::set<uint64_t> chosen;
+    for (const auto& pick : m_host.viewport().modelSelection()) {
+        if (pick.owner != 0) chosen.insert(pick.owner);
+    }
+    if (chosen.empty() && targetComponent() != 0) chosen.insert(targetComponent());
+
+    FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
+    std::vector<std::pair<QString, QString>> rows;
+    std::vector<uint64_t> ids;
+    math::BoundingBox bounds;
+    for (const auto& comp : asmDoc.components()) {
+        rows.emplace_back(componentLabel(comp), QString());
+        ids.push_back(comp.id);
+        if (chosen.count(comp.id) != 0) bounds.expand(placedBounds(comp));
+    }
+    auto* components = form.checklist(QStringLiteral("components"), tr("Components:"), rows);
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (chosen.count(ids[i]) != 0) {
+            components->item(static_cast<int>(i))->setCheckState(Qt::Checked);
+        }
+    }
+    // In a base plane through a point: at first, their far corner, so the
+    // images stand beside them.
+    auto* plane = form.choice(QStringLiteral("plane"), tr("In the plane:"),
+                              {tr("YZ (across X)"), tr("ZX (across Y)"), tr("XY (across Z)")});
+    const math::Vec3 corner = bounds.isValid() ? bounds.max() : math::Vec3();
+    auto* x = form.length(QStringLiteral("x"), tr("Through X:"), corner.x, -1e6, 1e6);
+    auto* y = form.length(QStringLiteral("y"), tr("Through Y:"), corner.y, -1e6, 1e6);
+    auto* z = form.length(QStringLiteral("z"), tr("Through Z:"), corner.z, -1e6, 1e6);
+    if (!form.exec()) return;
+
+    std::vector<uint64_t> checked;
+    for (const int row : FeatureForm::checkedRows(components)) {
+        checked.push_back(ids.at(static_cast<size_t>(row)));
+    }
+    if (checked.empty()) {
+        m_host.showStatus(tr("%1: check the components to mirror").arg(verb));
+        return;
+    }
+    for (const uint64_t id : checked) {
+        const doc::ComponentInstance* comp = asmDoc.component(id);
+        if (comp != nullptr && (comp->isAssembly() || comp->isPatternInstance())) {
+            m_host.showStatus(
+                tr("%1: %2 is %3; mirror its parts, or its seed")
+                    .arg(verb, QString::fromStdString(comp->name),
+                         comp->isAssembly() ? tr("a subassembly") : tr("a pattern's instance")));
+            return;
+        }
+    }
+    static const std::array<math::Vec3, 3> kNormals = {math::Vec3::UnitX, math::Vec3::UnitY,
+                                                       math::Vec3::UnitZ};
+    const math::Mat4 world = math::Mat4::reflection(
+        math::Vec3(x->value(), y->value(), z->value()),
+        kNormals.at(static_cast<size_t>(std::clamp(plane->currentIndex(), 0, 2))));
+    editAssembly(verb, [this, &checked, &world] {
+        for (const uint64_t id : checked) {
+            const doc::ComponentInstance* source = assembly()->component(id);
+            if (source == nullptr) return false;
+            // Its part (resolved as it is) mirrored in its own frame, and
+            // placed rigidly: R T S, S its own mirror.
+            doc::ComponentInstance image = *source;
+            image.id = 0;
+            image.mirrored = !source->mirrored;
+            image.transform = world * source->transform * doc::ComponentInstance::ownMirror();
+            const std::string suffix = " (mirrored)";
+            const bool named =
+                image.name.size() > suffix.size() &&
+                image.name.compare(image.name.size() - suffix.size(), suffix.size(), suffix) == 0;
+            if (image.mirrored) {
+                image.name += suffix;
+            } else if (named) {
+                image.name.resize(image.name.size() - suffix.size());
+            }
+            assembly()->addComponent(std::move(image));
+        }
+        return true;
+    });
 }
 
 void AssemblyWorkbench::removeComponent(uint64_t id) {

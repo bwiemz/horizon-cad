@@ -61,11 +61,34 @@ struct ComponentInstance {
     int patternIndex = 0;
     bool isPatternInstance() const { return patternId != 0; }
 
+    /// Its part mirrored in the part's own YZ plane (Phase 162), then placed
+    /// by `transform`, which stays rigid: a mirror image of a component at
+    /// T in a world plane R is the part mirrored, at R·T·S (S, the part's
+    /// own mirror). A part only; a subassembly is not mirrored whole.
+    bool mirrored = false;
+
     /// Whether its file is an assembly (Phase 159): by its extension.
     bool isAssembly() const;
-    /// The solid it places: its part's, or a subassembly's gathered one;
-    /// null when neither is resolved.
+    /// The solid it places: its part's, or a subassembly's gathered one,
+    /// mirrored if it is; null when neither is resolved.
     const topo::Solid* solid() const;
+    /// Its part's solid as the part is made, not mirrored.
+    const topo::Solid* ownSolid() const;
+    /// The mesh it is drawn with: `cachedMesh`, mirrored if it is. Null
+    /// when it has none.
+    std::shared_ptr<const geo::MeshData> mesh() const;
+
+    /// The part's own mirror, S: x made -x.
+    static math::Mat4 ownMirror();
+
+private:
+    // A mirrored component's mesh and solid, made from the part's the first
+    // time they are asked for, and again when the part's change. Copies
+    // share them.
+    mutable std::shared_ptr<const geo::MeshData> m_mirroredMesh;
+    mutable const geo::MeshData* m_mirroredMeshFrom = nullptr;
+    mutable std::shared_ptr<const topo::Solid> m_mirroredSolid;
+    mutable const topo::Solid* m_mirroredSolidFrom = nullptr;
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).
@@ -289,8 +312,10 @@ public:
     /// each part placed by its component's transform, its names prefixed
     /// with the component's ("c7/"), so two instances of one part are told
     /// apart, and the bodies gathered, not merged. @p partOf gives a
-    /// component's part solid; one it gives none for is left out and listed
-    /// in @p missing. Null when no component has a solid.
+    /// component's part solid as the part is made (not mirrored: a mirrored
+    /// component's is mirrored here, Phase 162); one it gives none for is
+    /// left out and listed in @p missing. Null when no component has a
+    /// solid.
     std::unique_ptr<topo::Solid> drawingSolid(
         const std::function<const topo::Solid*(const ComponentInstance&)>& partOf,
         std::vector<uint64_t>* missing = nullptr) const;

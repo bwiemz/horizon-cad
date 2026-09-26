@@ -146,22 +146,36 @@ In three PRs.
   each is read back as an edit sets it. One the build refuses (a diameter
   of nothing) is a damaged feature: left out, and said.
 
-### 162c: mirrored components
+### 162c: mirrored components (as built)
 
-- **A mirrored component is its part mirrored in its own frame**
-  (`ComponentInstance::mirrored`: the part reflected in its YZ plane),
-  placed by a rigid transform. A reflection R about a world plane of a
-  component at T is the rigid `R·T·S` of the part mirrored by `S`, the
-  local reflection. So every placement stays rigid, and the mate solver,
-  drags and exports keep working.
-  - Its mesh is mirrored (x negated, triangles rewound, normals
-    reflected), and its solid by the orientation-keeping reflection of
-    162a.
-  - The bill of materials lists it as its own line ("bracket, mirrored"),
-    and STEP export writes the mirrored part once, as its own product.
-- Assembly ▸ Mirror Components: the components checked, about a base
-  plane, a datum plane or a component's flat face. One undo step.
-- Files: a component's `"mirrored"`.
+- **`ComponentInstance::mirrored`.** The part is mirrored in its own YZ
+  plane (`ownMirror()`, S) and placed by `transform`, which stays rigid.
+  A component at T mirrored in a world plane R is placed at R·T·S, the
+  same for one already mirrored (which comes back unmirrored), since S is
+  its own inverse.
+  - `solid()` and `mesh()` give the mirrored solid and mesh. They are made
+    from the part's the first time they are asked for, and again when the
+    part's change (kept against the source's pointer). `ownSolid()` is the
+    part's, unmirrored.
+  - The mirrored solid goes through 162a's orientation-keeping clone. The
+    mesh has its x negated, normals too, and triangles rewound.
+  - Everything that reads a component's solid or mesh takes the mirror:
+    the scene, bounds, mates, interference, and the merged mesh.
+    `drawingSolid` is given parts as made, and mirrors a mirrored one's
+    itself, since drawings read parts from their files.
+  - A pattern's instances take their seed's mirror.
+- **The bill of materials** lists a mirrored part as its own line ("block
+  (mirrored)"). **STEP export** writes it as its own part, the mirror in
+  its own frame, read back facing out.
+- **Assembly ▸ Mirror Components**:
+  - it works on the components checked (those chosen, at first);
+  - the plane is YZ, ZX or XY through a point, at first the far corner of
+    the chosen components;
+  - it is one undo step;
+  - a subassembly or a pattern's instance is refused, and the status bar
+    says why. A mirrored subassembly would need a reflection in its
+    children's STEP placements.
+- **Files:** version 28, a component's `"mirrored"`.
 
 ## Phase 163: Shell, part 2
 

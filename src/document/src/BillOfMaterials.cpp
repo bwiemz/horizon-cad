@@ -25,6 +25,12 @@ std::string partDisplayName(const std::string& partPath, const std::string& fall
     return stem.empty() ? fallback : stem;
 }
 
+/// @p c's part's name, said mirrored for a mirrored one (Phase 162).
+std::string partDisplayName(const ComponentInstance& c) {
+    const std::string name = partDisplayName(c.partPath, c.name);
+    return c.mirrored ? name + " (mirrored)" : name;
+}
+
 }  // namespace
 
 namespace {
@@ -32,6 +38,12 @@ namespace {
 /// The key a component's file is one line by: canonical, a relative path
 /// taken from @p assembly's folder; an unsaved part's by its name.
 std::string lineKey(const AssemblyDocument& assembly, const ComponentInstance& c) {
+    // A mirrored part (Phase 162) is another part: a line of its own.
+    if (c.mirrored) {
+        ComponentInstance own = c;
+        own.mirrored = false;
+        return lineKey(assembly, own) + "#mirrored";
+    }
     if (c.partPath.empty()) return "@" + c.name;
     std::filesystem::path file(c.partPath);
     if (file.is_relative() && !assembly.filePath().empty()) {
@@ -62,7 +74,7 @@ Grouped group(const AssemblyDocument& assembly) {
         }
         BomLine line;
         line.item = static_cast<int>(out.lines.size()) + 1;
-        line.partName = partDisplayName(c.partPath, c.name);
+        line.partName = partDisplayName(c);
         line.partPath = c.partPath;
         line.quantity = 1;
         line.assembly = c.isAssembly();
@@ -109,7 +121,7 @@ void flatten(const AssemblyDocument& assembly,
         BomLine line;
         line.item = static_cast<int>(out.size()) + 1;
         line.index = std::to_string(line.item);
-        line.partName = partDisplayName(c.partPath, c.name);
+        line.partName = partDisplayName(c);
         line.partPath = c.partPath;
         line.quantity = 1;
         line.assembly = c.isAssembly();  // one not resolved: a line of its own

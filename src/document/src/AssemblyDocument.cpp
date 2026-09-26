@@ -48,9 +48,50 @@ bool ComponentInstance::isAssembly() const {
     return extension == ".hzasm";
 }
 
+const topo::Solid* ComponentInstance::ownSolid() const {
+    return resolvedPart ? resolvedPart->solid() : assemblySolid.get();
+}
+
 const topo::Solid* ComponentInstance::solid() const {
-    if (resolvedPart) return resolvedPart->solid();
-    return assemblySolid.get();
+    const topo::Solid* own = ownSolid();
+    if (!mirrored || own == nullptr) return own;
+    if (m_mirroredSolidFrom != own || !m_mirroredSolid) {
+        m_mirroredSolid = model::Pattern::transformed(*own, ownMirror());
+        m_mirroredSolidFrom = own;
+    }
+    return m_mirroredSolid.get();
+}
+
+math::Mat4 ComponentInstance::ownMirror() {
+    return math::Mat4::scale(math::Vec3(-1.0, 1.0, 1.0));
+}
+
+namespace {
+
+/// @p mesh mirrored in x = 0: its points and normals, its triangles wound
+/// the other way (so they face out), its faces and edges named as they were.
+std::shared_ptr<const geo::MeshData> mirroredMesh(const geo::MeshData& mesh) {
+    auto out = std::make_shared<geo::MeshData>(mesh);
+    for (size_t i = 0; i < out->positions.size(); i += 3) out->positions[i] = -out->positions[i];
+    for (size_t i = 0; i < out->normals.size(); i += 3) out->normals[i] = -out->normals[i];
+    for (size_t t = 0; t + 2 < out->indices.size(); t += 3) {
+        std::swap(out->indices[t + 1], out->indices[t + 2]);
+    }
+    for (auto& edge : out->edges) {
+        for (size_t i = 0; i < edge.points.size(); i += 3) edge.points[i] = -edge.points[i];
+    }
+    return out;
+}
+
+}  // namespace
+
+std::shared_ptr<const geo::MeshData> ComponentInstance::mesh() const {
+    if (!mirrored || !cachedMesh) return cachedMesh;
+    if (m_mirroredMeshFrom != cachedMesh.get() || !m_mirroredMesh) {
+        m_mirroredMesh = mirroredMesh(*cachedMesh);
+        m_mirroredMeshFrom = cachedMesh.get();
+    }
+    return m_mirroredMesh;
 }
 
 std::shared_ptr<geo::MeshData> AssemblyDocument::drawingMesh() const {
@@ -58,7 +99,8 @@ std::shared_ptr<geo::MeshData> AssemblyDocument::drawingMesh() const {
     bool any = false;
     for (const auto& comp : m_components) {
         if (comp.suppressed || !comp.cachedMesh) continue;
-        const geo::MeshData& mesh = *comp.cachedMesh;
+        const auto shown = comp.mesh();  // mirrored, for a mirrored one
+        const geo::MeshData& mesh = *shown;
         const math::Mat4& placed = comp.transform;
         const std::string prefix = namePrefix(comp.id);
         const auto firstVertex = static_cast<uint32_t>(merged->positions.size() / 3);
@@ -148,7 +190,11 @@ std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(
         // Placed straight into the one solid: each part copied once.
         const std::size_t facesBefore = gathered->faces().size();
         const std::size_t edgesBefore = gathered->edges().size();
-        model::Pattern::append(*gathered, *part, comp.transform);
+        // A mirrored one (Phase 162) through its own mirror: the copy is
+        // reversed as it is made, and faces out.
+        model::Pattern::append(
+            *gathered, *part,
+            comp.mirrored ? comp.transform * ComponentInstance::ownMirror() : comp.transform);
         // Its names its own: a balloon or dimension on one instance of a
         // part names that instance, not every instance of the part.
         const std::string prefix = namePrefix(comp.id);
@@ -355,7 +401,8 @@ bool AssemblyDocument::updatePatterns() {
         const ComponentInstance& seed = *seeds.at(comp.seedId);
         const math::Mat4 at =
             pattern(comp.patternId)->instanceTransform(comp.patternIndex) * seed.transform;
-        bool differs = comp.suppressed != seed.suppressed || comp.partPath != seed.partPath;
+        bool differs = comp.suppressed != seed.suppressed || comp.partPath != seed.partPath ||
+                       comp.mirrored != seed.mirrored;
         for (int r = 0; r < 4 && !differs; ++r) {
             for (int c = 0; c < 4 && !differs; ++c)
                 differs = comp.transform.at(r, c) != at.at(r, c);
@@ -375,6 +422,7 @@ bool AssemblyDocument::updatePatterns() {
         comp.transform = at;
         comp.suppressed = seed.suppressed;
         comp.partPath = seed.partPath;
+        comp.mirrored = seed.mirrored;
         if (seed.cachedMesh) {
             comp.state = seed.state;
             comp.cachedMesh = seed.cachedMesh;
