@@ -1298,6 +1298,15 @@ void AssemblyWorkbench::editMate(uint64_t id) {
         field(QStringLiteral("minimum"), tr("At least:"), mate.minimum.value_or(mate.value));
     QuantitySpinBox* high =
         field(QStringLiteral("maximum"), tr("At most:"), mate.maximum.value_or(mate.value));
+    // Only what is held is offered, as Add Mate does.
+    const auto offer = [value, held, low, high] {
+        const bool limited = held->currentIndex() == 1;
+        value->setEnabled(!limited);
+        low->setEnabled(limited);
+        high->setEnabled(limited);
+    };
+    connect(held, &QComboBox::currentIndexChanged, &form.dialog(), offer);
+    offer();
     if (!form.exec()) return;
     const double scale = angle ? 1.0 / toDegrees : 1.0;
     const double set = value->value() * scale;

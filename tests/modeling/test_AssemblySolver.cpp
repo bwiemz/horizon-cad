@@ -514,6 +514,20 @@ TEST(AssemblySolverTest, ADistanceBetweenPointsHoldsAndAnAngleHoldsAtZero) {
                                               plane(Vec3(), Vec3::UnitZ), 0.0)});
     ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
     EXPECT_NEAR(result.transforms.at(2).transformDirection(Vec3::UnitZ).z, 1.0, 1e-6);
+
+    // 180 degrees is the other way, not parallel either way: from the same
+    // start, it turns over.
+    components = twoComponents(Mat4::rotationX(0.3));
+    result = solver.solve(components, {mateOf(MateType::Angle, plane(Vec3(), Vec3::UnitZ),
+                                              plane(Vec3(), Vec3::UnitZ), std::numbers::pi)});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(2).transformDirection(Vec3::UnitZ).z, -1.0, 1e-6);
+    // And 0 from nearly opposite comes all the way round.
+    components = twoComponents(Mat4::rotationX(std::numbers::pi - 0.3));
+    result = solver.solve(components, {mateOf(MateType::Angle, plane(Vec3(), Vec3::UnitZ),
+                                              plane(Vec3(), Vec3::UnitZ), 0.0)});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(2).transformDirection(Vec3::UnitZ).z, 1.0, 1e-6);
 }
 
 // A Distance mate with limits keeps the distance between them, and leaves
