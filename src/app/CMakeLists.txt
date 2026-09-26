@@ -136,3 +136,37 @@ elseif (HZ_REQUIRE_TRANSLATIONS)
 else()
     message(STATUS "Horizon translations: catalogs not compiled (no lrelease found)")
 endif()
+
+# Samples (Phase 168b): documents made by a program that uses the same API as
+# the application, so they always open in the version that ships them. Made
+# at build time, placed next to the executable (<exe dir>/samples, where File
+# > Open Sample looks), and installed there.
+add_executable(hz_make_samples samples/MakeSamples.cpp)
+target_link_libraries(hz_make_samples
+    PRIVATE
+        Horizon::FileIO
+        Horizon::Document
+        Horizon::Modeling
+)
+set(HZ_SAMPLE_DIR ${CMAKE_CURRENT_BINARY_DIR}/samples)
+set(HZ_SAMPLE_FILES
+    ${HZ_SAMPLE_DIR}/bracket.hzpart
+    ${HZ_SAMPLE_DIR}/bracket-drawing.hzdwg
+    ${HZ_SAMPLE_DIR}/plate.hzpart
+    ${HZ_SAMPLE_DIR}/pin.hzpart
+    ${HZ_SAMPLE_DIR}/plate-and-pin.hzasm
+    ${HZ_SAMPLE_DIR}/gasket.hcad
+)
+add_custom_command(OUTPUT ${HZ_SAMPLE_FILES}
+    COMMAND hz_make_samples ${HZ_SAMPLE_DIR}
+    DEPENDS hz_make_samples
+    COMMENT "Making the sample documents"
+    VERBATIM)
+add_custom_target(horizon_samples ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:horizon>/samples
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HZ_SAMPLE_FILES}
+            $<TARGET_FILE_DIR:horizon>/samples
+    DEPENDS ${HZ_SAMPLE_FILES}
+    COMMENT "Placing the samples next to the horizon executable"
+    VERBATIM)
+install(FILES ${HZ_SAMPLE_FILES} DESTINATION bin/samples)

@@ -1,5 +1,5 @@
 # Installs the build into a scratch prefix and checks that what a package
-# needs is there: the executable, the licence and notices, and on Linux the
+# needs is there: the executable, its samples, the licence and notices, and on Linux the
 # desktop entry, AppStream metadata and icons. The desktop entry is validated
 # when desktop-file-validate is installed.
 #   cmake -DBUILD_DIR=<build> -DCONFIG=<config> -DWORK_DIR=<scratch> -P CheckInstallTree.cmake
@@ -16,6 +16,8 @@ endif()
 set(app_id "io.github.bwiemz.HorizonCAD")
 set(expected
     "bin/horizon"
+    "bin/samples/bracket.hzpart"
+    "bin/samples/plate-and-pin.hzasm"
     "share/doc/horizon-cad/LICENSE"
     "share/doc/horizon-cad/THIRD_PARTY_NOTICES.md"
     "share/applications/${app_id}.desktop"
@@ -24,7 +26,8 @@ set(expected
     "share/icons/hicolor/256x256/apps/${app_id}.png"
     "share/icons/hicolor/scalable/apps/${app_id}.svg")
 if(APPLE)
-    set(expected "bin/horizon" "share/doc/horizon-cad/LICENSE" "share/doc/horizon-cad/THIRD_PARTY_NOTICES.md")
+    set(expected "bin/horizon" "bin/samples/bracket.hzpart" "bin/samples/plate-and-pin.hzasm"
+        "share/doc/horizon-cad/LICENSE" "share/doc/horizon-cad/THIRD_PARTY_NOTICES.md")
 endif()
 foreach(file IN LISTS expected)
     if(NOT EXISTS "${WORK_DIR}/${file}")

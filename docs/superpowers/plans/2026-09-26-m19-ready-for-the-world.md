@@ -205,14 +205,44 @@ In three parts: 168a the guide, 168b the samples, 168c Getting Started.
   translated guide would be a page set per language, looked up by the
   locale, when there are reviewed translations to put in it.
 
-### 168b: samples
+### 168b: samples (as built)
 
-- A bracket part, a drilled plate, a two-part assembly with mates, a
-  drawing sheet of the bracket, and a 2D drawing.
-  - They are made by a build step from code (the same API the tests use),
-    so they always open in the version that ships them.
-  - They are installed, and File ▸ Open Sample… lists them.
-- **Tests:** every sample opens and builds.
+- **Made by a program, at build time.** `hz_make_samples`
+  (`src/app/samples/MakeSamples.cpp`) builds them with the document API and
+  saves them with the application's own writers:
+  - `bracket.hzpart`: an L extruded, its outer corner filleted, a hole
+    through each leg.
+  - `plate.hzpart`: a plate with a counterbored hole, patterned in a row of
+    three.
+  - `pin.hzpart`: a pin that fits the holes.
+  - `plate-and-pin.hzasm`: the plate, fixed, and the pin, concentric with
+    its first hole and flush with its underside.
+  - `bracket-drawing.hzdwg`: a sheet of the bracket with its title block.
+  - `gasket.hcad`: a 2D gasket on layers of its own, with dimensions and a
+    note.
+- A part is rebuilt before it is saved, and the build fails when a feature
+  does, so a sample that does not build is never shipped. The samples are
+  placed next to the executable (`samples/`, as `translations/` is) and
+  installed to `bin/samples`; the install-tree test checks them.
+- **File ▸ Open Sample** lists them by name and kind ("Plate and pin
+  (assembly)"), sorted by that. A sample is opened as a copy in "Horizon
+  CAD Samples" in the user's documents: the whole set is copied (an
+  assembly and a sheet refer to their parts by relative path), a copy
+  already there is kept (it may have been changed), and the shipped
+  samples are never written. So Save works, even where the installed
+  folder is read-only. A copy that fails stops it, and says which (an
+  assembly opened without its parts would look broken, not blocked).
+  - `HZ_SAMPLES_DIR` and `HZ_SAMPLE_COPIES_DIR` point these elsewhere, for
+    the tests.
+- **Tests** (`test_Samples.cpp`, which depend on the samples being made):
+  the menu lists all six; every part builds with every feature; the
+  bracket's volume is as designed (the L, less the fillet's corner and two
+  holes); the assembly opens with the pin where its mates put it; the sheet
+  draws its views and title block; the gasket has its geometry on its
+  layers; and a sample opens as a copy, a changed copy is kept, and the
+  shipped sample is untouched.
+- The sample names are English (they are file names); their kind is
+  translated.
 
 ### 168c: Getting Started
 

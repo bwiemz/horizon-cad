@@ -14,7 +14,8 @@ to themselves: keep them together when you move them. DXF files (`.dxf`)
 open as drawings.
 
 **File ▸ Open...** (**Ctrl+O**) opens any of them; **Open Recent** lists the
-last ten. Files named on the command line (`horizon part.hzpart`) open in
+last ten, and **Open Sample** the samples (see
+[Getting started](getting-started.md)). Files named on the command line (`horizon part.hzpart`) open in
 tabs. A file that is already open is brought to the front.
 
 When a file open in Horizon CAD is changed by another program, its tab is

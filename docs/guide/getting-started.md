@@ -62,3 +62,14 @@ to leave it.
 The part now has a sketch and an extrusion in the Feature Tree. Double-click
 the extrusion there to change its distance. See [Parts](parts.md) for what
 comes next.
+
+## Samples
+
+**File ▸ Open Sample** lists the samples that come with Horizon CAD: an
+L-shaped bracket, a plate with a row of counterbored holes, a pin, an
+assembly of the plate and the pin held by mates, a drawing sheet of the
+bracket, and a 2D gasket.
+
+A sample opens as a copy, in the "Horizon CAD Samples" folder in your
+documents, so you can change it and save it. A copy you have changed is
+kept: opening that sample again opens your copy.

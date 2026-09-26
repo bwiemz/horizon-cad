@@ -648,6 +648,9 @@ void MainWindow::createMenus() {
     m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));
     m_recentMenu->setObjectName(QStringLiteral("recentFilesMenu"));
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildRecentMenu);
+    m_sampleMenu = fileMenu->addMenu(tr("Open Samp&le"));
+    m_sampleMenu->setObjectName(QStringLiteral("sampleMenu"));
+    connect(m_sampleMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildSampleMenu);
     rebuildRecentMenu();
 
     QAction* saveAction = fileMenu->addAction(tr("&Save"), this, &MainWindow::onSaveFile);
@@ -2304,6 +2307,89 @@ void MainWindow::rebuildRecentMenu() {
     m_recentMenu->addSeparator();
     connect(m_recentMenu->addAction(tr("&Clear Recent Files")), &QAction::triggered, this,
             [] { RecentFiles::clear(); });
+}
+
+QString MainWindow::sampleDirectory() {
+    QString forced = qEnvironmentVariable("HZ_SAMPLES_DIR");
+    if (!forced.isEmpty()) return forced;
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("samples"));
+}
+
+QString MainWindow::sampleCopiesDirectory() {
+    QString forced = qEnvironmentVariable("HZ_SAMPLE_COPIES_DIR");
+    if (!forced.isEmpty()) return forced;
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+        .filePath(QStringLiteral("Horizon CAD Samples"));
+}
+
+namespace {
+
+/// The kinds of document a sample may be, by extension.
+const QStringList kSampleFiles = {QStringLiteral("*.hcad"), QStringLiteral("*.hzpart"),
+                                  QStringLiteral("*.hzasm"), QStringLiteral("*.hzdwg")};
+
+}  // namespace
+
+void MainWindow::rebuildSampleMenu() {
+    m_sampleMenu->clear();
+    const QStringList samples =
+        QDir(sampleDirectory()).entryList(kSampleFiles, QDir::Files, QDir::Name);
+    // Each by its name ("plate-and-pin.hzasm": "Plate and pin (assembly)"),
+    // in the order of the names.
+    std::vector<std::pair<QString, QString>> items;  // label, file
+    for (const QString& file : samples) {
+        QString name =
+            QFileInfo(file).completeBaseName().replace(QLatin1Char('-'), QLatin1Char(' '));
+        if (!name.isEmpty()) name[0] = name[0].toUpper();
+        const QString suffix = QFileInfo(file).suffix();
+        const QString kind = suffix == QLatin1String("hzpart")  ? tr("part")
+                             : suffix == QLatin1String("hzasm") ? tr("assembly")
+                             : suffix == QLatin1String("hzdwg") ? tr("drawing sheet")
+                                                                : tr("2D drawing");
+        items.emplace_back(tr("%1 (%2)").arg(name, kind), file);
+    }
+    std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
+        return QString::localeAwareCompare(a.first, b.first) < 0;
+    });
+    for (const auto& item : items) {
+        const QString file = item.second;
+        QAction* action = m_sampleMenu->addAction(item.first);
+        action->setData(file);
+        connect(action, &QAction::triggered, this, [this, file] { openSample(file); });
+    }
+    if (items.empty()) m_sampleMenu->addAction(tr("No Samples Installed"))->setEnabled(false);
+}
+
+bool MainWindow::openSample(const QString& fileName) {
+    const QDir from(sampleDirectory());
+    const QString copies = sampleCopiesDirectory();
+    if (!QDir().mkpath(copies)) {
+        reportFileError(tr("Could not open"), fileName.toStdString(),
+                        "the folder for the samples, " + copies.toStdString() + ", cannot be made");
+        return false;
+    }
+    const QDir to(copies);
+    if (!from.exists(fileName)) {
+        reportFileError(tr("Could not open"), fileName.toStdString(),
+                        "it is not among the samples in " + from.path().toStdString());
+        return false;
+    }
+    // All of them, as one may need another (an assembly its parts). One
+    // already there stays: it may have been changed.
+    for (const QString& file : from.entryList(kSampleFiles, QDir::Files)) {
+        if (!to.exists(file) && !QFile::copy(from.filePath(file), to.filePath(file))) {
+            reportFileError(tr("Could not open"), fileName.toStdString(),
+                            "the sample " + file.toStdString() + " could not be copied to " +
+                                copies.toStdString());
+            return false;
+        }
+    }
+    const QString copy = to.filePath(fileName);
+    if (!openPath(copy)) return false;
+    statusBar()->showMessage(tr("A copy of the sample, in %1: change it and save it as you like.")
+                                 .arg(QDir::toNativeSeparators(copies)),
+                             10000);
+    return true;
 }
 
 void MainWindow::saveWindowLayout() const {
