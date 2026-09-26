@@ -6,6 +6,7 @@
 #include <random>
 #include <vector>
 
+#include "../PortableRandom.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/RTree.h"
 
@@ -217,8 +218,8 @@ TEST(RTreeTest, RemovalMatchesBruteForceUnderRandomChurn) {
     RTree<uint64_t> tree;
     std::map<uint64_t, BoundingBox> truth;
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> coord(0.0, 500.0);
-    std::uniform_real_distribution<double> size(0.1, 20.0);
+    hz::test::Uniform coord(0.0, 500.0);
+    hz::test::Uniform size(0.1, 20.0);
     uint64_t nextId = 1;
 
     for (int step = 0; step < 6000; ++step) {

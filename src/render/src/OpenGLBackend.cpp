@@ -6,8 +6,13 @@
 
 namespace hz::render {
 
+// GL 4.2 and 4.3's, which the headers of an older GL (Apple's stop at 4.1)
+// do not name. They are used only in a 4.3 context, checked when it runs.
 #ifndef GL_SHADER_STORAGE_BUFFER
 #define GL_SHADER_STORAGE_BUFFER 0x90D2
+#endif
+#ifndef GL_ALL_BARRIER_BITS
+#define GL_ALL_BARRIER_BITS 0xFFFFFFFF
 #endif
 
 namespace {

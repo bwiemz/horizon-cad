@@ -30,6 +30,12 @@ public:
 }  // namespace
 
 TEST(ApplicationTest, ExceptionFromAnEventHandlerIsContainedAndReported) {
+#if defined(Q_OS_MACOS)
+    // Qt on macOS is built without exceptions: one cannot unwind through its
+    // frames to Application::notify, and ends the process there (a crash
+    // report, Phase 167). There is nothing to contain.
+    GTEST_SKIP() << "an exception cannot pass through Qt's frames on macOS";
+#endif
     auto* app = qobject_cast<hz::ui::Application*>(QCoreApplication::instance());
     ASSERT_NE(app, nullptr) << "the test binary must run under hz::ui::Application";
     const int before = app->containedExceptionCount();
@@ -47,6 +53,12 @@ TEST(ApplicationTest, ExceptionFromAnEventHandlerIsContainedAndReported) {
 }
 
 TEST(ApplicationTest, RepeatedExceptionsDoNotRaiseADialogStorm) {
+#if defined(Q_OS_MACOS)
+    // Qt on macOS is built without exceptions: one cannot unwind through its
+    // frames to Application::notify, and ends the process there (a crash
+    // report, Phase 167). There is nothing to contain.
+    GTEST_SKIP() << "an exception cannot pass through Qt's frames on macOS";
+#endif
     auto* app = qobject_cast<hz::ui::Application*>(QCoreApplication::instance());
     ASSERT_NE(app, nullptr);
     const int before = app->containedExceptionCount();

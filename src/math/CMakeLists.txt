@@ -10,6 +10,7 @@ add_library(hz_math STATIC
     src/Expression.cpp
     src/Units.cpp
     src/Quantity.cpp
+    src/CharConv.cpp
 )
 
 target_include_directories(hz_math

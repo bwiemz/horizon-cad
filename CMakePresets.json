@@ -92,6 +92,25 @@
       "cacheVariables": {
         "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "ON"
       }
+    },
+    {
+      "name": "macos-debug",
+      "displayName": "macOS debug against Homebrew's Qt 6",
+      "description": "vcpkg provides everything except Qt, which comes from Homebrew (brew install qt; CMAKE_PREFIX_PATH=$(brew --prefix qt)).",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HZ_BUILD_TESTS": "ON",
+        "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
     }
   ],
   "buildPresets": [
@@ -120,6 +139,10 @@
     {
       "name": "ci-windows",
       "configurePreset": "ci-windows"
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug"
     }
   ],
   "testPresets": [
@@ -148,6 +171,13 @@
     {
       "name": "ci-windows",
       "configurePreset": "ci-windows",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
       "output": {
         "outputOnFailure": true
       }

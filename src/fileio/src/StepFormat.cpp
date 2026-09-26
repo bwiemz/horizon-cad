@@ -27,6 +27,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/CharConv.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
@@ -110,7 +111,7 @@ std::shared_ptr<geo::NurbsSurface> reverseSurfaceU(const geo::NurbsSurface& s) {
 bool parseReal(std::string_view text, double& out) {
     if (!text.empty() && text.front() == '+') text.remove_prefix(1);  // from_chars rejects '+'
     const char* last = text.data() + text.size();
-    const auto [ptr, ec] = std::from_chars(text.data(), last, out);
+    const auto [ptr, ec] = math::fromChars(text.data(), last, out);
     return ec == std::errc{} && ptr == last;
 }
 

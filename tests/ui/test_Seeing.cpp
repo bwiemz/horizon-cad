@@ -258,8 +258,9 @@ void settle(MainWindow& w) {
 QMessageBox* openMassBox() {
     for (QWidget* widget : QApplication::topLevelWidgets()) {
         auto* box = qobject_cast<QMessageBox*>(widget);
+        // By its name, not its title: macOS drops a message box's title.
         if (box != nullptr && box->isVisible() &&
-            box->windowTitle() == QStringLiteral("Mass Properties")) {
+            box->objectName() == QStringLiteral("massPropertiesBox")) {
             return box;
         }
     }

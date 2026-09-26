@@ -40,6 +40,7 @@
 #include "horizon/drafting/LineType.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/CharConv.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::io {
@@ -504,12 +505,13 @@ void trim(std::string& s) {
     s = s.substr(start, end - start + 1);
 }
 
-/// Numbers are parsed with std::from_chars: std::stod follows the C locale,
+/// Numbers are parsed with from_chars (math::fromChars for a double, as Apple's
+/// libc++ has no floating-point one): std::stod follows the C locale,
 /// which Qt sets from the environment on Unix, so under de_DE "1.5" read as 1.
 double toDouble(std::string_view s) {
     if (!s.empty() && s.front() == '+') s.remove_prefix(1);  // from_chars rejects '+'
     double value = 0.0;
-    const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    const auto [ptr, ec] = math::fromChars(s.data(), s.data() + s.size(), value);
     return ec == std::errc{} && std::isfinite(value) ? value : 0.0;
 }
 

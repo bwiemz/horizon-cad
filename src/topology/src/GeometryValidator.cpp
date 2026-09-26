@@ -41,11 +41,20 @@ std::vector<Vec3> loopPoints(const Wire* wire) {
     return pts;
 }
 
+/// A loop's area vector (Newell), from its points taken relative to its
+/// first: the same vector, but from small numbers. From the points as they
+/// are, a million millimetres out, each term was about 4e12 and its rounding
+/// about 1e-3, where the closed-shell check allows about 1e-6; it held only
+/// while each edge's term in one face was exactly the negative of its term
+/// in the other, which a fused multiply-add (Apple silicon) does not keep,
+/// and every far result was taken for an open shell (Phase 169).
 Vec3 newell(const std::vector<Vec3>& pts) {
     Vec3 a(0, 0, 0);
+    if (pts.empty()) return a;
+    const Vec3& origin = pts.front();
     for (size_t i = 0; i < pts.size(); ++i) {
-        const Vec3& p = pts[i];
-        const Vec3& q = pts[(i + 1) % pts.size()];
+        const Vec3 p = pts[i] - origin;
+        const Vec3 q = pts[(i + 1) % pts.size()] - origin;
         a = a + p.cross(q);
     }
     return a * 0.5;
@@ -70,11 +79,19 @@ double extentOf(const std::vector<Vec3>& pts) {
     return (hi - lo).length();
 }
 
-/// 2D orientation sign with a tolerance band.
+/// Which side of the line through a and b the point c is, with a band of
+/// @p eps (a length) either side of it. The cross product is a length times
+/// a length; it is compared as c's distance from the line, so the band is
+/// the same at every size. Compared as it was, for a part a hundredth of a
+/// millimetre across every point fell in the band, and segments that do not
+/// meet were taken for collinear ones that overlap (Phase 169).
 int orient2d(double ax, double ay, double bx, double by, double cx, double cy, double eps) {
     const double d = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-    if (d > eps) return 1;
-    if (d < -eps) return -1;
+    const double base = std::hypot(bx - ax, by - ay);
+    if (base == 0.0) return 0;
+    const double distance = d / base;
+    if (distance > eps) return 1;
+    if (distance < -eps) return -1;
     return 0;
 }
 

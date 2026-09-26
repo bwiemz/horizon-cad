@@ -4562,6 +4562,8 @@ void MainWindow::onMassProperties() {
     auto* box = new QMessageBox(QMessageBox::Information, verb,
                                 m_massText(nullptr, tr("Measuring...")), QMessageBox::Ok, this);
     box->setAttribute(Qt::WA_DeleteOnClose);
+    // Found by its name: a message box on macOS has no title.
+    box->setObjectName(QStringLiteral("massPropertiesBox"));
     connect(box, &QDialog::finished, this, [this] {
         if (m_massTask) m_massTask->cancel();
     });

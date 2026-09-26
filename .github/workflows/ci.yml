@@ -45,6 +45,14 @@ jobs:
             triplet: x64-linux
             werror: 'ON'
             config: Release
+          # macOS on Apple silicon (Phase 169), against Homebrew's Qt; vcpkg
+          # builds the rest. Apple clang's warnings are reported, not failed
+          # on, until they have been counted, as MSVC's are.
+          - os: macos-14
+            preset: macos-debug
+            triplet: arm64-osx
+            werror: 'OFF'
+            translations: 'ON'
 
     env:
       VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
@@ -88,6 +96,14 @@ jobs:
           # the instance run-vcpkg checked out so binary caching works.
           echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
           choco install ninja -y --no-progress
+
+      # Qt from Homebrew (with its Linguist tools, for the catalogs), and
+      # Ninja, which the presets use.
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install qt ninja
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt)" >> "$GITHUB_ENV"
 
       # Embedded-Python scripting (Phase 47) uses the system Python + pybind11,
       # not a vcpkg CPython build. Provide both and point CMake at them.
@@ -188,8 +204,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "MSVC /W4 warnings: ${total}"
 
+      # A test that hangs (a dialog nothing answers) fails in 15 minutes,
+      # not at the job's limit with every test after it unrun.
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4 --timeout 900
 
       # The window tests are built only when Qt has an offscreen platform
       # plugin. Qt without one skipped all of them, in every job, and said
