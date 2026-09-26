@@ -19,6 +19,20 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 17 (Phases 158–161, in progress)
 
+- **Subassemblies (159).**
+  - Insert Component takes an assembly: it's placed whole, and its faces
+    can be mated.
+  - An assembly placed inside itself, at any depth, is refused, and the
+    message names the chain.
+  - The assembly tree lists a subassembly's own components under it.
+  - The Bill of Materials shows the top level, an indented list (2.1,
+    2.2...), or every part with its quantities multiplied through.
+  - Interference, drawings and STEP export take subassemblies too; STEP
+    places their parts in one level.
+  - A part changed deep inside, or the subassembly saved, updates every
+    assembly it's in.
+  - Files are saved as format version 23.
+
 - **The triad (158, part 2).**
   - A component chosen in an assembly shows a triad: an arrow along each of
     its axes, and a ring about each.

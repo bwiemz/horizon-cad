@@ -73,7 +73,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// older build would take a construction line for part of a profile.
 /// 22: an extrusion may go up to a face: "extent": 4 and "upToFace" (Phase
 /// 157). An older build would read 4 as its distance.
-static constexpr int kFormatVersion = 22;
+/// 23: an assembly's component may be an assembly (Phase 159). An older
+/// build would find no part in it, and show the assembly without it.
+static constexpr int kFormatVersion = 23;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {

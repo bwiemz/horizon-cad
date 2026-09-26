@@ -124,8 +124,18 @@ public:
     ///
     /// `assemblyDir` is used to resolve relative part paths.
     /// Returns true on success.
+    ///
+    /// A component whose file is an assembly (Phase 159) is read from its
+    /// file for its components alone (`resolvedAssembly`), each of them
+    /// resolved the same way, recursively: its mesh is theirs merged
+    /// (AssemblyDocument::drawingMesh), and Resolved, its solid theirs
+    /// gathered (`assemblySolid`). It is refused, and why said in @p why,
+    /// when it places, at any depth, an assembly it is inside: one of
+    /// @p within (canonical paths; the assembly it is placed in, if saved),
+    /// or itself. A component of it that cannot be read is left out.
     bool resolveComponent(ComponentInstance& instance, ComponentState mode,
-                          const std::string& assemblyDir = {});
+                          const std::string& assemblyDir = {}, std::string* why = nullptr,
+                          const std::vector<std::string>& within = {});
 
     /// Whether @p a and @p b name the same file (canonically).
     static bool samePath(const std::string& a, const std::string& b);
@@ -161,7 +171,19 @@ private:
         const std::string& key, std::uint64_t version,
         const std::function<std::shared_ptr<const geo::MeshData>()>& make);
 
+    /// resolveComponent for an assembly file at @p fullPath (@p key its
+    /// canonical path). @p cycle is set when it fails for placing an
+    /// assembly it is inside.
+    bool resolveSubassembly(ComponentInstance& instance, ComponentState mode,
+                            const std::string& fullPath, const std::string& key,
+                            const std::vector<std::string>& within, std::string* why, bool* cycle);
+
+public:
+    /// @p path made canonical, as the manager keys files (a path that does
+    /// not exist, normalized).
     static std::string canonicalPath(const std::string& path);
+
+private:
     void watchFile(const std::string& canonical);
     void unwatchFile(const std::string& canonical);
 

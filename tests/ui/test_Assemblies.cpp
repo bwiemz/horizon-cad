@@ -13,6 +13,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -29,6 +30,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <numbers>
 #include <string>
 
@@ -1015,4 +1017,118 @@ TEST(AssembliesTest, TheTriadMovesAlongAnAxisAndTurnsAboutOne) {
     EXPECT_NEAR(x.z, 0.0, 1e-6) << "turned about z only: still on the base's top";
     const Vec3 centre = turned.transformPoint(Vec3(5, 5, 5));
     EXPECT_NEAR((centre - middle).length(), 0.0, 1e-6) << "about its middle";
+}
+
+namespace {
+
+/// An assembly saved at @p path placing @p part twice, one on the other.
+void savePair(const QString& path, const QString& part) {
+    hz::doc::AssemblyDocument pair;
+    for (const double z : {0.0, 10.0}) {
+        hz::doc::ComponentInstance comp;
+        comp.name = QFileInfo(part).completeBaseName().toStdString();
+        comp.partPath = part.toStdString();
+        comp.transform = hz::math::Mat4::translation(Vec3(0, 0, z));
+        pair.addComponent(comp);
+    }
+    ASSERT_TRUE(hz::io::NativeFormat::saveAssembly(path.toStdString(), pair));
+}
+
+}  // namespace
+
+// Phase 159: an assembly inserted into another is a component of it, shown
+// whole; the tree lists its own components under it; the bill of materials
+// is top level, indented or parts only.
+TEST(AssembliesTest, AnAssemblyIsPlacedAsAComponent) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const QString pair = dir.filePath(QStringLiteral("pair.hzasm"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    savePair(pair, block);
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    insert(w, pair);
+    ASSERT_EQ(assembly.components().size(), 2u) << w.statusBar()->currentMessage().toStdString();
+    const auto& sub = assembly.components()[1];
+    EXPECT_TRUE(sub.isAssembly());
+    ASSERT_NE(sub.resolvedAssembly, nullptr);
+    ASSERT_NE(sub.cachedMesh, nullptr) << "shown whole";
+    EXPECT_NEAR(heightOf(sub), 20.0, 1e-4) << "both of its blocks";
+
+    auto* panel = w.findChild<hz::ui::AssemblyTreePanel*>();
+    QTreeWidget* tree = panel->tree();
+    QTreeWidgetItem* components = tree->topLevelItem(0);
+    ASSERT_EQ(components->childCount(), 2);
+    EXPECT_EQ(components->child(1)->childCount(), 2) << "its own components under it";
+
+    // The bill of materials, each way.
+    std::map<QString, QStringList> shown;
+    QTimer poll;
+    QElapsedTimer clock;
+    clock.start();
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr || dialog->windowTitle() != QStringLiteral("Bill of Materials")) {
+            if (clock.elapsed() > 10'000) poll.stop();
+            return;
+        }
+        poll.stop();
+        auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("bom"));
+        auto* kind = dialog->findChild<QComboBox*>(QStringLiteral("bomKind"));
+        for (int k = 0; table != nullptr && kind != nullptr && k < kind->count(); ++k) {
+            kind->setCurrentIndex(k);
+            QStringList rows;
+            for (int row = 0; row < table->rowCount(); ++row) {
+                rows << table->item(row, 0)->text() + " " + table->item(row, 1)->text().trimmed() +
+                            " x" + table->item(row, 2)->text();
+            }
+            shown[kind->itemText(k)] = rows;
+        }
+        dialog->reject();
+    });
+    poll.start(5);
+    trigger(w, "action_bill_of_materials");
+    EXPECT_EQ(shown[QStringLiteral("Top level")],
+              QStringList({QStringLiteral("1 block x1"), QStringLiteral("2 pair x1")}));
+    EXPECT_EQ(shown[QStringLiteral("Indented")],
+              QStringList({QStringLiteral("1 block x1"), QStringLiteral("2 pair x1"),
+                           QStringLiteral("2.1 block x2")}));
+    EXPECT_EQ(shown[QStringLiteral("Parts only")], QStringList({QStringLiteral("1 block x3")}));
+
+    // STEP: its parts placed with the rest, in one level, their transforms
+    // composed with its.
+    const QString step = dir.filePath(QStringLiteral("rig.step"));
+    {
+        FilePicker picker(step);
+        trigger(w, "export_step");
+    }
+    const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
+    ASSERT_EQ(read.parts.size(), 1u) << hz::io::StepFormat::lastError();
+    ASSERT_EQ(read.occurrences.size(), 3u) << "the block, and the pair's two";
+    const Vec3 pairAt = translationOf(sub);
+    const Vec3 upper = read.occurrences[2].transform.transformPoint(Vec3());
+    EXPECT_NEAR(upper.x, pairAt.x, 1e-9);
+    EXPECT_NEAR(upper.z, pairAt.z + 10.0, 1e-9) << "the pair's upper block, where it puts it";
+}
+
+// An assembly is not inserted into itself, nor into one it places.
+TEST(AssembliesTest, AnAssemblyIsNotInsertedIntoItself) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const QString top = dir.filePath(QStringLiteral("top.hzasm"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    ASSERT_TRUE(hz::io::NativeFormat::saveAssembly(top.toStdString(), assembly));
+    assembly.setFilePath(top.toStdString());
+
+    DialogResponder refusal(QMessageBox::Ok);
+    insert(w, top);
+    refusal.waitForDialog(5000);
+    ASSERT_TRUE(refusal.seen());
+    EXPECT_TRUE(refusal.text().contains(QStringLiteral("inside itself")))
+        << refusal.text().toStdString();
+    EXPECT_EQ(assembly.components().size(), 1u) << "not inserted";
 }

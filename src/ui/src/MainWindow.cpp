@@ -2180,8 +2180,9 @@ bool MainWindow::saveActiveDocument() {
             forgetSnapshot(*tab);
             RecentFiles::add(QString::fromStdString(m_assembly->filePath()));
             m_statusPrompt->setText(tr("Assembly saved."));
-            // Its drawings show it as saved.
-            m_drawings->refreshDrawingsOf(m_assembly->filePath());
+            // Its drawings show it as saved, and so do the assemblies that
+            // place it (Phase 159).
+            refreshUsersOf(m_assembly->filePath(), /*report=*/false);
             updateWindowTitle();
             return true;
         }

@@ -19,7 +19,21 @@ namespace {
 constexpr int kKindRole = Qt::UserRole;
 constexpr int kIdRole = Qt::UserRole + 1;
 constexpr int kSuppressedRole = Qt::UserRole + 2;
-enum Kind : int { Heading = 0, Component = 1, Mate = 2 };
+/// A row's kind. Inner: a subassembly's own component (Phase 159), shown,
+/// not acted on here: it is edited in its assembly's tab.
+enum Kind : int { Heading = 0, Component = 1, Mate = 2, Inner = 3 };
+
+/// Rows under @p parent for @p sub's components, and theirs in turn.
+void addInner(QTreeWidgetItem* parent, const hz::doc::AssemblyDocument& sub) {
+    for (const auto& comp : sub.components()) {
+        QString text = QString::fromStdString(comp.name.empty() ? "component" : comp.name);
+        if (comp.suppressed) text += AssemblyTreePanel::tr(" (suppressed)");
+        auto* item = new QTreeWidgetItem(parent, {text});
+        item->setData(0, kKindRole, Inner);
+        item->setToolTip(0, QString::fromStdString(comp.partPath));
+        if (comp.resolvedAssembly) addInner(item, *comp.resolvedAssembly);
+    }
+}
 
 QString mateName(doc::MateType type) {
     switch (type) {
@@ -129,6 +143,8 @@ void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
         if (comp.suppressed)
             item->setForeground(0, palette().brush(QPalette::Disabled, QPalette::Text));
         if (comp.id == component) current = item;
+        // A subassembly's own components under it (Phase 159).
+        if (comp.resolvedAssembly) addInner(item, *comp.resolvedAssembly);
     }
 
     auto* mates = new QTreeWidgetItem(m_tree, {tr("Mates (%1)").arg(assembly->mates().size())});

@@ -1,6 +1,8 @@
 #include "horizon/document/AssemblyDocument.h"
 
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -19,7 +21,7 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
     InterferenceInput input;
     for (const auto& comp : m_components) {
         if (comp.suppressed) continue;
-        const topo::Solid* solid = comp.resolvedPart ? comp.resolvedPart->solid() : nullptr;
+        const topo::Solid* solid = comp.solid();  // a part's, or a subassembly's
         if (solid == nullptr) {
             input.unchecked.push_back(comp.id);
             continue;
@@ -32,6 +34,75 @@ AssemblyDocument::InterferenceInput AssemblyDocument::interferenceInput() const 
 
 std::string AssemblyDocument::namePrefix(uint64_t id) {
     return "c" + std::to_string(id) + "/";
+}
+
+bool ComponentInstance::isAssembly() const {
+    std::string extension = std::filesystem::path(partPath).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return extension == ".hzasm";
+}
+
+const topo::Solid* ComponentInstance::solid() const {
+    if (resolvedPart) return resolvedPart->solid();
+    return assemblySolid.get();
+}
+
+std::shared_ptr<geo::MeshData> AssemblyDocument::drawingMesh() const {
+    auto merged = std::make_shared<geo::MeshData>();
+    bool any = false;
+    for (const auto& comp : m_components) {
+        if (comp.suppressed || !comp.cachedMesh) continue;
+        const geo::MeshData& mesh = *comp.cachedMesh;
+        const math::Mat4& placed = comp.transform;
+        const std::string prefix = namePrefix(comp.id);
+        const auto firstVertex = static_cast<uint32_t>(merged->positions.size() / 3);
+        const auto firstFace = static_cast<uint32_t>(merged->faceTags.size());
+        for (size_t i = 0; i + 2 < mesh.positions.size(); i += 3) {
+            const math::Vec3 p = placed.transformPoint(
+                math::Vec3(mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]));
+            merged->positions.insert(
+                merged->positions.end(),
+                {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
+        }
+        for (size_t i = 0; i + 2 < mesh.normals.size(); i += 3) {
+            const math::Vec3 n = placed
+                                     .transformDirection(math::Vec3(
+                                         mesh.normals[i], mesh.normals[i + 1], mesh.normals[i + 2]))
+                                     .normalized();
+            merged->normals.insert(
+                merged->normals.end(),
+                {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)});
+        }
+        for (const uint32_t index : mesh.indices) merged->indices.push_back(firstVertex + index);
+        // Its faces' names, for a pick. A mesh without them leaves some
+        // triangles unnamed, and the whole unnamed at the end.
+        if (mesh.hasFaces()) {
+            for (const uint32_t face : mesh.triangleFaces) {
+                merged->triangleFaces.push_back(firstFace + face);
+            }
+            for (const auto& tag : mesh.faceTags) merged->faceTags.push_back(prefix + tag);
+        }
+        for (const auto& edge : mesh.edges) {
+            geo::MeshData::Edge placedEdge;
+            placedEdge.tag = prefix + edge.tag;
+            for (size_t i = 0; i + 2 < edge.points.size(); i += 3) {
+                const math::Vec3 q = placed.transformPoint(
+                    math::Vec3(edge.points[i], edge.points[i + 1], edge.points[i + 2]));
+                placedEdge.points.insert(
+                    placedEdge.points.end(),
+                    {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
+            }
+            merged->edges.push_back(std::move(placedEdge));
+        }
+        any = true;
+    }
+    // Names for some triangles and not others would name the wrong faces.
+    if (!merged->hasFaces()) {
+        merged->triangleFaces.clear();
+        merged->faceTags.clear();
+    }
+    return any ? merged : nullptr;
 }
 
 std::unique_ptr<topo::Solid> AssemblyDocument::drawingSolid(

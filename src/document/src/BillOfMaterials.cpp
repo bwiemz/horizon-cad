@@ -10,7 +10,7 @@ namespace hz::doc {
 int BillOfMaterials::totalQuantity() const {
     int total = 0;
     for (const BomLine& line : lines) {
-        total += line.quantity;
+        if (line.level == 0) total += line.quantity;  // an indented BOM's own, once
     }
     return total;
 }
@@ -27,42 +27,115 @@ std::string partDisplayName(const std::string& partPath, const std::string& fall
 
 }  // namespace
 
-BillOfMaterials BomGenerator::generate(const AssemblyDocument& assembly) {
-    BillOfMaterials bom;
+namespace {
 
-    // Group by the part reference. An empty partPath keys on the instance name so
-    // distinct unsaved parts don't all collapse into one line.
-    std::unordered_map<std::string, std::size_t> lineByKey;  // key -> index in bom.lines
+/// The key a component's file is one line by: canonical, a relative path
+/// taken from @p assembly's folder; an unsaved part's by its name.
+std::string lineKey(const AssemblyDocument& assembly, const ComponentInstance& c) {
+    if (c.partPath.empty()) return "@" + c.name;
+    std::filesystem::path file(c.partPath);
+    if (file.is_relative() && !assembly.filePath().empty()) {
+        file = std::filesystem::path(assembly.filePath()).parent_path() / file;
+    }
+    std::error_code ec;
+    const auto canonical = std::filesystem::weakly_canonical(file, ec);
+    return ec ? file.lexically_normal().string() : canonical.string();
+}
 
+/// @p assembly's own lines, grouped by file, in order of first appearance,
+/// each with the first component of it (for a subassembly's own lines).
+struct Grouped {
+    std::vector<BomLine> lines;
+    std::vector<const ComponentInstance*> first;
+};
+
+Grouped group(const AssemblyDocument& assembly) {
+    Grouped out;
+    std::unordered_map<std::string, std::size_t> lineByKey;
     for (const ComponentInstance& c : assembly.components()) {
         if (c.suppressed) continue;
-
-        // One line per file, however its path is spelled: a relative one is
-        // the assembly's folder's, as the component resolves it.
-        std::string key = "@" + c.name;
-        if (!c.partPath.empty()) {
-            std::filesystem::path file(c.partPath);
-            if (file.is_relative() && !assembly.filePath().empty()) {
-                file = std::filesystem::path(assembly.filePath()).parent_path() / file;
-            }
-            std::error_code ec;
-            const auto canonical = std::filesystem::weakly_canonical(file, ec);
-            key = ec ? file.lexically_normal().string() : canonical.string();
+        const std::string key = lineKey(assembly, c);
+        const auto it = lineByKey.find(key);
+        if (it != lineByKey.end()) {
+            ++out.lines[it->second].quantity;
+            continue;
         }
-        auto it = lineByKey.find(key);
-        if (it == lineByKey.end()) {
-            BomLine line;
-            line.item = static_cast<int>(bom.lines.size()) + 1;
-            line.partName = partDisplayName(c.partPath, c.name);
-            line.partPath = c.partPath;
-            line.quantity = 1;
-            lineByKey.emplace(key, bom.lines.size());
-            bom.lines.push_back(std::move(line));
-        } else {
-            ++bom.lines[it->second].quantity;
+        BomLine line;
+        line.item = static_cast<int>(out.lines.size()) + 1;
+        line.partName = partDisplayName(c.partPath, c.name);
+        line.partPath = c.partPath;
+        line.quantity = 1;
+        line.assembly = c.isAssembly();
+        lineByKey.emplace(key, out.lines.size());
+        out.lines.push_back(std::move(line));
+        out.first.push_back(&c);
+    }
+    return out;
+}
+
+/// The indented lines of @p assembly, at @p level, numbered after @p above.
+void indent(const AssemblyDocument& assembly, int level, const std::string& above,
+            std::vector<BomLine>& out) {
+    Grouped grouped = group(assembly);
+    for (std::size_t i = 0; i < grouped.lines.size(); ++i) {
+        BomLine line = grouped.lines[i];
+        line.level = level;
+        line.index =
+            above.empty() ? std::to_string(line.item) : above + "." + std::to_string(line.item);
+        const std::string index = line.index;
+        out.push_back(std::move(line));
+        if (const auto& sub = grouped.first[i]->resolvedAssembly) {
+            indent(*sub, level + 1, index, out);
         }
     }
+}
 
+/// Every part at any depth of @p assembly gathered into @p out by file: each
+/// placement of a subassembly walked, so its parts are counted as often.
+void flatten(const AssemblyDocument& assembly,
+             std::unordered_map<std::string, std::size_t>& lineByKey, std::vector<BomLine>& out) {
+    for (const ComponentInstance& c : assembly.components()) {
+        if (c.suppressed) continue;
+        if (c.resolvedAssembly) {
+            flatten(*c.resolvedAssembly, lineByKey, out);
+            continue;
+        }
+        const std::string key = lineKey(assembly, c);
+        const auto it = lineByKey.find(key);
+        if (it != lineByKey.end()) {
+            ++out[it->second].quantity;
+            continue;
+        }
+        BomLine line;
+        line.item = static_cast<int>(out.size()) + 1;
+        line.index = std::to_string(line.item);
+        line.partName = partDisplayName(c.partPath, c.name);
+        line.partPath = c.partPath;
+        line.quantity = 1;
+        line.assembly = c.isAssembly();  // one not resolved: a line of its own
+        lineByKey.emplace(key, out.size());
+        out.push_back(std::move(line));
+    }
+}
+
+}  // namespace
+
+BillOfMaterials BomGenerator::generate(const AssemblyDocument& assembly, BomKind kind) {
+    BillOfMaterials bom;
+    switch (kind) {
+        case BomKind::TopLevel:
+            bom.lines = group(assembly).lines;
+            for (auto& line : bom.lines) line.index = std::to_string(line.item);
+            break;
+        case BomKind::Indented:
+            indent(assembly, 0, {}, bom.lines);
+            break;
+        case BomKind::PartsOnly: {
+            std::unordered_map<std::string, std::size_t> lineByKey;
+            flatten(assembly, lineByKey, bom.lines);
+            break;
+        }
+    }
     return bom;
 }
 

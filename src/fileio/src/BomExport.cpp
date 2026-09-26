@@ -1,5 +1,6 @@
 #include "horizon/fileio/BomExport.h"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 
@@ -29,10 +30,16 @@ std::string csvField(const std::string& value) {
 
 bool BomExport::toCsv(const std::string& path, const doc::BillOfMaterials& bom) {
     std::ostringstream out;
-    out << "Item,Part,Quantity,Path\r\n";
+    // An indented BOM (Phase 159) says each line's level too, and its item
+    // is its number under its assemblies ("2.1").
+    const bool levels = std::any_of(bom.lines.begin(), bom.lines.end(),
+                                    [](const doc::BomLine& line) { return line.level > 0; });
+    out << (levels ? "Item,Level,Part,Quantity,Path\r\n" : "Item,Part,Quantity,Path\r\n");
     for (const doc::BomLine& line : bom.lines) {
-        out << line.item << ',' << csvField(line.partName) << ',' << line.quantity << ','
-            << csvField(line.partPath) << "\r\n";
+        out << csvField(line.index.empty() ? std::to_string(line.item) : line.index) << ',';
+        if (levels) out << line.level << ',';
+        out << csvField(line.partName) << ',' << line.quantity << ',' << csvField(line.partPath)
+            << "\r\n";
     }
 
     return writeFileAtomically(pathFromUtf8(path), out.str());
