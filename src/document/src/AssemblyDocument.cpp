@@ -55,9 +55,15 @@ const topo::Solid* ComponentInstance::ownSolid() const {
 const topo::Solid* ComponentInstance::solid() const {
     const topo::Solid* own = ownSolid();
     if (!mirrored || own == nullptr) return own;
-    if (m_mirroredSolidFrom != own || !m_mirroredSolid) {
+    // Made from this part's this build, or from this subassembly's solid.
+    const std::shared_ptr<const void> owner = resolvedPart
+                                                  ? std::shared_ptr<const void>(resolvedPart)
+                                                  : std::shared_ptr<const void>(assemblySolid);
+    const std::uint64_t build = resolvedPart ? resolvedPart->builds() : 0;
+    if (!m_mirroredSolid || m_mirroredSolidOwner != owner || m_mirroredSolidBuild != build) {
         m_mirroredSolid = model::Pattern::transformed(*own, ownMirror());
-        m_mirroredSolidFrom = own;
+        m_mirroredSolidOwner = owner;
+        m_mirroredSolidBuild = build;
     }
     return m_mirroredSolid.get();
 }
@@ -87,9 +93,9 @@ std::shared_ptr<const geo::MeshData> mirroredMesh(const geo::MeshData& mesh) {
 
 std::shared_ptr<const geo::MeshData> ComponentInstance::mesh() const {
     if (!mirrored || !cachedMesh) return cachedMesh;
-    if (m_mirroredMeshFrom != cachedMesh.get() || !m_mirroredMesh) {
+    if (!m_mirroredMesh || m_mirroredMeshFrom != cachedMesh) {
         m_mirroredMesh = mirroredMesh(*cachedMesh);
-        m_mirroredMeshFrom = cachedMesh.get();
+        m_mirroredMeshFrom = cachedMesh;
     }
     return m_mirroredMesh;
 }

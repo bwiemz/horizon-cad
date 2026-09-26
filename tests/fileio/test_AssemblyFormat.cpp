@@ -403,4 +403,21 @@ TEST(AssemblyFormatTest, AMirroredComponentRoundTrips) {
     ASSERT_EQ(loaded.components().size(), 2u);
     EXPECT_FALSE(loaded.components()[0].mirrored);
     EXPECT_TRUE(loaded.component(id)->mirrored);
+
+    // A subassembly marked mirrored (by hand: the command refuses one) is
+    // placed as it is, and said.
+    AssemblyDocument withSub;
+    ComponentInstance sub;
+    sub.partPath = "pair.hzasm";
+    sub.mirrored = true;
+    withSub.addComponent(sub);
+    AssemblyDocument read;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(NativeFormat::assemblyToJson(withSub, ""), read, "",
+                                               nullptr, &report));
+    ASSERT_EQ(read.components().size(), 1u);
+    EXPECT_FALSE(read.components()[0].mirrored);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("subassembly"), std::string::npos)
+        << report.skipped.front();
 }
