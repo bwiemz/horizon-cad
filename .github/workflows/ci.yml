@@ -204,8 +204,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "MSVC /W4 warnings: ${total}"
 
+      # A test that hangs (a dialog nothing answers) fails in 15 minutes,
+      # not at the job's limit with every test after it unrun.
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4 --timeout 900
 
       # The window tests are built only when Qt has an offscreen platform
       # plugin. Qt without one skipped all of them, in every job, and said

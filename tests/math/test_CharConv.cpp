@@ -1,7 +1,7 @@
 // hz::math::fromChars (Phase 169): std::from_chars for a double on every
-// platform. Built twice: as the library has it, and with the portable one
-// forced (HZ_PORTABLE_FROM_CHARS), which is checked against the standard one
-// here, where the standard library has both.
+// platform. Each test runs on both what fromChars is here and the portable
+// one (what it is on macOS), which is also checked against the standard one
+// where the standard library has one.
 
 #include <gtest/gtest.h>
 
@@ -15,8 +15,6 @@
 
 #include "horizon/math/CharConv.h"
 
-using hz::math::fromChars;
-
 namespace {
 
 struct Read {
@@ -25,15 +23,29 @@ struct Read {
     double value;
 };
 
-Read read(const std::string& text) {
-    double value = -7.0;  // left as it is on a failure
-    const auto [end, error] = fromChars(text.data(), text.data() + text.size(), value);
-    return {error, end - text.data(), value};
-}
+using Reader = std::from_chars_result (*)(const char*, const char*, double&);
+
+/// Each test reads with both.
+class CharConvTest : public ::testing::TestWithParam<Reader> {
+protected:
+    Read read(const std::string& text) const {
+        double value = -7.0;  // left as it is on a failure
+        const auto [end, error] = GetParam()(text.data(), text.data() + text.size(), value);
+        return {error, end - text.data(), value};
+    }
+};
 
 }  // namespace
 
-TEST(CharConvTest, ReadsWhatFromCharsReads) {
+INSTANTIATE_TEST_SUITE_P(FromChars, CharConvTest,
+                         ::testing::Values(&hz::math::fromChars,
+                                           &hz::math::detail::fromCharsPortable),
+                         [](const auto& info) {
+                             return info.index == 0 ? std::string("AsBuilt")
+                                                    : std::string("Portable");
+                         });
+
+TEST_P(CharConvTest, ReadsWhatFromCharsReads) {
     EXPECT_EQ(read("1.5").value, 1.5);
     EXPECT_EQ(read("-2e3").value, -2000.0);
     EXPECT_EQ(read(".5").value, 0.5);
@@ -46,7 +58,7 @@ TEST(CharConvTest, ReadsWhatFromCharsReads) {
     EXPECT_TRUE(std::isnan(read("nan").value));
 }
 
-TEST(CharConvTest, RefusesWhatFromCharsRefuses) {
+TEST_P(CharConvTest, RefusesWhatFromCharsRefuses) {
     for (const char* text : {"", "abc", "+1", " 1", ".", "-", "e5"}) {
         const Read r = read(text);
         EXPECT_EQ(r.error, std::errc::invalid_argument) << '"' << text << '"';
@@ -58,7 +70,7 @@ TEST(CharConvTest, RefusesWhatFromCharsRefuses) {
 
 // The C locale's point, whatever the process's locale says: a comma-decimal
 // locale read "1.5" as 1 through strtod.
-TEST(CharConvTest, APointIsAPointInEveryLocale) {
+TEST_P(CharConvTest, APointIsAPointInEveryLocale) {
     const std::string before = std::setlocale(LC_NUMERIC, nullptr);
     const bool german = std::setlocale(LC_NUMERIC, "de_DE.UTF-8") != nullptr ||
                         std::setlocale(LC_NUMERIC, "de_DE") != nullptr;
@@ -69,10 +81,10 @@ TEST(CharConvTest, APointIsAPointInEveryLocale) {
     EXPECT_EQ(r.used, 3);
 }
 
-#if defined(HZ_PORTABLE_FROM_CHARS) && defined(__cpp_lib_to_chars)
+#if defined(__cpp_lib_to_chars)
 // The portable one reads each of these as the standard one does: how much,
 // whether it failed, and the value.
-TEST(CharConvTest, ThePortableOneAgreesWithTheStandardOne) {
+TEST(CharConvPortableTest, AgreesWithTheStandardOne) {
     const std::vector<std::string> texts = {"0",
                                             "-0",
                                             "1",
@@ -110,7 +122,8 @@ TEST(CharConvTest, ThePortableOneAgreesWithTheStandardOne) {
         double standard = -7.0;
         double portable = -7.0;
         const auto s = std::from_chars(text.data(), text.data() + text.size(), standard);
-        const auto p = fromChars(text.data(), text.data() + text.size(), portable);
+        const auto p =
+            hz::math::detail::fromCharsPortable(text.data(), text.data() + text.size(), portable);
         EXPECT_EQ(p.ec, s.ec) << '"' << text << '"';
         EXPECT_EQ(p.ptr - text.data(), s.ptr - text.data()) << '"' << text << '"';
         if (std::isnan(standard)) {

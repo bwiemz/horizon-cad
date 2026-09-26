@@ -2,34 +2,28 @@
 
 #include <cctype>
 #include <cerrno>
+#include <clocale>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <string>
 #include <system_error>
 
-// HZ_PORTABLE_FROM_CHARS forces the portable one, so it is tested where the
-// standard one is there too (tests/math).
-#if defined(__cpp_lib_to_chars) && !defined(HZ_PORTABLE_FROM_CHARS)
-#define HZ_STANDARD_FROM_CHARS 1
-#endif
-
-#if !defined(HZ_STANDARD_FROM_CHARS) && !defined(_WIN32)
-#include <clocale>
 #if defined(__APPLE__)
 #include <xlocale.h>
-#endif
 #endif
 
 namespace hz::math {
 
-#if defined(HZ_STANDARD_FROM_CHARS)
-
 std::from_chars_result fromChars(const char* first, const char* last, double& value) {
+#if defined(__cpp_lib_to_chars)
     return std::from_chars(first, last, value);
+#else
+    return detail::fromCharsPortable(first, last, value);
+#endif
 }
 
-#else
+namespace detail {
 
 namespace {
 
@@ -82,7 +76,7 @@ double readInCLocale(const std::string& text, char** end) {
 
 }  // namespace
 
-std::from_chars_result fromChars(const char* first, const char* last, double& value) {
+std::from_chars_result fromCharsPortable(const char* first, const char* last, double& value) {
     const std::size_t length = numberLength(first, last);
     if (length == 0) return {first, std::errc::invalid_argument};
     const std::string text(first, length);
@@ -98,6 +92,6 @@ std::from_chars_result fromChars(const char* first, const char* last, double& va
     return {first + length, std::errc()};
 }
 
-#endif
+}  // namespace detail
 
 }  // namespace hz::math

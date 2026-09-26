@@ -70,7 +70,7 @@ private:
     void poll() {
         auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         QAbstractButton* button = box ? box->button(m_button) : nullptr;
-        if (button && (m_title.isEmpty() || box->windowTitle() == m_title)) {
+        if (button && titleMatches(*box)) {
             m_timer.stop();
             m_seen = true;
             m_text = box->text();
@@ -80,6 +80,17 @@ private:
             return;
         }
         if (m_clock.elapsed() > m_timeoutMs) m_timer.stop();
+    }
+
+    /// A box has the title asked for. On macOS a message box has none (Qt
+    /// drops it, as the platform's guidelines ask), so there it matches any.
+    bool titleMatches(const QMessageBox& box) const {
+        if (m_title.isEmpty() || box.windowTitle() == m_title) return true;
+#if defined(Q_OS_MACOS)
+        return box.windowTitle().isEmpty();
+#else
+        return false;
+#endif
     }
 
     QMessageBox::StandardButton m_button;
