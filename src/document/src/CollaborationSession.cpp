@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <ctime>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
+#include <vector>
 
 namespace hz::doc {
 
@@ -23,6 +26,21 @@ std::string nowIso8601() {
     char buf[32];
     std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &utc);
     return buf;
+}
+
+/// A whole number from a snapshot, not negative and at most @p max. Anything
+/// else throws: nlohmann would cast a float to it, undefined out of range.
+std::uint64_t wholeNumber(const json& j, std::uint64_t max = UINT64_MAX) {
+    if (!j.is_number_unsigned() || j.get<std::uint64_t>() > max) {
+        throw std::out_of_range("not a whole number in range");
+    }
+    return j.get<std::uint64_t>();
+}
+
+/// Field @p key of @p obj as wholeNumber() reads it; 0 when it is absent.
+std::uint64_t wholeField(const json& obj, const char* key, std::uint64_t max = UINT64_MAX) {
+    const auto it = obj.find(key);
+    return it == obj.end() ? 0 : wholeNumber(*it, max);
 }
 
 }  // namespace
@@ -176,12 +194,14 @@ bool CollaborationSession::fromJson(const std::string& text, CollaborationSessio
             Participant p;
             p.userId = m.value("userId", "");
             p.displayName = m.value("displayName", "");
-            p.colorRgb = m.value("colorRgb", 0u);
+            p.colorRgb = static_cast<std::uint32_t>(wholeField(m, "colorRgb", 0xFFFFFFFFu));
             if (!p.userId.empty() && !session.join(p)) return false;  // duplicate userId
         }
         for (const auto& t : root.value("tokens", json::array())) {
-            const auto featureId = t.value("featureId", uint64_t{0});
-            const auto covered = t.value("covered", std::vector<uint64_t>{});
+            const auto featureId = wholeField(t, "featureId");
+            std::vector<uint64_t> covered;
+            for (const auto& id : t.value("covered", json::array()))
+                covered.push_back(wholeNumber(id));
             const std::string owner = t.value("owner", "");
             const std::string acquiredAt = t.value("acquiredAt", "");
             if (featureId == 0 || owner.empty()) return false;
@@ -199,7 +219,7 @@ bool CollaborationSession::fromJson(const std::string& text, CollaborationSessio
                 Presence presence;
                 presence.x = p.value("x", 0.0);
                 presence.y = p.value("y", 0.0);
-                presence.selectedFeature = p.value("selectedFeature", uint64_t{0});
+                presence.selectedFeature = wholeField(p, "selectedFeature");
                 session.updatePresence(userId, presence);  // drops non-members
             }
         }

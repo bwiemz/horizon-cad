@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <string>
+#include <vector>
+
 #include "horizon/document/CollaborationSession.h"
 
 using namespace hz::doc;
@@ -158,6 +161,32 @@ TEST(CollaborationSessionTest, FromJsonRejectsOverlappingTokenCoverage) {
     })";
     CollaborationSession out;
     EXPECT_FALSE(CollaborationSession::fromJson(payload, out));
+}
+
+TEST(CollaborationSessionTest, FromJsonRejectsNumbersThatAreNotWhole) {
+    // nlohmann casts a float to an integer, undefined behaviour out of range:
+    // a snapshot's ids and colours are read as whole numbers, or not at all.
+    const std::vector<std::string> payloads = {
+        R"({"session":"s","participants":[{"userId":"alice","colorRgb":4.29e119}]})",
+        R"({"session":"s","participants":[{"userId":"alice","colorRgb":-1}]})",
+        R"({"session":"s","participants":[{"userId":"alice"}],)"
+        R"("tokens":[{"featureId":1e300,"covered":[],"owner":"alice"}]})",
+        R"({"session":"s","participants":[{"userId":"alice"}],)"
+        R"("tokens":[{"featureId":1,"covered":[2.5],"owner":"alice"}]})",
+        R"({"session":"s","participants":[{"userId":"alice"}],)"
+        R"("presence":{"alice":{"selectedFeature":-7}}})",
+    };
+    for (const std::string& payload : payloads) {
+        CollaborationSession out;
+        EXPECT_FALSE(CollaborationSession::fromJson(payload, out)) << payload;
+    }
+    CollaborationSession out;
+    ASSERT_TRUE(CollaborationSession::fromJson(
+        R"({"session":"s","participants":[{"userId":"alice","colorRgb":3368601}],)"
+        R"("tokens":[{"featureId":1,"covered":[2],"owner":"alice"}]})",
+        out));
+    EXPECT_EQ(out.participants().at(0).colorRgb, 0x336699u);
+    EXPECT_EQ(out.coveringOwner(2), "alice");
 }
 
 TEST(CollaborationSessionTest, FromJsonRejectsTokensOfUnknownOwners) {

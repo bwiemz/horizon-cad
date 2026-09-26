@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <set>
 #include <stdexcept>
@@ -171,11 +172,31 @@ static long long intField(const json& obj, const char* key, long long fallback, 
     return v;
 }
 
-/// An id from a file (Phase 161): a whole number, not negative. Anything
-/// else throws, as intField does: nlohmann would cast a float to it.
+/// An id from a file (Phase 161): a JSON integer, not negative. Anything
+/// else throws, as intField does out of range: nlohmann would cast a float
+/// to it. Stricter than intField, which takes 5.0 for 5: an id is always
+/// written as an integer.
 static uint64_t idFrom(const json& j) {
     if (j.is_number_unsigned()) return j.get<uint64_t>();
     throw std::out_of_range("an id is not a whole number");
+}
+
+/// An id field, read as idFrom reads one; @p fallback when it is absent.
+static uint64_t idField(const json& obj, const char* key, uint64_t fallback = 0) {
+    const auto it = obj.find(key);
+    return it == obj.end() ? fallback : idFrom(*it);
+}
+
+/// A colour field (0xAARRGGBB): a whole number that fits in 32 bits, as
+/// intField reads one; @p fallback when it is absent.
+static uint32_t colorField(const json& obj, const char* key, uint32_t fallback) {
+    return static_cast<uint32_t>(intField(obj, key, fallback, 0, 0xFFFFFFFFLL));
+}
+
+/// An int field of any value, as intField reads one.
+static int anyIntField(const json& obj, const char* key, int fallback) {
+    return static_cast<int>(intField(obj, key, fallback, std::numeric_limits<int>::min(),
+                                     std::numeric_limits<int>::max()));
 }
 
 /// A whole number in [lo, hi] that is an array's element, as intField reads
@@ -233,9 +254,9 @@ static json serializeRef(const cstr::GeometryRef& ref) {
 
 static cstr::GeometryRef deserializeRef(const json& obj) {
     cstr::GeometryRef ref;
-    ref.entityId = obj.value("entityId", uint64_t(0));
+    ref.entityId = idField(obj, "entityId");
     ref.featureType = featureTypeFromString(obj.value("featureType", "point"));
-    ref.featureIndex = obj.value("featureIndex", 0);
+    ref.featureIndex = anyIntField(obj, "featureIndex", 0);
     return ref;
 }
 
@@ -474,62 +495,74 @@ static json constraintsToJson(const cstr::ConstraintSystem& system) {
     return constraintsArray;
 }
 
+static void noteSkipped(ImportReport* report, const std::string& kind, size_t index,
+                        const json& obj, const std::string& why);
+
 /// Read @p array's constraints into @p system, dropping any that name an
-/// entity @p drawing does not have (a corrupted or hand-edited file).
+/// entity @p drawing does not have (a corrupted or hand-edited file). One
+/// that cannot be read is skipped and noted in @p report as a @p kind.
 static void constraintsFromJson(const json& array, const draft::DraftDocument& drawing,
-                                cstr::ConstraintSystem& system) {
+                                cstr::ConstraintSystem& system, ImportReport* report,
+                                const std::string& kind) {
+    size_t index = 0;
     for (const auto& cObj : array) {
-        std::string ctype = cObj.value("type", "");
-        std::shared_ptr<cstr::Constraint> constraint;
+        const size_t thisConstraint = index++;
+        try {
+            std::string ctype = cObj.value("type", "");
+            std::shared_ptr<cstr::Constraint> constraint;
 
-        if (ctype == "coincident") {
-            constraint = std::make_shared<cstr::CoincidentConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "horizontal") {
-            constraint = std::make_shared<cstr::HorizontalConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "vertical") {
-            constraint = std::make_shared<cstr::VerticalConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "perpendicular") {
-            constraint = std::make_shared<cstr::PerpendicularConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "parallel") {
-            constraint = std::make_shared<cstr::ParallelConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "tangent") {
-            constraint = std::make_shared<cstr::TangentConstraint>(deserializeRef(cObj.at("refA")),
-                                                                   deserializeRef(cObj.at("refB")));
-        } else if (ctype == "equal") {
-            constraint = std::make_shared<cstr::EqualConstraint>(deserializeRef(cObj.at("refA")),
-                                                                 deserializeRef(cObj.at("refB")));
-        } else if (ctype == "fixed") {
-            auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
-                                  cObj.at("position").at("y").get<double>());
-            constraint =
-                std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
-        } else if (ctype == "distance") {
-            double val = cObj.value("value", 0.0);
-            constraint = std::make_shared<cstr::DistanceConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-        } else if (ctype == "angle") {
-            double val = cObj.value("value", 0.0);
-            constraint = std::make_shared<cstr::AngleConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-        }
+            if (ctype == "coincident") {
+                constraint = std::make_shared<cstr::CoincidentConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "horizontal") {
+                constraint = std::make_shared<cstr::HorizontalConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "vertical") {
+                constraint = std::make_shared<cstr::VerticalConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "perpendicular") {
+                constraint = std::make_shared<cstr::PerpendicularConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "parallel") {
+                constraint = std::make_shared<cstr::ParallelConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "tangent") {
+                constraint = std::make_shared<cstr::TangentConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "equal") {
+                constraint = std::make_shared<cstr::EqualConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "fixed") {
+                auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
+                                      cObj.at("position").at("y").get<double>());
+                constraint =
+                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
+            } else if (ctype == "distance") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::DistanceConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+            } else if (ctype == "angle") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::AngleConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+            }
 
-        if (constraint) {
-            // Restore the original constraint ID from the file.
-            if (cObj.contains("id")) {
-                uint64_t savedId = cObj.at("id").get<uint64_t>();
-                constraint->setId(savedId);
-                cstr::Constraint::advanceIdCounter(savedId);
+            if (constraint) {
+                // Restore the original constraint ID from the file.
+                if (cObj.contains("id")) {
+                    const uint64_t savedId = idFrom(cObj.at("id"));
+                    constraint->setId(savedId);
+                    cstr::Constraint::advanceIdCounter(savedId);
+                }
+                // Variable reference (v13+)
+                if (cObj.contains("variableName")) {
+                    constraint->setVariableReference(cObj.at("variableName").get<std::string>());
+                }
+                system.addConstraint(constraint);
             }
-            // Variable reference (v13+)
-            if (cObj.contains("variableName")) {
-                constraint->setVariableReference(cObj.at("variableName").get<std::string>());
-            }
-            system.addConstraint(constraint);
+        } catch (const std::exception& e) {
+            // As any item: this one is skipped, not the document.
+            noteSkipped(report, kind, thisConstraint, cObj, jsonMessage(e));
         }
     }
 
@@ -992,7 +1025,7 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
                                                              const draft::BlockTable* blockTable) {
     std::string type = obj.value("type", "");
     std::string layer = obj.value("layer", "0");
-    uint32_t color = obj.value("color", 0xFFFFFFFFu);
+    const uint32_t color = colorField(obj, "color", 0xFFFFFFFFu);
     double lineWidth = obj.value("lineWidth", 0.0);
 
     std::shared_ptr<draft::DraftEntity> entity;
@@ -1140,7 +1173,7 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
 
     if (entity) {
         if (obj.contains("id")) {
-            uint64_t savedId = obj.at("id").get<uint64_t>();
+            const uint64_t savedId = idFrom(obj.at("id"));
             entity->setId(savedId);
             draft::DraftEntity::advanceIdCounter(savedId);
         }
@@ -1148,7 +1181,7 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
         entity->setColor(color);
         entity->setLineWidth(lineWidth);
         entity->setLineType(static_cast<int>(intField(obj, "lineType", 0, 0, kLastLineType)));
-        uint64_t gid = obj.value("groupId", uint64_t(0));
+        const uint64_t gid = idField(obj, "groupId");
         entity->setGroupId(gid);
         if (const auto it = obj.find("construction"); it != obj.end() && it->is_boolean()) {
             entity->setConstruction(it->get<bool>());
@@ -1216,7 +1249,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
         for (const auto& layerObj : root.at("layers")) {
             draft::LayerProperties props;
             props.name = layerObj.value("name", "0");
-            props.color = layerObj.value("color", 0xFFFFFFFFu);
+            props.color = colorField(layerObj, "color", 0xFFFFFFFFu);
             props.lineWidth = layerObj.value("lineWidth", 1.0);
             props.visible = layerObj.value("visible", true);
             props.locked = layerObj.value("locked", false);
@@ -1323,7 +1356,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                         }
                         if (subEnt) {
                             subEnt->setLayer(se.value("layer", "0"));
-                            subEnt->setColor(se.value("color", 0u));
+                            subEnt->setColor(colorField(se, "color", 0u));
                             subEnt->setLineWidth(se.value("lineWidth", 0.0));
                             subEnt->setLineType(
                                 static_cast<int>(intField(se, "lineType", 0, 0, kLastLineType)));
@@ -1387,7 +1420,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
 
     // --- Load constraints (v5+) ---
     if (root.contains("constraints")) {
-        constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem());
+        constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem(),
+                            report, "constraint");
     }
 
     // --- Load configurations (Phase 156). What is not a configuration is
@@ -1458,7 +1492,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 }
                 if (skObj.contains("placed")) sketch->setPlaced(planeFromJson(skObj.at("placed")));
                 if (skObj.contains("id")) {
-                    sketch->setId(skObj.at("id").get<uint64_t>());
+                    sketch->setId(idFrom(skObj.at("id")));
                 }
                 if (skObj.contains("name")) {
                     sketch->setName(skObj.at("name").get<std::string>());
@@ -1489,7 +1523,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 // Its constraints (saved since Phase 131; before, they were lost).
                 if (skObj.contains("constraints")) {
                     constraintsFromJson(skObj.at("constraints"), sketch->drawing(),
-                                        sketch->constraintSystem());
+                                        sketch->constraintSystem(), report,
+                                        "sketch " + std::to_string(thisSketch + 1) + " constraint");
                 }
 
                 doc.sketches().push_back(sketch);
@@ -1525,7 +1560,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     fObj.contains("featureSuppressed") && fObj.at("featureSuppressed").get<bool>();
                 // A file from before persistent naming made its fillets,
                 // chamfers and mates against positional names: keep them.
-                const int namingCode = fObj.contains("naming") ? fObj.at("naming").get<int>() : 1;
+                const int namingCode = anyIntField(fObj, "naming", 1);
                 if (namingCode != static_cast<int>(model::NamingScheme::Positional) &&
                     namingCode != static_cast<int>(model::NamingScheme::FromGeometry) &&
                     namingCode != static_cast<int>(model::NamingScheme::Stable)) {
@@ -1561,7 +1596,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     std::vector<std::shared_ptr<doc::Sketch>> sections;
                     if (fObj.contains("sketchIds")) {
                         for (const auto& idJson : fObj.at("sketchIds")) {
-                            auto sk = findSketch(idJson.get<uint64_t>());
+                            auto sk = findSketch(idFrom(idJson));
                             if (sk) sections.push_back(sk);
                         }
                     }
@@ -1577,10 +1612,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 }
                 if (ftype == "sweep") {
                     auto profile = fObj.contains("sketchId")
-                                       ? findSketch(fObj.at("sketchId").get<uint64_t>())
+                                       ? findSketch(idFrom(fObj.at("sketchId")))
                                        : nullptr;
                     auto path = fObj.contains("pathSketchId")
-                                    ? findSketch(fObj.at("pathSketchId").get<uint64_t>())
+                                    ? findSketch(idFrom(fObj.at("pathSketchId")))
                                     : nullptr;
                     if (!profile) throw std::invalid_argument("its profile sketch is missing");
                     if (!path) throw std::invalid_argument("its path sketch is missing");
@@ -1877,7 +1912,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     throw std::invalid_argument("not a kind of feature this version reads");
                 }
                 if (fObj.contains("sketchId")) {
-                    sketch = findSketch(fObj.at("sketchId").get<uint64_t>());
+                    sketch = findSketch(idFrom(fObj.at("sketchId")));
                 } else {
                     const int sketchIndex =
                         static_cast<int>(intField(fObj, "sketchIndex", -1, -1, 1'000'000));
@@ -2198,7 +2233,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             const size_t thisComponent = componentIndex++;
             try {
                 doc::ComponentInstance comp;
-                comp.id = cObj.value("id", uint64_t{0});
+                comp.id = idField(cObj, "id");
                 comp.name = cObj.value("name", "");
                 comp.partPath = cObj.value("partPath", "");
                 comp.suppressed = cObj.value("suppressed", false);
@@ -2266,7 +2301,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     };
     const auto referenceOf = [](const json& obj) {
         doc::MateReference ref;
-        ref.componentId = obj.value("componentId", uint64_t{0});
+        ref.componentId = idField(obj, "componentId");
         ref.faceId = topo::TopologyID::fromTag(obj.value("faceTag", ""));
         if (const auto kind = obj.find("kind"); kind != obj.end() && kind->is_string()) {
             if (*kind == "edge") ref.kind = doc::ReferenceKind::Edge;
@@ -2281,7 +2316,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             const size_t thisMate = mateIndex++;
             try {
                 doc::Mate mate;
-                mate.id = mObj.value("id", uint64_t{0});
+                mate.id = idField(mObj, "id");
                 const std::string typeName = mObj.value("type", "coincident");
                 const auto type = mateTypeFromString(typeName);
                 if (!type) {
