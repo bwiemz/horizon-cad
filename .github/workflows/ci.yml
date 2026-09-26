@@ -245,8 +245,21 @@ jobs:
           DISPLAY=:99 QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 \
             timeout 60 build/${{ matrix.preset }}/src/app/horizon --self-test 2>&1 | tee self-test.log
           status=${PIPESTATUS[0]}
+          # A crash leaves a report (Phase 167): the application's own
+          # handler, which the tests reach only through a helper process.
+          crashes="${RUNNER_TEMP}/crashes"
+          DISPLAY=:99 QT_QPA_PLATFORM=xcb HZ_CRASH_DIR="${crashes}" \
+            timeout 60 build/${{ matrix.preset }}/src/app/horizon --crash-for-test
+          crashed=$?
           set -e
           kill "${xvfb}"
+          # Died of SIGSEGV (128 + 11), as it would have without the handler.
+          if [[ "${crashed}" -ne 139 ]]; then
+            echo "::error::--crash-for-test ended with ${crashed}, not SIGSEGV"
+            exit 1
+          fi
+          grep -l 'Horizon CAD stopped: SIGSEGV' "${crashes}"/crash-*.txt \
+            || { echo "::error::a crash left no report"; exit 1; }
           # Its fonts found through the system's configuration, not a fallback.
           if grep -q 'Fontconfig error' self-test.log; then
             echo "::error::fontconfig could not load its configuration"

@@ -96,6 +96,7 @@
 #include "horizon/ui/CommandPalette.h"
 #include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/ConstraintTool.h"
+#include "horizon/ui/CrashReport.h"
 #include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
@@ -1732,6 +1733,48 @@ void MainWindow::autosave() {
         }
     }
     showAutosaveState(failure);
+}
+
+void MainWindow::offerCrashReports() {
+    for (const QString& path : crash::pendingReports(crash::reportDirectory())) {
+        const QString report = crash::readReport(path);
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Horizon CAD Stopped"));
+        box.setText(
+            tr("Horizon CAD stopped unexpectedly last time. A report of what happened "
+               "was kept on this computer; nothing has been sent."));
+        box.setInformativeText(
+            tr("To report the problem, save the report and attach it to an "
+               "issue. Documents that had unsaved changes, if any, are offered "
+               "next, from their autosaved copies."));
+        box.setDetailedText(report);
+        QPushButton* save = box.addButton(tr("Save Report..."), QMessageBox::ActionRole);
+        QPushButton* discard = box.addButton(tr("Delete Report"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Close);
+        box.exec();
+        if (box.clickedButton() == discard) {
+            QFile::remove(path.chopped(4) + QStringLiteral(".dmp"));  // Windows' minidump
+            if (!QFile::remove(path)) {
+                spdlog::warn("Could not delete the crash report {}", path.toStdString());
+            }
+            continue;
+        }
+        if (box.clickedButton() == save) {
+            const QString to = QFileDialog::getSaveFileName(
+                this, tr("Save Crash Report"), QFileInfo(path).fileName(), tr("Text (*.txt)"));
+            QFile out(to);
+            if (!to.isEmpty() && out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                out.write(report.toUtf8());
+            }
+        }
+        // Kept, and not offered again (deleted, if it cannot be marked).
+        if (!crash::markShown(path)) {
+            spdlog::warn("Could not mark the crash report {} shown; it will be offered again",
+                         path.toStdString());
+        }
+    }
+    crash::prune(crash::reportDirectory());
 }
 
 void MainWindow::offerRecovery() {

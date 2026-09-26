@@ -1944,7 +1944,7 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+631"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+632"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
@@ -3149,12 +3149,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3798"/>
+        <location line="+3834"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-3874"/>
+        <location line="-3910"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3171,19 +3171,19 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3647"/>
+        <location line="+3683"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-3710"/>
+        <location line="-3746"/>
         <location line="+64"/>
-        <location line="+3646"/>
+        <location line="+3682"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-3709"/>
+        <location line="-3745"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3332,12 +3332,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2540"/>
+        <location line="+2576"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
-        <location line="-2537"/>
+        <location line="-2573"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3352,96 +3352,96 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2682"/>
+        <location line="+2718"/>
         <source>Box</source>
         <translation type="unfinished">Quader</translation>
     </message>
     <message>
-        <location line="-2681"/>
-        <location line="+2691"/>
+        <location line="-2717"/>
+        <location line="+2727"/>
         <source>Cylinder</source>
         <translation type="unfinished">Zylinder</translation>
     </message>
     <message>
-        <location line="-2690"/>
-        <location line="+2697"/>
+        <location line="-2726"/>
+        <location line="+2733"/>
         <source>Sphere</source>
         <translation type="unfinished">Kugel</translation>
     </message>
     <message>
-        <location line="-2696"/>
-        <location line="+2703"/>
+        <location line="-2732"/>
+        <location line="+2739"/>
         <source>Cone</source>
         <translation type="unfinished">Kegel</translation>
     </message>
     <message>
-        <location line="-2702"/>
-        <location line="+2713"/>
+        <location line="-2738"/>
+        <location line="+2749"/>
         <source>Torus</source>
         <translation type="unfinished">Torus</translation>
     </message>
     <message>
-        <location line="-2711"/>
+        <location line="-2747"/>
         <source>Features</source>
         <translation type="unfinished">Features</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3434"/>
+        <location line="+3470"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3479"/>
-        <location line="+3498"/>
+        <location line="-3515"/>
+        <location line="+3534"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3524"/>
-        <location line="+3854"/>
+        <location line="-3560"/>
+        <location line="+3890"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-3852"/>
+        <location line="-3888"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3605"/>
+        <location line="+3641"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3604"/>
-        <location line="+3608"/>
+        <location line="-3640"/>
+        <location line="+3644"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3607"/>
-        <location line="+3611"/>
+        <location line="-3643"/>
+        <location line="+3647"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3606"/>
-        <location line="+3675"/>
+        <location line="-3642"/>
+        <location line="+3711"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-3674"/>
-        <location line="+3694"/>
+        <location line="-3710"/>
+        <location line="+3730"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-3692"/>
+        <location line="-3728"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
@@ -3465,7 +3465,7 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+836"/>
+        <location line="+872"/>
         <location line="+321"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3475,7 +3475,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4313"/>
+        <location line="-4349"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3496,12 +3496,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3982"/>
+        <location line="+4018"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-3976"/>
+        <location line="-4012"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
@@ -3551,7 +3551,42 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Die letzte automatische Sicherung konnte nicht geschrieben werden (%1), daher können die letzten Änderungen nach einem Absturz nicht wiederhergestellt werden. Speichern Sie Ihre Arbeit.</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+40"/>
+        <source>Horizon CAD Stopped</source>
+        <translation type="unfinished">Horizon CAD wurde beendet</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon CAD stopped unexpectedly last time. A report of what happened was kept on this computer; nothing has been sent.</source>
+        <translation type="unfinished">Horizon CAD wurde beim letzten Mal unerwartet beendet. Ein Bericht darüber wurde auf diesem Computer gespeichert; es wurde nichts gesendet.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>To report the problem, save the report and attach it to an issue. Documents that had unsaved changes, if any, are offered next, from their autosaved copies.</source>
+        <translation type="unfinished">Um das Problem zu melden, speichern Sie den Bericht und hängen Sie ihn an ein Issue an. Dokumente mit ungespeicherten Änderungen werden, falls vorhanden, anschließend aus ihren automatisch gespeicherten Kopien angeboten.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Save Report...</source>
+        <translation type="unfinished">Bericht speichern...</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Delete Report</source>
+        <translation type="unfinished">Bericht löschen</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Save Crash Report</source>
+        <translation type="unfinished">Absturzbericht speichern</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Text (*.txt)</source>
+        <translation type="unfinished">Text (*.txt)</translation>
+    </message>
+    <message>
+        <location line="+23"/>
         <location line="+76"/>
         <source>Recover Documents</source>
         <translation type="unfinished">Dokumente wiederherstellen</translation>
@@ -5361,7 +5396,7 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-4329"/>
+        <location line="-4365"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
@@ -5919,7 +5954,7 @@ seine Eigenschaften anzuzeigen und zu bearbeiten.</translation>
 <context>
     <name>main</name>
     <message>
-        <location filename="../src/app/main.cpp" line="+166"/>
+        <location filename="../src/app/main.cpp" line="+180"/>
         <source>Files to open.</source>
         <translation type="unfinished">Zu öffnende Dateien.</translation>
     </message>

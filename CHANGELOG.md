@@ -39,6 +39,15 @@ work, not "post-1.0".
   - A test walks the whole window, and a feature form, and fails on any
     control without a name.
 
+- **Crash reports (167).**
+  - A crash in native code leaves a report on this computer: what
+    happened, where, a backtrace, the version and the platform. On
+    Windows a minidump goes beside it. A stack overflow is caught too.
+  - At the next start, before recovery, it is offered with the log's last
+    lines: save it to attach to an issue, delete it, or keep it. Nothing
+    is ever sent.
+  - The log is written line by line, so it holds what led up to a crash.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

@@ -1944,7 +1944,7 @@ commencer à construire votre pièce.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+631"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+632"/>
         <source>&amp;File</source>
         <translation>&amp;Fichier</translation>
     </message>
@@ -3149,12 +3149,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3798"/>
+        <location line="+3834"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-3874"/>
+        <location line="-3910"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3171,19 +3171,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3647"/>
+        <location line="+3683"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-3710"/>
+        <location line="-3746"/>
         <location line="+64"/>
-        <location line="+3646"/>
+        <location line="+3682"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-3709"/>
+        <location line="-3745"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3332,12 +3332,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2540"/>
+        <location line="+2576"/>
         <source>Explode</source>
         <translation type="unfinished">Décomposer</translation>
     </message>
     <message>
-        <location line="-2537"/>
+        <location line="-2573"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3352,96 +3352,96 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2682"/>
+        <location line="+2718"/>
         <source>Box</source>
         <translation type="unfinished">Boîte</translation>
     </message>
     <message>
-        <location line="-2681"/>
-        <location line="+2691"/>
+        <location line="-2717"/>
+        <location line="+2727"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cylindre</translation>
     </message>
     <message>
-        <location line="-2690"/>
-        <location line="+2697"/>
+        <location line="-2726"/>
+        <location line="+2733"/>
         <source>Sphere</source>
         <translation type="unfinished">Sphère</translation>
     </message>
     <message>
-        <location line="-2696"/>
-        <location line="+2703"/>
+        <location line="-2732"/>
+        <location line="+2739"/>
         <source>Cone</source>
         <translation type="unfinished">Cône</translation>
     </message>
     <message>
-        <location line="-2702"/>
-        <location line="+2713"/>
+        <location line="-2738"/>
+        <location line="+2749"/>
         <source>Torus</source>
         <translation type="unfinished">Tore</translation>
     </message>
     <message>
-        <location line="-2711"/>
+        <location line="-2747"/>
         <source>Features</source>
         <translation type="unfinished">Fonctions</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3434"/>
+        <location line="+3470"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3479"/>
-        <location line="+3498"/>
+        <location line="-3515"/>
+        <location line="+3534"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3524"/>
-        <location line="+3854"/>
+        <location line="-3560"/>
+        <location line="+3890"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-3852"/>
+        <location line="-3888"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3605"/>
+        <location line="+3641"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3604"/>
-        <location line="+3608"/>
+        <location line="-3640"/>
+        <location line="+3644"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3607"/>
-        <location line="+3611"/>
+        <location line="-3643"/>
+        <location line="+3647"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3606"/>
-        <location line="+3675"/>
+        <location line="-3642"/>
+        <location line="+3711"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-3674"/>
-        <location line="+3694"/>
+        <location line="-3710"/>
+        <location line="+3730"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-3692"/>
+        <location line="-3728"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3465,7 +3465,7 @@ commencer à construire votre pièce.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+836"/>
+        <location line="+872"/>
         <location line="+321"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3475,7 +3475,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4313"/>
+        <location line="-4349"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3496,12 +3496,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3982"/>
+        <location line="+4018"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-3976"/>
+        <location line="-4012"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -3551,7 +3551,42 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Le dernier enregistrement automatique n&apos;a pas pu être écrit (%1) : les modifications récentes ne pourront pas être récupérées après un plantage. Enregistrez votre travail.</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+40"/>
+        <source>Horizon CAD Stopped</source>
+        <translation type="unfinished">Horizon CAD s&apos;est arrêté</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon CAD stopped unexpectedly last time. A report of what happened was kept on this computer; nothing has been sent.</source>
+        <translation type="unfinished">Horizon CAD s&apos;est arrêté de manière inattendue la dernière fois. Un rapport de ce qui s&apos;est passé a été conservé sur cet ordinateur ; rien n&apos;a été envoyé.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>To report the problem, save the report and attach it to an issue. Documents that had unsaved changes, if any, are offered next, from their autosaved copies.</source>
+        <translation type="unfinished">Pour signaler le problème, enregistrez le rapport et joignez-le à un ticket. Les documents qui avaient des modifications non enregistrées sont ensuite proposés, s&apos;il y en a, à partir de leurs copies enregistrées automatiquement.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Save Report...</source>
+        <translation type="unfinished">Enregistrer le rapport...</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Delete Report</source>
+        <translation type="unfinished">Supprimer le rapport</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Save Crash Report</source>
+        <translation type="unfinished">Enregistrer le rapport de plantage</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Text (*.txt)</source>
+        <translation type="unfinished">Texte (*.txt)</translation>
+    </message>
+    <message>
+        <location line="+23"/>
         <location line="+76"/>
         <source>Recover Documents</source>
         <translation type="unfinished">Récupérer des documents</translation>
@@ -5361,7 +5396,7 @@ Non exact : %n arêtes où les surfaces courbes de part et d&apos;autre ne se re
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4329"/>
+        <location line="-4365"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
@@ -5919,7 +5954,7 @@ afficher et modifier ses propriétés.</translation>
 <context>
     <name>main</name>
     <message>
-        <location filename="../src/app/main.cpp" line="+166"/>
+        <location filename="../src/app/main.cpp" line="+180"/>
         <source>Files to open.</source>
         <translation type="unfinished">Fichiers à ouvrir.</translation>
     </message>
