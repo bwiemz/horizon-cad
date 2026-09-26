@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QMenu>
 #include <QMessageBox>
 #include <QStringList>
@@ -150,8 +151,10 @@ TEST(SamplesTest, ASampleIsOpenedAsACopyThatIsKept) {
     SampleFolders folders;
     MainWindow w;
     open(w, "bracket.hzpart");
+    // As Open Recent keeps it: the temporary folder is behind a link on
+    // macOS (/var is /private/var).
     EXPECT_EQ(QDir::cleanPath(hz::ui::RecentFiles::list().value(0)),
-              QDir::cleanPath(folders.copy(QStringLiteral("bracket.hzpart"))));
+              QFileInfo(folders.copy(QStringLiteral("bracket.hzpart"))).canonicalFilePath());
     for (const char* file : {"bracket.hzpart", "bracket-drawing.hzdwg", "plate.hzpart",
                              "pin.hzpart", "plate-and-pin.hzasm", "gasket.hcad"}) {
         EXPECT_TRUE(QFile::exists(folders.copy(QString::fromLatin1(file)))) << file;
