@@ -7,6 +7,8 @@ add_library(hz_ui STATIC
     include/horizon/ui/MainWindow.h
     include/horizon/ui/RecoveryManager.h
     include/horizon/ui/ViewportWidget.h
+    include/horizon/ui/ComponentDragger.h
+    include/horizon/ui/Triad.h
     include/horizon/ui/Tool.h
     include/horizon/ui/ToolManager.h
     include/horizon/ui/LineTool.h
@@ -94,6 +96,7 @@ add_library(hz_ui STATIC
     src/LocaleManager.cpp
     src/CommandPalette.cpp
     src/ViewportWidget.cpp
+    src/Triad.cpp
     src/ViewportInputHandler.cpp
     src/DrawingCache.cpp
     src/ViewportRenderer.cpp

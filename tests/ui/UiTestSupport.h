@@ -429,6 +429,27 @@ public:
         sendAt(QEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     }
 
+    /// The button pressed at a point on screen, and held (Phase 158).
+    void pressAt(const QPointF& at) {
+        sendAt(QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    }
+    /// The cursor moved to a point on screen with the button held.
+    void dragAt(const QPointF& at) {
+        sendAt(QEvent::MouseMove, at, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    }
+    /// The button released at a point on screen.
+    void releaseAt(const QPointF& at) {
+        sendAt(QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    }
+    /// @p button pressed at a point on screen while the left one is held.
+    void pressAlsoAt(const QPointF& at, Qt::MouseButton button) {
+        sendAt(QEvent::MouseButtonPress, at, button, Qt::LeftButton | button, Qt::NoModifier);
+    }
+    /// @p button released at a point on screen, the left one still held.
+    void releaseAlsoAt(const QPointF& at, Qt::MouseButton button) {
+        sendAt(QEvent::MouseButtonRelease, at, button, Qt::LeftButton, Qt::NoModifier);
+    }
+
     void key(Qt::Key key) {
         QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
         QCoreApplication::sendEvent(m_viewport, &press);

@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QApplication>
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -11,6 +12,7 @@
 #include <QTimer>
 #include <QWheelEvent>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -22,6 +24,7 @@
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshPicker.h"
+#include "horizon/ui/ComponentDragger.h"
 #include "horizon/ui/Tool.h"
 
 namespace hz::ui {
@@ -621,6 +624,7 @@ void ViewportWidget::paintGL() {
     m_renderer->renderNodes(gl, m_sceneGraph, m_camera);
     drawDatums(gl);
     drawModelHighlights(gl);
+    drawTriad(gl);
 
     // Render tool preview (rubber-band).
     m_viewportRenderer.renderToolPreview(gl, *m_renderer, m_camera, m_activeTool);
@@ -644,7 +648,21 @@ void ViewportWidget::paintGL() {
 // ---------------------------------------------------------------------------
 
 void ViewportWidget::mousePressEvent(QMouseEvent* event) {
-    m_viewCubeCapturedPress = false;
+    // Another button while a component drag holds the left one (Phase 158):
+    // the drag is given up, everything put back, and this press goes
+    // nowhere. The left button's release is still the drag's: the tool never
+    // saw its press.
+    if (event->button() != Qt::LeftButton && m_componentDrag != ComponentDrag::None) {
+        cancelComponentDrag();
+        return;
+    }
+    if (event->button() == Qt::LeftButton) {
+        m_viewCubeCapturedPress = false;
+        // A drag whose release never came (a dialog opened by a shortcut
+        // took the mouse) is put back, not forgotten half done.
+        cancelComponentDrag();
+        m_componentDrag = ComponentDrag::None;
+    }
     // A left-click on the orientation gizmo snaps the view instead of drawing.
     if (event->button() == Qt::LeftButton) {
         const ViewCube::Region region =
@@ -656,7 +674,87 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
             return;
         }
     }
+    // A plain left press on an assembly's component, with the select tool,
+    // arms a drag of it (Phase 158). Shift keeps its meaning: add to the
+    // choice.
+    const bool selecting = m_activeTool == nullptr || m_activeTool->name() == "Select";
+    m_dragHandle.reset();
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
+        m_componentDragger != nullptr && selecting) {
+        // A handle of the chosen component's triad first (Phase 158b): it
+        // is drawn over the model.
+        if (const auto shown = triad()) {
+            if (const auto handle = shown->hitTest(event->position())) {
+                const auto pose = m_componentDragger->triadPose();
+                m_componentDrag = ComponentDrag::Armed;
+                m_dragPick = ModelPick{pose ? pose->component : 0, {}, false};
+                m_dragHandle = handle;
+                m_dragFrom = event->position();
+                return;
+            }
+        }
+        const auto pick = pickModel(event->position());
+        if (pick && pick->owner != 0) {
+            m_componentDrag = ComponentDrag::Armed;
+            m_dragPick = *pick;
+            m_dragFrom = event->position();
+            return;
+        }
+    }
     m_inputHandler.handleMousePress(event, this);
+}
+
+void ViewportWidget::cancelComponentDrag() {
+    if (m_componentDrag == ComponentDrag::None) return;
+    if (m_componentDrag == ComponentDrag::Dragging) m_componentDragger->cancelDrag();
+    m_componentDrag = ComponentDrag::Refused;  // the release that follows is still its
+    update();
+}
+
+std::optional<Triad> ViewportWidget::triad() const {
+    if (m_componentDragger == nullptr || m_activeSketch || width() <= 0 || height() <= 0) {
+        return std::nullopt;
+    }
+    const auto pose = m_componentDragger->triadPose();
+    if (!pose) return std::nullopt;
+    Triad shown(pose->origin, pose->axes, m_camera, width(), height());
+    if (!shown.visible()) return std::nullopt;  // its middle behind the view
+    return shown;
+}
+
+void ViewportWidget::drawTriad(QOpenGLExtraFunctions* gl) {
+    const auto shown = triad();
+    if (!shown) return;
+    // Over the model, not hidden by it: a handle behind the part is still
+    // there to take.
+    gl->glDisable(GL_DEPTH_TEST);
+    const std::array<math::Vec3, 3> colours{math::Vec3(0.9, 0.25, 0.25), math::Vec3(0.3, 0.8, 0.3),
+                                            math::Vec3(0.3, 0.5, 1.0)};
+    for (const Triad::Kind kind : {Triad::Kind::Ring, Triad::Kind::Arrow}) {
+        for (int k = 0; k < 3; ++k) {
+            std::vector<float> lines;
+            for (const math::Vec3& p : shown->segments({kind, k})) {
+                lines.insert(lines.end(), {static_cast<float>(p.x), static_cast<float>(p.y),
+                                           static_cast<float>(p.z), 0.0f});
+            }
+            m_renderer->drawLines(gl, m_camera, lines, colours.at(static_cast<size_t>(k)),
+                                  kind == Triad::Kind::Arrow ? 3.0f : 2.0f);
+        }
+    }
+    gl->glEnable(GL_DEPTH_TEST);
+}
+
+std::optional<math::Vec3> ViewportWidget::pickModelPoint(const QPointF& at) const {
+    if (m_activeSketch || width() <= 0 || height() <= 0) return std::nullopt;
+    const auto [origin, direction] = m_camera.screenToRay(at.x(), at.y(), width(), height());
+    std::optional<render::MeshHit> face;
+    for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {
+        const auto hit =
+            render::MeshPicker::pickFace(node->mesh(), node->worldTransform(), origin, direction);
+        if (hit && (!face || hit->distance < face->distance)) face = hit;
+    }
+    if (!face) return std::nullopt;
+    return face->point;
 }
 
 void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
@@ -690,6 +788,35 @@ void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
+    // The left button up, and no release seen: something took the mouse
+    // (a dialog, the window losing it). The drag is put back.
+    if (m_componentDrag != ComponentDrag::None && !(event->buttons() & Qt::LeftButton)) {
+        cancelComponentDrag();
+        m_componentDrag = ComponentDrag::None;
+    }
+    switch (m_componentDrag) {
+        case ComponentDrag::Armed:
+            // Far enough to be a drag, not a click: the dragger takes it,
+            // from where it was pressed.
+            if ((event->position() - m_dragFrom).manhattanLength() <
+                QApplication::startDragDistance()) {
+                return;
+            }
+            if (!m_componentDragger->beginDrag(m_dragPick.owner, m_dragFrom, m_dragHandle)) {
+                m_componentDrag = ComponentDrag::Refused;  // the dragger says why
+                return;
+            }
+            m_componentDrag = ComponentDrag::Dragging;
+            [[fallthrough]];
+        case ComponentDrag::Dragging:
+            m_componentDragger->dragTo(event->position());
+            update();
+            return;
+        case ComponentDrag::Refused:
+            return;
+        case ComponentDrag::None:
+            break;
+    }
     m_inputHandler.handleMouseMove(event, this);
 }
 
@@ -700,6 +827,19 @@ void ViewportWidget::mouseReleaseEvent(QMouseEvent* event) {
         m_viewCubeCapturedPress = false;
         return;
     }
+    // The release of a press a component drag took: the tool never saw the
+    // press, so it must not see this (it would clear the choice here).
+    if (event->button() == Qt::LeftButton && m_componentDrag != ComponentDrag::None) {
+        const ComponentDrag was = m_componentDrag;
+        m_componentDrag = ComponentDrag::None;
+        if (was == ComponentDrag::Dragging) {
+            m_componentDragger->endDrag();
+        } else if (was == ComponentDrag::Armed && !m_dragHandle) {
+            chooseModel(m_dragPick, false);  // pressed and released in place: a click
+        }
+        update();
+        return;
+    }
     m_inputHandler.handleMouseRelease(event, this);
 }
 
@@ -708,6 +848,11 @@ void ViewportWidget::wheelEvent(QWheelEvent* event) {
 }
 
 void ViewportWidget::keyPressEvent(QKeyEvent* event) {
+    // Escape during a component drag puts everything back (Phase 158).
+    if (event->key() == Qt::Key_Escape && m_componentDrag != ComponentDrag::None) {
+        cancelComponentDrag();
+        return;
+    }
     m_inputHandler.handleKeyPress(event, this);
 }
 

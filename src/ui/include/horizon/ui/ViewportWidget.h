@@ -19,6 +19,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/render/SelectionManager.h"
 #include "horizon/ui/OverlayRenderer.h"
+#include "horizon/ui/Triad.h"
 #include "horizon/ui/TypedPoint.h"
 #include "horizon/ui/ViewportInputHandler.h"
 #include "horizon/ui/ViewportRenderer.h"
@@ -37,6 +38,7 @@ class Document;
 namespace hz::ui {
 
 class Tool;
+class ComponentDragger;
 
 /// Saved camera state for restoring after sketch editing.
 struct CameraState {
@@ -217,6 +219,26 @@ public:
     /// without @p add clears the choice.
     void chooseModel(const std::optional<ModelPick>& pick, bool add);
     void clearModelSelection();
+    /// Where on the model the ray through @p at first meets a face, in world
+    /// coordinates; nothing when it meets none (Phase 158: the point a drag
+    /// grabs).
+    std::optional<math::Vec3> pickModelPoint(const QPointF& at) const;
+
+    /// What moves an assembly's components under the cursor (Phase 158): a
+    /// plain left press on a component, with the select tool, arms a drag;
+    /// moved past the start distance, the dragger takes it. A press and
+    /// release in place still chooses the component. Null: none.
+    void setComponentDragger(ComponentDragger* dragger) { m_componentDragger = dragger; }
+    /// A component is being dragged.
+    bool draggingComponent() const { return m_componentDrag == ComponentDrag::Dragging; }
+    /// Give up a component drag under way, or armed: everything put back.
+    /// The left button's release, when it comes, is still the drag's. For
+    /// what must not happen under a drag (an undo, an edit of the assembly).
+    void cancelComponentDrag();
+    /// The chosen component's triad as this view sees it now (Phase 158b);
+    /// nothing when no component is chosen.
+    std::optional<Triad> triad() const;
+
     /// What the cursor is over, drawn highlighted.
     void setModelHover(const std::optional<ModelPick>& pick);
     const std::optional<ModelPick>& modelHover() const { return m_modelHover; }
@@ -279,6 +301,18 @@ private:
     /// release is swallowed instead of reaching the active tool (which would
     /// otherwise pick/clear the selection at the release point).
     bool m_viewCubeCapturedPress = false;
+
+    /// A component drag (Phase 158): armed by a press on a component, taken
+    /// by the dragger once the cursor has moved far enough, or refused.
+    /// While not None, the press was the drag's, and so is its release.
+    enum class ComponentDrag { None, Armed, Dragging, Refused };
+    ComponentDragger* m_componentDragger = nullptr;
+    ComponentDrag m_componentDrag = ComponentDrag::None;
+    ModelPick m_dragPick;
+    QPointF m_dragFrom;
+    std::optional<Triad::Handle> m_dragHandle;  ///< a triad's handle, or a free drag
+    /// Draw the chosen component's triad over the model.
+    void drawTriad(QOpenGLExtraFunctions* gl);
 
     // Camera
     render::Camera m_camera;

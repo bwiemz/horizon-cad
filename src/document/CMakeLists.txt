@@ -11,6 +11,7 @@ add_library(hz_document STATIC
     src/ExpressionEngine.cpp
     src/Sketch.cpp
     src/AssemblyDocument.cpp
+    src/AssemblyMates.cpp
     src/DocumentManager.cpp
     src/BillOfMaterials.cpp
     src/ConfigurationTable.cpp

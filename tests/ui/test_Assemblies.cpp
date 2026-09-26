@@ -37,6 +37,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Mat4.h"
@@ -162,6 +163,37 @@ std::pair<uint64_t, uint64_t> stackTwo(MainWindow& w, hz::doc::AssemblyDocument&
     EXPECT_TRUE(move.seen());
     EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 10.0, 1e-6);
     return {base, lid};
+}
+
+/// A drag on screen, as a hand makes it (Phase 158): pressed where @p from
+/// shows, moved by way of the middle to where @p to shows, released there.
+void dragOnScreen(ToolDriver& drive, const Vec3& from, const Vec3& to) {
+    auto& view = drive.viewport();
+    const QPointF a = view.projectToScreen(from);
+    const QPointF b = view.projectToScreen(to);
+    ASSERT_GT((b - a).manhattanLength(), 2 * QApplication::startDragDistance())
+        << "far enough to be a drag";
+    drive.pressAt(a);
+    drive.dragAt((a + b) / 2.0);
+    drive.dragAt(b);
+    drive.releaseAt(b);
+}
+
+/// The view from high above the blocks, looking straight down; or from far
+/// in front of them (Phase 158). A preset view keeps the camera's distance,
+/// which puts it inside a part this size.
+void lookFromAbove(hz::ui::ViewportWidget& view) {
+    view.camera().lookAt(Vec3(20, 10, 200), Vec3(20, 10, 0), Vec3(0, 1, 0));
+}
+void lookFromTheFront(hz::ui::ViewportWidget& view) {
+    view.camera().lookAt(Vec3(20, -200, 10), Vec3(20, 0, 10), Vec3(0, 0, 1));
+}
+
+void expectAt(const hz::doc::ComponentInstance& comp, const Vec3& at, const char* what) {
+    const Vec3 is = translationOf(comp);
+    EXPECT_NEAR(is.x, at.x, 1e-6) << what;
+    EXPECT_NEAR(is.y, at.y, 1e-6) << what;
+    EXPECT_NEAR(is.z, at.z, 1e-6) << what;
 }
 
 /// Opens the part @p id places, from the Assembly menu; its document.
@@ -779,4 +811,221 @@ TEST(AssembliesTest, ImportingAStepAssemblyKeepsItsPartsAsFiles) {
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Bracket.hzpart"))));
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Pin.hzpart"))));
     EXPECT_NE(assembly->components()[0].cachedMesh, nullptr) << "its parts' shapes are shown";
+}
+
+// Phase 158: a component dragged in the view goes where the cursor takes it,
+// in the plane it was grabbed in, facing the view; its mates still hold;
+// the drag is one undo step.
+TEST(AssembliesTest, ADraggedComponentFollowsTheCursorAndKeepsItsMates) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "on the base's top, beside it");
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+
+    lookFromAbove(drive.viewport());
+    // The lid's top, grabbed in its middle, taken 20 across and 20 back.
+    dragOnScreen(drive, Vec3(17, 5, 20), Vec3(37, 25, 20));
+    expectAt(*assembly.component(lid), Vec3(32, 20, 10), "under the cursor, on the base's top");
+    expectAt(*assembly.component(base), Vec3(0, 0, 0), "the base where it was");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+    EXPECT_TRUE(assembly.isDirty());
+
+    trigger(w, "action_undo");
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "undone");
+}
+
+// Dragged where its mates cannot follow (up off the base), it slides as far
+// as they let it: along the base's top, under the cursor's way.
+TEST(AssembliesTest, ADragTheMatesCannotFollowSlidesAsFarAsTheyLet) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+
+    lookFromTheFront(drive.viewport());
+    // Its front's middle, taken 20 along and 20 up.
+    dragOnScreen(drive, Vec3(17, 0, 15), Vec3(37, 0, 35));
+    expectAt(*assembly.component(lid), Vec3(32, 0, 10), "along, and still on the base's top");
+    expectAt(*assembly.component(base), Vec3(0, 0, 0), "the base not lifted to it");
+}
+
+// Held by a Fixed mate, it is not dragged, and the status says so; nothing
+// is recorded.
+TEST(AssembliesTest, AHeldComponentIsNotDragged) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    hz::doc::Mate fixed;
+    fixed.type = hz::doc::MateType::Fixed;
+    fixed.a = {lid, hz::topo::TopologyID::fromTag(top)};
+    assembly.addMate(fixed);
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+
+    lookFromAbove(drive.viewport());
+    dragOnScreen(drive, Vec3(17, 5, 20), Vec3(37, 25, 20));
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "held");
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("Fixed")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps);
+}
+
+// Escape during a drag puts everything back; the release after it does
+// nothing. A press and release in place chooses the component.
+TEST(AssembliesTest, EscapePutsADragBackAndAClickChooses) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+    auto& view = drive.viewport();
+    lookFromAbove(view);
+
+    const QPointF grab = view.projectToScreen(Vec3(17, 5, 20));
+    const QPointF away = view.projectToScreen(Vec3(37, 25, 20));
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    expectAt(*assembly.component(lid), Vec3(32, 20, 10), "moving");
+    drive.key(Qt::Key_Escape);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "put back");
+    drive.releaseAt(away);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "the release does nothing");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps);
+
+    view.clearModelSelection();
+    drive.pressAt(grab);
+    drive.releaseAt(grab);
+    ASSERT_EQ(view.modelSelection().size(), 1u) << "a click, not a drag";
+    EXPECT_EQ(view.modelSelection().front().owner, lid);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "not moved");
+}
+
+// Another button pressed during a drag gives the drag up: everything back,
+// and the left button's release after it chooses nothing and records
+// nothing. An undo during a drag puts the drag back first, and its release
+// records nothing over the undo, which can still be redone.
+TEST(AssembliesTest, ASecondButtonOrAnUndoDuringADragPutsItBack) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    auto& undo = w.activeDocument()->undoStack();
+    const size_t steps = undo.undoCount();
+    auto& view = drive.viewport();
+    lookFromAbove(view);
+    view.clearModelSelection();
+
+    const QPointF grab = view.projectToScreen(Vec3(17, 5, 20));
+    const QPointF away = view.projectToScreen(Vec3(37, 25, 20));
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    drive.pressAlsoAt(away, Qt::MiddleButton);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "put back");
+    drive.releaseAlsoAt(away, Qt::MiddleButton);
+    drive.dragAt(grab);
+    drive.releaseAt(grab);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "and left there");
+    EXPECT_TRUE(view.modelSelection().empty()) << "the release chose nothing";
+    EXPECT_EQ(undo.undoCount(), steps);
+
+    // Undo mid-drag: the move stackTwo made is undone, not recorded over.
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    trigger(w, "action_undo");
+    EXPECT_FALSE(view.draggingComponent());
+    drive.releaseAt(away);
+    EXPECT_EQ(undo.undoCount(), steps - 1) << "the undo, and no drag step";
+    EXPECT_TRUE(undo.canRedo()) << "what was undone can be redone";
+
+    // A release that never comes (a dialog a shortcut opened took the
+    // mouse): the next move without the button puts the drag back.
+    trigger(w, "action_redo");
+    const Vec3 before = translationOf(*assembly.component(lid));
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    drive.moveAt(away);
+    EXPECT_FALSE(view.draggingComponent());
+    const Vec3 after = translationOf(*assembly.component(lid));
+    EXPECT_NEAR((after - before).length(), 0.0, 1e-9) << "put back";
+    EXPECT_EQ(undo.undoCount(), steps) << "nothing recorded";
+}
+
+// Phase 158b: the chosen component's triad. Dragged by its x arrow, the lid
+// moves along x only, however the cursor strays; by its z ring, it turns
+// about z through its middle. Nothing chosen, no triad.
+TEST(AssembliesTest, TheTriadMovesAlongAnAxisAndTurnsAboutOne) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    auto& view = drive.viewport();
+    lookFromAbove(view);
+
+    view.clearModelSelection();
+    EXPECT_FALSE(view.triad().has_value()) << "nothing chosen";
+    drive.clickAt(view.projectToScreen(Vec3(17, 5, 20)));  // the lid's top
+    auto triad = view.triad();
+    if (!triad) FAIL() << "the lid chosen, and no triad";
+    EXPECT_NEAR(triad->origin().x, 17.0, 1e-9) << "at its middle";
+    EXPECT_NEAR(triad->origin().z, 15.0, 1e-9);
+
+    // Along x: grabbed on the arrow, taken 10 further along it.
+    using Handle = hz::ui::Triad::Handle;
+    const Handle arrowX{hz::ui::Triad::Kind::Arrow, 0};
+    ASSERT_EQ(triad->hitTest(triad->handlePoint(arrowX)), arrowX);
+    const Vec3 onArrow = triad->origin() + triad->axis(0) * (0.7 * triad->size());
+    drive.pressAt(triad->handlePoint(arrowX));
+    drive.dragAt(view.projectToScreen(onArrow + Vec3(5, 3, 0)));
+    drive.dragAt(view.projectToScreen(onArrow + Vec3(10, 0, 0)));
+    drive.releaseAt(view.projectToScreen(onArrow + Vec3(10, 0, 0)));
+    expectAt(*assembly.component(lid), Vec3(22, 0, 10), "10 along x, and nothing else");
+
+    // About z: grabbed on the ring, taken a quarter turn round it.
+    drive.clickAt(view.projectToScreen(Vec3(27, 5, 20)));  // its top, where it is now
+    triad = view.triad();
+    if (!triad) FAIL() << "the lid chosen again, and no triad";
+    const Handle ringZ{hz::ui::Triad::Kind::Ring, 2};
+    ASSERT_EQ(triad->hitTest(triad->handlePoint(ringZ)), ringZ);
+    const double r = hz::ui::Triad::kRingShare * triad->size();
+    const auto round = [&](double degrees) {
+        const double t = degrees * std::numbers::pi / 180.0;
+        return view.projectToScreen(
+            triad->origin() + (triad->axis(0) * std::cos(t) + triad->axis(1) * std::sin(t)) * r);
+    };
+    const Vec3 middle = triad->origin();
+    drive.pressAt(round(30));
+    drive.dragAt(round(75));
+    drive.dragAt(round(120));
+    drive.releaseAt(round(120));
+    const auto& turned = assembly.component(lid)->transform;
+    const Vec3 x = turned.transformDirection(Vec3::UnitX);
+    EXPECT_NEAR(x.x, 0.0, 1e-6) << "its x now along y";
+    EXPECT_NEAR(x.y, 1.0, 1e-6);
+    EXPECT_NEAR(x.z, 0.0, 1e-6) << "turned about z only: still on the base's top";
+    const Vec3 centre = turned.transformPoint(Vec3(5, 5, 5));
+    EXPECT_NEAR((centre - middle).length(), 0.0, 1e-6) << "about its middle";
 }

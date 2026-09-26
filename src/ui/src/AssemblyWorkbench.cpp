@@ -17,12 +17,14 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <numbers>
 #include <set>
 #include <utility>
 
+#include "horizon/document/AssemblyMates.h"
 #include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
@@ -30,6 +32,7 @@
 #include "horizon/fileio/BomExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/Quaternion.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
@@ -175,6 +178,7 @@ void AssemblyWorkbench::recordAssemblyEdit(doc::AssemblyState before, bool wasDi
 }
 
 void AssemblyWorkbench::onInsertComponent() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag (Phase 158)
     if (!assembly()) {
         m_host.showStatus(tr("Insert Component is only available in an assembly document"));
         return;
@@ -221,51 +225,22 @@ void AssemblyWorkbench::onInsertComponent() {
 bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
     if (asmDoc.mates().empty()) return true;
 
-    const std::string asmDir = assemblyDir(asmDoc);
-
     // Frames come from B-Rep faces, so mate solving needs resolved parts.
-    std::vector<model::SolverComponent> solverComponents;
+    const std::string asmDir = assemblyDir(asmDoc);
     for (auto& comp : asmDoc.components()) {
         if (!comp.resolvedPart) {
             m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
         }
-        model::SolverComponent sc;
-        sc.id = comp.id;
-        sc.transform = comp.transform;
-        solverComponents.push_back(sc);
     }
-
-    std::vector<model::SolverMate> solverMates;
-    for (const auto& mate : asmDoc.mates()) {
-        model::SolverMate sm;
-        sm.type = mate.type;
-        sm.componentA = mate.a.componentId;
-        sm.componentB = mate.b.componentId;
-        sm.value = mate.value;
-
-        if (mate.type != doc::MateType::Fixed) {
-            auto frameFor = [&](const doc::MateReference& ref, model::MateFrame& out) -> bool {
-                const auto* comp = asmDoc.component(ref.componentId);
-                if (!comp || !comp->resolvedPart || !comp->resolvedPart->solid()) return false;
-                const auto* face =
-                    model::MateGeometry::findFace(*comp->resolvedPart->solid(), ref.faceId);
-                if (!face) return false;
-                auto frame = model::MateGeometry::frameForFace(*face);
-                if (!frame) return false;
-                out = *frame;
-                return true;
-            };
-            if (!frameFor(mate.a, sm.frameA) || !frameFor(mate.b, sm.frameB)) {
-                m_host.showStatus(
-                    tr("Mate %1 references geometry that could not be resolved").arg(mate.id));
-                return false;
-            }
-        }
-        solverMates.push_back(sm);
+    std::string why;
+    const auto mates = doc::AssemblyMates::gather(asmDoc, &why);
+    if (!mates) {
+        QString message = QString::fromStdString(why);
+        if (!message.isEmpty()) message[0] = message[0].toUpper();
+        m_host.showStatus(message);
+        return false;
     }
-
-    model::AssemblySolver solver;
-    auto result = solver.solve(solverComponents, solverMates);
+    const auto result = mates->solve();
 
     if (result.status == model::AssemblySolveStatus::Success) {
         for (auto& comp : asmDoc.components()) {
@@ -288,6 +263,216 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
                           .arg(QString::fromStdString(result.message.empty() ? "did not converge"
                                                                              : result.message)));
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Dragging a component (Phase 158)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// How far along the line through @p point along unit @p axis the ray
+/// @p origin + t @p direction comes nearest; nothing when they run parallel.
+std::optional<double> nearestAlong(const math::Vec3& point, const math::Vec3& axis,
+                                   const math::Vec3& origin, const math::Vec3& direction) {
+    const math::Vec3 w = point - origin;
+    const double b = axis.dot(direction);
+    const double c = direction.dot(direction);
+    const double denominator = c - b * b;  // |axis| = 1
+    if (std::abs(denominator) < 1e-12 * c) return std::nullopt;
+    return (b * direction.dot(w) - c * axis.dot(w)) / denominator;
+}
+
+/// Where the ray @p origin + t @p direction meets the plane through
+/// @p point facing @p normal; nothing when it runs along it.
+std::optional<math::Vec3> meetPlane(const math::Vec3& point, const math::Vec3& normal,
+                                    const math::Vec3& origin, const math::Vec3& direction) {
+    const double across = direction.dot(normal);
+    if (std::abs(across) < 1e-12) return std::nullopt;
+    return origin + direction * ((point - origin).dot(normal) / across);
+}
+
+}  // namespace
+
+std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const {
+    const doc::AssemblyDocument* asmDoc = assembly();
+    if (asmDoc == nullptr) return std::nullopt;
+    for (const auto& pick : m_host.viewport().modelSelection()) {
+        if (pick.owner == 0) continue;
+        const doc::ComponentInstance* comp = asmDoc->component(pick.owner);
+        if (comp == nullptr || comp->suppressed || !comp->cachedMesh) continue;
+        const math::BoundingBox box = placedBounds(*comp);
+        if (!box.isValid()) continue;
+        TriadPose pose;
+        pose.component = comp->id;
+        pose.origin = box.center();
+        pose.axes = {comp->transform.transformDirection(math::Vec3::UnitX).normalized(),
+                     comp->transform.transformDirection(math::Vec3::UnitY).normalized(),
+                     comp->transform.transformDirection(math::Vec3::UnitZ).normalized()};
+        return pose;
+    }
+    return std::nullopt;
+}
+
+bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
+                                  const std::optional<Triad::Handle>& handle) {
+    cancelDrag();  // one left over (its release lost) is put back first
+    auto asmDoc = m_host.currentAssembly();
+    if (!asmDoc) return false;
+    const doc::ComponentInstance* comp = asmDoc->component(component);
+    if (comp == nullptr || comp->suppressed) return false;
+    const QString name = QString::fromStdString(comp->name);
+    if (isFixed(*asmDoc, component)) {
+        m_host.showStatus(tr("%1 is held by a Fixed mate: it is not dragged").arg(name));
+        return false;
+    }
+    ViewportWidget& view = m_host.viewport();
+    Drag drag;
+    drag.assembly = asmDoc;
+    drag.component = component;
+    drag.start = comp->transform;
+    drag.facing = (view.camera().target() - view.camera().eye()).normalized();
+    drag.handle = handle;
+    const auto [origin, direction] =
+        view.camera().screenToRay(at.x(), at.y(), view.width(), view.height());
+    if (handle) {
+        // By the triad: along an arrow, or round a ring, from where it was
+        // grabbed on it.
+        const auto pose = triadPose();
+        if (!pose || pose->component != component) return false;
+        drag.pivot = pose->origin;
+        drag.axis = pose->axes.at(static_cast<size_t>(handle->axis));
+        if (handle->kind == Triad::Kind::Arrow) {
+            const auto along = nearestAlong(drag.pivot, drag.axis, origin, direction);
+            if (!along) return false;
+            drag.along = *along;
+        } else {
+            const auto on = meetPlane(drag.pivot, drag.axis, origin, direction);
+            if (!on) return false;
+            drag.towards = *on - drag.pivot;
+        }
+    } else {
+        const auto grabbed = view.pickModelPoint(at);
+        if (!grabbed) return false;
+        drag.grabbed = *grabbed;
+    }
+    drag.before = asmDoc->snapshot();
+    drag.wasDirty = asmDoc->isDirty();
+    if (!asmDoc->mates().empty()) {
+        // Frames come from the parts: found once, for every move.
+        const std::string dir = assemblyDir(*asmDoc);
+        for (auto& c : asmDoc->components()) {
+            if (!c.resolvedPart) {
+                m_host.documents().resolveComponent(c, doc::ComponentState::Resolved, dir);
+            }
+        }
+        std::string why;
+        auto mates = doc::AssemblyMates::gather(*asmDoc, &why);
+        if (!mates) {
+            m_host.showStatus(tr("%1 is not dragged: %2").arg(name, QString::fromStdString(why)));
+            return false;
+        }
+        drag.mates = std::move(mates);
+    }
+    m_drag = std::move(drag);
+    m_host.setPrompt(tr("Dragging %1: release to place it, Escape to put it back").arg(name));
+    return true;
+}
+
+void AssemblyWorkbench::dragTo(const QPointF& at) {
+    if (!m_drag) return;
+    if (m_host.currentAssembly() != m_drag->assembly) {
+        cancelDrag();  // the view shows another document now
+        return;
+    }
+    ViewportWidget& view = m_host.viewport();
+    const auto [origin, direction] =
+        view.camera().screenToRay(at.x(), at.y(), view.width(), view.height());
+    math::Mat4 target = m_drag->start;
+    if (!m_drag->handle) {
+        // Free: in the plane through the point grabbed, facing the view.
+        const auto point = meetPlane(m_drag->grabbed, m_drag->facing, origin, direction);
+        if (!point) return;
+        target = math::Mat4::translation(*point - m_drag->grabbed) * m_drag->start;
+    } else if (m_drag->handle->kind == Triad::Kind::Arrow) {
+        const auto along = nearestAlong(m_drag->pivot, m_drag->axis, origin, direction);
+        if (!along) return;
+        target = math::Mat4::translation(m_drag->axis * (*along - m_drag->along)) * m_drag->start;
+    } else {
+        const auto on = meetPlane(m_drag->pivot, m_drag->axis, origin, direction);
+        if (!on) return;
+        const math::Vec3 now = *on - m_drag->pivot;
+        const double angle =
+            std::atan2(m_drag->axis.dot(m_drag->towards.cross(now)), m_drag->towards.dot(now));
+        target = math::Mat4::translation(m_drag->pivot) *
+                 math::Mat4::rotation(math::Quaternion::fromAxisAngle(m_drag->axis, angle)) *
+                 math::Mat4::translation(m_drag->pivot * -1.0) * m_drag->start;
+    }
+
+    std::map<std::uint64_t, math::Mat4> placed{{m_drag->component, target}};
+    if (m_drag->mates) {
+        const doc::AssemblyMates::Hold hold{m_drag->component, target};
+        auto result = m_drag->mates->solve({hold, false});
+        if (result.status != model::AssemblySolveStatus::Success &&
+            result.status != model::AssemblySolveStatus::NoMates) {
+            // Held there, the mates cannot be met: let go from there, it
+            // slides as far as they allow.
+            doc::AssemblyMates freed = *m_drag->mates;
+            freed.place(placed);
+            result = freed.solve({std::nullopt, false});
+        }
+        if (result.status == model::AssemblySolveStatus::Success) {
+            placed = result.transforms;
+        } else if (result.status != model::AssemblySolveStatus::NoMates) {
+            return;  // the last placement the mates allowed stays
+        }
+        m_drag->mates->place(placed);  // the next move solves from here
+    }
+    for (auto& comp : m_drag->assembly->components()) {
+        const auto found = placed.find(comp.id);
+        if (found != placed.end()) comp.transform = found->second;
+    }
+    m_drag->moved = true;
+    showPlacements(*m_drag->assembly);
+}
+
+void AssemblyWorkbench::endDrag() {
+    if (!m_drag) return;
+    Drag drag = std::move(*m_drag);
+    m_drag.reset();
+    m_host.setPrompt(QString());
+    const bool changed = drag.moved && placementsDiffer(drag.before, *drag.assembly);
+    if (!changed || m_host.currentAssembly() != drag.assembly) {
+        drag.assembly->restore(drag.before);
+        drag.assembly->setDirty(drag.wasDirty);
+        return;
+    }
+    recordAssemblyEdit(std::move(drag.before), drag.wasDirty, tr("Drag Component"));
+    m_host.rebuildScene();
+    const doc::ComponentInstance* comp = drag.assembly->component(drag.component);
+    m_host.showStatus(
+        tr("%1 dragged").arg(comp != nullptr ? QString::fromStdString(comp->name) : QString()));
+}
+
+void AssemblyWorkbench::cancelDrag() {
+    if (!m_drag) return;
+    Drag drag = std::move(*m_drag);
+    m_drag.reset();
+    drag.assembly->restore(drag.before);
+    drag.assembly->setDirty(drag.wasDirty);
+    if (m_host.currentAssembly() == drag.assembly) showPlacements(*drag.assembly);
+    m_host.setPrompt(tr("Drag cancelled: everything is where it was"));
+}
+
+void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
+    ViewportWidget& view = m_host.viewport();
+    for (const auto& node : view.sceneGraph().nodes()) {
+        if (node->ownerId() == 0) continue;
+        if (const doc::ComponentInstance* comp = asmDoc.component(node->ownerId())) {
+            node->setLocalTransform(comp->transform);
+        }
+    }
+    view.update();
 }
 
 AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
@@ -412,6 +597,7 @@ void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
 }
 
 void AssemblyWorkbench::onAddMate() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag (Phase 158)
     if (!assembly()) {
         m_host.showStatus(tr("Add Mate is only available in an assembly document"));
         return;
@@ -573,6 +759,9 @@ void AssemblyWorkbench::onAddMate() {
 }
 
 bool AssemblyWorkbench::editAssembly(const QString& verb, const std::function<bool()>& edit) {
+    // Not under a drag (a shortcut while the mouse is held): it is put back
+    // first, or its release would record over this edit.
+    m_host.viewport().cancelComponentDrag();
     const bool wasDirty = assembly()->isDirty();
     doc::AssemblyState before = assembly()->snapshot();
     const bool made = edit();
