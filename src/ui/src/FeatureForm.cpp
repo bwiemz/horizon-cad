@@ -16,12 +16,12 @@ namespace hz::ui {
 
 namespace {
 
-/// @p label as a screen reader says it: without the "&" that marks its
-/// mnemonic ("&&" is a literal "&").
+/// @p label as a screen reader says it, as Qt strips a label: "&x" is x
+/// (underlined), "&&" a literal "&", and a "&" at the end marks nothing.
 QString spoken(const QString& label) {
     QString out;
     for (qsizetype i = 0; i < label.size(); ++i) {
-        if (label[i] == QLatin1Char('&') && ++i == label.size()) break;
+        if (label[i] == QLatin1Char('&') && i + 1 < label.size()) ++i;
         out += label[i];
     }
     return out;

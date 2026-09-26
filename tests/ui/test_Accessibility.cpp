@@ -91,6 +91,8 @@ TEST(AccessibilityTest, AFormsFieldsAreNamedByTheirLabels) {
     form.choice(QStringLiteral("way"), QStringLiteral("Goes:"), {QStringLiteral("Up")});
     form.text(QStringLiteral("name"), QStringLiteral("Name:"));
     form.checklist(QStringLiteral("edges"), QStringLiteral("Edges:"), {{QStringLiteral("e1"), {}}});
+    form.checklist(QStringLiteral("faces"), QStringLiteral("&Faces && loops &"),
+                   {{QStringLiteral("f1"), {}}});
     form.dialog().show();
     QApplication::processEvents();
     const auto unnamed = unnamedControls(form.dialog());
@@ -101,6 +103,9 @@ TEST(AccessibilityTest, AFormsFieldsAreNamedByTheirLabels) {
     // Qt 6.9 does not name an item view by its label; the form names it.
     EXPECT_EQ(accessibleName(form.dialog().findChild<QWidget*>(QStringLiteral("edges"))),
               QStringLiteral("Edges:"));
+    EXPECT_EQ(accessibleName(form.dialog().findChild<QWidget*>(QStringLiteral("faces"))),
+              QStringLiteral("Faces & loops &"))
+        << "a mnemonic's & dropped, && a literal &, and a last & kept";
     form.dialog().hide();
 }
 
