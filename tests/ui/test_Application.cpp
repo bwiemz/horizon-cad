@@ -5,8 +5,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QEvent>
+#include <QFileOpenEvent>
 #include <QMessageBox>
 #include <QObject>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <stdexcept>
 
@@ -118,4 +120,30 @@ TEST(ApplicationTest, ShippedFilesAreNextToTheExecutableOrInTheBundle) {
     // The test binary is in no bundle.
     EXPECT_EQ(Application::shippedFilesDirectory(),
               QDir(QCoreApplication::applicationDirPath()).absolutePath());
+}
+
+// On macOS the document that launched the application can arrive before its
+// window is made to hear it: it waits, and the window takes it.
+TEST(ApplicationTest, AFileAskedForBeforeAnythingListensWaits) {
+    auto* app = qobject_cast<hz::ui::Application*>(QCoreApplication::instance());
+    ASSERT_NE(app, nullptr) << "the test binary must run under hz::ui::Application";
+    app->takePendingFiles();
+    const QString first = QDir::temp().filePath(QStringLiteral("first.hcad"));
+    const QString second = QDir::temp().filePath(QStringLiteral("second.hzpart"));
+    for (const QString& file : {first, second}) {
+        QFileOpenEvent event(file);
+        QCoreApplication::sendEvent(app, &event);
+    }
+    EXPECT_EQ(app->takePendingFiles(), (QStringList{first, second}));
+    EXPECT_TRUE(app->takePendingFiles().isEmpty()) << "taken once";
+
+    // Once something listens, it hears the file, and nothing waits.
+    QStringList heard;
+    const auto connection = QObject::connect(app, &hz::ui::Application::fileOpenRequested,
+                                             [&heard](const QString& file) { heard << file; });
+    QFileOpenEvent third(first);
+    QCoreApplication::sendEvent(app, &third);
+    QObject::disconnect(connection);
+    EXPECT_EQ(heard, QStringList{first});
+    EXPECT_TRUE(app->takePendingFiles().isEmpty());
 }

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QString>
+#include <QStringList>
 #include <QSurfaceFormat>
 
 namespace hz::ui {
@@ -42,10 +43,16 @@ public:
     /// Number of exceptions contained since start-up.
     int containedExceptionCount() const { return m_containedCount; }
 
+    /// The files the system asked to open while nothing listened for
+    /// fileOpenRequested, oldest first, and no longer held. On macOS the
+    /// document that launched the application can arrive before its window.
+    QStringList takePendingFiles();
+
 signals:
     /// The system asked for a file to be opened: on macOS, a document opened
     /// from the Finder or dropped on the Dock icon arrives as an event, not
-    /// on the command line.
+    /// on the command line. With nothing connected, it waits in
+    /// takePendingFiles() instead.
     void fileOpenRequested(const QString& file);
 
 protected:
@@ -54,6 +61,7 @@ protected:
 private:
     void reportException(const QString& what);
 
+    QStringList m_pendingFiles;
     int m_containedCount = 0;
     bool m_reporting = false;
     QElapsedTimer m_lastDialog;

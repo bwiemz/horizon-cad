@@ -321,7 +321,10 @@ In three parts: 168a the guide, 168b the samples, 168c Getting Started.
 - **Documents from the Finder.** macOS hands a document opened from the
   Finder or dropped on the Dock icon to the running application as an
   event, not on the command line. `Application` turns the event into
-  `fileOpenRequested`, and the window opens the file in a tab.
+  `fileOpenRequested`, and the window opens the file in a tab. The document
+  that launched the application can come before the window listens: it
+  waits in `Application::takePendingFiles()`, which main() opens with the
+  command line's files.
 - **The icon** is packed into `horizon-cad.icns` by
   `packaging/icons/make-icns.py`, which does what Apple's `iconutil` does
   and runs anywhere; `render.sh` calls it.

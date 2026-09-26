@@ -5,10 +5,12 @@
 #include <QDir>
 #include <QFileOpenEvent>
 #include <QMessageBox>
+#include <QMetaMethod>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <string>
+#include <utility>
 
 #include "horizon/ui/Logging.h"
 
@@ -38,10 +40,19 @@ bool Application::notify(QObject* receiver, QEvent* event) {
 bool Application::event(QEvent* event) {
     if (event->type() == QEvent::FileOpen) {
         const QString file = static_cast<QFileOpenEvent*>(event)->file();
-        if (!file.isEmpty()) emit fileOpenRequested(file);
+        if (file.isEmpty()) return true;
+        if (isSignalConnected(QMetaMethod::fromSignal(&Application::fileOpenRequested))) {
+            emit fileOpenRequested(file);
+        } else {
+            m_pendingFiles.append(file);
+        }
         return true;
     }
     return QApplication::event(event);
+}
+
+QStringList Application::takePendingFiles() {
+    return std::exchange(m_pendingFiles, {});
 }
 
 QString Application::shippedFilesDirectory() {
