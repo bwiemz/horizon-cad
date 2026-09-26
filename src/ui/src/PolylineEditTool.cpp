@@ -377,6 +377,11 @@ bool PolylineEditTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& /
     return false;
 }
 
+bool PolylineEditTool::claimsKey(int key) const {
+    return m_editEntityId != 0 &&
+           (key == Qt::Key_A || key == Qt::Key_D || key == Qt::Key_C || key == Qt::Key_J);
+}
+
 bool PolylineEditTool::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_Escape) {
         cancel();

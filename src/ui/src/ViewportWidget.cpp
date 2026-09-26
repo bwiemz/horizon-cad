@@ -871,6 +871,15 @@ bool ViewportWidget::event(QEvent* event) {
     // "0.5 rad"): claimed before the window's one-key tool shortcuts (M,
     // R, Space) take them, as a line edit claims them (Phase 154). A
     // letter first is still a shortcut: nothing is typed then.
+    // And a key the active tool acts on itself (Polyline Edit's A, D, C, J).
+    if (event->type() == QEvent::ShortcutOverride && m_activeTool != nullptr) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        const auto modifiers = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+        if (modifiers == Qt::NoModifier && m_activeTool->claimsKey(key->key())) {
+            event->accept();
+            return true;
+        }
+    }
     if (event->type() == QEvent::ShortcutOverride && typingText()) {
         auto* key = static_cast<QKeyEvent*>(event);
         const auto modifiers = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);

@@ -512,6 +512,33 @@ TEST(DraftingToolsTest, PolylineEditMovesAddsRemovesAndCloses) {
     EXPECT_TRUE(near(points()[2], Vec2(13, 12)));
 }
 
+// Polyline Edit's keys reach it: A, D and C are also Arc's, Linear's and
+// Circle's one-key shortcuts, which took them, so pressing A switched to the
+// Arc tool. Qt offers a key to the focused widget first (ShortcutOverride);
+// the viewport claims it while a polyline is being edited, and only then.
+TEST(DraftingToolsTest, PolylineEditKeysAreNotTakenByShortcuts) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    w.activeDocument()->draftDocument().addEntity(
+        std::make_shared<DraftPolyline>(std::vector<Vec2>{Vec2(0, 0), Vec2(10, 0), Vec2(10, 10)}));
+    hz::ui::ViewportWidget& viewport = drive.viewport();
+    const auto claims = [&viewport](Qt::Key key) {
+        QKeyEvent offered(QEvent::ShortcutOverride, key, Qt::NoModifier);
+        offered.ignore();
+        QCoreApplication::sendEvent(&viewport, &offered);
+        return offered.isAccepted();
+    };
+
+    trigger(w, "tool_polyline-edit");
+    EXPECT_FALSE(claims(Qt::Key_A)) << "no polyline chosen: A is Arc's";
+    drive.click(Vec2(5, 0));  // this one to edit
+    for (const Qt::Key key : {Qt::Key_A, Qt::Key_D, Qt::Key_C, Qt::Key_J}) {
+        EXPECT_TRUE(claims(key)) << "key " << key;
+    }
+    EXPECT_FALSE(claims(Qt::Key_L)) << "not one of its keys: Line's";
+}
+
 // Join (J) makes one polyline of two that meet end to end: the point they
 // share is one vertex, not two, and the other polyline is gone.
 TEST(DraftingToolsTest, PolylineEditJoinsTwoPolylinesThatMeet) {
