@@ -2,13 +2,16 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/Shell.h"
@@ -246,4 +249,108 @@ TEST(ShellTest, OpeningTwoFacesIsRefused) {
         std::move(box), 1.0, {TopologyID::make("box", "top"), TopologyID::make("box", "front")});
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.message.find("more than one face"), std::string::npos) << r.message;
+}
+
+// ---------------------------------------------------------------------------
+// Shelled by offsetting each face (Phase 163)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A regular 32-gon's area in a circle of radius @p r: a primitive's facets.
+double section(double r) {
+    return 16.0 * r * r * std::sin(2.0 * 3.14159265358979323846 / 32.0);
+}
+
+ShellResult offsetShell(const hz::topo::Solid& solid, double thickness,
+                        const std::vector<TopologyID>& open) {
+    return Shell::executeOffset(solid, thickness, open, "shell_1");
+}
+
+void expectSound(const ShellResult& r) {
+    ASSERT_TRUE(r.ok) << r.message;
+    ASSERT_NE(r.solid, nullptr);
+    EXPECT_TRUE(r.solid->checkManifold());
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*r.solid))
+        << hz::topo::GeometryValidator::report(*r.solid);
+}
+
+}  // namespace
+
+// A box opened at the top, and at the top and front: the walls one thick,
+// exactly; its own faces keep their names, and the cavity's are named after
+// them.
+TEST(OffsetShellTest, ABoxOpensAtOneFaceOrTwo) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto top = offsetShell(*box, 1.0, {TopologyID::make("box", "top")});
+    expectSound(top);
+    EXPECT_NEAR(volumeOf(*top.solid), 1000.0 - 8.0 * 8.0 * 9.0, 1e-6);
+    bool kept = false;
+    bool inner = false;
+    for (const auto& face : top.solid->faces()) {
+        kept = kept || face.topoId.tag().rfind("box/left", 0) == 0;
+        inner = inner || face.topoId.tag().find("shell_1/inner:box/left") != std::string::npos;
+    }
+    EXPECT_TRUE(kept) << "the box's own side";
+    EXPECT_TRUE(inner) << "the cavity's side, after it";
+
+    const auto two =
+        offsetShell(*box, 1.0, {TopologyID::make("box", "top"), TopologyID::make("box", "front")});
+    expectSound(two);
+    EXPECT_NEAR(volumeOf(*two.solid), 1000.0 - 8.0 * 9.0 * 9.0, 1e-6);
+}
+
+// A plate with a hole through it, opened at the top: a wall one thick round
+// the hole as well as round the plate, the cavity's wall there on a cylinder
+// one wider.
+TEST(OffsetShellTest, APlateWithAHoleKeepsAWallRoundIt) {
+    const auto plate = PrimitiveFactory::makeBox(40, 40, 10);
+    const auto pin = Pattern::transformed(*PrimitiveFactory::makeCylinder(5.0, 30.0),
+                                          hz::math::Mat4::translation(Vec3(20, 20, -10)));
+    const auto holed =
+        BooleanOp::execute(*plate, *pin, BooleanType::Subtract, nullptr, NamingScheme::Stable);
+    ASSERT_NE(holed, nullptr);
+    const auto r = offsetShell(*holed, 1.0, {TopologyID::make("box", "top")});
+    expectSound(r);
+    const double part = 16000.0 - section(5.0) * 10.0;
+    const double cavity = 38.0 * 38.0 * 9.0 - section(6.0) * 9.0;
+    EXPECT_NEAR(volumeOf(*r.solid), part - cavity, 1e-6);
+    int wider = 0;
+    for (const auto& face : r.solid->faces()) {
+        if (!face.analyticSurface) continue;
+        const auto frame = MateGeometry::frameForFace(face);
+        if (frame && frame->kind == MateFrameKind::Cylindrical &&
+            std::abs(frame->radius - 6.0) < 1e-6) {
+            ++wider;
+        }
+    }
+    EXPECT_GT(wider, 0) << "the cavity's wall round the hole, on a cylinder of 6";
+}
+
+// A cylinder opened at the top is a cup whose inside is a cylinder one
+// narrower; a cone's inside is a cone.
+TEST(OffsetShellTest, ACylinderAndAConeBecomeCups) {
+    const auto cylinder = PrimitiveFactory::makeCylinder(5.0, 10.0);
+    const auto cup = offsetShell(*cylinder, 1.0, {TopologyID::make("cylinder", "top")});
+    expectSound(cup);
+    EXPECT_NEAR(volumeOf(*cup.solid), section(5.0) * 10.0 - section(4.0) * 9.0, 1e-6);
+
+    const auto cone = PrimitiveFactory::makeCone(6.0, 3.0, 8.0);
+    const auto bowl = offsetShell(*cone, 0.5, {TopologyID::make("cone", "top")});
+    expectSound(bowl);
+    EXPECT_LT(volumeOf(*bowl.solid), volumeOf(*cone));
+    EXPECT_GT(volumeOf(*bowl.solid), 0.1 * volumeOf(*cone));
+}
+
+// Too thick a wall, no face to open, and a face opened that is not there are
+// refused, and said.
+TEST(OffsetShellTest, WhatCannotBeShelledIsSaid) {
+    auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto thick = offsetShell(*box, 6.0, {TopologyID::make("box", "top")});
+    EXPECT_FALSE(thick.ok);
+    EXPECT_NE(thick.message.find("too thick"), std::string::npos) << thick.message;
+    EXPECT_FALSE(offsetShell(*box, 1.0, {}).ok);
+    const auto missing = offsetShell(*box, 1.0, {TopologyID::make("box", "lid")});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_NE(missing.message.find("not there"), std::string::npos) << missing.message;
 }

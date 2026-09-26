@@ -313,3 +313,36 @@ TEST(PartCommandsTest, AHoleIsDrilledFromItsForm) {
     trigger(w, "action_undo");
     EXPECT_EQ(doc.featureTree().featureCount(), 1u);
 }
+
+// Phase 163: Shell opens more than one face, on a part with a hole: a box
+// with a hole drilled through it, opened at the top and the front, keeps a
+// wall one thick round the hole too.
+TEST(PartCommandsTest, AShellOpensTwoFacesOfAPartWithAHole) {
+    MainWindow w;
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 20.0)
+            .number(QStringLiteral("size1"), 20.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_hole", QStringLiteral("Hole"),
+        FormAnswers()
+            .chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)"))
+            .choose(QStringLiteral("extent"), QStringLiteral("Through all"))
+            .number(QStringLiteral("diameter"), 4.0));
+    ASSERT_EQ(doc.featureTree().featureCount(), 2u)
+        << w.statusBar()->currentMessage().toStdString();
+    run(w, "action_shell", QStringLiteral("Shell"),
+        FormAnswers()
+            .number(QStringLiteral("thickness"), 1.0)
+            .check(QStringLiteral("faces"),
+                   {QStringLiteral("facing (0, 0, 1)"), QStringLiteral("facing (0, -1, 0)")}));
+    ASSERT_EQ(doc.featureTree().featureCount(), 3u)
+        << w.statusBar()->currentMessage().toStdString();
+    // The part less the cavity: 18 x 19 x 9 of the box, less the hole's
+    // wall grown by one (a 32-gon each, as the hole's revolve makes it).
+    const auto section = [](double r) { return 16.0 * r * r * std::sin(std::numbers::pi / 16.0); };
+    const double part = 20.0 * 20.0 * 10.0 - section(2.0) * 10.0;
+    const double cavity = 18.0 * 19.0 * 9.0 - section(3.0) * 9.0;
+    EXPECT_NEAR(partVolume(doc), part - cavity, 1e-6);
+}

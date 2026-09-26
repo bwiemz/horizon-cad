@@ -22,6 +22,7 @@ add_library(hz_modeling STATIC
     src/Sweep.cpp
     src/Draft.cpp
     src/Shell.cpp
+    src/OffsetShell.cpp
     src/Pattern.cpp
     src/Naming.cpp
     src/Faceting.cpp

@@ -23,6 +23,7 @@
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Loft.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
@@ -457,9 +458,33 @@ TEST(PersistentNamingTest, AChamferKeepsTheNamesOfTheEdgesItDidNotTouch) {
         << "two chamfers, each taking half of a unit square along ten";
 }
 
-// A shell's faces are named after the shell feature, not every shell's
-// `shell/…` (Phase 139).
+// A prism's shell (as one read from a file before Phase 163 is built): its
+// faces are named after the shell feature, not every shell's `shell/…`
+// (Phase 139).
 TEST(PersistentNamingTest, AShellIsNamedAfterItsFeature) {
+    hz::doc::FeatureTree tree;
+    auto box = hz::doc::PrimitiveFeature::makeBox(10, 10, 10);
+    const std::string id = box->featureID();
+    tree.addFeature(std::move(box));
+    auto shell = std::make_unique<hz::doc::ShellFeature>(
+        1.0, std::vector<TopologyID>{TopologyID::fromTag(id + "/top")},
+        hz::doc::ShellFeature::Method::Prism);
+    const std::string shellId = shell->featureID();
+    tree.addFeature(std::move(shell));
+    const auto built = tree.buildWithDiagnostics();
+    ASSERT_NE(built.solid, nullptr) << built.failureMessage;
+    for (const auto& face : built.solid->faces()) {
+        EXPECT_EQ(face.topoId.tag().rfind(shellId + "/", 0), 0u) << face.topoId.tag();
+    }
+    for (const auto& edge : built.solid->edges()) {
+        EXPECT_EQ(edge.topoId.tag().rfind(shellId + "/edge:", 0), 0u) << edge.topoId.tag();
+    }
+}
+
+// Phase 163: a shell made by offsetting each face keeps the part's faces
+// and their names (a fillet or a mate on one still finds it); the cavity's
+// faces are named after them, as this shell's.
+TEST(PersistentNamingTest, AnOffsetShellKeepsThePartsNames) {
     hz::doc::FeatureTree tree;
     auto box = hz::doc::PrimitiveFeature::makeBox(10, 10, 10);
     const std::string id = box->featureID();
@@ -470,11 +495,13 @@ TEST(PersistentNamingTest, AShellIsNamedAfterItsFeature) {
     tree.addFeature(std::move(shell));
     const auto built = tree.buildWithDiagnostics();
     ASSERT_NE(built.solid, nullptr) << built.failureMessage;
+    std::set<std::string> names;
     for (const auto& face : built.solid->faces()) {
-        EXPECT_EQ(face.topoId.tag().rfind(shellId + "/", 0), 0u) << face.topoId.tag();
+        names.insert(hz::model::wholeFaceName(face.topoId.tag()));
     }
-    for (const auto& edge : built.solid->edges()) {
-        EXPECT_EQ(edge.topoId.tag().rfind(shellId + "/edge:", 0), 0u) << edge.topoId.tag();
+    for (const char* side : {"/left", "/right", "/front", "/back", "/bottom"}) {
+        EXPECT_EQ(names.count(id + side), 1u) << "the box's own " << side;
+        EXPECT_EQ(names.count(shellId + "/inner:" + id + side), 1u) << "the cavity's " << side;
     }
 }
 

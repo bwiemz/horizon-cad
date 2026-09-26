@@ -289,7 +289,9 @@ TEST(FeatureTreeTest, DraftAndShellFeaturesChain) {
     auto solid = tree.build();
     ASSERT_NE(solid, nullptr);
     EXPECT_TRUE(solid->isValid());
-    EXPECT_EQ(solid->faceCount(), 14u);  // cup
+    // A cup: its walls and floor 1 thick (Phase 163: each face offset).
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*solid).volume,
+                10.0 * 8.0 * 5.0 - 8.0 * 6.0 * 4.0, 1e-6);
 
     EXPECT_EQ(tree.feature(1)->name(), "Shell");
 }

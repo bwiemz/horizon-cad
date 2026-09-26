@@ -177,32 +177,55 @@ In three PRs.
     children's STEP placements.
 - **Files:** version 28, a component's `"mirrored"`.
 
-## Phase 163: Shell, part 2
+## Phase 163: Shell, part 2 (as built)
 
-- **Offset each face, not the profile.** Each face kept is moved inward by
-  the thickness along its own plane: a flat face by `planeOf`, a facet of
-  a curved ideal by its ideal (a cylinder's or a cone's radius less the
-  thickness, from `frameForFace`).
-  - Each inner vertex is where its faces' offset planes meet (three
-    planes, `Mat3::inverse`; more, least squares). The inner faces are
-    the offset loops, sewn (`SolidSewer`) with the outer shell less its
-    open faces, and the rims between them.
-  - The input's faces keep their names, surfaces and ideals. The inner
-    faces are named after them (`/inner`), with ideals of the offset
-    radius.
-- **What it takes:** any number of open faces, on a single body whose
-  vertices each join three faces (boxes, prisms, bosses, holes through
-  or blind).
-- **What it refuses, and says:** a vertex of four or more faces whose
-  offset planes do not meet in a point; a wall that collapses (an inner
-  edge reversing, found as now); a curved face that is not a cylinder or
-  cone; several bodies.
+- **The cavity is the part, each face moved.** `Shell::executeOffset`
+  (`OffsetShell.cpp`) moves every face inward by the thickness, and each
+  face to open outward by it, so the cavity comes out through the
+  opening. The shell is the part less the cavity, by the Boolean.
+  - The part keeps its faces, their names and their true surfaces. The
+    cavity's faces are named `<shell>/inner:<face>` and lie on their
+    offset ideals.
+- **Each corner of the cavity** is where its faces' offset surfaces meet.
+  They are grouped: the pieces of one plane are one surface, and the
+  facets of one ideal are one surface.
+  - A flat face's surface is its plane moved along its normal.
+  - A cylinder or sphere is grown or shrunk by the thickness, by its
+    sense: out of a boss, into a hole's wall.
+  - A cone is slid along its axis by thickness / sin(half-angle).
+  - Each corner is solved by Gauss–Newton with minimum-norm steps from
+    where it is. So a corner on fewer than three surfaces (a cylinder's
+    rim) keeps its place along the others, and stays on its radial line.
+  - A corner whose offsets do not meet in a point (four faces at a
+    pyramid's tip) is refused.
+  - The offset ideals are exact: a rational circle's control points
+    scale with it.
+- **Refused, and said:**
+  - a face on another kind of surface;
+  - a face opened in part;
+  - several bodies;
+  - a face that is not there;
+  - a wall too thick for the part (a cavity face turns over or shrinks
+    to nothing, or an edge reverses);
+  - a cavity whose faces cross, which is caught when it is sewn.
+- **Old files build as they did.** `ShellFeature::Method`: a new shell
+  offsets (saved as `"method": "offset"`, format version 29). One read
+  without it is built as the prism's, so its part and its names are
+  unchanged.
 - **Tests:**
-  - a box opened at the top and front: 1000 − 8·9·9 = 352;
-  - a plate with a hole through it, genus kept;
-  - a boss on a block;
-  - a cylinder cup, whose inner wall is a cylinder of r − t;
-  - the old prism tests, as the parity net.
+  - a box opened at the top (424) and at the top and front (352);
+  - a plate with a hole, keeping a wall round it, with the cavity's wall
+    on a cylinder of r + 1;
+  - a cylinder cup (A(5)·10 − A(4)·9) and a cone bowl;
+  - refusals;
+  - an offset shell keeping the box's names, with the cavity named after
+    them;
+  - the prism's names for the legacy method;
+  - the round trip, with a pre-163 file building 14 faces as before;
+  - the form, shelling a drilled box open at two faces.
+- **Not done:** a vertex of four or more planes that do not meet (refused),
+  tori and freeform faces (refused), several bodies, and a closed hollow
+  (no open face).
 
 ## Phase 164: Fillets on curved faces
 
