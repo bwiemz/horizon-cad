@@ -117,7 +117,13 @@ TEST(CharConvPortableTest, AgreesWithTheStandardOne) {
                                             "-.5",
                                             "0.000000000000000000000000000000000000001",
                                             "4.9e-324",
-                                            "1e-400"};
+                                            "1e-400",
+                                            "nan(3)",
+                                            "nan()",
+                                            "nan(x_1)",
+                                            "nan(",
+                                            "nan(3",
+                                            "-nan(1)"};
     for (const std::string& text : texts) {
         double standard = -7.0;
         double portable = -7.0;

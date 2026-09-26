@@ -1,3 +1,9 @@
+// strtod_l and newlocale are glibc's under _GNU_SOURCE, which g++ and clang++
+// define for C++ themselves; defined here too, not to depend on that.
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1
+#endif
+
 #include "horizon/math/CharConv.h"
 
 #include <cctype>
@@ -43,7 +49,19 @@ std::size_t numberLength(const char* first, const char* last) {
         p = q;
         return true;
     };
-    if (word("infinity") || word("inf") || word("nan")) return static_cast<std::size_t>(p - first);
+    if (word("infinity") || word("inf")) return static_cast<std::size_t>(p - first);
+    if (word("nan")) {
+        // "nan(chars)": the bracket too, when it closes after letters,
+        // digits and underscores.
+        if (p < last && *p == '(') {
+            const char* q = p + 1;
+            while (q < last && (std::isalnum(static_cast<unsigned char>(*q)) != 0 || *q == '_')) {
+                ++q;
+            }
+            if (q < last && *q == ')') p = q + 1;
+        }
+        return static_cast<std::size_t>(p - first);
+    }
     const char* digits = p;
     while (p < last && digit(*p)) ++p;
     bool any = p != digits;
