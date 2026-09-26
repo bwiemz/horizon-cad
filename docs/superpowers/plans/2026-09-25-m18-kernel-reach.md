@@ -232,27 +232,59 @@ In three PRs.
   tori and freeform faces (refused), several bodies, and a closed hollow
   (no open face).
 
-## Phase 164: Fillets on curved faces
+## Phase 164: Fillets on curved faces (as built)
 
-- **A rim's bands are one torus.** When a filleted chain runs round a
-  circle (a cylinder's rim, a revolve's rim, a hole's edge), each band's
-  ideal is one shared torus (`makeTorus` about the circle's axis, ring
-  radius R ∓ r, tube r) instead of a ruled patch per chord. Then STEP
-  writes it as one face, and `computeIdeal` measures it exactly (Pappus).
-- **A revolve's rim fillets.** The miter check is generalised for facets
-  on both sides: a chain whose two faces at each vertex are each a facet
-  of one ideal, taken as one face, and the turn measured between those
-  ideals' normals.
-- **Plane–cone** rims, by the same path, with the band's torus about the
-  cone's axis.
-- **Chamfer** of the same rims gives each band's ideal cone.
-- **Tests:**
-  - a revolve's rim filleted by name, checked by its Pappus volume;
-  - a cylinder's rim fillet recording one torus, with `computeIdeal`'s
-    volume to 1e-9;
-  - a cone's rim;
-  - STEP export of a filleted cylinder: one toroidal face;
-  - `FilletCylinderToPlaneEdge` made to assert success.
+- **A revolve's flat end is one face.** In a full turn, stably named, a
+  band square to the axis is one face (a disk, or a ring with its hole),
+  not a facet per step. `ringstack` counts and turns holes too.
+  - So a revolve's rim chain meets one face all round, as a cylinder's cap
+    does.
+  - That exposed a Boolean fault. `FragmentMerge` splits a merged face
+    with a hole along a line through the hole's middle, and for an annulus
+    that line cut chords of both circles mid-way. The counterbore floor's
+    corners then left the bore's circle, and STEP wrote the bore in
+    facets.
+  - It now picks, per hole, the cut through the fewest chords of round
+    loops (8 or more corners): a line through one of the hole's own
+    corners. It keeps the old cut on a tie, so plain polygonal holes split
+    as they did.
+- **Fillet keeps a face's holes.** `FilletOp` walked only outer loops, and
+  dropped a ring's hole ("open boundary"). Each loop is now rewritten the
+  same way and built as an inner wire.
+  - A solid of revolution's rim and a ring's outer rim both fillet,
+    checked by Pappus.
+- **A rim's exact section.** At a rim's mitered corners the miter plane
+  holds the axis: it is the meridian plane. The section there is now the
+  true fillet's, the ball touching both faces' lines in that plane. It
+  used to be the chord's prism cut slantwise, an ellipse.
+  - Consecutive sections are turns of one another. The bands stay flat,
+    the part is a revolve in N steps, and every band corner is on the
+    design torus (spine R − r, height h − r), to 1e-9.
+  - `CylinderRimFillets` now checks against that closed form:
+    (N/2)·sin(2π/N)·∫ρ² dz.
+  - A radius-1.9 fillet on an 8-sided rim of radius 2 is now valid. It
+    was refused only because a chord's prism ran backwards between the
+    miters. A radius past the rim's own is still refused.
+- **One torus per rim.** The bands' ideal is one torus through the exact
+  sections' centres, matched by its geometry rather than by curve object.
+  - The tangent lines (on the cap at R − r, on the side at h − r) record
+    their circles.
+  - `computeIdeal` measures the rounded cylinder with no parted edges,
+    within 0.1% of Pappus.
+- **STEP:** the pole check now asks whether the surface folds to a point:
+  it compares the area element's size with the face's, not the angle of
+  its tangents. A torus band's inside corners pass; a cone's apex still
+  fails.
+- **Not done:**
+  - STEP export of a filleted rim. The torus band's seam is a chain of
+    arc chords, and the writer closes a ring only along a single seam
+    edge. It needs a synthesized arc edge. For now the rim goes out in
+    facets, and says why.
+  - A hole's rim. The Boolean splits the plate's top into pieces, so the
+    rim chain changes faces at the seam. Keeping holes in Boolean output
+    is wider work.
+  - Cone rims have the same exact section, untested.
+  - Chamfers on rims keep their prism sections.
 
 ## Phase 165: Booleans at scale
 

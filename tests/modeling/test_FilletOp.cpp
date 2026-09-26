@@ -7,6 +7,7 @@
 
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
@@ -311,13 +312,21 @@ TEST(FilletOpTest, CylinderRimFillets) {
     EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result.solid))
         << hz::topo::GeometryValidator::report(*result.solid);
 
-    // Exact for the faceted geometry: the prism, less the removed section
-    // swept along the rim polygon inset by c (apothem a - c).
-    const auto sec = removedSection(r, n);
-    const double apothem = R * std::cos(kPi / N);
-    const double prism = 0.5 * N * R * R * std::sin(2.0 * kPi / N) * h;
-    const double path = 2.0 * N * (apothem - sec.inset) * std::tan(kPi / N);
-    EXPECT_NEAR(volumeOf(*result.solid), prism - sec.area * path, 1e-8);
+    // Exact for the faceted geometry (Phase 164): each corner's section is
+    // the true fillet's, in the meridian plane there, so the part is a
+    // revolve in N steps whose section at each height is a regular N-gon of
+    // the profile's radius there: (N/2) sin(2 pi/N) times the integral of
+    // radius squared, the arc taken as its n chords.
+    double integral = R * R * (h - r);
+    for (int k = 0; k < n; ++k) {
+        const double a0 = 0.5 * kPi * k / n;
+        const double a1 = 0.5 * kPi * (k + 1) / n;
+        const double r0 = R - r + r * std::cos(a0);
+        const double r1 = R - r + r * std::cos(a1);
+        const double dz = r * (std::sin(a1) - std::sin(a0));
+        integral += dz * (r0 * r0 + r0 * r1 + r1 * r1) / 3.0;
+    }
+    EXPECT_NEAR(volumeOf(*result.solid), 0.5 * N * std::sin(2.0 * kPi / N) * integral, 1e-8);
 
     // Every blend band keeps the arc surface it approximates.
     int blendFaces = 0;
@@ -331,10 +340,17 @@ TEST(FilletOpTest, CylinderRimFillets) {
 }
 
 TEST(FilletOpTest, MiterTighterThanTheRadiusIsRefused) {
-    // An 8-sided rim of radius 2 cannot take a radius-1.9 blend: the inside of
-    // each blend would have to run backwards between its two miter planes.
+    // An 8-sided rim of radius 2 takes a radius-1.9 blend now (Phase 164):
+    // each corner's section is the true fillet's, turned about the axis, and
+    // it runs in to radius 0.1, not backwards between the miter planes as a
+    // chord's prism did. A radius past the rim's own cannot be.
     auto cyl = PrimitiveFactory::makeCylinder(2.0, 10.0, 8);
-    auto result = FilletOp::execute(*cyl, edgesAtHeight(*cyl, 10.0), 1.9, "f");
+    auto tight = FilletOp::execute(*cyl, edgesAtHeight(*cyl, 10.0), 1.9, "f");
+    EXPECT_TRUE(tight.errorMessage.empty()) << tight.errorMessage;
+    ASSERT_NE(tight.solid, nullptr);
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*tight.solid))
+        << hz::topo::GeometryValidator::report(*tight.solid);
+    auto result = FilletOp::execute(*cyl, edgesAtHeight(*cyl, 10.0), 2.1, "f");
     EXPECT_FALSE(result.errorMessage.empty());
     EXPECT_EQ(result.solid, nullptr);
 }
@@ -948,4 +964,54 @@ TEST(FilletOpTest, TwoBodiesRoundedAtOnceAreNamedApart) {
     for (const auto& [tag, count] : edges) EXPECT_EQ(count, 1) << tag;
     EXPECT_TRUE(faces.count("f/blend/corner:0")) << "the first body's, as when alone";
     EXPECT_TRUE(faces.count("f/body:1/blend/corner:0")) << "the second's, apart";
+}
+
+// Phase 164: a rim's bands are one torus: the ball's centre goes round the
+// rim's circle, so each band's ideal is the same surface, and every corner
+// of every band is on it (one tube's radius from its spine circle).
+TEST(FilletOpTest, ACylinderRimsBandsAreOneTorus) {
+    const double R = 5.0, h = 10.0, r = 1.0;
+    auto cyl = PrimitiveFactory::makeCylinder(R, h, 32);
+    const auto ids = edgesAtHeight(*cyl, h);
+    auto result = FilletOp::execute(*cyl, ids, r, "f", 8);
+    ASSERT_TRUE(result.errorMessage.empty()) << result.errorMessage;
+    const double spine = R - r;
+    const hz::geo::NurbsSurface* torus = nullptr;
+    int bands = 0;
+    for (const auto& f : result.solid->faces()) {
+        if (f.topoId.tag().rfind("f/fillet", 0) != 0) continue;
+        ASSERT_NE(f.analyticSurface, nullptr);
+        if (torus == nullptr) torus = f.analyticSurface.get();
+        EXPECT_EQ(f.analyticSurface.get(), torus) << "one surface for the whole rim";
+        ++bands;
+        // Each corner one tube's radius from the spine, about the z axis at
+        // height h - r, radius R - r: each corner's section is the true
+        // fillet's, in the meridian plane there, so the bands are inscribed
+        // in the design's torus as the facets are in its cylinder.
+        const auto* he = f.outerLoop->halfEdge;
+        do {
+            const Vec3& p = he->origin->point;
+            const double across = std::hypot(p.x, p.y) - spine;
+            EXPECT_NEAR(std::hypot(across, p.z - (h - r)), r, 1e-9);
+            he = he->next;
+        } while (he != f.outerLoop->halfEdge);
+    }
+    EXPECT_EQ(bands, 32 * 8);
+    // Its two tangent lines are circles: on the top at radius R - r, on the
+    // side at height h - r; each chord of them records its circle.
+    int onTop = 0;
+    int onSide = 0;
+    for (const auto& e : result.solid->edges()) {
+        if (!e.analyticCurve) continue;
+        const Vec3 c = e.analyticCurve->evaluate(e.analyticCurve->tMin());
+        if (std::abs(c.z - h) < 1e-9 && std::abs(std::hypot(c.x, c.y) - (R - r)) < 1e-9) ++onTop;
+        if (std::abs(c.z - (h - r)) < 1e-9 && std::abs(std::hypot(c.x, c.y) - R) < 1e-9) ++onSide;
+    }
+    EXPECT_EQ(onTop, 32);
+    EXPECT_EQ(onSide, 32);
+    // And the torus is that one: a point of it on the tube round the spine.
+    ASSERT_NE(torus, nullptr);
+    const Vec3 on = torus->evaluate(0.5 * (torus->uMin() + torus->uMax()),
+                                    0.25 * (torus->vMin() + torus->vMax()));
+    EXPECT_NEAR(std::hypot(std::hypot(on.x, on.y) - spine, on.z - (h - r)), r, 1e-9);
 }

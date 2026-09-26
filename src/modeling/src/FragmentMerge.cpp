@@ -324,7 +324,28 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
             }
         }
     }
-    const Vec3 side = normal.cross(along).normalized();
+    const Vec3 across = normal.cross(along).normalized();
+
+    // How many chords of a round loop a cut crosses between their ends. A
+    // cut through a chord puts a corner in its middle, off its circle: the
+    // face beside it is no longer a set of chords of one circle (Phase 164,
+    // an annulus cut across its chords). A loop of few corners is no circle,
+    // and a cut across its straight edges harms nothing.
+    constexpr size_t kRound = 8;
+    const auto crossings = [&whole, tol](const Vec3& side, double offset) {
+        int n = 0;
+        const auto count = [&](const Loop& loop) {
+            if (loop.size() < kRound) return;
+            for (size_t i = 0; i < loop.size(); ++i) {
+                const double a = side.dot(loop[i]) - offset;
+                const double b = side.dot(loop[(i + 1) % loop.size()]) - offset;
+                if ((a > tol && b < -tol) || (a < -tol && b > tol)) ++n;
+            }
+        };
+        for (const auto& loop : whole.outer) count(loop);
+        for (const auto& loop : whole.holes) count(loop);
+        return n;
+    };
 
     // Which side of each cut a piece is on, a bit for each hole: as many
     // words as it takes (one word allowed 60 holes, and a plate with more
@@ -342,7 +363,24 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
         Vec3 middle(0, 0, 0);
         for (const auto& p : whole.holes[k]) middle = middle + p;
         middle = middle * (1.0 / static_cast<double>(whole.holes[k].size()));
-        const double offset = side.dot(middle);
+        // Along the longest outer edge, as it always was, unless a line
+        // through one of the hole's own corners crosses fewer edges.
+        Vec3 side = across;
+        double offset = side.dot(middle);
+        int fewest = crossings(side, offset);
+        for (const auto& corner : whole.holes[k]) {
+            if (fewest == 0) break;
+            const Vec3 toward = corner - middle;
+            if (toward.length() <= tol) continue;
+            const Vec3 candidate = normal.cross(toward).normalized();
+            const double at = candidate.dot(middle);
+            const int n = crossings(candidate, at);
+            if (n < fewest) {
+                fewest = n;
+                side = candidate;
+                offset = at;
+            }
+        }
         std::vector<Piece> cut;
         cut.reserve(pieces.size() * 2);
         for (const auto& piece : pieces) {

@@ -449,7 +449,28 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
             face.why = "it is closed all round (a sphere or a torus)";
             continue;
         }
-        if (corners.size() != onOutline.size()) {
+        // A corner inside it is a pole or an apex only where the surface
+        // folds to a point (its tangents parallel, or nothing): a fillet
+        // band round a rim (Phase 164) has its arc's samples inside it, on a
+        // torus that is smooth there.
+        // How big it is: its area element there is next to nothing at a
+        // pole, where the parameters fold (the tangents there keep their
+        // angle, so it is their size that tells).
+        double size = 0.0;
+        for (const topo::Vertex* corner : corners) {
+            size = std::max(size, (corner->point - (*corners.begin())->point).length());
+        }
+        bool pole = false;
+        for (const topo::Vertex* corner : corners) {
+            if (onOutline.count(corner) != 0) continue;
+            const auto [u, v] = surface.closestPoint(corner->point);
+            const auto at = surface.evaluateWithDerivatives(u, v);
+            if (!(at.du.cross(at.dv).length() > 1e-8 * size * size)) {
+                pole = true;
+                break;
+            }
+        }
+        if (pole) {
             face.why = "it comes to a point inside it (a cone's apex, a pole)";
             continue;
         }
