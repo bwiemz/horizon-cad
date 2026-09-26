@@ -36,6 +36,12 @@ namespace hz::ui {
 ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    // What a screen reader says of it (Phase 166): it draws; the menus, the
+    // trees and the keys work in it.
+    setAccessibleName(tr("Viewport"));
+    setAccessibleDescription(
+        tr("The drawing or the model, as it is drawn. Work in it from "
+           "the menus, the ribbon and the keyboard shortcuts."));
 
     // Default camera looking at origin from an isometric-ish angle.
     m_camera.setIsometricView();
@@ -865,6 +871,15 @@ bool ViewportWidget::event(QEvent* event) {
     // "0.5 rad"): claimed before the window's one-key tool shortcuts (M,
     // R, Space) take them, as a line edit claims them (Phase 154). A
     // letter first is still a shortcut: nothing is typed then.
+    // And a key the active tool acts on itself (Polyline Edit's A, D, C, J).
+    if (event->type() == QEvent::ShortcutOverride && m_activeTool != nullptr) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        const auto modifiers = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+        if (modifiers == Qt::NoModifier && m_activeTool->claimsKey(key->key())) {
+            event->accept();
+            return true;
+        }
+    }
     if (event->type() == QEvent::ShortcutOverride && typingText()) {
         auto* key = static_cast<QKeyEvent*>(event);
         const auto modifiers = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);

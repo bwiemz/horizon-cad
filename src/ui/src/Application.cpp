@@ -53,6 +53,16 @@ void Application::reportException(const QString& what) {
     m_reporting = false;
 }
 
+QSurfaceFormat Application::surfaceFormat() {
+    QSurfaceFormat format;
+    format.setRenderableType(QSurfaceFormat::OpenGL);
+    format.setVersion(3, 3);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setDepthBufferSize(24);
+    format.setSamples(4);
+    return format;
+}
+
 void Application::installTerminateHandler() {
     std::set_terminate([] {
         std::string reason = "std::terminate called without an active exception";

@@ -37,3 +37,12 @@ body:
         `%LOCALAPPDATA%/Horizon CAD Project/Horizon CAD/logs/horizon.log` on Windows and
         `~/.local/share/Horizon CAD Project/Horizon CAD/logs/horizon.log` on Linux.
       render: text
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash report
+      description: >-
+        If Horizon CAD stopped, it offered a report of what happened the next time it
+        started: attach the file its Save Report... button wrote (it has the log's last
+        lines in it). Reports are also kept in the `crashes` folder beside `logs`, and on
+        Windows a `.dmp` file beside each one helps too. Nothing is sent anywhere by itself.

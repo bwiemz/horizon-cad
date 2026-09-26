@@ -96,6 +96,7 @@
 #include "horizon/ui/CommandPalette.h"
 #include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/ConstraintTool.h"
+#include "horizon/ui/CrashReport.h"
 #include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
@@ -103,6 +104,7 @@
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/FilletTool.h"
 #include "horizon/ui/HatchTool.h"
+#include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/IconGenerator.h"
 #include "horizon/ui/InsertBlockDialog.h"
 #include "horizon/ui/InsertBlockTool.h"
@@ -271,45 +273,56 @@ void checkClicked(QListWidget* list, const PickList& picks,
     }
 }
 
+/// A tab's close button named for its tab, as a screen reader says it
+/// (Phase 166): "Close Part 1". Qt gives it none. Whichever side the style
+/// puts it on.
+void nameCloseButton(QTabBar& bar, int index) {
+    for (const auto side : {QTabBar::LeftSide, QTabBar::RightSide}) {
+        if (QWidget* button = bar.tabButton(index, side)) {
+            button->setAccessibleName(MainWindow::tr("Close %1").arg(bar.tabText(index)));
+        }
+    }
+}
+
 /// How a feature's parameter or vector is labelled in its edit form.
 QString parameterLabel(const std::string& name) {
     static const std::map<std::string, const char*> labels = {
-        {"distance", QT_TRANSLATE_NOOP("MainWindow", "Distance")},
-        {"angle", QT_TRANSLATE_NOOP("MainWindow", "Angle")},
-        {"segments", QT_TRANSLATE_NOOP("MainWindow", "Segments per turn")},
-        {"arcSegments", QT_TRANSLATE_NOOP("MainWindow", "Segments across the round")},
-        {"chordTolerance", QT_TRANSLATE_NOOP("MainWindow", "Chord tolerance")},
-        {"radius", QT_TRANSLATE_NOOP("MainWindow", "Radius")},
-        {"thickness", QT_TRANSLATE_NOOP("MainWindow", "Thickness")},
-        {"operation", QT_TRANSLATE_NOOP("MainWindow", "Operation")},
-        {"extent", QT_TRANSLATE_NOOP("MainWindow", "Goes")},
-        {"upToFace", QT_TRANSLATE_NOOP("MainWindow", "Up to face")},
-        {"count", QT_TRANSLATE_NOOP("MainWindow", "Count")},
-        {"spacing", QT_TRANSLATE_NOOP("MainWindow", "Spacing")},
-        {"width", QT_TRANSLATE_NOOP("MainWindow", "Width")},
-        {"height", QT_TRANSLATE_NOOP("MainWindow", "Height")},
-        {"depth", QT_TRANSLATE_NOOP("MainWindow", "Depth")},
-        {"bottomRadius", QT_TRANSLATE_NOOP("MainWindow", "Bottom radius")},
-        {"topRadius", QT_TRANSLATE_NOOP("MainWindow", "Top radius")},
-        {"majorRadius", QT_TRANSLATE_NOOP("MainWindow", "Ring radius")},
-        {"minorRadius", QT_TRANSLATE_NOOP("MainWindow", "Tube radius")},
-        {"direction", QT_TRANSLATE_NOOP("MainWindow", "Direction")},
-        {"axisPoint", QT_TRANSLATE_NOOP("MainWindow", "Axis through")},
-        {"axisDirection", QT_TRANSLATE_NOOP("MainWindow", "Axis direction")},
-        {"pullDirection", QT_TRANSLATE_NOOP("MainWindow", "Pull direction")},
-        {"neutralPoint", QT_TRANSLATE_NOOP("MainWindow", "Neutral plane through")},
-        {"planePoint", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane through")},
-        {"planeNormal", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane facing")},
-        {"planeFace", QT_TRANSLATE_NOOP("MainWindow", "Mirror in the face")},
-        {"type", QT_TRANSLATE_NOOP("MainWindow", "Type")},
-        {"diameter", QT_TRANSLATE_NOOP("MainWindow", "Diameter")},
-        {"boreDiameter", QT_TRANSLATE_NOOP("MainWindow", "Counterbore diameter")},
-        {"boreDepth", QT_TRANSLATE_NOOP("MainWindow", "Counterbore depth")},
-        {"sinkDiameter", QT_TRANSLATE_NOOP("MainWindow", "Countersink diameter")},
-        {"sinkAngle", QT_TRANSLATE_NOOP("MainWindow", "Countersink angle")},
-        {"pointAngle", QT_TRANSLATE_NOOP("MainWindow", "Point angle (0: flat)")},
-        {"positionPoint", QT_TRANSLATE_NOOP("MainWindow", "At")},
-        {"face", QT_TRANSLATE_NOOP("MainWindow", "Into the face")},
+        {"distance", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Distance")},
+        {"angle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Angle")},
+        {"segments", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Segments per turn")},
+        {"arcSegments", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Segments across the round")},
+        {"chordTolerance", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Chord tolerance")},
+        {"radius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Radius")},
+        {"thickness", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Thickness")},
+        {"operation", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Operation")},
+        {"extent", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Goes")},
+        {"upToFace", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Up to face")},
+        {"count", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Count")},
+        {"spacing", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Spacing")},
+        {"width", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Width")},
+        {"height", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Height")},
+        {"depth", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Depth")},
+        {"bottomRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Bottom radius")},
+        {"topRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Top radius")},
+        {"majorRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Ring radius")},
+        {"minorRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Tube radius")},
+        {"direction", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Direction")},
+        {"axisPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Axis through")},
+        {"axisDirection", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Axis direction")},
+        {"pullDirection", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Pull direction")},
+        {"neutralPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Neutral plane through")},
+        {"planePoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror plane through")},
+        {"planeNormal", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror plane facing")},
+        {"planeFace", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror in the face")},
+        {"type", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Type")},
+        {"diameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Diameter")},
+        {"boreDiameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Counterbore diameter")},
+        {"boreDepth", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Counterbore depth")},
+        {"sinkDiameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Countersink diameter")},
+        {"sinkAngle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Countersink angle")},
+        {"pointAngle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Point angle (0: flat)")},
+        {"positionPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "At")},
+        {"face", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Into the face")},
     };
     const auto it = labels.find(name);
     return it != labels.end() ? MainWindow::tr(it->second) : QString::fromStdString(name);
@@ -490,7 +503,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
     watchDocument(m_document);
     m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1"), m_nextRecoveryKey++});
-    m_tabBar->addTab(tr("Drawing 1"));
+    nameCloseButton(*m_tabBar, m_tabBar->addTab(tr("Drawing 1")));
     m_viewport->setDocument(m_document.get());
 
     // Dock panels (must exist before createMenus, which adds toggleViewAction).
@@ -622,7 +635,8 @@ void MainWindow::createMenus() {
     QAction* newAction = fileMenu->addAction(tr("&New Drawing"), this, &MainWindow::onNewFile);
     newAction->setShortcut(QKeySequence::New);
 
-    fileMenu->addAction(tr("New &Part"), this, &MainWindow::onNewPart);
+    fileMenu->addAction(tr("New &Part"), this, &MainWindow::onNewPart)
+        ->setObjectName(QStringLiteral("action_new_part"));
     fileMenu->addAction(tr("New Asse&mbly"), this, &MainWindow::onNewAssembly)
         ->setObjectName(QStringLiteral("action_new_assembly"));
 
@@ -634,6 +648,9 @@ void MainWindow::createMenus() {
     m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));
     m_recentMenu->setObjectName(QStringLiteral("recentFilesMenu"));
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildRecentMenu);
+    m_sampleMenu = fileMenu->addMenu(tr("Open Samp&le"));
+    m_sampleMenu->setObjectName(QStringLiteral("sampleMenu"));
+    connect(m_sampleMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildSampleMenu);
     rebuildRecentMenu();
 
     QAction* saveAction = fileMenu->addAction(tr("&Save"), this, &MainWindow::onSaveFile);
@@ -995,6 +1012,12 @@ void MainWindow::createMenus() {
 
     // ---- Help ----
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction* guideAction = helpMenu->addAction(tr("&User Guide"), this, &MainWindow::onUserGuide);
+    guideAction->setObjectName(QStringLiteral("action_user_guide"));
+    guideAction->setShortcut(QKeySequence::HelpContents);
+    helpMenu->addAction(tr("&Getting Started"), this, &MainWindow::onGettingStarted)
+        ->setObjectName(QStringLiteral("action_getting_started"));
+    helpMenu->addSeparator();
     QAction* aboutAction =
         helpMenu->addAction(tr("&About Horizon CAD"), this, &MainWindow::onAbout);
     aboutAction->setObjectName(QStringLiteral("action_about"));
@@ -1136,7 +1159,7 @@ void MainWindow::createRibbonBar() {
 
     // ---- Annotate tab ----
     g = group(tr("Annotate"), tr("Dimensions"));
-    addToolAction(g, "dim-linear", tr("Linear"), &MainWindow::onLinearDimTool,
+    addToolAction(g, "dim-linear", tr("Linear", "a dimension"), &MainWindow::onLinearDimTool,
                   QKeySequence(Qt::Key_D));
     addToolAction(g, "dim-radial", tr("Radial"), &MainWindow::onRadialDimTool);
     addToolAction(g, "dim-angular", tr("Angular"), &MainWindow::onAngularDimTool);
@@ -1194,7 +1217,7 @@ void MainWindow::createRibbonBar() {
     addAction(g, "draft", tr("Draft"), this, &MainWindow::onDraft);
 
     g = group(tr("3D"), tr("Pattern"));
-    addAction(g, "pattern-linear", tr("Linear"), this, &MainWindow::onLinearPattern);
+    addAction(g, "pattern-linear", tr("Linear", "a pattern"), this, &MainWindow::onLinearPattern);
     addAction(g, "pattern-circular", tr("Circular"), this, &MainWindow::onCircularPattern);
     addAction(g, "mirror-3d", tr("Mirror"), this, &MainWindow::onMirror);
 
@@ -1408,6 +1431,7 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
     }
     m_tabs.push_back(std::move(tab));
     int index = m_tabBar->addTab(title);
+    nameCloseButton(*m_tabBar, index);
     m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
 }
@@ -1620,6 +1644,7 @@ void MainWindow::refreshModifiedIndicators() {
         const int index = static_cast<int>(i);
         if (index < m_tabBar->count() && m_tabBar->tabText(index) != text) {
             m_tabBar->setTabText(index, text);
+            nameCloseButton(*m_tabBar, index);
         }
     }
     const DocTab* active = activeTab();
@@ -1719,6 +1744,48 @@ void MainWindow::autosave() {
         }
     }
     showAutosaveState(failure);
+}
+
+void MainWindow::offerCrashReports() {
+    for (const QString& path : crash::pendingReports(crash::reportDirectory())) {
+        const QString report = crash::readReport(path);
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Horizon CAD Stopped"));
+        box.setText(
+            tr("Horizon CAD stopped unexpectedly last time. A report of what happened "
+               "was kept on this computer; nothing has been sent."));
+        box.setInformativeText(
+            tr("To report the problem, save the report and attach it to an "
+               "issue. Documents that had unsaved changes, if any, are offered "
+               "next, from their autosaved copies."));
+        box.setDetailedText(report);
+        QPushButton* save = box.addButton(tr("Save Report..."), QMessageBox::ActionRole);
+        QPushButton* discard = box.addButton(tr("Delete Report"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Close);
+        box.exec();
+        if (box.clickedButton() == discard) {
+            QFile::remove(path.chopped(4) + QStringLiteral(".dmp"));  // Windows' minidump
+            if (!QFile::remove(path)) {
+                spdlog::warn("Could not delete the crash report {}", path.toStdString());
+            }
+            continue;
+        }
+        if (box.clickedButton() == save) {
+            const QString to = QFileDialog::getSaveFileName(
+                this, tr("Save Crash Report"), QFileInfo(path).fileName(), tr("Text (*.txt)"));
+            QFile out(to);
+            if (!to.isEmpty() && out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                out.write(report.toUtf8());
+            }
+        }
+        // Kept, and not offered again (deleted, if it cannot be marked).
+        if (!crash::markShown(path)) {
+            spdlog::warn("Could not mark the crash report {} shown; it will be offered again",
+                         path.toStdString());
+        }
+    }
+    crash::prune(crash::reportDirectory());
 }
 
 void MainWindow::offerRecovery() {
@@ -1970,6 +2037,70 @@ void MainWindow::onConfigurationChosen(const QString& name) {
                                            : tr("Built as %1.").arg(name));
 }
 
+void MainWindow::onUserGuide() {
+    if (m_help == nullptr) {
+        m_help = new HelpWindow(this);
+        m_help->setAttribute(Qt::WA_DeleteOnClose);
+    }
+    m_help->showPage(helpPageForContext());
+    m_help->show();
+    m_help->raise();
+    m_help->activateWindow();
+}
+
+void MainWindow::onGettingStarted() {
+    if (m_tour != nullptr) return;  // already shown
+    const auto step = [](QWidget* target, const QString& title, const QString& text) {
+        return GettingStartedTour::Step{target, title, text};
+    };
+    m_tour = new GettingStartedTour(
+        this,
+        {step(m_ribbonBar, tr("The ribbon"),
+              tr("Commands, by tab: Draw and Modify for 2D geometry, 3D for parts, and "
+                 "Annotate, Constrain and Block. The menus above hold the same commands, "
+                 "and more.")),
+         step(m_featureTreePanel, tr("The feature tree"),
+              tr("A part's features, in the order they are built. Double-click one to change "
+                 "it; right-click to suppress it or roll back to it. The Assembly tab beside "
+                 "it lists an assembly's components and mates.")),
+         step(m_viewport, tr("The view"),
+              tr("Drag with the middle mouse button to orbit, and with Shift held to pan; the "
+                 "wheel zooms. Press F to see everything, and click the cube at the top right "
+                 "to look along an axis.")),
+         step(m_propertyPanel, tr("Properties"),
+              tr("What is selected: its layer, colour and sizes, to see and change. Layers is "
+                 "in the tab beside it.")),
+         step(statusBar(), tr("The status bar"),
+              tr("What the active tool is asking for, where the cursor is, and the drafting "
+                 "aids: object snap, grid snap, ortho and polar tracking.")),
+         // On macOS the menus are at the top of the screen, not the window.
+         step(menuBar()->isNativeMenuBar() ? nullptr : menuBar(), tr("Finding your way"),
+              tr("Press Ctrl+K and type to find any command. F1 opens the user guide at the "
+                 "page for what you are doing, and File > Open Sample has parts, an assembly "
+                 "and drawings to explore."))});
+}
+
+void MainWindow::offerTour() {
+    QSettings settings;
+    if (settings.value(QStringLiteral("help/tourOffered"), false).toBool()) return;
+    settings.setValue(QStringLiteral("help/tourOffered"), true);
+    onGettingStarted();
+}
+
+QString MainWindow::helpPageForContext() const {
+    if (m_document == nullptr) return QStringLiteral("index.md");
+    switch (m_document->type()) {
+        case doc::DocumentType::Assembly:
+            return QStringLiteral("assemblies.md");
+        case doc::DocumentType::Part:
+            return m_viewport->activeSketch() != nullptr ? QStringLiteral("sketches.md")
+                                                         : QStringLiteral("parts.md");
+        case doc::DocumentType::Drawing:
+            break;
+    }
+    return QStringLiteral("drafting.md");
+}
+
 void MainWindow::onAbout() {
     const QString version = QString::fromLatin1(hz::version::kString);
 #if defined(_MSC_VER)
@@ -2217,6 +2348,89 @@ void MainWindow::rebuildRecentMenu() {
     m_recentMenu->addSeparator();
     connect(m_recentMenu->addAction(tr("&Clear Recent Files")), &QAction::triggered, this,
             [] { RecentFiles::clear(); });
+}
+
+QString MainWindow::sampleDirectory() {
+    QString forced = qEnvironmentVariable("HZ_SAMPLES_DIR");
+    if (!forced.isEmpty()) return forced;
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("samples"));
+}
+
+QString MainWindow::sampleCopiesDirectory() {
+    QString forced = qEnvironmentVariable("HZ_SAMPLE_COPIES_DIR");
+    if (!forced.isEmpty()) return forced;
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+        .filePath(QStringLiteral("Horizon CAD Samples"));
+}
+
+namespace {
+
+/// The kinds of document a sample may be, by extension.
+const QStringList kSampleFiles = {QStringLiteral("*.hcad"), QStringLiteral("*.hzpart"),
+                                  QStringLiteral("*.hzasm"), QStringLiteral("*.hzdwg")};
+
+}  // namespace
+
+void MainWindow::rebuildSampleMenu() {
+    m_sampleMenu->clear();
+    const QStringList samples =
+        QDir(sampleDirectory()).entryList(kSampleFiles, QDir::Files, QDir::Name);
+    // Each by its name ("plate-and-pin.hzasm": "Plate and pin (assembly)"),
+    // in the order of the names.
+    std::vector<std::pair<QString, QString>> items;  // label, file
+    for (const QString& file : samples) {
+        QString name =
+            QFileInfo(file).completeBaseName().replace(QLatin1Char('-'), QLatin1Char(' '));
+        if (!name.isEmpty()) name[0] = name[0].toUpper();
+        const QString suffix = QFileInfo(file).suffix();
+        const QString kind = suffix == QLatin1String("hzpart")  ? tr("part")
+                             : suffix == QLatin1String("hzasm") ? tr("assembly")
+                             : suffix == QLatin1String("hzdwg") ? tr("drawing sheet")
+                                                                : tr("2D drawing");
+        items.emplace_back(tr("%1 (%2)").arg(name, kind), file);
+    }
+    std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
+        return QString::localeAwareCompare(a.first, b.first) < 0;
+    });
+    for (const auto& item : items) {
+        const QString file = item.second;
+        QAction* action = m_sampleMenu->addAction(item.first);
+        action->setData(file);
+        connect(action, &QAction::triggered, this, [this, file] { openSample(file); });
+    }
+    if (items.empty()) m_sampleMenu->addAction(tr("No Samples Installed"))->setEnabled(false);
+}
+
+bool MainWindow::openSample(const QString& fileName) {
+    const QDir from(sampleDirectory());
+    const QString copies = sampleCopiesDirectory();
+    if (!QDir().mkpath(copies)) {
+        reportFileError(tr("Could not open"), fileName.toStdString(),
+                        "the folder for the samples, " + copies.toStdString() + ", cannot be made");
+        return false;
+    }
+    const QDir to(copies);
+    if (!from.exists(fileName)) {
+        reportFileError(tr("Could not open"), fileName.toStdString(),
+                        "it is not among the samples in " + from.path().toStdString());
+        return false;
+    }
+    // All of them, as one may need another (an assembly its parts). One
+    // already there stays: it may have been changed.
+    for (const QString& file : from.entryList(kSampleFiles, QDir::Files)) {
+        if (!to.exists(file) && !QFile::copy(from.filePath(file), to.filePath(file))) {
+            reportFileError(tr("Could not open"), fileName.toStdString(),
+                            "the sample " + file.toStdString() + " could not be copied to " +
+                                copies.toStdString());
+            return false;
+        }
+    }
+    const QString copy = to.filePath(fileName);
+    if (!openPath(copy)) return false;
+    statusBar()->showMessage(tr("A copy of the sample, in %1: change it and save it as you like.")
+                                 .arg(QDir::toNativeSeparators(copies)),
+                             10000);
+    return true;
 }
 
 void MainWindow::saveWindowLayout() const {
@@ -2540,8 +2754,10 @@ void MainWindow::finishStepAssemblyImport(const QString& fileName, StepLoad load
     if (!openPath(QString::fromStdString(files.assembly))) return;
     showImportReport(QFileInfo(fileName).fileName(), load.report);
     m_statusPrompt->setText(
-        tr("Imported %n part(s) into \"%1\", ", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
-        tr("placed %n time(s).", "", placed));
+        // Two sentences, each whole: one split across two messages could not
+        // be translated.
+        tr("Imported %n part(s) into \"%1\".", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
+        QLatin1Char(' ') + tr("The assembly has %n component(s).", "", placed));
 }
 
 void MainWindow::onImportDxf() {
@@ -5117,7 +5333,8 @@ void MainWindow::onHole() {
     for (const auto& [name, value] : sizes) {
         if (!hole->setParameter(name, value)) {
             statusBar()->showMessage(
-                tr("%1: the %2 is not one it can take").arg(verb, parameterLabel(name).toLower()));
+                // The label as it is: lowercased, a German noun was wrong.
+                tr("%1: \"%2\" cannot take that value").arg(verb, parameterLabel(name)));
             return;
         }
     }

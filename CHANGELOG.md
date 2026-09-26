@@ -17,6 +17,66 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
+
+- **Every string translated (166a).**
+  - The whole interface is in German, Spanish, French, Japanese, Korean
+    and Chinese: 1,107 strings each, where 18 were before.
+  - They are machine translations. The catalogs mark them unreviewed, so
+    Qt Linguist shows a native speaker which ones still need checking.
+  - Strings that could not be translated well are fixed: a label was
+    lowercased into a sentence, "Center" and "Linear" each meant two
+    things, and one sentence was split in two (166c).
+  - 36 main-window labels (Hole, Mirror Components, Show Exploded View
+    and others) were never translated: their context was wrong. Fixed.
+  - Every build checks the catalogs: each language at least 95%
+    translated, placeholders and mnemonics as in the English, and no
+    string in the sources missing from them.
+
+- **Accessible names (166b).**
+  - Every control a screen reader reaches has a name. The feature,
+    layer, assembly and sketch lists, the constraint list, the colour
+    button and the viewport had none.
+  - A document tab's close button says which document it closes.
+  - The names are translated with the rest of the window.
+  - A test walks the whole window, and a feature form, and fails on any
+    control without a name.
+
+- **Crash reports (167).**
+  - A crash in native code leaves a report on this computer: what
+    happened, where, a backtrace, the version and the platform. On
+    Windows a minidump goes beside it. A stack overflow is caught too.
+  - At the next start, before recovery, it is offered with the log's last
+    lines: save it to attach to an issue, delete it, or keep it. Nothing
+    is ever sent.
+  - The log is written line by line, so it holds what led up to a crash.
+
+- **A user guide (168a).**
+  - Help ▸ User Guide (F1) opens a guide in its own window, at the page
+    for what you are working on: a drawing, a sketch, a part or an
+    assembly.
+  - It covers getting started, 2D drafting, sketches and constraints,
+    parts, assemblies, drawing sheets, files and recovery, settings, and
+    the keyboard shortcuts. It is part of the application, so it works
+    offline.
+  - Polyline Edit's A, D and C keys (add a vertex, delete one, close the
+    polyline) switched to the Arc, Linear dimension and Circle tools
+    instead. They now work.
+
+- **Samples (168b).**
+  - File ▸ Open Sample lists samples to open and learn from: an L-shaped
+    bracket, a plate with a row of counterbored holes, a pin, an assembly
+    of the plate and the pin held by mates, a drawing sheet of the bracket,
+    and a 2D gasket.
+  - A sample opens as a copy in "Horizon CAD Samples" in your documents,
+    so you can change and save it; a copy you have changed is kept.
+
+- **Getting started (168c).**
+  - The first time Horizon CAD starts, a short tour points at each part of
+    the window (the ribbon, the feature tree, the view, the properties,
+    the status bar) and says what it is for. Help ▸ Getting Started shows
+    it again.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

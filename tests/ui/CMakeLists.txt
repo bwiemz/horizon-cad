@@ -1,4 +1,5 @@
 add_executable(hz_ui_tests
+    test_CrashReport.cpp
     test_LocaleManager.cpp
     test_TypedPoint.cpp
     test_Workers.cpp
@@ -11,9 +12,31 @@ target_link_libraries(hz_ui_tests
         GTest::gtest_main
 )
 
-# Location of the shipped .ts catalog sources, for coverage checks.
+# A process that crashes on purpose, for the crash handler's test. It builds
+# the handler itself, on QtCore alone: a small executable, not another one
+# with all of Qt's widgets in it.
+add_executable(hz_crash_child
+    crash_child.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/src/CrashReport.cpp
+)
+target_include_directories(hz_crash_child PRIVATE ${CMAKE_SOURCE_DIR}/src/ui/include)
+target_link_libraries(hz_crash_child PRIVATE Qt6::Core)
+if(WIN32)
+    target_link_libraries(hz_crash_child PRIVATE Dbghelp)
+endif()
+add_dependencies(hz_ui_tests hz_crash_child)
+
 target_compile_definitions(hz_ui_tests
-    PRIVATE HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations")
+    PRIVATE
+        # Location of the shipped .ts catalog sources, for coverage checks.
+        HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations"
+        HZ_CRASH_CHILD="$<TARGET_FILE:hz_crash_child>")
+# Where the compiled catalogs are placed, next to the executable (Phase 166):
+# a test loads each one. None there (no lrelease), and the test says so.
+if(TARGET horizon)
+    target_compile_definitions(hz_ui_tests
+        PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(hz_ui_tests)
@@ -24,6 +47,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
     add_executable(hz_ui_window_tests
         window_tests_main.cpp
         test_Application.cpp
+        test_Accessibility.cpp
         test_MainWindowDocuments.cpp
         test_Recovery.cpp
         test_BodyFeatureCommands.cpp
@@ -50,6 +74,8 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Drawings.cpp
         test_Units.cpp
         test_Variables.cpp
+        test_Help.cpp
+        test_Samples.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE
@@ -57,6 +83,19 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             Horizon::Version
             GTest::gtest
     )
+    if(TARGET horizon)
+        # The catalogs the application ships, to check a window in another
+        # language.
+        target_compile_definitions(hz_ui_window_tests
+            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+    endif()
+    if(TARGET horizon_samples)
+        # The samples the application ships (Phase 168b), made before the
+        # tests that open them.
+        target_compile_definitions(hz_ui_window_tests
+            PRIVATE HZ_BUILT_SAMPLES_DIR="$<TARGET_FILE_DIR:horizon>/samples")
+        add_dependencies(hz_ui_window_tests horizon_samples)
+    endif()
     get_target_property(_hz_qt_core_type Qt6::Core TYPE)
     if(_hz_qt_core_type STREQUAL "STATIC_LIBRARY")
         # Static Qt links platform plugins into the executable.

@@ -89,6 +89,7 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     auto* list = new FeatureList(m_stack);
     list->onMove = [this](int from, int to) { emit featureReordered(from, to); };
     m_treeWidget = list;
+    m_treeWidget->setAccessibleName(tr("Features"));
     m_treeWidget->setHeaderLabels({tr("Feature"), tr("Status")});
     m_treeWidget->setRootIsDecorated(false);
     m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -142,6 +143,7 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     configurationLayout->addWidget(new QLabel(tr("Configuration:"), m_configurationRow));
     m_configuration = new QComboBox(m_configurationRow);
     m_configuration->setObjectName(QStringLiteral("configuration"));
+    m_configuration->setAccessibleName(tr("Configuration"));
     configurationLayout->addWidget(m_configuration, 1);
     pageLayout->addWidget(m_configurationRow);
     m_configurationRow->hide();
@@ -153,6 +155,7 @@ FeatureTreePanel::FeatureTreePanel(QWidget* parent) : QDockWidget(tr("Feature Tr
     pageLayout->addWidget(m_sketchTitle);
     m_sketchList = new QListWidget(page);
     m_sketchList->setObjectName(QStringLiteral("sketchList"));
+    m_sketchList->setAccessibleName(tr("Sketches"));
     m_sketchList->setMaximumHeight(120);
     pageLayout->addWidget(m_sketchList);
     pageLayout->addWidget(m_stack, 1);

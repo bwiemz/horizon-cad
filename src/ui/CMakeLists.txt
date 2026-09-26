@@ -10,6 +10,8 @@ add_library(hz_ui STATIC
     include/horizon/ui/ComponentDragger.h
     include/horizon/ui/Triad.h
     include/horizon/ui/Tool.h
+    include/horizon/ui/HelpWindow.h
+    include/horizon/ui/GettingStartedTour.h
     include/horizon/ui/ToolManager.h
     include/horizon/ui/LineTool.h
     include/horizon/ui/CircleTool.h
@@ -81,6 +83,9 @@ add_library(hz_ui STATIC
     include/horizon/ui/PdfExport.h
     include/horizon/ui/ChainDimensionTool.h
     src/Application.cpp
+    src/CrashReport.cpp
+    src/HelpWindow.cpp
+    src/GettingStartedTour.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
     src/RecentFiles.cpp
@@ -182,8 +187,22 @@ target_link_libraries(hz_ui
 # Help > About: the version and revision (Horizon::Version) and the build type
 # the library was built from.
 target_link_libraries(hz_ui PRIVATE Horizon::Version)
+# A crash's minidump (Phase 167).
+if(WIN32)
+    target_link_libraries(hz_ui PRIVATE Dbghelp)
+endif()
 target_compile_definitions(hz_ui PRIVATE
     HZ_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>"
+)
+
+# The user guide (Phase 168): the Markdown pages of docs/guide, compiled in
+# at :/guide and shown by Help > User Guide. A page added there is picked up
+# at the next configure.
+file(GLOB HZ_GUIDE_PAGES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/docs/guide/*.md)
+qt_add_resources(hz_ui "guide"
+    PREFIX "/guide"
+    BASE ${CMAKE_SOURCE_DIR}/docs/guide
+    FILES ${HZ_GUIDE_PAGES}
 )
 
 add_library(Horizon::UI ALIAS hz_ui)

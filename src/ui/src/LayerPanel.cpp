@@ -32,6 +32,7 @@ void LayerPanel::createWidgets() {
     auto* layout = new QVBoxLayout(container);
 
     m_tree = new QTreeWidget(this);
+    m_tree->setAccessibleName(tr("Layers"));
     m_tree->setHeaderLabels({tr("Name"), tr("V"), tr("L"), tr("Color"), tr("Width"), tr("LT")});
     m_tree->setRootIsDecorated(false);
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);

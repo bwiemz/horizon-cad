@@ -50,10 +50,17 @@ public:
         QObject::connect(&m_timer, &QTimer::timeout, [this] { poll(); });
         m_timer.start(5);
     }
+    /// Answers with the button labelled `buttonText`: one the box added
+    /// itself, not a standard one.
+    DialogResponder(QString buttonText, QString title, int timeoutMs = 10'000)
+        : DialogResponder(QMessageBox::NoButton, std::move(title), timeoutMs) {
+        m_buttonText = std::move(buttonText);
+    }
 
     bool seen() const { return m_seen; }
     const QString& text() const { return m_text; }
     const QString& informativeText() const { return m_informativeText; }
+    const QString& detailedText() const { return m_detailedText; }
     /// The button Enter would have pressed.
     QMessageBox::StandardButton defaultButton() const { return m_default; }
 
@@ -70,11 +77,17 @@ private:
     void poll() {
         auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         QAbstractButton* button = box ? box->button(m_button) : nullptr;
+        if (box && !m_buttonText.isEmpty()) {
+            for (QAbstractButton* each : box->buttons()) {
+                if (each->text() == m_buttonText) button = each;
+            }
+        }
         if (button && titleMatches(*box)) {
             m_timer.stop();
             m_seen = true;
             m_text = box->text();
             m_informativeText = box->informativeText();
+            m_detailedText = box->detailedText();
             m_default = box->standardButton(box->defaultButton());
             button->click();
             return;
@@ -94,6 +107,7 @@ private:
     }
 
     QMessageBox::StandardButton m_button;
+    QString m_buttonText;
     QString m_title;
     int m_timeoutMs;
     QTimer m_timer;
@@ -101,6 +115,7 @@ private:
     bool m_seen = false;
     QString m_text;
     QString m_informativeText;
+    QString m_detailedText;
     QMessageBox::StandardButton m_default = QMessageBox::NoButton;
 };
 

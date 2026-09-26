@@ -21,6 +21,8 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/GettingStartedTour.h"
+#include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/PendingAdds.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RebuildJob.h"
@@ -119,6 +121,39 @@ public slots:
     /// If an earlier session crashed, offer to reopen the documents it left
     /// modified. Called once the window is on screen.
     void offerRecovery();
+
+    /// If an earlier session crashed, show the report it left (Phase 167):
+    /// to save and attach to an issue, keep, or delete. Nothing is sent.
+    /// Called once the window is on screen, before offerRecovery().
+    void offerCrashReports();
+
+    /// Help > User Guide (Phase 168): the guide, at the page for what is
+    /// being worked on (a drawing, a sketch, a part, an assembly).
+    void onUserGuide();
+    /// That page ("parts.md").
+    QString helpPageForContext() const;
+    /// The guide's window, when it has been opened.
+    HelpWindow* helpWindow() const { return m_help; }
+
+    /// Help > Getting Started (Phase 168c): a short tour of the window.
+    void onGettingStarted();
+    /// The tour, once, the first time Horizon CAD starts (after crash
+    /// reports and recovery have been offered).
+    void offerTour();
+    /// The tour, while it is shown.
+    GettingStartedTour* tour() const { return m_tour; }
+
+    /// File > Open Sample (Phase 168b). The samples shipped with the
+    /// application: <exe dir>/samples, or HZ_SAMPLES_DIR.
+    static QString sampleDirectory();
+    /// Where they are copied to be opened, and so saved: "Horizon CAD
+    /// Samples" in the user's documents, or HZ_SAMPLE_COPIES_DIR.
+    static QString sampleCopiesDirectory();
+    /// Open the sample @p fileName ("bracket.hzpart"): the samples are copied
+    /// into sampleCopiesDirectory() (all of them, so an assembly finds its
+    /// parts; none over a copy already there, which may have been changed),
+    /// and the copy opened. False, and said, when it cannot be.
+    bool openSample(const QString& fileName);
 
 protected:
     /// Offers to save every modified document; ignores the close if the user
@@ -334,6 +369,7 @@ private:
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();
+    void rebuildSampleMenu();
 
     /// Show what the active document's last build gave: failures in the
     /// feature tree panel, and the model in the viewport.
@@ -569,6 +605,7 @@ private:
     /// are unique across documents, so another document's is simply not found.
     uint64_t m_profileSketchId = 0;
     QMenu* m_recentMenu = nullptr;
+    QMenu* m_sampleMenu = nullptr;
 
     // Model rebuilds on a worker thread (Phase 114).
     RebuildMode m_rebuildMode = RebuildMode::Auto;
@@ -604,6 +641,8 @@ private:
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;
     QPointer<QMessageBox> m_massBox;
+    QPointer<HelpWindow> m_help;
+    QPointer<GettingStartedTour> m_tour;
     std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
 
     // Status bar widgets
