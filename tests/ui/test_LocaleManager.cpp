@@ -237,6 +237,11 @@ TEST(LocaleManagerTest, TheShippedCatalogsTranslateTheWindow) {
                                    "Show Exploded Vie&w...", "Point angle (0: flat)"}) {
             EXPECT_NE(translated(source), QString::fromUtf8(source)) << language << ": " << source;
         }
+        // One English word for two things is two messages (166c): a line
+        // type and an alignment are not one word in any of these languages.
+        EXPECT_NE(QCoreApplication::translate("hz::ui::PropertyPanel", "Center", "a line type"),
+                  QCoreApplication::translate("hz::ui::PropertyPanel", "Center", "text alignment"))
+            << language;
         const QString plural =
             QCoreApplication::translate("hz::ui::MainWindow", "%n variable(s).", nullptr, 3);
         EXPECT_TRUE(plural.contains(QLatin1Char('3'))) << language << ": " << plural.toStdString();

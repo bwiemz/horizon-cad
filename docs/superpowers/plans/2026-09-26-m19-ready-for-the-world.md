@@ -112,6 +112,21 @@ As built:
 - The five new strings are translated in all six catalogs (unreviewed,
   as 166a's).
 
+### 166c: strings a translation could not put right (as built)
+
+Found by the translators of 166a, fixed in the code, and translated:
+
+- "%1: the %2 is not one it can take" lowercased a parameter's label into
+  the sentence, wrong for a German noun: now `%1: "%2" cannot take that
+  value`, the label as it is.
+- "Center" (a line type, and a text alignment) and "Linear" (a dimension,
+  and a pattern) are two messages each, told apart by Qt's disambiguation
+  comment. A test checks that the two Centers differ in every catalog.
+- The STEP assembly import's sentence split in two messages is two whole
+  sentences, each with its own plural.
+- Left: file errors are sentence starts set into `%1 "%2".`; each language
+  words them as such. `translations/README.md` says so.
+
 ## Phase 167: Crash reports (as built)
 
 - **The handler** (`hz::ui::crash`, `CrashReport.cpp`), installed by the

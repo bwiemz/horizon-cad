@@ -1794,23 +1794,23 @@ begin building your part.</source>
 <context>
     <name>hz::ui::GettingStartedTour</name>
     <message>
-        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+47"/>
+        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+48"/>
         <source>Back</source>
         <translation type="unfinished">戻る</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+63"/>
+        <location line="+65"/>
         <source>Next</source>
         <translation type="unfinished">次へ</translation>
     </message>
     <message>
-        <location line="-49"/>
+        <location line="-51"/>
         <source>Close</source>
         <translation type="unfinished">閉じる</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+49"/>
         <source>%1 of %2</source>
         <translation type="unfinished">%1 / %2</translation>
     </message>
@@ -3224,12 +3224,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3980"/>
+        <location line="+3989"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4056"/>
+        <location line="-4065"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3246,19 +3246,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3829"/>
+        <location line="+3838"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3892"/>
+        <location line="-3901"/>
         <location line="+64"/>
-        <location line="+3828"/>
+        <location line="+3837"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3891"/>
+        <location line="-3900"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3298,14 +3298,27 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">寸法</translation>
     </message>
-    <message>
+    <message numerus="yes">
+        <location line="+1598"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <location line="+1"/>
-        <location line="+58"/>
-        <source>Linear</source>
-        <translation type="unfinished">直線</translation>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>アセンブリのコンポーネントは %n 個です。</numerusform>
+        </translation>
     </message>
     <message>
-        <location line="-56"/>
+        <location line="+2575"/>
+        <source>%1: &quot;%2&quot; cannot take that value</source>
+        <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
+    </message>
+    <message>
+        <location line="-4171"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3407,12 +3420,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2722"/>
+        <location line="+2731"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2719"/>
+        <location line="-2728"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3427,101 +3440,107 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2864"/>
+        <location line="+2873"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-2863"/>
-        <location line="+2873"/>
+        <location line="-2872"/>
+        <location line="+2882"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-2872"/>
-        <location line="+2879"/>
+        <location line="-2881"/>
+        <location line="+2888"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-2878"/>
-        <location line="+2885"/>
+        <location line="-2887"/>
+        <location line="+2894"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-2884"/>
-        <location line="+2895"/>
+        <location line="-2893"/>
+        <location line="+2904"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-2893"/>
+        <location line="-2902"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3616"/>
+        <location line="+3625"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3661"/>
-        <location line="+3680"/>
+        <location line="-3670"/>
+        <location line="+3689"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3706"/>
-        <location line="+4036"/>
+        <location line="-3715"/>
+        <location line="+4045"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4034"/>
+        <location line="-4043"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3787"/>
+        <location line="+3796"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3786"/>
-        <location line="+3790"/>
+        <location line="-3795"/>
+        <location line="+3799"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3789"/>
-        <location line="+3793"/>
+        <location line="-3798"/>
+        <location line="+3802"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3788"/>
-        <location line="+3857"/>
+        <location line="-3797"/>
+        <location line="+3866"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3856"/>
-        <location line="+3876"/>
+        <location line="-3865"/>
+        <location line="+3885"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3874"/>
+        <location line="-3883"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
+        <source>Linear</source>
+        <comment>a pattern</comment>
+        <translation type="unfinished">直線パターン</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Circular</source>
         <translation type="unfinished">円形</translation>
     </message>
@@ -3540,17 +3559,17 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+941"/>
-        <location line="+398"/>
-        <location line="+464"/>
+        <location line="+942"/>
+        <location line="+404"/>
+        <location line="+466"/>
         <location line="+1420"/>
-        <location line="+1189"/>
+        <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4495"/>
+        <location line="-4505"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3571,12 +3590,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4164"/>
+        <location line="+4174"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4158"/>
+        <location line="-4168"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -3838,7 +3857,7 @@ begin building your part.</source>
         <translation type="unfinished">アクティブなツールが求めている入力、カーソルの位置、作図補助 (オブジェクト スナップ、グリッド スナップ、直交モード、極トラッキング) を表示します。</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Finding your way</source>
         <translation type="unfinished">操作のヒント</translation>
     </message>
@@ -3884,18 +3903,19 @@ begin building your part.</source>
         <location line="+78"/>
         <location line="+36"/>
         <location line="+71"/>
-        <location line="+11"/>
+        <location line="+6"/>
+        <location line="+8"/>
         <source>Could not open</source>
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="-226"/>
-        <location line="+658"/>
+        <location line="-229"/>
+        <location line="+666"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
-        <location line="-636"/>
+        <location line="-644"/>
         <location line="+99"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
@@ -3967,7 +3987,7 @@ begin building your part.</source>
         <translation type="unfinished">サンプルがインストールされていません</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+29"/>
         <source>A copy of the sample, in %1: change it and save it as you like.</source>
         <translation type="unfinished">サンプルのコピー (%1 内): 自由に変更して保存できます。</translation>
     </message>
@@ -4045,12 +4065,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+268"/>
+        <location line="+270"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message>
-        <location line="-265"/>
+        <location line="-267"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">近似: %1</translation>
     </message>
@@ -4114,33 +4134,19 @@ begin building your part.</source>
         <location line="+15"/>
         <location line="+25"/>
         <location line="+14"/>
-        <location line="+23"/>
+        <location line="+25"/>
         <source>Could not import</source>
         <translation type="unfinished">インポートできませんでした</translation>
     </message>
     <message numerus="yes">
-        <location line="-42"/>
+        <location line="-44"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n 個のボディをインポートしました。</numerusform>
         </translation>
     </message>
-    <message numerus="yes">
-        <location line="+25"/>
-        <source>Imported %n part(s) into &quot;%1&quot;, </source>
-        <translation type="unfinished">
-            <numerusform>%n 個の部品を &quot;%1&quot; にインポートし </numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>placed %n time(s).</source>
-        <translation type="unfinished">
-            <numerusform>%n 回配置しました。</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+5"/>
+        <location line="+33"/>
         <source>A DXF is imported into a drawing or part, not an assembly</source>
         <translation type="unfinished">DXF は図面または部品にインポートします。アセンブリにはインポートできません</translation>
     </message>
@@ -4534,20 +4540,20 @@ begin building your part.</source>
         <location line="+1"/>
         <location line="+683"/>
         <location line="+13"/>
-        <location line="+738"/>
+        <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1433"/>
+        <location line="-1434"/>
         <location line="+683"/>
         <location line="+13"/>
-        <location line="+738"/>
+        <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1432"/>
+        <location line="-1433"/>
         <source>Standing along:</source>
         <translation type="unfinished">軸方向:</translation>
     </message>
@@ -5469,12 +5475,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">皿ざぐり角度:</translation>
     </message>
     <message>
-        <location line="+33"/>
-        <source>%1: the %2 is not one it can take</source>
-        <translation type="unfinished">%1: 指定された%2は使用できません</translation>
-    </message>
-    <message>
-        <location line="+34"/>
+        <location line="+68"/>
         <source>%1 has nothing to edit</source>
         <translation type="unfinished">%1 には編集できる項目がありません</translation>
     </message>
@@ -5555,12 +5556,18 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4511"/>
+        <location line="-4521"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
     <message>
-        <location line="+89"/>
+        <location line="-104"/>
+        <source>Linear</source>
+        <comment>a dimension</comment>
+        <translation type="unfinished">直線寸法</translation>
+    </message>
+    <message>
+        <location line="+193"/>
         <source>1 selected</source>
         <translation>1 個選択</translation>
     </message>
@@ -5763,12 +5770,12 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
     </message>
     <message>
         <location line="+1"/>
-        <location line="+69"/>
         <source>Center</source>
+        <comment>a line type</comment>
         <translation type="unfinished">中心線</translation>
     </message>
     <message>
-        <location line="-68"/>
+        <location line="+1"/>
         <source>Hidden</source>
         <translation type="unfinished">隠れ線</translation>
     </message>
@@ -5825,7 +5832,13 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">左</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
+        <source>Center</source>
+        <comment>text alignment</comment>
+        <translation type="unfinished">中央揃え</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Right</source>
         <translation type="unfinished">右</translation>
     </message>
