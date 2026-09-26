@@ -27,4 +27,8 @@ struct Measures {
 /// normalised so the volume is positive.
 MassProperties finish(const Measures& measures, double density);
 
+/// The mass properties of @p solid's face loops, triangulated as they are:
+/// compute() without cutting a solid described by curves into facets.
+MassProperties measureLoops(const topo::Solid& solid, const Material* material);
+
 }  // namespace hz::model::detail

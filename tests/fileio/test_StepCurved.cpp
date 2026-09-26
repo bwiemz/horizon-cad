@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -280,6 +281,55 @@ TEST(StepCurvedTest, APlateWithABoreHasTheRightVolumeBothWays) {
     EXPECT_TRUE(m.ideal.exact);
     expectRelative(m.ideal.properties.volume, 200.0 - 8.0 * kPi, 1e-9, "the plate");
     expectRelative(m.modelled, 200.0 - 8.0 * kPi, 0.001, "its facets");
+}
+
+// A solid as read, its faces bounded by circles, is measured as it is: in
+// facets. Measured by the corners of its loops, its volume was 0 and, from
+// computeIdeal, "exact". Scripts measure what they read.
+TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
+    const auto solids = StepFormat::fromString(cylinder());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const hz::topo::Solid& read = *solids[0];
+    EXPECT_TRUE(hz::model::describedByCurves(read));
+    const auto faceted = hz::model::facetCurved(read);
+    ASSERT_NE(faceted.solid, nullptr) << faceted.error;
+    EXPECT_FALSE(hz::model::describedByCurves(*faceted.solid)) << "its edges are chords";
+
+    const auto modelled = MassPropertiesCalculator::compute(read);
+    EXPECT_DOUBLE_EQ(modelled.volume, MassPropertiesCalculator::compute(*faceted.solid).volume);
+    expectRelative(modelled.volume, 2.0 * kPi, 0.01, "in facets");
+    const auto ideal = MassPropertiesCalculator::computeIdeal(read);
+    EXPECT_TRUE(ideal.exact);
+    expectRelative(ideal.properties.volume, 2.0 * kPi, 1e-9, "as designed");
+    expectRelative(ideal.properties.surfaceArea, 6.0 * kPi, 1e-9, "as designed");
+}
+
+// One that cannot be cut into facets is measured by its corners, which is not
+// exact, and names the faces measured so. A request to stop is heard before
+// the facets are cut.
+TEST(StepCurvedTest, ASolidAsReadThatCannotBeFacetedIsNotExact) {
+    auto solids = StepFormat::fromString(cylinder());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    hz::topo::Solid& read = *solids[0];
+    read.faces().front().outerLoop = nullptr;  // "a face has no boundary"
+    ASSERT_EQ(hz::model::facetCurved(read).solid, nullptr);
+
+    const auto ideal = MassPropertiesCalculator::computeIdeal(read);
+    EXPECT_FALSE(ideal.exact);
+    EXPECT_FALSE(ideal.withoutIdeal.empty()) << "the dialog says why it is not exact";
+    MassPropertiesCalculator::compute(read);  // by its corners, and no crash
+
+    const std::atomic<bool> cancelled{true};
+    const auto stopped =
+        MassPropertiesCalculator::computeIdeal(*solids[0], nullptr, 1e-10, &cancelled);
+    EXPECT_FALSE(stopped.exact);
+    EXPECT_FALSE(stopped.properties.valid);
+}
+
+// The kernel's own solids are made of chords already, curved or not.
+TEST(StepCurvedTest, TheKernelsSolidsAreNotDescribedByCurves) {
+    EXPECT_FALSE(hz::model::describedByCurves(*hz::model::PrimitiveFactory::makeCylinder(4, 12)));
+    EXPECT_FALSE(hz::model::describedByCurves(*hz::model::PrimitiveFactory::makeBox(4, 4, 4)));
 }
 
 // An imported body is cut into facets when it is built, each named for the

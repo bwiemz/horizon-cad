@@ -1205,6 +1205,11 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
 
 }  // namespace
 
+bool describedByCurves(const topo::Solid& solid) {
+    return std::any_of(solid.edges().begin(), solid.edges().end(),
+                       [](const Edge& e) { return e.curve && e.curve->degree() > 1; });
+}
+
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
     FacetedSolid result;
     maxAngle = std::clamp(maxAngle, 1e-3, math::kPi / 2);
