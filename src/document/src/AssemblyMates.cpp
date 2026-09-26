@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/modeling/MateGeometry.h"
 
 namespace hz::doc {
@@ -15,10 +16,43 @@ namespace {
 std::optional<model::MateFrame> frameOf(const AssemblyDocument& assembly,
                                         const MateReference& ref) {
     const ComponentInstance* comp = assembly.component(ref.componentId);
+    if (comp == nullptr) return std::nullopt;
+    // A datum of its part (Phase 160): a plane, an axis or a point, as the
+    // part keeps it.
+    if (ref.kind == ReferenceKind::Datum) {
+        if (!comp->resolvedPart) return std::nullopt;
+        const FeatureTree& tree = comp->resolvedPart->featureTree();
+        for (size_t i = 0; i < tree.featureCount(); ++i) {
+            const auto* datum = dynamic_cast<const DatumFeature*>(tree.feature(i));
+            if (datum == nullptr || datum->featureID() != ref.faceId.tag()) continue;
+            model::MateFrame frame;
+            switch (datum->datumKind()) {
+                case DatumFeature::DatumKind::Plane:
+                    frame.kind = model::MateFrameKind::Planar;
+                    frame.origin = datum->asPlane().origin;
+                    frame.direction = datum->asPlane().normal;
+                    break;
+                case DatumFeature::DatumKind::Axis:
+                    frame.kind = model::MateFrameKind::Line;
+                    frame.origin = datum->asAxis().origin;
+                    frame.direction = datum->asAxis().direction;
+                    break;
+                case DatumFeature::DatumKind::Point:
+                    frame.kind = model::MateFrameKind::Point;
+                    frame.origin = datum->asPoint().position;
+                    break;
+            }
+            return frame;
+        }
+        return std::nullopt;
+    }
     // A part's solid, or a subassembly's gathered one (Phase 159), whose
     // faces are named "c<id>/..." after its own components.
-    const topo::Solid* solid = comp != nullptr ? comp->solid() : nullptr;
+    const topo::Solid* solid = comp->solid();
     if (solid == nullptr) return std::nullopt;
+    if (ref.kind == ReferenceKind::Edge) {
+        return model::MateGeometry::frameForEdge(*solid, ref.faceId.tag());
+    }
     const topo::Face* face = model::MateGeometry::findFace(*solid, ref.faceId);
     if (face == nullptr) return std::nullopt;
     return model::MateGeometry::frameForFace(*face);
@@ -43,6 +77,8 @@ std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assem
         sm.componentA = mate.a.componentId;
         sm.componentB = mate.b.componentId;
         sm.value = mate.value;
+        sm.minimum = mate.minimum;
+        sm.maximum = mate.maximum;
         if (mate.type != MateType::Fixed) {
             const auto a = frameOf(assembly, mate.a);
             const auto b = a ? frameOf(assembly, mate.b) : std::nullopt;

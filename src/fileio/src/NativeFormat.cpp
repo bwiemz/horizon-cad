@@ -75,7 +75,10 @@ static std::string dumpJson(const json& root, int indent) {
 /// 157). An older build would read 4 as its distance.
 /// 23: an assembly's component may be an assembly (Phase 159). An older
 /// build would find no part in it, and show the assembly without it.
-static constexpr int kFormatVersion = 23;
+/// 24: a mate may refer to an edge or a datum ("kind"), and have limits
+/// ("minimum", "maximum") (Phase 160). An older build would take an edge's
+/// name for a face's, and hold a limited distance at its value.
+static constexpr int kFormatVersion = 24;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -1997,9 +2000,18 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
         json mObj;
         mObj["id"] = mate.id;
         mObj["type"] = mateTypeToString(mate.type);
-        mObj["a"] = {{"componentId", mate.a.componentId}, {"faceTag", mate.a.faceId.tag()}};
-        mObj["b"] = {{"componentId", mate.b.componentId}, {"faceTag", mate.b.faceId.tag()}};
+        // Phase 160: what each side refers to, when not a face; limits.
+        const auto side = [](const doc::MateReference& ref) {
+            json obj = {{"componentId", ref.componentId}, {"faceTag", ref.faceId.tag()}};
+            if (ref.kind == doc::ReferenceKind::Edge) obj["kind"] = "edge";
+            if (ref.kind == doc::ReferenceKind::Datum) obj["kind"] = "datum";
+            return obj;
+        };
+        mObj["a"] = side(mate.a);
+        mObj["b"] = side(mate.b);
         mObj["value"] = mate.value;
+        if (mate.minimum) mObj["minimum"] = *mate.minimum;
+        if (mate.maximum) mObj["maximum"] = *mate.maximum;
         matesArray.push_back(mObj);
     }
     root["mates"] = matesArray;
@@ -2071,7 +2083,10 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
     }
 
     // --- Mates (Phase 42) ---
-    auto mateTypeFromString = [](const std::string& t) {
+    // A type it does not know is none (Phase 160): the mate is left out and
+    // said so, not read as Coincident and solved as one.
+    auto mateTypeFromString = [](const std::string& t) -> std::optional<doc::MateType> {
+        if (t == "coincident") return doc::MateType::Coincident;
         if (t == "concentric") return doc::MateType::Concentric;
         if (t == "distance") return doc::MateType::Distance;
         if (t == "angle") return doc::MateType::Angle;
@@ -2079,7 +2094,17 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
         if (t == "perpendicular") return doc::MateType::Perpendicular;
         if (t == "tangent") return doc::MateType::Tangent;
         if (t == "fixed") return doc::MateType::Fixed;
-        return doc::MateType::Coincident;
+        return std::nullopt;
+    };
+    const auto referenceOf = [](const json& obj) {
+        doc::MateReference ref;
+        ref.componentId = obj.value("componentId", uint64_t{0});
+        ref.faceId = topo::TopologyID::fromTag(obj.value("faceTag", ""));
+        if (const auto kind = obj.find("kind"); kind != obj.end() && kind->is_string()) {
+            if (*kind == "edge") ref.kind = doc::ReferenceKind::Edge;
+            if (*kind == "datum") ref.kind = doc::ReferenceKind::Datum;
+        }
+        return ref;
     };
 
     if (root.contains("mates")) {
@@ -2089,15 +2114,22 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             try {
                 doc::Mate mate;
                 mate.id = mObj.value("id", uint64_t{0});
-                mate.type = mateTypeFromString(mObj.value("type", "coincident"));
-                mate.value = mObj.value("value", 0.0);
-                if (mObj.contains("a")) {
-                    mate.a.componentId = mObj.at("a").value("componentId", uint64_t{0});
-                    mate.a.faceId = topo::TopologyID::fromTag(mObj.at("a").value("faceTag", ""));
+                const std::string typeName = mObj.value("type", "coincident");
+                const auto type = mateTypeFromString(typeName);
+                if (!type) {
+                    noteSkipped(report, "mate", thisMate, mObj,
+                                "its type, " + typeName + ", is not one this build knows");
+                    continue;
                 }
-                if (mObj.contains("b")) {
-                    mate.b.componentId = mObj.at("b").value("componentId", uint64_t{0});
-                    mate.b.faceId = topo::TopologyID::fromTag(mObj.at("b").value("faceTag", ""));
+                mate.type = *type;
+                mate.value = mObj.value("value", 0.0);
+                if (mObj.contains("a")) mate.a = referenceOf(mObj.at("a"));
+                if (mObj.contains("b")) mate.b = referenceOf(mObj.at("b"));
+                if (const auto m = mObj.find("minimum"); m != mObj.end() && m->is_number()) {
+                    mate.minimum = m->get<double>();
+                }
+                if (const auto m = mObj.find("maximum"); m != mObj.end() && m->is_number()) {
+                    mate.maximum = m->get<double>();
                 }
                 asmDoc.addMate(std::move(mate));
             } catch (const std::exception& e) {

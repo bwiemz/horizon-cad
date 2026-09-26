@@ -11,6 +11,8 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -470,4 +472,43 @@ TEST(AssemblyDocumentTest, RestoringKeepsASubassemblysResolvedGeometry) {
     EXPECT_NE(comp->resolvedAssembly, nullptr);
     EXPECT_NE(comp->assemblySolid, nullptr);
     EXPECT_EQ(comp->state, ComponentState::Resolved);
+}
+
+// Phase 160: a mate on a datum of its part, and on an edge: the part's datum
+// axis and the other block's upright edge made one line.
+TEST(AssemblyMatesTest, ADatumAxisAndAnEdgeAreMadeOneLine) {
+    AssemblyDocument asmDoc;
+    auto withAxis = boxPart(10, 10, 10);
+    withAxis->featureTree().addFeature(
+        hz::doc::DatumFeature::makeAxis(hz::model::DatumAxis{Vec3(5, 5, 0), Vec3(0, 0, 1)}));
+    const std::string datum = withAxis->featureTree().feature(1)->featureID();
+    auto block = boxPart(10, 10, 10);
+    ASSERT_NE(block->solid(), nullptr);
+    std::string upright;
+    for (const auto& e : block->solid()->edges()) {
+        const auto* he = e.halfEdge;
+        if (he == nullptr || he->origin == nullptr || he->next == nullptr) continue;
+        const Vec3 p = he->origin->point;
+        const Vec3 q = he->next->origin->point;
+        if (p.x == 0.0 && p.y == 0.0 && q.x == 0.0 && q.y == 0.0) {
+            upright = hz::model::wholeEdgeName(e.topoId.tag());
+        }
+    }
+    ASSERT_FALSE(upright.empty());
+    const uint64_t base = place(asmDoc, withAxis, Vec3(0, 0, 0));
+    const uint64_t other = place(asmDoc, block, Vec3(30, 20, 0));
+
+    Mate line;
+    line.type = MateType::Coincident;
+    line.a = {base, hz::topo::TopologyID::fromTag(datum), hz::doc::ReferenceKind::Datum};
+    line.b = {other, hz::topo::TopologyID::fromTag(upright), hz::doc::ReferenceKind::Edge};
+    asmDoc.addMate(line);
+    std::string why;
+    const auto mates = AssemblyMates::gather(asmDoc, &why);
+    if (!mates) FAIL() << why;
+    const auto result = mates->solve();
+    ASSERT_EQ(result.status, hz::model::AssemblySolveStatus::Success) << result.message;
+    const Vec3 corner = result.transforms.at(other).transformPoint(Vec3(0, 0, 0));
+    EXPECT_NEAR(corner.x, 5.0, 1e-6) << "its upright edge on the axis";
+    EXPECT_NEAR(corner.y, 5.0, 1e-6);
 }

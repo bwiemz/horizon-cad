@@ -19,6 +19,23 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 17 (Phases 158–161, in progress)
 
+- **More to mate (160).**
+  - Add Mate takes clicked edges as well as faces, and lists each
+    component's straight and round edges and its part's datum planes, axes
+    and points.
+  - Spheres and cones can be mated.
+  - Mates relate the pairs that make sense: a point on a plane, a line in a
+    plane, collinear lines, concentric spheres. A pair a mate type doesn't
+    relate is refused, and the message says why.
+  - A Distance or Angle mate can be held between limits and is free within
+    them. Edit Mate changes the limits, and the tree shows them.
+  - An angle held at 0 or 180 degrees now solves.
+  - A frustum's ideal cone was wrong. Now it's right, so a frustum goes to
+    STEP as designed: 3 faces, not 34.
+  - A file with a mate type this build doesn't know leaves that mate out
+    and says so; it used to be read as Coincident.
+  - Files are saved as format version 24.
+
 - **Subassemblies (159).**
   - Insert Component takes an assembly: it's placed whole, and its faces
     can be mated.

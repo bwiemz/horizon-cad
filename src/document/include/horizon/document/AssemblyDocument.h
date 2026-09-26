@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,11 +63,20 @@ struct ComponentInstance {
 /// Defined in the modeling layer next to the solver that consumes them.
 using MateType = model::MateType;
 
-/// One side of a mate: a face on a placed component, referenced by
-/// TopologyID so the mate survives part rebuilds (genealogy resolution).
+/// What one side of a mate names on its component (Phase 160).
+enum class ReferenceKind {
+    Face,   ///< a face, by its (logical) name
+    Edge,   ///< an edge, by its whole name (model::wholeEdgeName)
+    Datum,  ///< a datum plane, axis or point of the part, by its feature id
+};
+
+/// One side of a mate: a face (or, Phase 160, an edge or a datum) on a
+/// placed component, referenced by name so the mate survives part rebuilds
+/// (genealogy resolution).
 struct MateReference {
     uint64_t componentId = 0;
-    topo::TopologyID faceId;
+    topo::TopologyID faceId;  ///< the name of what it refers to, of its kind
+    ReferenceKind kind = ReferenceKind::Face;
 };
 
 /// A mate constraint between two component faces.
@@ -76,6 +86,10 @@ struct Mate {
     MateReference a;
     MateReference b;     ///< Unused for Fixed.
     double value = 0.0;  ///< Distance (length) or Angle (radians).
+    /// Limits (Phase 160), for a Distance or an Angle mate: what it measures
+    /// kept between them, free within them (its value then not held).
+    std::optional<double> minimum;
+    std::optional<double> maximum;
 };
 
 /// Two placed components that share material.
