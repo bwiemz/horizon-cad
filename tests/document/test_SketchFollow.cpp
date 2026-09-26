@@ -13,8 +13,10 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 
@@ -68,6 +70,20 @@ struct BoxWithASketchOnTop {
         sketch->setName("On top");
         sketch->setFace(top);
         doc.addSketch(sketch);
+    }
+
+    /// The logical name of the box's top edge at x = @p x.
+    std::string topEdgeAtX(double x) const {
+        for (const auto& e : doc.solid()->edges()) {
+            const auto* he = e.halfEdge;
+            if (he == nullptr || he->origin == nullptr || he->next == nullptr) continue;
+            const Vec3& a = he->origin->point;
+            const Vec3& b = he->next->origin->point;
+            if (a.x == x && b.x == x && a.z == b.z && a.z > 1.0 && e.topoId.isValid()) {
+                return hz::model::wholeEdgeName(e.topoId.tag());
+            }
+        }
+        return {};
     }
 
     void setBoxDepth(double depth) {
@@ -197,4 +213,81 @@ TEST(SketchFollowTest, PlacedOnATurnedFaceTheSketchTurnsWithIt) {
 
     sketch.setPlane(SketchPlane());
     EXPECT_FALSE(sketch.placed().has_value()) << "drawn on a plane again, placed nowhere else";
+}
+
+// Construction geometry guides the drawing: a line across the profile is not
+// part of it (Phase 157b).
+TEST(SketchFollowTest, AConstructionLineIsNotPartOfTheProfile) {
+    Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    auto sketch = std::make_shared<Sketch>();
+    sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(0, 0), Vec2(2, 2)));
+    auto across = std::make_shared<hz::draft::DraftLine>(Vec2(-5, -5), Vec2(5, 5));
+    across->setConstruction(true);
+    sketch->addEntity(across);
+    doc.addSketch(sketch);
+    doc.featureTree().addFeature(
+        std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3::UnitZ, 1.0));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(doc), 4.0, 1e-9);
+
+    across->setConstruction(false);
+    doc.featureTree().markChanged();
+    EXPECT_FALSE(doc.rebuildModel()) << "a line that goes nowhere, in the profile";
+}
+
+// An edge of the part projected into a sketch follows the edge: a build
+// draws it again from the part, the same entity where the edge now is.
+TEST(SketchFollowTest, AProjectedEdgeFollowsThePart) {
+    BoxWithASketchOnTop part;
+    part.sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(-1, -1), Vec2(1, 1)));
+    const std::string edge = part.topEdgeAtX(10.0);
+    ASSERT_FALSE(edge.empty());
+    // Where Project Edges puts it: at x = 5 in the sketch, whose origin is
+    // the face's middle.
+    auto projected = std::make_shared<hz::draft::DraftLine>(Vec2(5, -5), Vec2(5, 5));
+    projected->setSourceEdge(edge);
+    projected->setConstruction(true);
+    part.sketch->addEntity(projected);
+    const uint64_t id = projected->id();
+    auto boss = std::make_unique<hz::doc::ExtrudeFeature>(part.sketch, Vec3::UnitZ, 5.0);
+    boss->setOperation(BodyOperation::Join);
+    part.doc.featureTree().addFeature(std::move(boss));
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+
+    ASSERT_TRUE(part.box->setParameter("width", 30.0));
+    part.doc.featureTree().markChanged();
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    std::shared_ptr<hz::draft::DraftEntity> now;
+    for (const auto& entity : part.sketch->entities()) {
+        if (entity->id() == id) now = entity;
+    }
+    const auto* line = dynamic_cast<const hz::draft::DraftLine*>(now.get());
+    ASSERT_NE(line, nullptr) << "the same entity, by id";
+    EXPECT_NEAR(line->start().x, 25.0, 1e-9) << "the edge is at x = 30, the sketch's middle at 5";
+    EXPECT_NEAR(line->end().x, 25.0, 1e-9);
+    EXPECT_TRUE(now->construction()) << "what it was, kept";
+    EXPECT_EQ(now->sourceEdge(), edge);
+    EXPECT_NEAR(volumeOf(part.doc), 3000.0 + 20.0, 1e-6) << "a guide: the part as it was";
+}
+
+// An edge that shapes the part (not construction) and is gone fails the
+// feature; one that is a guide stays where it was.
+TEST(SketchFollowTest, AProjectedEdgeThatIsGoneFailsTheFeatureOnlyIfItShapesThePart) {
+    BoxWithASketchOnTop part;
+    part.sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(-1, -1), Vec2(1, 1)));
+    auto guide = std::make_shared<hz::draft::DraftLine>(Vec2(5, -5), Vec2(5, 5));
+    guide->setSourceEdge("primitive_nosuch/edge");
+    guide->setConstruction(true);
+    part.sketch->addEntity(guide);
+    part.doc.featureTree().addFeature(
+        std::make_unique<hz::doc::ExtrudeFeature>(part.sketch, Vec3::UnitZ, 5.0));
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    EXPECT_NEAR(guide->start().x, 5.0, 1e-12) << "left where it was";
+
+    guide->setConstruction(false);
+    part.doc.featureTree().markChanged();
+    EXPECT_FALSE(part.doc.rebuildModel());
+    EXPECT_NE(part.doc.lastBuildMessage().find("primitive_nosuch/edge"), std::string::npos)
+        << part.doc.lastBuildMessage();
 }

@@ -67,6 +67,12 @@ int ParameterTable::registerEntity(const draft::DraftEntity& entity) {
 
     m_byId.emplace(ep.entityId, m_entityParams.size());
     m_entityParams.push_back(ep);
+    // An edge of the part projected (Phase 157) is where the part puts it:
+    // the solver moves what is tied to it, never it.
+    m_fixed.resize(static_cast<size_t>(m_values.size()), false);
+    if (!entity.sourceEdge().empty()) {
+        for (int k = 0; k < ep.paramCount; ++k) m_fixed[static_cast<size_t>(startIdx + k)] = true;
+    }
     return startIdx;
 }
 

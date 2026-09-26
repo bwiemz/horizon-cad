@@ -94,11 +94,7 @@ std::shared_ptr<DraftEntity> DraftBlockRef::clone() const {
     auto copy =
         std::make_shared<DraftBlockRef>(m_definition, m_insertPos, m_rotation, m_uniformScale);
     copy->setMirrored(m_mirrored);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

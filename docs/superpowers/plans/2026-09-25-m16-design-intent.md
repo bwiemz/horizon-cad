@@ -348,26 +348,52 @@ projected into a sketch (157b), and extrude up to a face (157c).
   keeps coordinates, not what it was made from), and there is no command
   yet to move a sketch to another face or stop it following.
 
-### 157b: part edges projected into a sketch (plan)
-- **Construction geometry.** `DraftEntity` gets a construction flag.
-  - It is saved, and drawn dashed and dim.
-  - `ProfileValidator` skips it, so it is never part of a profile.
-  - A command sets or clears the flag on the selected sketch entities, as
-    one undo step.
-- **Sketch ▸ Project Edges**, while a sketch is edited:
-  - The part's edges are listed. Picking is off in sketch mode, so edges
-    clicked before are checked.
-  - Each chosen logical edge is taken straight onto the sketch plane:
-    - a line for a straight edge;
-    - a circle or arc for a circular one whose plane is parallel to the
-      sketch;
-    - otherwise a polyline through its chords.
-  - They are construction by default, and keep the edge's name
-    (`sourceEdge`).
-- **They follow.** When a build places the sketch, each projected entity is
-  projected again from the same part. It keeps its id, so constraints on it
-  hold. An edge that is gone leaves the entity where it was, and says so.
-- The constraint solver holds projected entities fixed.
+### 157b: part edges projected into a sketch (as built)
+- **Construction geometry.** `DraftEntity` has `construction()`.
+  - It is saved as "construction", and drawn dashed and slate.
+  - `ProfileValidator` leaves it out of every profile, and Sweep leaves it
+    out of a path.
+  - A piece made from a construction entity (by Trim or Break) is
+    construction too.
+  - Every `clone()` now goes through `DraftEntity::copyInto`, so a copy
+    (and an undo snapshot) keeps it.
+  - Model ▸ Construction makes the selected sketch entities construction,
+    or, when all of them are already, part of the profile again. That is
+    one undo step (`ChangeEntityConstructionCommand`).
+- **`model::projectEdge(solid, edge, plane)`** (new, in modeling) draws a
+  logical edge straight onto a sketch plane. Its chords are taken end to
+  end, and it becomes:
+  - a line, for a straight edge, or a circle seen edge on;
+  - a circle or arc, for a round edge (one with an ideal curve) that lies
+    parallel to the plane. An arc runs counterclockwise from its start;
+  - otherwise a polyline, for example a circle at a slant.
+  - It returns nothing for an edge that "is not there", "is in pieces" (a
+    curve a Boolean cut in two) or "is seen end on".
+- **Edges are kept by their whole names** (`wholeEdgeName`): the logical
+  curve, without the `/piece:<n>` a later Boolean gives an edge. The
+  finished part's names can carry that suffix, and the part a sketch is
+  built against might not.
+- **Model ▸ Project Edges...**, while a sketch is edited, lists the part's
+  edges and draws those chosen into the sketch. They go in as construction
+  geometry or as part of the profile, and each keeps its edge
+  (`sourceEdge()`), drawn violet. The whole command is one undo step.
+- **They follow.** The build step that places a sketch
+  (`prepareSketches`) now also projects each of its edges again from the
+  same part, and the result replaces the entity with the same id.
+  - A sketch on a fixed plane is done too.
+  - An edge that is gone leaves construction geometry where it was. If the
+    geometry shapes the part, the feature fails and names the edge.
+  - `BuildResult::projections` carries the redrawn entities, so a worker's
+    build redraws the document's own.
+- **The constraint solver holds projected entities.**
+  - `ParameterTable` marks their parameters fixed, and the solver zeroes
+    their Jacobian columns, so what is tied to them moves to them and they
+    never move.
+  - They are counted neither as free nor in the degrees of freedom.
+- **Files:** version 21, because an older build would take a construction
+  line for part of a profile.
+- Not done: Move and grips can still drag a projected entity (the next
+  build puts it back), and there is no Offset Entities.
 
 ### 157c: extrude up to a face (plan)
 - **The data.** `ExtrudeFeature::Extent::UpToFace` and a face (by whole

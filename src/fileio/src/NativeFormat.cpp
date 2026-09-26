@@ -69,7 +69,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// build last put it on that face (Phase 157). An older build would leave
 /// the sketch on the plane it was drawn on, wherever the face has gone, and
 /// build a different part.
-static constexpr int kFormatVersion = 20;
+/// 21: an entity may carry "construction" and "sourceEdge" (Phase 157). An
+/// older build would take a construction line for part of a profile.
+static constexpr int kFormatVersion = 21;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -245,6 +247,9 @@ static json serializeEntity(const draft::DraftEntity& entity) {
     if (entity.groupId() != 0) {
         obj["groupId"] = entity.groupId();
     }
+    // Phase 157: construction geometry, and the part's edge it follows.
+    if (entity.construction()) obj["construction"] = true;
+    if (!entity.sourceEdge().empty()) obj["sourceEdge"] = entity.sourceEdge();
 
     if (auto* line = dynamic_cast<const draft::DraftLine*>(&entity)) {
         obj["type"] = "line";
@@ -696,7 +701,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         // and where a build last placed it there (Phase 157).
         skObj["plane"] = planeToJson(sketch->drawnPlane());
         if (!sketch->face().empty()) skObj["face"] = sketch->face();
-        if (sketch->placed()) skObj["placed"] = planeToJson(*sketch->placed());
+        if (const auto& placed = sketch->placed()) skObj["placed"] = planeToJson(*placed);
 
         json skEntities = json::array();
         for (const auto& entity : sketch->entities()) {
@@ -1091,6 +1096,12 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
         entity->setLineType(static_cast<int>(intField(obj, "lineType", 0, 0, kLastLineType)));
         uint64_t gid = obj.value("groupId", uint64_t(0));
         entity->setGroupId(gid);
+        if (const auto it = obj.find("construction"); it != obj.end() && it->is_boolean()) {
+            entity->setConstruction(it->get<bool>());
+        }
+        if (const auto it = obj.find("sourceEdge"); it != obj.end() && it->is_string()) {
+            entity->setSourceEdge(it->get<std::string>());
+        }
     }
 
     return entity;

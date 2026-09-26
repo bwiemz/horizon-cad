@@ -19,6 +19,7 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/LineType.h"
 #include "horizon/drafting/PlotScene.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec4.h"
@@ -36,7 +37,10 @@ constexpr int kMaxGrid = 32;
 
 constexpr uint32_t kSelectedColor = 0xFFFF9900;          // orange
 constexpr uint32_t kUnderConstrainedColor = 0xFF00CC00;  // green
-constexpr uint32_t kOverConstrainedColor = 0xFFFF0000;   // red
+// Construction geometry (Phase 157): dim, and dashed, so it reads as a guide.
+constexpr uint32_t kConstructionColor = 0xFF7F8FA6;     // slate
+constexpr uint32_t kProjectedColor = 0xFFB07CE0;        // violet: follows an edge of the part
+constexpr uint32_t kOverConstrainedColor = 0xFFFF0000;  // red
 
 void vertex(std::vector<float>& v, double x, double y, double along) {
     v.push_back(static_cast<float>(x));
@@ -220,6 +224,11 @@ void DrawingCache::build(const doc::Document& doc, const render::SelectionManage
 
         uint32_t color =
             entity.color() == 0x00000000 ? (s.layer ? s.layer->color : 0xFFFFFFFF) : entity.color();
+        if (!entity.sourceEdge().empty()) {
+            color = kProjectedColor;  // an edge of the part, projected
+        } else if (entity.construction()) {
+            color = kConstructionColor;
+        }
         if (selected) {
             color = kSelectedColor;
         } else if (const auto it = dof.entityStatus.find(entity.id());
@@ -233,7 +242,9 @@ void DrawingCache::build(const doc::Document& doc, const render::SelectionManage
                                 ? (s.layer ? static_cast<float>(s.layer->lineWidth) : 1.0f)
                                 : static_cast<float>(entity.lineWidth());
         const int lineType =
-            entity.lineType() == 0 ? (s.layer ? s.layer->lineType : 1) : entity.lineType();
+            entity.construction()
+                ? static_cast<int>(draft::LineType::Dashed)
+                : (entity.lineType() == 0 ? (s.layer ? s.layer->lineType : 1) : entity.lineType());
         const Pen pen{color, width, lineType};
         const auto lines = [&]() -> std::vector<float>& { return buckets.of(pen, chunk); };
 

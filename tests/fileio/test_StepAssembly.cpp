@@ -12,6 +12,7 @@
 #include <regex>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -354,8 +355,11 @@ TEST(StepAssemblyTest, AnAssemblyIsKeptAsPartFilesAndAnAssemblyFile) {
     ASSERT_EQ(files.parts.size(), 2u);
     EXPECT_EQ(fs::path(files.parts[0]).filename(), "Bracket_ left_right.hzpart");
     EXPECT_EQ(fs::path(files.parts[1]).filename(), "Pin 2.hzpart") << "Pin.hzpart was there";
-    std::ifstream kept(partsDir / "Pin.hzpart");
-    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(kept), {}), "someone else's");
+    {
+        // Closed before the folder is removed: Windows keeps an open file.
+        std::ifstream kept(partsDir / "Pin.hzpart");
+        EXPECT_EQ(std::string(std::istreambuf_iterator<char>(kept), {}), "someone else's");
+    }
 
     hz::doc::AssemblyDocument assembly;
     ASSERT_TRUE(hz::io::NativeFormat::loadAssembly(assemblyPath.string(), assembly, &error))
@@ -377,7 +381,10 @@ TEST(StepAssemblyTest, AnAssemblyIsKeptAsPartFilesAndAnAssemblyFile) {
               nullptr);
     ASSERT_NE(bracket.solid(), nullptr);
     EXPECT_NEAR(volumeOf(*bracket.solid()), volumeOf(*rig.bracket), 1e-6);
-    fs::remove_all(dir);
+    // Not a failure if it cannot be removed yet: a scanner may hold a file
+    // just written, on Windows.
+    std::error_code ec;
+    fs::remove_all(dir, ec);
 }
 
 // Half a UTF-16 pair, or one on its own, is the replacement character, not

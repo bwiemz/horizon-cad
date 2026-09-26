@@ -116,11 +116,7 @@ std::shared_ptr<DraftEntity> DraftText::clone() const {
     auto copy = std::make_shared<DraftText>(m_position, m_text, m_textHeight);
     copy->setRotation(m_rotation);
     copy->setAlignment(m_alignment);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

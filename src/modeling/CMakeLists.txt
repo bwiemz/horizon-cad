@@ -15,6 +15,7 @@ add_library(hz_modeling STATIC
     src/ChamferOp.cpp
     src/MateGeometry.cpp
     src/FacePlane.cpp
+    src/EdgeProjection.cpp
     src/AssemblySolver.cpp
     src/RingStack.cpp
     src/Loft.cpp

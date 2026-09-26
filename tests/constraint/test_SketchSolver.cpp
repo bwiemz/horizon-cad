@@ -175,3 +175,38 @@ TEST(SketchSolver, OverConstrainedDetection) {
                 result.status == cstr::SolveStatus::Inconsistent ||
                 result.status == cstr::SolveStatus::FailedToConverge);
 }
+
+// Phase 157: an edge of the part projected into the sketch is where the part
+// puts it. What is tied to it moves to it; it never moves, and is not free.
+TEST(SketchSolver, AProjectedEdgeIsHeldWhereThePartPutsIt) {
+    draft::DraftDocument doc;
+    auto edge = std::make_shared<draft::DraftLine>(math::Vec2{0, 0}, math::Vec2{10, 0});
+    edge->setSourceEdge("extrude_1/edge:cap_top|side:e2");
+    auto line = std::make_shared<draft::DraftLine>(math::Vec2{3, 4}, math::Vec2{6, 8});
+    doc.addEntity(edge);
+    doc.addEntity(line);
+
+    cstr::ConstraintSystem sys;
+    sys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(
+        cstr::GeometryRef{edge->id(), cstr::FeatureType::Point, 1},
+        cstr::GeometryRef{line->id(), cstr::FeatureType::Point, 0}));
+
+    auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+    EXPECT_EQ(params.fixedCount(), 4) << "the edge's two ends";
+    cstr::SketchSolver solver;
+    const auto result = solver.solve(params, sys);
+    ASSERT_TRUE(result.status == cstr::SolveStatus::Success ||
+                result.status == cstr::SolveStatus::UnderConstrained)
+        << result.message;
+    params.applyToEntities(doc.entities());
+    EXPECT_NEAR(edge->end().x, 10.0, 1e-9) << "held";
+    EXPECT_NEAR(edge->end().y, 0.0, 1e-9);
+    EXPECT_NEAR(line->start().x, 10.0, 1e-6) << "the line's end moved to the edge's";
+    EXPECT_NEAR(line->start().y, 0.0, 1e-6);
+    EXPECT_EQ(result.degreesOfFreedom, 2) << "the line's other end; none of the edge";
+
+    const auto dof = solver.analyzeDOF(params, sys);
+    EXPECT_EQ(dof.totalDOF, 2);
+    EXPECT_EQ(dof.entityStatus.at(edge->id()), cstr::EntityDOFStatus::FullyConstrained);
+    EXPECT_EQ(dof.entityStatus.at(line->id()), cstr::EntityDOFStatus::Free);
+}

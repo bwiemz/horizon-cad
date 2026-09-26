@@ -108,11 +108,7 @@ void DraftLeader::translate(const math::Vec2& delta) {
 
 std::shared_ptr<DraftEntity> DraftLeader::clone() const {
     auto copy = std::make_shared<DraftLeader>(m_points, m_text);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     copy->setTextOverride(m_textOverride);
     return copy;
 }

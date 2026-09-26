@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -11,9 +12,11 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/FacePlane.h"
 
 using hz::doc::Document;
@@ -63,7 +66,7 @@ TEST(SketchFollowIOTest, TheFaceTheDrawnPlaneAndThePlacementAreKept) {
 
     const std::string text = NativeFormat::documentToJson(part.doc, false);
     const auto root = nlohmann::json::parse(text);
-    EXPECT_EQ(root.at("version").get<int>(), 20) << "an older build would not follow the face";
+    EXPECT_GE(root.at("version").get<int>(), 20) << "an older build would not follow the face";
 
     Document loaded;
     ASSERT_TRUE(NativeFormat::documentFromJson(text, loaded));
@@ -100,4 +103,57 @@ TEST(SketchFollowIOTest, ABuildOfACopyPlacesTheDocumentsSketch) {
     EXPECT_NEAR(part.sketch->plane().origin().z, 10.0, 1e-12) << "not built here yet";
     EXPECT_TRUE(part.doc.applyBuild(std::move(result)));
     EXPECT_NEAR(part.sketch->plane().origin().z, 20.0, 1e-12) << "placed where the copy's was";
+}
+
+// Phase 157b: construction geometry, and an edge projected with the edge it
+// follows, are kept; a build of a copy draws the document's projected edge
+// again where the part now puts it.
+TEST(SketchFollowIOTest, AProjectedEdgeIsKeptAndDrawnAgainFromACopy) {
+    BossOnABox part;
+    auto guide = std::make_shared<hz::draft::DraftLine>(Vec2(5, -5), Vec2(5, 5));
+    std::string edge;
+    for (const auto& e : part.doc.solid()->edges()) {
+        const auto* he = e.halfEdge;
+        if (he == nullptr || he->origin == nullptr || he->next == nullptr) continue;
+        const Vec3& a = he->origin->point;
+        const Vec3& b = he->next->origin->point;
+        if (a.x == 10.0 && b.x == 10.0 && a.z == 10.0 && b.z == 10.0) {
+            edge = hz::model::wholeEdgeName(e.topoId.tag());
+        }
+    }
+    ASSERT_FALSE(edge.empty());
+    guide->setSourceEdge(edge);
+    guide->setConstruction(true);
+    part.sketch->addEntity(guide);
+
+    const std::string text = NativeFormat::documentToJson(part.doc, false);
+    EXPECT_EQ(nlohmann::json::parse(text).at("version").get<int>(), 21)
+        << "an older build would take the guide for part of the profile";
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, loaded));
+    const auto& entities = loaded.sketches().front()->entities();
+    const auto kept = std::find_if(entities.begin(), entities.end(),
+                                   [&](const auto& e) { return e->id() == guide->id(); });
+    ASSERT_NE(kept, entities.end());
+    EXPECT_TRUE((*kept)->construction());
+    EXPECT_EQ((*kept)->sourceEdge(), edge);
+
+    // Wider, built from a copy, as a worker builds.
+    ASSERT_TRUE(part.box->setParameter("width", 30.0));
+    part.doc.featureTree().markChanged();
+    Document copy;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(part.doc, false), copy));
+    hz::doc::BuildResult result = copy.buildWithDiagnostics();
+    ASSERT_EQ(result.failedFeatureIndex, -1) << result.failureMessage;
+    EXPECT_TRUE(part.doc.applyBuild(std::move(result)));
+    const auto& now = part.sketch->entities();
+    const auto drawn =
+        std::find_if(now.begin(), now.end(), [&](const auto& e) { return e->id() == guide->id(); });
+    ASSERT_NE(drawn, now.end());
+    const auto* line = dynamic_cast<const hz::draft::DraftLine*>(drawn->get());
+    ASSERT_NE(line, nullptr);
+    EXPECT_NEAR(line->start().x, 25.0, 1e-9) << "the document's own, drawn again";
+    EXPECT_FALSE(part.sketch->spatialIndex().query(line->boundingBox()).empty())
+        << "and found where it now is";
 }

@@ -19,6 +19,18 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 16 (Phases 154–157, in progress)
 
+- **Part edges projected into a sketch; construction geometry (157, part 2).**
+  - Model ▸ Project Edges draws the part's chosen edges into the sketch
+    being edited: a line, a circle or arc when seen square on, otherwise a
+    polyline.
+  - Each follows its edge: when the part changes, it is drawn again where
+    the edge now is. The constraint solver never moves it, so lines tied
+    to it move to it.
+  - Model ▸ Construction makes the selected sketch entities construction
+    geometry, drawn dashed and never part of a profile, or makes them part
+    of the profile again.
+  - Files are saved as format version 21.
+
 - **Sketches that follow their face (157, part 1).**
   - A sketch made with Sketch on a Face now follows that face when the part
     changes. Make the box taller, and the sketch on its top, with the boss

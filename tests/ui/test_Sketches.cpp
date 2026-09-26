@@ -19,11 +19,13 @@
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
@@ -274,6 +276,101 @@ TEST(SketchesTest, ASketchFollowsItsFaceWhenThePartIsBuiltOnAWorker) {
     EXPECT_NEAR(boundsOf(*doc.solid()).hi.z, 23.0, 1e-9);
     EXPECT_TRUE(near(sketch->plane().origin(), Vec3(5, 5, 20)))
         << "the part's own sketch, not only the worker's copy: z = " << sketch->plane().origin().z;
+}
+
+// Phase 157b: an edge of the part projected into a sketch, as construction
+// geometry, is drawn again where the edge is when the part changes; the
+// Construction command makes it part of the profile, and back.
+TEST(SketchesTest, AnEdgeProjectedIntoASketchFollowsThePart) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    run(w, "action_sketch_face", QStringLiteral("Sketch on a Face"),
+        FormAnswers().chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)")));
+    const auto sketch = doc.editedSketch();
+    ASSERT_NE(sketch, nullptr);
+    // The top's edge at x = 10, listed from either end.
+    run(w, "action_project_edges", QStringLiteral("Project Edges"),
+        FormAnswers()
+            .check(QStringLiteral("edges"), {QStringLiteral("(10, 0, 10) – (10, 10, 10)"),
+                                             QStringLiteral("(10, 10, 10) – (10, 0, 10)")})
+            .choose(QStringLiteral("kind"), QStringLiteral("Construction geometry")));
+    ASSERT_EQ(sketch->entities().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    const auto projected = sketch->entities().front();
+    EXPECT_TRUE(projected->construction());
+    EXPECT_FALSE(projected->sourceEdge().empty());
+    const auto* line = dynamic_cast<const hz::draft::DraftLine*>(projected.get());
+    ASSERT_NE(line, nullptr);
+    EXPECT_NEAR(line->start().x, 5.0, 1e-9) << "x = 10 is 5 from the face's middle";
+    const uint64_t id = projected->id();
+
+    // Construction, and back: each one undo step.
+    drive.viewport().selectionManager().clearSelection();
+    drive.viewport().selectionManager().select(id);
+    trigger(w, "action_construction");
+    EXPECT_FALSE(sketch->drawing().sharedEntity(id)->construction());
+    trigger(w, "action_undo");
+    EXPECT_TRUE(sketch->drawing().sharedEntity(id)->construction());
+    drive.viewport().selectionManager().clearSelection();
+
+    circle(drive, w, Vec2(0, 0), 2.0);
+    run(w, "action_extrude", QStringLiteral("Extrude"),
+        FormAnswers().number(QStringLiteral("size"), 3.0).combine(hz::doc::BodyOperation::Join));
+    ASSERT_NEAR(boundsOf(*doc.solid()).hi.z, 13.0, 1e-9)
+        << "the guide is not part of the profile: "
+        << w.statusBar()->currentMessage().toStdString();
+    {
+        FormFiller edit(QStringLiteral("Edit Box"),
+                        FormAnswers().number(QStringLiteral("width"), 30.0));
+        auto* tree = w.findChild<hz::ui::FeatureTreePanel*>()->findChild<QTreeWidget*>();
+        tree->setCurrentItem(tree->topLevelItem(0));
+        trigger(w, "editFeature");
+        ASSERT_TRUE(edit.seen());
+    }
+    const auto now = sketch->drawing().sharedEntity(id);
+    const auto* moved = dynamic_cast<const hz::draft::DraftLine*>(now.get());
+    ASSERT_NE(moved, nullptr);
+    EXPECT_NEAR(moved->start().x, 25.0, 1e-9) << "the edge at x = 30 now";
+}
+
+// A straight edge a groove cuts in two is one edge to project: its pieces,
+// listed apart where a fillet picks them, are one row here, the name it is
+// kept by.
+TEST(SketchesTest, AnEdgeInPiecesIsProjectedAsOne) {
+    MainWindow w;
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    // A groove across the top, front to back: the top's front edge in two.
+    auto groove = std::make_shared<hz::doc::Sketch>(
+        hz::draft::SketchPlane(Vec3(0, 0, 5), Vec3::UnitZ, Vec3::UnitX));
+    groove->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(4, -1), Vec2(6, 11)));
+    doc.addSketch(groove);
+    auto cut = std::make_unique<hz::doc::ExtrudeFeature>(groove, Vec3::UnitZ, 10.0);
+    cut->setOperation(hz::doc::BodyOperation::Cut);
+    doc.featureTree().addFeature(std::move(cut));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+
+    trigger(w, "action_sketch_xy");
+    FormFiller project(QStringLiteral("Project Edges"), FormAnswers().reject());
+    trigger(w, "action_project_edges");
+    ASSERT_TRUE(project.seen());
+    int pieces = 0;
+    for (const QString& row : project.offered(QStringLiteral("edges"))) {
+        for (const auto* piece : {"(0, 0, 10) – (4, 0, 10)", "(4, 0, 10) – (0, 0, 10)",
+                                  "(6, 0, 10) – (10, 0, 10)", "(10, 0, 10) – (6, 0, 10)"}) {
+            if (row == QString::fromUtf8(piece)) ++pieces;
+        }
+    }
+    EXPECT_EQ(pieces, 1) << "one row for the edge, not one for each piece";
 }
 
 // Undoing the new sketch takes it away, and the window leaves it.

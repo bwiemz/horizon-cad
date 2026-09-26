@@ -242,6 +242,12 @@ private slots:
     void onNewSketchOnDatum();
     void onEditSketch();
     void onFinishSketch();
+    /// Sketch: the part's edges chosen drawn straight onto the sketch edited
+    /// (Phase 157), each following its edge when the part changes.
+    void onProjectEdges();
+    /// Sketch: the selected entities made construction geometry, or, when
+    /// all of them are, made geometry of the profile again (Phase 157).
+    void onToggleConstruction();
 
     // Loft, Sweep and datums (Phase 133).
     void onLoft();
@@ -546,6 +552,8 @@ private:
     FeatureTreePanel* m_featureTreePanel = nullptr;
     AssemblyTreePanel* m_assemblyTreePanel = nullptr;  ///< tabbed with the feature tree
     QAction* m_finishSketchAction = nullptr;
+    QAction* m_projectEdgesAction = nullptr;  ///< only while a sketch is edited
+    QAction* m_constructionAction = nullptr;  ///< only while a sketch is edited
     QMenu* m_modelMenu = nullptr;
     QMenu* m_viewMenu = nullptr;
     QAction* m_viewFitAllPlaceholder = nullptr;

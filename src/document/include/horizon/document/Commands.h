@@ -251,6 +251,23 @@ private:
     std::vector<std::pair<uint64_t, int>> m_oldLineTypes;
 };
 
+/// Command to make one or more entities construction geometry, or not
+/// (Phase 157): a guide, never part of a profile.
+class ChangeEntityConstructionCommand : public Command {
+public:
+    ChangeEntityConstructionCommand(draft::DraftDocument& doc,
+                                    const std::vector<uint64_t>& entityIds, bool construction);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+private:
+    draft::DraftDocument& m_doc;
+    std::vector<uint64_t> m_entityIds;
+    bool m_construction;
+    std::vector<std::pair<uint64_t, bool>> m_old;
+};
+
 /// Command to change the text override of a dimension entity.
 class ChangeTextOverrideCommand : public Command {
 public:
@@ -725,8 +742,12 @@ private:
     std::vector<std::pair<uint64_t, uint64_t>> m_savedGroupIds;
 };
 
-/// Remap groupIds on cloned entities so each original group maps to a fresh group.
-void remapCloneGroupIds(draft::DraftDocument& doc,
-                        std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
+/// Make @p clones entities of their own in @p doc (copies made by Duplicate,
+/// Mirror, Paste, an array): each original group mapped to a fresh group,
+/// and none following the part's edge its original was projected from
+/// (Phase 157), since a copy is not that edge's projection, and the next
+/// build would draw it back onto the original.
+void adoptClones(draft::DraftDocument& doc,
+                 std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
 
 }  // namespace hz::doc

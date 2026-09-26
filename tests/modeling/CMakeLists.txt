@@ -14,6 +14,7 @@ add_executable(hz_modeling_tests
     test_ChamferOp.cpp
     test_MateGeometry.cpp
     test_FacePlane.cpp
+    test_EdgeProjection.cpp
     test_AssemblySolver.cpp
     test_Loft.cpp
     test_Sweep.cpp

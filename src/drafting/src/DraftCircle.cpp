@@ -52,11 +52,7 @@ static math::Vec2 mirrorPoint(const math::Vec2& p, const math::Vec2& axisP1,
 
 std::shared_ptr<DraftEntity> DraftCircle::clone() const {
     auto copy = std::make_shared<DraftCircle>(m_center, m_radius);
-    copy->setLayer(layer());
-    copy->setColor(color());
-    copy->setLineWidth(lineWidth());
-    copy->setLineType(lineType());
-    copy->setGroupId(groupId());
+    copyInto(*copy);
     return copy;
 }
 

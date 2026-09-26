@@ -29,8 +29,9 @@ double outwardSign(const topo::Solid& solid);
 std::optional<FacePlane> planeOf(const topo::Face& face, double outward);
 
 /// A face's name as what refers to it keeps it: without the `/piece:<n>` a
-/// Boolean gives each piece of a face it splits, so it names the face whole,
-/// split or not, and the face again once nothing splits it.
+/// Boolean gives each piece of a face it splits (or an edge it keeps: see
+/// wholeEdgeName()), so it names the face whole, split or not, and the face
+/// again once nothing splits it.
 std::string wholeFaceName(const std::string& tag);
 
 /// The plane of the flat face named @p name in @p solid, a name as

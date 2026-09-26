@@ -62,7 +62,8 @@ static const char* kindOf(const draft::DraftEntity& entity) {
 }
 
 /// Rectangles and polylines as the line segments they are drawn with; every
-/// other entity as itself.
+/// other entity as itself, but construction geometry (Phase 157), which is
+/// left out.
 /// The curves a profile is made of, each with the name of where it came from:
 /// "e<id>" for a sketch entity used as it is, "e<id>.<k>" for side k of a
 /// rectangle or polyline (which is read as its line segments, made anew each
@@ -77,6 +78,8 @@ static Curves asCurves(const std::vector<std::shared_ptr<draft::DraftEntity>>& e
     out.curves.reserve(entities.size());
     out.sources.reserve(entities.size());
     for (const auto& entity : entities) {
+        // Construction geometry guides the drawing; it is never the shape.
+        if (!entity || entity->construction()) continue;
         const std::string name = "e" + std::to_string(entity->id());
         int side = 0;
         const auto addSegment = [&](const Vec2& a, const Vec2& b) {
@@ -370,7 +373,7 @@ ProfileRegions ProfileValidator::regions(
     ProfileRegions result;
     std::vector<std::shared_ptr<draft::DraftEntity>> shape;
     for (const auto& entity : input) {
-        if (entity && !isAnnotation(*entity)) shape.push_back(entity);
+        if (entity && !isAnnotation(*entity) && !entity->construction()) shape.push_back(entity);
     }
     if (shape.empty()) {
         result.errorMessage = "the profile is empty";
