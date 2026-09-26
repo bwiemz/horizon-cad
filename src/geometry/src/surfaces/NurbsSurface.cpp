@@ -638,6 +638,19 @@ std::vector<double> clampedKnots(int n, int degree) {
 // makePlane — bilinear 2x2 surface
 // ---------------------------------------------------------------------------
 
+NurbsSurface NurbsSurface::reversedU() const {
+    auto cps = controlPoints();
+    auto wts = weights();
+    std::reverse(cps.begin(), cps.end());
+    std::reverse(wts.begin(), wts.end());
+    const auto& k = knotsU();
+    const double lo = k.front();
+    const double hi = k.back();
+    std::vector<double> rk(k.rbegin(), k.rend());
+    for (double& v : rk) v = lo + hi - v;
+    return {std::move(cps), std::move(wts), std::move(rk), knotsV(), degreeU(), degreeV()};
+}
+
 NurbsSurface NurbsSurface::makePlane(const math::Vec3& origin, const math::Vec3& uDir,
                                      const math::Vec3& vDir, double uSize, double vSize) {
     const math::Vec3 p00 = origin;

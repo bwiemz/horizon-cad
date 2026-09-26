@@ -20,6 +20,9 @@ struct Mat4 {
     static Mat4 rotationZ(double angleRad);
     static Mat4 scale(const Vec3& s);
     static Mat4 scale(double s);
+    /// The mirror image in the plane through @p point facing @p normal (any
+    /// length, not zero): I - 2nn^T about it. Its determinant is -1.
+    static Mat4 reflection(const Vec3& point, const Vec3& normal);
     static Mat4 lookAt(const Vec3& eye, const Vec3& target, const Vec3& up);
     static Mat4 perspective(double fovY, double aspect, double nearPlane, double farPlane);
     static Mat4 ortho(double left, double right, double bottom, double top, double nearPlane,
@@ -30,6 +33,10 @@ struct Mat4 {
     Vec3 transformPoint(const Vec3& p) const;
     Vec3 transformDirection(const Vec3& d) const;
     Mat4 inverse() const;
+    /// The determinant of the upper 3 x 3: negative for a transform that
+    /// mirrors, which turns a solid's faces inside out unless they are
+    /// reversed with it.
+    double determinant3() const;
     Mat4 transposed() const;
 
     double& at(int row, int col) { return m[row][col]; }

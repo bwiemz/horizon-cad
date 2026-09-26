@@ -626,6 +626,63 @@ private:
     static math::IdCounter<int> s_nextID;
 };
 
+/// Mirror feature (Phase 162): the part, or what some features add or cut,
+/// mirrored in a plane and joined to it as each joins. The plane is a point
+/// and a normal, or a flat face of the part followed by its whole name, as a
+/// sketch on a face is. A mirror image faces out as the original does
+/// (model::Pattern::transformed reverses it), so it joins as any body does.
+class MirrorFeature : public Feature {
+public:
+    /// About the plane through @p planePoint facing @p planeNormal.
+    static std::unique_ptr<MirrorFeature> make(const math::Vec3& planePoint,
+                                               const math::Vec3& planeNormal);
+
+    std::string name() const override { return "Mirror"; }
+    std::string featureID() const override { return m_featureID; }
+    void restoreFeatureID(const std::string& id) override;
+    /// The whole part, about its point and normal (no face: that needs the
+    /// part it is on, which executeIn has).
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
+    /// With targets, each one's own body mirrored and combined as it
+    /// combines; with none, the whole part, joined to its image.
+    std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
+                                           std::unique_ptr<topo::Solid> inputSolid,
+                                           std::string* reason = nullptr) const override;
+    /// "planePoint" and "planeNormal".
+    std::map<std::string, math::Vec3> vectors() const override;
+    bool setVector(const std::string& name, const math::Vec3& value) override;
+    /// "planeFace": the flat face mirrored in, by its whole name; empty for
+    /// the plane its point and normal give.
+    std::map<std::string, std::string> references() const override {
+        return {{"planeFace", m_face}};
+    }
+    bool setReference(const std::string& name, const std::string& value) override;
+
+    const std::vector<std::string>& targets() const { return m_targets; }
+    /// Each feature is mirrored once, however often it is listed.
+    void setTargets(std::vector<std::string> targets);
+    const math::Vec3& planePoint() const { return m_point; }
+    const math::Vec3& planeNormal() const { return m_normal; }
+    const std::string& planeFace() const { return m_face; }
+    /// The mirror for @p part: in its face, when it has one (none, and why,
+    /// for a face gone or no longer flat), else in its point and normal.
+    std::optional<math::Mat4> mirrorIn(const topo::Solid& part, std::string* why) const;
+
+private:
+    MirrorFeature() = default;
+    /// @p image's faces and edges named as this mirror's image.
+    void nameImage(topo::Solid& image) const;
+
+    std::vector<std::string> m_targets;
+    math::Vec3 m_point;
+    math::Vec3 m_normal = math::Vec3::UnitX;
+    std::string m_face;
+    std::string m_featureID;
+
+    static math::IdCounter<int> s_nextID;
+};
+
 /// Primitive feature: creates a solid primitive (box, cylinder, sphere, cone,
 /// torus). A base feature — it ignores the input solid — so toolbar primitives
 /// become parametric, editable tree features that persist and rebuild instead

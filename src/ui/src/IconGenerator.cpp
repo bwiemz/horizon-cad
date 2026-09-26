@@ -178,6 +178,7 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         // 3D — pattern
         {"pattern-linear", drawPatternLinear},
         {"pattern-circular", drawPatternCircular},
+        {"mirror-3d", drawMirror3d},
     };
 
     const int s = size > 0 ? size : kRenderSize;
@@ -1671,6 +1672,22 @@ QIcon IconGenerator::drawPatternLinear(int s) {
     p.drawLine(QPointF(3, 18.5), QPointF(21, 18.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 16.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 20.5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawMirror3d(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A block and its image across a plane.
+    p.setPen(dashedPen(kSecondary, 1.0));
+    p.drawLine(QPointF(12, 2), QPointF(12, 22));
+    p.setBrush(Qt::NoBrush);
+    p.setPen(primaryPen(1.6));
+    p.drawPolygon(QPolygonF({QPointF(3, 8), QPointF(9, 8), QPointF(9, 18), QPointF(3, 15)}));
+    p.setPen(secondaryPen(1.4));
+    p.drawPolygon(QPolygonF({QPointF(21, 8), QPointF(15, 8), QPointF(15, 18), QPointF(21, 15)}));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

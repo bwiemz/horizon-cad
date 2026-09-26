@@ -298,6 +298,9 @@ QString parameterLabel(const std::string& name) {
         {"axisDirection", QT_TRANSLATE_NOOP("MainWindow", "Axis direction")},
         {"pullDirection", QT_TRANSLATE_NOOP("MainWindow", "Pull direction")},
         {"neutralPoint", QT_TRANSLATE_NOOP("MainWindow", "Neutral plane through")},
+        {"planePoint", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane through")},
+        {"planeNormal", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane facing")},
+        {"planeFace", QT_TRANSLATE_NOOP("MainWindow", "Mirror in the face")},
     };
     const auto it = labels.find(name);
     return it != labels.end() ? MainWindow::tr(it->second) : QString::fromStdString(name);
@@ -1147,6 +1150,7 @@ void MainWindow::createRibbonBar() {
     g = group(tr("3D"), tr("Pattern"));
     addAction(g, "pattern-linear", tr("Linear"), this, &MainWindow::onLinearPattern);
     addAction(g, "pattern-circular", tr("Circular"), this, &MainWindow::onCircularPattern);
+    addAction(g, "mirror-3d", tr("Mirror"), this, &MainWindow::onMirror);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
     auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);
@@ -4135,7 +4139,7 @@ void MainWindow::completeMenusFromRibbon() {
         {"action_extrude", "action_revolve"},
         {"action_boolean-union", "action_boolean-subtract", "action_boolean-intersect"},
         {"action_fillet-3d", "action_chamfer-3d", "action_shell", "action_draft"},
-        {"action_pattern-linear", "action_pattern-circular"},
+        {"action_pattern-linear", "action_pattern-circular", "action_mirror-3d"},
     };
     for (const auto& group : groups) {
         for (const char* name : group) {
@@ -4868,17 +4872,19 @@ std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree
     return out;
 }
 
-/// A checklist of @p features for a pattern to repeat; the ids of those
-/// checked are read with checkedTargets().
-QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features) {
+/// A checklist of @p features for a pattern to repeat (or a mirror to
+/// mirror, said by @p label); the ids of those checked are read with
+/// checkedTargets().
+QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features,
+                        const QString& label = MainWindow::tr("Repeat only (none: the whole "
+                                                              "part):")) {
     std::vector<std::pair<QString, QString>> items;
     items.reserve(features.size());
     for (const doc::Feature* feature : features) {
         items.emplace_back(QString::fromStdString(feature->name()),
                            QString::fromStdString(feature->featureID()));
     }
-    return form.checklist(QStringLiteral("features"),
-                          MainWindow::tr("Repeat only (none: the whole part):"), items);
+    return form.checklist(QStringLiteral("features"), label, items);
 }
 
 std::vector<std::string> checkedTargets(const QListWidget* list,
@@ -4935,6 +4941,56 @@ void MainWindow::onCircularPattern() {
                                                      step * std::numbers::pi / 180.0, n);
     pattern->setTargets(checkedTargets(targets, repeatable));
     addModelFeature(std::move(pattern), verb);
+}
+
+void MainWindow::onMirror() {
+    const QString verb = tr("Mirror");
+    if (!requireBody(verb)) return;
+    const topo::Solid& part = *m_document->solid();
+
+    // In a base plane through the origin, or a flat face of the part (the
+    // first clicked, at first), followed by its name.
+    struct Plane {
+        QString text;
+        math::Vec3 point;
+        math::Vec3 normal;
+        std::string face;  ///< its whole name; empty for a base plane
+    };
+    std::vector<Plane> planes = {
+        {tr("YZ plane (x = 0)"), math::Vec3::Zero, math::Vec3::UnitX, {}},
+        {tr("ZX plane (y = 0)"), math::Vec3::Zero, math::Vec3::UnitY, {}},
+        {tr("XY plane (z = 0)"), math::Vec3::Zero, math::Vec3::UnitZ, {}},
+    };
+    std::set<std::string> listed;
+    for (const auto& choice : planarFacesOf(part)) {
+        const std::string whole = model::wholeFaceName(choice.tag);
+        if (!listed.insert(whole).second) continue;
+        planes.push_back({tr("the face %1").arg(choice.text), choice.plane.origin(),
+                          choice.plane.normal(), whole});
+    }
+    int chosen = 0;
+    for (const auto& pick : m_viewport->modelSelection()) {
+        if (pick.edge || pick.tag.empty()) continue;
+        const std::string whole = model::wholeFaceName(pick.tag);
+        for (size_t i = 0; i < planes.size() && chosen == 0; ++i) {
+            if (planes[i].face == whole) chosen = static_cast<int>(i);
+        }
+    }
+    QStringList names;
+    for (const auto& plane : planes) names << plane.text;
+
+    FeatureForm form(this, verb, m_document->lengthUnit());
+    auto* which = form.choice(QStringLiteral("plane"), tr("In:"), names);
+    which->setCurrentIndex(chosen);
+    const auto mirrorable = repeatableFeatures(m_document->featureTree());
+    auto* targets = targetList(form, mirrorable, tr("Mirror only (none: the whole part):"));
+    if (!form.exec()) return;
+
+    const Plane& plane = planes.at(static_cast<size_t>(std::max(which->currentIndex(), 0)));
+    auto mirror = doc::MirrorFeature::make(plane.point, plane.normal);
+    if (!plane.face.empty()) mirror->setReference("planeFace", plane.face);
+    mirror->setTargets(checkedTargets(targets, mirrorable));
+    addModelFeature(std::move(mirror), verb);
 }
 
 // ---------------------------------------------------------------------------

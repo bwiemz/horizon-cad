@@ -21,6 +21,7 @@
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 
 using hz::doc::AddFeatureCommand;
@@ -582,4 +583,73 @@ TEST(ModelCommandsTest, APrimitiveStandsWhereItIsPut) {
     double loZ = 1e9;
     for (const auto& v : down.solid()->vertices()) loZ = std::min(loZ, v.point.z);
     EXPECT_NEAR(loZ, -5.0, 1e-9);
+}
+
+namespace {
+
+/// The whole name of @p doc's face facing +X.
+std::string faceFacingX(Document& doc) {
+    EXPECT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    const double outward = hz::model::outwardSign(*doc.solid());
+    for (const auto& face : doc.solid()->faces()) {
+        const auto plane = hz::model::planeOf(face, outward);
+        if (plane && plane->normal.x > 0.99) return hz::model::wholeFaceName(face.topoId.tag());
+    }
+    ADD_FAILURE() << "no face facing +X";
+    return {};
+}
+
+}  // namespace
+
+// Phase 162: the whole part mirrored in one of its own faces is one solid,
+// twice its size; the face is followed, so the part made wider is still
+// joined to its image. In a plane clear of it, the image is a second body.
+TEST(ModelCommandsTest, AMirrorOfThePartJoinsItsImage) {
+    BoxPart part;
+    auto mirror = hz::doc::MirrorFeature::make(Vec3(), Vec3(1, 0, 0));
+    mirror->setReference("planeFace", faceFacingX(part.doc));
+    add(part.doc, std::move(mirror));
+    EXPECT_NEAR(volume(part.doc), 2000.0, 1e-6);
+    EXPECT_EQ(part.doc.solid()->shellCount(), 1u) << "one solid where they meet";
+    ASSERT_TRUE(part.doc.featureTree().feature(0)->setParameter("width", 15.0));
+    EXPECT_NEAR(volume(part.doc), 3000.0, 1e-6) << "the face followed";
+    EXPECT_EQ(part.doc.solid()->shellCount(), 1u);
+
+    BoxPart apart;
+    add(apart.doc, hz::doc::MirrorFeature::make(Vec3(30, 0, 0), Vec3(1, 0, 0)));
+    EXPECT_NEAR(volume(apart.doc), 2000.0, 1e-6);
+    EXPECT_EQ(apart.doc.solid()->shellCount(), 2u) << "two bodies";
+}
+
+// A mirror of a feature mirrors only what it adds or cuts: a hole by one
+// side, its image by the other, named apart. A face that is gone says so.
+TEST(ModelCommandsTest, AMirrorOfAFeatureMirrorsOnlyIt) {
+    BoxPart part;
+    auto hole = std::make_unique<ExtrudeFeature>(squareAt(1, 1, 2, 10), Vec3(0, 0, -1), 1.0);
+    hole->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    hole->setOperation(BodyOperation::Cut);
+    const Feature* cut = add(part.doc, std::move(hole));
+    auto mirror = hz::doc::MirrorFeature::make(Vec3(5, 0, 0), Vec3(1, 0, 0));
+    mirror->setTargets({cut->featureID(), cut->featureID()});  // mirrored once, not twice
+    EXPECT_EQ(mirror->targets().size(), 1u);
+    add(part.doc, std::move(mirror));
+    EXPECT_NEAR(volume(part.doc), 1000.0 - 2 * 40.0, 1e-6);
+    std::set<std::string> names;
+    for (const auto& face : part.doc.solid()->faces()) {
+        EXPECT_TRUE(names.insert(face.topoId.tag()).second) << "two faces " << face.topoId.tag();
+    }
+    // The image is on the other side: nothing is cut at x = 2, something at x = 8.
+    bool mirrored = false;
+    for (const auto& v : part.doc.solid()->vertices()) {
+        mirrored = mirrored || (std::abs(v.point.x - 7.0) < 1e-9 && v.point.y > 0.5);
+    }
+    EXPECT_TRUE(mirrored) << "a corner of the image's hole at x = 7";
+
+    BoxPart lost;
+    auto gone = hz::doc::MirrorFeature::make(Vec3(), Vec3(1, 0, 0));
+    gone->setReference("planeFace", "primitive_999/right");
+    add(lost.doc, std::move(gone));
+    EXPECT_FALSE(lost.doc.rebuildModel());
+    EXPECT_NE(lost.doc.lastBuildMessage().find("the plane to mirror in"), std::string::npos)
+        << lost.doc.lastBuildMessage();
 }

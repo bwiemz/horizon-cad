@@ -17,6 +17,18 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
+
+- **Mirror (162, part 1).**
+  - Model ▸ Mirror mirrors the part in a base plane or one of its flat
+    faces, and joins the image to it: a part mirrored in its own side is
+    one solid twice its size. It follows the face when the part changes.
+  - Checked features mirror only what they add or cut, each combined as it
+    combines: a hole mirrored to the other side.
+  - A mirror image faces out as the original does. Before, the kernel
+    would have turned a mirrored copy inside out, and nothing noticed.
+  - Files are saved as format version 26.
+
 ## Unreleased — Professional workflows, Milestone 17 (Phases 158–161)
 
 - **Component patterns (161, part 2).**

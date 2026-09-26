@@ -51,9 +51,17 @@ TopologyID instanceId(const TopologyID& original, int instanceIndex) {
 }
 
 // Deep-clone src — or, given `only`, just those of its shells — into dst with
-// a rigid transform, as a new set of shells.
+// a transform, as a new set of shells. A transform that mirrors (its
+// determinant negative, Phase 162) would turn every loop inside out: each is
+// reversed as it is copied, and each surface with it, so the copy faces out
+// as the original does.
 void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceIndex,
                const std::vector<const Shell*>* only = nullptr) {
+    const bool mirrors = xform.determinant3() < 0.0;
+    const auto moveSurface = [&xform, mirrors](const geo::NurbsSurface& surface) {
+        auto moved = transformSurface(surface, xform);
+        return mirrors ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;
+    };
     std::unordered_map<const void*, Vertex*> vmap;
     std::unordered_map<const void*, HalfEdge*> hmap;
     std::unordered_map<const void*, Edge*> emap;
@@ -73,7 +81,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
     std::unordered_map<const void*, std::shared_ptr<geo::NurbsCurve>> idealCurves;
     const auto idealSurface = [&](const std::shared_ptr<geo::NurbsSurface>& ideal) {
         auto& moved = idealSurfaces[ideal.get()];
-        if (!moved) moved = transformSurface(*ideal, xform);
+        if (!moved) moved = moveSurface(*ideal);
         return moved;
     };
     const auto idealCurve = [&](const std::shared_ptr<geo::NurbsCurve>& ideal) {
@@ -148,7 +156,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
     for (const Face* f : faces) {
         Face* nf = dst.allocFace();
         nf->topoId = instanceId(f->topoId, instanceIndex);
-        if (f->surface) nf->surface = transformSurface(*f->surface, xform);
+        if (f->surface) nf->surface = moveSurface(*f->surface);
         // Each instance of a faceted boss must still resolve to its own
         // cylinder, so the ideal is carried and moved with the facets.
         if (f->analyticSurface) nf->analyticSurface = idealSurface(f->analyticSurface);
@@ -160,20 +168,31 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
 
     // Remap all cross-references. (Within one shell of a closed solid every
     // reference stays inside the shell; one that does not is left null.)
+    // Mirrored, each half-edge runs the other way along its edge: from its
+    // old end, its old prev after it. A vertex then leaves by the half-edge
+    // that came into it, and an edge's curve, which runs from its
+    // half-edge's origin, keeps its direction by taking the old twin.
     for (const auto& v : src.vertices()) {
-        if (Vertex* nv = mapped(vmap, &v)) nv->halfEdge = mapped(hmap, v.halfEdge);
+        Vertex* nv = mapped(vmap, &v);
+        if (nv == nullptr) continue;
+        const HalfEdge* out = v.halfEdge;
+        nv->halfEdge = mapped(hmap, mirrors && out != nullptr ? out->prev : out);
     }
     for (const HalfEdge* h : halfEdges) {
         HalfEdge* nh = hmap[h];
-        nh->origin = mapped(vmap, h->origin);
+        nh->origin = mapped(vmap, mirrors && h->next != nullptr ? h->next->origin : h->origin);
         nh->twin = mapped(hmap, h->twin);
-        nh->next = mapped(hmap, h->next);
-        nh->prev = mapped(hmap, h->prev);
+        nh->next = mapped(hmap, mirrors ? h->prev : h->next);
+        nh->prev = mapped(hmap, mirrors ? h->next : h->prev);
         nh->edge = mapped(emap, h->edge);
         nh->face = mapped(fmap, h->face);
     }
     for (const auto& e : src.edges()) {
-        if (Edge* ne = mapped(emap, &e)) ne->halfEdge = mapped(hmap, e.halfEdge);
+        Edge* ne = mapped(emap, &e);
+        if (ne == nullptr) continue;
+        const HalfEdge* along = e.halfEdge;
+        if (mirrors && along != nullptr && along->twin != nullptr) along = along->twin;
+        ne->halfEdge = mapped(hmap, along);
     }
     for (const Wire* w : wires) {
         wmap[w]->halfEdge = mapped(hmap, w->halfEdge);
