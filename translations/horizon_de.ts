@@ -1086,11 +1086,12 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+6"/>
+        <location line="+16"/>
         <source>Bill of Materials</source>
         <translation type="unfinished">Stückliste</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="-10"/>
         <source>Top level</source>
         <translation type="unfinished">Oberste Ebene</translation>
     </message>
@@ -1105,7 +1106,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">Nur Teile</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+11"/>
         <source>Item</source>
         <translation type="unfinished">Position</translation>
     </message>
@@ -1165,21 +1166,32 @@ Details stehen im Protokoll:
         <source>Type a command…  (e.g. line, extrude, export)</source>
         <translation type="unfinished">Befehl eingeben…  (z. B. Linie, Extrusion, Export)</translation>
     </message>
+    <message>
+        <location line="+2"/>
+        <source>Search commands</source>
+        <translation type="unfinished">Befehle suchen</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Commands</source>
+        <translation type="unfinished">Befehle</translation>
+    </message>
 </context>
 <context>
     <name>hz::ui::ConfigurationsDialog</name>
     <message>
         <location filename="../src/ui/src/ConfigurationsDialog.cpp" line="+32"/>
+        <location line="+18"/>
         <source>Configurations</source>
         <translation type="unfinished">Konfigurationen</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="-7"/>
         <source>Each row is a configuration of the part: the values it gives its variables. A blank cell keeps the variable&apos;s own.</source>
         <translation type="unfinished">Jede Zeile ist eine Konfiguration des Teils: die Werte, die sie seinen Variablen gibt. Eine leere Zelle behält den eigenen Wert der Variablen.</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Configuration</source>
         <translation type="unfinished">Konfiguration</translation>
     </message>
@@ -3227,12 +3239,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3989"/>
+        <location line="+3991"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-4065"/>
+        <location line="-4067"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3249,19 +3261,19 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3838"/>
+        <location line="+3840"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-3903"/>
         <location line="+64"/>
-        <location line="+3837"/>
+        <location line="+3839"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-3900"/>
+        <location line="-3902"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3318,12 +3330,12 @@ um Ihr Teil aufzubauen.</translation>
         </translation>
     </message>
     <message>
-        <location line="+2575"/>
+        <location line="+2577"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
     </message>
     <message>
-        <location line="-4171"/>
+        <location line="-4173"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3480,61 +3492,61 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3625"/>
+        <location line="+3627"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3670"/>
-        <location line="+3689"/>
+        <location line="-3672"/>
+        <location line="+3691"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3715"/>
-        <location line="+4045"/>
+        <location line="-3717"/>
+        <location line="+4047"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-4043"/>
+        <location line="-4045"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3796"/>
+        <location line="+3798"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3795"/>
-        <location line="+3799"/>
+        <location line="-3797"/>
+        <location line="+3801"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3798"/>
-        <location line="+3802"/>
+        <location line="-3800"/>
+        <location line="+3804"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3797"/>
-        <location line="+3866"/>
+        <location line="-3799"/>
+        <location line="+3868"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-3865"/>
-        <location line="+3885"/>
+        <location line="-3867"/>
+        <location line="+3887"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-3883"/>
+        <location line="-3885"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
@@ -3567,14 +3579,14 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+942"/>
         <location line="+404"/>
         <location line="+466"/>
-        <location line="+1420"/>
+        <location line="+1422"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4505"/>
+        <location line="-4507"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3595,12 +3607,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4174"/>
+        <location line="+4176"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-4168"/>
+        <location line="-4170"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
@@ -4549,22 +4561,22 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+683"/>
+        <location line="+685"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1434"/>
-        <location line="+683"/>
+        <location line="-1436"/>
+        <location line="+685"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1433"/>
+        <location line="-1435"/>
         <source>Standing along:</source>
         <translation type="unfinished">Ausgerichtet entlang:</translation>
     </message>
@@ -4586,12 +4598,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+7"/>
         <location line="+7"/>
-        <location line="+971"/>
+        <location line="+973"/>
         <source>Radius:</source>
         <translation type="unfinished">Radius:</translation>
     </message>
     <message>
-        <location line="-978"/>
+        <location line="-980"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">Höhe:</translation>
@@ -4659,12 +4671,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+864"/>
+        <location line="+866"/>
         <source>Edges:</source>
         <translation type="unfinished">Kanten:</translation>
     </message>
     <message>
-        <location line="-862"/>
+        <location line="-864"/>
         <source>As:</source>
         <translation type="unfinished">Als:</translation>
     </message>
@@ -4820,18 +4832,18 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+770"/>
+        <location line="+772"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">Lineares Muster</translation>
     </message>
     <message>
-        <location line="-768"/>
-        <location line="+788"/>
+        <location line="-770"/>
+        <location line="+790"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Kreisförmiges Muster</translation>
     </message>
     <message>
-        <location line="-771"/>
+        <location line="-773"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">&amp;Masseeigenschaften...</translation>
     </message>
@@ -4985,12 +4997,12 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
     </message>
     <message>
         <location line="+10"/>
-        <location line="+52"/>
+        <location line="+54"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">Es konnte nicht ermittelt werden.</translation>
     </message>
     <message>
-        <location line="-48"/>
+        <location line="-50"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Masseeigenschaften werden bereits gemessen</translation>
     </message>
@@ -5000,7 +5012,7 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Wird gemessen...</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+13"/>
         <source>Measuring mass properties...</source>
         <translation type="unfinished">Masseeigenschaften werden gemessen...</translation>
     </message>
@@ -5572,7 +5584,7 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-4521"/>
+        <location line="-4523"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
@@ -6047,16 +6059,17 @@ seine Eigenschaften anzuzeigen und zu bearbeiten.</translation>
     <name>hz::ui::VariablesDialog</name>
     <message>
         <location filename="../src/ui/src/VariablesDialog.cpp" line="+28"/>
+        <location line="+10"/>
         <source>Variables</source>
         <translation type="unfinished">Variablen</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="-7"/>
         <source>Each variable is an expression: &quot;3 mm&quot;, &quot;10 * wall&quot;, &quot;4&quot;. A number without a unit is a plain number. A feature&apos;s size can then be &quot;=wall * 2&quot;.</source>
         <translation type="unfinished">Jede Variable ist ein Ausdruck: &quot;3 mm&quot;, &quot;10 * wall&quot;, &quot;4&quot;. Eine Zahl ohne Einheit ist eine reine Zahl. Die Größe eines Features kann dann &quot;=wall * 2&quot; sein.</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+8"/>
         <source>Name</source>
         <translation type="unfinished">Name</translation>
     </message>

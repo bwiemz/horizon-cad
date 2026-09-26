@@ -43,4 +43,11 @@ struct FacetedSolid {
 ///   is one facet, its outline, and is listed.
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoPi / 32.0);
 
+/// Whether @p solid is described by curves, as a STEP file describes one: an
+/// edge runs along a curve (of degree above 1) between its vertices. Its
+/// faces are then no loops of points to measure, cut or draw until
+/// facetCurved makes them so. The kernel's own solids never are: their edges
+/// are chords, and the curve a chord stands in for is its analyticCurve.
+bool describedByCurves(const topo::Solid& solid);
+
 }  // namespace hz::model

@@ -1,12 +1,15 @@
 # What `cmake --install` and CPack put in a package besides the executable
 # (Phase 116): the licence and third-party notices, the licence of every
 # library vcpkg built, and on Linux the desktop entry, AppStream metadata,
-# MIME types and icons. Translations and the Qt runtime are installed by
-# src/app/CMakeLists.txt, next to the executable.
+# MIME types and icons. Translations, samples and the Qt runtime are installed
+# by src/app/CMakeLists.txt, where the application finds them.
 include(GNUInstallDirs)
 
 if(WIN32)
     set(HZ_INSTALL_DOCDIR ".")
+elseif(APPLE)
+    # Inside the bundle: the disk image holds the application and nothing else.
+    set(HZ_INSTALL_DOCDIR "${HZ_INSTALL_SHIPPED_DIR}/doc")
 else()
     set(HZ_INSTALL_DOCDIR "${CMAKE_INSTALL_DATADIR}/doc/horizon-cad")
 endif()

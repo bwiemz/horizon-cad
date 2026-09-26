@@ -6,6 +6,7 @@
 
 #include "MassIntegrals.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -160,8 +161,7 @@ MassProperties finish(const Measures& measures, double density) {
 
 }  // namespace detail
 
-MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
-                                                 const Material* material) {
+MassProperties detail::measureLoops(const topo::Solid& solid, const Material* material) {
     const double density = material ? material->density : 1.0;
     std::vector<Triangle> tris = boundaryTriangles(solid);
     if (tris.size() < 4) {  // need a closed volume
@@ -175,6 +175,18 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     detail::Measures measures;
     for (const Triangle& t : tris) measures.add(t[0], t[1], t[2]);
     return detail::finish(measures, density);
+}
+
+MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
+                                                 const Material* material) {
+    // A solid as read, bounded by curves, is measured in facets: the corners
+    // of its loops alone (two on a cylinder's side) enclose nothing like it.
+    // Where it cannot be cut into facets, its corners are all there is.
+    if (describedByCurves(solid)) {
+        const auto faceted = facetCurved(solid);
+        if (faceted.solid) return detail::measureLoops(*faceted.solid, material);
+    }
+    return detail::measureLoops(solid, material);
 }
 
 }  // namespace hz::model

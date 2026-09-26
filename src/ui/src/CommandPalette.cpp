@@ -33,10 +33,12 @@ CommandPalette::CommandPalette(const QList<QAction*>& actions, QWidget* parent) 
     m_search->setObjectName("commandPaletteSearch");
     m_search->setPlaceholderText(tr("Type a command…  (e.g. line, extrude, export)"));
     m_search->setClearButtonEnabled(true);
+    m_search->setAccessibleName(tr("Search commands"));
     layout->addWidget(m_search);
 
     m_list = new QListWidget(this);
     m_list->setObjectName("commandPaletteList");
+    m_list->setAccessibleName(tr("Commands"));
     m_list->setUniformItemSizes(true);
     layout->addWidget(m_list, 1);
 

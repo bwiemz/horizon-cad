@@ -27,6 +27,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/HalfEdge.h"
@@ -665,6 +666,28 @@ private:
     int m_parted = 0;
 };
 
+/// The faces of a solid described by curves that lie on a curved surface or
+/// are bounded by a curve, by logical name, each once.
+std::vector<std::string> curvedFaces(const topo::Solid& solid) {
+    const auto alongCurve = [](const HalfEdge* he) {
+        return he->edge != nullptr && he->edge->curve && he->edge->curve->degree() > 1;
+    };
+    std::set<std::string> names;
+    for (const auto& face : solid.faces()) {
+        bool curved = face.surface && (face.surface->degreeU() > 1 || face.surface->degreeV() > 1);
+        std::vector<const Wire*> wires{face.outerLoop};
+        wires.insert(wires.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const Wire* wire : wires) {
+            const auto loop = loopOf(wire);
+            curved = curved || std::any_of(loop.begin(), loop.end(), alongCurve);
+        }
+        if (curved) {
+            names.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag()) : "(unnamed)");
+        }
+    }
+    return {names.begin(), names.end()};
+}
+
 detail::Measures extrapolate(const detail::Measures& fine, const detail::Measures& coarse,
                              double factor) {
     detail::Measures out;
@@ -681,6 +704,24 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
                                                            const Material* material,
                                                            double tolerance,
                                                            const std::atomic<bool>* cancelled) {
+    // A solid as read, bounded by curves, is measured in facets that record
+    // their surfaces, as compute() measures it. One that cannot be cut into
+    // facets is measured by the corners of its loops: not exact, and its
+    // curved faces are named as measured without their surfaces. Cutting
+    // into facets cannot be stopped part way, so a request is checked
+    // either side of it.
+    if (describedByCurves(solid)) {
+        const auto stopped = [cancelled] { return cancelled != nullptr && cancelled->load(); };
+        if (stopped()) return {};
+        const auto faceted = facetCurved(solid);
+        if (stopped()) return {};
+        if (faceted.solid) return computeIdeal(*faceted.solid, material, tolerance, cancelled);
+        IdealMassProperties corners;
+        corners.properties = detail::measureLoops(solid, material);
+        corners.withoutIdeal = curvedFaces(solid);
+        corners.exact = false;
+        return corners;
+    }
     IdealMassProperties result;
     const double density = material ? material->density : 1.0;
     IdealSolid ideal(solid);

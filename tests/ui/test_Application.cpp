@@ -3,9 +3,13 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QEvent>
+#include <QFileOpenEvent>
 #include <QMessageBox>
 #include <QObject>
+#include <QStringList>
+#include <QTemporaryDir>
 #include <stdexcept>
 
 #include "UiTestSupport.h"
@@ -86,4 +90,60 @@ TEST(ApplicationTest, TheViewportAsksForDesktopOpenGL) {
     EXPECT_EQ(format.minorVersion(), 3);
     EXPECT_EQ(format.profile(), QSurfaceFormat::CoreProfile);
     EXPECT_EQ(format.depthBufferSize(), 24);
+}
+
+// The catalogs and samples are found where CMake puts them (HZ_SHIPPED_DIR):
+// next to the executable, or in a macOS bundle's Contents/Resources.
+TEST(ApplicationTest, ShippedFilesAreNextToTheExecutableOrInTheBundle) {
+    using hz::ui::Application;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString bin = dir.filePath(QStringLiteral("bin"));
+    const QString contents = dir.filePath(QStringLiteral("HorizonCAD.app/Contents"));
+    const QString lone = dir.filePath(QStringLiteral("lone/MacOS"));
+    for (const QString& made : {bin, contents + QStringLiteral("/MacOS"),
+                                contents + QStringLiteral("/Resources"), lone}) {
+        ASSERT_TRUE(QDir().mkpath(made));
+    }
+
+    EXPECT_EQ(Application::shippedFilesDirectory(bin), QDir(bin).absolutePath());
+    const QString inBundle =
+        Application::shippedFilesDirectory(contents + QStringLiteral("/MacOS"));
+#if defined(Q_OS_MACOS)
+    EXPECT_EQ(inBundle, QDir(contents + QStringLiteral("/Resources")).absolutePath());
+#else
+    EXPECT_EQ(inBundle, QDir(contents + QStringLiteral("/MacOS")).absolutePath())
+        << "a bundle is macOS's alone";
+#endif
+    EXPECT_EQ(Application::shippedFilesDirectory(lone), QDir(lone).absolutePath())
+        << "a folder named MacOS with no Resources beside it is no bundle";
+    // The test binary is in no bundle.
+    EXPECT_EQ(Application::shippedFilesDirectory(),
+              QDir(QCoreApplication::applicationDirPath()).absolutePath());
+}
+
+// On macOS the document that launched the application can arrive before its
+// window is made to hear it: it waits, and the window takes it.
+TEST(ApplicationTest, AFileAskedForBeforeAnythingListensWaits) {
+    auto* app = qobject_cast<hz::ui::Application*>(QCoreApplication::instance());
+    ASSERT_NE(app, nullptr) << "the test binary must run under hz::ui::Application";
+    app->takePendingFiles();
+    const QString first = QDir::temp().filePath(QStringLiteral("first.hcad"));
+    const QString second = QDir::temp().filePath(QStringLiteral("second.hzpart"));
+    for (const QString& file : {first, second}) {
+        QFileOpenEvent event(file);
+        QCoreApplication::sendEvent(app, &event);
+    }
+    EXPECT_EQ(app->takePendingFiles(), (QStringList{first, second}));
+    EXPECT_TRUE(app->takePendingFiles().isEmpty()) << "taken once";
+
+    // Once something listens, it hears the file, and nothing waits.
+    QStringList heard;
+    const auto connection = QObject::connect(app, &hz::ui::Application::fileOpenRequested,
+                                             [&heard](const QString& file) { heard << file; });
+    QFileOpenEvent third(first);
+    QCoreApplication::sendEvent(app, &third);
+    QObject::disconnect(connection);
+    EXPECT_EQ(heard, QStringList{first});
+    EXPECT_TRUE(app->takePendingFiles().isEmpty());
 }

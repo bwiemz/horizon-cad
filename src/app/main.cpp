@@ -164,7 +164,7 @@ static int run(int argc, char* argv[]) {
     // An explicit choice in settings wins; otherwise follow the system locale.
     hz::ui::LocaleManager localeManager;
     const QString translationsDir =
-        QDir(QApplication::applicationDirPath()).filePath("translations");
+        QDir(hz::ui::Application::shippedFilesDirectory()).filePath("translations");
     const QString uiLanguage =
         QSettings().value("ui/language", QLocale::system().name()).toString();
     if (localeManager.apply(translationsDir, uiLanguage)) {
@@ -198,11 +198,12 @@ static int run(int argc, char* argv[]) {
     window.show();
     if (parser.isSet(selfTest)) return runSelfTest(app, window);
     // Once the window is on screen: offer back what a crashed session left,
-    // then open what was asked for.
-    QTimer::singleShot(0, &window, [&window, files] {
+    // then open what was asked for, on the command line or (macOS) by an
+    // event that came before the window.
+    QTimer::singleShot(0, &window, [&app, &window, files] {
         window.offerCrashReports();
         window.offerRecovery();
-        window.openFiles(files);
+        window.openFiles(files + app.takePendingFiles());
         window.offerTour();  // the first time only
     });
     return app.exec();

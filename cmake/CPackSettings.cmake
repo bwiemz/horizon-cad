@@ -26,6 +26,7 @@ if(WIN32)
     )
 else()
     # NSIS exists only on Windows. Elsewhere a tarball of the install tree;
-    # the AppImage is made from the same tree by packaging/linux.
+    # the AppImage (packaging/linux) and the macOS disk image
+    # (packaging/macos) are made from the same tree.
     set(CPACK_GENERATOR "TGZ")
 endif()
