@@ -300,9 +300,9 @@ std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const 
     for (const auto& pick : m_host.viewport().modelSelection()) {
         if (pick.owner == 0) continue;
         const doc::ComponentInstance* comp = asmDoc->component(pick.owner);
-        if (comp == nullptr || comp->suppressed || !comp->cachedMesh) return std::nullopt;
+        if (comp == nullptr || comp->suppressed || !comp->cachedMesh) continue;
         const math::BoundingBox box = placedBounds(*comp);
-        if (!box.isValid()) return std::nullopt;
+        if (!box.isValid()) continue;
         TriadPose pose;
         pose.component = comp->id;
         pose.origin = box.center();
@@ -316,6 +316,7 @@ std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const 
 
 bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
                                   const std::optional<Triad::Handle>& handle) {
+    cancelDrag();  // one left over (its release lost) is put back first
     auto asmDoc = m_host.currentAssembly();
     if (!asmDoc) return false;
     const doc::ComponentInstance* comp = asmDoc->component(component);

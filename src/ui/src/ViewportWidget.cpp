@@ -658,6 +658,9 @@ void ViewportWidget::mousePressEvent(QMouseEvent* event) {
     }
     if (event->button() == Qt::LeftButton) {
         m_viewCubeCapturedPress = false;
+        // A drag whose release never came (a dialog opened by a shortcut
+        // took the mouse) is put back, not forgotten half done.
+        cancelComponentDrag();
         m_componentDrag = ComponentDrag::None;
     }
     // A left-click on the orientation gizmo snaps the view instead of drawing.
@@ -714,7 +717,9 @@ std::optional<Triad> ViewportWidget::triad() const {
     }
     const auto pose = m_componentDragger->triadPose();
     if (!pose) return std::nullopt;
-    return Triad(pose->origin, pose->axes, m_camera, width(), height());
+    Triad shown(pose->origin, pose->axes, m_camera, width(), height());
+    if (!shown.visible()) return std::nullopt;  // its middle behind the view
+    return shown;
 }
 
 void ViewportWidget::drawTriad(QOpenGLExtraFunctions* gl) {
@@ -783,6 +788,12 @@ void ViewportWidget::applyViewCubeRegion(ViewCube::Region region) {
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event) {
+    // The left button up, and no release seen: something took the mouse
+    // (a dialog, the window losing it). The drag is put back.
+    if (m_componentDrag != ComponentDrag::None && !(event->buttons() & Qt::LeftButton)) {
+        cancelComponentDrag();
+        m_componentDrag = ComponentDrag::None;
+    }
     switch (m_componentDrag) {
         case ComponentDrag::Armed:
             // Far enough to be a drag, not a click: the dragger takes it,

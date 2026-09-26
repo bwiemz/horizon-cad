@@ -41,6 +41,9 @@ public:
     const math::Vec3& axis(int k) const { return m_axes.at(static_cast<size_t>(k)); }
     /// The arrows' length in the world, for this view.
     double size() const { return m_size; }
+    /// Whether its middle is in front of the view: behind it, it is not
+    /// shown, and nothing hits it.
+    bool visible() const { return m_visible; }
 
     /// The handle nearest @p at, within kTolerance pixels; nothing when none
     /// is.
@@ -53,6 +56,9 @@ public:
     std::vector<math::Vec3> segments(const Handle& handle) const;
 
 private:
+    /// Where @p world is on screen; nothing for a point behind the view
+    /// (whose projection would land somewhere it is not).
+    std::optional<QPointF> project(const math::Vec3& world) const;
     QPointF toScreen(const math::Vec3& world) const;
 
     math::Vec3 m_origin;
@@ -61,6 +67,7 @@ private:
     int m_width;
     int m_height;
     double m_size = 1.0;
+    bool m_visible = false;
 };
 
 }  // namespace hz::ui
