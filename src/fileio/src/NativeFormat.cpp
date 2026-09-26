@@ -164,6 +164,20 @@ static long long intField(const json& obj, const char* key, long long fallback, 
     return v;
 }
 
+/// An id from a file (Phase 161): a whole number, not negative. Anything
+/// else throws, as intField does: nlohmann would cast a float to it.
+static uint64_t idFrom(const json& j) {
+    if (j.is_number_unsigned()) return j.get<uint64_t>();
+    throw std::out_of_range("an id is not a whole number");
+}
+
+/// A whole number in [lo, hi] that is an array's element, as intField reads
+/// one that is a field.
+static long long intFrom(const json& j, long long lo, long long hi) {
+    const json wrapped = {{"n", j}};
+    return intField(wrapped, "n", lo, lo, hi);
+}
+
 /// A count that is clamped rather than refused: 0 and huge values are the
 /// same mistake as a slightly wrong one, and clamping keeps the rest of the
 /// file.
@@ -2100,9 +2114,10 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 comp.partPath = cObj.value("partPath", "");
                 comp.suppressed = cObj.value("suppressed", false);
                 if (const auto of = cObj.find("pattern"); of != cObj.end() && of->is_object()) {
-                    comp.patternId = of->at("id").get<uint64_t>();
-                    comp.seedId = of->at("seed").get<uint64_t>();
-                    comp.patternIndex = of->at("index").get<int>();
+                    comp.patternId = idFrom(of->at("id"));
+                    comp.seedId = idFrom(of->at("seed"));
+                    comp.patternIndex = static_cast<int>(
+                        intField(*of, "index", 1, 1, doc::ComponentPattern::kMaxCount));
                 }
 
                 // Component paths are stored relative to the assembly file;
@@ -2199,7 +2214,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             const size_t thisPattern = patternIndex++;
             try {
                 doc::ComponentPattern pattern;
-                pattern.id = pObj.at("id").get<uint64_t>();
+                pattern.id = idFrom(pObj.at("id"));
                 pattern.name = pObj.value("name", "");
                 const std::string kind = pObj.at("kind").get<std::string>();
                 if (kind != "linear" && kind != "circular") {
@@ -2207,7 +2222,7 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                 }
                 pattern.kind = kind == "linear" ? doc::ComponentPattern::Kind::Linear
                                                 : doc::ComponentPattern::Kind::Circular;
-                pattern.seeds = pObj.at("seeds").get<std::vector<uint64_t>>();
+                for (const auto& seed : pObj.at("seeds")) pattern.seeds.push_back(idFrom(seed));
                 const auto vec = [&pObj](const char* name) {
                     const auto& v = pObj.at(name);
                     return math::Vec3(v.at(0).get<double>(), v.at(1).get<double>(),
@@ -2218,8 +2233,14 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                     pattern.axisPoint = vec("axisPoint");
                 }
                 pattern.spacing = pObj.at("spacing").get<double>();
-                pattern.count = pObj.at("count").get<int>();
-                pattern.skipped = pObj.value("skipped", std::vector<int>{});
+                pattern.count = static_cast<int>(
+                    intField(pObj, "count", 1, 1, doc::ComponentPattern::kMaxCount));
+                if (const auto skipped = pObj.find("skipped"); skipped != pObj.end()) {
+                    for (const auto& k : *skipped) {
+                        pattern.skipped.push_back(
+                            static_cast<int>(intFrom(k, 1, doc::ComponentPattern::kMaxCount)));
+                    }
+                }
                 const double length = direction.length();
                 if (!std::isfinite(length) || length < 1e-12 || !std::isfinite(pattern.spacing) ||
                     !std::isfinite(pattern.axisPoint.x) || !std::isfinite(pattern.axisPoint.y) ||
@@ -2244,13 +2265,13 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             const size_t thisView = viewIndex++;
             try {
                 doc::ExplodedView view;
-                view.id = vObj.value("id", uint64_t{0});
+                if (vObj.contains("id")) view.id = idFrom(vObj.at("id"));
                 view.name = vObj.value("name", "");
                 for (const auto& sObj : vObj.at("steps")) {
                     doc::ExplodeStep step;
                     // Only the components there: one gone moves nothing.
                     for (const auto& id : sObj.at("components")) {
-                        const auto componentId = id.get<uint64_t>();
+                        const uint64_t componentId = idFrom(id);
                         if (asmDoc.component(componentId) != nullptr) {
                             step.components.push_back(componentId);
                         }

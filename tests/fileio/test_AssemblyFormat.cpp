@@ -374,4 +374,16 @@ TEST(AssemblyFormatTest, ComponentPatternsRoundTripWithTheirInstances) {
     EXPECT_EQ(later.components().size(), 1u) << "the seed alone";
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped.front().find("helical"), std::string::npos) << report.skipped.front();
+
+    // A count too big to be a whole number: nlohmann would cast it. That
+    // pattern is left out, and said.
+    std::string huge = NativeFormat::assemblyToJson(original, "");
+    const auto count = huge.find("\"count\":4");
+    ASSERT_NE(count, std::string::npos) << huge;
+    huge.replace(count, 9, "\"count\":1e20");
+    AssemblyDocument hostile;
+    hz::io::ImportReport said;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(huge, hostile, "", nullptr, &said));
+    EXPECT_TRUE(hostile.patterns().empty());
+    EXPECT_EQ(said.skipped.size(), 1u);
 }
