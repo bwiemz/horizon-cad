@@ -81,6 +81,7 @@ void PropertyPanel::createWidgets() {
 
     auto* colorLayout = new QHBoxLayout();
     m_colorButton = new QPushButton(this);
+    m_colorButton->setAccessibleName(tr("Color"));  // a swatch, with no text of its own
     m_colorButton->setFixedSize(40, 24);
     m_colorButton->setEnabled(false);
     connect(m_colorButton, &QPushButton::clicked, this, &PropertyPanel::onColorClicked);
@@ -317,6 +318,7 @@ void PropertyPanel::createWidgets() {
     cstrLayout->setContentsMargins(0, 0, 0, 0);
     cstrLayout->addWidget(new QLabel(tr("Constraints:"), m_constraintWidget));
     m_constraintList = new QListWidget(m_constraintWidget);
+    m_constraintList->setAccessibleName(tr("Constraints"));
     m_constraintList->setMaximumHeight(120);
     cstrLayout->addWidget(m_constraintList);
     m_deleteConstraintBtn = new QPushButton(tr("Delete Constraint"), m_constraintWidget);

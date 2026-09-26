@@ -30,6 +30,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
     add_executable(hz_ui_window_tests
         window_tests_main.cpp
         test_Application.cpp
+        test_Accessibility.cpp
         test_MainWindowDocuments.cpp
         test_Recovery.cpp
         test_BodyFeatureCommands.cpp
@@ -63,6 +64,12 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             Horizon::Version
             GTest::gtest
     )
+    if(TARGET horizon)
+        # The catalogs the application ships, to check a window in another
+        # language.
+        target_compile_definitions(hz_ui_window_tests
+            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="$<TARGET_FILE_DIR:horizon>/translations")
+    endif()
     get_target_property(_hz_qt_core_type Qt6::Core TYPE)
     if(_hz_qt_core_type STREQUAL "STATIC_LIBRARY")
         # Static Qt links platform plugins into the executable.

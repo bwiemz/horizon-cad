@@ -36,6 +36,12 @@ namespace hz::ui {
 ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    // What a screen reader says of it (Phase 166): it draws; the menus, the
+    // trees and the keys work in it.
+    setAccessibleName(tr("Viewport"));
+    setAccessibleDescription(
+        tr("The drawing or the model, as it is drawn. Work in it from "
+           "the menus, the ribbon and the keyboard shortcuts."));
 
     // Default camera looking at origin from an isometric-ish angle.
     m_camera.setIsometricView();

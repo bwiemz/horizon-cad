@@ -30,6 +30,15 @@ work, not "post-1.0".
     translated, placeholders and mnemonics as in the English, and no
     string in the sources missing from them.
 
+- **Accessible names (166b).**
+  - Every control a screen reader reaches has a name. The feature,
+    layer, assembly and sketch lists, the constraint list, the colour
+    button and the viewport had none.
+  - A document tab's close button says which document it closes.
+  - The names are translated with the rest of the window.
+  - A test walks the whole window, and a feature form, and fails on any
+    control without a name.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**
