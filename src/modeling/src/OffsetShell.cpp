@@ -229,8 +229,11 @@ ShellResult Shell::executeOffset(const Solid& solid, double thickness,
             Surface away = surface;
             away.sense = 1.0;
             surface.sense = away.gradient(middle).dot(normal) >= 0.0 ? 1.0 : -1.0;
-            if (surface.kind == Surface::Kind::Cone &&
-                !(surface.angle > 1e-6 && surface.angle < 1.5707963267948966 - 1e-6)) {
+            // A cone's angle clear of 0 (a cylinder) and a right angle (a
+            // plane); one that is no number is refused too.
+            const bool nearFlat = !std::isfinite(surface.angle) || surface.angle <= 1e-6 ||
+                                  surface.angle >= 1.5707963267948966 - 1e-6;
+            if (surface.kind == Surface::Kind::Cone && nearFlat) {
                 return fail("a cone too near a cylinder or a plane cannot be offset yet");
             }
         } else {
