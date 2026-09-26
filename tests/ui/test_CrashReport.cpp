@@ -10,6 +10,9 @@
 #include <QProcess>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include "horizon/ui/CrashReport.h"
@@ -67,8 +70,11 @@ TEST(CrashReportTest, ACrashLeavesAReportOfWhatHappened) {
 #else
     EXPECT_TRUE(report.startsWith(QStringLiteral("Horizon CAD stopped: SIGSEGV")))
         << report.toStdString();
+#if !defined(__APPLE__)
     // Sent by raise(), not a fault: no address to give, so none made up.
+    // macOS gives a sent SIGSEGV a fault's code, so there the two look alike.
     EXPECT_FALSE(report.contains(QStringLiteral("At address"))) << report.toStdString();
+#endif
 #endif
     EXPECT_TRUE(report.contains(QStringLiteral("Horizon CAD test child"))) << report.toStdString();
     EXPECT_TRUE(report.contains(QStringLiteral("Log: ") + log)) << report.toStdString();
@@ -78,6 +84,42 @@ TEST(CrashReportTest, ACrashLeavesAReportOfWhatHappened) {
     EXPECT_TRUE(report.indexOf(QStringLiteral("0x"), frames) > frames) << report.toStdString();
     // And what the log said last: what led up to it.
     EXPECT_TRUE(report.contains(QStringLiteral("filleting edge 12"))) << report.toStdString();
+}
+
+// The walk macOS's reports take through the frame pointers, over a stack
+// made here: it follows the chain, and stops where the chain ends, falls,
+// leaves the stack or is misaligned, or there is no more room.
+TEST(CrashReportTest, TheFramePointerWalkFollowsTheChainAndStopsWhereItBreaks) {
+    using hz::ui::crash::detail::walkFramePointers;
+    std::array<std::uintptr_t, 16> stack{};
+    const auto at = [&stack](std::size_t i) { return reinterpret_cast<std::uintptr_t>(&stack[i]); };
+    const std::uintptr_t low = at(0);
+    const std::uintptr_t high = low + sizeof(stack);
+    const auto address = [](std::uintptr_t a) { return reinterpret_cast<void*>(a); };
+    // Three frames, each the caller's frame pointer then its return address.
+    stack[2] = at(6);
+    stack[3] = 0x1111;
+    stack[6] = at(10);
+    stack[7] = 0x2222;
+    stack[10] = 0;  // the outermost
+    stack[11] = 0x3333;
+    std::array<void*, 8> frames{};
+    ASSERT_EQ(walkFramePointers(0xAAAA, at(2), low, high, frames.data(), 8), 4);
+    EXPECT_EQ(frames[0], address(0xAAAA)) << "where the signal stopped it";
+    EXPECT_EQ(frames[1], address(0x1111));
+    EXPECT_EQ(frames[2], address(0x2222));
+    EXPECT_EQ(frames[3], address(0x3333));
+
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(2), low, high, frames.data(), 2), 2) << "no more room";
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(2), low, high, frames.data(), 0), 0);
+    EXPECT_EQ(walkFramePointers(0xAAAA, high, low, high, frames.data(), 8), 1) << "off the stack";
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(2) + 1, low, high, frames.data(), 8), 1) << "misaligned";
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(15), low, high, frames.data(), 8), 1)
+        << "a frame that runs off the stack's end";
+    stack[6] = at(2);  // a chain that falls back on itself
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(2), low, high, frames.data(), 8), 3);
+    stack[3] = 0;  // no address to return to
+    EXPECT_EQ(walkFramePointers(0xAAAA, at(2), low, high, frames.data(), 8), 1);
 }
 
 TEST(CrashReportTest, ABadMemoryAccessIsReportedWithItsAddress) {

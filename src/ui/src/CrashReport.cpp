@@ -38,6 +38,7 @@
 #endif
 #if defined(__APPLE__)
 #include <mach/mach.h>
+#include <pthread.h>
 #include <sys/ucontext.h>
 #endif
 #endif
@@ -218,7 +219,9 @@ void writeLogTail(int fd) {
 
 /// Whether the kernel raised the signal for a fault, which has an address,
 /// not a process (raise, kill), whose si_code is SI_USER or the like: 0 or
-/// below on Linux, but 0x10001 and above on macOS.
+/// below on Linux, but 0x10001 and above on macOS. macOS gives a SIGSEGV or
+/// SIGBUS that was sent a fault's code all the same, so there such a one
+/// reads as a fault, at whatever address the thread last faulted at.
 bool raisedByAFault(const siginfo_t* info) {
     if (info == nullptr || info->si_code <= 0) return false;
 #if defined(__APPLE__)
@@ -230,13 +233,14 @@ bool raisedByAFault(const siginfo_t* info) {
 
 #ifdef HZ_HAVE_BACKTRACE
 /// The crashed thread's return addresses, from where the signal stopped it.
-/// glibc's backtrace() unwinds through the signal's frame. macOS's stops at
-/// the first frame off the thread's stack, which the handler's, on a stack of
-/// its own, is: there the walk starts from the interrupted frame instead.
+/// glibc's backtrace() unwinds through the signal's frame. macOS's gives up
+/// at once when called off the thread's stack, as the handler, on a stack of
+/// its own, is (backtrace_from_fp too): there the frame pointers are followed
+/// by hand from the interrupted frame, within the thread's stack.
 int backtraceOf(void* context, void** frames, int capacity) {
 #if defined(__APPLE__)
     const auto* uc = static_cast<const ucontext_t*>(context);
-    if (uc == nullptr || uc->uc_mcontext == nullptr || capacity < 1) return 0;
+    if (uc == nullptr || uc->uc_mcontext == nullptr) return 0;
 #if defined(__arm64__) || defined(__aarch64__)
     const auto pc = static_cast<std::uintptr_t>(arm_thread_state64_get_pc(uc->uc_mcontext->__ss));
     const auto fp = static_cast<std::uintptr_t>(arm_thread_state64_get_fp(uc->uc_mcontext->__ss));
@@ -244,8 +248,10 @@ int backtraceOf(void* context, void** frames, int capacity) {
     const auto pc = static_cast<std::uintptr_t>(uc->uc_mcontext->__ss.__rip);
     const auto fp = static_cast<std::uintptr_t>(uc->uc_mcontext->__ss.__rbp);
 #endif
-    frames[0] = reinterpret_cast<void*>(pc);
-    return 1 + ::backtrace_from_fp(reinterpret_cast<void*>(fp), frames + 1, capacity - 1);
+    pthread_t self = pthread_self();
+    const auto high = reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(self));
+    const std::uintptr_t low = high - pthread_get_stacksize_np(self);
+    return crash::detail::walkFramePointers(pc, fp, low, high, frames, capacity);
 #else
     (void)context;
     return ::backtrace(frames, capacity);
@@ -286,6 +292,26 @@ void onSignal(int sig, siginfo_t* info, void* context) {
 #endif
 
 }  // namespace
+
+int detail::walkFramePointers(std::uintptr_t pc, std::uintptr_t fp, std::uintptr_t low,
+                              std::uintptr_t high, void** frames, int capacity) {
+    if (capacity < 1) return 0;
+    int count = 0;
+    frames[count++] = reinterpret_cast<void*>(pc);
+    // A frame: the caller's frame pointer, then the address to return to.
+    constexpr std::uintptr_t kRecord = 2 * sizeof(std::uintptr_t);
+    while (count < capacity && fp >= low && fp <= high && high - fp >= kRecord &&
+           fp % sizeof(std::uintptr_t) == 0) {
+        const auto* record = reinterpret_cast<const std::uintptr_t*>(fp);
+        const std::uintptr_t next = record[0];
+        const std::uintptr_t returnTo = record[1];
+        if (returnTo == 0) break;
+        frames[count++] = reinterpret_cast<void*>(returnTo);
+        if (next <= fp) break;  // a caller's frame is higher up the stack
+        fp = next;
+    }
+    return count;
+}
 
 QString reportDirectory() {
     QString forced = qEnvironmentVariable("HZ_CRASH_DIR");

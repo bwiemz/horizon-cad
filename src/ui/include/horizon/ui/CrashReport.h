@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <cstdint>
 
 namespace hz::ui::crash {
 
@@ -41,5 +42,18 @@ int prune(const QString& directory, int keep = 10);
 
 /// Crash now, as a fault in native code would: for a test of the handler.
 [[noreturn]] void crashForTest();
+
+namespace detail {
+
+/// The return addresses of the code a signal stopped at @p pc, by its chain
+/// of frame pointers from @p fp: @p pc, then each caller's. The chain is
+/// followed only while it is aligned, rises, and stays in [@p low, @p high),
+/// the thread's stack, so a broken chain ends the walk instead of the
+/// process. Returns how many of @p capacity were written. Safe in a signal
+/// handler: it reads memory and nothing else.
+int walkFramePointers(std::uintptr_t pc, std::uintptr_t fp, std::uintptr_t low, std::uintptr_t high,
+                      void** frames, int capacity);
+
+}  // namespace detail
 
 }  // namespace hz::ui::crash
