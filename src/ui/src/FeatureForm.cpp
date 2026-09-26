@@ -14,6 +14,21 @@
 
 namespace hz::ui {
 
+namespace {
+
+/// @p label as a screen reader says it: without the "&" that marks its
+/// mnemonic ("&&" is a literal "&").
+QString spoken(const QString& label) {
+    QString out;
+    for (qsizetype i = 0; i < label.size(); ++i) {
+        if (label[i] == QLatin1Char('&') && ++i == label.size()) break;
+        out += label[i];
+    }
+    return out;
+}
+
+}  // namespace
+
 QString formatPoint(const math::Vec3& p) {
     const auto n = [](double v) { return QString::number(std::abs(v) < 5e-10 ? 0.0 : v, 'g', 6); };
     return QStringLiteral("(%1, %2, %3)").arg(n(p.x), n(p.y), n(p.z));
@@ -113,6 +128,9 @@ QListWidget* FeatureForm::checklist(const QString& name, const QString& label,
         item->setCheckState(Qt::Unchecked);
         item->setToolTip(tooltip);
     }
+    // A form names each field after its label, but not an item view on every
+    // Qt: 6.11 does, CI's 6.9 does not. Named here, it is named on both.
+    list->setAccessibleName(spoken(label));
     m_form->addRow(label, list);
     return list;
 }

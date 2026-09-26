@@ -98,6 +98,9 @@ TEST(AccessibilityTest, AFormsFieldsAreNamedByTheirLabels) {
     const QString depth =
         accessibleName(form.dialog().findChild<QWidget*>(QStringLiteral("depth")));
     EXPECT_TRUE(depth.startsWith(QStringLiteral("Depth"))) << depth.toStdString();
+    // Qt 6.9 does not name an item view by its label; the form names it.
+    EXPECT_EQ(accessibleName(form.dialog().findChild<QWidget*>(QStringLiteral("edges"))),
+              QStringLiteral("Edges:"));
     form.dialog().hide();
 }
 
