@@ -143,23 +143,22 @@ std::shared_ptr<draft::DraftEntity> projectEdge(const topo::Solid& solid, const 
                                 ? circumcentre(points.front(), points[middle], points[last])
                                 : std::nullopt;
         if (centre) {
-            const double radius = (points.front() - *centre).length();
+            const Vec2 c = *centre;  // by value: what the lambdas below see
+            const double radius = (points.front() - c).length();
             const bool onIt = std::all_of(points.begin(), points.end(), [&](const Vec2& p) {
-                return std::abs((p - *centre).length() - radius) <= 1e-6 * std::max(1.0, radius);
+                return std::abs((p - c).length() - radius) <= 1e-6 * std::max(1.0, radius);
             });
-            if (onIt && closed) return std::make_shared<draft::DraftCircle>(*centre, radius);
+            if (onIt && closed) return std::make_shared<draft::DraftCircle>(c, radius);
             if (onIt) {
-                const auto angle = [&centre](const Vec2& p) {
-                    return std::atan2(p.y - centre->y, p.x - centre->x);
-                };
+                const auto angle = [&c](const Vec2& p) { return std::atan2(p.y - c.y, p.x - c.x); };
                 // An arc runs counterclockwise from its start: the chain's
                 // way round, or the other.
-                const Vec2 a = points.front() - *centre;
-                const Vec2 b = points[middle] - *centre;
+                const Vec2 a = points.front() - c;
+                const Vec2 b = points[middle] - c;
                 const bool counterclockwise = a.x * b.y - a.y * b.x > 0.0;
                 const Vec2& from = counterclockwise ? points.front() : points.back();
                 const Vec2& to = counterclockwise ? points.back() : points.front();
-                return std::make_shared<draft::DraftArc>(*centre, radius, angle(from), angle(to));
+                return std::make_shared<draft::DraftArc>(c, radius, angle(from), angle(to));
             }
         }
     }
