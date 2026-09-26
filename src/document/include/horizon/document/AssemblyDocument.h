@@ -108,11 +108,29 @@ struct InterferenceReport {
     std::vector<uint64_t> unchecked;
 };
 
-/// What an edit to an assembly can change: the components placed and the mates
-/// between them. Undo puts one of these back.
+/// One step of an exploded view (Phase 161): components moved together along
+/// a direction.
+struct ExplodeStep {
+    std::vector<uint64_t> components;
+    math::Vec3 direction = math::Vec3::UnitZ;  ///< unit
+    double distance = 0.0;
+};
+
+/// A named exploded view (Phase 161): its steps, in order. Shown, each
+/// component is drawn moved by every step it is in; it is never placed there:
+/// its mates, its file and its drawings keep where it is.
+struct ExplodedView {
+    uint64_t id = 0;
+    std::string name;
+    std::vector<ExplodeStep> steps;
+};
+
+/// What an edit to an assembly can change: the components placed, the mates
+/// between them, and its exploded views. Undo puts one of these back.
 struct AssemblyState {
     std::vector<ComponentInstance> components;
     std::vector<Mate> mates;
+    std::vector<ExplodedView> views;
 };
 
 /// Assembly document: component instances plus the mates that position them.
@@ -155,11 +173,30 @@ public:
     const std::vector<Mate>& mates() const { return m_mates; }
     std::vector<Mate>& mates() { return m_mates; }
 
+    // --- Exploded views (Phase 161) ---
+    /// Add @p view (an id given if it has none); returns its id.
+    uint64_t addExplodedView(ExplodedView view);
+    /// Remove view @p id; the view shown is then none, if it was. Returns
+    /// true if it was there.
+    bool removeExplodedView(uint64_t id);
+    ExplodedView* explodedView(uint64_t id);
+    const ExplodedView* explodedView(uint64_t id) const;
+    const std::vector<ExplodedView>& explodedViews() const { return m_views; }
+    /// The view shown, 0 for none: how the assembly is drawn. Not an edit to
+    /// undo, but kept with it.
+    uint64_t shownView() const { return m_shownView; }
+    /// Show view @p id (0: none, the components where they are). Returns
+    /// false for an id that is no view.
+    bool setShownView(uint64_t id);
+    /// Where @p comp is drawn: its placement, moved by each step of the
+    /// shown view it is in.
+    math::Mat4 displayTransform(const ComponentInstance& comp) const;
+
     /// Remove all components and mates and reset bookkeeping.
     void clear();
 
-    /// The components and mates as they are now.
-    AssemblyState snapshot() const { return {m_components, m_mates}; }
+    /// The components, mates and exploded views as they are now.
+    AssemblyState snapshot() const { return {m_components, m_mates, m_views}; }
 
     /// Put back a snapshot: its components, placements and mates. A
     /// component still present keeps the geometry loaded for it now (mesh,
@@ -232,6 +269,9 @@ private:
     std::vector<Mate> m_mates;
     uint64_t m_nextComponentId = 1;
     uint64_t m_nextMateId = 1;
+    std::vector<ExplodedView> m_views;
+    uint64_t m_nextViewId = 1;
+    uint64_t m_shownView = 0;
     bool m_dirty = false;
     std::string m_filePath;
     math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;

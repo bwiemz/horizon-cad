@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -269,4 +270,48 @@ TEST(AssemblyFormatTest, EdgeAndDatumReferencesAndLimitsRoundTrip) {
     EXPECT_TRUE(later.mates().empty());
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped.front().find("gearing"), std::string::npos) << report.skipped.front();
+}
+
+// Phase 161: exploded views round-trip, steps and all; which is shown is
+// not kept. A step's component that is gone is left out of it, and a view
+// with a step that is no direction is left out and said.
+TEST(AssemblyFormatTest, ExplodedViewsRoundTrip) {
+    AssemblyDocument original;
+    ComponentInstance a;
+    a.partPath = "a.hzpart";
+    const uint64_t compA = original.addComponent(a);
+    ExplodedView view;
+    view.name = "Apart";
+    view.steps.push_back({{compA, 99}, Vec3(0, -1, 0), 12.5});
+    const uint64_t viewId = original.addExplodedView(view);
+    ExplodedView second;
+    second.name = "Other";
+    original.addExplodedView(second);
+    ASSERT_TRUE(original.setShownView(viewId));
+
+    std::string text = NativeFormat::assemblyToJson(original, "");
+    AssemblyDocument loaded;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, loaded, ""));
+    ASSERT_EQ(loaded.explodedViews().size(), 2u);
+    const ExplodedView* kept = loaded.explodedView(viewId);
+    ASSERT_NE(kept, nullptr);
+    EXPECT_EQ(kept->name, "Apart");
+    ASSERT_EQ(kept->steps.size(), 1u);
+    EXPECT_EQ(kept->steps[0].components, std::vector<uint64_t>{compA}) << "99 is no component";
+    EXPECT_NEAR(kept->steps[0].direction.y, -1.0, 1e-12);
+    EXPECT_DOUBLE_EQ(kept->steps[0].distance, 12.5);
+    EXPECT_EQ(loaded.shownView(), 0u) << "opened unexploded";
+    EXPECT_FALSE(loaded.isDirty());
+
+    // A direction of nothing: that view is left out, and said.
+    const auto at = text.find("[0.0,-1.0,0.0]");
+    ASSERT_NE(at, std::string::npos) << text;
+    text.replace(at, 14, "[0.0,0.0,0.0]");
+    AssemblyDocument broken;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, broken, "", nullptr, &report));
+    EXPECT_EQ(broken.explodedViews().size(), 1u);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("exploded view 1"), std::string::npos)
+        << report.skipped.front();
 }

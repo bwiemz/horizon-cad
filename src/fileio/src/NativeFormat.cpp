@@ -78,7 +78,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// 24: a mate may refer to an edge or a datum ("kind"), and have limits
 /// ("minimum", "maximum") (Phase 160). An older build would take an edge's
 /// name for a face's, and hold a limited distance at its value.
-static constexpr int kFormatVersion = 24;
+/// 25: an assembly may have exploded views, "explodedViews" (Phase 161). An
+/// older build would drop them when it saved the assembly again.
+static constexpr int kFormatVersion = 25;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -2016,6 +2018,22 @@ static json buildAssemblyRoot(const doc::AssemblyDocument& asmDoc, const std::st
     }
     root["mates"] = matesArray;
 
+    // --- Exploded views (Phase 161): which is shown is not kept ---
+    if (!asmDoc.explodedViews().empty()) {
+        json views = json::array();
+        for (const auto& view : asmDoc.explodedViews()) {
+            json steps = json::array();
+            for (const auto& step : view.steps) {
+                steps.push_back(
+                    {{"components", step.components},
+                     {"direction", {step.direction.x, step.direction.y, step.direction.z}},
+                     {"distance", step.distance}});
+            }
+            views.push_back({{"id", view.id}, {"name", view.name}, {"steps", steps}});
+        }
+        root["explodedViews"] = views;
+    }
+
     return root;
 }
 
@@ -2135,6 +2153,42 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
             } catch (const std::exception& e) {
                 noteSkipped(report, "mate", thisMate, mObj, jsonMessage(e));
                 continue;  // Skip malformed mates.
+            }
+        }
+    }
+
+    // --- Exploded views (Phase 161) ---
+    if (const auto views = root.find("explodedViews"); views != root.end() && views->is_array()) {
+        size_t viewIndex = 0;
+        for (const auto& vObj : *views) {
+            const size_t thisView = viewIndex++;
+            try {
+                doc::ExplodedView view;
+                view.id = vObj.value("id", uint64_t{0});
+                view.name = vObj.value("name", "");
+                for (const auto& sObj : vObj.at("steps")) {
+                    doc::ExplodeStep step;
+                    // Only the components there: one gone moves nothing.
+                    for (const auto& id : sObj.at("components")) {
+                        const auto componentId = id.get<uint64_t>();
+                        if (asmDoc.component(componentId) != nullptr) {
+                            step.components.push_back(componentId);
+                        }
+                    }
+                    const auto& d = sObj.at("direction");
+                    const math::Vec3 direction(d.at(0).get<double>(), d.at(1).get<double>(),
+                                               d.at(2).get<double>());
+                    step.distance = sObj.at("distance").get<double>();
+                    const double length = direction.length();
+                    if (!std::isfinite(length) || length < 1e-12 || !std::isfinite(step.distance)) {
+                        throw std::runtime_error("a step's direction or distance is no number");
+                    }
+                    step.direction = direction / length;
+                    view.steps.push_back(std::move(step));
+                }
+                asmDoc.addExplodedView(std::move(view));
+            } catch (const std::exception& e) {
+                noteSkipped(report, "exploded view", thisView, vObj, jsonMessage(e));
             }
         }
     }

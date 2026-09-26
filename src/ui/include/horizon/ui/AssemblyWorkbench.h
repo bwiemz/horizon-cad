@@ -66,6 +66,16 @@ public:
     void onRemoveMate();
     void onCheckInterference();
 
+    // --- Exploded views (Phase 161) ---
+    /// Move the components checked (those chosen in the view, at first)
+    /// along a direction, as a step of an exploded view: a new one, or one
+    /// there. One undo step; the view is shown after it.
+    void onExplodeComponents();
+    /// Show an exploded view, or none: the components where they are. How
+    /// the assembly is drawn only: nothing is recorded, nothing is placed.
+    void onShowExplodedView();
+    void onRemoveExplodedView();
+
     /// What a STEP export of the active assembly writes (Phase 153): each
     /// part once, from its file, and each unsuppressed component placed; the
     /// components whose part could not be read, by name. The parts'

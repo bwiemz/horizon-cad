@@ -512,3 +512,57 @@ TEST(AssemblyMatesTest, ADatumAxisAndAnEdgeAreMadeOneLine) {
     EXPECT_NEAR(corner.x, 5.0, 1e-6) << "its upright edge on the axis";
     EXPECT_NEAR(corner.y, 5.0, 1e-6);
 }
+
+// Phase 161: an exploded view moves where a component is drawn, by each of
+// its steps the component is in, and never where it is placed. Undo puts a
+// view back; a component removed leaves its steps.
+TEST(AssemblyDocumentTest, AnExplodedViewMovesWhereAComponentIsDrawn) {
+    AssemblyDocument asmDoc;
+    ComponentInstance base;
+    base.partPath = "base.hzpart";
+    const uint64_t baseId = asmDoc.addComponent(base);
+    ComponentInstance lid;
+    lid.partPath = "lid.hzpart";
+    lid.transform = Mat4::translation(Vec3(0, 0, 10));
+    const uint64_t lidId = asmDoc.addComponent(lid);
+    const AssemblyState before = asmDoc.snapshot();
+
+    ExplodedView view;
+    view.name = "Apart";
+    view.steps.push_back({{lidId}, Vec3::UnitZ, 20.0});
+    view.steps.push_back({{lidId, baseId}, Vec3::UnitX, 5.0});
+    const uint64_t viewId = asmDoc.addExplodedView(view);
+    EXPECT_NE(viewId, 0u);
+    const auto drawnAt = [&](uint64_t id) {
+        return asmDoc.displayTransform(*asmDoc.component(id)).transformPoint(Vec3());
+    };
+    EXPECT_NEAR(drawnAt(lidId).z, 10.0, 1e-12) << "not shown: where it is";
+
+    ASSERT_TRUE(asmDoc.setShownView(viewId));
+    EXPECT_NEAR(drawnAt(lidId).x, 5.0, 1e-12);
+    EXPECT_NEAR(drawnAt(lidId).z, 30.0, 1e-12) << "up 20, and across 5";
+    EXPECT_NEAR(drawnAt(baseId).x, 5.0, 1e-12) << "the base in the second step only";
+    EXPECT_NEAR(drawnAt(baseId).z, 0.0, 1e-12);
+    EXPECT_NEAR(asmDoc.component(lidId)->transform.transformPoint(Vec3()).z, 10.0, 1e-12)
+        << "placed where it was";
+    EXPECT_FALSE(asmDoc.setShownView(viewId + 1)) << "no such view";
+    EXPECT_EQ(asmDoc.shownView(), viewId);
+
+    // A second view given the first's id gets one of its own.
+    ExplodedView twin;
+    twin.id = viewId;
+    EXPECT_NE(asmDoc.addExplodedView(twin), viewId);
+
+    // Removed, the lid leaves the steps; the base still moves.
+    asmDoc.removeComponent(lidId);
+    EXPECT_EQ(asmDoc.explodedView(viewId)->steps[0].components.size(), 0u);
+    EXPECT_NEAR(drawnAt(baseId).x, 5.0, 1e-12);
+
+    // Back as it was: no views, none shown.
+    asmDoc.restore(before);
+    EXPECT_TRUE(asmDoc.explodedViews().empty());
+    EXPECT_EQ(asmDoc.shownView(), 0u) << "the view shown is gone";
+    EXPECT_NEAR(drawnAt(lidId).z, 10.0, 1e-12);
+    // Ids are not handed out again.
+    EXPECT_GT(asmDoc.addExplodedView({}), viewId + 1);
+}

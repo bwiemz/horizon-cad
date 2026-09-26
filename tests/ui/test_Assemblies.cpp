@@ -33,6 +33,7 @@
 #include <map>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
@@ -1179,4 +1180,67 @@ TEST(AssembliesTest, ADistanceBetweenLimitsIsHeldAtTheNearestLimit) {
     auto* tree = w.findChild<hz::ui::AssemblyTreePanel*>()->tree();
     const QString text = tree->topLevelItem(1)->child(0)->text(0);
     EXPECT_TRUE(text.contains(QStringLiteral(" to "))) << text.toStdString();
+}
+
+// Phase 161: Explode Components moves the components checked along a
+// direction, as a step of a new exploded view, then shown: drawn moved,
+// placed where they were, one undo step. Exploded, nothing is dragged;
+// shown as none, each is drawn where it is again; undone, the view is gone.
+TEST(AssembliesTest, AnExplodedViewDrawsComponentsApart) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+    const auto drawnAt = [&](uint64_t id) {
+        for (const auto& node : drive.viewport().sceneGraph().nodes()) {
+            if (node->ownerId() == id) return node->localTransform().transformPoint(Vec3());
+        }
+        ADD_FAILURE() << "no node for component " << id;
+        return Vec3();
+    };
+
+    chooseInTree(w, lid);  // checked in the form at first
+    {
+        FormFiller explode(QStringLiteral("Explode Components"),
+                           FormAnswers()
+                               .choose(QStringLiteral("direction"), QStringLiteral("+Z"))
+                               .number(QStringLiteral("distance"), 25.0));
+        trigger(w, "action_explode_components");
+        ASSERT_TRUE(explode.seen());
+    }
+    ASSERT_EQ(assembly.explodedViews().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    const auto& view = assembly.explodedViews().front();
+    ASSERT_EQ(view.steps.size(), 1u);
+    EXPECT_EQ(view.steps[0].components, std::vector<uint64_t>{lid}) << "the lid alone";
+    EXPECT_EQ(assembly.shownView(), view.id);
+    EXPECT_NEAR(drawnAt(lid).z, 35.0, 1e-6) << "drawn 25 up";
+    EXPECT_NEAR(drawnAt(base).z, 0.0, 1e-6);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "placed where it was");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+
+    // Exploded, a press on it drags nothing.
+    lookFromAbove(drive.viewport());
+    dragOnScreen(drive, Vec3(17, 5, 45), Vec3(37, 25, 45));
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "not dragged");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1);
+    EXPECT_FALSE(w.statusBar()->currentMessage().isEmpty());
+
+    // Shown as none: where it is.
+    {
+        FormFiller show(
+            QStringLiteral("Show Exploded View"),
+            FormAnswers().chooseContaining(QStringLiteral("view"), QStringLiteral("None")));
+        trigger(w, "action_show_exploded_view");
+        ASSERT_TRUE(show.seen());
+    }
+    EXPECT_EQ(assembly.shownView(), 0u);
+    EXPECT_NEAR(drawnAt(lid).z, 10.0, 1e-6);
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "showing is no edit";
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(assembly.explodedViews().empty());
 }

@@ -200,11 +200,66 @@ void AssemblyDocument::restore(AssemblyState state) {
     }
     m_components = std::move(state.components);
     m_mates = std::move(state.mates);
+    m_views = std::move(state.views);
     // Ids handed out since the snapshot are not reused.
     for (const auto& comp : m_components) {
         m_nextComponentId = std::max(m_nextComponentId, comp.id + 1);
     }
     for (const auto& mate : m_mates) m_nextMateId = std::max(m_nextMateId, mate.id + 1);
+    for (const auto& view : m_views) m_nextViewId = std::max(m_nextViewId, view.id + 1);
+    if (explodedView(m_shownView) == nullptr) m_shownView = 0;  // it is gone
+}
+
+uint64_t AssemblyDocument::addExplodedView(ExplodedView view) {
+    // None, or one taken (a file's two alike): the next.
+    if (view.id == 0 || explodedView(view.id) != nullptr) view.id = m_nextViewId;
+    m_nextViewId = std::max(m_nextViewId, view.id + 1);
+    const uint64_t id = view.id;
+    m_views.push_back(std::move(view));
+    m_dirty = true;
+    return id;
+}
+
+bool AssemblyDocument::removeExplodedView(uint64_t id) {
+    const auto it = std::find_if(m_views.begin(), m_views.end(),
+                                 [id](const ExplodedView& v) { return v.id == id; });
+    if (it == m_views.end()) return false;
+    m_views.erase(it);
+    if (m_shownView == id) m_shownView = 0;
+    m_dirty = true;
+    return true;
+}
+
+ExplodedView* AssemblyDocument::explodedView(uint64_t id) {
+    const auto it = std::find_if(m_views.begin(), m_views.end(),
+                                 [id](const ExplodedView& v) { return v.id == id; });
+    return it == m_views.end() ? nullptr : &*it;
+}
+
+const ExplodedView* AssemblyDocument::explodedView(uint64_t id) const {
+    const auto it = std::find_if(m_views.begin(), m_views.end(),
+                                 [id](const ExplodedView& v) { return v.id == id; });
+    return it == m_views.end() ? nullptr : &*it;
+}
+
+bool AssemblyDocument::setShownView(uint64_t id) {
+    if (id != 0 && explodedView(id) == nullptr) return false;
+    if (m_shownView != id) m_dirty = true;
+    m_shownView = id;
+    return true;
+}
+
+math::Mat4 AssemblyDocument::displayTransform(const ComponentInstance& comp) const {
+    const ExplodedView* view = explodedView(m_shownView);
+    if (view == nullptr) return comp.transform;
+    math::Vec3 moved;
+    for (const auto& step : view->steps) {
+        if (std::find(step.components.begin(), step.components.end(), comp.id) !=
+            step.components.end()) {
+            moved = moved + step.direction * step.distance;
+        }
+    }
+    return math::Mat4::translation(moved) * comp.transform;
 }
 
 uint64_t AssemblyDocument::addComponent(ComponentInstance instance) {
@@ -227,6 +282,10 @@ bool AssemblyDocument::removeComponent(uint64_t id) {
     // fail (InvalidReference).
     std::erase_if(m_mates,
                   [id](const Mate& m) { return m.a.componentId == id || m.b.componentId == id; });
+    // And its place in any exploded view's steps.
+    for (auto& view : m_views) {
+        for (auto& step : view.steps) std::erase(step.components, id);
+    }
     m_dirty = true;
     return true;
 }
@@ -280,6 +339,9 @@ void AssemblyDocument::clear() {
     m_mates.clear();
     m_nextComponentId = 1;
     m_nextMateId = 1;
+    m_views.clear();
+    m_nextViewId = 1;
+    m_shownView = 0;
     m_dirty = false;
     m_filePath.clear();
     m_lengthUnit = math::LengthUnit::Millimetre;

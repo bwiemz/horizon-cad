@@ -12,6 +12,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTableWidget>
@@ -370,7 +371,8 @@ std::optional<math::Vec3> meetPlane(const math::Vec3& point, const math::Vec3& n
 
 std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const {
     const doc::AssemblyDocument* asmDoc = assembly();
-    if (asmDoc == nullptr) return std::nullopt;
+    // Nothing is dragged exploded (Phase 161): nor is a triad shown.
+    if (asmDoc == nullptr || asmDoc->shownView() != 0) return std::nullopt;
     for (const auto& pick : m_host.viewport().modelSelection()) {
         if (pick.owner == 0) continue;
         const doc::ComponentInstance* comp = asmDoc->component(pick.owner);
@@ -396,6 +398,12 @@ bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
     const doc::ComponentInstance* comp = asmDoc->component(component);
     if (comp == nullptr || comp->suppressed) return false;
     const QString name = QString::fromStdString(comp->name);
+    if (asmDoc->shownView() != 0) {
+        // Drawn moved, it would be dragged from where it is not.
+        m_host.showStatus(
+            tr("%1 is not dragged while the assembly is exploded: show none to drag").arg(name));
+        return false;
+    }
     if (isFixed(*asmDoc, component)) {
         m_host.showStatus(tr("%1 is held by a Fixed mate: it is not dragged").arg(name));
         return false;
@@ -543,7 +551,7 @@ void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
     for (const auto& node : view.sceneGraph().nodes()) {
         if (node->ownerId() == 0) continue;
         if (const doc::ComponentInstance* comp = asmDoc.component(node->ownerId())) {
-            node->setLocalTransform(comp->transform);
+            node->setLocalTransform(asmDoc.displayTransform(*comp));
         }
     }
     view.update();
@@ -1049,6 +1057,188 @@ void AssemblyWorkbench::onRotateComponent() {
                           math::Mat4::translation(middle * -1.0) * comp->transform;
         return true;
     });
+}
+
+namespace {
+
+/// The directions a step moves along, as offered.
+struct ExplodeDirection {
+    const char* name;
+    double x, y, z;
+    math::Vec3 direction() const { return {x, y, z}; }
+};
+constexpr std::array<ExplodeDirection, 6> kExplodeDirections{{
+    {"+X", 1, 0, 0},
+    {"-X", -1, 0, 0},
+    {"+Y", 0, 1, 0},
+    {"-Y", 0, -1, 0},
+    {"+Z", 0, 0, 1},
+    {"-Z", 0, 0, -1},
+}};
+
+QString componentLabel(const doc::ComponentInstance& comp) {
+    return QStringLiteral("%1 (#%2)")
+        .arg(QString::fromStdString(comp.name.empty() ? "component" : comp.name))
+        .arg(comp.id);
+}
+
+}  // namespace
+
+void AssemblyWorkbench::onExplodeComponents() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag
+    const QString verb = tr("Explode Components");
+    if (!assembly() || assembly()->components().empty()) {
+        m_host.showStatus(tr("%1 works on an assembly's components").arg(verb));
+        return;
+    }
+    doc::AssemblyDocument& asmDoc = *assembly();
+
+    FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
+    // Into a new view, or one there: the one shown, if any.
+    QStringList viewNames{tr("New exploded view")};
+    int shownRow = 0;
+    for (const auto& view : asmDoc.explodedViews()) {
+        if (view.id == asmDoc.shownView()) shownRow = static_cast<int>(viewNames.size());
+        viewNames << QString::fromStdString(view.name);
+    }
+    auto* which = form.choice(QStringLiteral("view"), tr("Exploded view:"), viewNames);
+    which->setCurrentIndex(shownRow);
+    auto* name = form.text(QStringLiteral("name"), tr("New view's name:"),
+                           tr("Exploded View %1").arg(asmDoc.explodedViews().size() + 1));
+
+    // The components chosen in the view, or the tree's, are checked.
+    std::set<uint64_t> chosen;
+    for (const auto& pick : m_host.viewport().modelSelection()) {
+        if (pick.owner != 0) chosen.insert(pick.owner);
+    }
+    if (chosen.empty() && targetComponent() != 0) chosen.insert(targetComponent());
+    std::vector<std::pair<QString, QString>> rows;
+    std::vector<uint64_t> ids;
+    math::BoundingBox chosenBounds;
+    for (const auto& comp : asmDoc.components()) {
+        rows.emplace_back(componentLabel(comp), QString());
+        ids.push_back(comp.id);
+        if (chosen.count(comp.id) != 0) chosenBounds.expand(placedBounds(comp));
+    }
+    auto* components = form.checklist(QStringLiteral("components"), tr("Components:"), rows);
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (chosen.count(ids[i]) != 0) {
+            components->item(static_cast<int>(i))->setCheckState(Qt::Checked);
+        }
+    }
+
+    QStringList directionNames;
+    for (const auto& d : kExplodeDirections) directionNames << QString::fromLatin1(d.name);
+    auto* direction = form.choice(QStringLiteral("direction"), tr("Along:"), directionNames);
+    direction->setCurrentIndex(4);  // +Z: up, off what they stand on
+    // As far as they are big, at first: clear of where they were.
+    double size = 10.0;
+    if (chosenBounds.isValid()) {
+        const math::Vec3 extent = chosenBounds.max() - chosenBounds.min();
+        size = std::max({extent.x, extent.y, extent.z, 1e-3});
+    }
+    auto* distance = form.length(QStringLiteral("distance"), tr("Distance:"), size, 0.0, 1e6);
+    if (!form.exec()) return;
+
+    doc::ExplodeStep step;
+    for (const int row : FeatureForm::checkedRows(components)) {
+        step.components.push_back(ids.at(static_cast<size_t>(row)));
+    }
+    if (step.components.empty()) {
+        m_host.showStatus(tr("%1: check the components to move").arg(verb));
+        return;
+    }
+    if (!(distance->value() > 0.0)) {
+        m_host.showStatus(tr("%1: the distance must be more than 0").arg(verb));
+        return;
+    }
+    step.direction =
+        kExplodeDirections.at(static_cast<size_t>(std::max(direction->currentIndex(), 0)))
+            .direction();
+    step.distance = distance->value();
+
+    const bool wasDirty = asmDoc.isDirty();
+    doc::AssemblyState before = asmDoc.snapshot();
+    uint64_t viewId = 0;
+    const int row = which->currentIndex();
+    if (row <= 0) {
+        doc::ExplodedView view;
+        view.name = name->text().trimmed().toStdString();
+        if (view.name.empty()) view.name = tr("Exploded View").toStdString();
+        viewId = asmDoc.addExplodedView(std::move(view));
+    } else {
+        viewId = asmDoc.explodedViews().at(static_cast<size_t>(row - 1)).id;
+    }
+    asmDoc.explodedView(viewId)->steps.push_back(std::move(step));
+    // Pushed, the edit is made again from its snapshot: the views are new.
+    recordAssemblyEdit(std::move(before), wasDirty, verb);
+    asmDoc.setShownView(viewId);
+    showPlacements(asmDoc);
+    if (const doc::ExplodedView* view = asmDoc.explodedView(viewId)) {
+        m_host.showStatus(tr("%1: step %2 of %3")
+                              .arg(verb)
+                              .arg(view->steps.size())
+                              .arg(QString::fromStdString(view->name)));
+    }
+}
+
+void AssemblyWorkbench::onShowExplodedView() {
+    m_host.viewport().cancelComponentDrag();  // one under way was placed unexploded
+    const QString verb = tr("Show Exploded View");
+    if (!assembly()) {
+        m_host.showStatus(tr("%1 is only available in an assembly document").arg(verb));
+        return;
+    }
+    doc::AssemblyDocument& asmDoc = *assembly();
+    if (asmDoc.explodedViews().empty()) {
+        m_host.showStatus(
+            tr("%1: the assembly has no exploded view; Explode Components makes one").arg(verb));
+        return;
+    }
+    FeatureForm form(m_host.dialogParent(), verb);
+    QStringList names{tr("None: the components where they are")};
+    int shownRow = 0;
+    for (const auto& view : asmDoc.explodedViews()) {
+        if (view.id == asmDoc.shownView()) shownRow = static_cast<int>(names.size());
+        names << QString::fromStdString(view.name);
+    }
+    auto* which = form.choice(QStringLiteral("view"), tr("Show:"), names);
+    which->setCurrentIndex(shownRow);
+    if (!form.exec()) return;
+    const int row = which->currentIndex();
+    const uint64_t id = row <= 0 ? 0 : asmDoc.explodedViews().at(static_cast<size_t>(row - 1)).id;
+    asmDoc.setShownView(id);
+    showPlacements(asmDoc);
+    m_host.showStatus(id == 0 ? tr("The assembly is shown unexploded")
+                              : tr("%1 is shown").arg(names.at(row)));
+}
+
+void AssemblyWorkbench::onRemoveExplodedView() {
+    m_host.viewport().cancelComponentDrag();
+    const QString verb = tr("Remove Exploded View");
+    if (!assembly() || assembly()->explodedViews().empty()) {
+        m_host.showStatus(tr("%1: the assembly has no exploded view").arg(verb));
+        return;
+    }
+    doc::AssemblyDocument& asmDoc = *assembly();
+    FeatureForm form(m_host.dialogParent(), verb);
+    QStringList names;
+    int shownRow = 0;
+    for (const auto& view : asmDoc.explodedViews()) {
+        if (view.id == asmDoc.shownView()) shownRow = static_cast<int>(names.size());
+        names << QString::fromStdString(view.name);
+    }
+    auto* which = form.choice(QStringLiteral("view"), tr("Exploded view:"), names);
+    which->setCurrentIndex(shownRow);
+    if (!form.exec()) return;
+    const auto row = static_cast<size_t>(std::max(which->currentIndex(), 0));
+    const uint64_t id = asmDoc.explodedViews().at(row).id;
+    const bool wasDirty = asmDoc.isDirty();
+    doc::AssemblyState before = asmDoc.snapshot();
+    asmDoc.removeExplodedView(id);
+    recordAssemblyEdit(std::move(before), wasDirty, verb);
+    showPlacements(asmDoc);
+    m_host.showStatus(tr("%1 removed").arg(names.at(static_cast<int>(row))));
 }
 
 void AssemblyWorkbench::removeComponent(uint64_t id) {
