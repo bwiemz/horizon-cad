@@ -54,9 +54,11 @@ inline std::vector<std::string> unnamedControls(QWidget& root) {
     for (QWidget* widget : root.findChildren<QWidget*>()) {
         // Qt's own parts of a control (a spin box's line edit, a toolbar's
         // overflow button, a combo box's popup list, a line edit's clear
-        // button) are reached through it.
+        // button, a table's select-all corner) are reached through it. Qt 6.9
+        // leaves the last unnamed, 6.11 does not.
         if (widget->objectName().startsWith(QLatin1String("qt_")) ||
-            widget->inherits("QComboBoxListView") || widget->inherits("QLineEditIconButton")) {
+            widget->inherits("QComboBoxListView") || widget->inherits("QLineEditIconButton") ||
+            widget->inherits("QTableCornerButton")) {
             continue;
         }
         const bool control = widget->focusPolicy() != Qt::NoFocus ||
