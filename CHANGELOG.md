@@ -17,7 +17,33 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 17 (Phases 158–161, in progress)
+## Unreleased — Professional workflows, Milestone 17 (Phases 158–161)
+
+- **Component patterns (161, part 2).**
+  - Assembly ▸ Pattern Components repeats the components checked along a
+    direction, or about an axis through a point, as a part's pattern
+    repeats a body.
+  - Each instance is a component of its own, named after its seed
+    ("bolt (2)"): it can be clicked, is checked for interference, is
+    counted in the bill of materials, and is drawn and exported.
+  - The instances are placed from their seeds, and follow them when they
+    are moved, dragged or mated. An instance isn't moved, turned,
+    suppressed or mated on its own; the status bar says to edit the
+    pattern or its seed.
+  - Removing an instance leaves its number out of the pattern. Edit
+    Component Pattern changes the count, the spacing or which are left
+    out, and the tree lists the patterns.
+
+- **Exploded views (161, part 1).**
+  - Assembly ▸ Explode Components moves the components checked along an
+    axis, as a step of a named exploded view, and shows it. Steps add up.
+  - Show Exploded View shows one, or none. A view changes only how the
+    assembly is drawn: nothing is placed there, and the mates and the
+    file keep where each component is.
+  - While a view is shown, nothing is dragged.
+  - Files are saved as format version 25, with the views and patterns.
+  - Mirrored components move to Phase 162, which brings the mirrored body
+    they need.
 
 - **More to mate (160).**
   - Add Mate takes clicked edges as well as faces, and lists each

@@ -52,6 +52,15 @@ struct ComponentInstance {
     /// parent's mates, interference check and exports take it as.
     std::shared_ptr<const topo::Solid> assemblySolid;
 
+    /// An instance of a component pattern (Phase 161): the pattern (0: it is
+    /// none), the component it repeats, and its index there, from 1. It is
+    /// placed from that seed, by AssemblyDocument::updatePatterns, never on
+    /// its own: it follows the seed, and is left out of the mates' solve.
+    uint64_t patternId = 0;
+    uint64_t seedId = 0;
+    int patternIndex = 0;
+    bool isPatternInstance() const { return patternId != 0; }
+
     /// Whether its file is an assembly (Phase 159): by its extension.
     bool isAssembly() const;
     /// The solid it places: its part's, or a subassembly's gathered one;
@@ -108,11 +117,60 @@ struct InterferenceReport {
     std::vector<uint64_t> unchecked;
 };
 
-/// What an edit to an assembly can change: the components placed and the mates
-/// between them. Undo puts one of these back.
+/// One step of an exploded view (Phase 161): components moved together along
+/// a direction.
+struct ExplodeStep {
+    std::vector<uint64_t> components;
+    math::Vec3 direction = math::Vec3::UnitZ;  ///< unit
+    double distance = 0.0;
+};
+
+/// A named exploded view (Phase 161): its steps, in order. Shown, each
+/// component is drawn moved by every step it is in; it is never placed there:
+/// its mates, its file and its drawings keep where it is.
+struct ExplodedView {
+    uint64_t id = 0;
+    std::string name;
+    std::vector<ExplodeStep> steps;
+};
+
+/// A pattern of components (Phase 161): its seeds repeated along a direction,
+/// or about an axis, as a part's pattern repeats its bodies. Its instances
+/// are components of their own (ComponentInstance::patternId), so a pick,
+/// the interference check, the bill of materials and every export take
+/// them as they take any; they are placed from their seeds, and follow them.
+struct ComponentPattern {
+    enum class Kind { Linear, Circular };
+    uint64_t id = 0;
+    std::string name;
+    Kind kind = Kind::Linear;
+    std::vector<uint64_t> seeds;  ///< components, none an instance itself
+    /// Linear: the direction along it. Circular: the axis's. Unit.
+    math::Vec3 direction = math::Vec3::UnitX;
+    math::Vec3 axisPoint;  ///< Circular: a point on the axis
+    /// Linear: the distance between instances. Circular: the angle, in
+    /// radians.
+    double spacing = 10.0;
+    /// No more instances than this: a file's count is not taken on trust.
+    static constexpr int kMaxCount = 1000;
+    int count = 2;             ///< instances, the seeds themselves the first
+    std::vector<int> skipped;  ///< instance indices left out, from 1
+
+    /// How instance @p k is moved from where its seed is: in the world.
+    math::Mat4 instanceTransform(int k) const;
+    bool skips(int k) const;
+    /// The positions kept, the seeds' among them.
+    int kept() const;
+};
+
+/// What an edit to an assembly can change: the components placed, the mates
+/// between them, its exploded views and its component patterns. Undo puts
+/// one of these back.
 struct AssemblyState {
     std::vector<ComponentInstance> components;
     std::vector<Mate> mates;
+    std::vector<ExplodedView> views;
+    std::vector<ComponentPattern> patterns;
 };
 
 /// Assembly document: component instances plus the mates that position them.
@@ -130,7 +188,8 @@ public:
     uint64_t addComponent(ComponentInstance instance);
 
     /// Remove a component by id, and the mates that refer to it. Returns
-    /// true if found.
+    /// true if found. A pattern's instance is left out of it: its index is
+    /// skipped (Phase 161). A seed leaves its patterns, its instances with it.
     bool removeComponent(uint64_t id);
 
     /// Find a component by id (nullptr if absent).
@@ -155,11 +214,47 @@ public:
     const std::vector<Mate>& mates() const { return m_mates; }
     std::vector<Mate>& mates() { return m_mates; }
 
+    // --- Component patterns (Phase 161) ---
+    /// Add @p pattern (an id given if it has none, or one taken); returns its
+    /// id. Its instances are made by updatePatterns, called after: a file's
+    /// patterns are all read before any instance is made, or kept.
+    uint64_t addPattern(ComponentPattern pattern);
+    /// Remove pattern @p id, and its instances; its seeds stay.
+    bool removePattern(uint64_t id);
+    ComponentPattern* pattern(uint64_t id);
+    const ComponentPattern* pattern(uint64_t id) const;
+    const std::vector<ComponentPattern>& patterns() const { return m_patterns; }
+    /// Make each pattern's instances what it says: each placed from its
+    /// seed, its part and suppression the seed's; made for an index or a
+    /// seed new to it (named after the seed), removed for one gone. A pattern
+    /// with no seed left goes. Called after anything that moves a seed or
+    /// changes a pattern. Whether anything changed.
+    bool updatePatterns();
+
+    // --- Exploded views (Phase 161) ---
+    /// Add @p view (an id given if it has none); returns its id.
+    uint64_t addExplodedView(ExplodedView view);
+    /// Remove view @p id; the view shown is then none, if it was. Returns
+    /// true if it was there.
+    bool removeExplodedView(uint64_t id);
+    ExplodedView* explodedView(uint64_t id);
+    const ExplodedView* explodedView(uint64_t id) const;
+    const std::vector<ExplodedView>& explodedViews() const { return m_views; }
+    /// The view shown, 0 for none: how the assembly is drawn. Not an edit to
+    /// undo, but kept with it.
+    uint64_t shownView() const { return m_shownView; }
+    /// Show view @p id (0: none, the components where they are). Returns
+    /// false for an id that is no view.
+    bool setShownView(uint64_t id);
+    /// Where @p comp is drawn: its placement, moved by each step of the
+    /// shown view it is in.
+    math::Mat4 displayTransform(const ComponentInstance& comp) const;
+
     /// Remove all components and mates and reset bookkeeping.
     void clear();
 
-    /// The components and mates as they are now.
-    AssemblyState snapshot() const { return {m_components, m_mates}; }
+    /// The components, mates, exploded views and patterns as they are now.
+    AssemblyState snapshot() const { return {m_components, m_mates, m_views, m_patterns}; }
 
     /// Put back a snapshot: its components, placements and mates. A
     /// component still present keeps the geometry loaded for it now (mesh,
@@ -232,6 +327,11 @@ private:
     std::vector<Mate> m_mates;
     uint64_t m_nextComponentId = 1;
     uint64_t m_nextMateId = 1;
+    std::vector<ExplodedView> m_views;
+    std::vector<ComponentPattern> m_patterns;
+    uint64_t m_nextPatternId = 1;
+    uint64_t m_nextViewId = 1;
+    uint64_t m_shownView = 0;
     bool m_dirty = false;
     std::string m_filePath;
     math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;

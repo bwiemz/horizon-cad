@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -511,4 +512,185 @@ TEST(AssemblyMatesTest, ADatumAxisAndAnEdgeAreMadeOneLine) {
     const Vec3 corner = result.transforms.at(other).transformPoint(Vec3(0, 0, 0));
     EXPECT_NEAR(corner.x, 5.0, 1e-6) << "its upright edge on the axis";
     EXPECT_NEAR(corner.y, 5.0, 1e-6);
+}
+
+// Phase 161: an exploded view moves where a component is drawn, by each of
+// its steps the component is in, and never where it is placed. Undo puts a
+// view back; a component removed leaves its steps.
+TEST(AssemblyDocumentTest, AnExplodedViewMovesWhereAComponentIsDrawn) {
+    AssemblyDocument asmDoc;
+    ComponentInstance base;
+    base.partPath = "base.hzpart";
+    const uint64_t baseId = asmDoc.addComponent(base);
+    ComponentInstance lid;
+    lid.partPath = "lid.hzpart";
+    lid.transform = Mat4::translation(Vec3(0, 0, 10));
+    const uint64_t lidId = asmDoc.addComponent(lid);
+    const AssemblyState before = asmDoc.snapshot();
+
+    ExplodedView view;
+    view.name = "Apart";
+    view.steps.push_back({{lidId}, Vec3::UnitZ, 20.0});
+    view.steps.push_back({{lidId, baseId}, Vec3::UnitX, 5.0});
+    const uint64_t viewId = asmDoc.addExplodedView(view);
+    EXPECT_NE(viewId, 0u);
+    const auto drawnAt = [&](uint64_t id) {
+        return asmDoc.displayTransform(*asmDoc.component(id)).transformPoint(Vec3());
+    };
+    EXPECT_NEAR(drawnAt(lidId).z, 10.0, 1e-12) << "not shown: where it is";
+
+    ASSERT_TRUE(asmDoc.setShownView(viewId));
+    EXPECT_NEAR(drawnAt(lidId).x, 5.0, 1e-12);
+    EXPECT_NEAR(drawnAt(lidId).z, 30.0, 1e-12) << "up 20, and across 5";
+    EXPECT_NEAR(drawnAt(baseId).x, 5.0, 1e-12) << "the base in the second step only";
+    EXPECT_NEAR(drawnAt(baseId).z, 0.0, 1e-12);
+    EXPECT_NEAR(asmDoc.component(lidId)->transform.transformPoint(Vec3()).z, 10.0, 1e-12)
+        << "placed where it was";
+    EXPECT_FALSE(asmDoc.setShownView(viewId + 1)) << "no such view";
+    EXPECT_EQ(asmDoc.shownView(), viewId);
+
+    // A second view given the first's id gets one of its own.
+    ExplodedView twin;
+    twin.id = viewId;
+    EXPECT_NE(asmDoc.addExplodedView(twin), viewId);
+
+    // Removed, the lid leaves the steps; the base still moves.
+    asmDoc.removeComponent(lidId);
+    EXPECT_EQ(asmDoc.explodedView(viewId)->steps[0].components.size(), 0u);
+    EXPECT_NEAR(drawnAt(baseId).x, 5.0, 1e-12);
+
+    // Back as it was: no views, none shown.
+    asmDoc.restore(before);
+    EXPECT_TRUE(asmDoc.explodedViews().empty());
+    EXPECT_EQ(asmDoc.shownView(), 0u) << "the view shown is gone";
+    EXPECT_NEAR(drawnAt(lidId).z, 10.0, 1e-12);
+    // Ids are not handed out again.
+    EXPECT_GT(asmDoc.addExplodedView({}), viewId + 1);
+}
+
+namespace {
+
+Vec3 placedAt(const AssemblyDocument& asmDoc, uint64_t id) {
+    return asmDoc.component(id)->transform.transformPoint(Vec3());
+}
+
+/// The instances of pattern @p id, by index.
+std::map<int, const ComponentInstance*> instancesOf(const AssemblyDocument& asmDoc, uint64_t id) {
+    std::map<int, const ComponentInstance*> out;
+    for (const auto& comp : asmDoc.components()) {
+        if (comp.patternId == id) out[comp.patternIndex] = &comp;
+    }
+    return out;
+}
+
+}  // namespace
+
+// Phase 161: a linear pattern's instances are components placed from their
+// seed, named after it; they follow it as it moves, keep their ids, and one
+// removed is left out, not made again. The seed removed takes them with it.
+TEST(AssemblyDocumentTest, APatternsInstancesFollowTheirSeed) {
+    AssemblyDocument asmDoc;
+    ComponentInstance bolt;
+    bolt.name = "bolt";
+    bolt.partPath = "bolt.hzpart";
+    const uint64_t seed = asmDoc.addComponent(bolt);
+    ComponentPattern row;
+    row.name = "Row";
+    row.seeds = {seed, seed, 999};  // once each; 999 is none
+    row.direction = Vec3::UnitX;
+    row.spacing = 20.0;
+    row.count = 3;
+    const uint64_t id = asmDoc.addPattern(row);
+    EXPECT_TRUE(asmDoc.updatePatterns());
+    ASSERT_EQ(asmDoc.pattern(id)->seeds, std::vector<uint64_t>{seed});
+    auto instances = instancesOf(asmDoc, id);
+    ASSERT_EQ(instances.size(), 2u);
+    EXPECT_EQ(instances[1]->name, "bolt (2)");
+    EXPECT_EQ(instances[2]->partPath, "bolt.hzpart");
+    EXPECT_NEAR(placedAt(asmDoc, instances[2]->id).x, 40.0, 1e-12);
+    const uint64_t third = instances[2]->id;
+    EXPECT_FALSE(asmDoc.updatePatterns()) << "nothing to change";
+
+    // The seed moved: they follow, the same components.
+    asmDoc.component(seed)->transform = Mat4::translation(Vec3(0, 5, 0));
+    EXPECT_TRUE(asmDoc.updatePatterns());
+    EXPECT_NEAR(placedAt(asmDoc, third).x, 40.0, 1e-12);
+    EXPECT_NEAR(placedAt(asmDoc, third).y, 5.0, 1e-12);
+
+    // One removed: its index left out, and it stays out.
+    ASSERT_TRUE(asmDoc.removeComponent(instances[1]->id));
+    EXPECT_EQ(asmDoc.pattern(id)->skipped, std::vector<int>{1});
+    asmDoc.updatePatterns();
+    EXPECT_EQ(instancesOf(asmDoc, id).size(), 1u);
+    EXPECT_EQ(asmDoc.pattern(id)->kept(), 2);
+    EXPECT_NE(asmDoc.component(third), nullptr) << "the other kept";
+
+    // The seed removed: the pattern goes, and its instances.
+    ASSERT_TRUE(asmDoc.removeComponent(seed));
+    EXPECT_TRUE(asmDoc.patterns().empty());
+    EXPECT_TRUE(asmDoc.components().empty());
+}
+
+// A circular pattern turns its seed about the axis, step by step.
+TEST(AssemblyDocumentTest, ACircularPatternTurnsAboutItsAxis) {
+    AssemblyDocument asmDoc;
+    ComponentInstance pin;
+    pin.name = "pin";
+    pin.partPath = "pin.hzpart";
+    pin.transform = Mat4::translation(Vec3(15, 5, 2));
+    const uint64_t seed = asmDoc.addComponent(pin);
+    ComponentPattern ring;
+    ring.kind = ComponentPattern::Kind::Circular;
+    ring.seeds = {seed};
+    ring.direction = Vec3::UnitZ;
+    ring.axisPoint = Vec3(5, 5, 0);
+    ring.spacing = std::numbers::pi / 2.0;
+    ring.count = 4;
+    const uint64_t id = asmDoc.addPattern(ring);
+    asmDoc.updatePatterns();
+    auto instances = instancesOf(asmDoc, id);
+    ASSERT_EQ(instances.size(), 3u);
+    const Vec3 quarter = placedAt(asmDoc, instances[1]->id);
+    EXPECT_NEAR(quarter.x, 5.0, 1e-9);
+    EXPECT_NEAR(quarter.y, 15.0, 1e-9);
+    EXPECT_NEAR(quarter.z, 2.0, 1e-9);
+    const Vec3 half = placedAt(asmDoc, instances[2]->id);
+    EXPECT_NEAR(half.x, -5.0, 1e-9);
+    EXPECT_NEAR(half.y, 5.0, 1e-9);
+}
+
+// An instance is not solved: the mates hold its seed, and a mate on it is
+// refused, said so. Undo puts a pattern back with its instances.
+TEST(AssemblyMatesTest, APatternsInstanceIsNotMated) {
+    AssemblyDocument asmDoc;
+    ComponentInstance a;
+    a.name = "a";
+    const uint64_t first = asmDoc.addComponent(a);
+    ComponentInstance b;
+    b.name = "b";
+    const uint64_t second = asmDoc.addComponent(b);
+    const AssemblyState before = asmDoc.snapshot();
+    ComponentPattern row;
+    row.seeds = {second};
+    row.count = 2;
+    const uint64_t id = asmDoc.addPattern(row);
+    asmDoc.updatePatterns();
+    const uint64_t instance = instancesOf(asmDoc, id).at(1)->id;
+
+    Mate fixed;
+    fixed.type = MateType::Fixed;
+    fixed.a = {instance, {}};
+    asmDoc.addMate(fixed);
+    std::string why;
+    EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
+    EXPECT_NE(why.find("b (2)"), std::string::npos) << why;
+    EXPECT_NE(why.find("mate its seed"), std::string::npos) << why;
+
+    const AssemblyState after = asmDoc.snapshot();
+    asmDoc.restore(before);
+    EXPECT_TRUE(asmDoc.patterns().empty());
+    EXPECT_EQ(asmDoc.components().size(), 2u);
+    asmDoc.restore(after);
+    EXPECT_EQ(instancesOf(asmDoc, id).size(), 1u);
+    EXPECT_NE(asmDoc.component(first), nullptr);
 }

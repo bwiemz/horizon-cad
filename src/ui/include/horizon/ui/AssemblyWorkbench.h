@@ -66,6 +66,26 @@ public:
     void onRemoveMate();
     void onCheckInterference();
 
+    // --- Exploded views (Phase 161) ---
+    /// Move the components checked (those chosen in the view, at first)
+    /// along a direction, as a step of an exploded view: a new one, or one
+    /// there. One undo step; the view is shown after it.
+    void onExplodeComponents();
+    /// Show an exploded view, or none: the components where they are. How
+    /// the assembly is drawn only: nothing is recorded, nothing is placed.
+    void onShowExplodedView();
+    void onRemoveExplodedView();
+
+    // --- Component patterns (Phase 161) ---
+    /// Repeat the components checked (those chosen, at first) along a
+    /// direction or about an axis: a pattern whose instances follow them.
+    /// One undo step.
+    void onPatternComponents();
+    /// Edit, or remove, the pattern of the tree's current row; else of the
+    /// component chosen (its instance, or a seed of it); else the first.
+    void onEditComponentPattern();
+    void onRemoveComponentPattern();
+
     /// What a STEP export of the active assembly writes (Phase 153): each
     /// part once, from its file, and each unsuppressed component placed; the
     /// components whose part could not be read, by name. The parts'
@@ -153,6 +173,18 @@ private:
     void renameComponent(uint64_t id);
     void editMate(uint64_t id);
     void removeMate(uint64_t id);
+    /// Whether component @p id is a pattern's instance, which @p verb does
+    /// not act on: said in the status bar if so (Phase 161).
+    bool refusedAsInstance(const QString& verb, uint64_t id);
+    /// The pattern a pattern command acts on (onEditComponentPattern); 0
+    /// when the assembly has none.
+    uint64_t targetPattern() const;
+    void editPattern(uint64_t id);
+    void removePattern(uint64_t id);
+    /// The pattern form titled @p title, showing @p initial: the pattern
+    /// asked for, its id @p initial's; none if cancelled, or refused (said).
+    std::optional<doc::ComponentPattern> askPattern(const QString& title,
+                                                    const doc::ComponentPattern& initial);
     /// Open the part component @p id places, in its tab.
     void openComponentPart(uint64_t id);
     void showInterference(const doc::AssemblyDocument& assembly,

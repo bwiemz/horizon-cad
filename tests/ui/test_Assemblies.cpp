@@ -33,9 +33,11 @@
 #include <map>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -1179,4 +1181,145 @@ TEST(AssembliesTest, ADistanceBetweenLimitsIsHeldAtTheNearestLimit) {
     auto* tree = w.findChild<hz::ui::AssemblyTreePanel*>()->tree();
     const QString text = tree->topLevelItem(1)->child(0)->text(0);
     EXPECT_TRUE(text.contains(QStringLiteral(" to "))) << text.toStdString();
+}
+
+// Phase 161: Explode Components moves the components checked along a
+// direction, as a step of a new exploded view, then shown: drawn moved,
+// placed where they were, one undo step. Exploded, nothing is dragged;
+// shown as none, each is drawn where it is again; undone, the view is gone.
+TEST(AssembliesTest, AnExplodedViewDrawsComponentsApart) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "/top");
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& assembly = newAssembly(w);
+    const auto [base, lid] = stackTwo(w, assembly, block, top);
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+    const auto drawnAt = [&](uint64_t id) {
+        for (const auto& node : drive.viewport().sceneGraph().nodes()) {
+            if (node->ownerId() == id) return node->localTransform().transformPoint(Vec3());
+        }
+        ADD_FAILURE() << "no node for component " << id;
+        return Vec3();
+    };
+
+    chooseInTree(w, lid);  // checked in the form at first
+    {
+        FormFiller explode(QStringLiteral("Explode Components"),
+                           FormAnswers()
+                               .choose(QStringLiteral("direction"), QStringLiteral("+Z"))
+                               .number(QStringLiteral("distance"), 25.0));
+        trigger(w, "action_explode_components");
+        ASSERT_TRUE(explode.seen());
+    }
+    ASSERT_EQ(assembly.explodedViews().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    const auto& view = assembly.explodedViews().front();
+    ASSERT_EQ(view.steps.size(), 1u);
+    EXPECT_EQ(view.steps[0].components, std::vector<uint64_t>{lid}) << "the lid alone";
+    EXPECT_EQ(assembly.shownView(), view.id);
+    EXPECT_NEAR(drawnAt(lid).z, 35.0, 1e-6) << "drawn 25 up";
+    EXPECT_NEAR(drawnAt(base).z, 0.0, 1e-6);
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "placed where it was");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+
+    // Exploded, a press on it drags nothing.
+    lookFromAbove(drive.viewport());
+    dragOnScreen(drive, Vec3(17, 5, 45), Vec3(37, 25, 45));
+    expectAt(*assembly.component(lid), Vec3(12, 0, 10), "not dragged");
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1);
+    EXPECT_FALSE(w.statusBar()->currentMessage().isEmpty());
+
+    // Shown as none: where it is.
+    {
+        FormFiller show(
+            QStringLiteral("Show Exploded View"),
+            FormAnswers().chooseContaining(QStringLiteral("view"), QStringLiteral("None")));
+        trigger(w, "action_show_exploded_view");
+        ASSERT_TRUE(show.seen());
+    }
+    EXPECT_EQ(assembly.shownView(), 0u);
+    EXPECT_NEAR(drawnAt(lid).z, 10.0, 1e-6);
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "showing is no edit";
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(assembly.explodedViews().empty());
+}
+
+// Phase 161: Pattern Components repeats the component chosen. Its instances
+// are components placed from it: drawn, counted in the bill of materials,
+// listed under the tree's patterns. They follow it as it moves, and are not
+// moved on their own. Edited, the pattern makes more; undone, it is gone,
+// instances and all.
+TEST(AssembliesTest, APatternsInstancesFollowTheirSeed) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    const uint64_t seed = assembly.components()[0].id;
+    const size_t steps = w.activeDocument()->undoStack().undoCount();
+
+    chooseInTree(w, seed);
+    {
+        FormFiller pattern(QStringLiteral("Pattern Components"),
+                           FormAnswers()
+                               .choose(QStringLiteral("kind"), QStringLiteral("Linear"))
+                               .choose(QStringLiteral("direction"), QStringLiteral("+Y"))
+                               .number(QStringLiteral("spacing"), 15.0)
+                               .number(QStringLiteral("count"), 3));
+        trigger(w, "action_pattern_components");
+        ASSERT_TRUE(pattern.seen());
+    }
+    ASSERT_EQ(assembly.patterns().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    ASSERT_EQ(assembly.components().size(), 3u);
+    const hz::doc::ComponentInstance& made = assembly.components()[2];
+    const uint64_t third = made.id;
+    EXPECT_TRUE(made.isPatternInstance());
+    expectAt(made, Vec3(0, 30, 0), "two spacings along +Y");
+    EXPECT_NE(made.cachedMesh, nullptr) << "drawn";
+    EXPECT_EQ(w.activeDocument()->undoStack().undoCount(), steps + 1) << "one step";
+    const auto bom = hz::doc::BomGenerator::generate(assembly);
+    ASSERT_EQ(bom.lines.size(), 1u);
+    EXPECT_EQ(bom.lines[0].quantity, 3);
+    auto* tree = w.findChild<hz::ui::AssemblyTreePanel*>()->tree();
+    ASSERT_EQ(tree->topLevelItemCount(), 3);
+    EXPECT_TRUE(tree->topLevelItem(2)->text(0).startsWith(QStringLiteral("Patterns (1)")));
+
+    // The seed moved: they follow.
+    chooseInTree(w, seed);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 5));
+        trigger(w, "action_move_component");
+        ASSERT_TRUE(move.seen());
+    }
+    expectAt(*assembly.component(third), Vec3(5, 30, 0), "followed the seed");
+
+    // An instance is not moved on its own.
+    chooseInTree(w, third);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 5));
+        trigger(w, "action_move_component");
+        ASSERT_TRUE(move.seen());
+    }
+    expectAt(*assembly.component(third), Vec3(5, 30, 0), "not moved");
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("placed by its pattern")))
+        << w.statusBar()->currentMessage().toStdString();
+
+    // Edited (the instance chosen names its pattern): four.
+    {
+        FormFiller edit(QStringLiteral("Edit Component Pattern"),
+                        FormAnswers().number(QStringLiteral("count"), 4));
+        trigger(w, "action_edit_component_pattern");
+        ASSERT_TRUE(edit.seen());
+    }
+    EXPECT_EQ(assembly.components().size(), 4u);
+    EXPECT_NE(assembly.component(third), nullptr) << "the instances there kept";
+
+    trigger(w, "action_undo");  // the edit
+    trigger(w, "action_undo");  // the move
+    trigger(w, "action_undo");  // the pattern
+    EXPECT_TRUE(assembly.patterns().empty());
+    EXPECT_EQ(assembly.components().size(), 1u);
 }

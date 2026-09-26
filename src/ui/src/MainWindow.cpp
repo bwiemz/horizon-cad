@@ -804,6 +804,21 @@ void MainWindow::createMenus() {
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("Check &Interference"), "action_check_interference",
                  [this] { m_assemblies->onCheckInterference(); });
+    assemblyMenu->addSeparator();
+    sketchAction(assemblyMenu, tr("E&xplode Components..."), "action_explode_components",
+                 [this] { m_assemblies->onExplodeComponents(); });
+    sketchAction(assemblyMenu, tr("Show Exploded Vie&w..."), "action_show_exploded_view",
+                 [this] { m_assemblies->onShowExplodedView(); });
+    sketchAction(assemblyMenu, tr("Remove Exp&loded View..."), "action_remove_exploded_view",
+                 [this] { m_assemblies->onRemoveExplodedView(); });
+    assemblyMenu->addSeparator();
+    sketchAction(assemblyMenu, tr("&Pattern Components..."), "action_pattern_components",
+                 [this] { m_assemblies->onPatternComponents(); });
+    sketchAction(assemblyMenu, tr("Edit Component Pa&ttern..."), "action_edit_component_pattern",
+                 [this] { m_assemblies->onEditComponentPattern(); });
+    sketchAction(assemblyMenu, tr("Remove Component Patter&n..."),
+                 "action_remove_component_pattern",
+                 [this] { m_assemblies->onRemoveComponentPattern(); });
     sketchAction(assemblyMenu, tr("&Bill of Materials..."), "action_bill_of_materials",
                  [this] { m_assemblies->onBillOfMaterials(); });
 
@@ -1456,7 +1471,8 @@ void MainWindow::rebuildScene() {
             auto node =
                 std::make_shared<render::SceneNode>(comp.name.empty() ? "Component" : comp.name);
             node->shareMesh(comp.cachedMesh);  // one mesh for every instance of a part
-            node->setLocalTransform(comp.transform);
+            // Where it is drawn: moved by the exploded view shown (Phase 161).
+            node->setLocalTransform(m_assembly->displayTransform(comp));
             node->setOwnerId(comp.id);  // a click on it names the component
             node->setMaterial(render::Material{math::Vec3{0.62, 0.68, 0.75}, 0.15f, 0.5f, 32.0f});
             m_viewport->sceneGraph().addNode(node);
