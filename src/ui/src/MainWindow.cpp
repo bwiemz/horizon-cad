@@ -1159,7 +1159,7 @@ void MainWindow::createRibbonBar() {
 
     // ---- Annotate tab ----
     g = group(tr("Annotate"), tr("Dimensions"));
-    addToolAction(g, "dim-linear", tr("Linear"), &MainWindow::onLinearDimTool,
+    addToolAction(g, "dim-linear", tr("Linear", "a dimension"), &MainWindow::onLinearDimTool,
                   QKeySequence(Qt::Key_D));
     addToolAction(g, "dim-radial", tr("Radial"), &MainWindow::onRadialDimTool);
     addToolAction(g, "dim-angular", tr("Angular"), &MainWindow::onAngularDimTool);
@@ -1217,7 +1217,7 @@ void MainWindow::createRibbonBar() {
     addAction(g, "draft", tr("Draft"), this, &MainWindow::onDraft);
 
     g = group(tr("3D"), tr("Pattern"));
-    addAction(g, "pattern-linear", tr("Linear"), this, &MainWindow::onLinearPattern);
+    addAction(g, "pattern-linear", tr("Linear", "a pattern"), this, &MainWindow::onLinearPattern);
     addAction(g, "pattern-circular", tr("Circular"), this, &MainWindow::onCircularPattern);
     addAction(g, "mirror-3d", tr("Mirror"), this, &MainWindow::onMirror);
 
@@ -2754,8 +2754,10 @@ void MainWindow::finishStepAssemblyImport(const QString& fileName, StepLoad load
     if (!openPath(QString::fromStdString(files.assembly))) return;
     showImportReport(QFileInfo(fileName).fileName(), load.report);
     m_statusPrompt->setText(
-        tr("Imported %n part(s) into \"%1\", ", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
-        tr("placed %n time(s).", "", placed));
+        // Two sentences, each whole: one split across two messages could not
+        // be translated.
+        tr("Imported %n part(s) into \"%1\".", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
+        QLatin1Char(' ') + tr("The assembly has %n component(s).", "", placed));
 }
 
 void MainWindow::onImportDxf() {
@@ -5329,7 +5331,8 @@ void MainWindow::onHole() {
     for (const auto& [name, value] : sizes) {
         if (!hole->setParameter(name, value)) {
             statusBar()->showMessage(
-                tr("%1: the %2 is not one it can take").arg(verb, parameterLabel(name).toLower()));
+                // The label as it is: lowercased, a German noun was wrong.
+                tr("%1: \"%2\" cannot take that value").arg(verb, parameterLabel(name)));
             return;
         }
     }

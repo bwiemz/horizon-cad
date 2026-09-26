@@ -105,14 +105,14 @@ void PropertyPanel::createWidgets() {
     form->addRow(tr("Width:"), m_lineWidthSpin);
 
     m_lineTypeCombo = new QComboBox(this);
-    m_lineTypeCombo->addItem(tr("ByLayer"));     // index 0
-    m_lineTypeCombo->addItem(tr("Continuous"));  // index 1
-    m_lineTypeCombo->addItem(tr("Dashed"));      // index 2
-    m_lineTypeCombo->addItem(tr("Dotted"));      // index 3
-    m_lineTypeCombo->addItem(tr("DashDot"));     // index 4
-    m_lineTypeCombo->addItem(tr("Center"));      // index 5
-    m_lineTypeCombo->addItem(tr("Hidden"));      // index 6
-    m_lineTypeCombo->addItem(tr("Phantom"));     // index 7
+    m_lineTypeCombo->addItem(tr("ByLayer"));                // index 0
+    m_lineTypeCombo->addItem(tr("Continuous"));             // index 1
+    m_lineTypeCombo->addItem(tr("Dashed"));                 // index 2
+    m_lineTypeCombo->addItem(tr("Dotted"));                 // index 3
+    m_lineTypeCombo->addItem(tr("DashDot"));                // index 4
+    m_lineTypeCombo->addItem(tr("Center", "a line type"));  // index 5
+    m_lineTypeCombo->addItem(tr("Hidden"));                 // index 6
+    m_lineTypeCombo->addItem(tr("Phantom"));                // index 7
     m_lineTypeCombo->setEnabled(false);
     connect(m_lineTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &PropertyPanel::onLineTypeChanged);
@@ -179,7 +179,7 @@ void PropertyPanel::createWidgets() {
 
     m_textAlignCombo = new QComboBox(m_textPropsWidget);
     m_textAlignCombo->addItem(tr("Left"));
-    m_textAlignCombo->addItem(tr("Center"));
+    m_textAlignCombo->addItem(tr("Center", "text alignment"));
     m_textAlignCombo->addItem(tr("Right"));
     connect(m_textAlignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &PropertyPanel::onTextAlignmentChanged);

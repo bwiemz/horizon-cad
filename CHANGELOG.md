@@ -24,6 +24,9 @@ work, not "post-1.0".
     and Chinese: 1,107 strings each, where 18 were before.
   - They are machine translations. The catalogs mark them unreviewed, so
     Qt Linguist shows a native speaker which ones still need checking.
+  - Strings that could not be translated well are fixed: a label was
+    lowercased into a sentence, "Center" and "Linear" each meant two
+    things, and one sentence was split in two (166c).
   - 36 main-window labels (Hole, Mirror Components, Show Exploded View
     and others) were never translated: their context was wrong. Fixed.
   - Every build checks the catalogs: each language at least 95%

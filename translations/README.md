@@ -118,14 +118,17 @@ runs in every build (`ctest -R Translation`), checks that
 
 ## Known problems in the sources
 
-The translators found strings that no translation can put right. They are
-for the code to fix:
+The translators found strings that no translation could put right. These
+are fixed in the code (Phase 166c):
 
-- **"%1: the %2 is not one it can take"**: `%2` is a parameter's label
-  lowercased with `toLower()`, which is wrong for German nouns.
-- **"Center"** in the Properties panel is one string for a line type and
-  for a text alignment; **"Linear"** is one string for the linear dimension
-  and the linear pattern. Each needs two messages (a disambiguation).
-- **"Imported %n part(s) into "%1", "** and **"placed %n time(s)."** are one
-  sentence split across two messages, and file errors are sentence starts
-  set into another message. Each should be one message with placeholders.
+- A parameter's label was lowercased into a sentence ("the %2 is not one it
+  can take"), wrong for German nouns; it is now quoted as it is.
+- "Center" (a line type, and a text alignment) and "Linear" (a dimension,
+  and a pattern) were one message each; each is now two, told apart by a
+  comment.
+- "Imported %n part(s) into "%1", " and "placed %n time(s)." were one
+  sentence in two messages; they are now two sentences.
+
+One remains: a file error is a sentence start ("Could not open") set into
+another message (`%1 "%2".`), so each language words it as a sentence
+start. Rewriting every file error as one message is left for later.

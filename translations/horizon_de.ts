@@ -1797,23 +1797,23 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::GettingStartedTour</name>
     <message>
-        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+47"/>
+        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+48"/>
         <source>Back</source>
         <translation type="unfinished">Zurück</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+63"/>
+        <location line="+65"/>
         <source>Next</source>
         <translation type="unfinished">Weiter</translation>
     </message>
     <message>
-        <location line="-49"/>
+        <location line="-51"/>
         <source>Close</source>
         <translation type="unfinished">Schließen</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+49"/>
         <source>%1 of %2</source>
         <translation type="unfinished">%1 von %2</translation>
     </message>
@@ -3227,12 +3227,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3980"/>
+        <location line="+3989"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-4056"/>
+        <location line="-4065"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3249,19 +3249,19 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3829"/>
+        <location line="+3838"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-3892"/>
+        <location line="-3901"/>
         <location line="+64"/>
-        <location line="+3828"/>
+        <location line="+3837"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-3891"/>
+        <location line="-3900"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3301,14 +3301,29 @@ um Ihr Teil aufzubauen.</translation>
         <source>Dimensions</source>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
-    <message>
+    <message numerus="yes">
+        <location line="+1598"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>%n Teil nach &quot;%1&quot; importiert.</numerusform>
+            <numerusform>%n Teile nach &quot;%1&quot; importiert.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <location line="+1"/>
-        <location line="+58"/>
-        <source>Linear</source>
-        <translation type="unfinished">Linear</translation>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>Die Baugruppe hat %n Komponente.</numerusform>
+            <numerusform>Die Baugruppe hat %n Komponenten.</numerusform>
+        </translation>
     </message>
     <message>
-        <location line="-56"/>
+        <location line="+2575"/>
+        <source>%1: &quot;%2&quot; cannot take that value</source>
+        <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
+    </message>
+    <message>
+        <location line="-4171"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3410,12 +3425,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2722"/>
+        <location line="+2731"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
-        <location line="-2719"/>
+        <location line="-2728"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3430,101 +3445,107 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2864"/>
+        <location line="+2873"/>
         <source>Box</source>
         <translation type="unfinished">Quader</translation>
     </message>
     <message>
-        <location line="-2863"/>
-        <location line="+2873"/>
+        <location line="-2872"/>
+        <location line="+2882"/>
         <source>Cylinder</source>
         <translation type="unfinished">Zylinder</translation>
     </message>
     <message>
-        <location line="-2872"/>
-        <location line="+2879"/>
+        <location line="-2881"/>
+        <location line="+2888"/>
         <source>Sphere</source>
         <translation type="unfinished">Kugel</translation>
     </message>
     <message>
-        <location line="-2878"/>
-        <location line="+2885"/>
+        <location line="-2887"/>
+        <location line="+2894"/>
         <source>Cone</source>
         <translation type="unfinished">Kegel</translation>
     </message>
     <message>
-        <location line="-2884"/>
-        <location line="+2895"/>
+        <location line="-2893"/>
+        <location line="+2904"/>
         <source>Torus</source>
         <translation type="unfinished">Torus</translation>
     </message>
     <message>
-        <location line="-2893"/>
+        <location line="-2902"/>
         <source>Features</source>
         <translation type="unfinished">Features</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3616"/>
+        <location line="+3625"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3661"/>
-        <location line="+3680"/>
+        <location line="-3670"/>
+        <location line="+3689"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3706"/>
-        <location line="+4036"/>
+        <location line="-3715"/>
+        <location line="+4045"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-4034"/>
+        <location line="-4043"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3787"/>
+        <location line="+3796"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3786"/>
-        <location line="+3790"/>
+        <location line="-3795"/>
+        <location line="+3799"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3789"/>
-        <location line="+3793"/>
+        <location line="-3798"/>
+        <location line="+3802"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3788"/>
-        <location line="+3857"/>
+        <location line="-3797"/>
+        <location line="+3866"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-3856"/>
-        <location line="+3876"/>
+        <location line="-3865"/>
+        <location line="+3885"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-3874"/>
+        <location line="-3883"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
+        <source>Linear</source>
+        <comment>a pattern</comment>
+        <translation type="unfinished">Linear</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Circular</source>
         <translation type="unfinished">Kreisförmig</translation>
     </message>
@@ -3543,17 +3564,17 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+941"/>
-        <location line="+398"/>
-        <location line="+464"/>
+        <location line="+942"/>
+        <location line="+404"/>
+        <location line="+466"/>
         <location line="+1420"/>
-        <location line="+1189"/>
+        <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4495"/>
+        <location line="-4505"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3574,12 +3595,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4164"/>
+        <location line="+4174"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-4158"/>
+        <location line="-4168"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
@@ -3843,7 +3864,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Wonach das aktive Werkzeug fragt, wo sich der Cursor befindet, und die Zeichenhilfen: Objektfang, Rasterfang, Ortho und Polarverfolgung.</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Finding your way</source>
         <translation type="unfinished">Sich zurechtfinden</translation>
     </message>
@@ -3889,18 +3910,19 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+78"/>
         <location line="+36"/>
         <location line="+71"/>
-        <location line="+11"/>
+        <location line="+6"/>
+        <location line="+8"/>
         <source>Could not open</source>
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="-226"/>
-        <location line="+658"/>
+        <location line="-229"/>
+        <location line="+666"/>
         <source>Assembly</source>
         <translation type="unfinished">Baugruppe</translation>
     </message>
     <message>
-        <location line="-636"/>
+        <location line="-644"/>
         <location line="+99"/>
         <source>Drawing</source>
         <translation type="unfinished">Zeichnung</translation>
@@ -3972,7 +3994,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Keine Beispiele installiert</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+29"/>
         <source>A copy of the sample, in %1: change it and save it as you like.</source>
         <translation type="unfinished">Eine Kopie des Beispiels, in %1: Ändern und speichern Sie sie nach Belieben.</translation>
     </message>
@@ -4050,12 +4072,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+268"/>
+        <location line="+270"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Ausgelassen: %1</translation>
     </message>
     <message>
-        <location line="-265"/>
+        <location line="-267"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Angenähert: %1</translation>
     </message>
@@ -4119,36 +4141,20 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+15"/>
         <location line="+25"/>
         <location line="+14"/>
-        <location line="+23"/>
+        <location line="+25"/>
         <source>Could not import</source>
         <translation type="unfinished">Fehler beim Importieren von</translation>
     </message>
     <message numerus="yes">
-        <location line="-42"/>
+        <location line="-44"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n Körper importiert.</numerusform>
             <numerusform>%n Körper importiert.</numerusform>
         </translation>
     </message>
-    <message numerus="yes">
-        <location line="+25"/>
-        <source>Imported %n part(s) into &quot;%1&quot;, </source>
-        <translation type="unfinished">
-            <numerusform>%n Teil nach &quot;%1&quot; importiert, </numerusform>
-            <numerusform>%n Teile nach &quot;%1&quot; importiert, </numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>placed %n time(s).</source>
-        <translation type="unfinished">
-            <numerusform>%n-mal platziert.</numerusform>
-            <numerusform>%n-mal platziert.</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+5"/>
+        <location line="+33"/>
         <source>A DXF is imported into a drawing or part, not an assembly</source>
         <translation type="unfinished">Eine DXF-Datei wird in eine Zeichnung oder ein Teil importiert, nicht in eine Baugruppe</translation>
     </message>
@@ -4545,20 +4551,20 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+1"/>
         <location line="+683"/>
         <location line="+13"/>
-        <location line="+738"/>
+        <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1433"/>
+        <location line="-1434"/>
         <location line="+683"/>
         <location line="+13"/>
-        <location line="+738"/>
+        <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1432"/>
+        <location line="-1433"/>
         <source>Standing along:</source>
         <translation type="unfinished">Ausgerichtet entlang:</translation>
     </message>
@@ -5485,12 +5491,7 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Winkel der Kegelsenkung:</translation>
     </message>
     <message>
-        <location line="+33"/>
-        <source>%1: the %2 is not one it can take</source>
-        <translation type="unfinished">%1: dieser Wert für %2 ist nicht zulässig</translation>
-    </message>
-    <message>
-        <location line="+34"/>
+        <location line="+68"/>
         <source>%1 has nothing to edit</source>
         <translation type="unfinished">%1 hat nichts zu bearbeiten</translation>
     </message>
@@ -5571,12 +5572,18 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-4511"/>
+        <location line="-4521"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
     <message>
-        <location line="+89"/>
+        <location line="-104"/>
+        <source>Linear</source>
+        <comment>a dimension</comment>
+        <translation type="unfinished">Linear</translation>
+    </message>
+    <message>
+        <location line="+193"/>
         <source>1 selected</source>
         <translation>1 ausgewählt</translation>
     </message>
@@ -5779,12 +5786,12 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
     </message>
     <message>
         <location line="+1"/>
-        <location line="+69"/>
         <source>Center</source>
+        <comment>a line type</comment>
         <translation type="unfinished">Mittellinie</translation>
     </message>
     <message>
-        <location line="-68"/>
+        <location line="+1"/>
         <source>Hidden</source>
         <translation type="unfinished">Verdeckt</translation>
     </message>
@@ -5841,7 +5848,13 @@ Nicht exakt: %n Kanten, an denen die gekrümmten Flächen beider Seiten nicht zu
         <translation type="unfinished">Links</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
+        <source>Center</source>
+        <comment>text alignment</comment>
+        <translation type="unfinished">Zentriert</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Right</source>
         <translation type="unfinished">Rechts</translation>
     </message>
