@@ -78,10 +78,13 @@ TEST(CrashReportTest, ACrashLeavesAReportOfWhatHappened) {
 #endif
     EXPECT_TRUE(report.contains(QStringLiteral("Horizon CAD test child"))) << report.toStdString();
     EXPECT_TRUE(report.contains(QStringLiteral("Log: ") + log)) << report.toStdString();
-    // A backtrace, with at least one frame.
-    const qsizetype frames = report.indexOf(QStringLiteral("Backtrace"));
+    // A backtrace that goes past where the signal stopped the thread: a
+    // frame for that, and for its callers (the raise, the crash, main...).
+    const qsizetype frames = report.indexOf(QStringLiteral("Backtrace:\n"));
     ASSERT_GE(frames, 0) << report.toStdString();
-    EXPECT_TRUE(report.indexOf(QStringLiteral("0x"), frames) > frames) << report.toStdString();
+    const qsizetype tail = report.indexOf(QStringLiteral("The log's last lines"), frames);
+    const QString trace = report.mid(frames, tail < 0 ? -1 : tail - frames);
+    EXPECT_GE(trace.count(QStringLiteral("0x")), 3) << report.toStdString();
     // And what the log said last: what led up to it.
     EXPECT_TRUE(report.contains(QStringLiteral("filleting edge 12"))) << report.toStdString();
 }
