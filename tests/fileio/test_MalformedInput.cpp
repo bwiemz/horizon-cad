@@ -11,6 +11,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/drafting/DraftLine.h"
@@ -151,6 +153,47 @@ TEST(MalformedInputTest, ALayersColourThatIsNotAWholeNumberIsDamaged) {
     const std::string error =
         rejectedReason(R"({"version":16,"entities":[],"layers":[{"name":"A","color":4.29e119}]})");
     EXPECT_TRUE(contains(error, "color")) << error;
+}
+
+// A constraint whose id or reference cannot be read is skipped, and said;
+// the drawing and its other constraints load. The constraint loop had no
+// per-item catch, so any bad field there failed the whole document.
+TEST(MalformedInputTest, AConstraintThatCannotBeReadSkipsOnlyItself) {
+    Document doc;
+    auto a = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 0), hz::math::Vec2(5, 0.1));
+    auto b = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 1), hz::math::Vec2(0.1, 6));
+    doc.draftDocument().addEntity(a);
+    doc.draftDocument().addEntity(b);
+    const hz::cstr::GeometryRef refA{a->id(), hz::cstr::FeatureType::Line, 0};
+    const hz::cstr::GeometryRef refB{b->id(), hz::cstr::FeatureType::Line, 0};
+    doc.constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::HorizontalConstraint>(refA, refA));
+    doc.constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::VerticalConstraint>(refB, refB));
+    const json saved = json::parse(NativeFormat::documentToJson(doc, false));
+
+    for (const auto& [field, value] :
+         {std::pair<const char*, json>{"id", -3}, std::pair<const char*, json>{"id", 1e300}}) {
+        json root = saved;
+        root.at("constraints").at(0)[field] = value;
+        Document back;
+        std::string error;
+        hz::io::ImportReport report;
+        ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), back, &error, &report)) << error;
+        EXPECT_EQ(back.draftDocument().entities().size(), 2u);
+        EXPECT_EQ(back.constraintSystem().constraints().size(), 1u) << value.dump();
+        ASSERT_EQ(report.skipped.size(), 1u) << value.dump();
+        EXPECT_TRUE(contains(report.skipped[0], "constraint 1")) << report.skipped[0];
+    }
+    json root = saved;
+    root.at("constraints").at(1).at("refA")["entityId"] = 2.5;
+    Document back;
+    std::string error;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), back, &error, &report)) << error;
+    EXPECT_EQ(back.constraintSystem().constraints().size(), 1u);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_TRUE(contains(report.skipped[0], "constraint 2")) << report.skipped[0];
 }
 
 TEST(MalformedInputTest, BadPatternCountSkipsOnlyItsFeature) {

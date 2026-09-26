@@ -172,8 +172,10 @@ static long long intField(const json& obj, const char* key, long long fallback, 
     return v;
 }
 
-/// An id from a file (Phase 161): a whole number, not negative. Anything
-/// else throws, as intField does: nlohmann would cast a float to it.
+/// An id from a file (Phase 161): a JSON integer, not negative. Anything
+/// else throws, as intField does out of range: nlohmann would cast a float
+/// to it. Stricter than intField, which takes 5.0 for 5: an id is always
+/// written as an integer.
 static uint64_t idFrom(const json& j) {
     if (j.is_number_unsigned()) return j.get<uint64_t>();
     throw std::out_of_range("an id is not a whole number");
@@ -493,62 +495,74 @@ static json constraintsToJson(const cstr::ConstraintSystem& system) {
     return constraintsArray;
 }
 
+static void noteSkipped(ImportReport* report, const std::string& kind, size_t index,
+                        const json& obj, const std::string& why);
+
 /// Read @p array's constraints into @p system, dropping any that name an
-/// entity @p drawing does not have (a corrupted or hand-edited file).
+/// entity @p drawing does not have (a corrupted or hand-edited file). One
+/// that cannot be read is skipped and noted in @p report as a @p kind.
 static void constraintsFromJson(const json& array, const draft::DraftDocument& drawing,
-                                cstr::ConstraintSystem& system) {
+                                cstr::ConstraintSystem& system, ImportReport* report,
+                                const std::string& kind) {
+    size_t index = 0;
     for (const auto& cObj : array) {
-        std::string ctype = cObj.value("type", "");
-        std::shared_ptr<cstr::Constraint> constraint;
+        const size_t thisConstraint = index++;
+        try {
+            std::string ctype = cObj.value("type", "");
+            std::shared_ptr<cstr::Constraint> constraint;
 
-        if (ctype == "coincident") {
-            constraint = std::make_shared<cstr::CoincidentConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "horizontal") {
-            constraint = std::make_shared<cstr::HorizontalConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "vertical") {
-            constraint = std::make_shared<cstr::VerticalConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "perpendicular") {
-            constraint = std::make_shared<cstr::PerpendicularConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "parallel") {
-            constraint = std::make_shared<cstr::ParallelConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
-        } else if (ctype == "tangent") {
-            constraint = std::make_shared<cstr::TangentConstraint>(deserializeRef(cObj.at("refA")),
-                                                                   deserializeRef(cObj.at("refB")));
-        } else if (ctype == "equal") {
-            constraint = std::make_shared<cstr::EqualConstraint>(deserializeRef(cObj.at("refA")),
-                                                                 deserializeRef(cObj.at("refB")));
-        } else if (ctype == "fixed") {
-            auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
-                                  cObj.at("position").at("y").get<double>());
-            constraint =
-                std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
-        } else if (ctype == "distance") {
-            double val = cObj.value("value", 0.0);
-            constraint = std::make_shared<cstr::DistanceConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-        } else if (ctype == "angle") {
-            double val = cObj.value("value", 0.0);
-            constraint = std::make_shared<cstr::AngleConstraint>(
-                deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
-        }
+            if (ctype == "coincident") {
+                constraint = std::make_shared<cstr::CoincidentConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "horizontal") {
+                constraint = std::make_shared<cstr::HorizontalConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "vertical") {
+                constraint = std::make_shared<cstr::VerticalConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "perpendicular") {
+                constraint = std::make_shared<cstr::PerpendicularConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "parallel") {
+                constraint = std::make_shared<cstr::ParallelConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "tangent") {
+                constraint = std::make_shared<cstr::TangentConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "equal") {
+                constraint = std::make_shared<cstr::EqualConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")));
+            } else if (ctype == "fixed") {
+                auto pos = math::Vec2(cObj.at("position").at("x").get<double>(),
+                                      cObj.at("position").at("y").get<double>());
+                constraint =
+                    std::make_shared<cstr::FixedConstraint>(deserializeRef(cObj.at("ref")), pos);
+            } else if (ctype == "distance") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::DistanceConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+            } else if (ctype == "angle") {
+                double val = cObj.value("value", 0.0);
+                constraint = std::make_shared<cstr::AngleConstraint>(
+                    deserializeRef(cObj.at("refA")), deserializeRef(cObj.at("refB")), val);
+            }
 
-        if (constraint) {
-            // Restore the original constraint ID from the file.
-            if (cObj.contains("id")) {
-                const uint64_t savedId = idFrom(cObj.at("id"));
-                constraint->setId(savedId);
-                cstr::Constraint::advanceIdCounter(savedId);
+            if (constraint) {
+                // Restore the original constraint ID from the file.
+                if (cObj.contains("id")) {
+                    const uint64_t savedId = idFrom(cObj.at("id"));
+                    constraint->setId(savedId);
+                    cstr::Constraint::advanceIdCounter(savedId);
+                }
+                // Variable reference (v13+)
+                if (cObj.contains("variableName")) {
+                    constraint->setVariableReference(cObj.at("variableName").get<std::string>());
+                }
+                system.addConstraint(constraint);
             }
-            // Variable reference (v13+)
-            if (cObj.contains("variableName")) {
-                constraint->setVariableReference(cObj.at("variableName").get<std::string>());
-            }
-            system.addConstraint(constraint);
+        } catch (const std::exception& e) {
+            // As any item: this one is skipped, not the document.
+            noteSkipped(report, kind, thisConstraint, cObj, jsonMessage(e));
         }
     }
 
@@ -1406,7 +1420,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
 
     // --- Load constraints (v5+) ---
     if (root.contains("constraints")) {
-        constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem());
+        constraintsFromJson(root.at("constraints"), doc.draftDocument(), doc.constraintSystem(),
+                            report, "constraint");
     }
 
     // --- Load configurations (Phase 156). What is not a configuration is
@@ -1508,7 +1523,8 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 // Its constraints (saved since Phase 131; before, they were lost).
                 if (skObj.contains("constraints")) {
                     constraintsFromJson(skObj.at("constraints"), sketch->drawing(),
-                                        sketch->constraintSystem());
+                                        sketch->constraintSystem(), report,
+                                        "sketch " + std::to_string(thisSketch + 1) + " constraint");
                 }
 
                 doc.sketches().push_back(sketch);
