@@ -41,7 +41,8 @@ jobs:
           fi
 
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -104,6 +105,16 @@ jobs:
       - name: Configure
         # Tests on: the preset turns them off, and the Test step below ran none.
         run: cmake --preset linux-release -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+
+      # Kept as soon as vcpkg has installed everything, so a later failure
+      # (a test, the packaging) does not throw Qt's build away, as saving at
+      # the end of a successful job did: each run built it again.
+      - name: Save the vcpkg binary cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cmake --build build/linux-release --config Release
@@ -182,7 +193,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-x64-windows-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -221,6 +233,16 @@ jobs:
 
       - name: Configure
         run: cmake --preset ci-windows-release -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+
+      # Kept as soon as vcpkg has installed everything, so a later failure
+      # (a test, the packaging) does not throw Qt's build away, as saving at
+      # the end of a successful job did: each run built it again.
+      - name: Save the vcpkg binary cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cmake --build build/ci-windows-release --config Release
@@ -292,7 +314,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
           key: vcpkg-${{ runner.os }}-arm64-osx-${{ hashFiles('vcpkg.json') }}-84bab45d
@@ -316,6 +339,16 @@ jobs:
 
       - name: Configure
         run: cmake --preset macos-release -DHZ_BUILD_TESTS=ON -DHZ_ENABLE_SCRIPTING=OFF -DHZ_REQUIRE_TRANSLATIONS=ON
+
+      # Kept as soon as vcpkg has installed everything, so a later failure
+      # (a test, the packaging) does not throw Qt's build away, as saving at
+      # the end of a successful job did: each run built it again.
+      - name: Save the vcpkg binary cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cmake --build build/macos-release
