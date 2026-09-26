@@ -36,6 +36,10 @@
 #include <execinfo.h>
 #define HZ_HAVE_BACKTRACE 1
 #endif
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <sys/ucontext.h>
+#endif
 #endif
 
 namespace hz::ui::crash {
@@ -212,7 +216,44 @@ void writeLogTail(int fd) {
     ::close(log);
 }
 
-void onSignal(int sig, siginfo_t* info, void* /*context*/) {
+/// Whether the kernel raised the signal for a fault, which has an address,
+/// not a process (raise, kill), whose si_code is SI_USER or the like: 0 or
+/// below on Linux, but 0x10001 and above on macOS.
+bool raisedByAFault(const siginfo_t* info) {
+    if (info == nullptr || info->si_code <= 0) return false;
+#if defined(__APPLE__)
+    return info->si_code < SI_USER;
+#else
+    return true;
+#endif
+}
+
+#ifdef HZ_HAVE_BACKTRACE
+/// The crashed thread's return addresses, from where the signal stopped it.
+/// glibc's backtrace() unwinds through the signal's frame. macOS's stops at
+/// the first frame off the thread's stack, which the handler's, on a stack of
+/// its own, is: there the walk starts from the interrupted frame instead.
+int backtraceOf(void* context, void** frames, int capacity) {
+#if defined(__APPLE__)
+    const auto* uc = static_cast<const ucontext_t*>(context);
+    if (uc == nullptr || uc->uc_mcontext == nullptr || capacity < 1) return 0;
+#if defined(__arm64__) || defined(__aarch64__)
+    const auto pc = static_cast<std::uintptr_t>(arm_thread_state64_get_pc(uc->uc_mcontext->__ss));
+    const auto fp = static_cast<std::uintptr_t>(arm_thread_state64_get_fp(uc->uc_mcontext->__ss));
+#else
+    const auto pc = static_cast<std::uintptr_t>(uc->uc_mcontext->__ss.__rip);
+    const auto fp = static_cast<std::uintptr_t>(uc->uc_mcontext->__ss.__rbp);
+#endif
+    frames[0] = reinterpret_cast<void*>(pc);
+    return 1 + ::backtrace_from_fp(reinterpret_cast<void*>(fp), frames + 1, capacity - 1);
+#else
+    (void)context;
+    return ::backtrace(frames, capacity);
+#endif
+}
+#endif
+
+void onSignal(int sig, siginfo_t* info, void* context) {
     // Taken: another thread is writing the report, or this is a fault in
     // the handler. The default is back for this signal; die of it.
     if (g_handling.test_and_set()) return;
@@ -221,9 +262,9 @@ void onSignal(int sig, siginfo_t* info, void* /*context*/) {
         writeText(fd, "Horizon CAD stopped: ");
         writeText(fd, signalName(sig));
         writeText(fd, "\n");
-        // A fault the kernel raised has an address; one sent (raise, kill:
-        // si_code <= 0) has none, only the sender's pid there.
-        if (info != nullptr && info->si_code > 0 && (sig == SIGSEGV || sig == SIGBUS)) {
+        // A fault the kernel raised has an address; one sent (raise, kill)
+        // has none, only the sender's pid there.
+        if (raisedByAFault(info) && (sig == SIGSEGV || sig == SIGBUS)) {
             char hex[24];
             writeText(fd, "At address ");
             writeAll(fd, hex, formatHex(reinterpret_cast<std::uintptr_t>(info->si_addr), hex));
@@ -232,7 +273,7 @@ void onSignal(int sig, siginfo_t* info, void* /*context*/) {
 #ifdef HZ_HAVE_BACKTRACE
         writeText(fd, "\nBacktrace:\n");
         void* frames[64];
-        const int count = ::backtrace(frames, 64);
+        const int count = backtraceOf(context, frames, 64);
         ::backtrace_symbols_fd(frames, count, fd);
 #endif
         writeLogTail(fd);
