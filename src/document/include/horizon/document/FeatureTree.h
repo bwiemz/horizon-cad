@@ -683,6 +683,84 @@ private:
     static math::IdCounter<int> s_nextID;
 };
 
+/// Hole feature (Phase 162): a drilled hole, simple, counterbored or
+/// countersunk, into a flat face of the part at a point, as deep as its
+/// depth, through all, or up to a face. It follows its face by the face's
+/// whole name, as a sketch on a face does: the point is projected onto the
+/// face where each build finds it.
+///
+/// Built as a half-section revolved about the hole's axis, so its walls are
+/// true cylinders and cones (STEP writes them as designed, a drawing draws
+/// their centre lines). It is a body cut from the part: the tree subtracts
+/// it, and a pattern or a mirror of it repeats it.
+class HoleFeature : public Feature {
+public:
+    enum class Type { Simple, Counterbore, Countersink };
+    enum class Extent { Blind, ThroughAll, UpToFace };
+
+    /// A simple blind hole into @p face (a whole face name) at @p position,
+    /// @p diameter wide and @p depth deep, its point 118 degrees.
+    static std::unique_ptr<HoleFeature> make(const std::string& face, const math::Vec3& position,
+                                             double diameter, double depth);
+
+    std::string name() const override { return "Hole"; }
+    std::string featureID() const override { return m_featureID; }
+    void restoreFeatureID(const std::string& id) override;
+    bool createsNewBody() const override { return true; }
+    /// Needs the part it is in (executeIn): alone, it says so.
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
+    /// The hole's body alone, to be cut: from the face of context.part.
+    std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
+                                           std::unique_ptr<topo::Solid> inputSolid,
+                                           std::string* reason = nullptr) const override;
+
+    /// "type" and "extent" (choices), "diameter", "depth", "boreDiameter",
+    /// "boreDepth", "sinkDiameter", "sinkAngle" and "pointAngle" (0: a flat
+    /// bottom) in radians, and "segments".
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    ParameterKind parameterKind(const std::string& name) const override;
+    std::vector<std::string> parameterChoices(const std::string& name) const override;
+    /// "positionPoint": where it is, projected onto its face.
+    std::map<std::string, math::Vec3> vectors() const override {
+        return {{"positionPoint", m_position}};
+    }
+    bool setVector(const std::string& name, const math::Vec3& value) override;
+    /// "face": the face it is drilled into; "upToFace": the one it goes up
+    /// to, for that extent.
+    std::map<std::string, std::string> references() const override {
+        return {{"face", m_face}, {"upToFace", m_upToFace}};
+    }
+    bool setReference(const std::string& name, const std::string& value) override;
+
+    Type type() const { return m_type; }
+    Extent extent() const { return m_extent; }
+    const std::string& face() const { return m_face; }
+    const std::string& upToFace() const { return m_upToFace; }
+    const math::Vec3& position() const { return m_position; }
+
+private:
+    HoleFeature() = default;
+
+    std::string m_face;
+    std::string m_upToFace;
+    math::Vec3 m_position;
+    Type m_type = Type::Simple;
+    Extent m_extent = Extent::Blind;
+    double m_diameter = 5.0;
+    double m_depth = 10.0;
+    double m_boreDiameter = 9.0;
+    double m_boreDepth = 3.0;
+    double m_sinkDiameter = 10.0;
+    double m_sinkAngle = 1.5707963267948966;   ///< 90 degrees
+    double m_pointAngle = 2.0594885173533086;  ///< 118 degrees
+    int m_segments = 32;
+    std::string m_featureID;
+
+    static math::IdCounter<int> s_nextID;
+};
+
 /// Primitive feature: creates a solid primitive (box, cylinder, sphere, cone,
 /// torus). A base feature — it ignores the input solid — so toolbar primitives
 /// become parametric, editable tree features that persist and rebuild instead

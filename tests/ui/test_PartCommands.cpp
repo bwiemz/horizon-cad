@@ -8,6 +8,7 @@
 #include <QStatusBar>
 #include <QTreeWidget>
 #include <cmath>
+#include <numbers>
 #include <string>
 
 #include "UiTestSupport.h"
@@ -276,4 +277,39 @@ TEST(PartCommandsTest, AMirrorInAFaceDoublesThePart) {
     trigger(w, "action_undo");
     EXPECT_EQ(doc.featureTree().featureCount(), 2u);
     EXPECT_NEAR(partVolume(doc), 1000.0 - 40.0, 1e-6);
+}
+
+// Phase 162: Model ▸ Hole drills into the face chosen, at its middle unless
+// moved: a counterbored hole through the box, as one undo step.
+TEST(PartCommandsTest, AHoleIsDrilledFromItsForm) {
+    MainWindow w;
+    auto& doc = *w.activeDocument();
+    run(w, "action_box", QStringLiteral("Box"),
+        FormAnswers()
+            .number(QStringLiteral("size0"), 10.0)
+            .number(QStringLiteral("size1"), 10.0)
+            .number(QStringLiteral("size2"), 10.0));
+    ASSERT_NEAR(partVolume(doc), 1000.0, 1e-6);
+
+    run(w, "action_hole", QStringLiteral("Hole"),
+        FormAnswers()
+            .chooseContaining(QStringLiteral("face"), QStringLiteral("facing (0, 0, 1)"))
+            .choose(QStringLiteral("type"), QStringLiteral("Counterbore"))
+            .choose(QStringLiteral("extent"), QStringLiteral("Through all"))
+            .number(QStringLiteral("diameter"), 4.0)
+            .number(QStringLiteral("boreDiameter"), 8.0)
+            .number(QStringLiteral("boreDepth"), 2.0));
+    ASSERT_EQ(doc.featureTree().featureCount(), 2u)
+        << w.statusBar()->currentMessage().toStdString();
+    // A 32-gon's area in each circle, as the hole's revolve makes it.
+    const auto section = [](double r) { return 16.0 * r * r * std::sin(std::numbers::pi / 16.0); };
+    EXPECT_NEAR(partVolume(doc), 1000.0 - section(4) * 2.0 - section(2) * 8.0, 1e-6)
+        << "a counterbore 2 deep, then the hole the rest of the way";
+    const auto* hole = dynamic_cast<const hz::doc::HoleFeature*>(doc.featureTree().feature(1));
+    ASSERT_NE(hole, nullptr);
+    EXPECT_NEAR(hole->position().x, 5.0, 1e-9) << "at the face's middle";
+    EXPECT_NEAR(hole->position().y, 5.0, 1e-9);
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(doc.featureTree().featureCount(), 1u);
 }

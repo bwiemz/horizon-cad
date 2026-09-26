@@ -179,6 +179,7 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"pattern-linear", drawPatternLinear},
         {"pattern-circular", drawPatternCircular},
         {"mirror-3d", drawMirror3d},
+        {"hole", drawHole},
     };
 
     const int s = size > 0 ? size : kRenderSize;
@@ -1672,6 +1673,23 @@ QIcon IconGenerator::drawPatternLinear(int s) {
     p.drawLine(QPointF(3, 18.5), QPointF(21, 18.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 16.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 20.5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawHole(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A block in section, a counterbored hole down its middle.
+    p.setPen(primaryPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    p.drawPolyline(QPolygonF({QPointF(2, 5), QPointF(8, 5), QPointF(8, 9), QPointF(10, 9),
+                              QPointF(10, 20), QPointF(2, 20), QPointF(2, 5)}));
+    p.drawPolyline(QPolygonF({QPointF(22, 5), QPointF(16, 5), QPointF(16, 9), QPointF(14, 9),
+                              QPointF(14, 20), QPointF(22, 20), QPointF(22, 5)}));
+    p.setPen(dashedPen(kSecondary, 1.0));
+    p.drawLine(QPointF(12, 2), QPointF(12, 22));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

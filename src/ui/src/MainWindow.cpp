@@ -301,6 +301,15 @@ QString parameterLabel(const std::string& name) {
         {"planePoint", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane through")},
         {"planeNormal", QT_TRANSLATE_NOOP("MainWindow", "Mirror plane facing")},
         {"planeFace", QT_TRANSLATE_NOOP("MainWindow", "Mirror in the face")},
+        {"type", QT_TRANSLATE_NOOP("MainWindow", "Type")},
+        {"diameter", QT_TRANSLATE_NOOP("MainWindow", "Diameter")},
+        {"boreDiameter", QT_TRANSLATE_NOOP("MainWindow", "Counterbore diameter")},
+        {"boreDepth", QT_TRANSLATE_NOOP("MainWindow", "Counterbore depth")},
+        {"sinkDiameter", QT_TRANSLATE_NOOP("MainWindow", "Countersink diameter")},
+        {"sinkAngle", QT_TRANSLATE_NOOP("MainWindow", "Countersink angle")},
+        {"pointAngle", QT_TRANSLATE_NOOP("MainWindow", "Point angle (0: flat)")},
+        {"positionPoint", QT_TRANSLATE_NOOP("MainWindow", "At")},
+        {"face", QT_TRANSLATE_NOOP("MainWindow", "Into the face")},
     };
     const auto it = labels.find(name);
     return it != labels.end() ? MainWindow::tr(it->second) : QString::fromStdString(name);
@@ -333,6 +342,40 @@ std::vector<PlaneChoice> planarFacesOf(const topo::Solid& solid) {
              draft::SketchPlane(plane->origin, normal, across), face.topoId.tag()});
     }
     return out;
+}
+
+/// The part's flat faces, each once (by its whole name: the pieces of a face
+/// a Boolean split are one), for a command that works on a face by its name
+/// (Phase 162: a hole drilled into one, a mirror in one).
+struct FlatFace {
+    QString text;
+    math::Vec3 middle;
+    math::Vec3 normal;  ///< out of the part
+    std::string name;   ///< its whole name
+};
+std::vector<FlatFace> flatFacesOf(const topo::Solid& solid) {
+    std::vector<FlatFace> out;
+    std::set<std::string> listed;
+    for (const auto& choice : planarFacesOf(solid)) {
+        std::string whole = model::wholeFaceName(choice.tag);
+        if (!listed.insert(whole).second) continue;
+        out.push_back(
+            {choice.text, choice.plane.origin(), choice.plane.normal(), std::move(whole)});
+    }
+    return out;
+}
+
+/// Which of @p faces was clicked first in @p picks; @p otherwise when none.
+int clickedFlatFace(const std::vector<FlatFace>& faces,
+                    const std::vector<ViewportWidget::ModelPick>& picks, int otherwise) {
+    for (const auto& pick : picks) {
+        if (pick.edge || pick.tag.empty()) continue;
+        const std::string whole = model::wholeFaceName(pick.tag);
+        for (size_t i = 0; i < faces.size(); ++i) {
+            if (faces[i].name == whole) return static_cast<int>(i);
+        }
+    }
+    return otherwise;
 }
 
 /// The way the first face or edge clicked on the part points: the face's
@@ -1135,6 +1178,7 @@ void MainWindow::createRibbonBar() {
     g = group(tr("3D"), tr("Features"));
     addAction(g, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
     addAction(g, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
+    addAction(g, "hole", tr("Hole"), this, &MainWindow::onHole);
 
     g = group(tr("3D"), tr("Combine Bodies"));
     addAction(g, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
@@ -4136,7 +4180,7 @@ void MainWindow::completeMenusFromRibbon() {
     m_modelMenu->addSeparator();
     const std::vector<std::vector<const char*>> groups = {
         {"action_box", "action_cylinder", "action_sphere", "action_cone", "action_torus"},
-        {"action_extrude", "action_revolve"},
+        {"action_extrude", "action_revolve", "action_hole"},
         {"action_boolean-union", "action_boolean-subtract", "action_boolean-intersect"},
         {"action_fillet-3d", "action_chamfer-3d", "action_shell", "action_draft"},
         {"action_pattern-linear", "action_pattern-circular", "action_mirror-3d"},
@@ -4946,7 +4990,6 @@ void MainWindow::onCircularPattern() {
 void MainWindow::onMirror() {
     const QString verb = tr("Mirror");
     if (!requireBody(verb)) return;
-    const topo::Solid& part = *m_document->solid();
 
     // In a base plane through the origin, or a flat face of the part (the
     // first clicked, at first), followed by its name.
@@ -4961,27 +5004,18 @@ void MainWindow::onMirror() {
         {tr("ZX plane (y = 0)"), math::Vec3::Zero, math::Vec3::UnitY, {}},
         {tr("XY plane (z = 0)"), math::Vec3::Zero, math::Vec3::UnitZ, {}},
     };
-    std::set<std::string> listed;
-    for (const auto& choice : planarFacesOf(part)) {
-        const std::string whole = model::wholeFaceName(choice.tag);
-        if (!listed.insert(whole).second) continue;
-        planes.push_back({tr("the face %1").arg(choice.text), choice.plane.origin(),
-                          choice.plane.normal(), whole});
+    const auto faces = flatFacesOf(*m_document->solid());
+    const int bases = static_cast<int>(planes.size());
+    for (const auto& face : faces) {
+        planes.push_back({tr("the face %1").arg(face.text), face.middle, face.normal, face.name});
     }
-    int chosen = 0;
-    for (const auto& pick : m_viewport->modelSelection()) {
-        if (pick.edge || pick.tag.empty()) continue;
-        const std::string whole = model::wholeFaceName(pick.tag);
-        for (size_t i = 0; i < planes.size() && chosen == 0; ++i) {
-            if (planes[i].face == whole) chosen = static_cast<int>(i);
-        }
-    }
+    const int clicked = clickedFlatFace(faces, m_viewport->modelSelection(), -1);
     QStringList names;
     for (const auto& plane : planes) names << plane.text;
 
     FeatureForm form(this, verb, m_document->lengthUnit());
     auto* which = form.choice(QStringLiteral("plane"), tr("In:"), names);
-    which->setCurrentIndex(chosen);
+    which->setCurrentIndex(clicked < 0 ? 0 : bases + clicked);
     const auto mirrorable = repeatableFeatures(m_document->featureTree());
     auto* targets = targetList(form, mirrorable, tr("Mirror only (none: the whole part):"));
     if (!form.exec()) return;
@@ -4991,6 +5025,101 @@ void MainWindow::onMirror() {
     if (!plane.face.empty()) mirror->setReference("planeFace", plane.face);
     mirror->setTargets(checkedTargets(targets, mirrorable));
     addModelFeature(std::move(mirror), verb);
+}
+
+void MainWindow::onHole() {
+    const QString verb = tr("Hole");
+    if (!requireBody(verb)) return;
+    const auto faces = flatFacesOf(*m_document->solid());
+    if (faces.empty()) {
+        statusBar()->showMessage(tr("%1: the part has no flat face to drill into").arg(verb));
+        return;
+    }
+    // Into the face clicked (else the first facing up), at its middle.
+    int facingUp = 0;
+    for (size_t i = 0; i < faces.size(); ++i) {
+        if (faces[i].normal.z > 0.99) {
+            facingUp = static_cast<int>(i);
+            break;
+        }
+    }
+    const int start = clickedFlatFace(faces, m_viewport->modelSelection(), facingUp);
+    QStringList names;
+    for (const auto& face : faces) names << face.text;
+
+    FeatureForm form(this, verb, m_document->lengthUnit());
+    auto* face = form.choice(QStringLiteral("face"), tr("Into the face:"), names);
+    face->setCurrentIndex(start);
+    const math::Vec3& middle = faces.at(static_cast<size_t>(start)).middle;
+    auto* x = form.length(QStringLiteral("x"), tr("At X:"), middle.x, -1e6, 1e6);
+    auto* y = form.length(QStringLiteral("y"), tr("At Y:"), middle.y, -1e6, 1e6);
+    auto* z = form.length(QStringLiteral("z"), tr("At Z:"), middle.z, -1e6, 1e6);
+    // Another face chosen: at its middle, to be moved from there.
+    connect(face, &QComboBox::currentIndexChanged, &form.dialog(), [&faces, x, y, z](int row) {
+        if (row < 0 || row >= static_cast<int>(faces.size())) return;
+        const math::Vec3& at = faces[static_cast<size_t>(row)].middle;
+        x->setValue(at.x);
+        y->setValue(at.y);
+        z->setValue(at.z);
+    });
+    auto* type = form.choice(QStringLiteral("type"), tr("Type:"),
+                             {tr("Simple"), tr("Counterbore"), tr("Countersink")});
+    auto* extent = form.choice(QStringLiteral("extent"), tr("Goes:"),
+                               {tr("To the depth"), tr("Through all"), tr("Up to a face")});
+    auto* upTo = form.choice(QStringLiteral("upToFace"), tr("Up to the face:"), names);
+    auto* diameter = form.length(QStringLiteral("diameter"), tr("Diameter:"), 5.0, 0.001, 1e6);
+    auto* depth = form.length(QStringLiteral("depth"), tr("Depth:"), 10.0, 0.001, 1e6);
+    auto* point =
+        form.angle(QStringLiteral("pointAngle"), tr("Point (0: flat):"), 118.0, 0.0, 179.0);
+    auto* boreDiameter =
+        form.length(QStringLiteral("boreDiameter"), tr("Counterbore diameter:"), 9.0, 0.001, 1e6);
+    auto* boreDepth =
+        form.length(QStringLiteral("boreDepth"), tr("Counterbore depth:"), 3.0, 0.001, 1e6);
+    auto* sinkDiameter =
+        form.length(QStringLiteral("sinkDiameter"), tr("Countersink diameter:"), 10.0, 0.001, 1e6);
+    auto* sinkAngle =
+        form.angle(QStringLiteral("sinkAngle"), tr("Countersink angle:"), 90.0, 1.0, 179.0);
+    const auto offer = [type, extent, upTo, depth, point, boreDiameter, boreDepth, sinkDiameter,
+                        sinkAngle] {
+        const bool blind = extent->currentIndex() == 0;
+        upTo->setEnabled(extent->currentIndex() == 2);
+        depth->setEnabled(blind);
+        point->setEnabled(blind);
+        boreDiameter->setEnabled(type->currentIndex() == 1);
+        boreDepth->setEnabled(type->currentIndex() == 1);
+        sinkDiameter->setEnabled(type->currentIndex() == 2);
+        sinkAngle->setEnabled(type->currentIndex() == 2);
+    };
+    connect(type, &QComboBox::currentIndexChanged, &form.dialog(), offer);
+    connect(extent, &QComboBox::currentIndexChanged, &form.dialog(), offer);
+    offer();
+    if (!form.exec()) return;
+
+    const FlatFace& into = faces.at(static_cast<size_t>(std::max(face->currentIndex(), 0)));
+    auto hole = doc::HoleFeature::make(into.name, math::Vec3(x->value(), y->value(), z->value()),
+                                       diameter->value(), depth->value());
+    const double toRadians = std::numbers::pi / 180.0;
+    const std::map<std::string, double> sizes = {
+        {"type", type->currentIndex()},
+        {"extent", extent->currentIndex()},
+        {"pointAngle", point->value() * toRadians},
+        {"boreDiameter", boreDiameter->value()},
+        {"boreDepth", boreDepth->value()},
+        {"sinkDiameter", sinkDiameter->value()},
+        {"sinkAngle", sinkAngle->value() * toRadians},
+    };
+    for (const auto& [name, value] : sizes) {
+        if (!hole->setParameter(name, value)) {
+            statusBar()->showMessage(
+                tr("%1: the %2 is not one it can take").arg(verb, parameterLabel(name).toLower()));
+            return;
+        }
+    }
+    if (extent->currentIndex() == 2) {
+        hole->setReference("upToFace",
+                           faces.at(static_cast<size_t>(std::max(upTo->currentIndex(), 0))).name);
+    }
+    addModelFeature(std::move(hole), verb);
 }
 
 // ---------------------------------------------------------------------------

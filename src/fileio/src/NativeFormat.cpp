@@ -84,7 +84,8 @@ static std::string dumpJson(const json& root, int indent) {
 /// for components of their own, which no longer follow their seeds.
 /// 26: a part may have a Mirror feature, "type": "mirror" (Phase 162). An
 /// older build would leave it out, and build a part half the size.
-static constexpr int kFormatVersion = 26;
+/// 27: a part may have a Hole feature, "type": "hole" (Phase 162).
+static constexpr int kFormatVersion = 27;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -832,6 +833,15 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["suppressed"] = pat->suppressedInstances();
             // The features it repeats (Phase 134); none, the whole part.
             if (!pat->targets().empty()) fObj["features"] = pat->targets();
+        } else if (const auto* hole = dynamic_cast<const doc::HoleFeature*>(feat)) {
+            // Phase 162: its face and point, and its sizes by name.
+            fObj["type"] = "hole";
+            fObj["face"] = hole->face();
+            if (!hole->upToFace().empty()) fObj["upToFace"] = hole->upToFace();
+            fObj["position"] = {hole->position().x, hole->position().y, hole->position().z};
+            json sizes = json::object();
+            for (const auto& [name, value] : hole->parameters()) sizes[name] = value;
+            fObj["sizes"] = sizes;
         } else if (const auto* mirror = dynamic_cast<const doc::MirrorFeature*>(feat)) {
             // Phase 162: its plane, a face it follows, and what it mirrors.
             fObj["type"] = "mirror";
@@ -1708,6 +1718,32 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                             if (id.is_string()) ids.push_back(id.get<std::string>());
                         }
                         feat->setTargets(std::move(ids));
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    addLoaded(std::move(feat));
+                    continue;
+                }
+                if (ftype == "hole") {
+                    const json& at = fObj.at("position");
+                    auto feat = doc::HoleFeature::make(
+                        fObj.at("face").get<std::string>(),
+                        math::Vec3(at.at(0).get<double>(), at.at(1).get<double>(),
+                                   at.at(2).get<double>()),
+                        0.0, 0.0);
+                    if (!feat->setVector("positionPoint", feat->position())) {
+                        throw std::runtime_error("its position is not a point");
+                    }
+                    if (const auto upTo = fObj.find("upToFace");
+                        upTo != fObj.end() && upTo->is_string()) {
+                        feat->setReference("upToFace", upTo->get<std::string>());
+                    }
+                    // Each size as an edit sets it: one it refuses (a
+                    // diameter of nothing, a type from a later build) is a
+                    // damaged file.
+                    for (const auto& [name, value] : fObj.at("sizes").items()) {
+                        if (!value.is_number() || !feat->setParameter(name, value.get<double>())) {
+                            throw std::runtime_error("its " + name + " is not one");
+                        }
                     }
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));

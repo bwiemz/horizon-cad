@@ -109,34 +109,42 @@ In three PRs.
   the part mirrored in the hole's wall. The test names the face by where
   it is, too.
 
-### 162b: the Hole feature
+### 162b: the Hole feature (as built)
 
-- **What it stores:**
-  - the face it is on, as a reference (a whole face name);
-  - where, as `positionPoint` (x, y, z; projected onto the face at each
-    build, so the face moving carries it);
-  - its type (simple, counterbore, countersink);
-  - its sizes (diameter; counterbore diameter and depth; countersink
-    diameter and angle; the drill point's angle, 118° by default, or flat);
-  - its extent (blind with a depth, through all, or up to a face, a
-    second reference).
-- **Built as a revolve.** A half-section in the plane through the axis
-  (lines with fixed ids, so each surface has its own name: `wall`, `tip`,
-  `bore`, `boreFloor`, `sink`), revolved a full turn about the axis into
-  the part.
-  - It starts a little above the face, so the cut does not share the
-    face's plane.
-  - Created as a body with operation Cut: the tree subtracts it, and a
-    pattern with it as its target repeats it.
-- **Refused, and said:** a face that is not flat or not there, sizes that
-  don't make a hole (a counterbore narrower than the hole), an up-to face
-  that is not parallel.
-- Model ▸ Hole: on the face clicked (or chosen), at its middle; the
-  position is typed. Edited like any feature, including the face.
-- Tests: each type's volume against its closed form; a through hole's
-  wall exported to STEP as one cylinder; a drawing's centre line; a hole
-  that follows its face when the part grows; a linear pattern of a hole.
-- Files: `"type":"hole"`, a version bump.
+- **`HoleFeature`**, a body cut from the part (`createsNewBody`, operation
+  Cut), so the tree subtracts it, and a pattern or a mirror with it as a
+  target repeats it.
+  - It stores the face as a whole name (`face`), the point
+    (`positionPoint`, projected onto the face where each build finds it),
+    the type (simple, counterbore, countersink) and the extent (to the
+    depth, through all, up to a face given by `upToFace`, parallel).
+  - Sizes: `diameter`, `depth`, `boreDiameter`, `boreDepth`,
+    `sinkDiameter`, `sinkAngle`, and `pointAngle` (118° by default; 0 is
+    a flat bottom, and through all and up to a face are flat).
+- **Built as a revolve.** A half-section is built in the plane through the
+  axis, from a little above the face, and revolved a full turn into the
+  part. `Revolve` gives a cylinder or cone to each line parallel or
+  oblique to the axis.
+  - The lines have fixed ids, and their faces and edges are renamed for
+    what they are: `hole_1/wall`, `bore`, `boreFloor`, `sink`, `bottom`.
+- **Exact against the faceted part.** Each type's volume matches its
+  closed form over 32-gons.
+  - A hole through a plate, and a counterbored one, go to STEP as
+    designed: each wall is one cylinder, and the volume is exact.
+  - So does the plate mirrored in its side, which checks 162a's surfaces
+    through STEP.
+  - A hole follows its face when the box grows, and a pattern repeats it.
+- **Refused, and said:** no part before it; a face that is gone or not
+  flat; a counterbore or countersink no wider, or no shallower, than the
+  hole; an up-to face that is at a slant or not behind.
+- **Model ▸ Hole** (in the ribbon's Features group). The face is the one
+  clicked, else the first facing up. The position starts at its middle,
+  and moves to the new face's middle when another face is chosen. The
+  form offers only the sizes the type and extent use. The edit form shows
+  every size, the point and both faces.
+- **Files:** version 27, `"type": "hole"`. Its sizes are saved by name, and
+  each is read back as an edit sets it. One the build refuses (a diameter
+  of nothing) is a damaged feature: left out, and said.
 
 ### 162c: mirrored components
 

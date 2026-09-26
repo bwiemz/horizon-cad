@@ -1138,3 +1138,51 @@ TEST(PartFormatTest, AMirrorRoundTrips) {
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped.front().find("mirror"), std::string::npos) << report.skipped.front();
 }
+
+// Phase 162: a hole keeps its face, its point, its extent's face and every
+// size; one a build refuses (a diameter of nothing) is a damaged feature,
+// left out and said.
+TEST(PartFormatTest, AHoleRoundTrips) {
+    Document doc;
+    doc.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    auto hole = hz::doc::HoleFeature::make("primitive_1/top", Vec3(3, 4, 10), 4.0, 6.0);
+    ASSERT_TRUE(hole->setParameter("type", 1));
+    ASSERT_TRUE(hole->setParameter("extent", 2));
+    ASSERT_TRUE(hole->setParameter("boreDiameter", 7.5));
+    ASSERT_TRUE(hole->setParameter("pointAngle", 0.0));
+    hole->setReference("upToFace", "primitive_1/bottom");
+    const std::string id = hole->featureID();
+    doc.featureTree().addFeature(std::move(hole));
+
+    const std::string text = NativeFormat::documentToJson(doc, false);
+    Document back;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, back, &error)) << error;
+    ASSERT_EQ(back.featureTree().featureCount(), 2u);
+    const auto* kept = dynamic_cast<const hz::doc::HoleFeature*>(back.featureTree().feature(1));
+    ASSERT_NE(kept, nullptr);
+    EXPECT_EQ(kept->featureID(), id);
+    EXPECT_EQ(kept->operation(), hz::doc::BodyOperation::Cut);
+    EXPECT_EQ(kept->face(), "primitive_1/top");
+    EXPECT_EQ(kept->upToFace(), "primitive_1/bottom");
+    EXPECT_NEAR((kept->position() - Vec3(3, 4, 10)).length(), 0.0, 1e-12);
+    EXPECT_EQ(kept->type(), hz::doc::HoleFeature::Type::Counterbore);
+    EXPECT_EQ(kept->extent(), hz::doc::HoleFeature::Extent::UpToFace);
+    const auto sizes = kept->parameters();
+    EXPECT_DOUBLE_EQ(sizes.at("diameter"), 4.0);
+    EXPECT_DOUBLE_EQ(sizes.at("depth"), 6.0);
+    EXPECT_DOUBLE_EQ(sizes.at("boreDiameter"), 7.5);
+    EXPECT_DOUBLE_EQ(sizes.at("pointAngle"), 0.0);
+
+    std::string broken = text;
+    const std::string diameter = "\"diameter\":4.0";
+    const auto at = broken.find(diameter);
+    ASSERT_NE(at, std::string::npos) << text;
+    broken.replace(at, diameter.size(), "\"diameter\":0.0");
+    Document damaged;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::documentFromJson(broken, damaged, &error, &report)) << error;
+    EXPECT_EQ(damaged.featureTree().featureCount(), 1u);
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("diameter"), std::string::npos) << report.skipped.front();
+}

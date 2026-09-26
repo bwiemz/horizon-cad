@@ -271,6 +271,8 @@ private slots:
     void onCircularPattern();
     /// A part mirrored in a plane, or some of its features (Phase 162).
     void onMirror();
+    /// A hole drilled into a flat face of the part (Phase 162).
+    void onHole();
 
     void onCreateBlock();
     void onInsertBlock();
