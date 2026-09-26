@@ -63,11 +63,42 @@ install(TARGETS horizon
 # macdeployqt. Linux packages get Qt from linuxdeploy's Qt plugin
 # (packaging/linux).
 if ((WIN32 OR APPLE) AND COMMAND qt_generate_deploy_app_script)
+    # On macOS only the plugins the application uses go in the bundle: the
+    # platform and the style. Left to itself, macdeployqt copies every plugin
+    # Homebrew's Qt has (a virtual keyboard that brings QML, PDF, WebP...),
+    # needing libraries from other Homebrew packages that it cannot find.
+    # These two are installed first; macdeployqt, told to add no plugins,
+    # gives them the bundle's Qt. A qt.conf has Qt look for them there, not
+    # in the Qt the application was built with.
+    set(_hz_deploy_options)
+    if (APPLE)
+        set(_hz_plugins_dir "${HZ_BUNDLE_NAME}.app/Contents/PlugIns")
+        set(_hz_deploy_options DEPLOY_TOOL_OPTIONS -no-plugins)
+        set(_hz_mac_plugins platforms Qt6::QCocoaIntegrationPlugin styles Qt6::QMacStylePlugin)
+        while (_hz_mac_plugins)
+            list(POP_FRONT _hz_mac_plugins _hz_plugin_dir _hz_plugin_target)
+            if (NOT TARGET ${_hz_plugin_target})
+                message(WARNING "${_hz_plugin_target} not found: the bundle will lack it")
+                continue()
+            endif()
+            get_target_property(_hz_plugin_file ${_hz_plugin_target} IMPORTED_LOCATION_RELEASE)
+            if (NOT _hz_plugin_file)
+                get_target_property(_hz_plugin_file ${_hz_plugin_target} IMPORTED_LOCATION)
+            endif()
+            get_filename_component(_hz_plugin_name "${_hz_plugin_file}" NAME)
+            install(FILES "${_hz_plugin_file}" DESTINATION "${_hz_plugins_dir}/${_hz_plugin_dir}")
+            list(APPEND _hz_deploy_options
+                 "-executable=${_hz_plugins_dir}/${_hz_plugin_dir}/${_hz_plugin_name}")
+        endwhile()
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/qt.conf "[Paths]\nPlugins = PlugIns\n")
+        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qt.conf DESTINATION ${HZ_INSTALL_SHIPPED_DIR})
+    endif()
     qt_generate_deploy_app_script(
         TARGET horizon
         OUTPUT_SCRIPT _hz_deploy_script
         NO_TRANSLATIONS
-        NO_UNSUPPORTED_PLATFORM_ERROR)
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        ${_hz_deploy_options})
     install(SCRIPT ${_hz_deploy_script})
 endif()
 

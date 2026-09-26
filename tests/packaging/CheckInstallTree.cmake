@@ -36,7 +36,9 @@ if(APPLE)
         "${contents}/Resources/samples/bracket.hzpart"
         "${contents}/Resources/samples/plate-and-pin.hzasm"
         "${contents}/Resources/doc/LICENSE"
-        "${contents}/Resources/doc/THIRD_PARTY_NOTICES.md")
+        "${contents}/Resources/doc/THIRD_PARTY_NOTICES.md"
+        "${contents}/Resources/qt.conf"
+        "${contents}/PlugIns/platforms/libqcocoa.dylib")
 endif()
 foreach(file IN LISTS expected)
     if(NOT EXISTS "${WORK_DIR}/${file}")

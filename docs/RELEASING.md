@@ -67,7 +67,8 @@ still packages everything, and the release notes say what is not signed.
   vcpkg built into it (under `third-party/`).
 - On Windows, the Qt runtime (from Qt's deployment script).
 - On macOS, the application bundle `HorizonCAD.app`, with Qt's frameworks
-  and plug-ins in it (Qt's deployment script runs macdeployqt), its icon,
+  in it (Qt's deployment script runs macdeployqt) and the two Qt plug-ins it
+  uses, the platform and the style, its icon,
   and the documents it opens. The licences are in its `Contents/Resources/doc`.
   The disk image holds it beside a link to Applications. It runs on the
   macOS it was built on (14, Sonoma) or later.
