@@ -44,8 +44,8 @@ Triad::Triad(const Vec3& origin, const std::array<Vec3, 3>& axes, const render::
     across = across.normalized();
     const auto a = project(m_origin);
     const auto b = project(m_origin + across);
-    m_visible = a.has_value() && b.has_value();
-    if (!m_visible) return;
+    if (!a || !b) return;  // its middle behind the view: not visible
+    m_visible = true;
     const double pixelsPerUnit = std::hypot(b->x() - a->x(), b->y() - a->y());
     m_size = pixelsPerUnit > 1e-12 ? kPixels / pixelsPerUnit : 1.0;
 }
