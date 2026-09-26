@@ -130,6 +130,29 @@ TEST(MalformedInputTest, HugeFloatWhereAnIntegerBelongsSkipsOnlyItsEntity) {
     EXPECT_EQ(entitiesLoadedFrom(oneBadLine(R"("lineType":"dashed")")), 1u);
 }
 
+// Colours, ids and groups are whole numbers too, and were cast as the line
+// type was: the fuzzer found a layer's colour of 4.29e119.
+TEST(MalformedInputTest, AColourOrIdThatIsNotAWholeNumberSkipsOnlyItsEntity) {
+    for (const char* field :
+         {R"("color":4.29e119)", R"("color":-1)", R"("color":1.5)", R"("color":4294967296)",
+          R"("id":1e300)", R"("id":-3)", R"("groupId":1e300)"}) {
+        EXPECT_EQ(entitiesLoadedFrom(oneBadLine(field)), 1u) << field;
+    }
+    // Every colour a colour can be still is one.
+    Document doc;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(oneBadLine(R"("color":4294967295)"), doc, &error))
+        << error;
+    ASSERT_EQ(doc.draftDocument().entities().size(), 2u);
+    EXPECT_EQ(doc.draftDocument().entities().front()->color(), 0xFFFFFFFFu);
+}
+
+TEST(MalformedInputTest, ALayersColourThatIsNotAWholeNumberIsDamaged) {
+    const std::string error =
+        rejectedReason(R"({"version":16,"entities":[],"layers":[{"name":"A","color":4.29e119}]})");
+    EXPECT_TRUE(contains(error, "color")) << error;
+}
+
 TEST(MalformedInputTest, BadPatternCountSkipsOnlyItsFeature) {
     Document doc;
     std::string error;

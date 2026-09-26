@@ -133,15 +133,22 @@ bool RevisionArchive::load() {
             return false;
         }
         for (const auto& e : j) {
+            // Revisions are numbered 0, 1, 2... in order; the blob of each is
+            // found by its number, so any other sequence cannot be trusted.
+            // Compared as read, a whole number: nlohmann would cast a float
+            // to int, undefined out of range.
+            const auto& index = e.at("index");
+            if (!index.is_number_unsigned() || index.get<uint64_t>() != revisions.size()) {
+                m_corrupt = true;
+                return false;
+            }
             RevisionInfo r;
-            r.index = e.at("index").get<int>();
+            r.index = static_cast<int>(revisions.size());
             r.timestamp = e.value("timestamp", "");
             r.author = e.value("author", "");
             r.message = e.value("message", "");
             r.contentHash = e.at("hash").get<std::string>();
-            // Revisions are numbered 0, 1, 2... in order; the blob of each is
-            // found by its number, so any other sequence cannot be trusted.
-            if (r.index != static_cast<int>(revisions.size()) || !isRecordedHash(r.contentHash)) {
+            if (!isRecordedHash(r.contentHash)) {
                 m_corrupt = true;
                 return false;
             }

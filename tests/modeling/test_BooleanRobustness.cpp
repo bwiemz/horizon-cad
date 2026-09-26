@@ -276,5 +276,7 @@ TEST(BooleanRobustnessTest, AFinelyFacetedPinCutsQuickly) {
 #else
     EXPECT_LT(seconds, 10.0) << "unoptimized: a generous bound";
 #endif
+#else
+    (void)seconds;
 #endif
 }

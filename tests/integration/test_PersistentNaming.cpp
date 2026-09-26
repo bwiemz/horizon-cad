@@ -877,7 +877,8 @@ TEST(PersistentNamingTest, ARevolvesRimIsFilleted) {
     const double pi = std::acos(-1.0);
     const auto rimFillet = [pi](double inner, double outer, double& removedOut) {
         auto sketch = std::make_shared<Sketch>();
-        sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(inner, 0), Vec2(outer, 3)));
+        sketch->addEntity(
+            std::make_shared<hz::draft::DraftRectangle>(Vec2(inner, 0), Vec2(outer, 3)));
         auto revolve = std::make_unique<hz::doc::RevolveFeature>(sketch, Vec3(0, 0, 0),
                                                                  Vec3(0, 1, 0), 2.0 * pi);
         const std::string id = revolve->featureID();

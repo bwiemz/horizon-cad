@@ -183,6 +183,9 @@ TEST(RevisionArchiveTest, InconsistentManifestsFailClosed) {
         R"([{"index":0,"hash":"not-a-hash"}])",                  // not a hash
         R"([{"index":0,"hash":")" + good + R"(","author":7}])",  // wrong type
         R"([7])",                                                // not a revision
+        // Not a whole number: nlohmann cast it to int, undefined behaviour.
+        R"([{"index":1e300,"hash":")" + good + R"("}])",
+        R"([{"index":-1,"hash":")" + good + R"("}])",
     };
     for (const std::string& manifest : manifests) {
         TempDir dir("hz_pdm_inconsistent");
