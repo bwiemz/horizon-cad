@@ -12,11 +12,13 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <memory>
 #include <numbers>
 #include <random>
 #include <string>
 
+#include "../PortableRandom.h"
 #include "../TimeLimits.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
@@ -92,8 +94,8 @@ std::unique_ptr<hz::topo::Solid> moved(const hz::topo::Solid& solid, const Mat4&
 
 /// A rigid motion from @p rng: a turn about a random axis, then a shift.
 Mat4 randomMotion(std::mt19937& rng, double reach) {
-    std::uniform_real_distribution<double> unit(-1.0, 1.0);
-    std::uniform_real_distribution<double> angle(0.0, 2.0 * std::numbers::pi);
+    hz::test::Uniform unit(-1.0, 1.0);
+    hz::test::Uniform angle(0.0, 2.0 * std::numbers::pi);
     Vec3 axis(unit(rng), unit(rng), unit(rng));
     if (axis.length() < 1e-3) axis = Vec3(0, 0, 1);
     const auto turn = hz::math::Quaternion::fromAxisAngle(axis.normalized(), angle(rng));
@@ -140,6 +142,67 @@ TEST(BooleanRobustnessTest, SmallAndLargeScalesAreSound) {
                         "scale " + std::to_string(scale) + ", placement " + std::to_string(i));
         }
     }
+}
+
+/// Whether A and B combine soundly three ways, as expectSound checks, but
+/// counted rather than failed.
+bool combinesSoundly(const hz::topo::Solid& a, const hz::topo::Solid& b, double scale) {
+    double volume[3] = {0.0, 0.0, 0.0};
+    const BooleanType types[3] = {BooleanType::Union, BooleanType::Subtract,
+                                  BooleanType::Intersect};
+    for (int k = 0; k < 3; ++k) {
+        const auto result = BooleanOp::execute(a, b, types[k], nullptr, NamingScheme::Stable);
+        if (!result) {
+            if (k == 0) return false;
+            continue;
+        }
+        if (!result->isValid() || !result->checkManifold() ||
+            !hz::topo::GeometryValidator::isGeometricallyValid(*result)) {
+            return false;
+        }
+        volume[k] = volumeOf(*result);
+    }
+    const double va = volumeOf(a);
+    const double vb = volumeOf(b);
+    const double tol = 1e-7 * std::pow(scale, 3.0);
+    return std::abs(volume[1] + volume[2] - va) <= tol &&
+           std::abs(volume[0] - (va + vb - volume[2])) <= tol;
+}
+
+// How often a random placement comes out unsound, over a hundred of each
+// kind: the tests above see only the few placements their seeds draw.
+// Measured over two thousand (Phase 169): at the origin 1 fails; a million
+// millimetres out 26 do (a sliver the operation makes is too thin to exist
+// that far out, where a coordinate keeps a ten-billionth of a millimetre);
+// at a thousandth of the size 14; at a hundred thousand times, none. The
+// bounds leave room for another platform's arithmetic, and catch a slide:
+// the validator's crossing test, before it was measured in lengths, failed
+// one small placement in five.
+TEST(BooleanRobustnessTest, HowOftenARandomPlacementIsUnsound) {
+    const auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto cylinder = PrimitiveFactory::makeCylinder(3.0, 12.0, 24);
+    const auto unsound = [&](const Mat4& frame, double scale) {
+        const auto framedBox = moved(*box, frame);
+        int count = 0;
+        for (unsigned seed = 1; seed <= 10; ++seed) {
+            std::mt19937 rng(seed);
+            for (int i = 0; i < 10; ++i) {
+                const Mat4 m = frame * Mat4::translation(Vec3(5, 5, 5)) * randomMotion(rng, 4.0);
+                if (!combinesSoundly(*framedBox, *moved(*cylinder, m), 10.0 * scale)) ++count;
+            }
+        }
+        return count;
+    };
+    const int origin = unsound(Mat4::identity(), 1.0);
+    const int far = unsound(Mat4::translation(Vec3(1e6, -2e6, 1.5e6)), 1.0);
+    const int small = unsound(Mat4::scale(1e-3), 1e-3);
+    const int large = unsound(Mat4::scale(1e5), 1e5);
+    std::printf("[   INFO   ] unsound of 100: at the origin %d, far %d, small %d, large %d\n",
+                origin, far, small, large);
+    EXPECT_LE(origin, 2) << "at the origin";
+    EXPECT_LE(far, 6) << "far from it";
+    EXPECT_LE(small, 4) << "a thousandth of the size";
+    EXPECT_LE(large, 2) << "a hundred thousand times";
 }
 
 // Faces in exact contact: two boxes meeting face to face, over the whole

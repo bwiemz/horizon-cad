@@ -70,11 +70,19 @@ double extentOf(const std::vector<Vec3>& pts) {
     return (hi - lo).length();
 }
 
-/// 2D orientation sign with a tolerance band.
+/// Which side of the line through a and b the point c is, with a band of
+/// @p eps (a length) either side of it. The cross product is a length times
+/// a length; it is compared as c's distance from the line, so the band is
+/// the same at every size. Compared as it was, for a part a hundredth of a
+/// millimetre across every point fell in the band, and segments that do not
+/// meet were taken for collinear ones that overlap (Phase 169).
 int orient2d(double ax, double ay, double bx, double by, double cx, double cy, double eps) {
     const double d = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-    if (d > eps) return 1;
-    if (d < -eps) return -1;
+    const double base = std::hypot(bx - ax, by - ay);
+    if (base == 0.0) return 0;
+    const double distance = d / base;
+    if (distance > eps) return 1;
+    if (distance < -eps) return -1;
     return 0;
 }
 

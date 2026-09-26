@@ -15,6 +15,7 @@
 #include <random>
 #include <set>
 
+#include "../PortableRandom.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -259,8 +260,8 @@ TEST(AdversarialModels, ShelledContainerInterferenceSemantics) {
 
 TEST(AdversarialModels, BooleanVolumeConservationFuzz) {
     std::mt19937 rng(7);
-    std::uniform_real_distribution<double> offset(0.5, 9.0);
-    std::uniform_real_distribution<double> size(4.0, 14.0);
+    hz::test::Uniform offset(0.5, 9.0);
+    hz::test::Uniform size(4.0, 14.0);
 
     for (int i = 0; i < 15; ++i) {
         const double sx = size(rng), sy = size(rng), sz = size(rng);
@@ -298,7 +299,7 @@ TEST(AdversarialModels, BooleanVolumeConservationFuzz) {
 
 TEST(AdversarialModels, LongBooleanChainStaysManifold) {
     std::mt19937 rng(11);
-    std::uniform_real_distribution<double> pos(0.0, 24.0);
+    hz::test::Uniform pos(0.0, 24.0);
 
     auto current = PrimitiveFactory::makeBox(30, 30, 8);
     ASSERT_NE(current, nullptr);

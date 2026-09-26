@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "../PortableRandom.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -608,7 +609,7 @@ TEST(PipelineTest, PrimitiveTorusValid) {
 
 TEST(PipelineTest, FuzzRandomExtrudes) {
     std::mt19937 rng(42);
-    std::uniform_real_distribution<double> sizeDist(1.0, 20.0);
+    hz::test::Uniform sizeDist(1.0, 20.0);
     for (int i = 0; i < 10; ++i) {
         double w = sizeDist(rng), h = sizeDist(rng), d = sizeDist(rng);
         auto box = PrimitiveFactory::makeBox(w, h, d);
@@ -619,7 +620,7 @@ TEST(PipelineTest, FuzzRandomExtrudes) {
 
 TEST(PipelineTest, FuzzRandomBooleans) {
     std::mt19937 rng(123);
-    std::uniform_real_distribution<double> offsetDist(-5.0, 15.0);
+    hz::test::Uniform offsetDist(-5.0, 15.0);
     int success = 0;
     for (int i = 0; i < 10; ++i) {
         auto a = PrimitiveFactory::makeBox(10, 10, 10);
@@ -633,8 +634,8 @@ TEST(PipelineTest, FuzzRandomBooleans) {
 
 TEST(PipelineTest, FuzzRandomFillets) {
     std::mt19937 rng(7);
-    std::uniform_real_distribution<double> sizeDist(5.0, 20.0);
-    std::uniform_real_distribution<double> radiusDist(0.1, 0.5);
+    hz::test::Uniform sizeDist(5.0, 20.0);
+    hz::test::Uniform radiusDist(0.1, 0.5);
     int success = 0;
     for (int i = 0; i < 5; ++i) {
         double s = sizeDist(rng);

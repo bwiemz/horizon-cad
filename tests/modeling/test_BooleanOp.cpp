@@ -4,6 +4,7 @@
 #include <random>
 #include <set>
 
+#include "../PortableRandom.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Vec3.h"
@@ -207,7 +208,7 @@ TEST(BooleanOpTest, CylinderThroughBox) {
 
 TEST(BooleanOpTest, RandomTransformStressTest) {
     std::mt19937 rng(42);
-    std::uniform_real_distribution<double> dist(-5.0, 15.0);
+    hz::test::Uniform dist(-5.0, 15.0);
     int successCount = 0;
     for (int i = 0; i < 20; ++i) {
         auto boxA = PrimitiveFactory::makeBox(10, 10, 10);
@@ -233,7 +234,7 @@ TEST(BooleanOpTest, RandomOverlapProducesValidTopology) {
     std::mt19937 rng(1234);
     // Box edge is 10; offsets in [1, 9.5] keep the boxes overlapping while
     // sweeping toward (but never reaching) coincident faces.
-    std::uniform_real_distribution<double> offset(1.0, 9.5);
+    hz::test::Uniform offset(1.0, 9.5);
     const BooleanType types[] = {BooleanType::Union, BooleanType::Subtract, BooleanType::Intersect};
 
     int produced = 0;
