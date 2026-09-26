@@ -12,4 +12,8 @@
     <comment>Horizon CAD assembly</comment>
     <glob pattern="*.hzasm"/>
   </mime-type>
+  <mime-type type="application/x-horizon-sheet">
+    <comment>Horizon CAD drawing sheet</comment>
+    <glob pattern="*.hzdwg"/>
+  </mime-type>
 </mime-info>

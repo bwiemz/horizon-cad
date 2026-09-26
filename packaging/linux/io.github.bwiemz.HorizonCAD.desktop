@@ -8,5 +8,5 @@ Icon=io.github.bwiemz.HorizonCAD
 Terminal=false
 Categories=Graphics;Engineering;
 Keywords=CAD;drafting;3D;modelling;STEP;DXF;
-MimeType=application/x-horizon-drawing;application/x-horizon-part;application/x-horizon-assembly;image/vnd.dxf;
+MimeType=application/x-horizon-drawing;application/x-horizon-part;application/x-horizon-assembly;application/x-horizon-sheet;image/vnd.dxf;
 StartupWMClass=horizon
