@@ -21,8 +21,8 @@ work, not "post-1.0".
 
 - **Booleans at scale (165).**
   - A Boolean with a finely faceted round operand (a pin, a cylinder of
-    thousands of facets) is several times quicker: a convex operand's tree
-    is built in one pass. Results are unchanged.
+    thousands of facets) is about two and a half times quicker: a convex
+    operand's tree is built in one pass. Results are unchanged.
   - Drilling a plate that already has many holes still slows as the holes
     add up; that needs a different Boolean core, left for later.
 

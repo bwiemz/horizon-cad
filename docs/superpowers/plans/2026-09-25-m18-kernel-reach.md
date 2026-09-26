@@ -292,8 +292,9 @@ In three PRs.
 ## Phase 165: Booleans at scale (as built)
 
 - **Where the time went.** Box less a 2,048-facet pin took 4.0 s in a
-  Debug build (2.6 s optimised, per M11). Timing each stage showed the CSG
-  itself took 1.7 s, and most of that was two tree builds:
+  Debug build here, and 0.81 s optimised. (M11 recorded 2.6 s, apparently
+  a Debug figure.) Timing each stage showed the CSG itself took 1.7 s, and
+  most of that was two tree builds:
   - the pin's own tree;
   - the last step, which merges the pin's surviving polygons into the
     box's tree and, at its leaf, builds them into a sub-tree.
@@ -313,8 +314,12 @@ In three PRs.
   - The full suite, whose Boolean tests check exact volumes and names,
     passes unchanged.
 - **The result:** the CSG went from 1.7 s to 0.4 s, and the whole Boolean
-  from 4.0 s to 1.7 s (Debug). `AFinelyFacetedPinCutsQuickly` bounds it
-  at 1 s optimised and 10 s Debug.
+  from 4.0 s to 1.7 s (Debug) and from 0.81 s to 0.27–0.38 s (optimised,
+  `-O2`, measured with a test binary built apart).
+  - `AFinelyFacetedPinCutsQuickly` bounds it at 1 s optimised and 10 s in
+    Debug. Those limits leave room for CI's shared runners, so they catch
+    a slide back into a quadratic build but not the old code at this size.
+    Review found the first text claimed more.
 - **Not done:** clipping only what is near. A polygon far from the other
   operand still goes through the tree, and a non-convex operand's tree is
   still built by splitting. Drilling a plate that already has holes costs

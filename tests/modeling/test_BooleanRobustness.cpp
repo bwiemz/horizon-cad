@@ -250,10 +250,13 @@ TEST(BooleanRobustnessTest, ADeepTreeNeedsNoDeepStack) {
     EXPECT_NEAR(volumeOf(*c.result), 4000.0 - 10.0 * hole, 1e-6);
 }
 
-// Phase 165: a box less a finely faceted pin is quick. Building the pin's
-// tree split-tested each of its polygons against every plane before it:
-// 2.6 s at 2,048 facets, minutes at 100,000 triangles. A convex operand's
-// tree is a chain of its planes, built in one pass; the result is the same.
+// Phase 165: a box less a finely faceted pin. Building the pin's tree
+// split-tested each of its polygons against every plane before it; a convex
+// operand's tree is a chain of its planes, now built in one pass, the same
+// tree. Measured on one machine: 0.81 s to 0.30 s optimised, 4.0 s to 1.7 s
+// in a Debug build. The limits leave room for CI's shared runners: they
+// catch a slide back into a quadratic build at this size, not the old code,
+// which a looser machine could not tell from the new one.
 TEST(BooleanRobustnessTest, AFinelyFacetedPinCutsQuickly) {
     const auto box = PrimitiveFactory::makeBox(20, 20, 10);
     const auto pin = moved(*PrimitiveFactory::makeCylinder(5.0, 20.0, 2048),
