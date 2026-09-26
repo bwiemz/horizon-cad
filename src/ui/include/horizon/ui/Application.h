@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QString>
+#include <QSurfaceFormat>
 
 namespace hz::ui {
 
@@ -24,6 +25,12 @@ public:
     /// Log the reason before the process aborts through std::terminate (an
     /// exception thrown outside any event handler, or from a destructor).
     static void installTerminateHandler();
+
+    /// The OpenGL the viewport asks for, set as the default before the
+    /// application is made: desktop OpenGL 3.3 Core, depth, 4 samples.
+    /// Desktop OpenGL is said so: left to the platform, Wayland's EGL chose
+    /// OpenGL ES, which has no 3.3, and no context was made.
+    static QSurfaceFormat surfaceFormat();
 
     /// Number of exceptions contained since start-up.
     int containedExceptionCount() const { return m_containedCount; }

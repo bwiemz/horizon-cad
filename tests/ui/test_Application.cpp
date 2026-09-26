@@ -63,3 +63,15 @@ TEST(ApplicationTest, RepeatedExceptionsDoNotRaiseADialogStorm) {
     }
     EXPECT_EQ(app->containedExceptionCount(), before + 4);
 }
+
+// The viewport's OpenGL is desktop OpenGL 3.3 Core, said so. Left to the
+// platform, Wayland's EGL chose OpenGL ES, which has no 3.3: no context,
+// and a viewport that could not draw on a Wayland desktop.
+TEST(ApplicationTest, TheViewportAsksForDesktopOpenGL) {
+    const QSurfaceFormat format = hz::ui::Application::surfaceFormat();
+    EXPECT_EQ(format.renderableType(), QSurfaceFormat::OpenGL);
+    EXPECT_EQ(format.majorVersion(), 3);
+    EXPECT_EQ(format.minorVersion(), 3);
+    EXPECT_EQ(format.profile(), QSurfaceFormat::CoreProfile);
+    EXPECT_EQ(format.depthBufferSize(), 24);
+}

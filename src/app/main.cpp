@@ -205,13 +205,9 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    // Request an OpenGL 3.3 Core Profile context.
-    QSurfaceFormat format;
-    format.setVersion(3, 3);
-    format.setProfile(QSurfaceFormat::CoreProfile);
-    format.setDepthBufferSize(24);
-    format.setSamples(4);
-    QSurfaceFormat::setDefaultFormat(format);
+    // Desktop OpenGL 3.3 Core (see Application::surfaceFormat: on Wayland the
+    // platform's choice was OpenGL ES, and the viewport could not draw).
+    QSurfaceFormat::setDefaultFormat(hz::ui::Application::surfaceFormat());
 
     const int status = run(argc, argv);
     spdlog::info("Horizon CAD exiting (status {})", status);
