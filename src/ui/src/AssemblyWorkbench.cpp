@@ -30,12 +30,14 @@
 #include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/fileio/BomExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/AssemblySolver.h"
+#include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
@@ -75,6 +77,49 @@ bool placesFile(const doc::ComponentInstance& comp, const std::string& dir,
     return std::any_of(children.begin(), children.end(), [&](const doc::ComponentInstance& child) {
         return placesFile(child, subDir, path);
     });
+}
+
+/// What a mate frame is, in words (Phase 160: more than planes and
+/// cylinders).
+QString describeFrame(const model::MateFrame& frame) {
+    switch (frame.kind) {
+        case model::MateFrameKind::Planar:
+            return AssemblyWorkbench::tr("plane facing %1").arg(formatPoint(frame.direction));
+        case model::MateFrameKind::Cylindrical:
+            return AssemblyWorkbench::tr("cylinder of radius %1 along %2")
+                .arg(frame.radius, 0, 'g', 6)
+                .arg(formatPoint(frame.direction));
+        case model::MateFrameKind::Line:
+            return AssemblyWorkbench::tr("line along %1").arg(formatPoint(frame.direction));
+        case model::MateFrameKind::Point:
+            return AssemblyWorkbench::tr("point at %1").arg(formatPoint(frame.origin));
+        case model::MateFrameKind::Circle:
+            return AssemblyWorkbench::tr("circle of radius %1 about %2")
+                .arg(frame.radius, 0, 'g', 6)
+                .arg(formatPoint(frame.origin));
+        case model::MateFrameKind::Spherical:
+            return AssemblyWorkbench::tr("sphere of radius %1 about %2")
+                .arg(frame.radius, 0, 'g', 6)
+                .arg(formatPoint(frame.origin));
+        case model::MateFrameKind::Conical:
+            return AssemblyWorkbench::tr("cone from %1 along %2")
+                .arg(formatPoint(frame.origin), formatPoint(frame.direction));
+    }
+    return {};
+}
+
+/// A mate side from component @p id and a list row's data, "<kind>:<name>"
+/// (Phase 160).
+doc::MateReference referenceOf(qulonglong id, const QVariant& data) {
+    doc::MateReference ref;
+    ref.componentId = static_cast<uint64_t>(id);
+    const QString text = data.toString();
+    const auto colon = text.indexOf(QLatin1Char(':'));
+    const QString kind = colon < 0 ? QStringLiteral("face") : text.left(colon);
+    ref.faceId = topo::TopologyID::fromTag((colon < 0 ? text : text.mid(colon + 1)).toStdString());
+    if (kind == QLatin1String("edge")) ref.kind = doc::ReferenceKind::Edge;
+    if (kind == QLatin1String("datum")) ref.kind = doc::ReferenceKind::Datum;
+    return ref;
 }
 
 /// Whether any component of @p now is placed other than in @p before.
@@ -652,13 +697,14 @@ void AssemblyWorkbench::onAddMate() {
         m_host.showStatus(tr("Insert at least two components first"));
         return;
     }
-    // Faces clicked in the viewport, on two components: the mate's A and B.
+    // Faces or edges (Phase 160) clicked in the viewport, on two components:
+    // the mate's A and B.
     std::vector<ViewportWidget::ModelPick> clickedFaces;
     for (const auto& pick : m_host.viewport().modelSelection()) {
         const bool another = std::none_of(
             clickedFaces.begin(), clickedFaces.end(),
             [&pick](const ViewportWidget::ModelPick& p) { return p.owner == pick.owner; });
-        if (!pick.edge && pick.owner != 0 && another) clickedFaces.push_back(pick);
+        if (pick.owner != 0 && !pick.tag.empty() && another) clickedFaces.push_back(pick);
     }
 
     // Resolve parts so faces are available for picking.
@@ -669,26 +715,57 @@ void AssemblyWorkbench::onAddMate() {
         }
     }
 
-    // Faces a mate can take, one row each (a curved face's facets together,
-    // as a click picks it), said by what they are and where; the name is the
-    // row's data. Raw facet names made a cylinder a row per facet, and a
-    // clicked curved face matched none of them.
+    // What a mate can take, one row each, said by what it is and where; the
+    // row's data is its reference, "<kind>:<name>" (referenceOf):
+    // - faces (a curved face's facets together, as a click picks it);
+    // - straight and round edges (Phase 160), by their whole names;
+    // - the part's datum planes, axes and points (Phase 160).
     auto addFaces = [](const doc::ComponentInstance& comp, QComboBox* combo) {
-        if (comp.solid() == nullptr) return;
-        std::set<std::string> seen;
-        for (const auto& face : comp.solid()->faces()) {
-            if (!face.topoId.isValid()) continue;
-            const std::string logical = model::logicalFace(face.topoId.tag());
-            if (!seen.insert(logical).second) continue;
-            const auto frame = model::MateGeometry::frameForFace(face);
-            if (!frame) continue;
-            const QString what = frame->kind == model::MateFrameKind::Planar
-                                     ? tr("plane facing %1").arg(formatPoint(frame->direction))
-                                     : tr("cylinder of radius %1 along %2")
-                                           .arg(frame->radius, 0, 'g', 6)
-                                           .arg(formatPoint(frame->direction));
-            combo->addItem(QStringLiteral("%1 (%2)").arg(what, QString::fromStdString(logical)),
-                           QString::fromStdString(logical));
+        const auto add = [combo](const model::MateFrame& frame, const QString& kind,
+                                 const std::string& name) {
+            combo->addItem(
+                QStringLiteral("%1 (%2)").arg(describeFrame(frame), QString::fromStdString(name)),
+                kind + QLatin1Char(':') + QString::fromStdString(name));
+        };
+        if (const topo::Solid* solid = comp.solid()) {
+            std::set<std::string> seen;
+            for (const auto& face : solid->faces()) {
+                if (!face.topoId.isValid()) continue;
+                const std::string logical = model::logicalFace(face.topoId.tag());
+                if (!seen.insert(logical).second) continue;
+                if (const auto frame = model::MateGeometry::frameForFace(face)) {
+                    add(*frame, QStringLiteral("face"), logical);
+                }
+            }
+            seen.clear();
+            for (const auto& edge : solid->edges()) {
+                if (!edge.topoId.isValid()) continue;
+                if (edge.topoId.tag().find("/seam:") != std::string::npos) continue;
+                const std::string whole = model::wholeEdgeName(edge.topoId.tag());
+                if (!seen.insert(whole).second) continue;
+                if (const auto frame = model::MateGeometry::frameForEdge(*solid, whole)) {
+                    add(*frame, QStringLiteral("edge"), whole);
+                }
+            }
+        }
+        if (comp.resolvedPart) {
+            const doc::FeatureTree& tree = comp.resolvedPart->featureTree();
+            for (size_t i = 0; i < tree.featureCount(); ++i) {
+                const auto* datum = dynamic_cast<const doc::DatumFeature*>(tree.feature(i));
+                if (datum == nullptr) continue;
+                model::MateFrame frame;
+                if (datum->datumKind() == doc::DatumFeature::DatumKind::Plane) {
+                    frame.kind = model::MateFrameKind::Planar;
+                    frame.direction = datum->asPlane().normal;
+                } else if (datum->datumKind() == doc::DatumFeature::DatumKind::Axis) {
+                    frame.kind = model::MateFrameKind::Line;
+                    frame.direction = datum->asAxis().direction;
+                } else {
+                    frame.kind = model::MateFrameKind::Point;
+                    frame.origin = datum->asPoint().position;
+                }
+                add(frame, QStringLiteral("datum"), datum->featureID());
+            }
         }
     };
 
@@ -741,16 +818,20 @@ void AssemblyWorkbench::onAddMate() {
         const int comp = compCombo->findData(QVariant::fromValue<qulonglong>(pick.owner));
         if (comp < 0) return;
         compCombo->setCurrentIndex(comp);  // refreshes the faces
-        const int face = faceCombo->findData(QString::fromStdString(pick.tag));
+        const QString reference =
+            pick.edge
+                ? QStringLiteral("edge:") + QString::fromStdString(model::wholeEdgeName(pick.tag))
+                : QStringLiteral("face:") + QString::fromStdString(pick.tag);
+        const int face = faceCombo->findData(reference);
         if (face >= 0) faceCombo->setCurrentIndex(face);
     };
     if (!clickedFaces.empty()) offer(compACombo, faceACombo, clickedFaces[0]);
     if (clickedFaces.size() > 1) offer(compBCombo, faceBCombo, clickedFaces[1]);
 
     form->addRow(tr("Component A:"), compACombo);
-    form->addRow(tr("Face A:"), faceACombo);
+    form->addRow(tr("On A:"), faceACombo);
     form->addRow(tr("Component B:"), compBCombo);
-    form->addRow(tr("Face B:"), faceBCombo);
+    form->addRow(tr("On B:"), faceBCombo);
 
     // A distance mate's distance, or an angle mate's angle, in the
     // assembly's unit or typed in another (Phase 154).
@@ -763,11 +844,40 @@ void AssemblyWorkbench::onAddMate() {
     angleSpin->setObjectName("angle");
     angleSpin->setRange(-360.0, 360.0);
     form->addRow(tr("Angle:"), angleSpin);
-    const auto offerValue = [typeCombo, valueSpin, angleSpin] {
+    // Or held between limits (Phase 160): free within them.
+    auto* held = new QComboBox(&dialog);
+    held->setObjectName("held");
+    held->addItems({tr("At the value"), tr("Between limits")});
+    form->addRow(tr("Held:"), held);
+    auto* lowLength = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, &dialog);
+    auto* highLength = new QuantitySpinBox(QuantitySpinBox::Kind::Length, unit, 3, &dialog);
+    auto* lowAngle = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, unit, 3, &dialog);
+    auto* highAngle = new QuantitySpinBox(QuantitySpinBox::Kind::Angle, unit, 3, &dialog);
+    lowLength->setObjectName("minimum");
+    highLength->setObjectName("maximum");
+    lowAngle->setObjectName("minimumAngle");
+    highAngle->setObjectName("maximumAngle");
+    for (auto* spin : {lowLength, highLength}) spin->setRange(-1e6, 1e6);
+    for (auto* spin : {lowAngle, highAngle}) spin->setRange(-360.0, 360.0);
+    form->addRow(tr("At least:"), lowLength);
+    form->addRow(tr("At most:"), highLength);
+    form->addRow(tr("At least (angle):"), lowAngle);
+    form->addRow(tr("At most (angle):"), highAngle);
+    const auto offerValue = [typeCombo, valueSpin, angleSpin, held, lowLength, highLength, lowAngle,
+                             highAngle] {
         const auto type = static_cast<doc::MateType>(typeCombo->currentData().toInt());
-        valueSpin->setEnabled(type == doc::MateType::Distance);
-        angleSpin->setEnabled(type == doc::MateType::Angle);
+        const bool distance = type == doc::MateType::Distance;
+        const bool angle = type == doc::MateType::Angle;
+        const bool limited = held->currentIndex() == 1;
+        held->setEnabled(distance || angle);
+        valueSpin->setEnabled(distance && !limited);
+        angleSpin->setEnabled(angle && !limited);
+        lowLength->setEnabled(distance && limited);
+        highLength->setEnabled(distance && limited);
+        lowAngle->setEnabled(angle && limited);
+        highAngle->setEnabled(angle && limited);
     };
+    connect(held, &QComboBox::currentIndexChanged, &dialog, offerValue);
     connect(typeCombo, &QComboBox::currentIndexChanged, &dialog, offerValue);
     offerValue();
 
@@ -780,15 +890,18 @@ void AssemblyWorkbench::onAddMate() {
 
     doc::Mate mate;
     mate.type = static_cast<doc::MateType>(typeCombo->currentData().toInt());
-    mate.a.componentId = static_cast<uint64_t>(compACombo->currentData().toULongLong());
-    mate.a.faceId = topo::TopologyID::fromTag(faceACombo->currentData().toString().toStdString());
+    mate.a = referenceOf(compACombo->currentData().toULongLong(), faceACombo->currentData());
     if (mate.type != doc::MateType::Fixed) {
-        mate.b.componentId = static_cast<uint64_t>(compBCombo->currentData().toULongLong());
-        mate.b.faceId =
-            topo::TopologyID::fromTag(faceBCombo->currentData().toString().toStdString());
+        mate.b = referenceOf(compBCombo->currentData().toULongLong(), faceBCombo->currentData());
     }
-    mate.value = mate.type == doc::MateType::Angle ? angleSpin->value() * std::numbers::pi / 180.0
-                                                   : valueSpin->value();
+    const bool angle = mate.type == doc::MateType::Angle;
+    const double toRadians = std::numbers::pi / 180.0;
+    mate.value = angle ? angleSpin->value() * toRadians : valueSpin->value();
+    if (held->isEnabled() && held->currentIndex() == 1) {
+        mate.minimum = angle ? lowAngle->value() * toRadians : lowLength->value();
+        mate.maximum = angle ? highAngle->value() * toRadians : highLength->value();
+        if (*mate.minimum > *mate.maximum) std::swap(*mate.minimum, *mate.maximum);
+    }
 
     // The solve moves components; a mate that cannot be solved leaves the
     // assembly exactly as it was, and one that can is a single undo step.
@@ -980,14 +1093,44 @@ void AssemblyWorkbench::editMate(uint64_t id) {
         return;
     }
     FeatureForm form(m_host.dialogParent(), verb, m_host.currentDocument()->lengthUnit());
+    const double toDegrees = 180.0 / std::numbers::pi;
+    const auto field = [&](const QString& name, const QString& label, double shown) {
+        return angle ? form.angle(name, label, shown * toDegrees, -1e6, 1e6)
+                     : form.length(name, label, shown, -1e6, 1e6);
+    };
     QuantitySpinBox* value =
-        angle ? form.angle(QStringLiteral("value"), tr("Angle:"),
-                           mate.value * 180.0 / std::numbers::pi, -1e6, 1e6)
-              : form.length(QStringLiteral("value"), tr("Distance:"), mate.value, -1e6, 1e6);
+        field(QStringLiteral("value"), angle ? tr("Angle:") : tr("Distance:"), mate.value);
+    // Or between limits (Phase 160), free within them.
+    auto* held = form.choice(QStringLiteral("held"), tr("Held:"),
+                             {tr("At the value"), tr("Between limits")});
+    held->setCurrentIndex(mate.minimum || mate.maximum ? 1 : 0);
+    QuantitySpinBox* low =
+        field(QStringLiteral("minimum"), tr("At least:"), mate.minimum.value_or(mate.value));
+    QuantitySpinBox* high =
+        field(QStringLiteral("maximum"), tr("At most:"), mate.maximum.value_or(mate.value));
+    // Only what is held is offered, as Add Mate does.
+    const auto offer = [value, held, low, high] {
+        const bool limited = held->currentIndex() == 1;
+        value->setEnabled(!limited);
+        low->setEnabled(limited);
+        high->setEnabled(limited);
+    };
+    connect(held, &QComboBox::currentIndexChanged, &form.dialog(), offer);
+    offer();
     if (!form.exec()) return;
-    const double set = angle ? value->value() * std::numbers::pi / 180.0 : value->value();
-    editAssembly(verb, [this, id, set] {
-        assembly()->mate(id)->value = set;
+    const double scale = angle ? 1.0 / toDegrees : 1.0;
+    const double set = value->value() * scale;
+    std::optional<double> minimum;
+    std::optional<double> maximum;
+    if (held->currentIndex() == 1) {
+        minimum = std::min(low->value(), high->value()) * scale;
+        maximum = std::max(low->value(), high->value()) * scale;
+    }
+    editAssembly(verb, [this, id, set, minimum, maximum] {
+        doc::Mate* edited = assembly()->mate(id);
+        edited->value = set;
+        edited->minimum = minimum;
+        edited->maximum = maximum;
         return true;
     });
 }

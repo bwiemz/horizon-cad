@@ -155,12 +155,20 @@ void AssemblyTreePanel::refresh(const doc::AssemblyDocument* assembly) {
                 ? tr("%1: %2").arg(mateName(m.type), nameOf(m.a.componentId))
                 : tr("%1: %2 and %3")
                       .arg(mateName(m.type), nameOf(m.a.componentId), nameOf(m.b.componentId));
-        if (m.type == doc::MateType::Distance) {
-            text += QStringLiteral(", ") +
-                    Preferences::current().formatLength(m.value, assembly->lengthUnit());
-        }
-        if (m.type == doc::MateType::Angle) {
-            text += tr(", %1%2").arg(m.value * 180.0 / std::numbers::pi).arg(QChar(0x00B0));
+        // Its value, or its limits (Phase 160).
+        const auto shown = [&](double v) {
+            return m.type == doc::MateType::Angle
+                       ? QStringLiteral("%1%2").arg(v * 180.0 / std::numbers::pi).arg(QChar(0x00B0))
+                       : Preferences::current().formatLength(v, assembly->lengthUnit());
+        };
+        if (m.type == doc::MateType::Distance || m.type == doc::MateType::Angle) {
+            if (m.minimum || m.maximum) {
+                text += tr(", %1 to %2")
+                            .arg(m.minimum ? shown(*m.minimum) : tr("any"),
+                                 m.maximum ? shown(*m.maximum) : tr("any"));
+            } else {
+                text += QStringLiteral(", ") + shown(m.value);
+            }
         }
         auto* item = new QTreeWidgetItem(mates, {text});
         item->setData(0, kKindRole, Mate);

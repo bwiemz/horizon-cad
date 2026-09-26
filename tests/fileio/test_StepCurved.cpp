@@ -344,6 +344,22 @@ TEST(StepCurvedTest, ACylinderIsWrittenAsDesigned) {
                    "its area");
 }
 
+// A frustum goes out as designed too, its side one face on the cone it is
+// part of. Its ideal cone ran from the wrong end until Phase 160, which the
+// side did not fit, so it went out as its facets.
+TEST(StepCurvedTest, AFrustumIsWrittenAsDesigned) {
+    const auto cone = hz::model::PrimitiveFactory::makeCone(5.0, 2.0, 8.0);
+    const auto [text, faceted] = designed(*cone);
+    EXPECT_TRUE(faceted.empty()) << faceted.front();
+    EXPECT_EQ(count(text, "ADVANCED_FACE("), 3u) << "bottom, top, and one side";
+    const auto m = measure(text);
+    // pi h (R^2 + R r + r^2) / 3, as near as its side is faceted when read:
+    // 32 chords a turn hold (32 / 2 pi) sin(2 pi / 32), 0.64% less.
+    const double frustum = kPi * 8.0 * (25.0 + 10.0 + 4.0) / 3.0;
+    expectRelative(m.modelled, frustum, 1e-2, "the frustum");
+    EXPECT_LT(m.modelled, frustum) << "facets inside it";
+}
+
 // A cylinder made as a part is made (a feature, stably named), and one
 // moved there, go out as designed too.
 TEST(StepCurvedTest, APartsCylinderAndAMovedOneAreWrittenAsDesigned) {

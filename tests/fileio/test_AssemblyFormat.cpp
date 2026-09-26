@@ -224,3 +224,49 @@ TEST(AssemblyFormatTest, MatesRoundTrip) {
 
     std::remove(path.c_str());
 }
+
+// Phase 160: a mate on an edge or a datum keeps what it refers to, and a
+// limited one its limits. A mate of a type this build does not know is
+// left out and said so, not read as Coincident.
+TEST(AssemblyFormatTest, EdgeAndDatumReferencesAndLimitsRoundTrip) {
+    AssemblyDocument original;
+    ComponentInstance a;
+    a.partPath = "a.hzpart";
+    const uint64_t compA = original.addComponent(a);
+    ComponentInstance b;
+    b.partPath = "b.hzpart";
+    const uint64_t compB = original.addComponent(b);
+    Mate mate;
+    mate.type = MateType::Distance;
+    mate.a = {compA, hz::topo::TopologyID::fromTag("extrude_1/edge:cap_top|side:e2"),
+              hz::doc::ReferenceKind::Edge};
+    mate.b = {compB, hz::topo::TopologyID::fromTag("datum_3"), hz::doc::ReferenceKind::Datum};
+    mate.value = 4.0;
+    mate.minimum = 2.0;
+    mate.maximum = 9.0;
+    original.addMate(mate);
+
+    std::string text = NativeFormat::assemblyToJson(original, "");
+    AssemblyDocument loaded;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, loaded, ""));
+    ASSERT_EQ(loaded.mates().size(), 1u);
+    const Mate& kept = loaded.mates().front();
+    EXPECT_EQ(kept.a.kind, hz::doc::ReferenceKind::Edge);
+    EXPECT_EQ(kept.a.faceId.tag(), "extrude_1/edge:cap_top|side:e2");
+    EXPECT_EQ(kept.b.kind, hz::doc::ReferenceKind::Datum);
+    EXPECT_EQ(kept.b.faceId.tag(), "datum_3");
+    ASSERT_TRUE(kept.minimum.has_value() && kept.maximum.has_value());
+    EXPECT_DOUBLE_EQ(kept.minimum.value_or(0.0), 2.0);
+    EXPECT_DOUBLE_EQ(kept.maximum.value_or(0.0), 9.0);
+
+    // A type from a later build: left out, and said.
+    const auto at = text.find("\"distance\"");
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, 10, "\"gearing\"");
+    AssemblyDocument later;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::assemblyFromJson(text, later, "", nullptr, &report));
+    EXPECT_TRUE(later.mates().empty());
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped.front().find("gearing"), std::string::npos) << report.skipped.front();
+}

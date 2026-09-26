@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -191,11 +192,12 @@ TEST(StepFormat, SphereRoundTrip) {
     expectSameMassProperties(*sphere, *solids[0]);
 }
 
-TEST(StepFormat, ConeRoundTrip) {
+TEST(StepFormat, ConeRoundTripIsExactForTheFacetedSolid) {
     auto cone = PrimitiveFactory::makeCone(5.0, 2.0, 8.0);
     ASSERT_NE(cone, nullptr);
 
-    auto solids = StepFormat::fromString(StepFormat::toString(refs(*cone)));
+    // Written as modelled: its facets, exactly.
+    auto solids = StepFormat::fromString(StepFormat::toString(refs(*cone), {false}));
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     EXPECT_TRUE(solids[0]->isValid()) << solids[0]->validationReport();
     EXPECT_EQ(solids[0]->faceCount(), cone->faceCount());

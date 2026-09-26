@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,12 @@ struct SolverMate {
     MateFrame frameA;
     MateFrame frameB;
     double value = 0.0;
+    /// Limits (Phase 160), for a Distance or an Angle mate: the value it
+    /// measures kept at or above @p minimum and at or below @p maximum,
+    /// free between them; @p value is then not held. Either may be absent.
+    std::optional<double> minimum;
+    std::optional<double> maximum;
+    bool limited() const { return minimum.has_value() || maximum.has_value(); }
 };
 
 enum class AssemblySolveStatus {

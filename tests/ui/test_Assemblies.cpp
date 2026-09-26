@@ -1145,3 +1145,38 @@ TEST(AssembliesTest, AnAssemblyIsNotInsertedIntoItself) {
         << refusal.text().toStdString();
     EXPECT_EQ(assembly.components().size(), 1u) << "not inserted";
 }
+
+// Phase 160: a Distance mate held between limits. The second block starts
+// level with the first, below the least gap: it is lifted to it, and the
+// tree says the limits.
+TEST(AssembliesTest, ADistanceBetweenLimitsIsHeldAtTheNearestLimit) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    insert(w, block);
+    const uint64_t lid = assembly.components()[1].id;
+    {
+        FormFiller mate(QStringLiteral("Add Mate"),
+                        FormAnswers()
+                            .choose(QStringLiteral("type"), QStringLiteral("Distance"))
+                            .chooseContaining(QStringLiteral("faceA"), QStringLiteral("/top)"))
+                            .chooseContaining(QStringLiteral("faceB"), QStringLiteral("/bottom)"))
+                            .choose(QStringLiteral("held"), QStringLiteral("Between limits"))
+                            .number(QStringLiteral("minimum"), 5.0)
+                            .number(QStringLiteral("maximum"), 10.0));
+        trigger(w, "action_add_mate");
+        ASSERT_TRUE(mate.seen());
+    }
+    ASSERT_EQ(assembly.mates().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    const auto& m = assembly.mates().front();
+    ASSERT_TRUE(m.minimum.has_value() && m.maximum.has_value());
+    EXPECT_NEAR(translationOf(*assembly.component(lid)).z, 15.0, 1e-6)
+        << "its bottom 5 above the first's top";
+
+    auto* tree = w.findChild<hz::ui::AssemblyTreePanel*>()->tree();
+    const QString text = tree->topLevelItem(1)->child(0)->text(0);
+    EXPECT_TRUE(text.contains(QStringLiteral(" to "))) << text.toStdString();
+}
