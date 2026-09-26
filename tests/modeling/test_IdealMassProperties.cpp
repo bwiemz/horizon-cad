@@ -173,10 +173,11 @@ TEST(IdealMassPropertiesTest, FacetsWithoutTheirIdealAreNamed) {
     EXPECT_EQ(ideal.properties.volume, MassPropertiesCalculator::compute(*solid).volume);
 }
 
-// A rim rounded chord by chord: each chord's fillet is ideally straight,
-// the side it meets ideally round, and the two part. Measured, but not
-// exact, and the parted edges counted.
-TEST(IdealMassPropertiesTest, IdealsThatPartAreCounted) {
+// A rim rounded (Phase 164): its bands are one torus, tangent to the side's
+// cylinder and the top's plane, so the ideals meet and the rounded cylinder
+// is measured as designed. (Rounded chord by chord, each chord's fillet
+// ideally straight, the ideals parted, and the measure was not exact.)
+TEST(IdealMassPropertiesTest, ARoundedRimIsMeasuredAsDesigned) {
     const double r = 5.0, h = 4.0;
     auto solid = PrimitiveFactory::makeCylinder(r, h, 16);
     ASSERT_NE(solid, nullptr);
@@ -191,14 +192,15 @@ TEST(IdealMassPropertiesTest, IdealsThatPartAreCounted) {
     ASSERT_NE(rounded.solid, nullptr) << rounded.errorMessage;
     const auto ideal = MassPropertiesCalculator::computeIdeal(*rounded.solid);
     ASSERT_TRUE(ideal.properties.valid);
-    EXPECT_FALSE(ideal.exact);
-    EXPECT_GT(ideal.partedEdges, 0);
+    EXPECT_EQ(ideal.partedEdges, 0) << "the torus meets the cylinder and the plane";
     // The rounded cylinder: less the rim's section, (1 - pi/4) f^2, turned
-    // about the axis at its centroid, 0.2234 f in from the rim (Pappus).
+    // about the axis at its centroid, (10 - 3 pi) / (3 (4 - pi)) f in from
+    // the rim (Pappus).
     const double f = 0.5;
-    const double rounded_ = kPi * r * r * h - 2 * kPi * (r - 0.2234 * f) * (1 - kPi / 4) * f * f;
+    const double in = (10.0 - 3.0 * kPi) / (3.0 * (4.0 - kPi)) * f;
+    const double rounded_ = kPi * r * r * h - 2 * kPi * (r - in) * (1 - kPi / 4) * f * f;
     const double modelled = MassPropertiesCalculator::compute(*rounded.solid).volume;
-    EXPECT_NEAR(ideal.properties.volume, rounded_, 0.01 * rounded_);
+    EXPECT_NEAR(ideal.properties.volume, rounded_, 1e-3 * rounded_);
     EXPECT_LT(std::abs(ideal.properties.volume - rounded_), std::abs(modelled - rounded_))
         << "nearer the design than the facets";
 }

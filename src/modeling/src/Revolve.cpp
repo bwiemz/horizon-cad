@@ -305,16 +305,56 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     std::vector<SolidSewer::InputFace> faces;
     faces.reserve(ringCount * N + 2);
 
+    // A band square to the axis is flat. In a full turn, stably named, it is
+    // one face, a disk or a ring, not a facet per step (Phase 164): a fillet
+    // on its rim then meets one face all round, as on a cylinder's cap.
+    std::vector<bool> flat(N, false);
+    if (fullTurn && stable) {
+        for (size_t i = 0; i < N; ++i) {
+            const size_t j = (i + 1) % N;
+            flat[i] = sampled.edgeArc[i] < 0 && std::abs(cyl[i].height - cyl[j].height) <= tol &&
+                      std::abs(cyl[i].radius - cyl[j].radius) > tol;
+        }
+    }
     for (size_t k = 0; k < ringCount; ++k) {
         const size_t kNext = (k + 1) % ringCount;
         if (!fullTurn && kNext == 0) {
             break;
         }
         for (size_t i = 0; i < N; ++i) {
+            if (flat[i]) continue;
             const size_t j = (i + 1) % N;
             addQuad(faces, rings[k][i], rings[k][j], rings[kNext][j], rings[kNext][i],
                     TopologyID::make(featureID, bandRole(i, k)));
         }
+    }
+    for (size_t i = 0; i < N; ++i) {
+        if (!flat[i]) continue;
+        const size_t j = (i + 1) % N;
+        // Its quads run i@k -> j@k -> j@k+1 -> i@k+1: round i's circle one
+        // way, round j's the other. The wider is its outline, the other (if
+        // it is not a point on the axis) its hole.
+        std::vector<Vec3> iCircle;
+        std::vector<Vec3> jCircle;
+        for (size_t k = 0; k < ringCount; ++k) {
+            iCircle.push_back(rings[k][i]);
+            jCircle.push_back(rings[k][j]);
+        }
+        std::reverse(iCircle.begin(), iCircle.end());
+        const bool iWider = cyl[i].radius > cyl[j].radius;
+        SolidSewer::InputFace face;
+        face.points = iWider ? iCircle : jCircle;
+        if (std::min(cyl[i].radius, cyl[j].radius) > tol) {
+            face.holes.push_back(iWider ? jCircle : iCircle);
+        }
+        std::string name = bandPrefix(i);
+        const std::string facet = "/facet:";
+        if (name.size() > facet.size() &&
+            name.compare(name.size() - facet.size(), facet.size(), facet) == 0) {
+            name.resize(name.size() - facet.size());
+        }
+        face.topoId = TopologyID::make(featureID, name);
+        faces.push_back(std::move(face));
     }
 
     // A partial turn is capped at both ends.  The bands traverse each ring in

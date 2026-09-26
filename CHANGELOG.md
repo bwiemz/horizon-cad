@@ -19,6 +19,17 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
 
+- **Fillets on curved faces (164).**
+  - A revolve's rim can be filleted: a solid of revolution's, and a ring's
+    outer rim. A revolve's flat end is now one face, holes kept, and
+    Fillet keeps a face's holes.
+  - A rim's fillet is the true one at every corner, so it is inscribed in
+    the design's torus as a cylinder's facets are in its cylinder. Its
+    bands record that one torus, and its tangent lines their circles. The
+    part's measured volume is as designed.
+  - A tight fillet on a coarse rim that was refused before is now made.
+  - A counterbored hole's floor no longer spoils its STEP export.
+
 - **Shell, part 2 (163).**
   - Shell hollows any single body whose faces are flat, or on cylinders,
     cones and spheres. It works with holes, bosses and curved walls, and

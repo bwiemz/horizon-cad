@@ -305,6 +305,77 @@ static std::vector<Vec3> arcSamples(const FilletStop& s, int segments) {
     return pts;
 }
 
+/// The circle an edge's ideal curve is (Phase 164): from three of its points,
+/// and a fourth on it; none for a line or another curve.
+struct Circle {
+    Vec3 centre;
+    Vec3 axis;  ///< unit
+    double radius = 0.0;
+};
+static std::optional<Circle> circleOf(const geo::NurbsCurve& curve) {
+    const double t0 = curve.tMin();
+    const double t1 = curve.tMax();
+    const Vec3 a = curve.evaluate(t0);
+    const Vec3 b = curve.evaluate(t0 + (t1 - t0) / 3.0);
+    const Vec3 c = curve.evaluate(t0 + 2.0 * (t1 - t0) / 3.0);
+    const Vec3 ab = b - a;
+    const Vec3 ac = c - a;
+    const Vec3 normal = ab.cross(ac);
+    const double n2 = normal.lengthSquared();
+    if (n2 < 1e-24) return std::nullopt;
+    Circle out;
+    out.centre =
+        a + (normal.cross(ab) * ac.lengthSquared() + ac.cross(normal) * ab.lengthSquared()) *
+                (1.0 / (2.0 * n2));
+    out.radius = (a - out.centre).length();
+    out.axis = normal.normalized();
+    const Vec3 d = curve.evaluate(t0 + 0.5 * (t1 - t0));
+    if (std::abs((d - out.centre).length() - out.radius) > 1e-9 * std::max(1.0, out.radius)) {
+        return std::nullopt;
+    }
+    return out;
+}
+
+/// The exact section of a fillet along a rim, at a mitered corner @p v whose
+/// miter plane (normal @p miter) holds the rim's axis: the meridian plane
+/// there (Phase 164). The ball touches the two faces' lines in that plane,
+/// as a revolved fillet's does, not the chord's own prism cut slantwise (an
+/// ellipse). Consecutive corners' sections are then turns of one another,
+/// so the bands between them are flat, and every corner of every band is on
+/// the torus the rim's fillet is. None for an edge that is no rim, or a
+/// miter plane that does not hold its axis.
+static std::optional<FilletStop> rimSection(const FilletEdgeInfo& fe, const Vertex* v,
+                                            const Vec3& miter, double r) {
+    if (!fe.originalEdge->analyticCurve) return std::nullopt;
+    const auto circle = circleOf(*fe.originalEdge->analyticCurve);
+    if (!circle || std::abs(miter.dot(circle->axis)) > 1e-9) return std::nullopt;
+    const Vec3 fromCentre = v->point - circle->centre;
+    if (std::abs(fromCentre.dot(circle->axis)) > 1e-9 * std::max(1.0, circle->radius) ||
+        std::abs(fromCentre.length() - circle->radius) > 1e-9 * std::max(1.0, circle->radius)) {
+        return std::nullopt;  // the corner is not on the rim's circle
+    }
+    // Each face's line in the meridian plane, from the corner into the face.
+    const auto lineOf = [&miter](const Face* face, const Vec3& into) -> std::optional<Vec3> {
+        Vec3 along = topo::loopNormal(face).cross(miter);
+        if (along.length() < 1e-12) return std::nullopt;
+        along = along.normalized();
+        return along.dot(into) >= 0.0 ? along : along * -1.0;
+    };
+    const auto ua = lineOf(fe.faceA, fe.offsetA);
+    const auto ub = lineOf(fe.faceB, fe.offsetB);
+    if (!ua || !ub) return std::nullopt;
+    const double cosWedge = std::clamp(ua->dot(*ub), -1.0, 1.0);
+    const double sinWedge = std::sqrt(std::max(0.0, 1.0 - cosWedge * cosWedge));
+    if (sinWedge < 1e-9) return std::nullopt;
+    const double setback = r * (1.0 + cosWedge) / sinWedge;  // r cot(wedge / 2)
+    FilletStop stop;
+    stop.r = r;
+    stop.posA = v->point + *ua * setback;
+    stop.posB = v->point + *ub * setback;
+    stop.arcCenter = stop.posA + (*ub - *ua * cosWedge).normalized() * r;
+    return stop;
+}
+
 /// The blend-arc samples of every stop of @p fe, from the faceA tangent to
 /// the faceB tangent.  At a mitered end each sample is carried along the edge
 /// onto the miter plane: the cut of a constant cross-section prism by the
@@ -318,17 +389,53 @@ static std::vector<std::vector<Vec3>> stopSamples(const FilletEdgeInfo& fe, int 
         const double denom = fe.edgeDir.dot(normal);
         for (auto& p : samples) p = p + fe.edgeDir * ((through - p).dot(normal) / denom);
     };
+    // A rim's corner: its exact section (Phase 164); another's, the
+    // prism's cut by the miter plane.
     if (fe.miterFront) {
-        project(out.front(), fe.v1->point, fe.miterFrontNormal);
+        if (const auto exact = rimSection(fe, fe.v1, fe.miterFrontNormal, fe.stops.front().r)) {
+            out.front() = arcSamples(*exact, segments);
+        } else {
+            project(out.front(), fe.v1->point, fe.miterFrontNormal);
+        }
     } else if (fe.endFrontNormal && std::abs(fe.edgeDir.dot(*fe.endFrontNormal)) > 1e-9) {
         project(out.front(), fe.v1->point, *fe.endFrontNormal);  // onto the end face
     }
     if (fe.miterBack) {
-        project(out.back(), fe.v2->point, fe.miterBackNormal);
+        if (const auto exact = rimSection(fe, fe.v2, fe.miterBackNormal, fe.stops.back().r)) {
+            out.back() = arcSamples(*exact, segments);
+        } else {
+            project(out.back(), fe.v2->point, fe.miterBackNormal);
+        }
     } else if (fe.endBackNormal && std::abs(fe.edgeDir.dot(*fe.endBackNormal)) > 1e-9) {
         project(out.back(), fe.v2->point, *fe.endBackNormal);
     }
     return out;
+}
+
+/// The torus a fillet along a rim sweeps (Phase 164): the ball's centre goes
+/// round the rim's circle, so the rim's bands are one torus, not a ruled
+/// patch each. Its spine is the circle through the exact sections' centres
+/// about the rim's axis; its tube, the radius. Null for an edge that is no
+/// rim chord mitered at an end, or a radius that varies.
+static std::shared_ptr<geo::NurbsSurface> makeRimTorus(const FilletEdgeInfo& info) {
+    if ((!info.miterFront && !info.miterBack) || info.stops.size() < 2) return nullptr;
+    const double r = info.stops.front().r;
+    for (const auto& stop : info.stops) {
+        if (std::abs(stop.r - r) > 1e-12 * std::max(1.0, r)) return nullptr;
+    }
+    // From whichever end is mitered: the last chord of a rim chosen in part
+    // may be mitered only at its back.
+    const auto section = info.miterFront ? rimSection(info, info.v1, info.miterFrontNormal, r)
+                                         : rimSection(info, info.v2, info.miterBackNormal, r);
+    if (!section) return nullptr;
+    const auto circle = circleOf(*info.originalEdge->analyticCurve);
+    if (!circle) return nullptr;
+    const Vec3 ball = section->arcCenter - circle->centre;
+    const double height = ball.dot(circle->axis);
+    const double spine = (ball - circle->axis * height).length();
+    if (!(spine > r)) return nullptr;  // the tube would cross the axis
+    return std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeTorus(
+        circle->centre + circle->axis * height, circle->axis, spine, r));
 }
 
 // ---------------------------------------------------------------------------
@@ -708,6 +815,9 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
     struct NewFaceData {
         std::vector<Vec3> vertices;
+        /// Its holes (Phase 164: a revolve's flat ring, a plate's hole), each
+        /// rewritten as the outline is.
+        std::vector<std::vector<Vec3>> holes;
         TopologyID topoId;
         bool isOriginal = true;
         std::shared_ptr<geo::NurbsSurface> surface;  ///< Prebuilt (blend faces).
@@ -732,97 +842,106 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         // feature recognition depends on.
         fd.analyticSurface = face.analyticSurface;
 
-        HalfEdge* start = face.outerLoop->halfEdge;
-        HalfEdge* cur = start;
-        do {
-            Edge* edge = cur->edge;
-            auto fitIt = edgeToFillet.find(edge->id);
+        // Each loop rewritten the same way: the outline, then each hole.
+        const auto rewrite = [&](const HalfEdge* start, std::vector<Vec3>& vertices) -> bool {
+            const HalfEdge* cur = start;
+            do {
+                Edge* edge = cur->edge;
+                auto fitIt = edgeToFillet.find(edge->id);
 
-            if (fitIt != edgeToFillet.end()) {
-                const auto& fe = filletEdges[fitIt->second];
-                const auto& feSamples = samples[fitIt->second];
-                const bool forward = (cur->origin == fe.v1);
-                const bool isFaceA = (cur->face == fe.faceA);
+                if (fitIt != edgeToFillet.end()) {
+                    const auto& fe = filletEdges[fitIt->second];
+                    const auto& feSamples = samples[fitIt->second];
+                    const bool forward = (cur->origin == fe.v1);
+                    const bool isFaceA = (cur->face == fe.faceA);
 
-                // Emit the tangent chain for this side, in traversal order:
-                // the first (faceA) or last (faceB) sample of each stop, which
-                // at a mitered end is the tangent point on the miter plane.
-                auto tangent = [isFaceA](const std::vector<Vec3>& arc) {
-                    return isFaceA ? arc.front() : arc.back();
-                };
-                if (forward) {
-                    for (const auto& arc : feSamples) fd.vertices.push_back(tangent(arc));
+                    // Emit the tangent chain for this side, in traversal order:
+                    // the first (faceA) or last (faceB) sample of each stop, which
+                    // at a mitered end is the tangent point on the miter plane.
+                    auto tangent = [isFaceA](const std::vector<Vec3>& arc) {
+                        return isFaceA ? arc.front() : arc.back();
+                    };
+                    if (forward) {
+                        for (const auto& arc : feSamples) vertices.push_back(tangent(arc));
+                    } else {
+                        for (auto it = feSamples.rbegin(); it != feSamples.rend(); ++it) {
+                            vertices.push_back(tangent(*it));
+                        }
+                    }
                 } else {
-                    for (auto it = feSamples.rbegin(); it != feSamples.rend(); ++it) {
-                        fd.vertices.push_back(tangent(*it));
-                    }
-                }
-            } else {
-                const Vertex* v = cur->origin;
+                    const Vertex* v = cur->origin;
 
-                // A mitered vertex vanishes on every face around it: the cap
-                // and both side faces each receive it through a blend's
-                // tangent chain, which ends on the miter plane.
-                if (miters.count(v) != 0) {
-                    cur = cur->next;
-                    continue;
-                }
-
-                // Corner-blend vertices vanish — the adjacent chains meet.
-                bool blended = false;
-                for (const auto& b : blends) {
-                    if (v == b.vertex) {
-                        blended = true;
-                        break;
-                    }
-                }
-                if (blended) {
-                    cur = cur->next;
-                    continue;
-                }
-
-                // Fillet endpoints never survive: on the fillet's own faces
-                // the tangent chain already replaced them; on the end face
-                // (the third face at the vertex) the corner is chord-cut with
-                // the two tangent points, ordered to match the neighbouring
-                // faces: arrive on the side shared with the previous face,
-                // leave on the side shared with the next.
-                auto endIt = endVertexToFillet.find(v);
-                if (endIt != endVertexToFillet.end()) {
-                    const auto& fe = filletEdges[endIt->second];
-                    if (cur->face == fe.faceA || cur->face == fe.faceB) {
-                        cur = cur->next;  // chain covers this corner
+                    // A mitered vertex vanishes on every face around it: the cap
+                    // and both side faces each receive it through a blend's
+                    // tangent chain, which ends on the miter plane.
+                    if (miters.count(v) != 0) {
+                        cur = cur->next;
                         continue;
                     }
-                    const Face* arrivingFace =
-                        cur->prev->twin != nullptr ? cur->prev->twin->face : nullptr;
-                    const Face* leavingFace = cur->twin != nullptr ? cur->twin->face : nullptr;
-                    if ((arrivingFace != fe.faceA && arrivingFace != fe.faceB) ||
-                        (leavingFace != fe.faceA && leavingFace != fe.faceB)) {
-                        result.errorMessage =
-                            "Unsupported fillet-end configuration at vertex (non box-like corner)";
-                        return result;
-                    }
-                    // The end face carries the whole arc, not just its chord:
-                    // the blend is faceted across the arc, so anything less
-                    // leaves the two boundaries disagreeing and the shell open.
-                    // As the blend's own end section, carried onto this face.
-                    const auto& feSamples = samples[endIt->second];
-                    auto chain = (fe.v1 == v) ? feSamples.front() : feSamples.back();
-                    if (arrivingFace == fe.faceB) {
-                        std::reverse(chain.begin(), chain.end());
-                    }
-                    for (const auto& p : chain) {
-                        fd.vertices.push_back(p);
-                    }
-                    cur = cur->next;
-                    continue;
-                }
 
-                fd.vertices.push_back(v->point);
-            }
-            cur = cur->next;
-        } while (cur != start);
+                    // Corner-blend vertices vanish — the adjacent chains meet.
+                    bool blended = false;
+                    for (const auto& b : blends) {
+                        if (v == b.vertex) {
+                            blended = true;
+                            break;
+                        }
+                    }
+                    if (blended) {
+                        cur = cur->next;
+                        continue;
+                    }
+
+                    // Fillet endpoints never survive: on the fillet's own faces
+                    // the tangent chain already replaced them; on the end face
+                    // (the third face at the vertex) the corner is chord-cut with
+                    // the two tangent points, ordered to match the neighbouring
+                    // faces: arrive on the side shared with the previous face,
+                    // leave on the side shared with the next.
+                    auto endIt = endVertexToFillet.find(v);
+                    if (endIt != endVertexToFillet.end()) {
+                        const auto& fe = filletEdges[endIt->second];
+                        if (cur->face == fe.faceA || cur->face == fe.faceB) {
+                            cur = cur->next;  // chain covers this corner
+                            continue;
+                        }
+                        const Face* arrivingFace =
+                            cur->prev->twin != nullptr ? cur->prev->twin->face : nullptr;
+                        const Face* leavingFace = cur->twin != nullptr ? cur->twin->face : nullptr;
+                        if ((arrivingFace != fe.faceA && arrivingFace != fe.faceB) ||
+                            (leavingFace != fe.faceA && leavingFace != fe.faceB)) {
+                            result.errorMessage =
+                                "Unsupported fillet-end configuration at vertex (non box-like "
+                                "corner)";
+                            return false;
+                        }
+                        // The end face carries the whole arc, not just its chord:
+                        // the blend is faceted across the arc, so anything less
+                        // leaves the two boundaries disagreeing and the shell open.
+                        // As the blend's own end section, carried onto this face.
+                        const auto& feSamples = samples[endIt->second];
+                        auto chain = (fe.v1 == v) ? feSamples.front() : feSamples.back();
+                        if (arrivingFace == fe.faceB) {
+                            std::reverse(chain.begin(), chain.end());
+                        }
+                        for (const auto& p : chain) {
+                            vertices.push_back(p);
+                        }
+                        cur = cur->next;
+                        continue;
+                    }
+
+                    vertices.push_back(v->point);
+                }
+                cur = cur->next;
+            } while (cur != start);
+            return true;
+        };
+        if (!rewrite(face.outerLoop->halfEdge, fd.vertices)) return result;
+        for (const Wire* inner : face.innerLoops) {
+            fd.holes.emplace_back();
+            if (!rewrite(inner->halfEdge, fd.holes.back())) return result;
+        }
 
         newFaces.push_back(std::move(fd));
     }
@@ -830,8 +949,38 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     // Add fillet faces: one ruled patch per stop segment, oriented to oppose
     // the adjacent face chains (faceA traverses stops forward, faceB
     // backward).
+    // A rim's chords share one circle, and so their bands one torus: found
+    // again by where it is, not by the curve object (a rim's chords may
+    // carry copies of one circle).
+    std::vector<std::shared_ptr<geo::NurbsSurface>> tori;
+    std::map<const geo::NurbsSurface*, Circle> torusAxis;  ///< each torus's rim circle
+    const auto sameTorus = [](const geo::NurbsSurface& a, const geo::NurbsSurface& b) {
+        const auto& pa = a.controlPoints();
+        const auto& pb = b.controlPoints();
+        if (pa.size() != pb.size()) return false;
+        for (size_t u = 0; u < pa.size(); ++u) {
+            if (pa[u].size() != pb[u].size()) return false;
+            for (size_t v = 0; v < pa[u].size(); ++v) {
+                if ((pa[u][v] - pb[u][v]).length() > 1e-9) return false;
+            }
+        }
+        return true;
+    };
     for (size_t i = 0; i < filletEdges.size(); ++i) {
         const auto& fe = filletEdges[i];
+        std::shared_ptr<geo::NurbsSurface> torus = makeRimTorus(fe);
+        if (torus) {
+            const auto known = std::find_if(tori.begin(), tori.end(),
+                                            [&](const auto& t) { return sameTorus(*t, *torus); });
+            if (known != tori.end()) {
+                torus = *known;
+            } else {
+                tori.push_back(torus);
+                if (const auto circle = circleOf(*fe.originalEdge->analyticCurve)) {
+                    torusAxis[torus.get()] = *circle;
+                }
+            }
+        }
         for (size_t s = 0; s + 1 < fe.stops.size(); ++s) {
             const auto& lo = samples[i][s];
             const auto& hi = samples[i][s + 1];
@@ -839,7 +988,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
             // The whole-arc surface stays available as the ideal geometry each
             // band approximates; the bands themselves carry planar carriers,
             // synthesized below, that match their loops.
-            auto analytic = makeArcLoft(fe, fe.stops[s], fe.stops[s + 1]);
+            auto analytic = torus ? torus : makeArcLoft(fe, fe.stops[s], fe.stops[s + 1]);
             for (size_t j = 0; j < bands; ++j) {
                 NewFaceData fd;
                 fd.isOriginal = false;
@@ -964,28 +1113,34 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         return static_cast<int>(uniquePositions.size() - 1);
     };
 
-    for (size_t fi = 0; fi < newFaces.size(); ++fi) {
-        std::vector<int> indices;
-        for (const auto& pos : newFaces[fi].vertices) {
-            indices.push_back(findOrAddVertex(pos));
-        }
-        // Corner-blend chains meet at shared tangent points: drop consecutive
-        // duplicates (and the wraparound duplicate) so no degenerate edges
-        // enter the loop.
+    std::map<size_t, std::vector<std::vector<int>>> faceHoleIndices;
+    // A loop's points as vertex indices. Corner-blend chains meet at shared
+    // tangent points: consecutive duplicates (and the wraparound duplicate)
+    // are dropped so no degenerate edges enter the loop.
+    const auto indexed = [&findOrAddVertex](const std::vector<Vec3>& loop) {
         std::vector<int> cleaned;
-        for (int idx : indices) {
-            if (cleaned.empty() || cleaned.back() != idx) {
-                cleaned.push_back(idx);
-            }
+        for (const auto& pos : loop) {
+            const int idx = findOrAddVertex(pos);
+            if (cleaned.empty() || cleaned.back() != idx) cleaned.push_back(idx);
         }
-        while (cleaned.size() > 1 && cleaned.front() == cleaned.back()) {
-            cleaned.pop_back();
-        }
+        while (cleaned.size() > 1 && cleaned.front() == cleaned.back()) cleaned.pop_back();
+        return cleaned;
+    };
+    for (size_t fi = 0; fi < newFaces.size(); ++fi) {
+        std::vector<int> cleaned = indexed(newFaces[fi].vertices);
         if (cleaned.size() < 3) {
             result.errorMessage = "Degenerate face loop after fillet";
             return result;
         }
         faceVertexIndices[fi] = std::move(cleaned);
+        for (const auto& hole : newFaces[fi].holes) {
+            std::vector<int> holeIndices = indexed(hole);
+            if (holeIndices.size() < 3) {
+                result.errorMessage = "Degenerate face loop after fillet";
+                return result;
+            }
+            faceHoleIndices[fi].push_back(std::move(holeIndices));
+        }
     }
 
     const int numVerts = static_cast<int>(uniquePositions.size());
@@ -1014,7 +1169,6 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
     for (size_t fi = 0; fi < newFaces.size(); ++fi) {
         const auto& indices = faceVertexIndices[fi];
-        const size_t n = indices.size();
 
         Face* face = solid->allocFace();
         face->shell = shell;
@@ -1022,30 +1176,43 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
         shell->faces.push_back(face);
         builtFaces.push_back(face);
 
-        Wire* wire = solid->allocWire();
-        std::vector<HalfEdge*> hes(n, nullptr);
-        for (size_t k = 0; k < n; ++k) {
-            HalfEdge* he = solid->allocHalfEdge();
-            he->origin = verts[static_cast<size_t>(indices[k])];
-            he->face = face;
-            hes[k] = he;
+        // One wire per loop: the outline, then each hole.
+        const auto build = [&](const std::vector<int>& loop) -> Wire* {
+            const size_t m = loop.size();
+            Wire* wire = solid->allocWire();
+            std::vector<HalfEdge*> hes(m, nullptr);
+            for (size_t k = 0; k < m; ++k) {
+                HalfEdge* he = solid->allocHalfEdge();
+                he->origin = verts[static_cast<size_t>(loop[k])];
+                he->face = face;
+                hes[k] = he;
 
-            const std::pair<int, int> key{indices[k], indices[(k + 1) % n]};
-            if (directedEdges.count(key) != 0) {
-                result.errorMessage = "Fillet produced a non-manifold face loop";
-                return result;
+                const std::pair<int, int> key{loop[k], loop[(k + 1) % m]};
+                if (directedEdges.count(key) != 0) return nullptr;
+                directedEdges[key] = he;
             }
-            directedEdges[key] = he;
-        }
-        for (size_t k = 0; k < n; ++k) {
-            hes[k]->next = hes[(k + 1) % n];
-            hes[k]->prev = hes[(k + n - 1) % n];
-            if (hes[k]->origin->halfEdge == nullptr) {
-                hes[k]->origin->halfEdge = hes[k];
+            for (size_t k = 0; k < m; ++k) {
+                hes[k]->next = hes[(k + 1) % m];
+                hes[k]->prev = hes[(k + m - 1) % m];
+                if (hes[k]->origin->halfEdge == nullptr) {
+                    hes[k]->origin->halfEdge = hes[k];
+                }
             }
+            wire->halfEdge = hes.front();
+            return wire;
+        };
+        face->outerLoop = build(indices);
+        bool manifold = face->outerLoop != nullptr;
+        for (const auto& hole : faceHoleIndices[fi]) {
+            if (!manifold) break;
+            Wire* wire = build(hole);
+            manifold = wire != nullptr;
+            face->innerLoops.push_back(wire);
         }
-        wire->halfEdge = hes.front();
-        face->outerLoop = wire;
+        if (!manifold) {
+            result.errorMessage = "Fillet produced a non-manifold face loop";
+            return result;
+        }
     }
 
     // Twin-link and create one Edge per undirected pair.
@@ -1136,6 +1303,55 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 
         f->surface = std::make_shared<geo::NurbsSurface>(
             geo::NurbsSurface::makePlane(origin, uDir, vDir, uSize, vSize));
+    }
+
+    // A rim's fillet (Phase 164): where its torus meets a face beside it,
+    // each edge is a chord of a circle about the rim's axis. Each records
+    // its circle, as a revolve's rims do, so an export finds what it was
+    // cut from; one circle for all the chords of one tangent line.
+    if (!torusAxis.empty()) {
+        struct Ring {
+            double height;
+            double radius;
+            std::shared_ptr<geo::NurbsCurve> circle;
+        };
+        std::map<const geo::NurbsSurface*, std::vector<Ring>> rings;
+        for (auto& e : const_cast<std::deque<Edge>&>(solid->edges())) {
+            const HalfEdge* h = e.halfEdge;
+            if (h == nullptr || h->twin == nullptr) continue;
+            const auto* sa = h->face->analyticSurface.get();
+            const auto* sb = h->twin->face->analyticSurface.get();
+            if (sa == sb) continue;  // within the band, or between two others
+            auto found = torusAxis.find(sa);
+            if (found == torusAxis.end()) found = torusAxis.find(sb);
+            if (found == torusAxis.end()) continue;
+            const Circle& rim = found->second;
+            const auto place = [&rim](const Vec3& p) {
+                const Vec3 d = p - rim.centre;
+                const double height = d.dot(rim.axis);
+                return std::pair<double, double>{height, (d - rim.axis * height).length()};
+            };
+            // Plain names, not bindings: clang before 16 cannot capture those.
+            const auto first = place(h->origin->point);
+            const auto second = place(h->twin->origin->point);
+            const double h0 = first.first;
+            const double r0 = first.second;
+            const double h1 = second.first;
+            const double r1 = second.second;
+            const double tol = 1e-9 * std::max(1.0, rim.radius);
+            if (std::abs(h0 - h1) > tol || std::abs(r0 - r1) > tol || r0 < tol) continue;
+            auto& list = rings[found->first];
+            auto ring = std::find_if(list.begin(), list.end(), [&](const Ring& g) {
+                return std::abs(g.height - h0) <= tol && std::abs(g.radius - r0) <= tol;
+            });
+            if (ring == list.end()) {
+                list.push_back({h0, r0,
+                                std::make_shared<geo::NurbsCurve>(geo::NurbsCurve::makeCircle(
+                                    rim.centre + rim.axis * h0, r0, rim.axis))});
+                ring = list.end() - 1;
+            }
+            e.analyticCurve = ring->circle;
+        }
     }
 
     // Same output contract as ChamferOp: a fillet that produced structurally

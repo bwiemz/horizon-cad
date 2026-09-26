@@ -868,3 +868,55 @@ TEST(PersistentNamingTest, ACutPatternCopyIsStillOneSide) {
     ASSERT_NE(found, nullptr);
     EXPECT_NE(found->topoId.tag().find("/pattern:1"), std::string::npos) << "the copy's";
 }
+
+// Phase 164: a revolve's flat end is one face, so the rim where it meets
+// the revolve's side is filleted as a cylinder's is: a disk's rim (a
+// profile touching the axis) and a ring's outer rim (the end is a ring,
+// its hole kept). Checked by Pappus, as the cylinder's rim is.
+TEST(PersistentNamingTest, ARevolvesRimIsFilleted) {
+    const double pi = std::acos(-1.0);
+    const auto rimFillet = [pi](double inner, double outer, double& removedOut) {
+        auto sketch = std::make_shared<Sketch>();
+        sketch->addEntity(std::make_shared<hz::draft::DraftRectangle>(Vec2(inner, 0), Vec2(outer, 3)));
+        auto revolve = std::make_unique<hz::doc::RevolveFeature>(sketch, Vec3(0, 0, 0),
+                                                                 Vec3(0, 1, 0), 2.0 * pi);
+        const std::string id = revolve->featureID();
+        hz::doc::FeatureTree tree;
+        tree.addFeature(std::move(revolve));
+        auto plain = tree.build();
+        EXPECT_NE(plain, nullptr);
+        if (!plain) return std::string();
+        // The rim at the top (y = 3) and the outer radius: its whole name.
+        std::string rim;
+        for (const auto& edge : plain->edges()) {
+            const auto* h = edge.halfEdge;
+            const Vec3 a = h->origin->point;
+            const Vec3 b = h->twin->origin->point;
+            if (std::abs(a.y - 3.0) < 1e-9 && std::abs(b.y - 3.0) < 1e-9 &&
+                std::abs(std::hypot(a.x, a.z) - outer) < 1e-6 &&
+                std::abs(std::hypot(b.x, b.z) - outer) < 1e-6) {
+                rim = hz::model::logicalEdge(edge.topoId.tag());
+                break;
+            }
+        }
+        EXPECT_FALSE(rim.empty());
+        const double before = hz::model::MassPropertiesCalculator::compute(*plain).volume;
+        tree.addFeature(std::make_unique<hz::doc::FilletFeature>(
+            std::vector<TopologyID>{TopologyID::fromTag(rim)}, 0.5));
+        const auto built = tree.buildWithDiagnostics();
+        if (!built.solid || built.failedFeatureIndex != -1) return built.failureMessage;
+        removedOut = before - hz::model::MassPropertiesCalculator::compute(*built.solid).volume;
+        EXPECT_TRUE(built.solid->isValid());
+        return std::string();
+    };
+    // The corner's section (1 - pi/4) r^2, about the axis at its centroid,
+    // 0.2234 r in from the rim.
+    const double r = 0.5;
+    for (const double inner : {0.0, 2.0}) {
+        double removed = 0.0;
+        const std::string why = rimFillet(inner, 4.0, removed);
+        ASSERT_TRUE(why.empty()) << "inner radius " << inner << ": " << why;
+        const double expected = 2.0 * pi * (4.0 - 0.2234 * r) * (1.0 - pi / 4.0) * r * r;
+        EXPECT_NEAR(removed, expected, 0.15 * expected) << "inner radius " << inner;
+    }
+}

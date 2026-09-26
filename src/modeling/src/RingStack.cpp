@@ -171,10 +171,15 @@ double soupSignedVolume(const std::vector<SolidSewer::InputFace>& faces) {
         }
     }
     double vol6 = 0.0;
-    for (const auto& f : faces) {
-        for (size_t i = 1; i + 1 < f.points.size(); ++i) {
-            vol6 += (f.points[0] - o).dot((f.points[i] - o).cross(f.points[i + 1] - o));
+    const auto fan = [&vol6, &o](const std::vector<Vec3>& loop) {
+        for (size_t i = 1; i + 1 < loop.size(); ++i) {
+            vol6 += (loop[0] - o).dot((loop[i] - o).cross(loop[i + 1] - o));
         }
+    };
+    for (const auto& f : faces) {
+        fan(f.points);
+        // A hole winds against its face, and so takes its part away.
+        for (const auto& hole : f.holes) fan(hole);
     }
     return vol6 / 6.0;
 }
@@ -189,6 +194,7 @@ void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
     }
     for (auto& f : faces) {
         std::reverse(f.points.begin(), f.points.end());
+        for (auto& hole : f.holes) std::reverse(hole.begin(), hole.end());
     }
 }
 
