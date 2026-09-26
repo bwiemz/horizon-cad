@@ -25,6 +25,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
@@ -413,6 +414,79 @@ TEST(StepCurvedTest, AHoleCutThroughAPlateIsWrittenAsDesigned) {
     EXPECT_TRUE(m.ideal.exact);
     expectRelative(m.ideal.properties.volume, 40.0 * 40.0 * 10.0 - kPi * 25.0 * 10.0, 1e-9,
                    "the plate less the hole");
+}
+
+namespace {
+
+/// The whole name of @p solid's flat face facing @p way.
+std::string faceFacing(const hz::topo::Solid& solid, const hz::math::Vec3& way) {
+    const double outward = hz::model::outwardSign(solid);
+    for (const auto& face : solid.faces()) {
+        const auto plane = hz::model::planeOf(face, outward);
+        if (plane && plane->normal.dot(way) > 0.99) {
+            return hz::model::wholeFaceName(face.topoId.tag());
+        }
+    }
+    ADD_FAILURE() << "no face facing that way";
+    return {};
+}
+
+}  // namespace
+
+// Phase 162: a Hole through a plate, and a counterbored one, go out as
+// designed: each wall one face on its cylinder, the plate measured exactly.
+// The plate mirrored in its side, holes and all, goes out as designed too:
+// a mirror image's surfaces face out.
+TEST(StepCurvedTest, HolesAndAMirroredPlateAreWrittenAsDesigned) {
+    const auto platePart = [](int type) {
+        auto part = std::make_unique<hz::doc::Document>();
+        part->featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(40, 40, 10));
+        EXPECT_TRUE(part->rebuildModel());
+        auto hole = hz::doc::HoleFeature::make(faceFacing(*part->solid(), hz::math::Vec3(0, 0, 1)),
+                                               hz::math::Vec3(20, 20, 10), 10.0, 1.0);
+        EXPECT_TRUE(hole->setParameter("extent", 1));  // through all
+        EXPECT_TRUE(hole->setParameter("type", type));
+        EXPECT_TRUE(hole->setParameter("boreDiameter", 16.0));
+        EXPECT_TRUE(hole->setParameter("boreDepth", 4.0));
+        part->featureTree().addFeature(std::move(hole));
+        EXPECT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
+        return part;
+    };
+    const double hole = kPi * 25.0 * 10.0;
+    {
+        const auto part = platePart(0);
+        const auto [text, faceted] = designed(*part->solid());
+        EXPECT_TRUE(faceted.empty()) << faceted.front();
+        EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the hole's wall";
+        const auto m = measure(text);
+        EXPECT_TRUE(m.ideal.exact);
+        expectRelative(m.ideal.properties.volume, 16000.0 - hole, 1e-9, "the plate less the hole");
+    }
+    {
+        const auto part = platePart(1);
+        const auto [text, faceted] = designed(*part->solid());
+        EXPECT_TRUE(faceted.empty()) << faceted.front();
+        EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 2u) << "the bore and the wall";
+        const auto m = measure(text);
+        EXPECT_TRUE(m.ideal.exact);
+        const double bore = kPi * (64.0 - 25.0) * 4.0;
+        expectRelative(m.ideal.properties.volume, 16000.0 - hole - bore, 1e-9,
+                       "the plate less the counterbored hole");
+    }
+    {
+        auto part = platePart(0);
+        auto mirror = hz::doc::MirrorFeature::make(hz::math::Vec3(), hz::math::Vec3(1, 0, 0));
+        mirror->setReference("planeFace", faceFacing(*part->solid(), hz::math::Vec3(1, 0, 0)));
+        part->featureTree().addFeature(std::move(mirror));
+        ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
+        const auto [text, faceted] = designed(*part->solid());
+        EXPECT_TRUE(faceted.empty()) << faceted.front();
+        EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 2u) << "a wall each";
+        const auto m = measure(text);
+        EXPECT_TRUE(m.ideal.exact);
+        expectRelative(m.ideal.properties.volume, 2.0 * (16000.0 - hole), 1e-9,
+                       "the plate and its image");
+    }
 }
 
 // What cannot yet go out as designed goes out as its facets, and says why:

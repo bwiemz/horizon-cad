@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
 
+- **Hole (162, part 2).**
+  - Model ▸ Hole drills a simple, counterbored or countersunk hole into a
+    flat face of the part at a point: as deep as its depth (with a drill
+    point, or flat), through all, or up to a parallel face.
+  - Its walls are true cylinders and cones, so it goes to STEP as designed
+    and a drawing draws its centre line.
+  - It follows its face when the part changes, and a pattern or a mirror
+    of it repeats it.
+  - Files are saved as format version 27.
+
 - **Mirror (162, part 1).**
   - Model ▸ Mirror mirrors the part in a base plane or one of its flat
     faces, and joins the image to it: a part mirrored in its own side is

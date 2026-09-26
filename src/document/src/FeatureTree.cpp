@@ -1782,6 +1782,266 @@ std::unique_ptr<topo::Solid> MirrorFeature::executeIn(const BuildContext& contex
     return part;
 }
 
+// ---------------------------------------------------------------------------
+// HoleFeature (Phase 162)
+// ---------------------------------------------------------------------------
+
+math::IdCounter<int> HoleFeature::s_nextID{1};
+
+std::unique_ptr<HoleFeature> HoleFeature::make(const std::string& face, const math::Vec3& position,
+                                               double diameter, double depth) {
+    std::unique_ptr<HoleFeature> f(new HoleFeature());
+    f->m_face = face;
+    f->m_position = position;
+    if (diameter > 0.0) f->m_diameter = diameter;
+    if (depth > 0.0) f->m_depth = depth;
+    f->setOperation(BodyOperation::Cut);
+    f->m_featureID = "hole_" + std::to_string(s_nextID.next());
+    return f;
+}
+
+void HoleFeature::restoreFeatureID(const std::string& id) {
+    if (id.empty()) return;
+    m_featureID = id;
+    bumpCounter(s_nextID, id, "hole_");
+}
+
+std::map<std::string, double> HoleFeature::parameters() const {
+    return {{"type", static_cast<double>(m_type)},
+            {"extent", static_cast<double>(m_extent)},
+            {"diameter", m_diameter},
+            {"depth", m_depth},
+            {"boreDiameter", m_boreDiameter},
+            {"boreDepth", m_boreDepth},
+            {"sinkDiameter", m_sinkDiameter},
+            {"sinkAngle", m_sinkAngle},
+            {"pointAngle", m_pointAngle},
+            {"segments", static_cast<double>(m_segments)}};
+}
+
+bool HoleFeature::setParameter(const std::string& name, double value) {
+    if (name == "type") {
+        int code = 0;
+        if (!countParameter(value, 0, static_cast<int>(Type::Countersink), code)) return false;
+        m_type = static_cast<Type>(code);
+        return true;
+    }
+    if (name == "extent") {
+        int code = 0;
+        if (!countParameter(value, 0, static_cast<int>(Extent::UpToFace), code)) return false;
+        m_extent = static_cast<Extent>(code);
+        return true;
+    }
+    if (name == "segments") return countParameter(value, 3, kMaxFacetSegments, m_segments);
+    // Sizes are more than nothing; a point's angle may be 0 (a flat bottom),
+    // a countersink's may not; neither reaches a half turn.
+    double* size = name == "diameter"       ? &m_diameter
+                   : name == "depth"        ? &m_depth
+                   : name == "boreDiameter" ? &m_boreDiameter
+                   : name == "boreDepth"    ? &m_boreDepth
+                   : name == "sinkDiameter" ? &m_sinkDiameter
+                                            : nullptr;
+    if (size != nullptr) {
+        if (!(std::isfinite(value) && value > 0.0)) return false;
+        *size = value;
+        return true;
+    }
+    if (name == "sinkAngle" || name == "pointAngle") {
+        const bool flat = name == "pointAngle" && value == 0.0;
+        if (!(std::isfinite(value) && value < math::kPi && (value > 0.0 || flat))) return false;
+        (name == "sinkAngle" ? m_sinkAngle : m_pointAngle) = value;
+        return true;
+    }
+    return false;
+}
+
+Feature::ParameterKind HoleFeature::parameterKind(const std::string& name) const {
+    if (name == "type" || name == "extent") return ParameterKind::Choice;
+    if (name == "sinkAngle" || name == "pointAngle") return ParameterKind::Angle;
+    return Feature::parameterKind(name);
+}
+
+std::vector<std::string> HoleFeature::parameterChoices(const std::string& name) const {
+    if (name == "type") return {"Simple", "Counterbore", "Countersink"};
+    if (name == "extent") return {"To the depth", "Through all", "Up to a face"};
+    return Feature::parameterChoices(name);
+}
+
+bool HoleFeature::setVector(const std::string& name, const math::Vec3& value) {
+    if (name != "positionPoint" || !finite(value)) return false;
+    m_position = value;
+    return true;
+}
+
+bool HoleFeature::setReference(const std::string& name, const std::string& value) {
+    if (name == "face") {
+        m_face = value;
+        return true;
+    }
+    if (name == "upToFace") {
+        m_upToFace = value;
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<topo::Solid> HoleFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                  std::string* reason) const {
+    BuildContext context;
+    context.part = inputSolid.get();
+    return executeIn(context, nullptr, reason);
+}
+
+namespace {
+
+/// A hole's half-section's lines, by what each sweeps: fixed ids, so each
+/// surface of the hole has a name of its own (and keeps it), and each is
+/// renamed for what it is.
+enum HoleLine : uint64_t { Top = 1, Wall, Bottom, Axis, Bore, BoreFloor, Sink };
+
+const char* holeLineName(uint64_t id) {
+    switch (id) {
+        case Top:
+            return "top";
+        case Wall:
+            return "wall";
+        case Bottom:
+            return "bottom";
+        case Axis:
+            return "axis";
+        case Bore:
+            return "bore";
+        case BoreFloor:
+            return "boreFloor";
+        case Sink:
+            return "sink";
+        default:
+            return nullptr;
+    }
+}
+
+/// @p tag with each "revolved:e<id>" of a hole's line named for it.
+std::string holeName(const std::string& tag) {
+    static const std::string kSource = "revolved:e";
+    std::string out;
+    size_t from = 0;
+    for (size_t at = tag.find(kSource); at != std::string::npos; at = tag.find(kSource, from)) {
+        size_t end = at + kSource.size();
+        while (end < tag.size() && std::isdigit(static_cast<unsigned char>(tag[end])) != 0) ++end;
+        uint64_t id = 0;
+        std::from_chars(tag.data() + at + kSource.size(), tag.data() + end, id);
+        const char* name = holeLineName(id);
+        out += tag.substr(from, at - from);
+        out += name != nullptr ? std::string(name) : tag.substr(at, end - at);
+        from = end;
+    }
+    return out + tag.substr(from);
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
+                                                    std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                    std::string* reason) const {
+    if (!context.part) {
+        return failWith(reason, "a hole is drilled into the part: there is no part before it");
+    }
+    if (m_face.empty()) return failWith(reason, "no face is chosen to drill into");
+    std::string why;
+    const auto face = model::planeOfFace(*context.part, m_face, &why);
+    if (!face) return failWith(reason, "the face it is drilled into (" + m_face + ") " + why);
+    const math::Vec3 n = face->normal.normalized();  // out of the part
+    const math::Vec3 into = n * -1.0;
+    // Where it is, on the face as the face now is.
+    const math::Vec3 at = m_position - n * (m_position - face->origin).dot(n);
+    const double r = m_diameter / 2.0;
+
+    // How deep the wall goes, and whether it ends in a point.
+    double depth = m_depth;
+    bool pointed = m_pointAngle > 0.0;
+    if (m_extent == Extent::ThroughAll) {
+        double reach = 0.0;
+        for (const auto& v : context.part->vertices()) {
+            reach = std::max(reach, (v.point - at).dot(into));
+        }
+        if (!(reach > 1e-9)) return failWith(reason, "the part is not behind its face");
+        depth = reach * 1.01 + 1e-6;  // out of the far side
+        pointed = false;
+    } else if (m_extent == Extent::UpToFace) {
+        if (m_upToFace.empty()) return failWith(reason, "no face is chosen to go up to");
+        const std::string upTo = "the face it goes up to (" + m_upToFace + ")";
+        const auto to = model::planeOfFace(*context.part, m_upToFace, &why);
+        if (!to) return failWith(reason, upTo + " " + why);
+        if (to->normal.cross(n).length() > 1e-9) {
+            return failWith(reason, upTo + " is at a slant to the face it is drilled into");
+        }
+        depth = (to->origin - at).dot(to->normal) / into.dot(to->normal);
+        if (!(depth > 1e-9)) return failWith(reason, upTo + " is not behind the face");
+        pointed = false;
+    }
+
+    // The half-section, in a plane through the axis: x across, from the
+    // axis; y down it, into the part. It starts a little above the face, so
+    // the cut shares no plane with it.
+    const double lead = 0.02 * std::max(m_diameter, depth) + 1e-6;
+    std::vector<std::pair<math::Vec2, uint64_t>> section;  // each point, and the line from it
+    section.push_back({{0.0, -lead}, Top});
+    switch (m_type) {
+        case Type::Simple:
+            section.push_back({{r, -lead}, Wall});
+            break;
+        case Type::Counterbore: {
+            const double rb = m_boreDiameter / 2.0;
+            if (!(rb > r)) return failWith(reason, "the counterbore must be wider than the hole");
+            if (!(m_boreDepth < depth)) {
+                return failWith(reason, "the counterbore must be shallower than the hole");
+            }
+            section.push_back({{rb, -lead}, Bore});
+            section.push_back({{rb, m_boreDepth}, BoreFloor});
+            section.push_back({{r, m_boreDepth}, Wall});
+            break;
+        }
+        case Type::Countersink: {
+            const double rs = m_sinkDiameter / 2.0;
+            if (!(rs > r)) return failWith(reason, "the countersink must be wider than the hole");
+            const double slope = std::tan(m_sinkAngle / 2.0);  // across, per depth
+            const double sinkDepth = (rs - r) / slope;
+            if (!(sinkDepth < depth)) {
+                return failWith(reason, "the countersink must be shallower than the hole");
+            }
+            section.push_back({{rs + lead * slope, -lead}, Sink});
+            section.push_back({{r, sinkDepth}, Wall});
+            break;
+        }
+    }
+    section.push_back({{r, depth}, Bottom});
+    const double tip = pointed ? r / std::tan(m_pointAngle / 2.0) : 0.0;
+    section.push_back({{0.0, depth + tip}, Axis});
+
+    std::vector<std::shared_ptr<draft::DraftEntity>> profile;
+    for (size_t i = 0; i < section.size(); ++i) {
+        const auto& [from, id] = section[i];
+        auto line =
+            std::make_shared<draft::DraftLine>(from, section[(i + 1) % section.size()].first);
+        line->setId(id);
+        profile.push_back(std::move(line));
+    }
+    // Across: any direction square to the axis; the plane's y is then down it.
+    const math::Vec3 seed = std::abs(n.x) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
+    const math::Vec3 across = (seed - n * seed.dot(n)).normalized();
+    const draft::SketchPlane plane(at, across.cross(into), across);
+    auto hole = model::Revolve::execute(profile, plane, at, into, 2.0 * math::kPi, m_featureID,
+                                        m_segments, 0.0, &why, naming());
+    if (!hole) return failWith(reason, "the hole could not be made: " + why);
+    for (auto& f : hole->faces()) {
+        if (f.topoId.isValid()) f.topoId = topo::TopologyID::fromTag(holeName(f.topoId.tag()));
+    }
+    for (auto& e : hole->edges()) {
+        if (e.topoId.isValid()) e.topoId = topo::TopologyID::fromTag(holeName(e.topoId.tag()));
+    }
+    return hole;
+}
+
 const char* bodyOperationName(BodyOperation operation) {
     switch (operation) {
         case BodyOperation::NewBody:

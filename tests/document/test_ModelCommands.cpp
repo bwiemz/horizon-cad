@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,6 +24,7 @@
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/MateGeometry.h"
 
 using hz::doc::AddFeatureCommand;
 using hz::doc::BodyOperation;
@@ -587,16 +589,22 @@ TEST(ModelCommandsTest, APrimitiveStandsWhereItIsPut) {
 
 namespace {
 
-/// The whole name of @p doc's face facing +X.
-std::string faceFacingX(Document& doc) {
+/// The whole name of @p doc's face facing @p way.
+std::string faceFacing(Document& doc, const Vec3& way) {
     EXPECT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
     const double outward = hz::model::outwardSign(*doc.solid());
     for (const auto& face : doc.solid()->faces()) {
         const auto plane = hz::model::planeOf(face, outward);
-        if (plane && plane->normal.x > 0.99) return hz::model::wholeFaceName(face.topoId.tag());
+        if (plane && plane->normal.dot(way) > 0.99) {
+            return hz::model::wholeFaceName(face.topoId.tag());
+        }
     }
-    ADD_FAILURE() << "no face facing +X";
+    ADD_FAILURE() << "no face facing that way";
     return {};
+}
+
+std::string faceFacingX(Document& doc) {
+    return faceFacing(doc, Vec3(1, 0, 0));
 }
 
 }  // namespace
@@ -651,5 +659,132 @@ TEST(ModelCommandsTest, AMirrorOfAFeatureMirrorsOnlyIt) {
     add(lost.doc, std::move(gone));
     EXPECT_FALSE(lost.doc.rebuildModel());
     EXPECT_NE(lost.doc.lastBuildMessage().find("the plane to mirror in"), std::string::npos)
+        << lost.doc.lastBuildMessage();
+}
+
+namespace {
+
+/// The area of a hole's section of radius @p r: a regular 32-gon in the
+/// circle, as a revolve of 32 steps makes it.
+double section(double r) {
+    constexpr int kSteps = 32;
+    return 0.5 * kSteps * r * r * std::sin(2.0 * hz::math::kPi / kSteps);
+}
+
+/// A 10 mm box with @p hole drilled into its top at (5, 5); the hole.
+const hz::doc::HoleFeature* drill(BoxPart& part, std::unique_ptr<hz::doc::HoleFeature> hole) {
+    return static_cast<const hz::doc::HoleFeature*>(add(part.doc, std::move(hole)));
+}
+
+std::unique_ptr<hz::doc::HoleFeature> holeInTop(BoxPart& part, double diameter, double depth) {
+    return hz::doc::HoleFeature::make(faceFacing(part.doc, Vec3(0, 0, 1)), Vec3(5, 5, 99), diameter,
+                                      depth);
+}
+
+}  // namespace
+
+// Phase 162: a hole drilled into the box's top, of each type and extent,
+// takes out exactly what it should of the faceted part.
+TEST(ModelCommandsTest, AHoleTakesOutWhatItShould) {
+    const double tip = 2.0 / std::tan(hz::math::kPi * 118.0 / 360.0);
+    {
+        BoxPart part;
+        drill(part, holeInTop(part, 4.0, 5.0));  // the position is put on the face
+        EXPECT_NEAR(volume(part.doc), 1000.0 - section(2) * (5.0 + tip / 3.0), 1e-6)
+            << "a wall 5 deep, and its point";
+    }
+    {
+        BoxPart part;
+        auto flat = holeInTop(part, 4.0, 5.0);
+        ASSERT_TRUE(flat->setParameter("pointAngle", 0.0));
+        drill(part, std::move(flat));
+        EXPECT_NEAR(volume(part.doc), 1000.0 - section(2) * 5.0, 1e-6) << "a flat bottom";
+    }
+    {
+        BoxPart part;
+        auto through = holeInTop(part, 4.0, 1.0);
+        ASSERT_TRUE(through->setParameter("extent", 1));
+        drill(part, std::move(through));
+        EXPECT_NEAR(volume(part.doc), 1000.0 - section(2) * 10.0, 1e-6) << "through all";
+    }
+    {
+        BoxPart part;
+        auto upTo = holeInTop(part, 4.0, 1.0);
+        ASSERT_TRUE(upTo->setParameter("extent", 2));
+        upTo->setReference("upToFace", faceFacing(part.doc, Vec3(0, 0, -1)));
+        drill(part, std::move(upTo));
+        EXPECT_NEAR(volume(part.doc), 1000.0 - section(2) * 10.0, 1e-6) << "up to the bottom";
+    }
+    {
+        BoxPart part;
+        auto bored = holeInTop(part, 4.0, 6.0);
+        ASSERT_TRUE(bored->setParameter("type", 1));
+        ASSERT_TRUE(bored->setParameter("boreDiameter", 8.0));
+        ASSERT_TRUE(bored->setParameter("boreDepth", 2.0));
+        ASSERT_TRUE(bored->setParameter("pointAngle", 0.0));
+        drill(part, std::move(bored));
+        EXPECT_NEAR(volume(part.doc), 1000.0 - section(4) * 2.0 - section(2) * 4.0, 1e-6)
+            << "a counterbore";
+    }
+    {
+        BoxPart part;
+        auto sunk = holeInTop(part, 4.0, 6.0);
+        ASSERT_TRUE(sunk->setParameter("type", 2));
+        ASSERT_TRUE(sunk->setParameter("sinkDiameter", 8.0));
+        ASSERT_TRUE(sunk->setParameter("pointAngle", 0.0));
+        drill(part, std::move(sunk));
+        // A 90-degree sink from radius 4 to 2 is 2 deep: a frustum, then the wall.
+        const double frustum =
+            2.0 / 3.0 * (section(4) + section(2) + std::sqrt(section(4) * section(2)));
+        EXPECT_NEAR(volume(part.doc), 1000.0 - frustum - section(2) * 4.0, 1e-6) << "a countersink";
+    }
+}
+
+// Its wall is a true cylinder, named for what it is; it follows its face
+// when the box grows; a pattern of it repeats it; a counterbore narrower
+// than the hole, or a face that is gone, says why.
+TEST(ModelCommandsTest, AHoleFollowsItsFaceAndKeepsItsCylinder) {
+    BoxPart part;
+    // At (3, 5): room for a copy 4.5 along, clear of it.
+    auto flat =
+        hz::doc::HoleFeature::make(faceFacing(part.doc, Vec3(0, 0, 1)), Vec3(3, 5, 99), 4.0, 5.0);
+    ASSERT_TRUE(flat->setParameter("pointAngle", 0.0));
+    const auto* hole = drill(part, std::move(flat));
+    ASSERT_NEAR(volume(part.doc), 1000.0 - section(2) * 5.0, 1e-6);
+    int wall = 0;
+    for (const auto& face : part.doc.solid()->faces()) {
+        if (!face.analyticSurface) continue;
+        const auto frame = hz::model::MateGeometry::frameForFace(face);
+        ASSERT_TRUE(frame.has_value());
+        EXPECT_EQ(frame->kind, hz::model::MateFrameKind::Cylindrical);
+        EXPECT_NEAR(frame->radius, 2.0, 1e-6);
+        EXPECT_NE(face.topoId.tag().find(hole->featureID() + "/wall"), std::string::npos)
+            << face.topoId.tag();
+        ++wall;
+    }
+    EXPECT_EQ(wall, 32) << "every facet of the wall";
+
+    // The box made taller: the hole goes down from its top, as deep.
+    ASSERT_TRUE(part.doc.featureTree().feature(0)->setParameter("depth", 20.0));
+    EXPECT_NEAR(volume(part.doc), 2000.0 - section(2) * 5.0, 1e-6) << "followed the top";
+
+    auto pattern = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 4.5, 2);
+    pattern->setTargets({hole->featureID()});
+    add(part.doc, std::move(pattern));
+    EXPECT_NEAR(volume(part.doc), 2000.0 - 2 * section(2) * 5.0, 1e-6) << "two holes";
+
+    BoxPart narrow;
+    auto bored = holeInTop(narrow, 4.0, 6.0);
+    ASSERT_TRUE(bored->setParameter("type", 1));
+    ASSERT_TRUE(bored->setParameter("boreDiameter", 3.0));
+    drill(narrow, std::move(bored));
+    EXPECT_FALSE(narrow.doc.rebuildModel());
+    EXPECT_NE(narrow.doc.lastBuildMessage().find("counterbore must be wider"), std::string::npos)
+        << narrow.doc.lastBuildMessage();
+
+    BoxPart lost;
+    drill(lost, hz::doc::HoleFeature::make("primitive_999/top", Vec3(5, 5, 10), 4.0, 5.0));
+    EXPECT_FALSE(lost.doc.rebuildModel());
+    EXPECT_NE(lost.doc.lastBuildMessage().find("the face it is drilled into"), std::string::npos)
         << lost.doc.lastBuildMessage();
 }
