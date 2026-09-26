@@ -327,13 +327,15 @@ bool AssemblyDocument::updatePatterns() {
     }
 
     // The instances made, then placed from their seeds.
-    for (const auto& [patternId, seedId, k] : wanted) {
-        const auto found = std::find_if(m_components.begin(), m_components.end(),
-                                        [&](const ComponentInstance& comp) {
-                                            return comp.patternId == patternId &&
-                                                   comp.seedId == seedId && comp.patternIndex == k;
-                                        });
+    for (const Key& key : wanted) {
+        // The key, not its parts: clang before 16 cannot capture a structured
+        // binding of an aggregate, and this keeps the rule simple.
+        const auto found = std::find_if(
+            m_components.begin(), m_components.end(), [&key](const ComponentInstance& comp) {
+                return Key{comp.patternId, comp.seedId, comp.patternIndex} == key;
+            });
         if (found != m_components.end()) continue;
+        const auto& [patternId, seedId, k] = key;
         const ComponentInstance* seed = component(seedId);
         ComponentInstance made;
         made.id = m_nextComponentId++;
