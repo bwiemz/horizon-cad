@@ -216,3 +216,31 @@ TEST(LocaleManagerTest, ShippedCatalogSourcesCoverAllSpecLanguages) {
         EXPECT_TRUE(xml.contains("<translation>")) << entry.toStdString();
     }
 }
+
+// Phase 166: each shipped catalog, as the application loads it, translates
+// the menus and a plural. It was 18 messages of about 1,100.
+TEST(LocaleManagerTest, TheShippedCatalogsTranslateTheWindow) {
+#ifndef HZ_SHIPPED_TRANSLATIONS_DIR
+    GTEST_SKIP() << "no application target in this build";
+#else
+    app();
+    const QString dir = QStringLiteral(HZ_SHIPPED_TRANSLATIONS_DIR);
+    for (const char* language : {"de", "es", "fr", "ja", "ko", "zh"}) {
+        if (!QFile::exists(QDir(dir).filePath(QStringLiteral("horizon_%1.qm").arg(language)))) {
+            GTEST_SKIP() << "the catalogs were not compiled (no lrelease)";
+        }
+        LocaleManager mgr;
+        ASSERT_TRUE(mgr.apply(dir, QString::fromLatin1(language))) << language;
+        // "Point angle (0: flat)" is one of the 36 labels whose context was
+        // wrong ("MainWindow"), and so never translated.
+        for (const char* source : {"&File", "Hole", "Mirror Com&ponents...",
+                                   "Show Exploded Vie&w...", "Point angle (0: flat)"}) {
+            EXPECT_NE(translated(source), QString::fromUtf8(source)) << language << ": " << source;
+        }
+        const QString plural =
+            QCoreApplication::translate("hz::ui::MainWindow", "%n variable(s).", nullptr, 3);
+        EXPECT_TRUE(plural.contains(QLatin1Char('3'))) << language << ": " << plural.toStdString();
+        EXPECT_NE(plural, QStringLiteral("3 variable(s).")) << language;
+    }
+#endif
+}

@@ -17,6 +17,19 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
+
+- **Every string translated (166a).**
+  - The whole interface is in German, Spanish, French, Japanese, Korean
+    and Chinese: 1,107 strings each, where 18 were before.
+  - They are machine translations. The catalogs mark them unreviewed, so
+    Qt Linguist shows a native speaker which ones still need checking.
+  - 36 main-window labels (Hole, Mirror Components, Show Exploded View
+    and others) were never translated: their context was wrong. Fixed.
+  - Every build checks the catalogs: each language at least 95%
+    translated, placeholders and mnemonics as in the English, and no
+    string in the sources missing from them.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**
