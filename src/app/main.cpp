@@ -203,6 +203,7 @@ static int run(int argc, char* argv[]) {
         window.offerCrashReports();
         window.offerRecovery();
         window.openFiles(files);
+        window.offerTour();  // the first time only
     });
     return app.exec();
 }

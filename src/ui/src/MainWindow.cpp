@@ -1015,6 +1015,8 @@ void MainWindow::createMenus() {
     QAction* guideAction = helpMenu->addAction(tr("&User Guide"), this, &MainWindow::onUserGuide);
     guideAction->setObjectName(QStringLiteral("action_user_guide"));
     guideAction->setShortcut(QKeySequence::HelpContents);
+    helpMenu->addAction(tr("&Getting Started"), this, &MainWindow::onGettingStarted)
+        ->setObjectName(QStringLiteral("action_getting_started"));
     helpMenu->addSeparator();
     QAction* aboutAction =
         helpMenu->addAction(tr("&About Horizon CAD"), this, &MainWindow::onAbout);
@@ -2044,6 +2046,45 @@ void MainWindow::onUserGuide() {
     m_help->show();
     m_help->raise();
     m_help->activateWindow();
+}
+
+void MainWindow::onGettingStarted() {
+    if (m_tour != nullptr) return;  // already shown
+    const auto step = [](QWidget* target, const QString& title, const QString& text) {
+        return GettingStartedTour::Step{target, title, text};
+    };
+    m_tour = new GettingStartedTour(
+        this,
+        {step(m_ribbonBar, tr("The ribbon"),
+              tr("Commands, by tab: Draw and Modify for 2D geometry, 3D for parts, and "
+                 "Annotate, Constrain and Block. The menus above hold the same commands, "
+                 "and more.")),
+         step(m_featureTreePanel, tr("The feature tree"),
+              tr("A part's features, in the order they are built. Double-click one to change "
+                 "it; right-click to suppress it or roll back to it. The Assembly tab beside "
+                 "it lists an assembly's components and mates.")),
+         step(m_viewport, tr("The view"),
+              tr("Drag with the middle mouse button to orbit, and with Shift held to pan; the "
+                 "wheel zooms. Press F to see everything, and click the cube at the top right "
+                 "to look along an axis.")),
+         step(m_propertyPanel, tr("Properties"),
+              tr("What is selected: its layer, colour and sizes, to see and change. Layers is "
+                 "in the tab beside it.")),
+         step(statusBar(), tr("The status bar"),
+              tr("What the active tool is asking for, where the cursor is, and the drafting "
+                 "aids: object snap, grid snap, ortho and polar tracking.")),
+         // On macOS the menus are at the top of the screen, not the window.
+         step(menuBar()->isNativeMenuBar() ? nullptr : menuBar(), tr("Finding your way"),
+              tr("Press Ctrl+K and type to find any command. F1 opens the user guide at the "
+                 "page for what you are doing, and File > Open Sample has parts, an assembly "
+                 "and drawings to explore."))});
+}
+
+void MainWindow::offerTour() {
+    QSettings settings;
+    if (settings.value(QStringLiteral("help/tourOffered"), false).toBool()) return;
+    settings.setValue(QStringLiteral("help/tourOffered"), true);
+    onGettingStarted();
 }
 
 QString MainWindow::helpPageForContext() const {

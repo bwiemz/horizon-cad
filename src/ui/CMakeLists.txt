@@ -11,6 +11,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/Triad.h
     include/horizon/ui/Tool.h
     include/horizon/ui/HelpWindow.h
+    include/horizon/ui/GettingStartedTour.h
     include/horizon/ui/ToolManager.h
     include/horizon/ui/LineTool.h
     include/horizon/ui/CircleTool.h
@@ -84,6 +85,7 @@ add_library(hz_ui STATIC
     src/Application.cpp
     src/CrashReport.cpp
     src/HelpWindow.cpp
+    src/GettingStartedTour.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
     src/RecentFiles.cpp

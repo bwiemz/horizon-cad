@@ -1792,6 +1792,35 @@ begin building your part.</source>
     </message>
 </context>
 <context>
+    <name>hz::ui::GettingStartedTour</name>
+    <message>
+        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+47"/>
+        <source>Back</source>
+        <translation type="unfinished">戻る</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+63"/>
+        <source>Next</source>
+        <translation type="unfinished">次へ</translation>
+    </message>
+    <message>
+        <location line="-49"/>
+        <source>Close</source>
+        <translation type="unfinished">閉じる</translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>%1 of %2</source>
+        <translation type="unfinished">%1 / %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Done</source>
+        <translation type="unfinished">完了</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::HelpWindow</name>
     <message>
         <location filename="../src/ui/src/HelpWindow.cpp" line="+23"/>
@@ -2017,20 +2046,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+877"/>
+        <location line="+879"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">距離</translation>
     </message>
     <message>
-        <location line="-893"/>
-        <location line="+877"/>
+        <location line="-895"/>
+        <location line="+879"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">角度</translation>
     </message>
     <message>
-        <location line="-893"/>
+        <location line="-895"/>
         <source>Segments per turn</source>
         <translation type="unfinished">1 回転あたりのセグメント数</translation>
     </message>
@@ -2202,12 +2231,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1007"/>
+        <location line="+1009"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-945"/>
+        <location line="-947"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -2993,7 +3022,12 @@ begin building your part.</source>
         <translation type="unfinished">ユーザー ガイド(&amp;U)</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+3"/>
+        <source>&amp;Getting Started</source>
+        <translation type="unfinished">はじめに(&amp;G)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>&amp;About Horizon CAD</source>
         <translation type="unfinished">Horizon CAD について(&amp;A)</translation>
     </message>
@@ -3190,12 +3224,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3942"/>
+        <location line="+3980"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4018"/>
+        <location line="-4056"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3212,19 +3246,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3791"/>
+        <location line="+3829"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3854"/>
+        <location line="-3892"/>
         <location line="+64"/>
-        <location line="+3790"/>
+        <location line="+3828"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3853"/>
+        <location line="-3891"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3373,12 +3407,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2684"/>
+        <location line="+2722"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2681"/>
+        <location line="-2719"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3393,96 +3427,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2826"/>
+        <location line="+2864"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-2825"/>
-        <location line="+2835"/>
+        <location line="-2863"/>
+        <location line="+2873"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-2834"/>
-        <location line="+2841"/>
+        <location line="-2872"/>
+        <location line="+2879"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-2840"/>
-        <location line="+2847"/>
+        <location line="-2878"/>
+        <location line="+2885"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-2846"/>
-        <location line="+2857"/>
+        <location line="-2884"/>
+        <location line="+2895"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-2855"/>
+        <location line="-2893"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3578"/>
+        <location line="+3616"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3623"/>
-        <location line="+3642"/>
+        <location line="-3661"/>
+        <location line="+3680"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3668"/>
-        <location line="+3998"/>
+        <location line="-3706"/>
+        <location line="+4036"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-3996"/>
+        <location line="-4034"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3749"/>
+        <location line="+3787"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3748"/>
-        <location line="+3752"/>
+        <location line="-3786"/>
+        <location line="+3790"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3751"/>
-        <location line="+3755"/>
+        <location line="-3789"/>
+        <location line="+3793"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3750"/>
-        <location line="+3819"/>
+        <location line="-3788"/>
+        <location line="+3857"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3818"/>
-        <location line="+3838"/>
+        <location line="-3856"/>
+        <location line="+3876"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3836"/>
+        <location line="-3874"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3506,7 +3540,7 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+903"/>
+        <location line="+941"/>
         <location line="+398"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3516,7 +3550,7 @@ begin building your part.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4457"/>
+        <location line="-4495"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3537,12 +3571,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4126"/>
+        <location line="+4164"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4120"/>
+        <location line="-4158"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -3754,7 +3788,67 @@ begin building your part.</source>
         <translation type="unfinished">%1 として構築されています。</translation>
     </message>
     <message>
-        <location line="+37"/>
+        <location line="+21"/>
+        <source>The ribbon</source>
+        <translation type="unfinished">リボン</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Commands, by tab: Draw and Modify for 2D geometry, 3D for parts, and Annotate, Constrain and Block. The menus above hold the same commands, and more.</source>
+        <translation type="unfinished">タブごとのコマンド: 2D ジオメトリには [作図] と [修正]、部品には [3D]、ほかに [注釈]、[拘束]、[ブロック] があります。上のメニューにも同じコマンドとそれ以外のコマンドがあります。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The feature tree</source>
+        <translation type="unfinished">フィーチャー ツリー</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>A part&apos;s features, in the order they are built. Double-click one to change it; right-click to suppress it or roll back to it. The Assembly tab beside it lists an assembly&apos;s components and mates.</source>
+        <translation type="unfinished">部品のフィーチャーを作成順に表示します。ダブルクリックで変更し、右クリックで抑制またはそこまでのロールバックができます。隣の [アセンブリ] タブには、アセンブリのコンポーネントと合致が表示されます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The view</source>
+        <translation type="unfinished">ビュー</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Drag with the middle mouse button to orbit, and with Shift held to pan; the wheel zooms. Press F to see everything, and click the cube at the top right to look along an axis.</source>
+        <translation type="unfinished">中央ボタンでドラッグすると回転し、Shift を押しながらドラッグすると画面移動します。ホイールでズームします。F を押すとすべてを表示し、右上のキューブをクリックすると軸に沿った方向から見られます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Properties</source>
+        <translation type="unfinished">プロパティ</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>What is selected: its layer, colour and sizes, to see and change. Layers is in the tab beside it.</source>
+        <translation type="unfinished">選択しているもののレイヤー、色、寸法を表示して変更できます。レイヤーは隣のタブにあります。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The status bar</source>
+        <translation type="unfinished">ステータス バー</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>What the active tool is asking for, where the cursor is, and the drafting aids: object snap, grid snap, ortho and polar tracking.</source>
+        <translation type="unfinished">アクティブなツールが求めている入力、カーソルの位置、作図補助 (オブジェクト スナップ、グリッド スナップ、直交モード、極トラッキング) を表示します。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Finding your way</source>
+        <translation type="unfinished">操作のヒント</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Press Ctrl+K and type to find any command. F1 opens the user guide at the page for what you are doing, and File &gt; Open Sample has parts, an assembly and drawings to explore.</source>
+        <translation type="unfinished">Ctrl+K を押して入力すると、任意のコマンドを検索できます。F1 は現在の作業に関するユーザー ガイドのページを開きます。[ファイル] &gt; [サンプルを開く] には、試せる部品、アセンブリ、図面があります。</translation>
+    </message>
+    <message>
+        <location line="+35"/>
         <source>an unknown compiler</source>
         <translation type="unfinished">不明なコンパイラ</translation>
     </message>
@@ -5461,7 +5555,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4473"/>
+        <location line="-4511"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

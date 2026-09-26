@@ -5,6 +5,9 @@
 #include <QAction>
 #include <QApplication>
 #include <QFile>
+#include <QKeyEvent>
+#include <QLabel>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStatusBar>
@@ -17,6 +20,8 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/ui/FeatureTreePanel.h"
+#include "horizon/ui/GettingStartedTour.h"
 #include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/MainWindow.h"
 
@@ -177,4 +182,99 @@ TEST(HelpTest, TheGuidesFirstPartIsMadeAsItSays) {
         << w.statusBar()->currentMessage().toStdString();
     ASSERT_NE(doc.solid(), nullptr);
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*doc.solid()).volume, 8000.0, 1e-6);
+}
+
+// Getting Started (168c): each step outlines a part of the window and says
+// what it is; Back and Next move through them, and the last ends the tour.
+TEST(HelpTest, TheTourPointsAtEachPartOfTheWindowInTurn) {
+    MainWindow w;
+    w.resize(1400, 900);
+    w.show();
+    QApplication::processEvents();
+    trigger(w, "action_getting_started");
+    QPointer<hz::ui::GettingStartedTour> tour = w.tour();
+    ASSERT_NE(tour, nullptr);
+    ASSERT_GE(tour->stepCount(), 5);
+    const auto* title = tour->findChild<QLabel*>(QStringLiteral("tourTitle"));
+    ASSERT_NE(title, nullptr);
+
+    QStringList titles;
+    for (int i = 0; i < tour->stepCount(); ++i) {
+        EXPECT_EQ(tour->step(), i);
+        titles << title->text();
+        EXPECT_FALSE(tour->findChild<QLabel*>(QStringLiteral("tourText"))->text().isEmpty());
+        const QRect outlined = tour->outlined();
+        EXPECT_FALSE(outlined.isEmpty()) << title->text().toStdString();
+        EXPECT_TRUE(w.rect().contains(tour->geometry())) << "the panel is in the window";
+        if (i + 1 < tour->stepCount()) tour->next();
+    }
+    EXPECT_EQ(titles.front(), QStringLiteral("The ribbon"));
+    EXPECT_TRUE(titles.contains(QStringLiteral("The view")));
+
+    // The view's step outlines the viewport.
+    tour->back();
+    while (title->text() != QStringLiteral("The view") && tour->step() > 0) tour->back();
+    auto* viewport = w.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(viewport, nullptr);
+    const QPoint middle = viewport->mapTo(&w, viewport->rect().center());
+    EXPECT_TRUE(tour->outlined().contains(middle));
+
+    while (tour != nullptr && tour->step() + 1 < tour->stepCount()) tour->next();
+    ASSERT_NE(tour, nullptr);
+    tour->next();  // Done
+    QApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    EXPECT_EQ(tour, nullptr) << "ended, and gone";
+    EXPECT_EQ(w.tour(), nullptr);
+}
+
+// The tour is offered the first time Horizon CAD starts, and not again.
+TEST(HelpTest, TheTourIsOfferedOnceAtFirstStart) {
+    {
+        MainWindow w;
+        w.offerTour();
+        ASSERT_NE(w.tour(), nullptr) << "the first start";
+    }
+    MainWindow w;
+    w.offerTour();
+    EXPECT_EQ(w.tour(), nullptr) << "offered once";
+    trigger(w, "action_getting_started");
+    EXPECT_NE(w.tour(), nullptr) << "but always there in the Help menu";
+}
+
+// A panel floated as a window of its own is not in the window: its step
+// shows the panel alone, in the middle, not an outline at a wrong place.
+// And Escape closes the tour, from its buttons, which have the focus.
+TEST(HelpTest, TheTourCopesWithAFloatedPanelAndClosesOnEscape) {
+    MainWindow w;
+    w.resize(1400, 900);
+    w.show();
+    QApplication::processEvents();
+    auto* tree = w.findChild<hz::ui::FeatureTreePanel*>();
+    ASSERT_NE(tree, nullptr);
+    tree->setFloating(true);
+    QApplication::processEvents();
+
+    trigger(w, "action_getting_started");
+    QPointer<hz::ui::GettingStartedTour> tour = w.tour();
+    ASSERT_NE(tour, nullptr);
+    const auto* title = tour->findChild<QLabel*>(QStringLiteral("tourTitle"));
+    while (title->text() != QStringLiteral("The feature tree") &&
+           tour->step() + 1 < tour->stepCount()) {
+        tour->next();
+    }
+    ASSERT_EQ(title->text(), QStringLiteral("The feature tree"));
+    EXPECT_TRUE(tour->outlined().isEmpty()) << "not outlined where it is not";
+    EXPECT_TRUE(w.rect().contains(tour->geometry()));
+
+    // The window's focus: which of its widgets keys go to when it is active
+    // (the floated panel is the active window here).
+    QWidget* focused = w.focusWidget();
+    ASSERT_NE(focused, nullptr);
+    EXPECT_TRUE(tour->isAncestorOf(focused)) << "the tour's buttons have the keys";
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent(focused, &escape);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    EXPECT_EQ(tour, nullptr) << "closed by Escape";
+    tree->setFloating(false);
 }

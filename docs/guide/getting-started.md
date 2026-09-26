@@ -20,6 +20,9 @@
 Show or hide the panels from the **View** menu. Their layout is kept when
 you close Horizon CAD.
 
+**Help ▸ Getting Started** points at each of these in turn, with a word on
+what it is for.
+
 ## Finding a command
 
 Press **Ctrl+K** for the command palette, type part of a command's name

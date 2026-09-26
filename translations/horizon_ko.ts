@@ -1792,6 +1792,35 @@ begin building your part.</source>
     </message>
 </context>
 <context>
+    <name>hz::ui::GettingStartedTour</name>
+    <message>
+        <location filename="../src/ui/src/GettingStartedTour.cpp" line="+47"/>
+        <source>Back</source>
+        <translation type="unfinished">뒤로</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+63"/>
+        <source>Next</source>
+        <translation type="unfinished">다음</translation>
+    </message>
+    <message>
+        <location line="-49"/>
+        <source>Close</source>
+        <translation type="unfinished">닫기</translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>%1 of %2</source>
+        <translation type="unfinished">%1 / %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Done</source>
+        <translation type="unfinished">완료</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::HelpWindow</name>
     <message>
         <location filename="../src/ui/src/HelpWindow.cpp" line="+23"/>
@@ -2017,20 +2046,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+877"/>
+        <location line="+879"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">거리</translation>
     </message>
     <message>
-        <location line="-893"/>
-        <location line="+877"/>
+        <location line="-895"/>
+        <location line="+879"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">각도</translation>
     </message>
     <message>
-        <location line="-893"/>
+        <location line="-895"/>
         <source>Segments per turn</source>
         <translation type="unfinished">회전당 세그먼트 수</translation>
     </message>
@@ -2202,12 +2231,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1007"/>
+        <location line="+1009"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-945"/>
+        <location line="-947"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2993,7 +3022,12 @@ begin building your part.</source>
         <translation type="unfinished">사용자 가이드(&amp;U)</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+3"/>
+        <source>&amp;Getting Started</source>
+        <translation type="unfinished">시작하기(&amp;G)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>&amp;About Horizon CAD</source>
         <translation type="unfinished">Horizon CAD 정보(&amp;A)</translation>
     </message>
@@ -3190,12 +3224,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3942"/>
+        <location line="+3980"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-4018"/>
+        <location line="-4056"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3212,19 +3246,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3791"/>
+        <location line="+3829"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-3854"/>
+        <location line="-3892"/>
         <location line="+64"/>
-        <location line="+3790"/>
+        <location line="+3828"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-3853"/>
+        <location line="-3891"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3373,12 +3407,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2684"/>
+        <location line="+2722"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2681"/>
+        <location line="-2719"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3393,96 +3427,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2826"/>
+        <location line="+2864"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-2825"/>
-        <location line="+2835"/>
+        <location line="-2863"/>
+        <location line="+2873"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-2834"/>
-        <location line="+2841"/>
+        <location line="-2872"/>
+        <location line="+2879"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-2840"/>
-        <location line="+2847"/>
+        <location line="-2878"/>
+        <location line="+2885"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-2846"/>
-        <location line="+2857"/>
+        <location line="-2884"/>
+        <location line="+2895"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-2855"/>
+        <location line="-2893"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3578"/>
+        <location line="+3616"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3623"/>
-        <location line="+3642"/>
+        <location line="-3661"/>
+        <location line="+3680"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3668"/>
-        <location line="+3998"/>
+        <location line="-3706"/>
+        <location line="+4036"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-3996"/>
+        <location line="-4034"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3749"/>
+        <location line="+3787"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3748"/>
-        <location line="+3752"/>
+        <location line="-3786"/>
+        <location line="+3790"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3751"/>
-        <location line="+3755"/>
+        <location line="-3789"/>
+        <location line="+3793"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3750"/>
-        <location line="+3819"/>
+        <location line="-3788"/>
+        <location line="+3857"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-3818"/>
-        <location line="+3838"/>
+        <location line="-3856"/>
+        <location line="+3876"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-3836"/>
+        <location line="-3874"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3506,7 +3540,7 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+903"/>
+        <location line="+941"/>
         <location line="+398"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3516,7 +3550,7 @@ begin building your part.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4457"/>
+        <location line="-4495"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3537,12 +3571,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4126"/>
+        <location line="+4164"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4120"/>
+        <location line="-4158"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -3754,7 +3788,67 @@ begin building your part.</source>
         <translation type="unfinished">%1(으)로 생성했습니다.</translation>
     </message>
     <message>
-        <location line="+37"/>
+        <location line="+21"/>
+        <source>The ribbon</source>
+        <translation type="unfinished">리본</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Commands, by tab: Draw and Modify for 2D geometry, 3D for parts, and Annotate, Constrain and Block. The menus above hold the same commands, and more.</source>
+        <translation type="unfinished">탭별 명령: 2D 형상은 그리기와 수정, 부품은 3D, 그 밖에 주석, 구속, 블록이 있습니다. 위의 메뉴에도 같은 명령과 그 밖의 명령이 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The feature tree</source>
+        <translation type="unfinished">피처 트리</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>A part&apos;s features, in the order they are built. Double-click one to change it; right-click to suppress it or roll back to it. The Assembly tab beside it lists an assembly&apos;s components and mates.</source>
+        <translation type="unfinished">부품의 피처를 만들어지는 순서대로 보여 줍니다. 두 번 클릭하면 변경하고, 마우스 오른쪽 버튼으로 억제하거나 그 지점까지 롤백할 수 있습니다. 옆의 어셈블리 탭에는 어셈블리의 구성 요소와 메이트가 나열됩니다.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The view</source>
+        <translation type="unfinished">뷰</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Drag with the middle mouse button to orbit, and with Shift held to pan; the wheel zooms. Press F to see everything, and click the cube at the top right to look along an axis.</source>
+        <translation type="unfinished">마우스 가운데 버튼으로 끌면 궤도 회전하고, Shift를 누른 채 끌면 이동합니다. 휠로 확대/축소합니다. F를 누르면 전체를 보고, 오른쪽 위의 큐브를 클릭하면 축 방향으로 볼 수 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Properties</source>
+        <translation type="unfinished">속성</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>What is selected: its layer, colour and sizes, to see and change. Layers is in the tab beside it.</source>
+        <translation type="unfinished">선택한 항목의 레이어, 색상, 크기를 보고 변경할 수 있습니다. 레이어는 옆 탭에 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The status bar</source>
+        <translation type="unfinished">상태 표시줄</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>What the active tool is asking for, where the cursor is, and the drafting aids: object snap, grid snap, ortho and polar tracking.</source>
+        <translation type="unfinished">활성 도구가 요청하는 내용, 커서 위치, 제도 보조 기능(객체 스냅, 그리드 스냅, 직교, 극좌표 추적)을 보여 줍니다.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Finding your way</source>
+        <translation type="unfinished">길잡이</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Press Ctrl+K and type to find any command. F1 opens the user guide at the page for what you are doing, and File &gt; Open Sample has parts, an assembly and drawings to explore.</source>
+        <translation type="unfinished">Ctrl+K를 누르고 입력하면 어떤 명령이든 찾을 수 있습니다. F1은 지금 하는 작업에 관한 사용자 가이드 페이지를 엽니다. 파일 &gt; 샘플 열기에는 살펴볼 부품, 어셈블리, 도면이 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+35"/>
         <source>an unknown compiler</source>
         <translation type="unfinished">알 수 없는 컴파일러</translation>
     </message>
@@ -5461,7 +5555,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4473"/>
+        <location line="-4511"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
