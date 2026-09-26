@@ -2234,6 +2234,14 @@ static bool loadAssemblyRoot(const json& root, doc::AssemblyDocument& asmDoc,
                     }
                 }
 
+                // Only a part is mirrored (Phase 162): a subassembly's parts
+                // would need a reflection in their placements, which a STEP
+                // file or a bill of materials cannot say. Placed as it is.
+                if (comp.mirrored && comp.isAssembly()) {
+                    comp.mirrored = false;
+                    noteSkipped(report, "component", thisComponent, cObj,
+                                "a subassembly is not mirrored: it is placed as it is");
+                }
                 asmDoc.addComponent(std::move(comp));
             } catch (const std::exception& e) {
                 noteSkipped(report, "component", thisComponent, cObj, jsonMessage(e));

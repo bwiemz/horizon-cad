@@ -84,11 +84,15 @@ struct ComponentInstance {
 private:
     // A mirrored component's mesh and solid, made from the part's the first
     // time they are asked for, and again when the part's change. Copies
-    // share them.
+    // share them. What each was made from is held, not only pointed at: a
+    // source freed and another made at its address would otherwise pass
+    // for it. The part's solid is known by its document and its build.
     mutable std::shared_ptr<const geo::MeshData> m_mirroredMesh;
-    mutable const geo::MeshData* m_mirroredMeshFrom = nullptr;
+    mutable std::shared_ptr<const geo::MeshData> m_mirroredMeshFrom;
     mutable std::shared_ptr<const topo::Solid> m_mirroredSolid;
-    mutable const topo::Solid* m_mirroredSolidFrom = nullptr;
+    mutable std::shared_ptr<const void>
+        m_mirroredSolidOwner;  ///< the part, or the subassembly's solid
+    mutable std::uint64_t m_mirroredSolidBuild = 0;
 };
 
 /// Geometric mate constraint types between component faces (Phase 42).

@@ -773,4 +773,12 @@ TEST(AssemblyDocumentTest, AMirroredComponentIsItsPartMirrored) {
     ASSERT_EQ(bom.lines.size(), 2u);
     EXPECT_EQ(bom.lines[0].partName, "block");
     EXPECT_EQ(bom.lines[1].partName, "block (mirrored)");
+
+    // The part rebuilt wider: its mirror is made again, whatever address
+    // the new solid has (a freed one's may be reused).
+    ASSERT_TRUE(part->featureTree().feature(0)->setParameter("width", 20.0));
+    ASSERT_TRUE(part->rebuildModel());
+    double widest = 0.0;
+    for (const auto& v : placed.solid()->vertices()) widest = std::min(widest, v.point.x);
+    EXPECT_NEAR(widest, -20.0, 1e-9) << "the new part, mirrored";
 }
