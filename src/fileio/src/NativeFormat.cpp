@@ -87,7 +87,9 @@ static std::string dumpJson(const json& root, int indent) {
 /// 27: a part may have a Hole feature, "type": "hole" (Phase 162).
 /// 28: an assembly's component may be mirrored, "mirrored" (Phase 162). An
 /// older build would place its part unmirrored.
-static constexpr int kFormatVersion = 28;
+/// 29: a shell may be made by offsetting each face, "method": "offset"
+/// (Phase 163). An older build would build it as a prism's, or refuse it.
+static constexpr int kFormatVersion = 29;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -798,6 +800,8 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             json removed = json::array();
             for (const auto& id : shell->removedFaceIds()) removed.push_back(id.tag());
             fObj["removedFaces"] = removed;
+            // Phase 163: by offsetting each face. None: a prism's, as before.
+            if (shell->method() == doc::ShellFeature::Method::Offset) fObj["method"] = "offset";
         } else if (const auto* fillet = dynamic_cast<const doc::FilletFeature*>(feat)) {
             fObj["type"] = "fillet";
             fObj["radius"] = fillet->radius();
@@ -1625,7 +1629,13 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                                 topo::TopologyID::fromTag(tagJson.get<std::string>()));
                         }
                     }
-                    auto feat = std::make_unique<doc::ShellFeature>(thickness, std::move(removed));
+                    // Built as it was saved: a shell from before Phase 163
+                    // as a prism's, so its part and its names stay the same.
+                    const auto method = fObj.value("method", std::string()) == "offset"
+                                            ? doc::ShellFeature::Method::Offset
+                                            : doc::ShellFeature::Method::Prism;
+                    auto feat =
+                        std::make_unique<doc::ShellFeature>(thickness, std::move(removed), method);
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                     continue;

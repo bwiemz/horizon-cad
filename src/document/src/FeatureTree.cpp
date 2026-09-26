@@ -617,9 +617,11 @@ std::unique_ptr<topo::Solid> DraftFeature::execute(std::unique_ptr<topo::Solid> 
 
 math::IdCounter<int> ShellFeature::s_nextID{1};
 
-ShellFeature::ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds)
+ShellFeature::ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds,
+                           Method method)
     : m_thickness(thickness),
       m_removedFaceIds(std::move(removedFaceIds)),
+      m_method(method),
       m_featureID("shell_" + std::to_string(s_nextID.next())) {}
 
 std::string ShellFeature::name() const {
@@ -651,6 +653,14 @@ bool ShellFeature::setParameter(const std::string& name, double value) {
 std::unique_ptr<topo::Solid> ShellFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                    std::string* reason) const {
     if (!inputSolid) return failWith(reason, "there is no body to shell");
+    if (m_method == Method::Offset) {
+        // The part less its cavity: its faces and their names kept, the
+        // cavity's named after them, as this shell's.
+        auto offset = model::Shell::executeOffset(*inputSolid, m_thickness, m_removedFaceIds,
+                                                  featureID(), naming());
+        if (!offset.ok) return failWith(reason, offset.message);
+        return std::move(offset.solid);
+    }
     auto result = model::Shell::execute(std::move(inputSolid), m_thickness, m_removedFaceIds);
     if (!result.ok) return failWith(reason, result.message);
     if (naming() == model::NamingScheme::Stable && result.solid) {

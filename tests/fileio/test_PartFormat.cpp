@@ -424,9 +424,28 @@ TEST(PartFormatTest, ShellFeatureRoundTrip) {
     ASSERT_EQ(shell->removedFaceIds().size(), 1u);
     EXPECT_EQ(shell->removedFaceIds()[0].tag(), extId + "/cap_top");
 
+    EXPECT_EQ(shell->method(), ShellFeature::Method::Offset);
+
     EXPECT_TRUE(loaded.rebuildModel());
     ASSERT_NE(loaded.solid(), nullptr);
-    EXPECT_EQ(loaded.solid()->faceCount(), 14u);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*loaded.solid()).volume,
+                hz::model::MassPropertiesCalculator::compute(*original.solid()).volume, 1e-9);
+
+    // A shell saved before Phase 163 (no "method") is built as it was then:
+    // the prism's cup, 14 faces.
+    Document older;
+    std::string text = NativeFormat::documentToJson(original, false);
+    const std::string method = ",\"method\":\"offset\"";
+    const auto at = text.find(method);
+    ASSERT_NE(at, std::string::npos) << text;
+    text.erase(at, method.size());
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, older, &error)) << error;
+    const auto* prism = dynamic_cast<const ShellFeature*>(older.featureTree().feature(1));
+    ASSERT_NE(prism, nullptr);
+    EXPECT_EQ(prism->method(), ShellFeature::Method::Prism);
+    ASSERT_TRUE(older.rebuildModel());
+    EXPECT_EQ(older.solid()->faceCount(), 14u);
 
     std::remove(path.c_str());
 }

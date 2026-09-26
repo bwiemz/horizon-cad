@@ -445,7 +445,14 @@ private:
 /// faces (by TopologyID). Consumes the previous feature's solid.
 class ShellFeature : public Feature {
 public:
-    ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds);
+    /// How it hollows the part. Offset (Phase 163): each face moved inward,
+    /// any shape of one body, the part's faces and their names kept. Prism:
+    /// as a shell read from a file older than that was built, a right prism
+    /// only, so it builds as it did.
+    enum class Method { Prism, Offset };
+
+    ShellFeature(double thickness, std::vector<topo::TopologyID> removedFaceIds,
+                 Method method = Method::Offset);
 
     std::string name() const override;
     std::string featureID() const override;
@@ -457,10 +464,12 @@ public:
 
     double thickness() const { return m_thickness; }
     const std::vector<topo::TopologyID>& removedFaceIds() const { return m_removedFaceIds; }
+    Method method() const { return m_method; }
 
 private:
     double m_thickness;
     std::vector<topo::TopologyID> m_removedFaceIds;
+    Method m_method;
     std::string m_featureID;
 
     static math::IdCounter<int> s_nextID;

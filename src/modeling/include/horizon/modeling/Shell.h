@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -35,6 +36,31 @@ public:
     ///                        defines the shell axis).
     static ShellResult execute(std::unique_ptr<topo::Solid> solid, double thickness,
                                const std::vector<topo::TopologyID>& removedFaceIds);
+
+    /// Phase 163: hollow a body by offsetting each face, not the profile.
+    ///
+    /// The cavity is @p solid with every face moved inward by @p thickness,
+    /// and each face to open (@p openFaceIds, or their pieces and facets)
+    /// moved outward, so the cavity comes out through it. Each corner of the
+    /// cavity is where its faces' offset surfaces meet: a flat face's plane
+    /// moved along its normal; a facet of a cylinder, cone or sphere on that
+    /// surface grown or shrunk. The shell is @p solid less the cavity, so the
+    /// part keeps its faces, their names and their true surfaces; the
+    /// cavity's faces are named `<featureID>/inner:<face>`, on their offset
+    /// ideals.
+    ///
+    /// Takes any number of open faces, holes, bosses and curved walls, on a
+    /// single body. Refuses, with a message: a corner where four or more
+    /// faces meet whose offsets do not meet in a point; a face on another
+    /// kind of surface; a face opened in part; and a wall too thick for the
+    /// part (a face or hole of the cavity collapses, an edge turns over, or
+    /// a face's loop crosses itself). Two faces of the cavity crossing each
+    /// other past those local checks is not detected: no check in the
+    /// kernel sees faces crossing yet.
+    static ShellResult executeOffset(const topo::Solid& solid, double thickness,
+                                     const std::vector<topo::TopologyID>& openFaceIds,
+                                     const std::string& featureID,
+                                     NamingScheme naming = NamingScheme::Stable);
 };
 
 }  // namespace hz::model

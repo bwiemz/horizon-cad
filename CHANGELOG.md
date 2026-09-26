@@ -19,6 +19,17 @@ work, not "post-1.0".
 
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
 
+- **Shell, part 2 (163).**
+  - Shell hollows any single body whose faces are flat, or on cylinders,
+    cones and spheres. It works with holes, bosses and curved walls, and
+    opens as many faces as are checked. It used to take only a plain
+    prism with one open face.
+  - The part keeps its faces and their names, so a fillet or a mate on
+    them still finds them. The walls inside lie on true surfaces (a
+    cylinder's inside is a cylinder).
+  - A shell in a file from before this is built as it was.
+  - Files are saved as format version 29.
+
 - **Mirrored components (162, part 3).**
   - Assembly ▸ Mirror Components adds each checked component's mirror
     image in a plane: its part mirrored, placed as any component is, so
