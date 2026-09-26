@@ -8,6 +8,7 @@
 #include <sstream>
 #include <vector>
 
+#include "horizon/math/CharConv.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::math {
@@ -64,7 +65,7 @@ std::optional<std::vector<Term>> termsOf(std::string_view text, double& sign) {
             return false;
         }
         const char* first = text.data() + i;
-        const auto [end, error] = std::from_chars(first, text.data() + text.size(), value);
+        const auto [end, error] = fromChars(first, text.data() + text.size(), value);
         if (error != std::errc() || !std::isfinite(value)) return false;
         const std::string_view digits(first, static_cast<std::size_t>(end - first));
         integer = digits.find_first_not_of("0123456789") == std::string_view::npos;
