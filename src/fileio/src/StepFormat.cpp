@@ -26,6 +26,7 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
@@ -456,10 +457,9 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         // How big it is: its area element there is next to nothing at a
         // pole, where the parameters fold (the tangents there keep their
         // angle, so it is their size that tells).
-        double size = 0.0;
-        for (const topo::Vertex* corner : corners) {
-            size = std::max(size, (corner->point - (*corners.begin())->point).length());
-        }
+        math::BoundingBox extent;
+        for (const topo::Vertex* corner : corners) extent.expand(corner->point);
+        const double size = extent.isValid() ? (extent.max() - extent.min()).length() : 0.0;
         bool pole = false;
         for (const topo::Vertex* corner : corners) {
             if (onOutline.count(corner) != 0) continue;
