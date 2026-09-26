@@ -376,3 +376,79 @@ TEST(RecoveryWindowTest, ADamagedSnapshotIsReportedAndNotOpened) {
         EXPECT_FALSE(QFileInfo::exists(crashed));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Crash reports at the next start (Phase 167)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// crash::reportDirectory() is a directory of the test's own while this
+/// lives, with a report in it that a crash left.
+class LeftCrashReport {
+public:
+    LeftCrashReport() {
+        qputenv("HZ_CRASH_DIR", QFile::encodeName(m_dir.path()));
+        QFile report(path());
+        EXPECT_TRUE(report.open(QIODevice::WriteOnly));
+        report.write("Horizon CAD stopped: SIGSEGV, a bad memory access\n");
+    }
+    ~LeftCrashReport() { qunsetenv("HZ_CRASH_DIR"); }
+    LeftCrashReport(const LeftCrashReport&) = delete;
+    LeftCrashReport& operator=(const LeftCrashReport&) = delete;
+
+    QString directory() const { return m_dir.path(); }
+    QString path() const { return m_dir.filePath(QStringLiteral("crash-20260926-120000-7.txt")); }
+
+private:
+    QTemporaryDir m_dir;
+};
+
+}  // namespace
+
+TEST(CrashReportWindowTest, AReportIsOfferedOnceAndKept) {
+    LeftCrashReport left;
+    MainWindow w;
+    DialogResponder close(QMessageBox::Close, QStringLiteral("Horizon CAD Stopped"), 5000);
+    w.offerCrashReports();
+    ASSERT_TRUE(close.seen());
+    EXPECT_TRUE(close.text().contains(QStringLiteral("nothing has been sent")))
+        << close.text().toStdString();
+    EXPECT_TRUE(close.detailedText().contains(QStringLiteral("SIGSEGV")))
+        << close.detailedText().toStdString();
+    EXPECT_FALSE(QFileInfo::exists(left.path()));
+    EXPECT_TRUE(QFileInfo::exists(left.path() + QStringLiteral(".shown"))) << "kept";
+
+    DialogResponder again(QMessageBox::Close, QStringLiteral("Horizon CAD Stopped"), 300);
+    w.offerCrashReports();
+    again.waitForDialog(300);
+    EXPECT_FALSE(again.seen()) << "offered once";
+}
+
+// Deleting the report deletes it and its minidump, and nothing else: the
+// documents the crash left are recovered after it, from their own files.
+TEST(CrashReportWindowTest, DeletingAReportLeavesTheRecoveryFiles) {
+    LeftCrashReport left;
+    const QString dump = left.path().chopped(4) + QStringLiteral(".dmp");
+    QFile dumpFile(dump);
+    ASSERT_TRUE(dumpFile.open(QIODevice::WriteOnly));
+    dumpFile.close();
+
+    MainWindow w;
+    const QString crashed = leaveCrashedSession(QFileInfo(w.recovery().sessionDirectory()).path(),
+                                                QStringLiteral("Plan"), QString());
+    DialogResponder remove(QStringLiteral("Delete Report"), QStringLiteral("Horizon CAD Stopped"),
+                           5000);
+    w.offerCrashReports();
+    ASSERT_TRUE(remove.seen());
+    EXPECT_FALSE(QFileInfo::exists(left.path()));
+    EXPECT_FALSE(QFileInfo::exists(left.path() + QStringLiteral(".shown")));
+    EXPECT_FALSE(QFileInfo::exists(dump));
+    EXPECT_TRUE(QDir(left.directory()).entryList(QDir::Files).isEmpty());
+
+    EXPECT_TRUE(QFileInfo::exists(QDir(crashed).filePath(QStringLiteral("7.hcad"))));
+    DialogResponder later(QMessageBox::Cancel, QStringLiteral("Recover Documents"), 5000);
+    w.offerRecovery();
+    EXPECT_TRUE(later.seen()) << "still offered";
+    QDir(crashed).removeRecursively();
+}

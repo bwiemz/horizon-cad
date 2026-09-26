@@ -1,4 +1,5 @@
 add_executable(hz_ui_tests
+    test_CrashReport.cpp
     test_LocaleManager.cpp
     test_TypedPoint.cpp
     test_Workers.cpp
@@ -11,9 +12,25 @@ target_link_libraries(hz_ui_tests
         GTest::gtest_main
 )
 
-# Location of the shipped .ts catalog sources, for coverage checks.
+# A process that crashes on purpose, for the crash handler's test. It builds
+# the handler itself, on QtCore alone: a small executable, not another one
+# with all of Qt's widgets in it.
+add_executable(hz_crash_child
+    crash_child.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/src/CrashReport.cpp
+)
+target_include_directories(hz_crash_child PRIVATE ${CMAKE_SOURCE_DIR}/src/ui/include)
+target_link_libraries(hz_crash_child PRIVATE Qt6::Core)
+if(WIN32)
+    target_link_libraries(hz_crash_child PRIVATE Dbghelp)
+endif()
+add_dependencies(hz_ui_tests hz_crash_child)
+
 target_compile_definitions(hz_ui_tests
-    PRIVATE HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations")
+    PRIVATE
+        # Location of the shipped .ts catalog sources, for coverage checks.
+        HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations"
+        HZ_CRASH_CHILD="$<TARGET_FILE:hz_crash_child>")
 # Where the compiled catalogs are placed, next to the executable (Phase 166):
 # a test loads each one. None there (no lrelease), and the test says so.
 if(TARGET horizon)

@@ -6,8 +6,9 @@ namespace hz::ui {
 
 /// Send the default spdlog logger to a rotating log file in `logDirectory`
 /// (created if needed; three files of 5 MB) as well as to stderr, and route
-/// Qt's own messages (qWarning, qCritical, ...) into it. Warnings and above are
-/// flushed immediately, so a crash does not lose the lines that explain it.
+/// Qt's own messages (qWarning, qCritical, ...) into it. Every line is flushed
+/// as it is logged, so a crash does not lose the lines that explain it (a
+/// crash report quotes them).
 ///
 /// Returns the path of the log file, or an empty string when the file could
 /// not be opened — logging then continues on stderr only.

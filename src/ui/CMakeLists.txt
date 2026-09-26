@@ -81,6 +81,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/PdfExport.h
     include/horizon/ui/ChainDimensionTool.h
     src/Application.cpp
+    src/CrashReport.cpp
     src/Logging.cpp
     src/RecoveryManager.cpp
     src/RecentFiles.cpp
@@ -182,6 +183,10 @@ target_link_libraries(hz_ui
 # Help > About: the version and revision (Horizon::Version) and the build type
 # the library was built from.
 target_link_libraries(hz_ui PRIVATE Horizon::Version)
+# A crash's minidump (Phase 167).
+if(WIN32)
+    target_link_libraries(hz_ui PRIVATE Dbghelp)
+endif()
 target_compile_definitions(hz_ui PRIVATE
     HZ_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>"
 )

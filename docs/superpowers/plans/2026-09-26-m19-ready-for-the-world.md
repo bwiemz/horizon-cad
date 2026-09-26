@@ -112,22 +112,61 @@ As built:
 - The five new strings are translated in all six catalogs (unreviewed,
   as 166a's).
 
-## Phase 167: Crash reports
+## Phase 167: Crash reports (as built)
 
-- **A handler for signals** (SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT) and,
-  on Windows, an unhandled-exception filter.
-  - It writes a report beside the recovery files: the signal, a backtrace
-    (`backtrace` / `CaptureStackBackTrace`), the version and the platform.
-  - It uses only async-signal-safe calls, into a buffer and a file opened
-    at start.
-  - On Windows, a minidump too (`MiniDumpWriteDump`).
-- **The log is flushed** to its file as the handler runs.
-- **At the next start** the report is offered: shown, with the log's last
-  lines, to copy or save for attaching to an issue. Nothing is uploaded.
-  It is deleted once shown, if the user says so.
-- **Tests:** a child process that crashes on purpose (a test-only flag)
-  leaves a report with its signal and a frame, and the next start finds
-  it. The recovery files are untouched.
+- **The handler** (`hz::ui::crash`, `CrashReport.cpp`), installed by the
+  application once its log is open.
+  - On Linux and macOS: SIGSEGV, SIGBUS, SIGFPE, SIGILL and SIGABRT, on a
+    64 KiB stack of its own (`sigaltstack`), so a stack overflow is
+    reported too. It uses only `open`, `write`, `backtrace` and
+    `backtrace_symbols_fd`, into a path and a header made at start. The
+    first `backtrace()` is called at install, so the handler does not load
+    anything. `SA_RESETHAND`, then `raise()`: the process dies of the
+    signal as it would have (exit 139 for SIGSEGV).
+  - On Windows: an unhandled-exception filter writes the report and a
+    minidump beside it (`MiniDumpWriteDump`), then lets Windows end the
+    process.
+  - The report: the signal (or exception code), the faulting address for a
+    real fault (none for a signal sent by `raise` or `kill`), the version,
+    revision, platform, Qt and start time, the log's path, the backtrace,
+    and the log's last lines (its last 4 KiB, from a whole line), read as
+    the crash happens with `open`, `lseek` and `read`. A report is later
+    read as it is: no path in it is ever opened, so a report planted in the
+    folder cannot put another file into what the user attaches to an issue.
+    And at the next start the log already holds that session's own lines.
+  - One thread writes the report (an `atomic_flag`); another that crashes
+    meanwhile dies of its own signal. Frames are module offsets: `addr2line -e horizon -f -C
+    <offset>` names them against the same build.
+  - Uncaught C++ exceptions reach it too: the terminate handler logs the
+    exception and aborts.
+- **The log is flushed as it is written.** Flushing from a signal handler
+  is not safe, so the logger flushes every line (it logs a handful).
+- **At the next start**, before recovery, each report is offered in "Horizon
+  CAD Stopped": what happened, with the report in its details. *Save Report...* writes them to a file to attach to an
+  issue; *Delete Report* deletes it (and its minidump); *Close* keeps it,
+  marked shown, and it is not offered again (deleted if it cannot be
+  renamed, so it is not offered at every start). The ten newest shown
+  reports are kept. Nothing is sent anywhere.
+  - Reports are in `crashes` beside `logs` in the application's data
+    folder, or `HZ_CRASH_DIR`.
+- **Tests** (`test_CrashReport.cpp`): a helper process
+  (`hz_crash_child`, the handler on QtCore alone) crashes by `raise`, by a
+  write to address 0x10, and by recursing off its stack. Each leaves one
+  report with its signal, the address where there is one, the header and
+  a backtrace, and the process still dies of the crash. On Windows it
+  checks the exception code and the minidump (no stack overflow there:
+  the filter runs on what is left of the stack). The log's tail from a
+  long log (whole lines, the end only), a planted report's `Log:` path not
+  followed, pending and shown reports (one that cannot be renamed is
+  deleted), pruning, and the log's flushing are tested too.
+  - The window's dialog (`test_Recovery.cpp`): a report is offered once
+    and kept; deleting one deletes its minidump and leaves the recovery
+    files, which are still offered after it.
+  - CI's "Start the application" step runs `horizon --crash-for-test` (a
+    hidden option) on Xvfb, and fails unless it dies of SIGSEGV and
+    leaves a report. That is the application's own handler, which the
+    tests reach only through the helper.
+- The bug report form asks for the crash report.
 
 ## Phase 168: Help and samples
 

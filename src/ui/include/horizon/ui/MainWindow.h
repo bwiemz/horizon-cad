@@ -120,6 +120,11 @@ public slots:
     /// modified. Called once the window is on screen.
     void offerRecovery();
 
+    /// If an earlier session crashed, show the report it left (Phase 167):
+    /// to save and attach to an issue, keep, or delete. Nothing is sent.
+    /// Called once the window is on screen, before offerRecovery().
+    void offerCrashReports();
+
 protected:
     /// Offers to save every modified document; ignores the close if the user
     /// cancels or a save fails.

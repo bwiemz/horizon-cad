@@ -70,7 +70,10 @@ QString initializeLogging(const QString& logDirectory) {
 
     auto logger = std::make_shared<spdlog::logger>("horizon", sinks.begin(), sinks.end());
     logger->set_level(spdlog::level::info);
-    logger->flush_on(spdlog::level::warn);
+    // Every line reaches the file as it is logged: a crash report (Phase
+    // 167) quotes the log's last lines, and a crash cannot flush it (not in
+    // a signal handler). Few lines are logged, so this costs nothing.
+    logger->flush_on(spdlog::level::info);
     spdlog::set_default_logger(logger);
     qInstallMessageHandler(logQtMessage);
 

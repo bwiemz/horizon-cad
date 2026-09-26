@@ -1,6 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <QCommandLineParser>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -18,6 +19,7 @@
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
 #include "horizon/ui/Application.h"
+#include "horizon/ui/CrashReport.h"
 #include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/Logging.h"
 #include "horizon/ui/MainWindow.h"
@@ -143,6 +145,18 @@ static int run(int argc, char* argv[]) {
     spdlog::info("Horizon CAD {} ({}) starting (Qt {}, {})", hz::version::kString,
                  hz::version::kRevision, qVersion(), QSysInfo::prettyProductName().toStdString());
     if (!logFile.isEmpty()) spdlog::info("Log file: {}", logFile.toStdString());
+    // A crash in native code leaves a report, offered at the next start
+    // (Phase 167). Nothing is sent anywhere.
+    const QString crashDir = hz::ui::crash::reportDirectory();
+    if (!hz::ui::crash::install(
+            crashDir, logFile,
+            QStringLiteral("Horizon CAD %1 (%2)\nPlatform: %3 (%4)\nQt: %5\nStarted: %6")
+                .arg(QString::fromLatin1(hz::version::kString),
+                     QString::fromLatin1(hz::version::kRevision), QSysInfo::prettyProductName(),
+                     QSysInfo::currentCpuArchitecture(), QString::fromLatin1(qVersion()),
+                     QDateTime::currentDateTime().toString(Qt::ISODate)))) {
+        spdlog::warn("No crash reports: {} could not be made", crashDir.toStdString());
+    }
 
     applyDarkTheme(app);
 
@@ -171,8 +185,14 @@ static int run(int argc, char* argv[]) {
                                     "Open the window, check that its viewport can draw, say "
                                     "what was found, and exit: 0 if it can."));
     parser.addOption(selfTest);
+    // For a test of the crash handler (Phase 167): crash at once, as a fault
+    // in native code would. Not shown in --help.
+    QCommandLineOption crashForTest(QStringLiteral("crash-for-test"));
+    crashForTest.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(crashForTest);
     parser.process(app);
     const QStringList files = parser.positionalArguments();
+    if (parser.isSet(crashForTest)) hz::ui::crash::crashForTest();
 
     hz::ui::MainWindow window;
     window.show();
@@ -180,6 +200,7 @@ static int run(int argc, char* argv[]) {
     // Once the window is on screen: offer back what a crashed session left,
     // then open what was asked for.
     QTimer::singleShot(0, &window, [&window, files] {
+        window.offerCrashReports();
         window.offerRecovery();
         window.openFiles(files);
     });
