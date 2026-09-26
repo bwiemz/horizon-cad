@@ -10,12 +10,14 @@
 #include <pthread.h>
 #endif
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <numbers>
 #include <random>
 #include <string>
 
+#include "../TimeLimits.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
@@ -246,4 +248,30 @@ TEST(BooleanRobustnessTest, ADeepTreeNeedsNoDeepStack) {
     ASSERT_NE(c.result, nullptr) << c.reason;
     const double hole = 0.5 * 1024 * 25.0 * std::sin(2.0 * std::numbers::pi / 1024);
     EXPECT_NEAR(volumeOf(*c.result), 4000.0 - 10.0 * hole, 1e-6);
+}
+
+// Phase 165: a box less a finely faceted pin is quick. Building the pin's
+// tree split-tested each of its polygons against every plane before it:
+// 2.6 s at 2,048 facets, minutes at 100,000 triangles. A convex operand's
+// tree is a chain of its planes, built in one pass; the result is the same.
+TEST(BooleanRobustnessTest, AFinelyFacetedPinCutsQuickly) {
+    const auto box = PrimitiveFactory::makeBox(20, 20, 10);
+    const auto pin = moved(*PrimitiveFactory::makeCylinder(5.0, 20.0, 2048),
+                           Mat4::translation(Vec3(10, 10, -5)));
+    const auto start = std::chrono::steady_clock::now();
+    std::string why;
+    const auto result =
+        BooleanOp::execute(*box, *pin, BooleanType::Subtract, &why, NamingScheme::Stable);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    ASSERT_NE(result, nullptr) << why;
+    const double hole = 0.5 * 2048 * 25.0 * std::sin(2.0 * std::numbers::pi / 2048);
+    EXPECT_NEAR(volumeOf(*result), 4000.0 - 10.0 * hole, 1e-6);
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.0);
+#else
+    EXPECT_LT(seconds, 10.0) << "unoptimized: a generous bound";
+#endif
+#endif
 }

@@ -286,26 +286,43 @@ In three PRs.
   - Cone rims have the same exact section, untested.
   - Chamfers on rims keep their prism sections.
 
-## Phase 165: Booleans at scale
+## Phase 165: Booleans at scale (as built)
 
-- **Clip only what is near.** A triangle of one operand whose box does
-  not meet the other operand's box is outside it, and is kept or dropped
-  by the operation without going through the tree (for Union and
-  Subtract A kept, for Intersect dropped; B the other way for Subtract).
-  Of the rest, only those near the other's triangles, found through a
-  box tree of them, are clipped; the others are classified by one point
-  against the other solid (a ray cast through the same tree).
-- **A tree that is not a chain** where it is still needed: split planes
-  chosen from a sample, not always the first polygon's.
-- **Fewer allocations:** `splitPolygon`'s types in a reused buffer;
-  `inheritEdgeIdeals` through a hash of the source segments.
-- **Tests:**
-  - a box less a 2,048-facet pin, exact, within an `HZ_TIME_LIMITS`
-    bound;
-  - a small box overlapping part of a 512- and a 2,048-facet cylinder,
-    whose time ratio stays well below 16;
-  - `FacesInExactContactAreSound` and the robustness suite unchanged, as
-    the net.
+- **Where the time went.** Box less a 2,048-facet pin took 4.0 s in a
+  Debug build (2.6 s optimised, per M11). Timing each stage showed the CSG
+  itself took 1.7 s, and most of that was two tree builds:
+  - the pin's own tree;
+  - the last step, which merges the pin's surviving polygons into the
+    box's tree and, at its leaf, builds them into a sub-tree.
+
+  Each build split-tested every polygon against every plane before it, and
+  allocated each time.
+- **A convex set's tree in one pass.** When `build()` gives a new node a
+  set of 32 or more polygons, `buildChain` checks it:
+  - Each polygon, in order, joins the first plane (in order of first
+    appearance) it lies in, as `splitPolygon` judges it, or begins the
+    next.
+  - The set is convex if no distinct point is in front of any of those
+    planes.
+  - If so, the tree is the chain `build()` would make: the same nodes,
+    planes, polygons and order, so the results are identical. Otherwise
+    nothing is made, and it is built as before.
+  - The full suite, whose Boolean tests check exact volumes and names,
+    passes unchanged.
+- **The result:** the CSG went from 1.7 s to 0.4 s, and the whole Boolean
+  from 4.0 s to 1.7 s (Debug). `AFinelyFacetedPinCutsQuickly` bounds it
+  at 1 s optimised and 10 s Debug.
+- **Not done:** clipping only what is near. A polygon far from the other
+  operand still goes through the tree, and a non-convex operand's tree is
+  still built by splitting. Drilling a plate that already has holes costs
+  about 0.26 s more for each 256-facet hole already in it (Debug).
+  - The plan's bounding-volume approach needs far polygons classified by a
+    point-in-solid test, not by a tree of a partial surface, which
+    misclassifies where it is open. That is a new Boolean core: pairwise
+    intersection and classification, a mesh arrangement. It is left for a
+    phase of its own.
+  - The rest of this Boolean's time is FragmentMerge (0.6 s) and the
+    sewer and names (0.3 s).
 
 ## Tracking
 

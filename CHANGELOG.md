@@ -17,7 +17,15 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
-## Unreleased — Professional workflows, Milestone 18 (Phases 162–165, in progress)
+## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
+
+- **Booleans at scale (165).**
+  - A Boolean with a finely faceted round operand (a pin, a cylinder of
+    thousands of facets) is several times quicker: a convex operand's tree
+    is built in one pass. Results are unchanged.
+  - Drilling a plate that already has many holes still slows as the holes
+    add up; that needs a different Boolean core, left for later.
+
 
 - **Fillets on curved faces (164).**
   - A revolve's rim can be filleted: a solid of revolution's, and a ring's
