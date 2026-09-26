@@ -21,6 +21,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/GettingStartedTour.h"
 #include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/PendingAdds.h"
 #include "horizon/ui/Preferences.h"
@@ -133,6 +134,14 @@ public slots:
     QString helpPageForContext() const;
     /// The guide's window, when it has been opened.
     HelpWindow* helpWindow() const { return m_help; }
+
+    /// Help > Getting Started (Phase 168c): a short tour of the window.
+    void onGettingStarted();
+    /// The tour, once, the first time Horizon CAD starts (after crash
+    /// reports and recovery have been offered).
+    void offerTour();
+    /// The tour, while it is shown.
+    GettingStartedTour* tour() const { return m_tour; }
 
     /// File > Open Sample (Phase 168b). The samples shipped with the
     /// application: <exe dir>/samples, or HZ_SAMPLES_DIR.
@@ -633,6 +642,7 @@ private:
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;
     QPointer<QMessageBox> m_massBox;
     QPointer<HelpWindow> m_help;
+    QPointer<GettingStartedTour> m_tour;
     std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
 
     // Status bar widgets

@@ -68,6 +68,12 @@ work, not "post-1.0".
   - A sample opens as a copy in "Horizon CAD Samples" in your documents,
     so you can change and save it; a copy you have changed is kept.
 
+- **Getting started (168c).**
+  - The first time Horizon CAD starts, a short tour points at each part of
+    the window (the ribbon, the feature tree, the view, the properties,
+    the status bar) and says what it is for. Help ▸ Getting Started shows
+    it again.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

@@ -244,11 +244,26 @@ In three parts: 168a the guide, 168b the samples, 168c Getting Started.
 - The sample names are English (they are file names); their kind is
   translated.
 
-### 168c: Getting Started
+### 168c: Getting Started (as built)
 
-- Help ▸ Getting Started: a short tour pointing at the ribbon, the tree, the
-  viewport and the status bar, one step at a time. It is offered once, at
-  first start.
+- **Help ▸ Getting Started** (`GettingStartedTour`): six steps, each
+  outlining a part of the window (the ribbon, the feature tree, the view,
+  Properties, the status bar, the menus) with a panel beside it saying what
+  it is for, and Back, Next (Done on the last) and Close.
+  - The outline lets clicks through and the panel is a child of the window,
+    so the window stays usable, and it keeps its place as the window is
+    resized. A step whose target is not in the window (a panel closed, or
+    floated as a window of its own; the menus on macOS, at the top of the
+    screen) shows its panel alone, in the middle.
+  - Its buttons take the focus: Enter goes on, Escape closes it.
+- **Offered once**: the first start shows it after crash reports, recovery
+  and files named on the command line (`help/tourOffered` in the settings);
+  after that it is in the Help menu.
+- **Tests:** each step outlines its target inside the window (the view's
+  step contains the viewport's middle), the steps go forward and back, Done
+  ends the tour and deletes it; a floated panel's step outlines nothing,
+  and Escape closes the tour; it is offered at the first start only, and
+  the Help menu shows it again.
 
 ## Phase 169: macOS, and signed installers
 
