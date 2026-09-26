@@ -64,6 +64,7 @@ AssemblyTreePanel::AssemblyTreePanel(QWidget* parent) : QDockWidget(tr("Assembly
     setObjectName("AssemblyTreePanel");
     m_tree = new QTreeWidget(this);
     m_tree->setObjectName("assemblyTree");
+    m_tree->setAccessibleName(tr("Components and mates"));
     m_tree->setHeaderHidden(true);
     m_tree->setContextMenuPolicy(Qt::ActionsContextMenu);
     setWidget(m_tree);

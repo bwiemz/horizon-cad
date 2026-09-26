@@ -137,12 +137,12 @@ Los detalles están en el registro:
     <name>hz::ui::AssemblyTreePanel</name>
     <message>
         <location filename="../src/ui/src/AssemblyTreePanel.cpp" line="+31"/>
-        <location line="+110"/>
+        <location line="+111"/>
         <source> (suppressed)</source>
         <translation type="unfinished"> (suprimido)</translation>
     </message>
     <message>
-        <location line="-99"/>
+        <location line="-100"/>
         <source>Coincident</source>
         <translation type="unfinished">Coincidente</translation>
     </message>
@@ -187,7 +187,12 @@ Los detalles están en el registro:
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+4"/>
+        <source>Components and mates</source>
+        <translation type="unfinished">Componentes y relaciones de posición</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Remove</source>
         <translation type="unfinished">Eliminar</translation>
     </message>
@@ -1661,6 +1666,11 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+9"/>
+        <source>Features</source>
+        <translation type="unfinished">Operaciones</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Feature</source>
         <translation type="unfinished">Operación</translation>
     </message>
@@ -1697,12 +1707,18 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Configuración:</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+3"/>
+        <source>Configuration</source>
+        <translation type="unfinished">Configuración</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location line="+5"/>
         <source>Sketches</source>
         <translation type="unfinished">Croquis</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+20"/>
         <source>Edit…</source>
         <translation type="unfinished">Editar…</translation>
     </message>
@@ -1805,11 +1821,12 @@ empezar a construir su pieza.</translation>
     <name>hz::ui::LayerPanel</name>
     <message>
         <location filename="../src/ui/src/LayerPanel.cpp" line="+25"/>
+        <location line="+10"/>
         <source>Layers</source>
         <translation type="unfinished">Capas</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+1"/>
         <source>Name</source>
         <translation type="unfinished">Nombre</translation>
     </message>
@@ -1927,7 +1944,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+620"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+631"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -1947,23 +1964,28 @@ empezar a construir su pieza.</translation>
         <translation>&amp;Nuevo dibujo</translation>
     </message>
     <message>
-        <location line="-427"/>
+        <location line="-438"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">una curva de %1 tramos, desde %2</translation>
     </message>
     <message>
         <location line="+49"/>
-        <location line="+97"/>
+        <location line="+108"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">orientada hacia %1 en %2</translation>
     </message>
     <message>
-        <location line="-91"/>
+        <location line="-102"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">una cara curva de %1 facetas, en torno a %2</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+30"/>
+        <source>Close %1</source>
+        <translation type="unfinished">Cerrar %1</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <location line="+869"/>
         <location line="+17"/>
         <source>Distance</source>
@@ -2149,12 +2171,12 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+998"/>
+        <location line="+999"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dibujo 1</translation>
     </message>
     <message>
-        <location line="-936"/>
+        <location line="-937"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
@@ -3127,12 +3149,12 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3796"/>
+        <location line="+3798"/>
         <source>Mirror</source>
         <translation type="unfinished">Simetría</translation>
     </message>
     <message>
-        <location line="-3872"/>
+        <location line="-3874"/>
         <source>Trim</source>
         <translation type="unfinished">Recortar</translation>
     </message>
@@ -3149,19 +3171,19 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3645"/>
+        <location line="+3647"/>
         <source>Fillet</source>
         <translation type="unfinished">Redondeo</translation>
     </message>
     <message>
-        <location line="-3708"/>
+        <location line="-3710"/>
         <location line="+64"/>
-        <location line="+3644"/>
+        <location line="+3646"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chaflán</translation>
     </message>
     <message>
-        <location line="-3707"/>
+        <location line="-3709"/>
         <source>Break</source>
         <translation type="unfinished">Partir</translation>
     </message>
@@ -3310,12 +3332,12 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2538"/>
+        <location line="+2540"/>
         <source>Explode</source>
         <translation type="unfinished">Descomponer</translation>
     </message>
     <message>
-        <location line="-2535"/>
+        <location line="-2537"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3330,96 +3352,96 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2680"/>
+        <location line="+2682"/>
         <source>Box</source>
         <translation type="unfinished">Caja</translation>
     </message>
     <message>
-        <location line="-2679"/>
-        <location line="+2689"/>
+        <location line="-2681"/>
+        <location line="+2691"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cilindro</translation>
     </message>
     <message>
-        <location line="-2688"/>
-        <location line="+2695"/>
+        <location line="-2690"/>
+        <location line="+2697"/>
         <source>Sphere</source>
         <translation type="unfinished">Esfera</translation>
     </message>
     <message>
-        <location line="-2694"/>
-        <location line="+2701"/>
+        <location line="-2696"/>
+        <location line="+2703"/>
         <source>Cone</source>
         <translation type="unfinished">Cono</translation>
     </message>
     <message>
-        <location line="-2700"/>
-        <location line="+2711"/>
+        <location line="-2702"/>
+        <location line="+2713"/>
         <source>Torus</source>
         <translation type="unfinished">Toroide</translation>
     </message>
     <message>
-        <location line="-2709"/>
+        <location line="-2711"/>
         <source>Features</source>
         <translation type="unfinished">Operaciones</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3432"/>
+        <location line="+3434"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extruir</translation>
     </message>
     <message>
-        <location line="-3477"/>
-        <location line="+3496"/>
+        <location line="-3479"/>
+        <location line="+3498"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Revolución</translation>
     </message>
     <message>
-        <location line="-3522"/>
-        <location line="+3852"/>
+        <location line="-3524"/>
+        <location line="+3854"/>
         <source>Hole</source>
         <translation type="unfinished">Taladro</translation>
     </message>
     <message>
-        <location line="-3850"/>
+        <location line="-3852"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combinar sólidos</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3603"/>
+        <location line="+3605"/>
         <source>Union</source>
         <translation type="unfinished">Unión</translation>
     </message>
     <message>
-        <location line="-3602"/>
-        <location line="+3606"/>
+        <location line="-3604"/>
+        <location line="+3608"/>
         <source>Subtract</source>
         <translation type="unfinished">Restar</translation>
     </message>
     <message>
-        <location line="-3605"/>
-        <location line="+3609"/>
+        <location line="-3607"/>
+        <location line="+3611"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersecar</translation>
     </message>
     <message>
-        <location line="-3604"/>
-        <location line="+3673"/>
+        <location line="-3606"/>
+        <location line="+3675"/>
         <source>Shell</source>
         <translation type="unfinished">Vaciado</translation>
     </message>
     <message>
-        <location line="-3672"/>
-        <location line="+3692"/>
+        <location line="-3674"/>
+        <location line="+3694"/>
         <source>Draft</source>
         <translation type="unfinished">Ángulo de desmoldeo</translation>
     </message>
     <message>
-        <location line="-3690"/>
+        <location line="-3692"/>
         <source>Pattern</source>
         <translation type="unfinished">Matriz</translation>
     </message>
@@ -3443,7 +3465,7 @@ empezar a construir su pieza.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+834"/>
+        <location line="+836"/>
         <location line="+321"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3453,7 +3475,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-4311"/>
+        <location line="-4313"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -3474,22 +3496,22 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3980"/>
+        <location line="+3982"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-3974"/>
+        <location line="-3976"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
     <message>
-        <location line="+286"/>
+        <location line="+287"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (recuperado)</translation>
     </message>
     <message>
-        <location line="+18"/>
+        <location line="+19"/>
         <source>Unsaved Changes</source>
         <translation type="unfinished">Cambios sin guardar</translation>
     </message>
@@ -5339,7 +5361,7 @@ No exacto: %n aristas donde las superficies curvas a cada lado no se encuentran.
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-4327"/>
+        <location line="-4329"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>
@@ -5494,17 +5516,22 @@ No exacto: %n aristas donde las superficies curvas a cada lado no se encuentran.
     </message>
     <message>
         <location line="+1"/>
-        <location line="+128"/>
+        <location line="+129"/>
         <source>Type:</source>
         <translation type="unfinished">Tipo:</translation>
     </message>
     <message>
-        <location line="-122"/>
+        <location line="-123"/>
         <source>Layer:</source>
         <translation type="unfinished">Capa:</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+4"/>
+        <source>Color</source>
+        <translation type="unfinished">Color</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <location line="+11"/>
         <location line="+7"/>
         <source>ByLayer</source>
@@ -5728,7 +5755,12 @@ No exacto: %n aristas donde las superficies curvas a cada lado no se encuentran.
         <translation type="unfinished">Restricciones:</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+2"/>
+        <source>Constraints</source>
+        <translation type="unfinished">Restricciones</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>Delete Constraint</source>
         <translation type="unfinished">Eliminar restricción</translation>
     </message>
@@ -5849,7 +5881,17 @@ ver y editar sus propiedades.</translation>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+483"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+41"/>
+        <source>Viewport</source>
+        <translation type="unfinished">Ventana gráfica</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The drawing or the model, as it is drawn. Work in it from the menus, the ribbon and the keyboard shortcuts.</source>
+        <translation type="unfinished">El dibujo o el modelo, tal como se muestra. Trabaje en él desde los menús, la cinta de opciones y los métodos abreviados de teclado.</translation>
+    </message>
+    <message>
+        <location line="+446"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">El controlador gráfico ofrece OpenGL %1.%2; Horizon CAD necesita 3.3.</translation>
     </message>

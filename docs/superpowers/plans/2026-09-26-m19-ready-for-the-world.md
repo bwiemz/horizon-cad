@@ -89,14 +89,28 @@ As built:
 - **Python's bytecode** (`__pycache__`, which running the checker makes)
   is ignored.
 
-### 166b: accessible names on every control
+### 166b: accessible names on every control (as built)
 
-- Every control a screen reader reaches has an accessible name: icon-only
-  buttons (the ribbon's, a dock's), the viewport ("3D view" / "Drawing"),
-  the trees and lists, and the fields of `FeatureForm` (from their labels).
-- **Test:** walk the main window's widgets, and a form's. Every focusable
-  or clickable one must have a name (its own, or its text), and a
-  translated one where the text is translated.
+- **What had no name.** Walking the window through `QAccessible` found
+  the controls Qt cannot name from a text or a label: the feature tree,
+  the configuration choice and the sketch list; the layer tree; the
+  assembly tree; the property panel's colour button and constraint list;
+  the viewport; and each document tab's close button. Ribbon and dock
+  buttons are named by their actions already.
+  - They are named in code, through `tr()`. The viewport is "Viewport",
+    with a description of what it is and how to work in it (it does not
+    change name between a drawing and a part).
+  - A tab's close button is "Close <document>", renamed when the tab is.
+- **Forms:** `FeatureForm`'s fields are named by their `QFormLayout`
+  labels, as Qt does; the test confirms it.
+- **Tests** (`test_Accessibility.cpp`): every focusable or clickable
+  control of the window, and of a form with each kind of field, has a
+  name. Qt's own inner parts (a spin box's line edit, a combo box's list)
+  are reached through their control, and left out. With the German
+  catalog, the viewport is "Ansichtsfenster" and a close button
+  "... schließen".
+- The five new strings are translated in all six catalogs (unreviewed,
+  as 166a's).
 
 ## Phase 167: Crash reports
 

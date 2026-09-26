@@ -271,6 +271,17 @@ void checkClicked(QListWidget* list, const PickList& picks,
     }
 }
 
+/// A tab's close button named for its tab, as a screen reader says it
+/// (Phase 166): "Close Part 1". Qt gives it none. Whichever side the style
+/// puts it on.
+void nameCloseButton(QTabBar& bar, int index) {
+    for (const auto side : {QTabBar::LeftSide, QTabBar::RightSide}) {
+        if (QWidget* button = bar.tabButton(index, side)) {
+            button->setAccessibleName(MainWindow::tr("Close %1").arg(bar.tabText(index)));
+        }
+    }
+}
+
 /// How a feature's parameter or vector is labelled in its edit form.
 QString parameterLabel(const std::string& name) {
     static const std::map<std::string, const char*> labels = {
@@ -490,7 +501,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_document = m_docManager.newDocument(doc::DocumentType::Drawing);
     watchDocument(m_document);
     m_tabs.push_back(DocTab{m_document, nullptr, tr("Drawing 1"), m_nextRecoveryKey++});
-    m_tabBar->addTab(tr("Drawing 1"));
+    nameCloseButton(*m_tabBar, m_tabBar->addTab(tr("Drawing 1")));
     m_viewport->setDocument(m_document.get());
 
     // Dock panels (must exist before createMenus, which adds toggleViewAction).
@@ -1408,6 +1419,7 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
     }
     m_tabs.push_back(std::move(tab));
     int index = m_tabBar->addTab(title);
+    nameCloseButton(*m_tabBar, index);
     m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
 }
@@ -1620,6 +1632,7 @@ void MainWindow::refreshModifiedIndicators() {
         const int index = static_cast<int>(i);
         if (index < m_tabBar->count() && m_tabBar->tabText(index) != text) {
             m_tabBar->setTabText(index, text);
+            nameCloseButton(*m_tabBar, index);
         }
     }
     const DocTab* active = activeTab();
