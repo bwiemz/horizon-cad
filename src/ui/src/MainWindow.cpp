@@ -104,6 +104,7 @@
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/FilletTool.h"
 #include "horizon/ui/HatchTool.h"
+#include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/IconGenerator.h"
 #include "horizon/ui/InsertBlockDialog.h"
 #include "horizon/ui/InsertBlockTool.h"
@@ -634,7 +635,8 @@ void MainWindow::createMenus() {
     QAction* newAction = fileMenu->addAction(tr("&New Drawing"), this, &MainWindow::onNewFile);
     newAction->setShortcut(QKeySequence::New);
 
-    fileMenu->addAction(tr("New &Part"), this, &MainWindow::onNewPart);
+    fileMenu->addAction(tr("New &Part"), this, &MainWindow::onNewPart)
+        ->setObjectName(QStringLiteral("action_new_part"));
     fileMenu->addAction(tr("New Asse&mbly"), this, &MainWindow::onNewAssembly)
         ->setObjectName(QStringLiteral("action_new_assembly"));
 
@@ -1007,6 +1009,10 @@ void MainWindow::createMenus() {
 
     // ---- Help ----
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction* guideAction = helpMenu->addAction(tr("&User Guide"), this, &MainWindow::onUserGuide);
+    guideAction->setObjectName(QStringLiteral("action_user_guide"));
+    guideAction->setShortcut(QKeySequence::HelpContents);
+    helpMenu->addSeparator();
     QAction* aboutAction =
         helpMenu->addAction(tr("&About Horizon CAD"), this, &MainWindow::onAbout);
     aboutAction->setObjectName(QStringLiteral("action_about"));
@@ -2024,6 +2030,31 @@ void MainWindow::onConfigurationChosen(const QString& name) {
     rebuildFeatureTree();
     m_statusPrompt->setText(name.isEmpty() ? tr("Built with its own variables.")
                                            : tr("Built as %1.").arg(name));
+}
+
+void MainWindow::onUserGuide() {
+    if (m_help == nullptr) {
+        m_help = new HelpWindow(this);
+        m_help->setAttribute(Qt::WA_DeleteOnClose);
+    }
+    m_help->showPage(helpPageForContext());
+    m_help->show();
+    m_help->raise();
+    m_help->activateWindow();
+}
+
+QString MainWindow::helpPageForContext() const {
+    if (m_document == nullptr) return QStringLiteral("index.md");
+    switch (m_document->type()) {
+        case doc::DocumentType::Assembly:
+            return QStringLiteral("assemblies.md");
+        case doc::DocumentType::Part:
+            return m_viewport->activeSketch() != nullptr ? QStringLiteral("sketches.md")
+                                                         : QStringLiteral("parts.md");
+        case doc::DocumentType::Drawing:
+            break;
+    }
+    return QStringLiteral("drafting.md");
 }
 
 void MainWindow::onAbout() {

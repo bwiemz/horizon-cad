@@ -58,6 +58,12 @@ public:
     /// ("5 mm", "0.5 rad"), not the window's one-key shortcuts (Phase 154).
     virtual bool typingText() const { return false; }
 
+    /// Whether the tool acts on @p key (a Qt::Key, without Ctrl or Alt)
+    /// itself just now: taken before the window's one-key shortcuts, as a
+    /// value being typed is. Polyline Edit's A, D, C and J, which are also
+    /// Arc's, Linear's and Circle's keys.
+    virtual bool claimsKey(int /*key*/) const { return false; }
+
     /// The point the next one is measured from, if there is one: the start
     /// of the line being drawn, a circle's centre. Relative input
     /// ("@dx,dy"), a length typed alone, and ortho and polar tracking all

@@ -21,6 +21,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/PendingAdds.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/RebuildJob.h"
@@ -124,6 +125,14 @@ public slots:
     /// to save and attach to an issue, keep, or delete. Nothing is sent.
     /// Called once the window is on screen, before offerRecovery().
     void offerCrashReports();
+
+    /// Help > User Guide (Phase 168): the guide, at the page for what is
+    /// being worked on (a drawing, a sketch, a part, an assembly).
+    void onUserGuide();
+    /// That page ("parts.md").
+    QString helpPageForContext() const;
+    /// The guide's window, when it has been opened.
+    HelpWindow* helpWindow() const { return m_help; }
 
 protected:
     /// Offers to save every modified document; ignores the close if the user
@@ -609,6 +618,7 @@ private:
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;
     QPointer<QMessageBox> m_massBox;
+    QPointer<HelpWindow> m_help;
     std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
 
     // Status bar widgets

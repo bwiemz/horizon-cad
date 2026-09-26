@@ -48,6 +48,18 @@ work, not "post-1.0".
     is ever sent.
   - The log is written line by line, so it holds what led up to a crash.
 
+- **A user guide (168a).**
+  - Help ▸ User Guide (F1) opens a guide in its own window, at the page
+    for what you are working on: a drawing, a sketch, a part or an
+    assembly.
+  - It covers getting started, 2D drafting, sketches and constraints,
+    parts, assemblies, drawing sheets, files and recovery, settings, and
+    the keyboard shortcuts. It is part of the application, so it works
+    offline.
+  - Polyline Edit's A, D and C keys (add a vertex, delete one, close the
+    polyline) switched to the Arc, Linear dimension and Circle tools
+    instead. They now work.
+
 ## Unreleased — Professional workflows, Milestone 18 (Phases 162–165)
 
 - **Booleans at scale (165).**

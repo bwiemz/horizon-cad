@@ -170,21 +170,55 @@ As built:
 
 ## Phase 168: Help and samples
 
-- **A user guide:** Markdown in `docs/guide/`, built into HTML at build time
-  (a small converter in `tools/`, no dependency), installed with the
-  application, and opened from Help ▸ User Guide in the browser.
-  - It covers sketching, part features, assemblies, drawings, and import
-    and export.
-- **Getting started:** Help ▸ Getting Started, a short tour pointing at the
-  ribbon, the tree, the viewport and the status bar, one step at a time.
-  It is offered once at first start.
-- **Samples:** a bracket part, a drilled plate, a two-part assembly with
-  mates, and a drawing of the bracket.
+In three parts: 168a the guide, 168b the samples, 168c Getting Started.
+
+### 168a: the user guide (as built)
+
+- **In the application, not a browser.** Qt reads Markdown itself
+  (`QTextBrowser`, `QTextDocument::MarkdownResource`), so the guide is
+  `docs/guide/*.md` compiled into the resources (`qt_add_resources` on
+  `hz_ui`, at `:/guide`) and shown in a Help window. No converter, no build
+  step, no HTML to install, and it works offline on every platform. The
+  plan's converter in `tools/` was not needed.
+- **`HelpWindow`**: not modal, with Back, Forward and Contents; links
+  between pages open there, a web link in the browser. Its title is the
+  page's first heading.
+- **Help ▸ User Guide (F1)** opens it at the page for what is being worked
+  on: drafting in a drawing, sketches while one is edited, parts in a part,
+  assemblies in an assembly.
+- **Ten pages**, written from the code (an inventory of every menu, tool,
+  form and default, with its source line): Getting Started (the window,
+  the view, a first part in five steps), 2D drafting, sketches and
+  constraints, parts, assemblies, drawing sheets, files (import, export,
+  recovery, crash reports), settings, and keyboard shortcuts.
+- **Found writing it:** Polyline Edit's A, D and C were taken by the Arc,
+  Linear and Circle shortcuts, so they switched tools. Fixed in its own
+  commit: a tool can claim its keys (`Tool::claimsKey`), offered as Qt
+  offers them (ShortcutOverride), which the old test had not done.
+- **Tests** (`test_Help.cpp`): every page is compiled in and has a title;
+  every link goes to a page, and every page is reached from the contents; a
+  page is shown formatted (a heading, a table, no Markdown marks); a link
+  opens its page and Back returns; F1 picks the page by context; and the
+  first part in Getting Started is made in a test exactly as the page says
+  (8000 mm³).
+- The guide is in English; the window's own strings are translated. A
+  translated guide would be a page set per language, looked up by the
+  locale, when there are reviewed translations to put in it.
+
+### 168b: samples
+
+- A bracket part, a drilled plate, a two-part assembly with mates, a
+  drawing sheet of the bracket, and a 2D drawing.
   - They are made by a build step from code (the same API the tests use),
     so they always open in the version that ships them.
   - They are installed, and File ▸ Open Sample… lists them.
-- **Tests:** every sample opens and builds; the guide builds, and its links
-  resolve.
+- **Tests:** every sample opens and builds.
+
+### 168c: Getting Started
+
+- Help ▸ Getting Started: a short tour pointing at the ribbon, the tree, the
+  viewport and the status bar, one step at a time. It is offered once, at
+  first start.
 
 ## Phase 169: macOS, and signed installers
 
