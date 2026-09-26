@@ -705,7 +705,7 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
         // and where a build last placed it there (Phase 157).
         skObj["plane"] = planeToJson(sketch->drawnPlane());
         if (!sketch->face().empty()) skObj["face"] = sketch->face();
-        if (sketch->placed()) skObj["placed"] = planeToJson(*sketch->placed());
+        if (const auto& placed = sketch->placed()) skObj["placed"] = planeToJson(*placed);
 
         json skEntities = json::array();
         for (const auto& entity : sketch->entities()) {

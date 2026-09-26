@@ -42,17 +42,23 @@ Triad::Triad(const Vec3& origin, const std::array<Vec3, 3>& axes, const render::
     if (across.length() < 1e-12) across = forward.cross(Vec3::UnitX);
     if (across.length() < 1e-12) across = forward.cross(Vec3::UnitY);
     across = across.normalized();
-    const QPointF a = toScreen(m_origin);
-    const QPointF b = toScreen(m_origin + across);
-    const double pixelsPerUnit = std::hypot(b.x() - a.x(), b.y() - a.y());
+    const auto a = project(m_origin);
+    const auto b = project(m_origin + across);
+    if (!a || !b) return;  // its middle behind the view: not visible
+    m_visible = true;
+    const double pixelsPerUnit = std::hypot(b->x() - a->x(), b->y() - a->y());
     m_size = pixelsPerUnit > 1e-12 ? kPixels / pixelsPerUnit : 1.0;
 }
 
-QPointF Triad::toScreen(const Vec3& world) const {
+std::optional<QPointF> Triad::project(const Vec3& world) const {
     const math::Vec4 clip = m_viewProjection * math::Vec4(world, 1.0);
-    if (std::abs(clip.w) < 1e-15) return {0.0, 0.0};
+    if (!(clip.w > 1e-12)) return std::nullopt;  // behind the eye, as a pick sees it
     const Vec3 ndc = clip.perspectiveDivide();
-    return {(ndc.x + 1.0) * 0.5 * m_width, (1.0 - ndc.y) * 0.5 * m_height};
+    return QPointF((ndc.x + 1.0) * 0.5 * m_width, (1.0 - ndc.y) * 0.5 * m_height);
+}
+
+QPointF Triad::toScreen(const Vec3& world) const {
+    return project(world).value_or(QPointF(-1e9, -1e9));  // far off: nothing is there
 }
 
 std::vector<Vec3> Triad::segments(const Handle& handle) const {
@@ -83,6 +89,7 @@ std::vector<Vec3> Triad::segments(const Handle& handle) const {
 }
 
 std::optional<Triad::Handle> Triad::hitTest(const QPointF& at) const {
+    if (!m_visible) return std::nullopt;
     std::optional<Handle> best;
     double nearest = kTolerance;
     for (const Kind kind : {Kind::Arrow, Kind::Ring}) {
@@ -90,8 +97,10 @@ std::optional<Triad::Handle> Triad::hitTest(const QPointF& at) const {
             const Handle handle{kind, k};
             const std::vector<Vec3> points = segments(handle);
             for (size_t i = 0; i + 1 < points.size(); i += 2) {
-                const double d =
-                    distanceToSegment(at, toScreen(points[i]), toScreen(points[i + 1]));
+                const auto a = project(points[i]);
+                const auto b = project(points[i + 1]);
+                if (!a || !b) continue;  // behind the view: not there to take
+                const double d = distanceToSegment(at, *a, *b);
                 // Arrows are looked at first, so on a tie an arrow keeps it:
                 // it is the thinner mark.
                 if (d < nearest) {

@@ -958,6 +958,19 @@ TEST(AssembliesTest, ASecondButtonOrAnUndoDuringADragPutsItBack) {
     drive.releaseAt(away);
     EXPECT_EQ(undo.undoCount(), steps - 1) << "the undo, and no drag step";
     EXPECT_TRUE(undo.canRedo()) << "what was undone can be redone";
+
+    // A release that never comes (a dialog a shortcut opened took the
+    // mouse): the next move without the button puts the drag back.
+    trigger(w, "action_redo");
+    const Vec3 before = translationOf(*assembly.component(lid));
+    drive.pressAt(grab);
+    drive.dragAt(away);
+    ASSERT_TRUE(view.draggingComponent());
+    drive.moveAt(away);
+    EXPECT_FALSE(view.draggingComponent());
+    const Vec3 after = translationOf(*assembly.component(lid));
+    EXPECT_NEAR((after - before).length(), 0.0, 1e-9) << "put back";
+    EXPECT_EQ(undo.undoCount(), steps) << "nothing recorded";
 }
 
 // Phase 158b: the chosen component's triad. Dragged by its x arrow, the lid
