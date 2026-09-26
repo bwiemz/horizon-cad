@@ -703,14 +703,25 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
     orientOutward(faces);
     auto solid = SolidSewer::sew(faces);
     if (solid != nullptr) {
-        // The carrier cone runs from whichever end is (or would be) the apex.
-        const double apexZ = sharpTop ? height : 0.0;
-        const Vec3 apexDir = sharpTop ? Vec3(0, 0, -1) : Vec3(0, 0, 1);
-        const double baseR = sharpTop ? bottomRadius : topRadius;
-        const double halfAngle = std::atan2(baseR, height);
-        tagAnalyticSurface(*solid, "cone/side",
-                           std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
-                               Vec3(0, 0, apexZ), apexDir, halfAngle, height)));
+        // The carrier cone runs from its apex: where the side meets the axis,
+        // at an end that comes to a point, or beyond the narrower end of a
+        // frustum. It used to start at the bottom whatever the radii, so a
+        // frustum's ideal was another cone (Phase 160 found it, fitting one).
+        // Radii alike: a cylinder.
+        if (std::abs(bottomRadius - topRadius) <= kRingEps) {
+            tagAnalyticSurface(*solid, "cone/side",
+                               std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCylinder(
+                                   Vec3(0, 0, 0), Vec3(0, 0, 1), bottomRadius, height)));
+        } else {
+            const double apexZ = height * bottomRadius / (bottomRadius - topRadius);
+            const bool narrowing = bottomRadius > topRadius;  // toward the top
+            const Vec3 apexDir = narrowing ? Vec3(0, 0, -1) : Vec3(0, 0, 1);
+            const double reach = narrowing ? apexZ : height - apexZ;  // apex to the far end
+            const double halfAngle = std::atan2(std::abs(bottomRadius - topRadius), height);
+            tagAnalyticSurface(*solid, "cone/side",
+                               std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeCone(
+                                   Vec3(0, 0, apexZ), apexDir, halfAngle, reach)));
+        }
         if (!sharpBottom) tagRimArcs(*solid, bottomRadius, 0.0);
         if (!sharpTop) tagRimArcs(*solid, topRadius, height);
     }

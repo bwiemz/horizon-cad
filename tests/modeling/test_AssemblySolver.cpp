@@ -370,7 +370,7 @@ TEST(AssemblySolverTest, LargeAssemblySolvesQuickly) {
     comps.reserve(kN);
     for (int i = 0; i < kN; ++i) {
         SolverComponent c;
-        c.id = static_cast<uint64_t>(i + 1);
+        c.id = static_cast<uint64_t>(i) + 1U;
         c.grounded = (i == 0);
         // Start each roughly stacked but perturbed, so the solve has real work.
         c.transform = Mat4::translation(Vec3(0.3 * i, -0.2 * i, 10.0 * i + 0.7 * ((i * 37) % 5)));
@@ -382,14 +382,14 @@ TEST(AssemblySolverTest, LargeAssemblySolvesQuickly) {
         SolverMate top;  // top of i coincident with bottom of i+1
         top.type = MateType::Coincident;
         top.componentA = static_cast<uint64_t>(i);
-        top.componentB = static_cast<uint64_t>(i + 1);
+        top.componentB = static_cast<uint64_t>(i) + 1U;
         top.frameA = plane(Vec3(0, 0, 5), Vec3(0, 0, 1));
         top.frameB = plane(Vec3(0, 0, -5), Vec3(0, 0, -1));
         mates.push_back(top);
         SolverMate side;  // a side face pair to constrain in-plane sliding
         side.type = MateType::Coincident;
         side.componentA = static_cast<uint64_t>(i);
-        side.componentB = static_cast<uint64_t>(i + 1);
+        side.componentB = static_cast<uint64_t>(i) + 1U;
         side.frameA = plane(Vec3(5, 0, 0), Vec3(1, 0, 0));
         side.frameB = plane(Vec3(5, 0, 0), Vec3(1, 0, 0));
         mates.push_back(side);
@@ -413,4 +413,139 @@ TEST(AssemblySolverTest, LargeAssemblySolvesQuickly) {
 #else
     (void)ms;
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Phase 160: more to mate — points, lines, spheres, limits
+// ---------------------------------------------------------------------------
+
+namespace {
+
+MateFrame pointAt(const Vec3& at) {
+    MateFrame f;
+    f.kind = MateFrameKind::Point;
+    f.origin = at;
+    return f;
+}
+
+MateFrame line(const Vec3& origin, const Vec3& dir) {
+    MateFrame f;
+    f.kind = MateFrameKind::Line;
+    f.origin = origin;
+    f.direction = dir.normalized();
+    return f;
+}
+
+MateFrame sphere(const Vec3& centre, double radius) {
+    MateFrame f;
+    f.kind = MateFrameKind::Spherical;
+    f.origin = centre;
+    f.radius = radius;
+    return f;
+}
+
+SolverMate mateOf(MateType type, const MateFrame& a, const MateFrame& b, double value = 0.0) {
+    SolverMate mate;
+    mate.type = type;
+    mate.componentA = 1;
+    mate.componentB = 2;
+    mate.frameA = a;
+    mate.frameB = b;
+    mate.value = value;
+    return mate;
+}
+
+}  // namespace
+
+TEST(AssemblySolverTest, APointGoesOntoAPlaneAndOntoALine) {
+    auto components = twoComponents(Mat4::translation(Vec3(3, -2, 7)));
+    AssemblySolver solver;
+    // B's point (1, 2, 3) onto A's plane z = 10.
+    auto result = solver.solve(
+        components,
+        {mateOf(MateType::Coincident, plane(Vec3(0, 0, 10), Vec3::UnitZ), pointAt(Vec3(1, 2, 3)))});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(2).transformPoint(Vec3(1, 2, 3)).z, 10.0, 1e-6);
+    EXPECT_EQ(result.componentDOF.at(2), 5) << "a point on a plane takes one freedom";
+
+    // The same point onto A's line, the x axis at y = 4, z = 10.
+    result = solver.solve(
+        components,
+        {mateOf(MateType::Coincident, line(Vec3(0, 4, 10), Vec3::UnitX), pointAt(Vec3(1, 2, 3)))});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    const Vec3 on = result.transforms.at(2).transformPoint(Vec3(1, 2, 3));
+    EXPECT_NEAR(on.y, 4.0, 1e-6);
+    EXPECT_NEAR(on.z, 10.0, 1e-6);
+}
+
+TEST(AssemblySolverTest, LinesAreMadeCollinearAndSpheresConcentric) {
+    auto components = twoComponents(Mat4::translation(Vec3(3, -2, 7)) * Mat4::rotationZ(0.4));
+    AssemblySolver solver;
+    auto result =
+        solver.solve(components, {mateOf(MateType::Coincident, line(Vec3(0, 0, 0), Vec3::UnitZ),
+                                         line(Vec3(1, 1, 0), Vec3::UnitX))});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    const Mat4& placed = result.transforms.at(2);
+    const Vec3 dir = placed.transformDirection(Vec3::UnitX);
+    EXPECT_NEAR(std::abs(dir.z), 1.0, 1e-6) << "along A's line";
+    const Vec3 at = placed.transformPoint(Vec3(1, 1, 0));
+    EXPECT_NEAR(at.x, 0.0, 1e-6);
+    EXPECT_NEAR(at.y, 0.0, 1e-6);
+
+    result = solver.solve(components, {mateOf(MateType::Concentric, sphere(Vec3(5, 5, 5), 2.0),
+                                              sphere(Vec3(0, 0, 0), 1.0))});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    const Vec3 centre = result.transforms.at(2).transformPoint(Vec3());
+    EXPECT_NEAR((centre - Vec3(5, 5, 5)).length(), 0.0, 1e-6);
+    EXPECT_EQ(result.componentDOF.at(2), 3) << "free to turn about the centre";
+}
+
+TEST(AssemblySolverTest, ADistanceBetweenPointsHoldsAndAnAngleHoldsAtZero) {
+    auto components = twoComponents(Mat4::translation(Vec3(3, -2, 7)));
+    AssemblySolver solver;
+    auto result = solver.solve(components, {mateOf(MateType::Distance, pointAt(Vec3(0, 0, 0)),
+                                                   pointAt(Vec3(0, 0, 0)), 5.0)});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(2).transformPoint(Vec3()).length(), 5.0, 1e-6);
+
+    // An angle of 0: the cosine is flat there; the angle held all the same.
+    components = twoComponents(Mat4::rotationX(0.3));
+    result = solver.solve(components, {mateOf(MateType::Angle, plane(Vec3(), Vec3::UnitZ),
+                                              plane(Vec3(), Vec3::UnitZ), 0.0)});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(result.transforms.at(2).transformDirection(Vec3::UnitZ).z, 1.0, 1e-6);
+}
+
+// A Distance mate with limits keeps the distance between them, and leaves
+// it alone within them.
+TEST(AssemblySolverTest, ADistanceBetweenItsLimitsIsLeftAlone) {
+    const auto gapAfter = [](double startZ) {
+        auto components = twoComponents(Mat4::translation(Vec3(0, 0, startZ)));
+        SolverMate mate = mateOf(MateType::Distance, plane(Vec3(0, 0, 0), Vec3::UnitZ),
+                                 plane(Vec3(0, 0, 0), Vec3::UnitZ), 0.0);
+        mate.minimum = 5.0;
+        mate.maximum = 10.0;
+        AssemblySolver solver;
+        const auto result = solver.solve(components, {mate});
+        EXPECT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+        return result.transforms.at(2).transformPoint(Vec3()).z;
+    };
+    EXPECT_NEAR(gapAfter(7.0), 7.0, 1e-9) << "between them: as it is";
+    EXPECT_NEAR(gapAfter(20.0), 10.0, 1e-6) << "held at the maximum";
+    EXPECT_NEAR(gapAfter(2.0), 5.0, 1e-6) << "held at the minimum";
+}
+
+TEST(AssemblySolverTest, AMateBetweenKindsItDoesNotRelateIsRefused) {
+    auto components = twoComponents(Mat4::identity());
+    AssemblySolver solver;
+    auto result = solver.solve(components, {mateOf(MateType::Concentric, plane(Vec3(), Vec3::UnitZ),
+                                                   plane(Vec3(), Vec3::UnitZ))});
+    EXPECT_EQ(result.status, AssemblySolveStatus::InvalidReference);
+    EXPECT_EQ(result.message, "Concentric between a plane and a plane is not a mate");
+
+    SolverMate limited =
+        mateOf(MateType::Coincident, plane(Vec3(), Vec3::UnitZ), plane(Vec3(), Vec3::UnitZ));
+    limited.maximum = 3.0;
+    result = solver.solve(components, {limited});
+    EXPECT_EQ(result.status, AssemblySolveStatus::InvalidReference);
 }
