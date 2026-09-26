@@ -1792,6 +1792,40 @@ begin building your part.</source>
     </message>
 </context>
 <context>
+    <name>hz::ui::HelpWindow</name>
+    <message>
+        <location filename="../src/ui/src/HelpWindow.cpp" line="+23"/>
+        <location line="+26"/>
+        <source>Horizon CAD User Guide</source>
+        <translation type="unfinished">Horizon CAD 사용자 가이드</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <source>User guide</source>
+        <translation type="unfinished">사용자 가이드</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Back</source>
+        <translation type="unfinished">뒤로</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Forward</source>
+        <translation type="unfinished">앞으로</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Contents</source>
+        <translation type="unfinished">목차</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1 - Horizon CAD User Guide</source>
+        <translation type="unfinished">%1 - Horizon CAD 사용자 가이드</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::InsertBlockDialog</name>
     <message>
         <location filename="../src/ui/src/InsertBlockDialog.cpp" line="+15"/>
@@ -1941,12 +1975,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+632"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+633"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+66"/>
         <source>&amp;Edit</source>
         <translation>편집(&amp;E)</translation>
     </message>
@@ -1956,7 +1990,7 @@ begin building your part.</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-111"/>
+        <location line="-112"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
@@ -1983,20 +2017,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+869"/>
+        <location line="+874"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">거리</translation>
     </message>
     <message>
-        <location line="-885"/>
-        <location line="+869"/>
+        <location line="-890"/>
+        <location line="+874"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">각도</translation>
     </message>
     <message>
-        <location line="-885"/>
+        <location line="-890"/>
         <source>Segments per turn</source>
         <translation type="unfinished">회전당 세그먼트 수</translation>
     </message>
@@ -2168,12 +2202,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+999"/>
+        <location line="+1004"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-937"/>
+        <location line="-942"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2183,7 +2217,7 @@ begin building your part.</source>
         <translation type="unfinished">새 부품(&amp;P)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>New Asse&amp;mbly</source>
         <translation type="unfinished">새 어셈블리(&amp;M)</translation>
     </message>
@@ -2949,7 +2983,12 @@ begin building your part.</source>
         <translation type="unfinished">도움말(&amp;H)</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
+        <source>&amp;User Guide</source>
+        <translation type="unfinished">사용자 가이드(&amp;U)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>&amp;About Horizon CAD</source>
         <translation type="unfinished">Horizon CAD 정보(&amp;A)</translation>
     </message>
@@ -3146,12 +3185,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+3834"/>
+        <location line="+3865"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-3910"/>
+        <location line="-3941"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3168,19 +3207,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3683"/>
+        <location line="+3714"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-3746"/>
+        <location line="-3777"/>
         <location line="+64"/>
-        <location line="+3682"/>
+        <location line="+3713"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-3745"/>
+        <location line="-3776"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3329,12 +3368,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2576"/>
+        <location line="+2607"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2573"/>
+        <location line="-2604"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3349,96 +3388,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2718"/>
+        <location line="+2749"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-2717"/>
-        <location line="+2727"/>
+        <location line="-2748"/>
+        <location line="+2758"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-2726"/>
-        <location line="+2733"/>
+        <location line="-2757"/>
+        <location line="+2764"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-2732"/>
-        <location line="+2739"/>
+        <location line="-2763"/>
+        <location line="+2770"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-2738"/>
-        <location line="+2749"/>
+        <location line="-2769"/>
+        <location line="+2780"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-2747"/>
+        <location line="-2778"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3470"/>
+        <location line="+3501"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3515"/>
-        <location line="+3534"/>
+        <location line="-3546"/>
+        <location line="+3565"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3560"/>
-        <location line="+3890"/>
+        <location line="-3591"/>
+        <location line="+3921"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-3888"/>
+        <location line="-3919"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3641"/>
+        <location line="+3672"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3640"/>
-        <location line="+3644"/>
+        <location line="-3671"/>
+        <location line="+3675"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3643"/>
-        <location line="+3647"/>
+        <location line="-3674"/>
+        <location line="+3678"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3642"/>
-        <location line="+3711"/>
+        <location line="-3673"/>
+        <location line="+3742"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-3710"/>
-        <location line="+3730"/>
+        <location line="-3741"/>
+        <location line="+3761"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-3728"/>
+        <location line="-3759"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3462,7 +3501,7 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+872"/>
+        <location line="+903"/>
         <location line="+321"/>
         <location line="+464"/>
         <location line="+1420"/>
@@ -3472,7 +3511,7 @@ begin building your part.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4349"/>
+        <location line="-4380"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3493,12 +3532,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4018"/>
+        <location line="+4049"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4012"/>
+        <location line="-4043"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -3573,7 +3612,7 @@ begin building your part.</source>
         <translation type="unfinished">보고서 삭제</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+12"/>
         <source>Save Crash Report</source>
         <translation type="unfinished">충돌 보고서 저장</translation>
     </message>
@@ -3583,7 +3622,7 @@ begin building your part.</source>
         <translation type="unfinished">텍스트 (*.txt)</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+27"/>
         <location line="+76"/>
         <source>Recover Documents</source>
         <translation type="unfinished">문서 복구</translation>
@@ -3710,7 +3749,7 @@ begin building your part.</source>
         <translation type="unfinished">%1(으)로 생성했습니다.</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+37"/>
         <source>an unknown compiler</source>
         <translation type="unfinished">알 수 없는 컴파일러</translation>
     </message>
@@ -5380,7 +5419,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4365"/>
+        <location line="-4396"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
