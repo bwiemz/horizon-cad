@@ -147,6 +147,33 @@ private:
 
 }  // namespace
 
+// -- Constraints ---------------------------------------------------------------
+
+// A constraint added, then undone, leaves the drawing as it was saved: not
+// shown as modified. The tool marked the document changed apart from its
+// command, and that mark outlived the undo.
+TEST(DraftingToolsTest, AConstraintUndoneLeavesTheDrawingAsSaved) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLine(w, Vec2(0, 0), Vec2(10, 0));
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.setDirty(false);  // as saved
+    ASSERT_FALSE(doc.isDirty());
+
+    trigger(w, "action_cstr-fixed");
+    drive.click(Vec2(0, 0));
+    ASSERT_EQ(doc.constraintSystem().constraints().size(), 1u);
+    EXPECT_TRUE(doc.isDirty());
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(doc.constraintSystem().constraints().empty());
+    EXPECT_FALSE(doc.isDirty()) << "undone to what was saved";
+    trigger(w, "action_redo");
+    EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u);
+    EXPECT_TRUE(doc.isDirty());
+}
+
 // -- Drawing tools -------------------------------------------------------------
 
 // An arc is drawn counter-clockwise from its centre, through the start point's
