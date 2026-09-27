@@ -265,7 +265,12 @@ jobs:
             /tr http://timestamp.digicert.com /td SHA256 build/ci-windows-release/src/app/horizon.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # NSIS is installed on GitHub's Windows images.
+      # NSIS is no longer on GitHub's Windows images ("Cannot find NSIS
+      # compiler makensis"). Its installer records where it is, which is where
+      # CPack looks.
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
       - name: Package an installer
         run: cpack --config build/ci-windows-release/CPackConfig.cmake -B dist -G NSIS
 
