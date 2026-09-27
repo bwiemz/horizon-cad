@@ -47,8 +47,6 @@ using UV = std::pair<double, double>;
 
 /// The largest refinement measured: each edge in 64 pieces.
 constexpr int kMaxRefinement = 64;
-/// No refinement past this many triangles.
-constexpr double kTriangleBudget = 6e6;
 /// Two faces without ideals that bend by less than this are taken for the
 /// facets of one curved surface (as the display takes them).
 constexpr double kSmoothCosine = 0.8660254037844387;  // cos 30 degrees
@@ -703,7 +701,8 @@ detail::Measures extrapolate(const detail::Measures& fine, const detail::Measure
 IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& solid,
                                                            const Material* material,
                                                            double tolerance,
-                                                           const std::atomic<bool>* cancelled) {
+                                                           const std::atomic<bool>* cancelled,
+                                                           double triangleBudget) {
     // A solid as read, bounded by curves, is measured in facets that record
     // their surfaces, as compute() measures it. One that cannot be cut into
     // facets is measured by the corners of its loops: not exact, and its
@@ -715,7 +714,9 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
         if (stopped()) return {};
         const auto faceted = facetCurved(solid);
         if (stopped()) return {};
-        if (faceted.solid) return computeIdeal(*faceted.solid, material, tolerance, cancelled);
+        if (faceted.solid) {
+            return computeIdeal(*faceted.solid, material, tolerance, cancelled, triangleBudget);
+        }
         IdealMassProperties corners;
         corners.properties = detail::measureLoops(solid, material);
         corners.withoutIdeal = curvedFaces(solid);
@@ -741,7 +742,7 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
     std::vector<std::vector<detail::Measures>> table;
     int parted = 0;
     for (int m = 1; m <= kMaxRefinement; m *= 2) {
-        if (m > 1 && ideal.triangles(m) > kTriangleBudget) break;
+        if (m > 1 && ideal.triangles(m) > triangleBudget) break;
         std::vector<detail::Measures> row{ideal.measure(m, cancelled)};
         if (cancelled != nullptr && cancelled->load()) return {};
         parted = ideal.partedEdges();

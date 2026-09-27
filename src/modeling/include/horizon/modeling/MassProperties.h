@@ -99,10 +99,17 @@ public:
     /// result is not valid. A solid described by curves is measured in
     /// facets that record its surfaces; one that cannot be cut into them is
     /// measured by its corners, and is not exact.
+    ///
+    /// @p triangleBudget: no refinement is measured that would make more
+    /// triangles than this. Less trades precision for time: the result says
+    /// when it stopped short (withinTolerance).
     static IdealMassProperties computeIdeal(const topo::Solid& solid,
                                             const Material* material = nullptr,
                                             double tolerance = 1e-10,
-                                            const std::atomic<bool>* cancelled = nullptr);
+                                            const std::atomic<bool>* cancelled = nullptr,
+                                            double triangleBudget = kIdealTriangleBudget);
+    /// The budget of triangles computeIdeal refines to by default.
+    static constexpr double kIdealTriangleBudget = 6e6;
 };
 
 }  // namespace hz::model
