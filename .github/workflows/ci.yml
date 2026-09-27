@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [master]
 
+# A pull request's newer push replaces its older run. Master's runs are left
+# to finish, each of them: cancelled when the next merge came, they left
+# merged commits that no run had finished checking.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The jobs read the repository and nothing else.
 permissions:
