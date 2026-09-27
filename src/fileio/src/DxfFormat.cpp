@@ -1974,30 +1974,45 @@ bool parseChecked(std::istream& in, doc::Document& doc, std::string* error, Impo
     } catch (const std::exception& e) {
         return failWith(error, std::string("the DXF file is damaged: ") + e.what());
     }
-    if (report) {
+    ImportReport noted;
+    {
         const auto entities = [](int n) {
             return n == 1 ? std::string(" entity") : std::string(" entities");
         };
         for (const auto& [key, count] : im.notes.unread) {
-            report->skipped.push_back(std::to_string(count) + " " + key.first + entities(count) +
-                                      key.second + " not read");
+            noted.skipped.push_back(std::to_string(count) + " " + key.first + entities(count) +
+                                    key.second + " not read");
         }
         for (const auto& [key, count] : im.notes.approximated) {
-            report->approximated.push_back(std::to_string(count) + " " + key.first +
-                                           entities(count) + ": " + key.second);
+            noted.approximated.push_back(std::to_string(count) + " " + key.first + entities(count) +
+                                         ": " + key.second);
         }
         if (const int n = im.decoder.undecodable(); n > 0) {
-            report->approximated.push_back(
+            noted.approximated.push_back(
                 std::to_string(n) + (n == 1 ? " character" : " characters") + " in code page " +
                 im.decoder.codepage() + " could not be read, shown as \xEF\xBF\xBD");
         }
         if (im.placementCut) {
-            report->skipped.push_back(
+            noted.skipped.push_back(
                 "flattening blocks nested inside blocks stopped after " +
                 std::to_string(g_maxPlacedPieces.load(std::memory_order_relaxed)) +
                 " placements; the rest were left out");
         }
-        report->converted.insert(report->converted.end(), im.converted.begin(), im.converted.end());
+        noted.converted = im.converted;
+    }
+    // What it did not read, and what it did not read as it was, goes with
+    // the document: written back over this file, it would be lost there
+    // (Document::leftOut).
+    std::vector<std::string> leftOut = noted.skipped;
+    leftOut.insert(leftOut.end(), noted.approximated.begin(), noted.approximated.end());
+    doc.setLeftOut(std::move(leftOut));
+    if (report) {
+        const auto append = [](std::vector<std::string>& to, const std::vector<std::string>& from) {
+            to.insert(to.end(), from.begin(), from.end());
+        };
+        append(report->skipped, noted.skipped);
+        append(report->approximated, noted.approximated);
+        append(report->converted, noted.converted);
     }
     return true;
 }

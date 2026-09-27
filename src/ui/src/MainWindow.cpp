@@ -1636,6 +1636,10 @@ void MainWindow::updateWindowTitle() {
     refreshModifiedIndicators();
 }
 
+bool MainWindow::isTabReadInPart(const DocTab& tab) {
+    return tab.assembly ? tab.assembly->readInPart() : tab.document->readInPart();
+}
+
 bool MainWindow::isTabModified(const DocTab& tab) const {
     // An assembly's edits are commands on its tab's (backing) document; the
     // assembly's own flag covers changes made outside them (a recovery).
@@ -1648,6 +1652,7 @@ void MainWindow::refreshModifiedIndicators() {
         const DocTab& tab = m_tabs[i];
         QString text = tab.title;
         if (tab.recovered) text += tr(" (recovered)");
+        if (isTabReadInPart(tab)) text += tr(" (incomplete)");
         if (isTabModified(tab)) text += QStringLiteral(" *");
         const int index = static_cast<int>(i);
         if (index < m_tabBar->count() && m_tabBar->tabText(index) != text) {
@@ -1796,6 +1801,19 @@ void MainWindow::offerCrashReports() {
     crash::prune(crash::reportDirectory());
 }
 
+namespace {
+
+/// What a document recovered from @p entry lacks: what its file's read
+/// left out, then what its snapshot's read did (@p unread).
+std::vector<std::string> recoveredLeftOut(const RecoveryManager::Entry& entry,
+                                          const std::vector<std::string>& unread) {
+    std::vector<std::string> leftOut = entry.leftOut;
+    leftOut.insert(leftOut.end(), unread.begin(), unread.end());
+    return leftOut;
+}
+
+}  // namespace
+
 void MainWindow::offerRecovery() {
     const std::vector<RecoveryManager::Entry> orphans = m_recovery->claimOrphans();
     if (orphans.empty()) return;
@@ -1853,6 +1871,11 @@ void MainWindow::offerRecovery() {
             }
             assembly->setFilePath(entry.originalPath.toStdString());
             assembly->setDirty(true);
+            // Still not saved over the file it was read from in part; and
+            // what the snapshot itself could not give back, said.
+            const std::vector<std::string> unread = assembly->leftOut();
+            assembly->setLeftOut(recoveredLeftOut(entry, unread));
+            if (!unread.empty()) reportLeftOut(entry.title, unread);
             m_assemblies->solveAssemblyMates(*assembly);
             auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
             addDocumentTab(std::move(backing), std::move(assembly), entry.title);
@@ -1871,6 +1894,9 @@ void MainWindow::offerRecovery() {
             // is modified, and autosaved again under this session.
             document->setFilePath(entry.originalPath.toStdString());
             document->setDirty(true);
+            const std::vector<std::string> unread = document->leftOut();
+            document->setLeftOut(recoveredLeftOut(entry, unread));
+            if (!unread.empty()) reportLeftOut(entry.title, unread);
             addDocumentTab(std::move(document), nullptr, entry.title);
             m_tabs.back().recovered = true;
             m_tabs.back().recoveries = entry.recoveries + 1;
@@ -2179,6 +2205,11 @@ bool MainWindow::openPath(const QString& fileName) {
         return true;
     }
 
+    // What the loaders say is of the file they read last: none, when the
+    // manager has the file already.
+    m_lastLoadError.clear();
+    m_lastLoadReport = {};
+
     if (fileName.endsWith(".hzasm", Qt::CaseInsensitive)) {
         auto assembly = m_docManager.openAssembly(path);
         if (!assembly) {
@@ -2195,14 +2226,16 @@ bool MainWindow::openPath(const QString& fileName) {
                 return true;
             }
         }
-        const io::ImportReport report = m_lastLoadReport;
+        io::ImportReport report = m_lastLoadReport;
+        if (report.skipped.empty()) report.skipped = assembly->leftOut();
+        const bool readInPart = assembly->readInPart();
         // Saved assemblies come back positioned by their mates: modified, if
         // that moved anything, so the placing can be saved.
         if (m_assemblies->placeOnOpen(*assembly)) assembly->setDirty(true);
         auto backing = m_docManager.newDocument(doc::DocumentType::Assembly);
         addDocumentTab(std::move(backing), std::move(assembly),
                        tabTitleForPath(path, tr("Assembly")));
-        showImportReport(QFileInfo(fileName).fileName(), report);
+        showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
         RecentFiles::add(fileName);
         return true;
     }
@@ -2234,7 +2267,10 @@ bool MainWindow::openPath(const QString& fileName) {
         reportFileError(tr("Could not open"), path, m_lastLoadError);
         return false;
     }
-    showOpened(std::move(document), fileName, tr("Document"), m_lastLoadReport);
+    io::ImportReport report = m_lastLoadReport;
+    // Read before, for an assembly's component: what was left out then.
+    if (report.skipped.empty()) report.skipped = document->leftOut();
+    showOpened(std::move(document), fileName, tr("Document"), std::move(report));
     return true;
 }
 
@@ -2249,9 +2285,10 @@ void MainWindow::showOpened(std::shared_ptr<doc::Document> document, const QStri
             return;
         }
     }
+    const bool readInPart = document->readInPart();
     addDocumentTab(std::move(document), nullptr,
                    tabTitleForPath(fileName.toStdString(), fallbackTitle));
-    showImportReport(QFileInfo(fileName).fileName(), report);
+    showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
     RecentFiles::add(fileName);
 }
 
@@ -2460,10 +2497,12 @@ bool MainWindow::saveActiveDocument() {
     DocTab* tab = activeTab();
     if (!tab) return false;
 
+    // A document read from its file in part is not written over it: what it
+    // left out would be lost there. Save asks where, as for a new one.
     if (m_assembly) {
-        if (m_assembly->filePath().empty()) {
+        if (m_assembly->filePath().empty() || m_assembly->readInPart()) {
             onSaveFileAs();
-            return !isTabModified(*tab);
+            return !isTabModified(*tab) && !m_assembly->readInPart();
         }
         std::string error;
         if (io::NativeFormat::saveAssembly(m_assembly->filePath(), *m_assembly, &error)) {
@@ -2483,9 +2522,9 @@ bool MainWindow::saveActiveDocument() {
         return false;
     }
 
-    if (m_document->filePath().empty()) {
+    if (m_document->filePath().empty() || m_document->readInPart()) {
         onSaveFileAs();
-        return !m_document->isDirty();
+        return !m_document->isDirty() && !m_document->readInPart();
     }
     if (m_drawings->isSheet(m_document.get())) {
         const std::string sheetPath = m_document->filePath();
@@ -2565,50 +2604,84 @@ void MainWindow::onSaveFileAs() {
                "DXF Files (*.dxf);;All Files (*)");
     }
 
-    QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), QString(), filter);
+    // Read in part: saved where its user chooses, the file it was read from
+    // only when they say so, knowing what that loses.
+    const std::string source = m_assembly ? m_assembly->filePath() : m_document->filePath();
+    const bool readInPart = m_assembly ? m_assembly->readInPart() : m_document->readInPart();
+    QString fileName = QFileDialog::getSaveFileName(
+        this, readInPart ? tr("Save As a New File") : tr("Save File"),
+        readInPart ? QFileInfo(QString::fromStdString(source)).absolutePath() : QString(), filter);
     if (fileName.isEmpty()) return;
+    if (sheet && !fileName.endsWith(".hzdwg", Qt::CaseInsensitive)) {
+        // A sheet is only ever a .hzdwg: that is how it is opened again.
+        fileName += QStringLiteral(".hzdwg");
+    }
+    if (!mayReplaceSource(fileName)) return;
 
     // Apply the new path (and extension-driven type), but roll everything
     // back if the save fails so a bad path doesn't silently retarget the
-    // document or flip its type.
+    // document or flip its type. Saved, it is whole: the file it is saved
+    // to has all it holds.
     if (m_assembly) {
         const std::string oldPath = m_assembly->filePath();
+        std::vector<std::string> leftOut = m_assembly->leftOut();
         m_assembly->setFilePath(fileName.toStdString());
+        m_assembly->setLeftOut({});
         if (!saveActiveDocument()) {
             m_assembly->setFilePath(oldPath);
+            m_assembly->setLeftOut(std::move(leftOut));
         }
-        return;
-    }
-
-    if (sheet) {
-        // A sheet is only ever a .hzdwg: that is how it is opened again.
-        if (!fileName.endsWith(".hzdwg", Qt::CaseInsensitive)) fileName += QStringLiteral(".hzdwg");
-        const std::string oldPath = m_document->filePath();
-        m_document->setFilePath(fileName.toStdString());
-        if (!saveActiveDocument()) m_document->setFilePath(oldPath);
+        refreshModifiedIndicators();
         return;
     }
 
     const std::string oldPath = m_document->filePath();
     const doc::DocumentType oldType = m_document->type();
+    std::vector<std::string> leftOut = m_document->leftOut();
     // The chosen extension drives the document type.
-    if (fileName.endsWith(".hzpart", Qt::CaseInsensitive)) {
+    if (!sheet && fileName.endsWith(".hzpart", Qt::CaseInsensitive)) {
         m_document->setType(doc::DocumentType::Part);
-    } else if (fileName.endsWith(".hcad", Qt::CaseInsensitive)) {
+    } else if (!sheet && fileName.endsWith(".hcad", Qt::CaseInsensitive)) {
         m_document->setType(doc::DocumentType::Drawing);
     }
     m_document->setFilePath(fileName.toStdString());
+    m_document->setLeftOut({});
     if (!saveActiveDocument()) {
         m_document->setFilePath(oldPath);
         m_document->setType(oldType);
+        m_document->setLeftOut(std::move(leftOut));
     }
+    refreshModifiedIndicators();
+}
+
+bool MainWindow::mayReplaceSource(const QString& fileName) {
+    const std::string source = m_assembly ? m_assembly->filePath() : m_document->filePath();
+    const bool readInPart = m_assembly ? m_assembly->readInPart() : m_document->readInPart();
+    if (!readInPart || !doc::DocumentManager::samePath(fileName.toStdString(), source)) return true;
+    QMessageBox box(QMessageBox::Warning, tr("Replace the File It Was Read From?"),
+                    tr("\"%1\" has what this document left out when it was read. Saving over "
+                       "it loses that for good.")
+                        .arg(QFileInfo(fileName).fileName()),
+                    QMessageBox::Cancel, this);
+    QPushButton* replace = box.addButton(tr("Replace"), QMessageBox::DestructiveRole);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setEscapeButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == replace;
 }
 
 // ---------------------------------------------------------------------------
 // Slots -- Import / Export
 // ---------------------------------------------------------------------------
 
-void MainWindow::showImportReport(const QString& file, const io::ImportReport& report) {
+void MainWindow::reportLeftOut(const QString& fileName, const std::vector<std::string>& items) {
+    io::ImportReport report;
+    report.skipped = items;
+    showImportReport(fileName, report, /*notSavedOver=*/true);
+}
+
+void MainWindow::showImportReport(const QString& file, const io::ImportReport& report,
+                                  bool notSavedOver) {
     QStringList converted;
     for (const auto& item : report.converted) converted << QString::fromStdString(item);
     if (report.empty()) {
@@ -2631,7 +2704,11 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
                     tr("\"%1\": %2").arg(file, QString::fromStdString(report.summary())),
                     QMessageBox::Ok, this);
     box.setInformativeText(
-        tr("What was left out is not in the document, and saving will not keep it."));
+        notSavedOver
+            ? tr("So that \"%1\" keeps what the document lacks, the document is not saved over "
+                 "it: Save asks where to save it instead.")
+                  .arg(file)
+            : tr("What was left out is not in the document, and saving will not keep it."));
     box.setDetailedText(lines.join(QLatin1Char('\n')));
     box.exec();
 }
@@ -2873,6 +2950,9 @@ QString MainWindow::askExportPath(const QString& format, const QString& filter,
     QString fileName =
         QFileDialog::getSaveFileName(this, tr("Export %1").arg(format), QString(), filter);
     if (!fileName.isEmpty() && QFileInfo(fileName).suffix().isEmpty()) fileName += suffix;
+    // An export is written over the file the document was read from in part
+    // (a DXF, exported as one) only as a save is: when its user says so.
+    if (!fileName.isEmpty() && !mayReplaceSource(fileName)) return {};
     return fileName;
 }
 
@@ -3289,6 +3369,8 @@ bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, F
     refreshModifiedIndicators();
     statusBar()->showMessage(
         tr("\"%1\" was changed by another program, and has been read again").arg(name), 10000);
+    // Read in part now, it is kept from being saved over the file too.
+    if (!read.report.empty()) showImportReport(name, read.report, fresh->readInPart());
     return true;
 }
 
