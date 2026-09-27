@@ -162,18 +162,25 @@ TEST(IdealMassPropertiesTest, APartWithNothingCurvedIsAsModelled) {
 }
 
 // On the surfaces is not the same as to the tolerance: a refinement that
-// stops before its estimate comes under the tolerance says so, where the
-// result was once called exact whatever its error.
+// stops before its estimate has settled says so, where the result was once
+// called exact whatever its error. Given a budget of 1,000 triangles, a
+// cylinder of 32 facets is measured at one and two pieces an edge, then
+// stops: two measures are too few to settle, whatever their difference. (A
+// tolerance too fine to reach did not show it: on Apple silicon a
+// cylinder's last correction came out exactly 0, within any tolerance.)
 TEST(IdealMassPropertiesTest, AToleranceNotReachedIsSaid) {
     auto solid = PrimitiveFactory::makeCylinder(2.0, 5.0);
     ASSERT_NE(solid, nullptr);
-    const auto ideal = MassPropertiesCalculator::computeIdeal(*solid, nullptr, 1e-300);
+    const auto ideal =
+        MassPropertiesCalculator::computeIdeal(*solid, nullptr, 1e-10, nullptr, 1000);
     ASSERT_TRUE(ideal.properties.valid);
     EXPECT_TRUE(ideal.onIdealSurfaces) << "measured on its surfaces all the same";
+    EXPECT_EQ(ideal.refinement, 2) << "stopped at the budget";
     EXPECT_FALSE(ideal.withinTolerance) << ideal.estimatedError;
-    EXPECT_EQ(ideal.tolerance, 1e-300);
-    EXPECT_GT(ideal.estimatedError, ideal.tolerance);
-    EXPECT_GT(ideal.refinement, 1) << "it refined as far as it goes";
+    EXPECT_EQ(ideal.tolerance, 1e-10);
+
+    // With the budget it has by default, it settles.
+    EXPECT_TRUE(MassPropertiesCalculator::computeIdeal(*solid).withinTolerance);
 }
 
 // A part whose curved faces have no ideals says so: it is measured as
