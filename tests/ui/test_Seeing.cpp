@@ -285,7 +285,11 @@ TEST(SeeingTest, TheMassPropertiesOfACylinderAsModelledAndIdeal) {
     EXPECT_NE(text.find("Volume: 780.3613 "), std::string::npos) << text;
     EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << text;
     EXPECT_NE(text.find("Mass: 6.165376 g"), std::string::npos) << "7.85 g/cm3, ideally " << text;
-    EXPECT_NE(text.find("Exact"), std::string::npos) << text;
+    // Said as what it is: measured on the surfaces, to an estimated error
+    // within the tolerance, not "exact".
+    EXPECT_NE(text.find("Measured on the ideal surfaces"), std::string::npos) << text;
+    EXPECT_NE(text.find("within the tolerance of 1e-10"), std::string::npos) << text;
+    EXPECT_EQ(text.find("Exact"), std::string::npos) << text;
 }
 
 // A part measured on a worker: the box opens at once with the part as

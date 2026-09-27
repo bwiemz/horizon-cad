@@ -44,7 +44,11 @@ struct Closed {
 void expectIdeal(const hz::topo::Solid& solid, const Closed& closed, const char* what) {
     const auto ideal = MassPropertiesCalculator::computeIdeal(solid);
     ASSERT_TRUE(ideal.properties.valid) << what;
-    EXPECT_TRUE(ideal.exact) << what;
+    EXPECT_TRUE(ideal.onIdealSurfaces) << what;
+    // Settled under the tolerance asked for, and said so.
+    EXPECT_TRUE(ideal.withinTolerance) << what << ": " << ideal.estimatedError;
+    EXPECT_EQ(ideal.tolerance, 1e-10) << what;
+    EXPECT_LE(ideal.estimatedError, ideal.tolerance) << what;
     expectNear(ideal.properties.volume, closed.volume, 1e-9, what);
     expectNear(ideal.properties.surfaceArea, closed.area, 1e-9, what);
     EXPECT_LT((ideal.properties.centerOfMass - closed.centre).length(), 1e-9) << what;
@@ -111,7 +115,7 @@ TEST(IdealMassPropertiesTest, ARevolveIsItsSurfacesOfRevolution) {
     // About the y axis: the ring's (r_o^2 + r_i^2) / 2.
     const auto ideal = MassPropertiesCalculator::computeIdeal(*solid);
     ASSERT_TRUE(ideal.properties.valid);
-    EXPECT_TRUE(ideal.exact);
+    EXPECT_TRUE(ideal.onIdealSurfaces);
     expectNear(ideal.properties.volume, v, 1e-9, "volume");
     expectNear(ideal.properties.surfaceArea, area, 1e-9, "area");
     expectNear(ideal.properties.inertia.at(1, 1), v * (outer * outer + inner * inner) / 2, 1e-9,
@@ -139,7 +143,7 @@ TEST(IdealMassPropertiesTest, AFilletIsItsQuarterCylinder) {
     const double corner = (1 - kPi / 4) * r * r;
     const auto ideal = MassPropertiesCalculator::computeIdeal(*rounded.solid);
     ASSERT_TRUE(ideal.properties.valid);
-    EXPECT_TRUE(ideal.exact);
+    EXPECT_TRUE(ideal.onIdealSurfaces);
     expectNear(ideal.properties.volume, a * b * c - corner * a, 1e-9, "volume");
     expectNear(ideal.properties.surfaceArea,
                2 * (a * b + b * c + c * a) - 2 * r * a + kPi / 2 * r * a - 2 * corner, 1e-9,
@@ -150,9 +154,26 @@ TEST(IdealMassPropertiesTest, AFilletIsItsQuarterCylinder) {
 TEST(IdealMassPropertiesTest, APartWithNothingCurvedIsAsModelled) {
     auto box = PrimitiveFactory::makeBox(3, 4, 5);
     const auto ideal = MassPropertiesCalculator::computeIdeal(*box);
-    EXPECT_TRUE(ideal.exact);
+    EXPECT_TRUE(ideal.onIdealSurfaces);
+    EXPECT_TRUE(ideal.withinTolerance) << "measured as it is: nothing to refine";
+    EXPECT_EQ(ideal.estimatedError, 0.0);
     EXPECT_EQ(ideal.properties.volume, MassPropertiesCalculator::compute(*box).volume);
     EXPECT_DOUBLE_EQ(ideal.properties.volume, 60.0);
+}
+
+// On the surfaces is not the same as to the tolerance: a refinement that
+// stops before its estimate comes under the tolerance says so, where the
+// result was once called exact whatever its error.
+TEST(IdealMassPropertiesTest, AToleranceNotReachedIsSaid) {
+    auto solid = PrimitiveFactory::makeCylinder(2.0, 5.0);
+    ASSERT_NE(solid, nullptr);
+    const auto ideal = MassPropertiesCalculator::computeIdeal(*solid, nullptr, 1e-300);
+    ASSERT_TRUE(ideal.properties.valid);
+    EXPECT_TRUE(ideal.onIdealSurfaces) << "measured on its surfaces all the same";
+    EXPECT_FALSE(ideal.withinTolerance) << ideal.estimatedError;
+    EXPECT_EQ(ideal.tolerance, 1e-300);
+    EXPECT_GT(ideal.estimatedError, ideal.tolerance);
+    EXPECT_GT(ideal.refinement, 1) << "it refined as far as it goes";
 }
 
 // A part whose curved faces have no ideals says so: it is measured as
@@ -167,7 +188,7 @@ TEST(IdealMassPropertiesTest, FacetsWithoutTheirIdealAreNamed) {
         edge.analyticCurve = nullptr;
     }
     const auto ideal = MassPropertiesCalculator::computeIdeal(*solid);
-    EXPECT_FALSE(ideal.exact);
+    EXPECT_FALSE(ideal.onIdealSurfaces);
     ASSERT_FALSE(ideal.withoutIdeal.empty());
     EXPECT_EQ(ideal.withoutIdeal.front().rfind("cylinder/", 0), 0u) << ideal.withoutIdeal.front();
     EXPECT_EQ(ideal.properties.volume, MassPropertiesCalculator::compute(*solid).volume);

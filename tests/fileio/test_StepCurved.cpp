@@ -230,7 +230,7 @@ TEST(StepCurvedTest, AnOccStyleCylinderHasTheRightVolumeBothWays) {
     const auto m = measure(cylinder());
     const double prism = 16.0 * std::sin(2.0 * kPi / 32.0) * 2.0;  // (n/2) r^2 sin(2 pi / n) h
     EXPECT_NEAR(m.modelled, prism, 1e-9);
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 2.0 * kPi, 1e-9, "the cylinder");
     expectRelative(m.ideal.properties.surfaceArea, 2.0 * kPi * 2.0 + 2.0 * kPi, 1e-9, "its area");
     EXPECT_EQ(m.outlined, 0u);
@@ -238,7 +238,7 @@ TEST(StepCurvedTest, AnOccStyleCylinderHasTheRightVolumeBothWays) {
 
 TEST(StepCurvedTest, AConeIsReadAndMeasured) {
     const auto m = measure(cone());
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, kPi * 4.0 * 3.0 / 3.0, 1e-9, "the cone");
     expectRelative(m.ideal.properties.surfaceArea, kPi * 4.0 + kPi * 2.0 * std::sqrt(13.0), 1e-9,
                    "its area");
@@ -247,7 +247,7 @@ TEST(StepCurvedTest, AConeIsReadAndMeasured) {
 
 TEST(StepCurvedTest, ASphereIsReadAndMeasured) {
     const auto m = measure(sphere());
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 4.0 / 3.0 * kPi * 3.375, 1e-9, "the sphere");
     expectRelative(m.ideal.properties.surfaceArea, 4.0 * kPi * 2.25, 1e-9, "its area");
     expectRelative(m.modelled, 4.0 / 3.0 * kPi * 3.375, 0.02, "its facets, within 2 %");
@@ -255,7 +255,7 @@ TEST(StepCurvedTest, ASphereIsReadAndMeasured) {
 
 TEST(StepCurvedTest, ATorusIsReadAndMeasured) {
     const auto m = measure(torus());
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 2.0 * kPi * kPi * 4.0, 1e-9, "the torus");
     expectRelative(m.ideal.properties.surfaceArea, 4.0 * kPi * kPi * 4.0, 1e-9, "its area");
     expectRelative(m.modelled, 2.0 * kPi * kPi * 4.0, 0.02, "its facets, within 2 %");
@@ -278,7 +278,7 @@ TEST(StepCurvedTest, AConeInDegreesIsTheSameCone) {
 // two half-cylinders, is in facets. 200 less the bore.
 TEST(StepCurvedTest, APlateWithABoreHasTheRightVolumeBothWays) {
     const auto m = measure(fixture("plate_with_round_hole.step"));
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 200.0 - 8.0 * kPi, 1e-9, "the plate");
     expectRelative(m.modelled, 200.0 - 8.0 * kPi, 0.001, "its facets");
 }
@@ -299,7 +299,7 @@ TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
     EXPECT_DOUBLE_EQ(modelled.volume, MassPropertiesCalculator::compute(*faceted.solid).volume);
     expectRelative(modelled.volume, 2.0 * kPi, 0.01, "in facets");
     const auto ideal = MassPropertiesCalculator::computeIdeal(read);
-    EXPECT_TRUE(ideal.exact);
+    EXPECT_TRUE(ideal.onIdealSurfaces);
     expectRelative(ideal.properties.volume, 2.0 * kPi, 1e-9, "as designed");
     expectRelative(ideal.properties.surfaceArea, 6.0 * kPi, 1e-9, "as designed");
 }
@@ -315,14 +315,14 @@ TEST(StepCurvedTest, ASolidAsReadThatCannotBeFacetedIsNotExact) {
     ASSERT_EQ(hz::model::facetCurved(read).solid, nullptr);
 
     const auto ideal = MassPropertiesCalculator::computeIdeal(read);
-    EXPECT_FALSE(ideal.exact);
+    EXPECT_FALSE(ideal.onIdealSurfaces);
     EXPECT_FALSE(ideal.withoutIdeal.empty()) << "the dialog says why it is not exact";
     MassPropertiesCalculator::compute(read);  // by its corners, and no crash
 
     const std::atomic<bool> cancelled{true};
     const auto stopped =
         MassPropertiesCalculator::computeIdeal(*solids[0], nullptr, 1e-10, &cancelled);
-    EXPECT_FALSE(stopped.exact);
+    EXPECT_FALSE(stopped.onIdealSurfaces);
     EXPECT_FALSE(stopped.properties.valid);
 }
 
@@ -389,7 +389,7 @@ TEST(StepCurvedTest, ACylinderIsWrittenAsDesigned) {
     EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the side, on the cylinder";
     EXPECT_EQ(count(text, "CIRCLE("), 64u) << "each rim chord an arc of its circle";
     const auto m = measure(text);
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, kPi * 16.0 * 12.0, 1e-9, "the cylinder");
     expectRelative(m.ideal.properties.surfaceArea, 2.0 * kPi * 4.0 * 12.0 + 2.0 * kPi * 16.0, 1e-9,
                    "its area");
@@ -441,7 +441,7 @@ TEST(StepCurvedTest, ABossJoinedToABlockIsWrittenAsDesigned) {
     EXPECT_TRUE(faceted.empty()) << faceted.front();
     EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u);
     const auto m = measure(text);
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 40.0 * 40.0 * 10.0 + kPi * 25.0 * 10.0, 1e-9,
                    "block and boss");
 }
@@ -461,7 +461,7 @@ TEST(StepCurvedTest, AHoleCutThroughAPlateIsWrittenAsDesigned) {
     EXPECT_TRUE(faceted.empty()) << faceted.front();
     EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the hole's wall";
     const auto m = measure(text);
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 40.0 * 40.0 * 10.0 - kPi * 25.0 * 10.0, 1e-9,
                    "the plate less the hole");
 }
@@ -509,7 +509,7 @@ TEST(StepCurvedTest, HolesAndAMirroredPlateAreWrittenAsDesigned) {
         EXPECT_TRUE(faceted.empty()) << faceted.front();
         EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 1u) << "the hole's wall";
         const auto m = measure(text);
-        EXPECT_TRUE(m.ideal.exact);
+        EXPECT_TRUE(m.ideal.onIdealSurfaces);
         expectRelative(m.ideal.properties.volume, 16000.0 - hole, 1e-9, "the plate less the hole");
     }
     {
@@ -518,7 +518,7 @@ TEST(StepCurvedTest, HolesAndAMirroredPlateAreWrittenAsDesigned) {
         EXPECT_TRUE(faceted.empty()) << faceted.front();
         EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 2u) << "the bore and the wall";
         const auto m = measure(text);
-        EXPECT_TRUE(m.ideal.exact);
+        EXPECT_TRUE(m.ideal.onIdealSurfaces);
         const double bore = kPi * (64.0 - 25.0) * 4.0;
         expectRelative(m.ideal.properties.volume, 16000.0 - hole - bore, 1e-9,
                        "the plate less the counterbored hole");
@@ -533,7 +533,7 @@ TEST(StepCurvedTest, HolesAndAMirroredPlateAreWrittenAsDesigned) {
         EXPECT_TRUE(faceted.empty()) << faceted.front();
         EXPECT_EQ(count(text, "RATIONAL_B_SPLINE_SURFACE("), 2u) << "a wall each";
         const auto m = measure(text);
-        EXPECT_TRUE(m.ideal.exact);
+        EXPECT_TRUE(m.ideal.onIdealSurfaces);
         expectRelative(m.ideal.properties.volume, 2.0 * (16000.0 - hole), 1e-9,
                        "the plate and its image");
     }
@@ -679,7 +679,7 @@ TEST(StepCurvedTest, ASlantCutCylindersSideIsCutWithinItsOutline) {
     const auto m = measure(text);
     EXPECT_EQ(m.outlined, 0u) << "every curved face in facets on its surface";
     expectRelative(m.modelled, kPi, 0.01, "its facets, within 1 %");
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, kPi, 1e-8, "the cut cylinder");
 }
 
@@ -846,7 +846,7 @@ TEST(StepCurvedTest, ACurvedFaceWithAHoleIsCutRoundIt) {
     const auto m = measure(pocketedCylinder());
     EXPECT_EQ(m.outlined, 0u);
     expectRelative(m.modelled, 16.0 * kPi - 0.525, 0.01, "its facets, within 1 %");
-    EXPECT_TRUE(m.ideal.exact);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
     expectRelative(m.ideal.properties.volume, 16.0 * kPi - 0.525, 1e-8, "the pocketed cylinder");
 }
 

@@ -45,13 +45,18 @@ struct MassProperties {
 /// points put on those surfaces, at rising resolution until the result stops
 /// changing, and the sequence extrapolated to its limit. compute() measures
 /// the facets, which is what Booleans, export and the display use.
+///
+/// It is a measurement, not a closed form: what it is measured on, and how
+/// near its measure came, are said apart. onIdealSurfaces says the first,
+/// withinTolerance and estimatedError the second.
 struct IdealMassProperties {
     MassProperties properties;  ///< of the ideal geometry
     /// Every face that approximates a curved surface records it, and the
-    /// ideals of neighbouring faces meet. Where not, the result is between
-    /// the facets and the design: a face without its ideal is measured as
-    /// modelled, and an edge where two ideals part is closed with a sliver.
-    bool exact = false;
+    /// ideals of neighbouring faces meet: it is measured on the design's
+    /// surfaces. Where not, the result is between the facets and the
+    /// design: a face without its ideal is measured as modelled, and an
+    /// edge where two ideals part is closed with a sliver.
+    bool onIdealSurfaces = false;
     /// The faces measured as modelled though they are facets of a curved
     /// surface (they bend by under 30° from a neighbour that has no ideal
     /// either), by logical name (model::logicalFace), each once.
@@ -60,8 +65,18 @@ struct IdealMassProperties {
     int partedEdges = 0;
     /// The last correction the extrapolation made to the volume or the
     /// area, relative: an estimate of the error, found within a factor of 3
-    /// of it for a torus, a sphere and a cone.
+    /// of it for a torus, a sphere and a cone. 0 when nothing curved was
+    /// refined (every face flat); meaningless when measured once alone
+    /// (refinement 1 with curved faces): withinTolerance is false then.
     double estimatedError = 0.0;
+    /// The relative tolerance the estimated error was to come under.
+    double tolerance = 0.0;
+    /// Whether it did: the refinement settled (four measures or more) with
+    /// estimatedError at or under tolerance. False when it stopped first,
+    /// at the budget of triangles, the finest refinement, or edges where
+    /// ideals part; and for a solid measured by its corners alone. True for
+    /// a solid of flat faces, measured as it is.
+    bool withinTolerance = false;
     /// The finest refinement measured: each edge in this many pieces.
     int refinement = 1;
 };
@@ -77,8 +92,9 @@ public:
     /// The ideal mass properties (IdealMassProperties): refined until the
     /// estimated error of the volume and the area is under @p tolerance,
     /// relative, or the refinement reaches a budget of triangles; where
-    /// ideals part, at eight pieces an edge. The default gives the closed
-    /// forms of the primitives to 1e-9. Far slower than compute(): for a
+    /// ideals part, at eight pieces an edge. Which it was is said in the
+    /// result (withinTolerance). The default gives the closed forms of the
+    /// primitives to 1e-9. Far slower than compute(): for a
     /// request, not for every rebuild. Set @p cancelled to stop it, and its
     /// result is not valid. A solid described by curves is measured in
     /// facets that record its surfaces; one that cannot be cut into them is
