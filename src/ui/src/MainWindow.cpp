@@ -2614,18 +2614,7 @@ void MainWindow::onSaveFileAs() {
         // A sheet is only ever a .hzdwg: that is how it is opened again.
         fileName += QStringLiteral(".hzdwg");
     }
-    if (readInPart && doc::DocumentManager::samePath(fileName.toStdString(), source)) {
-        QMessageBox box(QMessageBox::Warning, tr("Replace the File It Was Read From?"),
-                        tr("\"%1\" has what this document left out when it was read. Saving over "
-                           "it loses that for good.")
-                            .arg(QFileInfo(fileName).fileName()),
-                        QMessageBox::Cancel, this);
-        QPushButton* replace = box.addButton(tr("Replace"), QMessageBox::DestructiveRole);
-        box.setDefaultButton(QMessageBox::Cancel);
-        box.setEscapeButton(QMessageBox::Cancel);
-        box.exec();
-        if (box.clickedButton() != replace) return;
-    }
+    if (!mayReplaceSource(fileName)) return;
 
     // Apply the new path (and extension-driven type), but roll everything
     // back if the save fails so a bad path doesn't silently retarget the
@@ -2661,6 +2650,22 @@ void MainWindow::onSaveFileAs() {
         m_document->setLeftOut(std::move(leftOut));
     }
     refreshModifiedIndicators();
+}
+
+bool MainWindow::mayReplaceSource(const QString& fileName) {
+    const std::string source = m_assembly ? m_assembly->filePath() : m_document->filePath();
+    const bool readInPart = m_assembly ? m_assembly->readInPart() : m_document->readInPart();
+    if (!readInPart || !doc::DocumentManager::samePath(fileName.toStdString(), source)) return true;
+    QMessageBox box(QMessageBox::Warning, tr("Replace the File It Was Read From?"),
+                    tr("\"%1\" has what this document left out when it was read. Saving over "
+                       "it loses that for good.")
+                        .arg(QFileInfo(fileName).fileName()),
+                    QMessageBox::Cancel, this);
+    QPushButton* replace = box.addButton(tr("Replace"), QMessageBox::DestructiveRole);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setEscapeButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == replace;
 }
 
 // ---------------------------------------------------------------------------
@@ -2900,6 +2905,9 @@ QString MainWindow::askExportPath(const QString& format, const QString& filter,
     QString fileName =
         QFileDialog::getSaveFileName(this, tr("Export %1").arg(format), QString(), filter);
     if (!fileName.isEmpty() && QFileInfo(fileName).suffix().isEmpty()) fileName += suffix;
+    // An export is written over the file the document was read from in part
+    // (a DXF, exported as one) only as a save is: when its user says so.
+    if (!fileName.isEmpty() && !mayReplaceSource(fileName)) return {};
     return fileName;
 }
 

@@ -500,6 +500,9 @@ private:
     void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) override;
     /// The part's solid for an export, or null with a word in the status bar.
     const topo::Solid* solidToExport(const QString& format);
+    /// Whether @p fileName may be written: true unless it is the file the
+    /// active document was read from in part, and its user, asked, keeps it.
+    bool mayReplaceSource(const QString& fileName);
     /// Ask where to export; empty when cancelled.
     QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
     /// The feature at a panel row of the active part, or null.

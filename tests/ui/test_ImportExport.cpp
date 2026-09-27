@@ -457,3 +457,32 @@ TEST(ImportExportTest, SavingOverTheFileItWasReadFromAsksFirst) {
     EXPECT_NE(contents(path), before) << "replaced, as asked";
     EXPECT_FALSE(w.activeDocument()->readInPart());
 }
+
+// A DXF read in part is not written over by an export either: exporting it
+// as a DXF to the file it came from asks first.
+TEST(ImportExportTest, ExportingOverTheDxfItWasReadFromAsksFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plan.dxf"));
+    {
+        std::ofstream out(path.toStdString());
+        out << "0\nSECTION\n2\nENTITIES\n"
+               "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n1\n"
+               "0\n3DFACE\n8\n0\n"
+               "0\nENDSEC\n0\nEOF\n";
+    }
+    const QByteArray before = contents(path);
+
+    MainWindow w;
+    openReadInPart(w, path);
+    ASSERT_TRUE(w.activeDocument()->readInPart());
+    {
+        DialogResponder exists(QMessageBox::Yes);
+        DialogResponder keep(QMessageBox::Cancel,
+                             QStringLiteral("Replace the File It Was Read From?"));
+        FilePicker picker(path);
+        action(w, "export_dxf")->trigger();
+        EXPECT_TRUE(keep.seen());
+    }
+    EXPECT_EQ(contents(path), before) << "the 3DFACE is still in it";
+}
