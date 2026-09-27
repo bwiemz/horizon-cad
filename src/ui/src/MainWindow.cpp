@@ -2638,7 +2638,8 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
 
 MainWindow::StepLoad MainWindow::loadStep(const std::string& path, const std::string& assemblyPath,
                                           const std::atomic<bool>* cancelled,
-                                          const io::StepReadOptions& options) {
+                                          const io::StepReadOptions& options,
+                                          const std::shared_ptr<ImportProgress>& progress) {
     StepLoad load;
     load.assemblyPath = assemblyPath;
     if (assemblyPath.empty()) {
@@ -2650,6 +2651,27 @@ MainWindow::StepLoad MainWindow::loadStep(const std::string& path, const std::st
     }
     // Asked on the thread that read: what it says is that thread's.
     load.unitUnknown = io::StepFormat::lastLengthUnitUnknown();
+    const bool stopped = cancelled != nullptr && cancelled->load();
+    if (!assemblyPath.empty() && !load.assembly.parts.empty() && !stopped) {
+        // Each part a part file, in a folder named for the assembly beside
+        // it: the assembly refers to its parts by their files. Built and
+        // written here, where it was read; stopped, or failed, it leaves
+        // nothing behind.
+        const QFileInfo kept(QString::fromStdString(assemblyPath));
+        const QString partsDir =
+            kept.dir().filePath(kept.completeBaseName() + QStringLiteral(" parts"));
+        io::StepAssemblyProgress told;
+        if (progress) {
+            told = [progress](std::size_t written, std::size_t total) {
+                progress->total = total;
+                progress->written = written;
+            };
+        }
+        load.kept =
+            io::saveStepAssembly(load.assembly, assemblyPath, partsDir.toStdString(),
+                                 QFileInfo(QString::fromStdString(path)).fileName().toStdString(),
+                                 &load.files, &load.error, cancelled, told);
+    }
     return load;
 }
 
@@ -2714,22 +2736,29 @@ void MainWindow::startStepImport(const QString& fileName, const QString& assembl
         return;
     }
     m_importFile = fileName;
+    m_importProgress = std::make_shared<ImportProgress>();
     m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
-        [path, keptAt, options](const std::atomic<bool>& cancelled) {
-            return loadStep(path, keptAt, &cancelled, options);
+        [path, keptAt, options, progress = m_importProgress](const std::atomic<bool>& cancelled) {
+            return loadStep(path, keptAt, &cancelled, options, progress);
         });
     m_importTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
     });
     m_statusPrompt->setText(tr("Importing %1...").arg(QFileInfo(fileName).fileName()));
+    m_rebuildPoll->start();  // the parts written, as they are
     updateBusyIndicator();
 }
 
 void MainWindow::onImportFinished() {
     if (!m_importTask || !m_importTask->finished()) return;
     const std::unique_ptr<BackgroundTask<StepLoad>> task = std::move(m_importTask);
+    m_importProgress.reset();
+    if (!m_rebuildJob) m_rebuildPoll->stop();
     updateBusyIndicator();
     if (task->cancelled()) {
+        // Cancelled once its files were written: they go too.
+        StepLoad late = task->take();
+        if (late.kept) io::removeStepAssemblyFiles(late.files);
         m_statusPrompt->setText(tr("Ready"));
         statusBar()->showMessage(tr("Import cancelled"), 10000);
         return;
@@ -2791,21 +2820,16 @@ void MainWindow::finishStepAssemblyImport(const QString& fileName, StepLoad load
         reportFileError(tr("Could not import"), fileName.toStdString(), load.error);
         return;
     }
-    // Each part a part file, in a folder named for the assembly beside it:
-    // the assembly refers to its parts by their files.
-    const QFileInfo kept(QString::fromStdString(load.assemblyPath));
-    const QString partsDir =
-        kept.dir().filePath(kept.completeBaseName() + QStringLiteral(" parts"));
-    const auto parts = static_cast<int>(load.assembly.parts.size());
-    const auto placed = static_cast<int>(load.assembly.occurrences.size());
-    io::StepAssemblyFiles files;
-    std::string error;
-    if (!io::saveStepAssembly(load.assembly, load.assemblyPath, partsDir.toStdString(),
-                              QFileInfo(fileName).fileName().toStdString(), &files, &error)) {
-        reportFileError(tr("Could not import"), load.assemblyPath, error);
+    // Its files were written where it was read (loadStep); one that could not
+    // be took the others with it.
+    if (!load.kept) {
+        reportFileError(tr("Could not import"), load.assemblyPath, load.error);
         return;
     }
-    if (!openPath(QString::fromStdString(files.assembly))) return;
+    const QString partsDir = QString::fromStdString(load.files.partsDir);
+    const auto parts = static_cast<int>(load.assembly.parts.size());
+    const auto placed = static_cast<int>(load.assembly.occurrences.size());
+    if (!openPath(QString::fromStdString(load.files.assembly))) return;
     showImportReport(QFileInfo(fileName).fileName(), load.report);
     m_statusPrompt->setText(
         // Two sentences, each whole: one split across two messages could not
@@ -5791,14 +5815,27 @@ void MainWindow::updateBusyIndicator() {
 }
 
 void MainWindow::updateRebuildProgress() {
-    if (!m_rebuildJob || m_importTask || m_assemblies->busy() || m_openTask || m_massTask ||
-        m_reloadTask) {
+    // Steps are shown for one piece of work alone that counts them: a
+    // rebuild's features, or the parts of a STEP assembly as they are written.
+    if (m_assemblies->busy() || m_openTask || m_massTask || m_reloadTask) return;
+    if (m_rebuildJob && !m_importTask) {
+        const int total = m_rebuildJob->total();
+        if (total > 0) {
+            m_rebuildProgress->setRange(0, total);
+            m_rebuildProgress->setValue(m_rebuildJob->done());
+        }
         return;
     }
-    const int total = m_rebuildJob->total();
-    if (total > 0) {
-        m_rebuildProgress->setRange(0, total);
-        m_rebuildProgress->setValue(m_rebuildJob->done());
+    if (m_importTask && !m_rebuildJob && m_importProgress) {
+        const std::size_t total = m_importProgress->total.load();
+        if (total == 0) return;  // still reading: nothing written to count
+        const std::size_t written = std::min(m_importProgress->written.load(), total);
+        m_rebuildProgress->setRange(0, static_cast<int>(total));
+        m_rebuildProgress->setValue(static_cast<int>(written));
+        m_statusPrompt->setText(tr("Importing %1: %2 of %3 parts written...")
+                                    .arg(QFileInfo(m_importFile).fileName())
+                                    .arg(written)
+                                    .arg(total));
     }
 }
 
@@ -5808,7 +5845,7 @@ void MainWindow::onRebuildFinished() {
     const std::unique_ptr<RebuildJob> job = std::move(m_rebuildJob);
     const std::shared_ptr<doc::Document> document = std::move(m_rebuildDocument);
     bool again = std::exchange(m_rebuildAgain, false);
-    m_rebuildPoll->stop();
+    if (!m_importTask) m_rebuildPoll->stop();  // an import's parts are still counted
     updateBusyIndicator();
 
     DocTab* tab = nullptr;

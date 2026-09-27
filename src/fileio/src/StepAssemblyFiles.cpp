@@ -57,26 +57,45 @@ std::string lowered(std::string text) {
 
 }  // namespace
 
+void removeStepAssemblyFiles(const StepAssemblyFiles& files) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const std::string& part : files.parts) fs::remove(pathFromUtf8(part), ec);
+    if (!files.assembly.empty()) fs::remove(pathFromUtf8(files.assembly), ec);
+    // fs::remove takes a folder only when it is empty: one that holds
+    // anything else is kept.
+    if (files.madePartsDir && !files.partsDir.empty()) fs::remove(pathFromUtf8(files.partsDir), ec);
+}
+
 bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
                       const std::string& partsDir, const std::string& source,
-                      StepAssemblyFiles* written, std::string* error) {
+                      StepAssemblyFiles* written, std::string* error,
+                      const std::atomic<bool>* cancelled, const StepAssemblyProgress& progress) {
     namespace fs = std::filesystem;
-    const auto fail = [error](std::string why) {
+    StepAssemblyFiles files;
+    files.partsDir = partsDir;
+    // What does not finish leaves nothing: what it wrote goes again.
+    const auto fail = [&](std::string why) {
+        removeStepAssemblyFiles(files);
         if (error != nullptr) *error = std::move(why);
         return false;
     };
-    StepAssemblyFiles files;
-    const auto keep = [&] {
-        if (written != nullptr) *written = files;
+    const auto stopped = [cancelled] {
+        return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
     };
     const fs::path dir = pathFromUtf8(partsDir);
     std::error_code ec;
+    files.madePartsDir = !fs::exists(dir, ec);
     fs::create_directories(dir, ec);
-    if (ec) return fail("the folder for its parts could not be made: " + ec.message());
+    if (ec) {
+        files.madePartsDir = false;  // not made: nothing of it to take away
+        return fail("the folder for its parts could not be made: " + ec.message());
+    }
 
     // Each part a part file of its own, its bodies imported.
     std::set<std::string> taken;  // names given here, as a case-blind system sees them
     for (StepAssembly::Part& part : read.parts) {
+        if (stopped()) return fail("cancelled");
         doc::Document document;
         document.setType(doc::DocumentType::Part);
         for (auto& body : part.bodies) {
@@ -99,11 +118,12 @@ bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
         }
         std::string why;
         if (!NativeFormat::save(utf8Of(file), document, &why)) {
-            keep();
             return fail("its part \"" + part.name + "\" could not be written: " + why);
         }
         files.parts.push_back(utf8Of(fs::absolute(file, ec)));
+        if (progress) progress(files.parts.size(), read.parts.size());
     }
+    if (stopped()) return fail("cancelled");
 
     // The assembly, placing them.
     doc::AssemblyDocument assembly;
@@ -117,11 +137,10 @@ bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
     }
     std::string why;
     if (!NativeFormat::saveAssembly(assemblyPath, assembly, &why)) {
-        keep();
         return fail("its assembly could not be written: " + why);
     }
     files.assembly = assemblyPath;
-    keep();
+    if (written != nullptr) *written = files;
     return true;
 }
 

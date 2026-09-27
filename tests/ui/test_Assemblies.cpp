@@ -25,6 +25,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <chrono>
 #include <cmath>
@@ -819,6 +820,66 @@ TEST(AssembliesTest, ImportingAStepAssemblyKeepsItsPartsAsFiles) {
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Bracket.hzpart"))));
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Pin.hzpart"))));
     EXPECT_NE(assembly->components()[0].cachedMesh, nullptr) << "its parts' shapes are shown";
+}
+
+namespace {
+
+/// A STEP assembly of a bracket placed twice and a pin, at @p step.
+void writeRig(const QString& step) {
+    const auto bracket = hz::model::PrimitiveFactory::makeBox(10, 20, 30);
+    const auto pin = hz::model::PrimitiveFactory::makeCylinder(5, 10);
+    ASSERT_TRUE(hz::io::StepFormat::saveAssembly(
+        step.toStdString(), "Rig", {{"Bracket", {bracket.get()}}, {"Pin", {pin.get()}}},
+        {{0, "Bracket:1", hz::math::Mat4::translation({100, 0, 0})},
+         {0, "Bracket:2", hz::math::Mat4::identity()},
+         {1, "Pin:1", hz::math::Mat4::translation({0, 50, 0})}}));
+}
+
+}  // namespace
+
+// On a worker, a STEP assembly's parts are built and written there too, where
+// it was read: once read, they took the window's time, one part after another.
+TEST(AssembliesTest, AStepAssemblyIsKeptOnAWorker) {
+    QTemporaryDir dir;
+    const QString step = dir.filePath(QStringLiteral("rig.step"));
+    writeRig(step);
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    const QString kept = dir.filePath(QStringLiteral("Rig.hzasm"));
+    {
+        FilePicker picker(QStringList{step, kept});
+        trigger(w, "import_step_assembly");
+    }
+    EXPECT_TRUE(w.backgroundWorkRunning()) << "read and kept on the worker";
+    ASSERT_TRUE(waitUntil([&] { return w.activeAssembly() != nullptr; }, 30000));
+    EXPECT_EQ(w.activeAssembly()->components().size(), 3u);
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Bracket.hzpart"))));
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts/Pin.hzpart"))));
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 30000));
+}
+
+// Cancelled, however far it got, an import leaves no files behind: not its
+// parts, not their folder, not its assembly.
+TEST(AssembliesTest, ACancelledStepAssemblyImportLeavesNothingBehind) {
+    QTemporaryDir dir;
+    const QString step = dir.filePath(QStringLiteral("rig.step"));
+    writeRig(step);
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    const QString kept = dir.filePath(QStringLiteral("Rig.hzasm"));
+    {
+        FilePicker picker(QStringList{step, kept});
+        trigger(w, "import_step_assembly");
+    }
+    auto* cancel = w.findChild<QToolButton*>(QStringLiteral("cancelRebuild"));
+    ASSERT_NE(cancel, nullptr);
+    cancel->click();
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 30000));
+    EXPECT_EQ(w.activeAssembly(), nullptr) << "nothing opened";
+    EXPECT_FALSE(QFileInfo::exists(kept));
+    EXPECT_FALSE(QFileInfo::exists(dir.filePath(QStringLiteral("Rig parts"))));
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("cancelled")))
+        << w.statusBar()->currentMessage().toStdString();
 }
 
 // Phase 158: a component dragged in the view goes where the cursor takes it,

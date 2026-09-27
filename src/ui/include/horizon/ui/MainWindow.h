@@ -14,6 +14,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/fileio/StepAssemblyFiles.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec2.h"
@@ -396,10 +397,23 @@ private:
         /// Nothing was read: the file does not say which unit its lengths
         /// are in (StepFormat::lastLengthUnitUnknown).
         bool unitUnknown = false;
+        /// Kept as an assembly: its files, written where it was read.
+        io::StepAssemblyFiles files;
+        bool kept = false;
     };
+    /// How far a STEP assembly's parts are written, as the worker writing
+    /// them says: shown in the status bar.
+    struct ImportProgress {
+        std::atomic<std::size_t> written{0};
+        std::atomic<std::size_t> total{0};
+    };
+    /// Read @p path; to be kept as an assembly at @p assemblyPath, its parts
+    /// built and written as files there too, on the same thread (they took
+    /// the window's time once it was read), each counted into @p progress.
     static StepLoad loadStep(const std::string& path, const std::string& assemblyPath = {},
                              const std::atomic<bool>* cancelled = nullptr,
-                             const io::StepReadOptions& options = {});
+                             const io::StepReadOptions& options = {},
+                             const std::shared_ptr<ImportProgress>& progress = nullptr);
     /// Read @p fileName, on a worker when it is large; into a new part, or
     /// kept as an assembly at @p assemblyPath when one is given.
     void startStepImport(const QString& fileName, const QString& assemblyPath,
@@ -630,6 +644,7 @@ private:
     QToolButton* m_rebuildCancel = nullptr;
     QTimer* m_rebuildPoll = nullptr;
     std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
+    std::shared_ptr<ImportProgress> m_importProgress;  ///< of m_importTask
     QString m_importFile;
     std::unique_ptr<BackgroundTask<FileOpen>> m_openTask;
     /// A tab's file read again on a worker, the document it replaces and

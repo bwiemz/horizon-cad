@@ -3239,12 +3239,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4037"/>
+        <location line="+4061"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-4113"/>
+        <location line="-4137"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3261,19 +3261,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3886"/>
+        <location line="+3910"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-3949"/>
+        <location line="-3973"/>
         <location line="+64"/>
-        <location line="+3885"/>
+        <location line="+3909"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-3948"/>
+        <location line="-3972"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3314,7 +3314,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message numerus="yes">
-        <location line="+1644"/>
+        <location line="+1668"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n pièce importée dans &quot;%1&quot;.</numerusform>
@@ -3335,7 +3335,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">%1 : &quot;%2&quot; ne peut pas prendre cette valeur</translation>
     </message>
     <message>
-        <location line="-4219"/>
+        <location line="-4243"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -3437,12 +3437,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2777"/>
+        <location line="+2801"/>
         <source>Explode</source>
         <translation type="unfinished">Décomposer</translation>
     </message>
     <message>
-        <location line="-2774"/>
+        <location line="-2798"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3457,96 +3457,96 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2919"/>
+        <location line="+2943"/>
         <source>Box</source>
         <translation type="unfinished">Boîte</translation>
     </message>
     <message>
-        <location line="-2918"/>
-        <location line="+2928"/>
+        <location line="-2942"/>
+        <location line="+2952"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cylindre</translation>
     </message>
     <message>
-        <location line="-2927"/>
-        <location line="+2934"/>
+        <location line="-2951"/>
+        <location line="+2958"/>
         <source>Sphere</source>
         <translation type="unfinished">Sphère</translation>
     </message>
     <message>
-        <location line="-2933"/>
-        <location line="+2940"/>
+        <location line="-2957"/>
+        <location line="+2964"/>
         <source>Cone</source>
         <translation type="unfinished">Cône</translation>
     </message>
     <message>
-        <location line="-2939"/>
-        <location line="+2950"/>
+        <location line="-2963"/>
+        <location line="+2974"/>
         <source>Torus</source>
         <translation type="unfinished">Tore</translation>
     </message>
     <message>
-        <location line="-2948"/>
+        <location line="-2972"/>
         <source>Features</source>
         <translation type="unfinished">Fonctions</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3673"/>
+        <location line="+3697"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3718"/>
-        <location line="+3737"/>
+        <location line="-3742"/>
+        <location line="+3761"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3763"/>
-        <location line="+4093"/>
+        <location line="-3787"/>
+        <location line="+4117"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-4091"/>
+        <location line="-4115"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3844"/>
+        <location line="+3868"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3843"/>
-        <location line="+3847"/>
+        <location line="-3867"/>
+        <location line="+3871"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3846"/>
-        <location line="+3850"/>
+        <location line="-3870"/>
+        <location line="+3874"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3845"/>
-        <location line="+3914"/>
+        <location line="-3869"/>
+        <location line="+3938"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-3913"/>
-        <location line="+3933"/>
+        <location line="-3937"/>
+        <location line="+3957"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-3931"/>
+        <location line="-3955"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3577,17 +3577,17 @@ commencer à construire votre pièce.</translation>
         <location line="+3"/>
         <location line="+10"/>
         <location line="+945"/>
-        <location line="+430"/>
+        <location line="+459"/>
         <location line="+15"/>
-        <location line="+468"/>
+        <location line="+463"/>
         <location line="+1422"/>
-        <location line="+1190"/>
+        <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4553"/>
+        <location line="-4590"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3608,12 +3608,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4222"/>
+        <location line="+4246"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-4216"/>
+        <location line="-4240"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -3930,12 +3930,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="-229"/>
-        <location line="+709"/>
+        <location line="+733"/>
         <source>Assembly</source>
         <translation type="unfinished">Assemblage</translation>
     </message>
     <message>
-        <location line="-687"/>
+        <location line="-711"/>
         <location line="+99"/>
         <source>Drawing</source>
         <translation type="unfinished">Dessin</translation>
@@ -4085,12 +4085,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+313"/>
+        <location line="+337"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omis : %1</translation>
     </message>
     <message>
-        <location line="-310"/>
+        <location line="-334"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Approximé : %1</translation>
     </message>
@@ -4110,7 +4110,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Ce qui a été omis ne figure pas dans le document, et l&apos;enregistrement ne le conservera pas.</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+52"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unité de longueur non indiquée</translation>
     </message>
@@ -4156,12 +4156,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Une importation STEP est déjà en cours</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+12"/>
         <source>Importing %1...</source>
         <translation type="unfinished">Importation de %1...</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importation annulée</translation>
     </message>
@@ -4173,13 +4173,13 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+16"/>
         <location line="+25"/>
-        <location line="+14"/>
-        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
         <source>Could not import</source>
         <translation type="unfinished">Impossible d&apos;importer</translation>
     </message>
     <message numerus="yes">
-        <location line="-44"/>
+        <location line="-39"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n corps importé.</numerusform>
@@ -4187,7 +4187,7 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+33"/>
+        <location line="+28"/>
         <source>A DXF is imported into a drawing or part, not an assembly</source>
         <translation type="unfinished">Un fichier DXF s&apos;importe dans un dessin ou une pièce, pas dans un assemblage</translation>
     </message>
@@ -5600,12 +5600,17 @@ Non exact : %n arêtes où les surfaces courbes de part et d&apos;autre ne se re
         <translation type="unfinished">Reconstruction du modèle...</translation>
     </message>
     <message>
-        <location line="+96"/>
+        <location line="+64"/>
+        <source>Importing %1: %2 of %3 parts written...</source>
+        <translation type="unfinished">Importation de %1 : %2 pièces écrites sur %3...</translation>
+    </message>
+    <message>
+        <location line="+45"/>
         <source>Rebuild cancelled: the model is as it was before the last change.</source>
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4569"/>
+        <location line="-4606"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

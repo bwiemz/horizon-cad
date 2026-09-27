@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -394,6 +396,85 @@ TEST(StepAssemblyTest, AnAssemblyIsKeptAsPartFilesAndAnAssemblyFile) {
     // just written, on Windows.
     std::error_code ec;
     fs::remove_all(dir, ec);
+}
+
+namespace {
+
+/// A folder of its own under the temporary one, named for @p what.
+fs::path freshDir(const std::string& what) {
+    return fs::temp_directory_path() /
+           ("hz_" + what + "_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+}
+
+std::size_t filesIn(const fs::path& dir) {
+    std::error_code ec;
+    std::size_t n = 0;
+    for (auto it = fs::recursive_directory_iterator(dir, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        n += it->is_regular_file() ? 1 : 0;
+    }
+    return n;
+}
+
+}  // namespace
+
+// Writing the parts says how far it has got, and stops when asked: what it
+// wrote goes again, the folder it made too, and nothing is left behind.
+TEST(StepAssemblyTest, KeepingAnAssemblySaysHowFarAndStopsWhenCancelled) {
+    const fs::path dir = freshDir("step_assembly_cancel");
+    const Rig rig;
+    const std::string text = StepFormat::assemblyToString("Rig", rig.parts(), Rig::occurrences());
+
+    StepAssembly read = StepFormat::assemblyFromString(text);
+    ASSERT_EQ(read.parts.size(), 2u) << StepFormat::lastError();
+    std::vector<std::pair<std::size_t, std::size_t>> told;
+    hz::io::StepAssemblyFiles files;
+    std::string error;
+    ASSERT_TRUE(hz::io::saveStepAssembly(
+        read, (dir / "Rig.hzasm").string(), (dir / "Rig parts").string(), "rig.step", &files,
+        &error, nullptr,
+        [&](std::size_t written, std::size_t total) { told.emplace_back(written, total); }))
+        << error;
+    const std::vector<std::pair<std::size_t, std::size_t>> each{{1, 2}, {2, 2}};
+    EXPECT_EQ(told, each);
+    EXPECT_TRUE(files.madePartsDir);
+
+    // Cancelled once the first part is written.
+    const fs::path other = freshDir("step_assembly_cancelled");
+    read = StepFormat::assemblyFromString(text);
+    std::atomic<bool> cancelled{false};
+    EXPECT_FALSE(hz::io::saveStepAssembly(
+        read, (other / "Rig.hzasm").string(), (other / "Rig parts").string(), "rig.step", &files,
+        &error, &cancelled, [&](std::size_t, std::size_t) { cancelled = true; }));
+    EXPECT_EQ(error, "cancelled");
+    EXPECT_FALSE(fs::exists(other / "Rig parts")) << "the folder it made goes with its parts";
+    EXPECT_FALSE(fs::exists(other / "Rig.hzasm"));
+    fs::remove_all(dir);
+    fs::remove_all(other);
+}
+
+// An assembly that cannot be written takes its parts with it; a folder that
+// was there before, holding someone else's file, stays as it was.
+TEST(StepAssemblyTest, AnAssemblyThatCannotBeWrittenLeavesNothingBehind) {
+    const fs::path dir = freshDir("step_assembly_failed");
+    const fs::path partsDir = dir / "Rig parts";
+    fs::create_directories(partsDir);
+    std::ofstream(partsDir / "Notes.txt") << "someone else's";
+    // Where the assembly goes is a folder: it cannot be written there.
+    fs::create_directories(dir / "Rig.hzasm");
+
+    const Rig rig;
+    StepAssembly read = StepFormat::assemblyFromString(
+        StepFormat::assemblyToString("Rig", rig.parts(), Rig::occurrences()));
+    ASSERT_EQ(read.parts.size(), 2u) << StepFormat::lastError();
+    std::string error;
+    EXPECT_FALSE(hz::io::saveStepAssembly(read, (dir / "Rig.hzasm").string(), partsDir.string(),
+                                          "rig.step", nullptr, &error));
+    EXPECT_NE(error.find("assembly"), std::string::npos) << error;
+    EXPECT_EQ(filesIn(partsDir), 1u) << "its parts are gone, the other file is not";
+    EXPECT_TRUE(fs::exists(partsDir / "Notes.txt"));
+    fs::remove_all(dir);
 }
 
 // Half a UTF-16 pair, or one on its own, is the replacement character, not
