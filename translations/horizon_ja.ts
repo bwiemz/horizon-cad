@@ -1275,12 +1275,12 @@ Details are in the log:
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">再読み込みできませんでした</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot; の図面を再作成できませんでした: %2</translation>
     </message>
@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4061"/>
+        <location line="+4143"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4137"/>
+        <location line="-4219"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3910"/>
+        <location line="+3992"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3973"/>
+        <location line="-4055"/>
         <location line="+64"/>
-        <location line="+3909"/>
+        <location line="+3991"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3972"/>
+        <location line="-4054"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">寸法</translation>
     </message>
     <message numerus="yes">
-        <location line="+1668"/>
+        <location line="+1745"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
@@ -3325,12 +3325,12 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+2577"/>
+        <location line="+2582"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4243"/>
+        <location line="-4325"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3432,12 +3432,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2801"/>
+        <location line="+2883"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2798"/>
+        <location line="-2880"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3452,96 +3452,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2943"/>
+        <location line="+3025"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-2942"/>
-        <location line="+2952"/>
+        <location line="-3024"/>
+        <location line="+3034"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-2951"/>
-        <location line="+2958"/>
+        <location line="-3033"/>
+        <location line="+3040"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-2957"/>
-        <location line="+2964"/>
+        <location line="-3039"/>
+        <location line="+3046"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-2963"/>
-        <location line="+2974"/>
+        <location line="-3045"/>
+        <location line="+3056"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-2972"/>
+        <location line="-3054"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3697"/>
+        <location line="+3779"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3742"/>
-        <location line="+3761"/>
+        <location line="-3824"/>
+        <location line="+3843"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3787"/>
-        <location line="+4117"/>
+        <location line="-3869"/>
+        <location line="+4199"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4115"/>
+        <location line="-4197"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3868"/>
+        <location line="+3950"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3867"/>
-        <location line="+3871"/>
+        <location line="-3949"/>
+        <location line="+3953"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3870"/>
-        <location line="+3874"/>
+        <location line="-3952"/>
+        <location line="+3956"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3869"/>
-        <location line="+3938"/>
+        <location line="-3951"/>
+        <location line="+4020"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3937"/>
-        <location line="+3957"/>
+        <location line="-4019"/>
+        <location line="+4039"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3955"/>
+        <location line="-4037"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3571,18 +3571,18 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+945"/>
-        <location line="+459"/>
+        <location line="+982"/>
+        <location line="+499"/>
         <location line="+15"/>
-        <location line="+463"/>
-        <location line="+1422"/>
+        <location line="+466"/>
+        <location line="+1424"/>
         <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4590"/>
+        <location line="-4672"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3603,19 +3603,24 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4246"/>
+        <location line="+4328"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4240"/>
+        <location line="-4322"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (不完全)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3693,13 +3698,13 @@ begin building your part.</source>
         <translation type="unfinished">テキスト (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">ドキュメントの復元</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD は正常に終了しませんでした。次のドキュメントには未保存の変更があり、復元できます:%1</translation>
     </message>
@@ -3719,7 +3724,7 @@ begin building your part.</source>
         <translation type="unfinished">前回これらを復元した後、Horizon CAD が再び停止しました: %1。これらを開くことが停止の原因である可能性があります。復元する前にほかの作業内容を保存するか、「後で」を選択して今は保持してください。</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">次のドキュメントを復元できませんでした:
@@ -3910,10 +3915,10 @@ begin building your part.</source>
         <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3922,20 +3927,20 @@ begin building your part.</source>
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+733"/>
+        <location line="-233"/>
+        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
-        <location line="-711"/>
-        <location line="+99"/>
+        <location line="-758"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">ドキュメント</translation>
     </message>
@@ -4005,7 +4010,7 @@ begin building your part.</source>
         <translation type="unfinished">サンプルのコピー (%1 内): 自由に変更して保存できます。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">アセンブリを保存しました。</translation>
     </message>
@@ -4066,24 +4071,44 @@ begin building your part.</source>
         <translation type="unfinished">Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">ファイルの保存</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">新しいファイルとして保存</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">読み込み元のファイルを置き換えますか？</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; には、このドキュメントが読み込み時に省いた内容があります。上書き保存すると、それは完全に失われます。</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">置き換え</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+337"/>
+        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message>
-        <location line="-334"/>
+        <location line="-341"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">近似: %1</translation>
     </message>
@@ -4098,7 +4123,12 @@ begin building your part.</source>
         <translation type="unfinished">一部を読み込めませんでした</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">&quot;%1&quot; がドキュメントに欠けている内容を保持できるよう、ドキュメントはそのファイルに上書き保存されません。保存すると保存先を尋ねます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">除外された内容はドキュメントに含まれず、保存しても保持されません。</translation>
     </message>
@@ -4208,7 +4238,7 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 のエクスポート</translation>
@@ -4453,7 +4483,7 @@ begin building your part.</source>
         <translation type="unfinished">&quot;%1&quot; がほかのプログラムによって変更されたため、再読み込みしました</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">寸法スタイル</translation>
     </message>
@@ -5594,7 +5624,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4606"/>
+        <location line="-4688"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

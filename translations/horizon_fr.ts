@@ -1278,12 +1278,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Impossible d&apos;ouvrir</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">Impossible de relire</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">Une mise en plan de &quot;%1&quot; n&apos;a pas pu être redessinée : %2</translation>
     </message>
@@ -3239,12 +3239,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4061"/>
+        <location line="+4143"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-4137"/>
+        <location line="-4219"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3261,19 +3261,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3910"/>
+        <location line="+3992"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-3973"/>
+        <location line="-4055"/>
         <location line="+64"/>
-        <location line="+3909"/>
+        <location line="+3991"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-3972"/>
+        <location line="-4054"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3314,7 +3314,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message numerus="yes">
-        <location line="+1668"/>
+        <location line="+1745"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n pièce importée dans &quot;%1&quot;.</numerusform>
@@ -3330,12 +3330,12 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+2577"/>
+        <location line="+2582"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1 : &quot;%2&quot; ne peut pas prendre cette valeur</translation>
     </message>
     <message>
-        <location line="-4243"/>
+        <location line="-4325"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -3437,12 +3437,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2801"/>
+        <location line="+2883"/>
         <source>Explode</source>
         <translation type="unfinished">Décomposer</translation>
     </message>
     <message>
-        <location line="-2798"/>
+        <location line="-2880"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3457,96 +3457,96 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2943"/>
+        <location line="+3025"/>
         <source>Box</source>
         <translation type="unfinished">Boîte</translation>
     </message>
     <message>
-        <location line="-2942"/>
-        <location line="+2952"/>
+        <location line="-3024"/>
+        <location line="+3034"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cylindre</translation>
     </message>
     <message>
-        <location line="-2951"/>
-        <location line="+2958"/>
+        <location line="-3033"/>
+        <location line="+3040"/>
         <source>Sphere</source>
         <translation type="unfinished">Sphère</translation>
     </message>
     <message>
-        <location line="-2957"/>
-        <location line="+2964"/>
+        <location line="-3039"/>
+        <location line="+3046"/>
         <source>Cone</source>
         <translation type="unfinished">Cône</translation>
     </message>
     <message>
-        <location line="-2963"/>
-        <location line="+2974"/>
+        <location line="-3045"/>
+        <location line="+3056"/>
         <source>Torus</source>
         <translation type="unfinished">Tore</translation>
     </message>
     <message>
-        <location line="-2972"/>
+        <location line="-3054"/>
         <source>Features</source>
         <translation type="unfinished">Fonctions</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3697"/>
+        <location line="+3779"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3742"/>
-        <location line="+3761"/>
+        <location line="-3824"/>
+        <location line="+3843"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3787"/>
-        <location line="+4117"/>
+        <location line="-3869"/>
+        <location line="+4199"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-4115"/>
+        <location line="-4197"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3868"/>
+        <location line="+3950"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3867"/>
-        <location line="+3871"/>
+        <location line="-3949"/>
+        <location line="+3953"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3870"/>
-        <location line="+3874"/>
+        <location line="-3952"/>
+        <location line="+3956"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3869"/>
-        <location line="+3938"/>
+        <location line="-3951"/>
+        <location line="+4020"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-3937"/>
-        <location line="+3957"/>
+        <location line="-4019"/>
+        <location line="+4039"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-3955"/>
+        <location line="-4037"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3576,18 +3576,18 @@ commencer à construire votre pièce.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+945"/>
-        <location line="+459"/>
+        <location line="+982"/>
+        <location line="+499"/>
         <location line="+15"/>
-        <location line="+463"/>
-        <location line="+1422"/>
+        <location line="+466"/>
+        <location line="+1424"/>
         <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4590"/>
+        <location line="-4672"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3608,19 +3608,24 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4246"/>
+        <location line="+4328"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-4240"/>
+        <location line="-4322"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (incomplet)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3698,13 +3703,13 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Texte (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">Récupérer des documents</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD ne s&apos;est pas fermé correctement. Ces documents contenaient des modifications non enregistrées et peuvent être récupérés :%1</translation>
     </message>
@@ -3724,7 +3729,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Horizon CAD s&apos;est de nouveau arrêté après la dernière récupération de ces documents : %1. C&apos;est peut-être leur ouverture qui provoque l&apos;arrêt. Enregistrez vos autres travaux avant de les récupérer, ou choisissez Plus tard pour les conserver pour l&apos;instant.</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">Ces documents n&apos;ont pas pu être récupérés :
@@ -3917,10 +3922,10 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Tous les fichiers pris en charge (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Assemblages Horizon (*.hzasm);;Mises en plan Horizon (*.hzdwg);;Fichiers DXF (*.dxf);;Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3929,20 +3934,20 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Impossible d&apos;ouvrir</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+733"/>
+        <location line="-233"/>
+        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">Assemblage</translation>
     </message>
     <message>
-        <location line="-711"/>
-        <location line="+99"/>
+        <location line="-758"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">Dessin</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">Document</translation>
     </message>
@@ -4012,7 +4017,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Une copie de l&apos;exemple, dans %1 : modifiez-la et enregistrez-la à votre guise.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">Assemblage enregistré.</translation>
     </message>
@@ -4073,24 +4078,44 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Fichiers DXF (*.dxf);;Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">Enregistrer le fichier</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">Enregistrer dans un nouveau fichier</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">Remplacer le fichier d&apos;où il a été lu ?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; contient ce que ce document a laissé de côté à la lecture. L&apos;enregistrer par-dessus le perd définitivement.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">Remplacer</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot; : %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+337"/>
+        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omis : %1</translation>
     </message>
     <message>
-        <location line="-334"/>
+        <location line="-341"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Approximé : %1</translation>
     </message>
@@ -4105,7 +4130,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Lecture incomplète</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">Pour que &quot;%1&quot; garde ce qui manque au document, le document n&apos;est pas enregistré par-dessus : Enregistrer demande plutôt où l&apos;enregistrer.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">Ce qui a été omis ne figure pas dans le document, et l&apos;enregistrement ne le conservera pas.</translation>
     </message>
@@ -4217,7 +4247,7 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">Exporter en %1</translation>
@@ -4464,7 +4494,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">&quot;%1&quot; a été modifié par un autre programme et a été relu</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Style de cote</translation>
     </message>
@@ -5610,7 +5640,7 @@ Non exact : %n arêtes où les surfaces courbes de part et d&apos;autre ne se re
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4606"/>
+        <location line="-4688"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

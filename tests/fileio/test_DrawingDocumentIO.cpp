@@ -428,6 +428,38 @@ TEST(DrawingDocumentIOTest, SectionsAndDetailsAreKept) {
     std::filesystem::remove_all(dir);
 }
 
+// What readSpec cannot read of a sheet is said, and goes with it: saved over
+// its file, the sheet would lose it.
+TEST(DrawingDocumentIOTest, WhatASheetLeavesOutIsSaid) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_left_out";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "views": [
+        {"kind": "Front", "dimensions": [
+            {"kind": "length", "edge": "extrude_1/edge:a"},
+            {"kind": "torque", "edge": "extrude_1/edge:b"},
+            {"kind": "length"}]},
+        7],
+        "annotations": {"version": 16, "type": "hcad", "entities": [
+            {"type": "line", "id": 1, "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+            {"type": "hologram", "id": 2}]}})");
+    DrawingDocumentSpec spec;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
+    ASSERT_EQ(spec.views.size(), 1u);
+    EXPECT_EQ(spec.views[0].dimensions.size(), 1u);
+    std::string all;
+    for (const auto& line : spec.leftOut) all += line + "\n";
+    EXPECT_NE(all.find("view 1, dimension 2: not a kind of dimension"), std::string::npos) << all;
+    EXPECT_NE(all.find("view 1, dimension 3: it names no edge"), std::string::npos) << all;
+    EXPECT_NE(all.find("view 2: it is not a view"), std::string::npos) << all;
+    EXPECT_NE(all.find("annotations, entity 2 (hologram)"), std::string::npos) << all;
+    EXPECT_EQ(spec.leftOut.size(), 4u) << all;
+    ASSERT_NE(spec.annotations, nullptr);
+    EXPECT_FALSE(spec.annotations->readInPart()) << "said once, by the sheet";
+    std::filesystem::remove_all(dir);
+}
+
 // A section or detail taken from nothing, from itself or a later view, or
 // from another section is refused with a reason; a detail needs a circle; a label is
 // kept to a few characters on one line.
