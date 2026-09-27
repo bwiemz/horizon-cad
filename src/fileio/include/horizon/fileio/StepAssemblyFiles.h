@@ -16,9 +16,11 @@ struct StepAssemblyFiles {
     std::string assembly;
     /// A part file (.hzpart) for each of its parts, in order.
     std::vector<std::string> parts;
-    /// The folder the parts were put in, and whether it was made for them.
+    /// The folder the parts were put in.
     std::string partsDir;
-    bool madePartsDir = false;
+    /// The folders made for them, the parts' own first, then each above it
+    /// that was not there either.
+    std::vector<std::string> madeDirs;
 };
 
 /// Called as each part file is written: how many are, of how many.
@@ -45,9 +47,9 @@ bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
                       const std::atomic<bool>* cancelled = nullptr,
                       const StepAssemblyProgress& progress = {});
 
-/// Remove what saveStepAssembly wrote: @p files' parts and assembly, and
-/// their folder when it was made for them and nothing else is in it. A file
-/// that is not there is passed over.
+/// Remove what saveStepAssembly wrote: @p files' parts and assembly, and the
+/// folders made for them that nothing else is in. A file that is not there
+/// is passed over.
 void removeStepAssemblyFiles(const StepAssemblyFiles& files);
 
 }  // namespace hz::io

@@ -438,7 +438,7 @@ TEST(StepAssemblyTest, KeepingAnAssemblySaysHowFarAndStopsWhenCancelled) {
         << error;
     const std::vector<std::pair<std::size_t, std::size_t>> each{{1, 2}, {2, 2}};
     EXPECT_EQ(told, each);
-    EXPECT_TRUE(files.madePartsDir);
+    EXPECT_EQ(files.madeDirs.size(), 2u) << "its folder, and the one it is in";
 
     // Cancelled once the first part is written.
     const fs::path other = freshDir("step_assembly_cancelled");
@@ -450,6 +450,7 @@ TEST(StepAssemblyTest, KeepingAnAssemblySaysHowFarAndStopsWhenCancelled) {
     EXPECT_EQ(error, "cancelled");
     EXPECT_FALSE(fs::exists(other / "Rig parts")) << "the folder it made goes with its parts";
     EXPECT_FALSE(fs::exists(other / "Rig.hzasm"));
+    EXPECT_FALSE(fs::exists(other)) << "and so does the folder it made that held it";
     fs::remove_all(dir);
     fs::remove_all(other);
 }

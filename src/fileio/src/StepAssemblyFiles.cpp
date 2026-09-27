@@ -63,8 +63,8 @@ void removeStepAssemblyFiles(const StepAssemblyFiles& files) {
     for (const std::string& part : files.parts) fs::remove(pathFromUtf8(part), ec);
     if (!files.assembly.empty()) fs::remove(pathFromUtf8(files.assembly), ec);
     // fs::remove takes a folder only when it is empty: one that holds
-    // anything else is kept.
-    if (files.madePartsDir && !files.partsDir.empty()) fs::remove(pathFromUtf8(files.partsDir), ec);
+    // anything else is kept, and so is each above it.
+    for (const std::string& dir : files.madeDirs) fs::remove(pathFromUtf8(dir), ec);
 }
 
 bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
@@ -85,12 +85,15 @@ bool saveStepAssembly(StepAssembly& read, const std::string& assemblyPath,
     };
     const fs::path dir = pathFromUtf8(partsDir);
     std::error_code ec;
-    files.madePartsDir = !fs::exists(dir, ec);
-    fs::create_directories(dir, ec);
-    if (ec) {
-        files.madePartsDir = false;  // not made: nothing of it to take away
-        return fail("the folder for its parts could not be made: " + ec.message());
+    // The folders about to be made: the parts' own, and each above it that
+    // is not there either (create_directories makes them all).
+    for (fs::path missing = dir; !missing.empty() && !fs::exists(missing, ec);
+         missing = missing.parent_path()) {
+        files.madeDirs.push_back(utf8Of(missing));
+        if (missing == missing.parent_path()) break;
     }
+    fs::create_directories(dir, ec);
+    if (ec) return fail("the folder for its parts could not be made: " + ec.message());
 
     // Each part a part file of its own, its bodies imported.
     std::set<std::string> taken;  // names given here, as a case-blind system sees them
