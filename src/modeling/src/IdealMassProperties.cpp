@@ -719,16 +719,21 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
         IdealMassProperties corners;
         corners.properties = detail::measureLoops(solid, material);
         corners.withoutIdeal = curvedFaces(solid);
-        corners.exact = false;
+        corners.onIdealSurfaces = false;
+        corners.tolerance = tolerance;
+        corners.withinTolerance = false;  // not refined: nothing is estimated
         return corners;
     }
     IdealMassProperties result;
+    result.tolerance = tolerance;
     const double density = material ? material->density : 1.0;
     IdealSolid ideal(solid);
     result.withoutIdeal = ideal.withoutIdeal();
     if (!ideal.curved()) {
+        // Flat faces, measured as they are: no refinement, no error.
         result.properties = compute(solid, material);
-        result.exact = result.withoutIdeal.empty();
+        result.onIdealSurfaces = result.withoutIdeal.empty();
+        result.withinTolerance = true;
         return result;
     }
 
@@ -763,7 +768,12 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
     }
     result.properties = detail::finish(table.back().back(), density);
     result.partedEdges = parted;
-    result.exact = result.withoutIdeal.empty() && parted == 0;
+    result.onIdealSurfaces = result.withoutIdeal.empty() && parted == 0;
+    // Settled as the loop settles, or stopped short of it. Where ideals part
+    // it stops at eight pieces an edge whatever the estimate: the sliver
+    // closing a parted edge is no nearer for being finer, and does not show
+    // in the correction the estimate is made from.
+    result.withinTolerance = parted == 0 && table.size() >= 4 && result.estimatedError <= tolerance;
     return result;
 }
 

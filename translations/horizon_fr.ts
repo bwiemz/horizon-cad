@@ -3239,12 +3239,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4143"/>
+        <location line="+4158"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-4219"/>
+        <location line="-4234"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3261,19 +3261,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3992"/>
+        <location line="+4007"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-4055"/>
+        <location line="-4070"/>
         <location line="+64"/>
-        <location line="+3991"/>
+        <location line="+4006"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-4054"/>
+        <location line="-4069"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3330,12 +3330,58 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+2582"/>
+        <location line="+1766"/>
+        <source>
+Measured on the ideal surfaces: every curved face on its own.</source>
+        <translation type="unfinished">
+Mesuré sur les surfaces idéales : chaque face courbe sur la sienne.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Not all on the ideal surfaces: measured as modelled, with no curved surface recorded: %1.</source>
+        <translation type="unfinished">
+Pas tout sur les surfaces idéales : mesuré tel que modélisé, sans surface courbe enregistrée : %1.</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>
+Not all on the ideal surfaces: %n edge(s) where the curved surfaces on either side do not meet.</source>
+        <translation type="unfinished">
+            <numerusform>
+Pas tout sur les surfaces idéales : %n arête où les surfaces courbes de part et d&apos;autre ne se rejoignent pas.</numerusform>
+            <numerusform>
+Pas tout sur les surfaces idéales : %n arêtes où les surfaces courbes de part et d&apos;autre ne se rejoignent pas.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>
+Estimated error %1 (relative), within the tolerance of %2.</source>
+        <translation type="unfinished">
+Erreur estimée %1 (relative), dans la tolérance de %2.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>
+Estimated error %1 (relative): the tolerance of %2 was not reached; refining stopped at %3 pieces an edge.</source>
+        <translation type="unfinished">
+Erreur estimée %1 (relative) : la tolérance de %2 n&apos;a pas été atteinte ; l&apos;affinage s&apos;est arrêté à %3 morceaux par arête.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Its error is not estimated: it was measured once, not refined.</source>
+        <translation type="unfinished">
+Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
+    </message>
+    <message>
+        <location line="+804"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1 : &quot;%2&quot; ne peut pas prendre cette valeur</translation>
     </message>
     <message>
-        <location line="-4325"/>
+        <location line="-4340"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -3492,61 +3538,61 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3779"/>
+        <location line="+3794"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3824"/>
-        <location line="+3843"/>
+        <location line="-3839"/>
+        <location line="+3858"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3869"/>
-        <location line="+4199"/>
+        <location line="-3884"/>
+        <location line="+4214"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-4197"/>
+        <location line="-4212"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3950"/>
+        <location line="+3965"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3949"/>
-        <location line="+3953"/>
+        <location line="-3964"/>
+        <location line="+3968"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3952"/>
-        <location line="+3956"/>
+        <location line="-3967"/>
+        <location line="+3971"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3951"/>
-        <location line="+4020"/>
+        <location line="-3966"/>
+        <location line="+4035"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-4019"/>
-        <location line="+4039"/>
+        <location line="-4034"/>
+        <location line="+4054"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-4037"/>
+        <location line="-4052"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3580,14 +3626,14 @@ commencer à construire votre pièce.</translation>
         <location line="+499"/>
         <location line="+15"/>
         <location line="+466"/>
-        <location line="+1424"/>
+        <location line="+1439"/>
         <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4672"/>
+        <location line="-4687"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3608,12 +3654,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4328"/>
+        <location line="+4343"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-4322"/>
+        <location line="-4337"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -4612,22 +4658,22 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+685"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y :</translation>
     </message>
     <message>
-        <location line="-1436"/>
-        <location line="+685"/>
+        <location line="-1451"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z :</translation>
     </message>
     <message>
-        <location line="-1435"/>
+        <location line="-1450"/>
         <source>Standing along:</source>
         <translation type="unfinished">Orienté selon :</translation>
     </message>
@@ -4649,12 +4695,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+7"/>
         <location line="+7"/>
-        <location line="+973"/>
+        <location line="+988"/>
         <source>Radius:</source>
         <translation type="unfinished">Rayon :</translation>
     </message>
     <message>
-        <location line="-980"/>
+        <location line="-995"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">Hauteur :</translation>
@@ -4722,12 +4768,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+866"/>
+        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">Arêtes :</translation>
     </message>
     <message>
-        <location line="-864"/>
+        <location line="-879"/>
         <source>As:</source>
         <translation type="unfinished">En tant que :</translation>
     </message>
@@ -4883,18 +4929,18 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+772"/>
+        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">Répétition linéaire</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+790"/>
+        <location line="-785"/>
+        <location line="+805"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Répétition circulaire</translation>
     </message>
     <message>
-        <location line="-773"/>
+        <location line="-788"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">Propriétés de m&amp;asse...</translation>
     </message>
@@ -5017,32 +5063,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
 </translation>
     </message>
     <message>
-        <location line="+6"/>
-        <source>
-Exact: every curved face is measured on its surface.</source>
-        <translation type="unfinished">
-Exact : chaque face courbe est mesurée sur sa surface.</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>
-Not exact: measured as modelled, with no curved surface recorded: %1.</source>
-        <translation type="unfinished">
-Non exact : mesuré tel que modélisé, sans surface courbe enregistrée : %1.</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+6"/>
-        <source>
-Not exact: %n edge(s) where the curved surfaces on either side do not meet.</source>
-        <translation type="unfinished">
-            <numerusform>
-Non exact : %n arête où les surfaces courbes de part et d&apos;autre ne se rejoignent pas.</numerusform>
-            <numerusform>
-Non exact : %n arêtes où les surfaces courbes de part et d&apos;autre ne se rejoignent pas.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+5"/>
+        <location line="+37"/>
         <source>ideal</source>
         <translation type="unfinished">idéal</translation>
     </message>
@@ -5640,7 +5661,7 @@ Non exact : %n arêtes où les surfaces courbes de part et d&apos;autre ne se re
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4688"/>
+        <location line="-4703"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

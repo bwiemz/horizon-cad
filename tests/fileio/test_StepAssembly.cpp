@@ -66,7 +66,7 @@ hz::model::MassProperties measured(const Solid& solid) {
     const auto faceted = hz::model::facetCurved(solid);
     const Solid& facets = faceted.solid ? *faceted.solid : solid;
     const auto ideal = MassPropertiesCalculator::computeIdeal(facets);
-    return ideal.exact ? ideal.properties : MassPropertiesCalculator::compute(facets);
+    return ideal.onIdealSurfaces ? ideal.properties : MassPropertiesCalculator::compute(facets);
 }
 
 Vec3 centroidOf(const Solid& solid) {

@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4143"/>
+        <location line="+4158"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4219"/>
+        <location line="-4234"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3992"/>
+        <location line="+4007"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-4055"/>
+        <location line="-4070"/>
         <location line="+64"/>
-        <location line="+3991"/>
+        <location line="+4006"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-4054"/>
+        <location line="-4069"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3325,12 +3325,56 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+2582"/>
+        <location line="+1766"/>
+        <source>
+Measured on the ideal surfaces: every curved face on its own.</source>
+        <translation type="unfinished">
+理想曲面上で測定: 各曲面はそれぞれ自身の曲面上で測定。</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Not all on the ideal surfaces: measured as modelled, with no curved surface recorded: %1.</source>
+        <translation type="unfinished">
+一部は理想曲面上ではありません: 曲面が記録されていないため、モデルどおりに測定: %1。</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>
+Not all on the ideal surfaces: %n edge(s) where the curved surfaces on either side do not meet.</source>
+        <translation type="unfinished">
+            <numerusform>
+一部は理想曲面上ではありません: 両側の曲面が合わない辺が %n 本あります。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>
+Estimated error %1 (relative), within the tolerance of %2.</source>
+        <translation type="unfinished">
+推定誤差 %1 (相対)、許容差 %2 以内。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>
+Estimated error %1 (relative): the tolerance of %2 was not reached; refining stopped at %3 pieces an edge.</source>
+        <translation type="unfinished">
+推定誤差 %1 (相対): 許容差 %2 に達しませんでした。細分化は辺あたり %3 分割で止まりました。</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Its error is not estimated: it was measured once, not refined.</source>
+        <translation type="unfinished">
+誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
+    </message>
+    <message>
+        <location line="+804"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4325"/>
+        <location line="-4340"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3487,61 +3531,61 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3779"/>
+        <location line="+3794"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3824"/>
-        <location line="+3843"/>
+        <location line="-3839"/>
+        <location line="+3858"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3869"/>
-        <location line="+4199"/>
+        <location line="-3884"/>
+        <location line="+4214"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4197"/>
+        <location line="-4212"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3950"/>
+        <location line="+3965"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3949"/>
-        <location line="+3953"/>
+        <location line="-3964"/>
+        <location line="+3968"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3952"/>
-        <location line="+3956"/>
+        <location line="-3967"/>
+        <location line="+3971"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3951"/>
-        <location line="+4020"/>
+        <location line="-3966"/>
+        <location line="+4035"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-4019"/>
-        <location line="+4039"/>
+        <location line="-4034"/>
+        <location line="+4054"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-4037"/>
+        <location line="-4052"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3575,14 +3619,14 @@ begin building your part.</source>
         <location line="+499"/>
         <location line="+15"/>
         <location line="+466"/>
-        <location line="+1424"/>
+        <location line="+1439"/>
         <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4672"/>
+        <location line="-4687"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3603,12 +3647,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4328"/>
+        <location line="+4343"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4322"/>
+        <location line="-4337"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -4601,22 +4645,22 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+685"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1436"/>
-        <location line="+685"/>
+        <location line="-1451"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1435"/>
+        <location line="-1450"/>
         <source>Standing along:</source>
         <translation type="unfinished">軸方向:</translation>
     </message>
@@ -4638,12 +4682,12 @@ begin building your part.</source>
     <message>
         <location line="+7"/>
         <location line="+7"/>
-        <location line="+973"/>
+        <location line="+988"/>
         <source>Radius:</source>
         <translation type="unfinished">半径:</translation>
     </message>
     <message>
-        <location line="-980"/>
+        <location line="-995"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">高さ:</translation>
@@ -4711,12 +4755,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+866"/>
+        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">エッジ:</translation>
     </message>
     <message>
-        <location line="-864"/>
+        <location line="-879"/>
         <source>As:</source>
         <translation type="unfinished">種類:</translation>
     </message>
@@ -4869,18 +4913,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+772"/>
+        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">直線パターン</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+790"/>
+        <location line="-785"/>
+        <location line="+805"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">円形パターン</translation>
     </message>
     <message>
-        <location line="-773"/>
+        <location line="-788"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">質量特性(&amp;M)...</translation>
     </message>
@@ -5003,30 +5047,7 @@ Ideal (on the curved surfaces the facets approximate):
 </translation>
     </message>
     <message>
-        <location line="+6"/>
-        <source>
-Exact: every curved face is measured on its surface.</source>
-        <translation type="unfinished">
-正確: すべての曲面を曲面上で計測しました。</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>
-Not exact: measured as modelled, with no curved surface recorded: %1.</source>
-        <translation type="unfinished">
-近似: 曲面が記録されていないため、モデル化どおりに計測しました: %1。</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+6"/>
-        <source>
-Not exact: %n edge(s) where the curved surfaces on either side do not meet.</source>
-        <translation type="unfinished">
-            <numerusform>
-近似: 両側の曲面が一致しないエッジが %n 本あります。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+5"/>
+        <location line="+37"/>
         <source>ideal</source>
         <translation type="unfinished">理想形状</translation>
     </message>
@@ -5624,7 +5645,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4688"/>
+        <location line="-4703"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

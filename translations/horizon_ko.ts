@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4143"/>
+        <location line="+4158"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-4219"/>
+        <location line="-4234"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3992"/>
+        <location line="+4007"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-4055"/>
+        <location line="-4070"/>
         <location line="+64"/>
-        <location line="+3991"/>
+        <location line="+4006"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-4054"/>
+        <location line="-4069"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3325,12 +3325,56 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+2582"/>
+        <location line="+1766"/>
+        <source>
+Measured on the ideal surfaces: every curved face on its own.</source>
+        <translation type="unfinished">
+이상 곡면에서 측정: 각 곡면은 제 곡면에서 측정했습니다.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Not all on the ideal surfaces: measured as modelled, with no curved surface recorded: %1.</source>
+        <translation type="unfinished">
+모두 이상 곡면에서 측정되지는 않았습니다: 곡면이 기록되지 않아 모델링된 대로 측정: %1.</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>
+Not all on the ideal surfaces: %n edge(s) where the curved surfaces on either side do not meet.</source>
+        <translation type="unfinished">
+            <numerusform>
+모두 이상 곡면에서 측정되지는 않았습니다: 양쪽 곡면이 만나지 않는 모서리 %n개.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>
+Estimated error %1 (relative), within the tolerance of %2.</source>
+        <translation type="unfinished">
+추정 오차 %1 (상대), 허용 오차 %2 이내.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>
+Estimated error %1 (relative): the tolerance of %2 was not reached; refining stopped at %3 pieces an edge.</source>
+        <translation type="unfinished">
+추정 오차 %1 (상대): 허용 오차 %2에 도달하지 못했습니다. 세분화는 모서리당 %3조각에서 멈췄습니다.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>
+Its error is not estimated: it was measured once, not refined.</source>
+        <translation type="unfinished">
+오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
+    </message>
+    <message>
+        <location line="+804"/>
         <source>%1: &quot;%2&quot; cannot take that value</source>
         <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
     </message>
     <message>
-        <location line="-4325"/>
+        <location line="-4340"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -3487,61 +3531,61 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3779"/>
+        <location line="+3794"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3824"/>
-        <location line="+3843"/>
+        <location line="-3839"/>
+        <location line="+3858"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3869"/>
-        <location line="+4199"/>
+        <location line="-3884"/>
+        <location line="+4214"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-4197"/>
+        <location line="-4212"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3950"/>
+        <location line="+3965"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3949"/>
-        <location line="+3953"/>
+        <location line="-3964"/>
+        <location line="+3968"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3952"/>
-        <location line="+3956"/>
+        <location line="-3967"/>
+        <location line="+3971"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3951"/>
-        <location line="+4020"/>
+        <location line="-3966"/>
+        <location line="+4035"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-4019"/>
-        <location line="+4039"/>
+        <location line="-4034"/>
+        <location line="+4054"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-4037"/>
+        <location line="-4052"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3575,14 +3619,14 @@ begin building your part.</source>
         <location line="+499"/>
         <location line="+15"/>
         <location line="+466"/>
-        <location line="+1424"/>
+        <location line="+1439"/>
         <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4672"/>
+        <location line="-4687"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3603,12 +3647,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4328"/>
+        <location line="+4343"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4322"/>
+        <location line="-4337"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -4601,22 +4645,22 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+685"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1436"/>
-        <location line="+685"/>
+        <location line="-1451"/>
+        <location line="+700"/>
         <location line="+13"/>
         <location line="+739"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1435"/>
+        <location line="-1450"/>
         <source>Standing along:</source>
         <translation type="unfinished">세우는 방향:</translation>
     </message>
@@ -4638,12 +4682,12 @@ begin building your part.</source>
     <message>
         <location line="+7"/>
         <location line="+7"/>
-        <location line="+973"/>
+        <location line="+988"/>
         <source>Radius:</source>
         <translation type="unfinished">반지름:</translation>
     </message>
     <message>
-        <location line="-980"/>
+        <location line="-995"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">높이:</translation>
@@ -4711,12 +4755,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+866"/>
+        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">모서리:</translation>
     </message>
     <message>
-        <location line="-864"/>
+        <location line="-879"/>
         <source>As:</source>
         <translation type="unfinished">용도:</translation>
     </message>
@@ -4869,18 +4913,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+772"/>
+        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">선형 패턴</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+790"/>
+        <location line="-785"/>
+        <location line="+805"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">원형 패턴</translation>
     </message>
     <message>
-        <location line="-773"/>
+        <location line="-788"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">질량 특성(&amp;M)...</translation>
     </message>
@@ -5003,30 +5047,7 @@ Ideal (on the curved surfaces the facets approximate):
 </translation>
     </message>
     <message>
-        <location line="+6"/>
-        <source>
-Exact: every curved face is measured on its surface.</source>
-        <translation type="unfinished">
-정확: 모든 곡면을 곡면 자체에서 측정했습니다.</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>
-Not exact: measured as modelled, with no curved surface recorded: %1.</source>
-        <translation type="unfinished">
-정확하지 않음: 기록된 곡면이 없어 모델링 상태로 측정했습니다: %1.</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+6"/>
-        <source>
-Not exact: %n edge(s) where the curved surfaces on either side do not meet.</source>
-        <translation type="unfinished">
-            <numerusform>
-정확하지 않음: 양쪽 곡면이 만나지 않는 모서리 %n개.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+5"/>
+        <location line="+37"/>
         <source>ideal</source>
         <translation type="unfinished">이상적</translation>
     </message>
@@ -5624,7 +5645,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4688"/>
+        <location line="-4703"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
