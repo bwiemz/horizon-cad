@@ -6,11 +6,12 @@ on:
   pull_request:
     branches: [master]
 
-# A pull request's newer push replaces its older run. Master's runs are left
-# to finish, each of them: cancelled when the next merge came, they left
-# merged commits that no run had finished checking.
+# A pull request's newer push replaces its older run. Each master commit is a
+# group of its own, so its run is neither cancelled by the next merge nor
+# dropped while it waits: a group keeps one run waiting, and a third merge in
+# quick succession took the place of the second (2f7cba1 was never checked).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The jobs read the repository and nothing else.

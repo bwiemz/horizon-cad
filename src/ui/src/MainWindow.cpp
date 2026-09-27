@@ -4651,22 +4651,37 @@ void MainWindow::onMassProperties() {
             return text + why + QStringLiteral("\n\n") + inertia(modelled, tr("as modelled"));
         }
         text += measures(ideal->properties);
-        if (ideal->exact) {
-            text += tr("\nExact: every curved face is measured on its surface.");
+        // What it was measured on, and how near it came, said apart: it is a
+        // measurement refined towards the surfaces, not a closed form.
+        if (ideal->onIdealSurfaces) {
+            text += tr("\nMeasured on the ideal surfaces: every curved face on its own.");
         } else {
             if (!ideal->withoutIdeal.empty()) {
                 QStringList faces;
                 for (const auto& face : ideal->withoutIdeal) faces << QString::fromStdString(face);
-                text += tr("\nNot exact: measured as modelled, with no curved surface recorded: "
-                           "%1.")
+                text += tr("\nNot all on the ideal surfaces: measured as modelled, with no "
+                           "curved surface recorded: %1.")
                             .arg(faces.join(QStringLiteral(", ")));
             }
             if (ideal->partedEdges > 0) {
                 text +=
-                    tr("\nNot exact: %n edge(s) where the curved surfaces on either side do "
-                       "not meet.",
+                    tr("\nNot all on the ideal surfaces: %n edge(s) where the curved "
+                       "surfaces on either side do not meet.",
                        "", ideal->partedEdges);
             }
+        }
+        const QString error = QString::number(ideal->estimatedError, 'g', 2);
+        const QString tolerance = QString::number(ideal->tolerance, 'g', 2);
+        if (ideal->withinTolerance) {
+            text += tr("\nEstimated error %1 (relative), within the tolerance of %2.")
+                        .arg(error, tolerance);
+        } else if (ideal->refinement > 1) {
+            text += tr("\nEstimated error %1 (relative): the tolerance of %2 was not reached; "
+                       "refining stopped at %3 pieces an edge.")
+                        .arg(error, tolerance)
+                        .arg(ideal->refinement);
+        } else {
+            text += tr("\nIts error is not estimated: it was measured once, not refined.");
         }
         return text + QStringLiteral("\n\n") + inertia(ideal->properties, tr("ideal"));
     };
