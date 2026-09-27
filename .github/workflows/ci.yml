@@ -557,18 +557,40 @@ jobs:
           # the GCC build deliberately leaves off (a tracked backlog; see
           # cmake/CompilerWarnings.cmake), so the extra args keep the policy
           # the same under both compilers.
+          #
+          # Each file gets its own clang-tidy, four at a time (the runner's
+          # cores), with 15 minutes to finish. One clang-tidy over every file
+          # stopped for good at the same file, one it reads in seconds on its
+          # own, and the job sat out its three hours saying nothing; a file
+          # that runs out of time now gets a second try, then fails the gate
+          # by name. A file's findings are printed together, when it is done.
           set -o pipefail
           jq -r '.[].file' build/linux-debug/compile_commands.json \
             | grep -vE '/build/' \
             | grep -E '/src/.*\.cpp$' | sort -u > tidy-files.txt
           echo "Analyzing $(wc -l < tidy-files.txt) source files with clang-tidy"
-          xargs clang-tidy-15 \
-              -p build/linux-debug \
-              --checks='-*,bugprone-*,performance-*' \
-              --extra-arg=-Wno-sign-conversion \
-              --extra-arg=-Wno-shorten-64-to-32 \
-              --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
-              < tidy-files.txt 2>&1 | tee clang-tidy-output.txt
+          tidy() {
+            local attempt output status
+            for attempt in 1 2; do
+              status=0
+              output="$(timeout 900 clang-tidy-15 \
+                  -p build/linux-debug \
+                  --checks='-*,bugprone-*,performance-*' \
+                  --extra-arg=-Wno-sign-conversion \
+                  --extra-arg=-Wno-shorten-64-to-32 \
+                  --warnings-as-errors='*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-misplaced-widening-cast,-bugprone-reserved-identifier,-bugprone-incorrect-roundings,-performance-no-int-to-ptr,-performance-inefficient-string-concatenation,-performance-unnecessary-value-param' \
+                  "$1" 2>&1)" || status=$?
+              if [[ "${status}" -ne 124 ]]; then
+                printf '%s\n' "${output}"
+                return "$(( status == 0 ? 0 : 1 ))"
+              fi
+              echo "::warning::clang-tidy ran out of time on $1 (attempt ${attempt})"
+            done
+            echo "::error::clang-tidy did not finish $1 in two tries of 15 minutes"
+            return 1
+          }
+          export -f tidy
+          xargs -P 4 -n 1 bash -c 'tidy "$0"' < tidy-files.txt 2>&1 | tee clang-tidy-output.txt
           echo "::notice::clang-tidy gate passed (excluded-check warnings above are the advisory backlog)."
 
       # Saved even when a later step failed: vcpkg's packages (Qt above all)
