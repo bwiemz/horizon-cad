@@ -1275,12 +1275,12 @@ Details are in the log:
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">再読み込みできませんでした</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot; の図面を再作成できませんでした: %2</translation>
     </message>
@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4007"/>
+        <location line="+4134"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4083"/>
+        <location line="-4210"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3856"/>
+        <location line="+3983"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3919"/>
+        <location line="-4046"/>
         <location line="+64"/>
-        <location line="+3855"/>
+        <location line="+3982"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3918"/>
+        <location line="-4045"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">寸法</translation>
     </message>
     <message numerus="yes">
-        <location line="+1599"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
@@ -3325,7 +3325,7 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+1761"/>
+        <location line="+1766"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3374,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4189"/>
+        <location line="-4316"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3476,12 +3476,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2732"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2729"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3496,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2874"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-2873"/>
-        <location line="+2883"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-2882"/>
-        <location line="+2889"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-2888"/>
-        <location line="+2895"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-2894"/>
-        <location line="+2905"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-2903"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3643"/>
+        <location line="+3770"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3688"/>
-        <location line="+3707"/>
+        <location line="-3815"/>
+        <location line="+3834"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3733"/>
-        <location line="+4063"/>
+        <location line="-3860"/>
+        <location line="+4190"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4061"/>
+        <location line="-4188"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3814"/>
+        <location line="+3941"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3813"/>
-        <location line="+3817"/>
+        <location line="-3940"/>
+        <location line="+3944"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3816"/>
-        <location line="+3820"/>
+        <location line="-3943"/>
+        <location line="+3947"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3884"/>
+        <location line="-3942"/>
+        <location line="+4011"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3903"/>
+        <location line="-4010"/>
+        <location line="+4030"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-4028"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3615,17 +3615,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+943"/>
-        <location line="+404"/>
-        <location line="+466"/>
-        <location line="+1437"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
+        <location line="+1439"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4523"/>
+        <location line="-4650"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3646,19 +3647,24 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4192"/>
+        <location line="+4319"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4186"/>
+        <location line="-4313"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (不完全)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3736,13 +3742,13 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">テキスト (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">ドキュメントの復元</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD は正常に終了しませんでした。次のドキュメントには未保存の変更があり、復元できます:%1</translation>
     </message>
@@ -3762,7 +3768,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">前回これらを復元した後、Horizon CAD が再び停止しました: %1。これらを開くことが停止の原因である可能性があります。復元する前にほかの作業内容を保存するか、「後で」を選択して今は保持してください。</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">次のドキュメントを復元できませんでした:
@@ -3784,7 +3790,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">アセンブリ %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">ミリメートル (mm)</translation>
     </message>
@@ -3809,7 +3815,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">フィート (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">ドキュメントの単位</translation>
     </message>
@@ -3953,10 +3959,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3965,20 +3971,20 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+666"/>
+        <location line="-233"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
-        <location line="-644"/>
-        <location line="+99"/>
+        <location line="-734"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">ドキュメント</translation>
     </message>
@@ -4048,7 +4054,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">サンプルのコピー (%1 内): 自由に変更して保存できます。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">アセンブリを保存しました。</translation>
     </message>
@@ -4109,24 +4115,44 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">ファイルの保存</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">新しいファイルとして保存</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">読み込み元のファイルを置き換えますか？</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; には、このドキュメントが読み込み時に省いた内容があります。上書き保存すると、それは完全に失われます。</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">置き換え</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+270"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">近似: %1</translation>
     </message>
@@ -4141,12 +4167,32 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">一部を読み込めませんでした</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">&quot;%1&quot; がドキュメントに欠けている内容を保持できるよう、ドキュメントはそのファイルに上書き保存されません。保存すると保存先を尋ねます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">除外された内容はドキュメントに含まれず、保存しても保持されません。</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">長さの単位が指定されていません</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; は長さの単位を示していないか、このバージョンでは読めない単位で示しています。誤って読むと、すべての長さが誤った大きさになります。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">長さの単位:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">STEP のインポート</translation>
     </message>
@@ -4172,7 +4218,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon アセンブリ (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">STEP のインポートは既に実行中です</translation>
     </message>
@@ -4187,7 +4233,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">インポートをキャンセルしました</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -4231,7 +4282,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 のエクスポート</translation>
@@ -4476,7 +4527,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot; がほかのプログラムによって変更されたため、再読み込みしました</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">寸法スタイル</translation>
     </message>
@@ -5589,7 +5640,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4539"/>
+        <location line="-4666"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

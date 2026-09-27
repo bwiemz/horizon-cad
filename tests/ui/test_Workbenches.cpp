@@ -60,6 +60,7 @@ public:
     std::vector<std::pair<std::shared_ptr<hz::doc::Document>, QString>> tabs;
     std::vector<QString> statuses;
     std::vector<std::string> fileErrors;
+    std::vector<std::string> leftOut;
     std::unique_ptr<hz::ui::Tool> tool;  ///< the last a workbench ran
     int toolsEnded = 0;
     int rebuilds = 0;
@@ -91,6 +92,10 @@ public:
     void reportFileError(const QString& /*summary*/, const std::string& path,
                          const std::string& reason) override {
         fileErrors.push_back(path + ": " + reason);
+    }
+    void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) override {
+        for (const std::string& item : items)
+            leftOut.push_back(fileName.toStdString() + ": " + item);
     }
     bool onWorker(bool /*large*/) override { return false; }
     void backgroundWorkChanged() override {}
@@ -253,6 +258,27 @@ TEST(WorkbenchesTest, ASheetWithoutItsPartSaysWhy) {
     EXPECT_TRUE(host.tabs.empty());
     ASSERT_EQ(host.fileErrors.size(), 1u);
     EXPECT_NE(host.fileErrors[0].find("part"), std::string::npos) << host.fileErrors[0];
+}
+
+// A sheet read in part says what it left out, and is kept from being saved
+// over its file (the window's Save asks where instead).
+TEST(WorkbenchesTest, ASheetReadInPartSaysSoAndIsMarked) {
+    QTemporaryDir dir;
+    saveCube(dir.filePath(QStringLiteral("cube.hzpart")));
+    const QString sheet = dir.filePath(QStringLiteral("sheet.hzdwg"));
+    {
+        QFile out(sheet);
+        ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+        out.write(R"({"format": "hzdwg", "version": 3, "part": "cube.hzpart",
+                      "views": [{"kind": "Front"}, "not a view"]})");
+    }
+    StandInHost host;
+    hz::ui::DrawingWorkbench workbench(host);
+    ASSERT_TRUE(workbench.open(sheet));
+    ASSERT_EQ(host.tabs.size(), 1u);
+    EXPECT_TRUE(host.tabs[0].first->readInPart());
+    ASSERT_EQ(host.leftOut.size(), 1u);
+    EXPECT_EQ(host.leftOut[0], "sheet.hzdwg: view 2: it is not a view");
 }
 
 // A version 1 sheet (its part and gap alone) is drawn as version 1 laid it

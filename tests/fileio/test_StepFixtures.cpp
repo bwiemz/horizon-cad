@@ -23,6 +23,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
+/// These files name no length unit, as hand-written ones often do: read in
+/// millimetres, as the user reading one is asked to choose.
+hz::io::StepReadOptions inMillimetres() {
+    hz::io::StepReadOptions options;
+    options.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    return options;
+}
+
 const fs::path kFixtureRoot{HZ_STEP_FIXTURE_DIR};
 
 std::vector<fs::path> stepFilesIn(const std::string& subdir) {
@@ -56,7 +64,7 @@ TEST(StepFixtures, EveryImportOkFixtureLoadsAsManifoldGeometry) {
     ASSERT_FALSE(files.empty()) << "no fixtures found under " << kFixtureRoot;
 
     for (const auto& file : files) {
-        auto solids = StepFormat::load(file.string());
+        auto solids = StepFormat::load(file.string(), nullptr, nullptr, inMillimetres());
         ASSERT_FALSE(solids.empty())
             << file.filename() << " failed to import: " << StepFormat::lastError();
         for (size_t i = 0; i < solids.size(); ++i) {
@@ -99,7 +107,8 @@ TEST(StepFixtures, SolidWorksStyleScrambledOrderImportsIdentically) {
     // with forward references, wrapped argument lists, comments in DATA, and
     // an AP203 schema string — the importer must be insensitive to all of it.
     auto sw = StepFormat::load(
-        (kFixtureRoot / "import_ok" / "solidworks_style_tetrahedron.step").string());
+        (kFixtureRoot / "import_ok" / "solidworks_style_tetrahedron.step").string(), nullptr,
+        nullptr, inMillimetres());
     ASSERT_EQ(sw.size(), 1u) << StepFormat::lastError();
     EXPECT_NEAR(volumeOf(*sw[0]), kTetraVolume, 1e-6);
 
@@ -119,7 +128,8 @@ TEST(StepFixtures, AssemblyProductStructureIsFlattenedToParts) {
     // whose structure does place its parts is read placed (Phase 153,
     // test_StepAssembly.cpp).
     auto solids =
-        StepFormat::load((kFixtureRoot / "import_ok" / "assembly_two_parts_nauo.step").string());
+        StepFormat::load((kFixtureRoot / "import_ok" / "assembly_two_parts_nauo.step").string(),
+                         nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 2u) << StepFormat::lastError();
     EXPECT_NEAR(volumeOf(*solids[0]), kTetraVolume, 1e-6);
     EXPECT_NEAR(volumeOf(*solids[1]), kTetraVolume, 1e-6);

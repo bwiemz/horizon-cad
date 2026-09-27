@@ -2,11 +2,13 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/Units.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::io {
@@ -19,6 +21,16 @@ struct StepWriteOptions {
     /// the part as modelled, which reads back exactly.
     bool asDesigned = true;
 };
+/// How StepFormat reads a file.
+struct StepReadOptions {
+    /// The unit a file's lengths are read in where it names none, or one
+    /// this reader cannot read. None: such a file is not read (lastError()
+    /// says why, and lastLengthUnitUnknown() is true), so that its user can
+    /// say which unit it is in; taken as millimetres, a file in inches came
+    /// in 25.4 times too small, with only a warning to say so.
+    std::optional<math::LengthUnit> unknownLengthUnit;
+};
+
 /// What a write as designed could not do: the curved faces kept in
 /// facets, each with why; and, for an assembly, the occurrences left out.
 struct StepWriteReport {
@@ -87,8 +99,11 @@ struct StepWritePart {
 ///
 /// Faces keep their holes (FACE_BOUND). Solids come in in millimetres: the
 /// LENGTH_UNIT of each shape representation's context — an SI unit with any
-/// prefix, or a conversion-based unit such as the inch — scales them. A
-/// solid that cannot be rebuilt is reported and the rest still come in.
+/// prefix, or a conversion-based unit such as the inch — scales them. A file
+/// that names none, or one this reader cannot read, is read only in a unit
+/// its reader is told (StepReadOptions): a guess would give every length
+/// the wrong size. A solid that cannot be rebuilt is reported and the rest
+/// still come in.
 ///
 /// Known limitations (documented, by design of this first slice):
 /// - Faces on analytic surfaces import with an untrimmed carrier patch sized
@@ -124,14 +139,14 @@ public:
     /// "cancelled"). An import on a worker thread passes its Cancel flag.
     static std::vector<std::unique_ptr<topo::Solid>> load(
         const std::string& filePath, ImportReport* report = nullptr,
-        const std::atomic<bool>* cancelled = nullptr);
+        const std::atomic<bool>* cancelled = nullptr, const StepReadOptions& options = {});
 
     /// Parse Part-21 text and reconstruct the solids it holds, as load().
     /// An assembly's parts come in placed, each as many times as the
     /// assembly places it (Phase 153).
     static std::vector<std::unique_ptr<topo::Solid>> fromString(
         const std::string& text, ImportReport* report = nullptr,
-        const std::atomic<bool>* cancelled = nullptr);
+        const std::atomic<bool>* cancelled = nullptr, const StepReadOptions& options = {});
 
     /// Read a file's parts, each once, and where its assembly places them
     /// (Phase 153). A file of parts alone places each once, where drawn.
@@ -139,9 +154,11 @@ public:
     /// placements, and named in @p report. No parts when none can be read
     /// (see lastError()); @p cancelled as for load().
     static StepAssembly loadAssembly(const std::string& filePath, ImportReport* report = nullptr,
-                                     const std::atomic<bool>* cancelled = nullptr);
+                                     const std::atomic<bool>* cancelled = nullptr,
+                                     const StepReadOptions& options = {});
     static StepAssembly assemblyFromString(const std::string& text, ImportReport* report = nullptr,
-                                           const std::atomic<bool>* cancelled = nullptr);
+                                           const std::atomic<bool>* cancelled = nullptr,
+                                           const StepReadOptions& options = {});
 
     /// Write an assembly named @p name (Phase 153): each of @p parts once,
     /// as its own product, and each of @p occurrences as a use of it in the
@@ -163,6 +180,10 @@ public:
     /// Human-readable description of the most recent load/save failure on this
     /// thread's last call (empty when the call succeeded).
     static const std::string& lastError();
+    /// Whether this thread's last read failed for its length unit alone: the
+    /// file names none, or one this reader cannot read, and no
+    /// StepReadOptions::unknownLengthUnit was given. Read again with one.
+    static bool lastLengthUnitUnknown();
 };
 
 }  // namespace hz::io

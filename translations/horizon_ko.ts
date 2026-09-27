@@ -1275,12 +1275,12 @@ Details are in the log:
         <translation type="unfinished">열 수 없음</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">다시 읽을 수 없음</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot;의 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4007"/>
+        <location line="+4134"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-4083"/>
+        <location line="-4210"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3856"/>
+        <location line="+3983"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-3919"/>
+        <location line="-4046"/>
         <location line="+64"/>
-        <location line="+3855"/>
+        <location line="+3982"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-3918"/>
+        <location line="-4045"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message numerus="yes">
-        <location line="+1599"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n개 부품을 &quot;%1&quot;(으)로 가져왔습니다.</numerusform>
@@ -3325,7 +3325,7 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+1761"/>
+        <location line="+1766"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3374,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
     </message>
     <message>
-        <location line="-4189"/>
+        <location line="-4316"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -3476,12 +3476,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2732"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2729"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3496,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2874"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-2873"/>
-        <location line="+2883"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-2882"/>
-        <location line="+2889"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-2888"/>
-        <location line="+2895"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-2894"/>
-        <location line="+2905"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-2903"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3643"/>
+        <location line="+3770"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3688"/>
-        <location line="+3707"/>
+        <location line="-3815"/>
+        <location line="+3834"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3733"/>
-        <location line="+4063"/>
+        <location line="-3860"/>
+        <location line="+4190"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-4061"/>
+        <location line="-4188"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3814"/>
+        <location line="+3941"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3813"/>
-        <location line="+3817"/>
+        <location line="-3940"/>
+        <location line="+3944"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3816"/>
-        <location line="+3820"/>
+        <location line="-3943"/>
+        <location line="+3947"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3884"/>
+        <location line="-3942"/>
+        <location line="+4011"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3903"/>
+        <location line="-4010"/>
+        <location line="+4030"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-4028"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3615,17 +3615,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+943"/>
-        <location line="+404"/>
-        <location line="+466"/>
-        <location line="+1437"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
+        <location line="+1439"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4523"/>
+        <location line="-4650"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3646,19 +3647,24 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4192"/>
+        <location line="+4319"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4186"/>
+        <location line="-4313"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (불완전)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3736,13 +3742,13 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">텍스트 (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">문서 복구</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD가 정상적으로 종료되지 않았습니다. 다음 문서에 저장되지 않은 변경 사항이 있으며 복구할 수 있습니다:%1</translation>
     </message>
@@ -3762,7 +3768,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">다음 문서를 마지막으로 복구한 후 Horizon CAD가 다시 중지되었습니다: %1. 이 문서를 여는 것이 원인일 수 있습니다. 복구하기 전에 다른 작업을 저장하거나, &apos;나중에&apos;를 선택하여 지금은 보관하십시오.</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">다음 문서를 복구할 수 없습니다:
@@ -3784,7 +3790,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">어셈블리 %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">밀리미터 (mm)</translation>
     </message>
@@ -3809,7 +3815,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">피트 (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">문서 단위</translation>
     </message>
@@ -3953,10 +3959,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">지원되는 모든 파일 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;Horizon 어셈블리 (*.hzasm);;Horizon 도면 시트 (*.hzdwg);;DXF 파일 (*.dxf);;모든 파일 (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3965,20 +3971,20 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">열 수 없음</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+666"/>
+        <location line="-233"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
-        <location line="-644"/>
-        <location line="+99"/>
+        <location line="-734"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">도면</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">문서</translation>
     </message>
@@ -4048,7 +4054,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1에 있는 샘플의 사본입니다. 자유롭게 변경하고 저장할 수 있습니다.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">어셈블리를 저장했습니다.</translation>
     </message>
@@ -4109,24 +4115,44 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;DXF 파일 (*.dxf);;모든 파일 (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">파일 저장</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">새 파일로 저장</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">읽어 온 파일을 바꾸시겠습니까?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot;에는 이 문서를 읽을 때 빠진 내용이 있습니다. 그 위에 저장하면 그 내용은 영구히 사라집니다.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">바꾸기</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+270"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">근사 처리됨: %1</translation>
     </message>
@@ -4141,12 +4167,32 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">일부 항목을 읽지 못했습니다</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">&quot;%1&quot;이(가) 문서에 없는 내용을 유지하도록, 문서를 그 위에 저장하지 않습니다. 저장하면 대신 저장할 위치를 묻습니다.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">생략된 항목은 문서에 포함되지 않으며, 저장해도 보존되지 않습니다.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">길이 단위가 주어지지 않음</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot;은(는) 길이의 단위를 밝히지 않거나, 이 버전이 읽을 수 없는 단위로 밝힙니다. 잘못 읽으면 모든 길이의 크기가 틀립니다.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">길이 단위:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">STEP 가져오기</translation>
     </message>
@@ -4172,7 +4218,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon 어셈블리 (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">STEP 가져오기가 이미 실행 중입니다</translation>
     </message>
@@ -4187,7 +4233,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">가져오기가 취소되었습니다</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot;을(를) 가져오지 않았습니다: 길이의 단위가 주어지지 않았습니다</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -4231,7 +4282,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 내보내기</translation>
@@ -4476,7 +4527,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되어 다시 읽었습니다</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">치수 스타일</translation>
     </message>
@@ -5589,7 +5640,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4539"/>
+        <location line="-4666"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

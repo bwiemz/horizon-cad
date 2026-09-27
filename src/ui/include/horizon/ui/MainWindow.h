@@ -393,12 +393,22 @@ private:
         std::string assemblyPath;
         io::ImportReport report;
         std::string error;  ///< why nothing was read (lastError is per thread)
+        /// Nothing was read: the file does not say which unit its lengths
+        /// are in (StepFormat::lastLengthUnitUnknown).
+        bool unitUnknown = false;
     };
     static StepLoad loadStep(const std::string& path, const std::string& assemblyPath = {},
-                             const std::atomic<bool>* cancelled = nullptr);
+                             const std::atomic<bool>* cancelled = nullptr,
+                             const io::StepReadOptions& options = {});
     /// Read @p fileName, on a worker when it is large; into a new part, or
     /// kept as an assembly at @p assemblyPath when one is given.
-    void startStepImport(const QString& fileName, const QString& assemblyPath);
+    void startStepImport(const QString& fileName, const QString& assemblyPath,
+                         const io::StepReadOptions& options = {});
+    /// Ask which unit @p fileName's lengths are in, the file not saying:
+    /// none when its user cancels.
+    std::optional<math::LengthUnit> askStepLengthUnit(const QString& fileName);
+    /// @p unit's name and symbol, as the unit choices show it.
+    static QString lengthUnitName(math::LengthUnit unit);
 
     /// A drawing or part file read into a document of its own, on a worker
     /// when the file is large (openOnWorker).
@@ -489,11 +499,20 @@ private:
     void updateWindowTitle();
 
     bool isTabModified(const DocTab& tab) const;
+    /// Whether @p tab's document (or assembly) was read from its file in
+    /// part, and so is not saved over it (Document::leftOut).
+    static bool isTabReadInPart(const DocTab& tab);
     /// Tell the user what reading `file` left out or changed, if anything —
-    /// before a save could drop it for good.
-    void showImportReport(const QString& file, const io::ImportReport& report);
+    /// before a save could drop it for good. @p notSavedOver: the document
+    /// read from it is kept from being saved over it (it was read in part).
+    void showImportReport(const QString& file, const io::ImportReport& report,
+                          bool notSavedOver = false);
+    void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) override;
     /// The part's solid for an export, or null with a word in the status bar.
     const topo::Solid* solidToExport(const QString& format);
+    /// Whether @p fileName may be written: true unless it is the file the
+    /// active document was read from in part, and its user, asked, keeps it.
+    bool mayReplaceSource(const QString& fileName);
     /// Ask where to export; empty when cancelled.
     QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
     /// The feature at a panel row of the active part, or null.

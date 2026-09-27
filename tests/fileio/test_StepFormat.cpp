@@ -33,6 +33,14 @@ using hz::model::PrimitiveFactory;
 
 namespace {
 
+/// These files name no length unit, as hand-written ones often do: read in
+/// millimetres, as the user reading one is asked to choose.
+hz::io::StepReadOptions inMillimetres() {
+    hz::io::StepReadOptions options;
+    options.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    return options;
+}
+
 std::vector<const hz::topo::Solid*> refs(const hz::topo::Solid& s) {
     return {&s};
 }
@@ -437,7 +445,7 @@ DATA;
 }  // namespace
 
 TEST(StepFormat, ImportsExternalPlanarSolid) {
-    auto solids = StepFormat::fromString(externalStyleCube());
+    auto solids = StepFormat::fromString(externalStyleCube(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
 
     const auto& cube = *solids[0];
@@ -514,7 +522,8 @@ END-ISO-10303-21;
 }  // namespace
 
 TEST(StepFormat, ImportsExternalAnalyticCylinder) {
-    auto solids = StepFormat::fromString(externalStyleCylinder());
+    auto solids =
+        StepFormat::fromString(externalStyleCylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
 
     const auto& cyl = *solids[0];
@@ -661,7 +670,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 )";
-    auto solids = StepFormat::fromString(text);
+    auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
     EXPECT_TRUE(solids.empty());
     EXPECT_NE(StepFormat::lastError().find("manifold"), std::string::npos)
         << StepFormat::lastError();
@@ -710,7 +719,7 @@ TEST(StepFormat, DegreeZeroBSplineIsAnErrorNotAnException) {
         "#10 = B_SPLINE_CURVE_WITH_KNOTS('',0,(#1,#2),.UNSPECIFIED.,.F.,.F.,(1,1,1),"
         "(0.,0.5,1.),.UNSPECIFIED.);");
     std::vector<std::unique_ptr<hz::topo::Solid>> solids;
-    ASSERT_NO_THROW(solids = StepFormat::fromString(text));
+    ASSERT_NO_THROW(solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres()));
     EXPECT_TRUE(solids.empty());
     EXPECT_NE(StepFormat::lastError().find("degree"), std::string::npos)
         << "the constructor's reason reaches the caller: " << StepFormat::lastError();

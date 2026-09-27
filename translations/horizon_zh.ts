@@ -1275,12 +1275,12 @@ Details are in the log:
         <translation type="unfinished">无法打开</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">无法重新读取</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot; 的工程图无法重新生成：%2</translation>
     </message>
@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4007"/>
+        <location line="+4134"/>
         <source>Mirror</source>
         <translation type="unfinished">镜像</translation>
     </message>
     <message>
-        <location line="-4083"/>
+        <location line="-4210"/>
         <source>Trim</source>
         <translation type="unfinished">修剪</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3856"/>
+        <location line="+3983"/>
         <source>Fillet</source>
         <translation type="unfinished">圆角</translation>
     </message>
     <message>
-        <location line="-3919"/>
+        <location line="-4046"/>
         <location line="+64"/>
-        <location line="+3855"/>
+        <location line="+3982"/>
         <source>Chamfer</source>
         <translation type="unfinished">倒角</translation>
     </message>
     <message>
-        <location line="-3918"/>
+        <location line="-4045"/>
         <source>Break</source>
         <translation type="unfinished">打断</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">尺寸</translation>
     </message>
     <message numerus="yes">
-        <location line="+1599"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>已将 %n 个零件导入到 &quot;%1&quot;。</numerusform>
@@ -3325,7 +3325,7 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+1761"/>
+        <location line="+1766"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3374,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1：&quot;%2&quot; 不能取该值</translation>
     </message>
     <message>
-        <location line="-4189"/>
+        <location line="-4316"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -3476,12 +3476,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2732"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2729"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3496,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2874"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">长方体</translation>
     </message>
     <message>
-        <location line="-2873"/>
-        <location line="+2883"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">圆柱体</translation>
     </message>
     <message>
-        <location line="-2882"/>
-        <location line="+2889"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">球体</translation>
     </message>
     <message>
-        <location line="-2888"/>
-        <location line="+2895"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">圆锥体</translation>
     </message>
     <message>
-        <location line="-2894"/>
-        <location line="+2905"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">圆环体</translation>
     </message>
     <message>
-        <location line="-2903"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">特征</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3643"/>
+        <location line="+3770"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">拉伸</translation>
     </message>
     <message>
-        <location line="-3688"/>
-        <location line="+3707"/>
+        <location line="-3815"/>
+        <location line="+3834"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">旋转</translation>
     </message>
     <message>
-        <location line="-3733"/>
-        <location line="+4063"/>
+        <location line="-3860"/>
+        <location line="+4190"/>
         <source>Hole</source>
         <translation type="unfinished">孔</translation>
     </message>
     <message>
-        <location line="-4061"/>
+        <location line="-4188"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">组合实体</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3814"/>
+        <location line="+3941"/>
         <source>Union</source>
         <translation type="unfinished">合并</translation>
     </message>
     <message>
-        <location line="-3813"/>
-        <location line="+3817"/>
+        <location line="-3940"/>
+        <location line="+3944"/>
         <source>Subtract</source>
         <translation type="unfinished">减去</translation>
     </message>
     <message>
-        <location line="-3816"/>
-        <location line="+3820"/>
+        <location line="-3943"/>
+        <location line="+3947"/>
         <source>Intersect</source>
         <translation type="unfinished">相交</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3884"/>
+        <location line="-3942"/>
+        <location line="+4011"/>
         <source>Shell</source>
         <translation type="unfinished">抽壳</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3903"/>
+        <location line="-4010"/>
+        <location line="+4030"/>
         <source>Draft</source>
         <translation type="unfinished">拔模</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-4028"/>
         <source>Pattern</source>
         <translation type="unfinished">阵列</translation>
     </message>
@@ -3615,17 +3615,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+943"/>
-        <location line="+404"/>
-        <location line="+466"/>
-        <location line="+1437"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
+        <location line="+1439"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-4523"/>
+        <location line="-4650"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -3646,19 +3647,24 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4192"/>
+        <location line="+4319"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-4186"/>
+        <location line="-4313"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (不完整)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3736,13 +3742,13 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">文本 (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">恢复文档</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD 未正常关闭。以下文档有未保存的更改，可以恢复：%1</translation>
     </message>
@@ -3762,7 +3768,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">上次恢复以下文档后，Horizon CAD 再次意外停止：%1。可能正是打开它们导致了停止。请先保存其他工作再恢复它们，或选择稍后以暂时保留它们。</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">以下文档无法恢复：
@@ -3784,7 +3790,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">装配体 %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">毫米 (mm)</translation>
     </message>
@@ -3809,7 +3815,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">英尺 (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">文档单位</translation>
     </message>
@@ -3953,10 +3959,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">所有支持的文件 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;Horizon 装配体 (*.hzasm);;Horizon 工程图图纸 (*.hzdwg);;DXF 文件 (*.dxf);;所有文件 (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3965,20 +3971,20 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">无法打开</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+666"/>
+        <location line="-233"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">装配体</translation>
     </message>
     <message>
-        <location line="-644"/>
-        <location line="+99"/>
+        <location line="-734"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">工程图</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">文档</translation>
     </message>
@@ -4048,7 +4054,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">示例的副本，位于 %1：可随意修改并保存。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">装配体已保存。</translation>
     </message>
@@ -4109,24 +4115,44 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;DXF 文件 (*.dxf);;所有文件 (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">保存文件</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">另存为新文件</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">替换读取它的文件？</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; 含有本文档读取时遗漏的内容。覆盖保存会永久丢失这些内容。</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">替换</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;：%2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+270"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">已忽略：%1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">已近似：%1</translation>
     </message>
@@ -4141,12 +4167,32 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">部分内容未能读取</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">为使 &quot;%1&quot; 保留文档所缺的内容，文档不会覆盖保存到该文件：保存时会改为询问保存位置。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">未读取的内容不在文档中，保存时也不会保留。</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">未给出长度单位</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; 未说明其长度所用的单位，或所用单位本版本无法读取。读错时，每个长度的大小都会出错。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">其长度单位为：</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">导入 STEP</translation>
     </message>
@@ -4172,7 +4218,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon 装配体 (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">STEP 导入已在运行</translation>
     </message>
@@ -4187,7 +4233,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">已取消导入</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">未导入 &quot;%1&quot;：未给出其长度所用的单位</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -4231,7 +4282,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">导出 %1</translation>
@@ -4476,7 +4527,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot; 已被其他程序更改，并已重新读取</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">尺寸样式</translation>
     </message>
@@ -5589,7 +5640,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-4539"/>
+        <location line="-4666"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

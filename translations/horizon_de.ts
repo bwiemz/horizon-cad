@@ -1278,12 +1278,12 @@ Details stehen im Protokoll:
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">Fehler beim erneuten Einlesen von</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">Eine Zeichnung von &quot;%1&quot; konnte nicht neu gezeichnet werden: %2</translation>
     </message>
@@ -3239,12 +3239,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4007"/>
+        <location line="+4134"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-4083"/>
+        <location line="-4210"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3261,19 +3261,19 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3856"/>
+        <location line="+3983"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-3919"/>
+        <location line="-4046"/>
         <location line="+64"/>
-        <location line="+3855"/>
+        <location line="+3982"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-3918"/>
+        <location line="-4045"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3314,7 +3314,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
     <message numerus="yes">
-        <location line="+1599"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n Teil nach &quot;%1&quot; importiert.</numerusform>
@@ -3330,7 +3330,7 @@ um Ihr Teil aufzubauen.</translation>
         </translation>
     </message>
     <message>
-        <location line="+1761"/>
+        <location line="+1766"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3381,7 +3381,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
     </message>
     <message>
-        <location line="-4189"/>
+        <location line="-4316"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3483,12 +3483,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2732"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
-        <location line="-2729"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3503,96 +3503,96 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2874"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">Quader</translation>
     </message>
     <message>
-        <location line="-2873"/>
-        <location line="+2883"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">Zylinder</translation>
     </message>
     <message>
-        <location line="-2882"/>
-        <location line="+2889"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">Kugel</translation>
     </message>
     <message>
-        <location line="-2888"/>
-        <location line="+2895"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">Kegel</translation>
     </message>
     <message>
-        <location line="-2894"/>
-        <location line="+2905"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">Torus</translation>
     </message>
     <message>
-        <location line="-2903"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">Features</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3643"/>
+        <location line="+3770"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3688"/>
-        <location line="+3707"/>
+        <location line="-3815"/>
+        <location line="+3834"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3733"/>
-        <location line="+4063"/>
+        <location line="-3860"/>
+        <location line="+4190"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-4061"/>
+        <location line="-4188"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3814"/>
+        <location line="+3941"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3813"/>
-        <location line="+3817"/>
+        <location line="-3940"/>
+        <location line="+3944"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3816"/>
-        <location line="+3820"/>
+        <location line="-3943"/>
+        <location line="+3947"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3884"/>
+        <location line="-3942"/>
+        <location line="+4011"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3903"/>
+        <location line="-4010"/>
+        <location line="+4030"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-4028"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
@@ -3622,17 +3622,18 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+943"/>
-        <location line="+404"/>
-        <location line="+466"/>
-        <location line="+1437"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
+        <location line="+1439"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4523"/>
+        <location line="-4650"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3653,19 +3654,24 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4192"/>
+        <location line="+4319"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-4186"/>
+        <location line="-4313"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (unvollständig)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3743,13 +3749,13 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Text (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">Dokumente wiederherstellen</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD wurde nicht ordnungsgemäß beendet. Diese Dokumente hatten ungespeicherte Änderungen und können wiederhergestellt werden:%1</translation>
     </message>
@@ -3769,7 +3775,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Horizon CAD ist erneut abgestürzt, nachdem diese zuletzt wiederhergestellt wurden: %1. Möglicherweise verursacht ihr Öffnen den Absturz. Speichern Sie Ihre übrige Arbeit, bevor Sie sie wiederherstellen, oder wählen Sie Später, um sie vorerst aufzubewahren.</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">Diese Dokumente konnten nicht wiederhergestellt werden:
@@ -3791,7 +3797,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Baugruppe %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">Millimeter (mm)</translation>
     </message>
@@ -3816,7 +3822,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Fuß (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">Dokumenteinheiten</translation>
     </message>
@@ -3962,10 +3968,10 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Alle unterstützten Dateien (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon-CAD-Zeichnungen (*.hcad);;Horizon-Teile (*.hzpart);;Horizon-Baugruppen (*.hzasm);;Horizon-Zeichnungsblätter (*.hzdwg);;DXF-Dateien (*.dxf);;Alle Dateien (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3974,20 +3980,20 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+666"/>
+        <location line="-233"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">Baugruppe</translation>
     </message>
     <message>
-        <location line="-644"/>
-        <location line="+99"/>
+        <location line="-734"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">Zeichnung</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">Dokument</translation>
     </message>
@@ -4057,7 +4063,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Eine Kopie des Beispiels, in %1: Ändern und speichern Sie sie nach Belieben.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">Baugruppe gespeichert.</translation>
     </message>
@@ -4118,24 +4124,44 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Horizon-CAD-Zeichnungen (*.hcad);;Horizon-Teile (*.hzpart);;DXF-Dateien (*.dxf);;Alle Dateien (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">Datei speichern</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">Als neue Datei speichern</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">Die Datei ersetzen, aus der es gelesen wurde?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; enthält, was dieses Dokument beim Lesen ausgelassen hat. Wird darüber gespeichert, geht das endgültig verloren.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">Ersetzen</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+270"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Ausgelassen: %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Angenähert: %1</translation>
     </message>
@@ -4150,12 +4176,32 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Nicht alles wurde gelesen</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">Damit &quot;%1&quot; behält, was dem Dokument fehlt, wird das Dokument nicht darüber gespeichert: Speichern fragt stattdessen, wohin.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">Was ausgelassen wurde, ist nicht im Dokument, und beim Speichern bleibt es nicht erhalten.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">Längeneinheit nicht angegeben</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; gibt nicht an, in welcher Einheit seine Längen sind, oder gibt eine an, die diese Version nicht lesen kann. Falsch gelesen, hat jede Länge die falsche Größe.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">Seine Längen sind in:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">STEP importieren</translation>
     </message>
@@ -4181,7 +4227,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Horizon-Baugruppen (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">Ein STEP-Import läuft bereits</translation>
     </message>
@@ -4196,7 +4242,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Import abgebrochen</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; wurde nicht importiert: Die Einheit seiner Längen wurde nicht angegeben</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -4242,7 +4293,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 exportieren</translation>
@@ -4489,7 +4540,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert und erneut eingelesen</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Bemaßungsstil</translation>
     </message>
@@ -5605,7 +5656,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-4539"/>
+        <location line="-4666"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>

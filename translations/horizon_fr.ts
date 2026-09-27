@@ -1278,12 +1278,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Impossible d&apos;ouvrir</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+62"/>
         <source>Could not read again</source>
         <translation type="unfinished">Impossible de relire</translation>
     </message>
     <message>
-        <location line="+59"/>
+        <location line="+65"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">Une mise en plan de &quot;%1&quot; n&apos;a pas pu être redessinée : %2</translation>
     </message>
@@ -3239,12 +3239,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4007"/>
+        <location line="+4134"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-4083"/>
+        <location line="-4210"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3261,19 +3261,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3856"/>
+        <location line="+3983"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-3919"/>
+        <location line="-4046"/>
         <location line="+64"/>
-        <location line="+3855"/>
+        <location line="+3982"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-3918"/>
+        <location line="-4045"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3314,7 +3314,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message numerus="yes">
-        <location line="+1599"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n pièce importée dans &quot;%1&quot;.</numerusform>
@@ -3330,7 +3330,7 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+1761"/>
+        <location line="+1766"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3381,7 +3381,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">%1 : &quot;%2&quot; ne peut pas prendre cette valeur</translation>
     </message>
     <message>
-        <location line="-4189"/>
+        <location line="-4316"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -3483,12 +3483,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2732"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">Décomposer</translation>
     </message>
     <message>
-        <location line="-2729"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3503,96 +3503,96 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2874"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">Boîte</translation>
     </message>
     <message>
-        <location line="-2873"/>
-        <location line="+2883"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cylindre</translation>
     </message>
     <message>
-        <location line="-2882"/>
-        <location line="+2889"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">Sphère</translation>
     </message>
     <message>
-        <location line="-2888"/>
-        <location line="+2895"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">Cône</translation>
     </message>
     <message>
-        <location line="-2894"/>
-        <location line="+2905"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">Tore</translation>
     </message>
     <message>
-        <location line="-2903"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">Fonctions</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3643"/>
+        <location line="+3770"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3688"/>
-        <location line="+3707"/>
+        <location line="-3815"/>
+        <location line="+3834"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3733"/>
-        <location line="+4063"/>
+        <location line="-3860"/>
+        <location line="+4190"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-4061"/>
+        <location line="-4188"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3814"/>
+        <location line="+3941"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3813"/>
-        <location line="+3817"/>
+        <location line="-3940"/>
+        <location line="+3944"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3816"/>
-        <location line="+3820"/>
+        <location line="-3943"/>
+        <location line="+3947"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3884"/>
+        <location line="-3942"/>
+        <location line="+4011"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3903"/>
+        <location line="-4010"/>
+        <location line="+4030"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-3901"/>
+        <location line="-4028"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3622,17 +3622,18 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+943"/>
-        <location line="+404"/>
-        <location line="+466"/>
-        <location line="+1437"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
+        <location line="+1439"/>
         <location line="+1190"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4523"/>
+        <location line="-4650"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3653,19 +3654,24 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4192"/>
+        <location line="+4319"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-4186"/>
+        <location line="-4313"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+291"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source> (incomplete)</source>
+        <translation type="unfinished"> (incomplet)</translation>
     </message>
     <message>
         <location line="+19"/>
@@ -3743,13 +3749,13 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Texte (*.txt)</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+76"/>
+        <location line="+40"/>
+        <location line="+84"/>
         <source>Recover Documents</source>
         <translation type="unfinished">Récupérer des documents</translation>
     </message>
     <message>
-        <location line="-75"/>
+        <location line="-83"/>
         <source>Horizon CAD did not shut down properly. These documents had unsaved changes and can be recovered:%1</source>
         <translation type="unfinished">Horizon CAD ne s&apos;est pas fermé correctement. Ces documents contenaient des modifications non enregistrées et peuvent être récupérés :%1</translation>
     </message>
@@ -3769,7 +3775,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Horizon CAD s&apos;est de nouveau arrêté après la dernière récupération de ces documents : %1. C&apos;est peut-être leur ouverture qui provoque l&apos;arrêt. Enregistrez vos autres travaux avant de les récupérer, ou choisissez Plus tard pour les conserver pour l&apos;instant.</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+71"/>
         <source>These documents could not be recovered:
 %1</source>
         <translation type="unfinished">Ces documents n&apos;ont pas pu être récupérés :
@@ -3791,7 +3797,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Assemblage %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">Millimètres (mm)</translation>
     </message>
@@ -3816,7 +3822,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Pieds (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">Unités du document</translation>
     </message>
@@ -3962,10 +3968,10 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Tous les fichiers pris en charge (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Assemblages Horizon (*.hzasm);;Mises en plan Horizon (*.hzdwg);;Fichiers DXF (*.dxf);;Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location line="+35"/>
-        <location line="+36"/>
+        <location line="+40"/>
+        <location line="+38"/>
         <location line="+13"/>
-        <location line="+78"/>
+        <location line="+82"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -3974,20 +3980,20 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Impossible d&apos;ouvrir</translation>
     </message>
     <message>
-        <location line="-229"/>
-        <location line="+666"/>
+        <location line="-233"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">Assemblage</translation>
     </message>
     <message>
-        <location line="-644"/>
-        <location line="+99"/>
+        <location line="-734"/>
+        <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">Dessin</translation>
     </message>
     <message>
-        <location line="-88"/>
-        <location line="+88"/>
+        <location line="-89"/>
+        <location line="+89"/>
         <source>Document</source>
         <translation type="unfinished">Document</translation>
     </message>
@@ -4057,7 +4063,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Une copie de l&apos;exemple, dans %1 : modifiez-la et enregistrez-la à votre guise.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+36"/>
         <source>Assembly saved.</source>
         <translation type="unfinished">Assemblage enregistré.</translation>
     </message>
@@ -4118,24 +4124,44 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Fichiers DXF (*.dxf);;Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+9"/>
         <source>Save File</source>
         <translation type="unfinished">Enregistrer le fichier</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+0"/>
+        <source>Save As a New File</source>
+        <translation type="unfinished">Enregistrer dans un nouveau fichier</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Replace the File It Was Read From?</source>
+        <translation type="unfinished">Remplacer le fichier d&apos;où il a été lu ?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; has what this document left out when it was read. Saving over it loses that for good.</source>
+        <translation type="unfinished">&quot;%1&quot; contient ce que ce document a laissé de côté à la lecture. L&apos;enregistrer par-dessus le perd définitivement.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Replace</source>
+        <translation type="unfinished">Remplacer</translation>
+    </message>
+    <message>
+        <location line="+25"/>
         <location line="+13"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot; : %2</translation>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+270"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omis : %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Approximé : %1</translation>
     </message>
@@ -4150,12 +4176,32 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Lecture incomplète</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
+        <source>So that &quot;%1&quot; keeps what the document lacks, the document is not saved over it: Save asks where to save it instead.</source>
+        <translation type="unfinished">Pour que &quot;%1&quot; garde ce qui manque au document, le document n&apos;est pas enregistré par-dessus : Enregistrer demande plutôt où l&apos;enregistrer.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">Ce qui a été omis ne figure pas dans le document, et l&apos;enregistrement ne le conservera pas.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">Unité de longueur non indiquée</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; ne dit pas dans quelle unité sont ses longueurs, ou la dit dans une que cette version ne sait pas lire. Mal lue, chaque longueur a une taille fausse.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">Ses longueurs sont en :</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">Importer un fichier STEP</translation>
     </message>
@@ -4181,7 +4227,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Assemblages Horizon (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">Une importation STEP est déjà en cours</translation>
     </message>
@@ -4196,7 +4242,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Importation annulée</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; n&apos;a pas été importé : l&apos;unité de ses longueurs n&apos;a pas été indiquée</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -4242,7 +4293,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+8"/>
-        <location line="+168"/>
+        <location line="+171"/>
         <location line="+43"/>
         <source>Export %1</source>
         <translation type="unfinished">Exporter en %1</translation>
@@ -4489,7 +4540,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">&quot;%1&quot; a été modifié par un autre programme et a été relu</translation>
     </message>
     <message>
-        <location line="+426"/>
+        <location line="+428"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Style de cote</translation>
     </message>
@@ -5605,7 +5656,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4539"/>
+        <location line="-4666"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

@@ -40,6 +40,14 @@ using hz::model::MassPropertiesCalculator;
 
 namespace {
 
+/// These files name no length unit, as hand-written ones often do: read in
+/// millimetres, as the user reading one is asked to choose.
+hz::io::StepReadOptions inMillimetres() {
+    hz::io::StepReadOptions options;
+    options.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    return options;
+}
+
 constexpr double kPi = std::numbers::pi;
 
 std::string step(const std::string& data, const std::string& units = {}) {
@@ -204,7 +212,7 @@ struct Measured {
 
 Measured measure(const std::string& text) {
     Measured m;
-    const auto solids = StepFormat::fromString(text);
+    const auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
     EXPECT_EQ(solids.size(), 1u) << StepFormat::lastError();
     if (solids.size() != 1) return m;
     const auto faceted = hz::model::facetCurved(*solids[0]);
@@ -287,7 +295,7 @@ TEST(StepCurvedTest, APlateWithABoreHasTheRightVolumeBothWays) {
 // facets. Measured by the corners of its loops, its volume was 0 and, from
 // computeIdeal, "exact". Scripts measure what they read.
 TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
-    const auto solids = StepFormat::fromString(cylinder());
+    const auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     const hz::topo::Solid& read = *solids[0];
     EXPECT_TRUE(hz::model::describedByCurves(read));
@@ -308,7 +316,7 @@ TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
 // exact, and names the faces measured so. A request to stop is heard before
 // the facets are cut.
 TEST(StepCurvedTest, ASolidAsReadThatCannotBeFacetedIsNotExact) {
-    auto solids = StepFormat::fromString(cylinder());
+    auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     hz::topo::Solid& read = *solids[0];
     read.faces().front().outerLoop = nullptr;  // "a face has no boundary"
@@ -335,7 +343,7 @@ TEST(StepCurvedTest, TheKernelsSolidsAreNotDescribedByCurves) {
 // An imported body is cut into facets when it is built, each named for the
 // face it is part of; the file's own faces are kept for saving.
 TEST(StepCurvedTest, AnImportedBodyIsBuiltInFacets) {
-    auto solids = StepFormat::fromString(cylinder());
+    auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u);
     hz::doc::FeatureTree tree;
     auto feature = std::make_unique<hz::doc::ImportedBodyFeature>(
@@ -854,7 +862,8 @@ TEST(StepCurvedTest, ACurvedFaceWithAHoleIsCutRoundIt) {
 // the hole are not made (each was looked for in every triangle), and those
 // between coarser ones, on their edges, cut them (each was left out).
 TEST(StepCurvedTest, AWideHoleIsCutRoundFinely) {
-    const auto solids = StepFormat::fromString(pocketedCylinder(1.4, 0.3, 3.7));
+    const auto solids =
+        StepFormat::fromString(pocketedCylinder(1.4, 0.3, 3.7), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     const double exact = 16.0 * kPi - 1.4 * 1.75 * 3.4;
     const auto coarse = hz::model::facetCurved(*solids[0]);

@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <QAction>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -77,6 +79,18 @@ void setRecoveries(const QString& dir, int recoveries) {
     sidecar.write(QJsonDocument(meta).toJson());
 }
 
+/// Say in the sidecar leaveCrashedSession() wrote that its document's file
+/// was read in part, lacking @p items.
+void setLeftOut(const QString& dir, const QStringList& items) {
+    QFile sidecar(QDir(dir).filePath(QStringLiteral("7.json")));
+    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
+    QJsonObject meta = QJsonDocument::fromJson(sidecar.readAll()).object();
+    sidecar.close();
+    meta.insert(QStringLiteral("leftOut"), QJsonArray::fromStringList(items));
+    ASSERT_TRUE(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    sidecar.write(QJsonDocument(meta).toJson());
+}
+
 /// The recovery count in the one sidecar in `dir`, or -1.
 int recoveriesIn(const QString& dir) {
     const QStringList sidecars = QDir(dir).entryList({QStringLiteral("*.json")}, QDir::Files);
@@ -110,6 +124,30 @@ TEST(RecoveryManagerTest, SnapshotWritesTheDocumentAndRemoveDeletesIt) {
 
     recovery.remove(3);
     EXPECT_EQ(filesMatching(recovery.sessionDirectory(), "3.*"), 0);
+}
+
+// A document read from its file in part is snapshotted saying so: recovered,
+// it is not saved over that file either.
+TEST(RecoveryManagerTest, ASnapshotSaysWhatItsDocumentsFileLacked) {
+    QTemporaryDir root;
+    RecoveryManager recovery(root.path());
+    hz::doc::Document doc;
+    addLine(doc);
+    doc.setLeftOut({"entity 2 (line): no end"});
+    ASSERT_TRUE(recovery.snapshot(3, doc, QStringLiteral("Plan"), QStringLiteral("/x/plan.hcad")));
+    QFile sidecar(QDir(recovery.sessionDirectory()).filePath(QStringLiteral("3.json")));
+    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
+    const QJsonArray leftOut =
+        QJsonDocument::fromJson(sidecar.readAll()).object().value("leftOut").toArray();
+    ASSERT_EQ(leftOut.size(), 1);
+    EXPECT_EQ(leftOut[0].toString(), QStringLiteral("entity 2 (line): no end"));
+
+    // Read whole, nothing is said.
+    doc.setLeftOut({});
+    ASSERT_TRUE(recovery.snapshot(3, doc, QStringLiteral("Plan"), QStringLiteral("/x/plan.hcad")));
+    sidecar.close();
+    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
+    EXPECT_FALSE(QJsonDocument::fromJson(sidecar.readAll()).object().contains("leftOut"));
 }
 
 TEST(RecoveryManagerTest, ATypeChangeLeavesOneSnapshot) {
@@ -338,6 +376,38 @@ TEST(RecoveryWindowTest, RecoveredDocumentsReopenModified) {
 
     DialogResponder discard(QMessageBox::Discard);
     w.close();
+}
+
+// Recovered, a document its file was read in part into is still not saved
+// over that file: Save asks where.
+TEST(RecoveryWindowTest, ARecoveredDocumentReadInPartIsNotSavedOverItsFile) {
+    QTemporaryDir files;
+    const QString original = QDir(files.path()).filePath(QStringLiteral("plan.hcad"));
+    MainWindow w;
+    const QString root = QFileInfo(w.recovery().sessionDirectory()).path();
+    const QString crashed = leaveCrashedSession(root, QStringLiteral("plan.hcad"), original);
+    setLeftOut(crashed, {QStringLiteral("entity 2 (line): no end")});
+
+    DialogResponder responder(QMessageBox::Yes, QStringLiteral("Recover Documents"), 5000);
+    w.offerRecovery();
+    ASSERT_TRUE(responder.seen());
+    auto* tabs = w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    ASSERT_NE(tabs, nullptr);
+    ASSERT_EQ(tabs->count(), 2);
+    EXPECT_EQ(tabs->tabText(1), QStringLiteral("plan.hcad (recovered) (incomplete) *"));
+    hz::doc::Document& recovered = *w.activeDocument();
+    EXPECT_TRUE(recovered.readInPart());
+    EXPECT_EQ(recovered.filePath(), original.toStdString());
+
+    const QString copy = QDir(files.path()).filePath(QStringLiteral("copy.hcad"));
+    {
+        hz::test::FilePicker picker(copy);
+        w.findChild<QAction*>(QStringLiteral("action_save"))->trigger();
+    }
+    EXPECT_FALSE(QFileInfo::exists(original)) << "not written where it was read in part from";
+    EXPECT_TRUE(QFileInfo::exists(copy));
+    EXPECT_FALSE(recovered.readInPart());
+    EXPECT_FALSE(recovered.isDirty());
 }
 
 TEST(RecoveryWindowTest, LaterKeepsTheSnapshotsForNextTime) {

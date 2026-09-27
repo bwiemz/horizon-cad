@@ -553,13 +553,18 @@ bool DrawingWorkbench::open(const QString& fileName) {
     spec.frames.clear();
     document->setLengthUnit(spec.lengthUnit);
     document->setFilePath(path);
+    // Read in part: not saved over its file, which has what it lacks.
+    document->setLeftOut(spec.leftOut);
     document->setDirty(false);
     for (const std::string& file : source->files) m_host.documents().watch(file);
+    const std::vector<std::string> leftOut = std::move(spec.leftOut);
+    spec.leftOut.clear();
     m_sheets.push_back(
         std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
                                       listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.addTab(document, QFileInfo(fileName).fileName());
+    if (!leftOut.empty()) m_host.reportLeftOut(QFileInfo(fileName).fileName(), leftOut);
     return true;
 }
 
@@ -611,6 +616,9 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     spec.annotations.reset();
     spec.frames.clear();
     document.setLengthUnit(spec.lengthUnit);
+    document.setLeftOut(spec.leftOut);
+    const std::vector<std::string> leftOut = std::move(spec.leftOut);
+    spec.leftOut.clear();
     sheet->spec = std::move(spec);
     sheet->drawing = std::move(drawing);
     for (const std::string& file : source->files) m_host.documents().watch(file);
@@ -621,6 +629,9 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     m_host.refreshModifiedIndicators();
     // Its paper may be another size now.
     if (m_host.currentDocument() == &document) shown(document);
+    if (!leftOut.empty()) {
+        m_host.reportLeftOut(QFileInfo(QString::fromStdString(path)).fileName(), leftOut);
+    }
 }
 
 void DrawingWorkbench::shown(doc::Document& document) {

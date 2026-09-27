@@ -42,6 +42,14 @@ using hz::topo::Solid;
 
 namespace {
 
+/// These files name no length unit, as hand-written ones often do: read in
+/// millimetres, as the user reading one is asked to choose.
+hz::io::StepReadOptions inMillimetres() {
+    hz::io::StepReadOptions options;
+    options.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    return options;
+}
+
 constexpr double kPi = std::numbers::pi;
 constexpr double kTetraVolume = 1000.0 / 6.0;
 
@@ -212,13 +220,14 @@ TEST(StepAssemblyTest, ANestedAssemblysPartsAreReadOnceEach) {
 // before assemblies were read: each solid once, where drawn, named by its
 // place in the file.
 TEST(StepAssemblyTest, AFileOfPartsAloneReadsAsItDidBefore) {
-    const auto solids = StepFormat::load(fixture("assembly_two_parts_nauo.step").string());
+    const auto solids = StepFormat::load(fixture("assembly_two_parts_nauo.step").string(), nullptr,
+                                         nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 2u) << StepFormat::lastError();
     EXPECT_EQ(faceNames(*solids[0]).begin()->rfind("step/solid:0/", 0), 0u);
     EXPECT_EQ(faceNames(*solids[1]).begin()->rfind("step/solid:1/", 0), 0u);
 
-    const StepAssembly read =
-        StepFormat::loadAssembly(fixture("assembly_two_parts_nauo.step").string());
+    const StepAssembly read = StepFormat::loadAssembly(
+        fixture("assembly_two_parts_nauo.step").string(), nullptr, nullptr, inMillimetres());
     EXPECT_FALSE(read.structured);
     ASSERT_EQ(read.parts.size(), 2u);
     EXPECT_EQ(read.parts[0].name, "part_a");

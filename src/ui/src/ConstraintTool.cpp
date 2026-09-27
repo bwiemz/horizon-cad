@@ -348,8 +348,9 @@ void ConstraintTool::commitConstraint() {
     // Remove the temporary constraint (push re-adds via AddConstraintCommand).
     csys.removeConstraint(constraint->id());
 
+    // The command alone marks the change: undone, the document is as it was
+    // saved. A setDirty(true) beside it stayed set through the undo.
     doc.undoStack().push(std::move(composite));
-    doc.setDirty(true);
 }
 
 std::vector<std::pair<math::Vec2, math::Vec2>> ConstraintTool::getPreviewLines() const {

@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
@@ -71,7 +72,7 @@ bool RecoveryManager::snapshot(quint64 key, const doc::Document& doc, const QStr
     const QString type =
         doc.type() == doc::DocumentType::Part ? QStringLiteral("hzpart") : QStringLiteral("hcad");
     return writeSnapshot(key, io::NativeFormat::documentToJson(doc, /*includeTessellation=*/false),
-                         type, title, originalPath, recoveries);
+                         type, title, originalPath, recoveries, doc.leftOut());
 }
 
 bool RecoveryManager::snapshot(quint64 key, const doc::AssemblyDocument& assembly,
@@ -79,12 +80,13 @@ bool RecoveryManager::snapshot(quint64 key, const doc::AssemblyDocument& assembl
     // Component paths are kept as they are in memory, not made relative to
     // the snapshot's own directory.
     return writeSnapshot(key, io::NativeFormat::assemblyToJson(assembly, std::string()),
-                         QStringLiteral("hzasm"), title, originalPath, recoveries);
+                         QStringLiteral("hzasm"), title, originalPath, recoveries,
+                         assembly.leftOut());
 }
 
 bool RecoveryManager::writeSnapshot(quint64 key, const std::string& json, const QString& type,
                                     const QString& title, const QString& originalPath,
-                                    int recoveries) {
+                                    int recoveries, const std::vector<std::string>& leftOut) {
     if (!m_active) return false;
     const QString base = QDir(m_sessionDir).filePath(QString::number(key));
     const auto failed = [&](const std::string& error) {
@@ -109,6 +111,11 @@ bool RecoveryManager::writeSnapshot(quint64 key, const std::string& json, const 
         {QStringLiteral("savedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
     };
     if (recoveries > 0) meta.insert(QStringLiteral("recoveries"), recoveries);
+    if (!leftOut.empty()) {
+        QJsonArray items;
+        for (const std::string& item : leftOut) items.append(QString::fromStdString(item));
+        meta.insert(QStringLiteral("leftOut"), items);
+    }
     const QByteArray metaJson = QJsonDocument(meta).toJson();
     if (!io::writeFileAtomically(
             toPath(base + QStringLiteral(".json")),
@@ -153,6 +160,11 @@ std::vector<RecoveryManager::Entry> RecoveryManager::claimOrphans() {
             if (!kSnapshotTypes.contains(type)) continue;
             const QString snapshot = sessionDir.filePath(sidecar.completeBaseName() + '.' + type);
             if (!QFileInfo::exists(snapshot)) continue;
+            std::vector<std::string> leftOut;
+            const QJsonArray items = meta.value(QStringLiteral("leftOut")).toArray();
+            for (const auto& item : items) {
+                if (item.isString()) leftOut.push_back(item.toString().toStdString());
+            }
             entries.push_back(Entry{
                 snapshot,
                 meta.value(QStringLiteral("originalPath")).toString(),
@@ -161,6 +173,7 @@ std::vector<RecoveryManager::Entry> RecoveryManager::claimOrphans() {
                 QDateTime::fromString(meta.value(QStringLiteral("savedAt")).toString(),
                                       Qt::ISODateWithMs),
                 std::max(0, meta.value(QStringLiteral("recoveries")).toInt()),
+                std::move(leftOut),
             });
             ++found;
         }
