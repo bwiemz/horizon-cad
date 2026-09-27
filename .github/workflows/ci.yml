@@ -562,11 +562,14 @@ jobs:
           # the same under both compilers.
           #
           # Each file gets its own clang-tidy, four at a time (the runner's
-          # cores), with 15 minutes to finish. One clang-tidy over every file
-          # stopped for good at the same file, one it reads in seconds on its
-          # own, and the job sat out its three hours saying nothing; a file
-          # that runs out of time now gets a second try, then fails the gate
-          # by name. A file's findings are printed together, when it is done.
+          # cores), with 5 minutes to finish; the slowest takes seconds. One
+          # clang-tidy over every file stopped for good at the same file, one
+          # it reads in seconds on its own, and the job sat out its three
+          # hours saying nothing. That file (src/modeling/src/AssemblySolver
+          # .cpp) still stops now and then in a clang-tidy of its own, and
+          # finishes in the next: a file that runs out of time gets three
+          # tries, then fails the gate by name. A file's findings are printed
+          # together, when it is done.
           set -o pipefail
           jq -r '.[].file' build/linux-debug/compile_commands.json \
             | grep -vE '/build/' \
@@ -574,9 +577,9 @@ jobs:
           echo "Analyzing $(wc -l < tidy-files.txt) source files with clang-tidy"
           tidy() {
             local attempt output status
-            for attempt in 1 2; do
+            for attempt in 1 2 3; do
               status=0
-              output="$(timeout 900 clang-tidy-15 \
+              output="$(timeout 300 clang-tidy-15 \
                   -p build/linux-debug \
                   --checks='-*,bugprone-*,performance-*' \
                   --extra-arg=-Wno-sign-conversion \
@@ -589,7 +592,7 @@ jobs:
               fi
               echo "::warning::clang-tidy ran out of time on $1 (attempt ${attempt})"
             done
-            echo "::error::clang-tidy did not finish $1 in two tries of 15 minutes"
+            echo "::error::clang-tidy did not finish $1 in three tries of 5 minutes"
             return 1
           }
           export -f tidy
