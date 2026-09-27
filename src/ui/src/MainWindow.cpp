@@ -1958,23 +1958,25 @@ void MainWindow::onPreferences() {
     applyPreferences(prefs);
 }
 
+QString MainWindow::lengthUnitName(math::LengthUnit unit) {
+    switch (unit) {
+        case math::LengthUnit::Millimetre:
+            return tr("Millimetres (mm)");
+        case math::LengthUnit::Centimetre:
+            return tr("Centimetres (cm)");
+        case math::LengthUnit::Metre:
+            return tr("Metres (m)");
+        case math::LengthUnit::Inch:
+            return tr("Inches (in)");
+        case math::LengthUnit::Foot:
+            return tr("Feet (ft)");
+    }
+    return QString();
+}
+
 void MainWindow::onDocumentUnits() {
     // Each unit by its name and symbol, in the order they are offered.
-    const auto nameOf = [](math::LengthUnit unit) {
-        switch (unit) {
-            case math::LengthUnit::Millimetre:
-                return tr("Millimetres (mm)");
-            case math::LengthUnit::Centimetre:
-                return tr("Centimetres (cm)");
-            case math::LengthUnit::Metre:
-                return tr("Metres (m)");
-            case math::LengthUnit::Inch:
-                return tr("Inches (in)");
-            case math::LengthUnit::Foot:
-                return tr("Feet (ft)");
-        }
-        return QString();
-    };
+    const auto nameOf = &MainWindow::lengthUnitName;
     QStringList names;
     int current = 0;
     for (std::size_t k = 0; k < math::kLengthUnits.size(); ++k) {
@@ -2635,17 +2637,42 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
 }
 
 MainWindow::StepLoad MainWindow::loadStep(const std::string& path, const std::string& assemblyPath,
-                                          const std::atomic<bool>* cancelled) {
+                                          const std::atomic<bool>* cancelled,
+                                          const io::StepReadOptions& options) {
     StepLoad load;
     load.assemblyPath = assemblyPath;
     if (assemblyPath.empty()) {
-        load.solids = io::StepFormat::load(path, &load.report, cancelled);
+        load.solids = io::StepFormat::load(path, &load.report, cancelled, options);
         if (load.solids.empty()) load.error = io::StepFormat::lastError();
     } else {
-        load.assembly = io::StepFormat::loadAssembly(path, &load.report, cancelled);
+        load.assembly = io::StepFormat::loadAssembly(path, &load.report, cancelled, options);
         if (load.assembly.parts.empty()) load.error = io::StepFormat::lastError();
     }
+    // Asked on the thread that read: what it says is that thread's.
+    load.unitUnknown = io::StepFormat::lastLengthUnitUnknown();
     return load;
+}
+
+std::optional<math::LengthUnit> MainWindow::askStepLengthUnit(const QString& fileName) {
+    QStringList names;
+    int current = 0;
+    for (std::size_t k = 0; k < math::kLengthUnits.size(); ++k) {
+        names << lengthUnitName(math::kLengthUnits[k]);
+        // The unit new documents are made in: the likeliest.
+        if (math::kLengthUnits[k] == m_docManager.newDocumentUnit()) current = static_cast<int>(k);
+    }
+    FeatureForm form(this, tr("Length Unit Not Given"), m_docManager.newDocumentUnit());
+    auto* note = new QLabel(tr("\"%1\" does not say which unit its lengths are in, or says it in "
+                               "one this version cannot read. Read wrong, every length is the "
+                               "wrong size.")
+                                .arg(QFileInfo(fileName).fileName()),
+                            &form.dialog());
+    note->setWordWrap(true);
+    form.dialog().layout()->addWidget(note);
+    QComboBox* unit = form.choice(QStringLiteral("unit"), tr("Its lengths are in:"), names);
+    unit->setCurrentIndex(current);
+    if (!form.exec()) return std::nullopt;
+    return math::kLengthUnits[static_cast<std::size_t>(std::max(unit->currentIndex(), 0))];
 }
 
 void MainWindow::onImportStep() {
@@ -2671,14 +2698,15 @@ void MainWindow::onImportStepAssembly() {
     startStepImport(fileName, assemblyPath);
 }
 
-void MainWindow::startStepImport(const QString& fileName, const QString& assemblyPath) {
+void MainWindow::startStepImport(const QString& fileName, const QString& assemblyPath,
+                                 const io::StepReadOptions& options) {
     const std::string path = fileName.toStdString();
     const std::string keptAt = assemblyPath.toStdString();
     const bool onWorker =
         m_rebuildMode == RebuildMode::Always ||
         (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
     if (!onWorker) {
-        finishStepImport(fileName, loadStep(path, keptAt));
+        finishStepImport(fileName, loadStep(path, keptAt, nullptr, options));
         return;
     }
     if (m_importTask) {
@@ -2687,8 +2715,8 @@ void MainWindow::startStepImport(const QString& fileName, const QString& assembl
     }
     m_importFile = fileName;
     m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
-        [path, keptAt](const std::atomic<bool>& cancelled) {
-            return loadStep(path, keptAt, &cancelled);
+        [path, keptAt, options](const std::atomic<bool>& cancelled) {
+            return loadStep(path, keptAt, &cancelled, options);
         });
     m_importTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
@@ -2712,6 +2740,23 @@ void MainWindow::onImportFinished() {
 }
 
 void MainWindow::finishStepImport(const QString& fileName, StepLoad load) {
+    if (load.unitUnknown) {
+        // Not guessed: a file in inches read as millimetres is 25.4 times
+        // too small. Its user says which, or it is not read.
+        const auto unit = askStepLengthUnit(fileName);
+        if (!unit) {
+            m_statusPrompt->setText(tr("Ready"));
+            statusBar()->showMessage(
+                tr("\"%1\" was not imported: which unit its lengths are in was not given")
+                    .arg(QFileInfo(fileName).fileName()),
+                15000);
+            return;
+        }
+        io::StepReadOptions options;
+        options.unknownLengthUnit = *unit;
+        startStepImport(fileName, QString::fromStdString(load.assemblyPath), options);
+        return;
+    }
     if (!load.assemblyPath.empty()) {
         finishStepAssemblyImport(fileName, std::move(load));
         return;

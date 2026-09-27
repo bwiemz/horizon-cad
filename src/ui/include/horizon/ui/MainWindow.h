@@ -393,12 +393,22 @@ private:
         std::string assemblyPath;
         io::ImportReport report;
         std::string error;  ///< why nothing was read (lastError is per thread)
+        /// Nothing was read: the file does not say which unit its lengths
+        /// are in (StepFormat::lastLengthUnitUnknown).
+        bool unitUnknown = false;
     };
     static StepLoad loadStep(const std::string& path, const std::string& assemblyPath = {},
-                             const std::atomic<bool>* cancelled = nullptr);
+                             const std::atomic<bool>* cancelled = nullptr,
+                             const io::StepReadOptions& options = {});
     /// Read @p fileName, on a worker when it is large; into a new part, or
     /// kept as an assembly at @p assemblyPath when one is given.
-    void startStepImport(const QString& fileName, const QString& assemblyPath);
+    void startStepImport(const QString& fileName, const QString& assemblyPath,
+                         const io::StepReadOptions& options = {});
+    /// Ask which unit @p fileName's lengths are in, the file not saying:
+    /// none when its user cancels.
+    std::optional<math::LengthUnit> askStepLengthUnit(const QString& fileName);
+    /// @p unit's name and symbol, as the unit choices show it.
+    static QString lengthUnitName(math::LengthUnit unit);
 
     /// A drawing or part file read into a document of its own, on a worker
     /// when the file is large (openOnWorker).
