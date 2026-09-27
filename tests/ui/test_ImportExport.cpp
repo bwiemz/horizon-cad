@@ -356,6 +356,51 @@ TEST(ImportExportTest, StepExportSaysWhatWentOutAsFacets) {
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("box.step"))));
 }
 
+// A STEP file that does not say which unit its lengths are in is not read as
+// millimetres: its user is asked, and it is read in the unit chosen, or not
+// at all.
+TEST(ImportExportTest, AStepFileWithoutItsUnitIsReadInTheOneChosen) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("bracket.step"));
+    {
+        auto box = hz::model::PrimitiveFactory::makeBox(3, 4, 5);
+        std::string text = hz::io::StepFormat::toString({box.get()});
+        const std::string unit = "(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))";
+        const auto at = text.find(unit);
+        ASSERT_NE(at, std::string::npos);
+        text.replace(at, unit.size(), "(NAMED_UNIT(*)SI_UNIT($,.SECOND.))");
+        std::ofstream(path.toStdString()) << text;
+    }
+
+    MainWindow w;
+    const std::size_t before = w.findChild<QTabBar*>(QStringLiteral("documentTabs"))->count();
+    {
+        FormFiller unit(QStringLiteral("Length Unit Not Given"), FormAnswers().reject());
+        FilePicker picker(path);
+        action(w, "import_step")->trigger();
+        EXPECT_TRUE(unit.seen()) << "asked, not guessed";
+    }
+    EXPECT_EQ(
+        static_cast<std::size_t>(w.findChild<QTabBar*>(QStringLiteral("documentTabs"))->count()),
+        before)
+        << "not read at all";
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("not imported")))
+        << w.statusBar()->currentMessage().toStdString();
+
+    {
+        FormFiller unit(
+            QStringLiteral("Length Unit Not Given"),
+            FormAnswers().choose(QStringLiteral("unit"), QStringLiteral("Inches (in)")));
+        FilePicker picker(path);
+        action(w, "import_step")->trigger();
+        EXPECT_TRUE(unit.seen());
+    }
+    const hz::doc::Document& doc = *w.activeDocument();
+    ASSERT_EQ(doc.featureTree().featureCount(), 1u);
+    EXPECT_NEAR(partVolume(doc), 60.0 * 25.4 * 25.4 * 25.4, 1e-6) << "in inches";
+}
+
 namespace {
 
 /// A drawing with one good line and one this version cannot read, at @p path.

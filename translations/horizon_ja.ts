@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4074"/>
+        <location line="+4119"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4150"/>
+        <location line="-4195"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3923"/>
+        <location line="+3968"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-3986"/>
+        <location line="-4031"/>
         <location line="+64"/>
-        <location line="+3922"/>
+        <location line="+3967"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-3985"/>
+        <location line="-4030"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">寸法</translation>
     </message>
     <message numerus="yes">
-        <location line="+1676"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
@@ -3330,7 +3330,7 @@ begin building your part.</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4256"/>
+        <location line="-4301"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3432,12 +3432,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2814"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2811"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3452,96 +3452,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2956"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-2955"/>
-        <location line="+2965"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-2964"/>
-        <location line="+2971"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-2970"/>
-        <location line="+2977"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-2976"/>
-        <location line="+2987"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-2985"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3710"/>
+        <location line="+3755"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3755"/>
-        <location line="+3774"/>
+        <location line="-3800"/>
+        <location line="+3819"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3800"/>
-        <location line="+4130"/>
+        <location line="-3845"/>
+        <location line="+4175"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4128"/>
+        <location line="-4173"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3881"/>
+        <location line="+3926"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3880"/>
-        <location line="+3884"/>
+        <location line="-3925"/>
+        <location line="+3929"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3887"/>
+        <location line="-3928"/>
+        <location line="+3932"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3882"/>
-        <location line="+3951"/>
+        <location line="-3927"/>
+        <location line="+3996"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-3950"/>
-        <location line="+3970"/>
+        <location line="-3995"/>
+        <location line="+4015"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-3968"/>
+        <location line="-4013"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3571,9 +3571,10 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+980"/>
-        <location line="+444"/>
-        <location line="+469"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
         <location line="+1424"/>
         <location line="+1190"/>
         <location line="+13"/>
@@ -3581,7 +3582,7 @@ begin building your part.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4590"/>
+        <location line="-4635"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3602,12 +3603,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4259"/>
+        <location line="+4304"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4253"/>
+        <location line="-4298"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -3745,7 +3746,7 @@ begin building your part.</source>
         <translation type="unfinished">アセンブリ %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">ミリメートル (mm)</translation>
     </message>
@@ -3770,7 +3771,7 @@ begin building your part.</source>
         <translation type="unfinished">フィート (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">ドキュメントの単位</translation>
     </message>
@@ -3927,12 +3928,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-233"/>
-        <location line="+713"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
-        <location line="-691"/>
+        <location line="-734"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
@@ -4102,12 +4103,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+277"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message>
-        <location line="-274"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">近似: %1</translation>
     </message>
@@ -4132,7 +4133,22 @@ begin building your part.</source>
         <translation type="unfinished">除外された内容はドキュメントに含まれず、保存しても保持されません。</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">長さの単位が指定されていません</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; は長さの単位を示していないか、このバージョンでは読めない単位で示しています。誤って読むと、すべての長さが誤った大きさになります。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">長さの単位:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">STEP のインポート</translation>
     </message>
@@ -4158,7 +4174,7 @@ begin building your part.</source>
         <translation type="unfinished">Horizon アセンブリ (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">STEP のインポートは既に実行中です</translation>
     </message>
@@ -4173,7 +4189,12 @@ begin building your part.</source>
         <translation type="unfinished">インポートをキャンセルしました</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -5598,7 +5619,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4606"/>
+        <location line="-4651"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

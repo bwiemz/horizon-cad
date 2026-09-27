@@ -1873,7 +1873,12 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     continue;
                 }
                 if (ftype == "imported") {
-                    auto solids = StepFormat::fromString(fObj.at("step").get<std::string>());
+                    // Written by this program, in millimetres; one written
+                    // before it named its unit is too.
+                    StepReadOptions inMillimetres;
+                    inMillimetres.unknownLengthUnit = math::LengthUnit::Millimetre;
+                    auto solids = StepFormat::fromString(fObj.at("step").get<std::string>(),
+                                                         nullptr, nullptr, inMillimetres);
                     if (solids.empty()) {
                         throw std::invalid_argument("its body could not be read: " +
                                                     StepFormat::lastError());

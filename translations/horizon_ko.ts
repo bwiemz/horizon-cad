@@ -3236,12 +3236,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4074"/>
+        <location line="+4119"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-4150"/>
+        <location line="-4195"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3258,19 +3258,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3923"/>
+        <location line="+3968"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-3986"/>
+        <location line="-4031"/>
         <location line="+64"/>
-        <location line="+3922"/>
+        <location line="+3967"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-3985"/>
+        <location line="-4030"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3311,7 +3311,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message numerus="yes">
-        <location line="+1676"/>
+        <location line="+1721"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n개 부품을 &quot;%1&quot;(으)로 가져왔습니다.</numerusform>
@@ -3330,7 +3330,7 @@ begin building your part.</source>
         <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
     </message>
     <message>
-        <location line="-4256"/>
+        <location line="-4301"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -3432,12 +3432,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2814"/>
+        <location line="+2859"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2811"/>
+        <location line="-2856"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3452,96 +3452,96 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2956"/>
+        <location line="+3001"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-2955"/>
-        <location line="+2965"/>
+        <location line="-3000"/>
+        <location line="+3010"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-2964"/>
-        <location line="+2971"/>
+        <location line="-3009"/>
+        <location line="+3016"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-2970"/>
-        <location line="+2977"/>
+        <location line="-3015"/>
+        <location line="+3022"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-2976"/>
-        <location line="+2987"/>
+        <location line="-3021"/>
+        <location line="+3032"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-2985"/>
+        <location line="-3030"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3710"/>
+        <location line="+3755"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3755"/>
-        <location line="+3774"/>
+        <location line="-3800"/>
+        <location line="+3819"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3800"/>
-        <location line="+4130"/>
+        <location line="-3845"/>
+        <location line="+4175"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-4128"/>
+        <location line="-4173"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3881"/>
+        <location line="+3926"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3880"/>
-        <location line="+3884"/>
+        <location line="-3925"/>
+        <location line="+3929"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3883"/>
-        <location line="+3887"/>
+        <location line="-3928"/>
+        <location line="+3932"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3882"/>
-        <location line="+3951"/>
+        <location line="-3927"/>
+        <location line="+3996"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-3950"/>
-        <location line="+3970"/>
+        <location line="-3995"/>
+        <location line="+4015"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-3968"/>
+        <location line="-4013"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3571,9 +3571,10 @@ begin building your part.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+980"/>
-        <location line="+444"/>
-        <location line="+469"/>
+        <location line="+982"/>
+        <location line="+470"/>
+        <location line="+15"/>
+        <location line="+471"/>
         <location line="+1424"/>
         <location line="+1190"/>
         <location line="+13"/>
@@ -3581,7 +3582,7 @@ begin building your part.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4590"/>
+        <location line="-4635"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3602,12 +3603,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4259"/>
+        <location line="+4304"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4253"/>
+        <location line="-4298"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -3745,7 +3746,7 @@ begin building your part.</source>
         <translation type="unfinished">어셈블리 %1</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+42"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">밀리미터 (mm)</translation>
     </message>
@@ -3770,7 +3771,7 @@ begin building your part.</source>
         <translation type="unfinished">피트 (ft)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+14"/>
         <source>Document Units</source>
         <translation type="unfinished">문서 단위</translation>
     </message>
@@ -3927,12 +3928,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-233"/>
-        <location line="+713"/>
+        <location line="+756"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
-        <location line="-691"/>
+        <location line="-734"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">도면</translation>
@@ -4102,12 +4103,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+277"/>
+        <location line="+320"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
     <message>
-        <location line="-274"/>
+        <location line="-317"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">근사 처리됨: %1</translation>
     </message>
@@ -4132,7 +4133,22 @@ begin building your part.</source>
         <translation type="unfinished">생략된 항목은 문서에 포함되지 않으며, 저장해도 보존되지 않습니다.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+30"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">길이 단위가 주어지지 않음</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot;은(는) 길이의 단위를 밝히지 않거나, 이 버전이 읽을 수 없는 단위로 밝힙니다. 잘못 읽으면 모든 길이의 크기가 틀립니다.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">길이 단위:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Import STEP</source>
         <translation type="unfinished">STEP 가져오기</translation>
     </message>
@@ -4158,7 +4174,7 @@ begin building your part.</source>
         <translation type="unfinished">Horizon 어셈블리 (*.hzasm)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>A STEP import is already running</source>
         <translation type="unfinished">STEP 가져오기가 이미 실행 중입니다</translation>
     </message>
@@ -4173,7 +4189,12 @@ begin building your part.</source>
         <translation type="unfinished">가져오기가 취소되었습니다</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot;을(를) 가져오지 않았습니다: 길이의 단위가 주어지지 않았습니다</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+25"/>
         <location line="+14"/>
         <location line="+25"/>
@@ -5598,7 +5619,7 @@ Not exact: %n edge(s) where the curved surfaces on either side do not meet.</sou
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4606"/>
+        <location line="-4651"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

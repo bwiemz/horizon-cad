@@ -198,15 +198,35 @@ TEST(StepFidelityTest, AFileInInchesIsScaledIntoMillimetres) {
         contains(report.converted, "1 solid drawn in inches, scaled by 25.4 into millimetres"));
 }
 
-TEST(StepFidelityTest, AUnitThatCannotBeReadIsTakenAsMillimetresAndSaidSo) {
-    ImportReport report;
-    const auto solids =
-        StepFormat::fromString(replaced(fixture("plate_with_square_hole.step"), kMillimetres,
-                                        "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.SOMETHING.,.METRE.))"),
-                               &report);
-    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
-    EXPECT_NEAR(volumeOf(*solids[0]), 168.0, 1e-9);
-    EXPECT_TRUE(contains(report.approximated, "the length unit could not be read"));
+// A unit that cannot be read, or none, is not taken for the millimetre: a
+// file in inches came in 25.4 times too small, with a warning. It is read
+// only in a unit its reader is told, and said so.
+TEST(StepFidelityTest, AUnitThatCannotBeReadIsNotGuessed) {
+    const std::string plate = fixture("plate_with_square_hole.step");
+    const std::string unreadable =
+        replaced(plate, kMillimetres, "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.SOMETHING.,.METRE.))");
+    // No unit at all: the context assigns none.
+    const std::string none = replaced(plate, kMillimetres, "(NAMED_UNIT(*)SI_UNIT($,.SECOND.))");
+    for (const std::string& text : {unreadable, none}) {
+        ImportReport report;
+        EXPECT_TRUE(StepFormat::fromString(text, &report).empty());
+        EXPECT_TRUE(StepFormat::lastLengthUnitUnknown());
+        EXPECT_NE(StepFormat::lastError().find("length unit"), std::string::npos)
+            << StepFormat::lastError();
+        EXPECT_TRUE(StepFormat::loadAssembly("", nullptr).parts.empty());
+        EXPECT_FALSE(StepFormat::lastLengthUnitUnknown()) << "said of the last read alone";
+        EXPECT_TRUE(StepFormat::assemblyFromString(text).parts.empty());
+        EXPECT_TRUE(StepFormat::lastLengthUnitUnknown()) << "an assembly's read too";
+
+        hz::io::StepReadOptions inches;
+        inches.unknownLengthUnit = hz::math::LengthUnit::Inch;
+        const auto solids = StepFormat::fromString(text, &report, nullptr, inches);
+        ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+        EXPECT_FALSE(StepFormat::lastLengthUnitUnknown());
+        EXPECT_NEAR(farCorner(*solids[0]).x, 254.0, 1e-9);
+        EXPECT_TRUE(contains(report.converted, "1 solid read in inches, as chosen"));
+        EXPECT_TRUE(report.empty()) << "chosen, not approximated";
+    }
 }
 
 // ---------------------------------------------------------------------------

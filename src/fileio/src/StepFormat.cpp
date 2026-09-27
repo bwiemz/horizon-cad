@@ -43,6 +43,30 @@ using hz::math::Vec3;
 namespace {
 
 thread_local std::string g_lastError;
+/// lastLengthUnitUnknown(): the last read stopped for its length unit.
+thread_local bool g_lastUnitUnknown = false;
+
+/// lastError() after a read that stopped for its length unit.
+constexpr const char* kUnitUnknown =
+    "it names no length unit, or one this version cannot read, so how large its parts are is "
+    "not known";
+
+/// @p unit's name in a sentence: "inches".
+std::string unitName(math::LengthUnit unit) {
+    switch (unit) {
+        case math::LengthUnit::Millimetre:
+            return "millimetres";
+        case math::LengthUnit::Centimetre:
+            return "centimetres";
+        case math::LengthUnit::Metre:
+            return "metres";
+        case math::LengthUnit::Inch:
+            return "inches";
+        case math::LengthUnit::Foot:
+            return "feet";
+    }
+    return "millimetres";
+}
 
 /// lastError() after a read stopped by its cancel flag.
 constexpr const char* kCancelled = "cancelled";
@@ -2029,12 +2053,12 @@ double contextRadians(const StepParser& parser, int contextId) {
 }
 
 /// Millimetres per length unit in the representation context `contextId`:
-/// the LENGTH_UNIT of its GLOBAL_UNIT_ASSIGNED_CONTEXT. 1 when it names
-/// none; 0 when it names one that cannot be read.
+/// the LENGTH_UNIT of its GLOBAL_UNIT_ASSIGNED_CONTEXT. 0 when it names
+/// none, or one that cannot be read: neither is taken for the millimetre.
 double contextMillimetres(const StepParser& parser, int contextId, std::string* name) {
     const StepInstance* ctx = parser.find(contextId);
     const StepList* units = ctx ? ctx->leaf("GLOBAL_UNIT_ASSIGNED_CONTEXT") : nullptr;
-    if (units == nullptr || units->empty() || !(*units)[0].isList()) return 1.0;
+    if (units == nullptr || units->empty() || !(*units)[0].isList()) return 0.0;
     for (const StepValue& u : *(*units)[0].items) {
         if (!u.isRef()) continue;
         const StepInstance* unit = parser.find(u.ref);
@@ -2042,7 +2066,7 @@ double contextMillimetres(const StepParser& parser, int contextId, std::string* 
             return unitMillimetres(parser, u.ref, name);
         }
     }
-    return 1.0;
+    return 0.0;
 }
 
 // ===========================================================================
@@ -2389,6 +2413,9 @@ struct ProductStructure {
     /// a report.
     std::vector<std::string> notes;
     std::vector<std::string> leftOut;
+    /// A placement's length unit is not named, or cannot be read, and none
+    /// was chosen: the file is not read.
+    bool unitUnknown = false;
 };
 
 /// At most this many solids placed, and this many assemblies walked into: a
@@ -2400,7 +2427,8 @@ constexpr std::size_t kMaxVisits = 1000000;
 /// Assemblies nested deeper than this are taken for a loop.
 constexpr int kMaxDepth = 64;
 
-ProductStructure readStructure(const StepParser& parser, const std::vector<SolidGroup>& groups) {
+ProductStructure readStructure(const StepParser& parser, const std::vector<SolidGroup>& groups,
+                               const StepReadOptions& options) {
     ProductStructure structure;
     std::unordered_map<int, std::size_t> groupOfRep;
     for (std::size_t g = 0; g < groups.size(); ++g) {
@@ -2549,8 +2577,16 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
         const auto found = mmOfRep.find(rep);
         if (found != mmOfRep.end()) return found->second;
         const int context = representationContext(parser, rep);
-        double mm = context != 0 ? contextMillimetres(parser, context, nullptr) : 1.0;
-        if (!(mm > 0.0)) mm = 1.0;
+        double mm = context != 0 ? contextMillimetres(parser, context, nullptr) : 0.0;
+        if (!(mm > 0.0)) {
+            // Not named, or not readable: the unit chosen, else unknown.
+            if (options.unknownLengthUnit) {
+                mm = math::millimetresPer(*options.unknownLengthUnit);
+            } else {
+                structure.unitUnknown = true;
+                mm = 1.0;
+            }
+        }
         mmOfRep.emplace(rep, mm);
         return mm;
     };
@@ -2699,10 +2735,14 @@ struct BuiltSolids {
     std::vector<std::string> approximated;
     std::map<std::string, int> conversions;
     std::string firstError;
+    /// A solid's length unit is not named, or cannot be read, and none was
+    /// chosen: nothing more is built, and the file is not read.
+    bool unitUnknown = false;
 };
 
 BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>& groups,
-                        bool reporting, const std::atomic<bool>* cancelled) {
+                        bool reporting, const std::atomic<bool>* cancelled,
+                        const StepReadOptions& options) {
     BuiltSolids built;
     built.solids.resize(groups.size());
     // Each solid on its own: one that cannot be rebuilt is reported, and the
@@ -2713,6 +2753,19 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         const SolidGroup& group = groups[index];
         const std::string which =
             "solid " + std::to_string(index + 1) + " (#" + std::to_string(group.msbs.front()) + ")";
+        // Millimetres per unit of its lengths. Not named, or not readable:
+        // the unit chosen, and said; none chosen, the file is not read.
+        std::string unit;
+        double mm = group.context != 0 ? contextMillimetres(parser, group.context, &unit) : 0.0;
+        const bool chosen = !(mm > 0.0);
+        if (chosen) {
+            if (!options.unknownLengthUnit) {
+                built.unitUnknown = true;
+                return built;
+            }
+            mm = math::millimetresPer(*options.unknownLengthUnit);
+            unit = unitName(*options.unknownLengthUnit);
+        }
         SolidBuilder builder(parser, static_cast<int>(index), cancelled,
                              group.context != 0 ? contextRadians(parser, group.context) : 1.0);
         std::unique_ptr<topo::Solid> solid;
@@ -2733,15 +2786,12 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             continue;
         }
 
-        // Into millimetres. A unit that cannot be read is taken as the
-        // millimetre, and said so.
-        std::string unit;
-        const double mm =
-            group.context != 0 ? contextMillimetres(parser, group.context, &unit) : 1.0;
-        if (!(mm > 0.0)) {
-            ++built.conversions["the length unit could not be read; read as millimetres"];
+        // Into millimetres.
+        if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
+        if (chosen) {
+            ++built.conversions["read in " + unit +
+                                ", as chosen: the file names no length unit this version reads"];
         } else if (mm != 1.0) {
-            solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
             std::ostringstream factor;
             factor << std::setprecision(10) << mm;
             ++built.conversions["drawn in " + unit + ", scaled by " + factor.str() +
@@ -2776,13 +2826,8 @@ void reportRead(const BuiltSolids& built, const ProductStructure& structure, Imp
     for (const auto& note : structure.notes) report->approximated.push_back(note);
     for (const auto& line : built.approximated) report->approximated.push_back(line);
     for (const auto& [what, count] : built.conversions) {
-        const std::string line =
-            (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what;
-        if (what.rfind("the length unit", 0) == 0) {
-            report->approximated.push_back(line);
-        } else {
-            report->converted.push_back(line);
-        }
+        report->converted.push_back(
+            (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what);
     }
 }
 
@@ -3087,9 +3132,25 @@ bool StepFormat::saveAssembly(const std::string& filePath, const std::string& na
     return true;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
-    const std::string& text, ImportReport* report, const std::atomic<bool>* cancelled) {
+namespace {
+
+/// Say that a read stopped for its length unit; true.
+bool stoppedForTheUnit(bool unknown) {
+    if (unknown) {
+        g_lastError = kUnitUnknown;
+        g_lastUnitUnknown = true;
+    }
+    return unknown;
+}
+
+}  // namespace
+
+std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::string& text,
+                                                                 ImportReport* report,
+                                                                 const std::atomic<bool>* cancelled,
+                                                                 const StepReadOptions& options) {
     g_lastError.clear();
+    g_lastUnitUnknown = false;
     const auto stopped = [cancelled] {
         return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
     };
@@ -3100,12 +3161,14 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
         g_lastError = "no MANIFOLD_SOLID_BREP found in file";
         return {};
     }
-    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled);
+    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
+    if (stoppedForTheUnit(built.unitUnknown)) return {};
     if (stopped()) {
         g_lastError = kCancelled;
         return {};
     }
-    const ProductStructure structure = readStructure(parser, groups);
+    const ProductStructure structure = readStructure(parser, groups, options);
+    if (stoppedForTheUnit(structure.unitUnknown)) return {};
 
     std::vector<std::unique_ptr<topo::Solid>> out;
     if (!structure.structured) {
@@ -3158,8 +3221,10 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(
 }
 
 StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportReport* report,
-                                            const std::atomic<bool>* cancelled) {
+                                            const std::atomic<bool>* cancelled,
+                                            const StepReadOptions& options) {
     g_lastError.clear();
+    g_lastUnitUnknown = false;
     StepAssembly assembly;
     StepParser parser(text);
     if (!parseText(parser, cancelled)) return assembly;
@@ -3168,12 +3233,14 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
         g_lastError = "no MANIFOLD_SOLID_BREP found in file";
         return assembly;
     }
-    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled);
+    BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
+    if (stoppedForTheUnit(built.unitUnknown)) return {};
     if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
         g_lastError = kCancelled;
         return {};
     }
-    const ProductStructure structure = readStructure(parser, groups);
+    const ProductStructure structure = readStructure(parser, groups, options);
+    if (stoppedForTheUnit(structure.unitUnknown)) return {};
 
     // Each product with a solid that could be read, a part; its solids
     // moved into it, or copied when another product has them too.
@@ -3233,22 +3300,30 @@ std::optional<std::string> fileBytes(const std::string& filePath) {
 
 std::vector<std::unique_ptr<topo::Solid>> StepFormat::load(const std::string& filePath,
                                                            ImportReport* report,
-                                                           const std::atomic<bool>* cancelled) {
+                                                           const std::atomic<bool>* cancelled,
+                                                           const StepReadOptions& options) {
     g_lastError.clear();
+    g_lastUnitUnknown = false;
     const auto text = fileBytes(filePath);
-    return text ? fromString(*text, report, cancelled)
+    return text ? fromString(*text, report, cancelled, options)
                 : std::vector<std::unique_ptr<topo::Solid>>{};
 }
 
 StepAssembly StepFormat::loadAssembly(const std::string& filePath, ImportReport* report,
-                                      const std::atomic<bool>* cancelled) {
+                                      const std::atomic<bool>* cancelled,
+                                      const StepReadOptions& options) {
     g_lastError.clear();
+    g_lastUnitUnknown = false;
     const auto text = fileBytes(filePath);
-    return text ? assemblyFromString(*text, report, cancelled) : StepAssembly{};
+    return text ? assemblyFromString(*text, report, cancelled, options) : StepAssembly{};
 }
 
 const std::string& StepFormat::lastError() {
     return g_lastError;
+}
+
+bool StepFormat::lastLengthUnitUnknown() {
+    return g_lastUnitUnknown;
 }
 
 }  // namespace hz::io
