@@ -326,8 +326,13 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                         std::to_string(kMaxViews) + " are read");
         }
         if (views != root.end() && views->is_array()) {
+            std::size_t viewIndex = 0;
             for (const auto& v : *views) {
-                if (!v.is_object()) continue;
+                const std::string entry = "view " + std::to_string(++viewIndex);
+                if (!v.is_object()) {
+                    spec.leftOut.push_back(entry + ": it is not a view");
+                    continue;
+                }
                 DrawingViewSpec view;
                 view.kind = viewNamed(text(v, "kind"));
                 const model::ViewProjection standard =
@@ -403,12 +408,24 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                                         " dimensions; at most " + std::to_string(kMaxDimensions) +
                                         " are read");
                         }
+                        std::size_t dimensionIndex = 0;
                         for (const auto& d : *dims) {
-                            if (!d.is_object()) continue;
+                            const std::string dimension =
+                                entry + ", dimension " + std::to_string(++dimensionIndex) + ": ";
+                            if (!d.is_object()) {
+                                spec.leftOut.push_back(dimension + "it is not a dimension");
+                                continue;
+                            }
                             const auto kind = dimensionKindNamed(text(d, "kind"));
                             const std::string edge = text(d, "edge");
-                            if (!kind || edge.empty()) continue;
-                            view.dimensions.push_back({edge, *kind});
+                            if (!kind) {
+                                spec.leftOut.push_back(
+                                    dimension + "not a kind of dimension this version reads");
+                            } else if (edge.empty()) {
+                                spec.leftOut.push_back(dimension + "it names no edge");
+                            } else {
+                                view.dimensions.push_back({edge, *kind});
+                            }
                         }
                     }
                 }
@@ -425,6 +442,10 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
             if (!NativeFormat::documentFromJson(annotations->dump(), *notes, &why)) {
                 return fail("its annotations could not be read: " + why);
             }
+            for (const std::string& item : notes->leftOut()) {
+                spec.leftOut.push_back("annotations, " + item);
+            }
+            notes->setLeftOut({});
             spec.annotations = std::move(notes);
         }
         // Where the views were then; one that cannot be read is left out,

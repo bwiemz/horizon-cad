@@ -4,6 +4,7 @@
 #include <QLockFile>
 #include <QString>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace hz::doc {
@@ -34,6 +35,9 @@ public:
         /// session that then did not exit cleanly either. More than zero:
         /// opening it may be what stops Horizon CAD.
         int recoveries = 0;
+        /// What its file lacked, read in part (Document::leftOut): the
+        /// document recovered is not saved over that file either.
+        std::vector<std::string> leftOut;
     };
 
     /// Takes a session directory under `root` (created if needed) and locks it.
@@ -83,7 +87,8 @@ public:
 
 private:
     bool writeSnapshot(quint64 key, const std::string& json, const QString& type,
-                       const QString& title, const QString& originalPath, int recoveries);
+                       const QString& title, const QString& originalPath, int recoveries,
+                       const std::vector<std::string>& leftOut);
 
     QString m_root;
     QString m_sessionDir;

@@ -587,6 +587,7 @@ void AssemblyDocument::clear() {
     m_shownView = 0;
     m_dirty = false;
     m_filePath.clear();
+    m_leftOut.clear();
     m_lengthUnit = math::LengthUnit::Millimetre;
 }
 

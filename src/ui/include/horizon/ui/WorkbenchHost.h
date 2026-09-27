@@ -64,6 +64,9 @@ public:
     /// Tell the user a file could not be read or written, and why.
     virtual void reportFileError(const QString& summary, const std::string& path,
                                  const std::string& reason) = 0;
+    /// Tell the user what of @p fileName was left out when it was read
+    /// (@p items, each with why), and that its document is not saved over it.
+    virtual void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) = 0;
 
     /// Whether work of this size goes to a worker thread: the window's
     /// rebuild mode decides (Always; Auto for @p large work; Never).

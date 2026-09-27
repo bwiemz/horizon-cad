@@ -84,6 +84,10 @@ struct DrawingDocumentSpec {
     /// by the gap at 1:1, as version 1 did; 2 is the sheet layout; 3 adds
     /// sections and details.
     int version = 3;
+    /// What of its file readSpec left out, each with why ("view 2: ..."): a
+    /// view that is not one, a dimension it cannot read, an annotation.
+    /// Saved over that file, the sheet would lose them (Document::leftOut).
+    std::vector<std::string> leftOut;
 };
 
 /// Reads/writes `.hzdwg` drawing documents.

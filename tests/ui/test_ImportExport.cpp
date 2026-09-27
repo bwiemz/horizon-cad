@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QTemporaryDir>
 #include <fstream>
 #include <memory>
@@ -353,4 +354,135 @@ TEST(ImportExportTest, StepExportSaysWhatWentOutAsFacets) {
     }
     EXPECT_FALSE(told.seen()) << "nothing to say";
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("box.step"))));
+}
+
+namespace {
+
+/// A drawing with one good line and one this version cannot read, at @p path.
+void writeDamaged(const QString& path) {
+    std::ofstream out(path.toStdString());
+    out << R"({"version": 16, "type": "hcad", "entities": [
+        {"type": "line", "id": 1, "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+        {"type": "line", "id": 2, "start": {"x": 0, "y": 0}}]})";
+}
+
+/// Open @p path through File > Open, answering the report of what it left
+/// out; that report's words.
+QString openReadInPart(MainWindow& w, const QString& path) {
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    {
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("&Open..."))->trigger();
+    }
+    report.waitForDialog(5000);
+    EXPECT_TRUE(report.seen()) << "the omission is reported";
+    return report.informativeText();
+}
+
+QString activeTabText(MainWindow& w) {
+    auto* tabs = w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    return tabs ? tabs->tabText(tabs->currentIndex()) : QString();
+}
+
+}  // namespace
+
+// A file read in part is not saved over: what it left out is still in it.
+// Save asks where, as for a new document, and there the document is whole.
+TEST(ImportExportTest, AFileReadInPartIsNotSavedOverIt) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("damaged.hcad"));
+    writeDamaged(path);
+    const QByteArray before = contents(path);
+
+    MainWindow w;
+    const QString said = openReadInPart(w, path);
+    EXPECT_TRUE(said.contains(QStringLiteral("not saved over"))) << said.toStdString();
+    EXPECT_TRUE(w.activeDocument()->readInPart());
+    EXPECT_TRUE(activeTabText(w).contains(QStringLiteral("(incomplete)")))
+        << activeTabText(w).toStdString();
+    EXPECT_FALSE(w.activeDocument()->isDirty()) << "closing it asks nothing: the file is as it was";
+
+    const QString copy = dir.filePath(QStringLiteral("copy.hcad"));
+    {
+        FilePicker picker(copy);
+        action(w, "action_save")->trigger();
+    }
+    EXPECT_EQ(contents(path), before) << "the file read in part is as it was";
+    EXPECT_TRUE(QFileInfo::exists(copy));
+    EXPECT_EQ(w.activeDocument()->filePath(), copy.toStdString());
+    EXPECT_FALSE(w.activeDocument()->readInPart()) << "the copy has all the document holds";
+    EXPECT_FALSE(activeTabText(w).contains(QStringLiteral("(incomplete)")));
+
+    // Saved there, it is saved there from now on, asking nothing.
+    hz::test::ModalCloser closer;
+    drawALine(w);
+    w.activeDocument()->setDirty(true);
+    action(w, "action_save")->trigger();
+    EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
+    EXPECT_FALSE(w.activeDocument()->isDirty());
+}
+
+// Chosen as where to save it, the file it was read from is asked about
+// first: Cancel keeps it, Replace writes over it, knowing what that loses.
+TEST(ImportExportTest, SavingOverTheFileItWasReadFromAsksFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("damaged.hcad"));
+    writeDamaged(path);
+    const QByteArray before = contents(path);
+
+    MainWindow w;
+    openReadInPart(w, path);
+    const QString title = QStringLiteral("Replace the File It Was Read From?");
+    {
+        DialogResponder exists(QMessageBox::Yes);  // the file dialog's own question
+        DialogResponder keep(QMessageBox::Cancel, title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(keep.seen());
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Cancel);
+    }
+    EXPECT_EQ(contents(path), before);
+    EXPECT_TRUE(w.activeDocument()->readInPart());
+    EXPECT_EQ(w.activeDocument()->filePath(), path.toStdString());
+
+    {
+        DialogResponder exists(QMessageBox::Yes);
+        DialogResponder replace(QStringLiteral("Replace"), title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(replace.seen());
+    }
+    EXPECT_NE(contents(path), before) << "replaced, as asked";
+    EXPECT_FALSE(w.activeDocument()->readInPart());
+}
+
+// A DXF read in part is not written over by an export either: exporting it
+// as a DXF to the file it came from asks first.
+TEST(ImportExportTest, ExportingOverTheDxfItWasReadFromAsksFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plan.dxf"));
+    {
+        std::ofstream out(path.toStdString());
+        out << "0\nSECTION\n2\nENTITIES\n"
+               "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n1\n"
+               "0\n3DFACE\n8\n0\n"
+               "0\nENDSEC\n0\nEOF\n";
+    }
+    const QByteArray before = contents(path);
+
+    MainWindow w;
+    openReadInPart(w, path);
+    ASSERT_TRUE(w.activeDocument()->readInPart());
+    {
+        DialogResponder exists(QMessageBox::Yes);
+        DialogResponder keep(QMessageBox::Cancel,
+                             QStringLiteral("Replace the File It Was Read From?"));
+        FilePicker picker(path);
+        action(w, "export_dxf")->trigger();
+        EXPECT_TRUE(keep.seen());
+    }
+    EXPECT_EQ(contents(path), before) << "the 3DFACE is still in it";
 }
