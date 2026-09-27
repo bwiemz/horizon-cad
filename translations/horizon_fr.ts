@@ -3239,12 +3239,12 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4134"/>
+        <location line="+4158"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-4210"/>
+        <location line="-4234"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -3261,19 +3261,19 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+3983"/>
+        <location line="+4007"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-4046"/>
+        <location line="-4070"/>
         <location line="+64"/>
-        <location line="+3982"/>
+        <location line="+4006"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-4045"/>
+        <location line="-4069"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -3314,7 +3314,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message numerus="yes">
-        <location line="+1721"/>
+        <location line="+1745"/>
         <source>Imported %n part(s) into &quot;%1&quot;.</source>
         <translation type="unfinished">
             <numerusform>%n pièce importée dans &quot;%1&quot;.</numerusform>
@@ -3381,7 +3381,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">%1 : &quot;%2&quot; ne peut pas prendre cette valeur</translation>
     </message>
     <message>
-        <location line="-4316"/>
+        <location line="-4340"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -3483,12 +3483,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2859"/>
+        <location line="+2883"/>
         <source>Explode</source>
         <translation type="unfinished">Décomposer</translation>
     </message>
     <message>
-        <location line="-2856"/>
+        <location line="-2880"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3503,96 +3503,96 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3001"/>
+        <location line="+3025"/>
         <source>Box</source>
         <translation type="unfinished">Boîte</translation>
     </message>
     <message>
-        <location line="-3000"/>
-        <location line="+3010"/>
+        <location line="-3024"/>
+        <location line="+3034"/>
         <source>Cylinder</source>
         <translation type="unfinished">Cylindre</translation>
     </message>
     <message>
-        <location line="-3009"/>
-        <location line="+3016"/>
+        <location line="-3033"/>
+        <location line="+3040"/>
         <source>Sphere</source>
         <translation type="unfinished">Sphère</translation>
     </message>
     <message>
-        <location line="-3015"/>
-        <location line="+3022"/>
+        <location line="-3039"/>
+        <location line="+3046"/>
         <source>Cone</source>
         <translation type="unfinished">Cône</translation>
     </message>
     <message>
-        <location line="-3021"/>
-        <location line="+3032"/>
+        <location line="-3045"/>
+        <location line="+3056"/>
         <source>Torus</source>
         <translation type="unfinished">Tore</translation>
     </message>
     <message>
-        <location line="-3030"/>
+        <location line="-3054"/>
         <source>Features</source>
         <translation type="unfinished">Fonctions</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3770"/>
+        <location line="+3794"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3815"/>
-        <location line="+3834"/>
+        <location line="-3839"/>
+        <location line="+3858"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>
     </message>
     <message>
-        <location line="-3860"/>
-        <location line="+4190"/>
+        <location line="-3884"/>
+        <location line="+4214"/>
         <source>Hole</source>
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="-4188"/>
+        <location line="-4212"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3941"/>
+        <location line="+3965"/>
         <source>Union</source>
         <translation type="unfinished">Union</translation>
     </message>
     <message>
-        <location line="-3940"/>
-        <location line="+3944"/>
+        <location line="-3964"/>
+        <location line="+3968"/>
         <source>Subtract</source>
         <translation type="unfinished">Soustraction</translation>
     </message>
     <message>
-        <location line="-3943"/>
-        <location line="+3947"/>
+        <location line="-3967"/>
+        <location line="+3971"/>
         <source>Intersect</source>
         <translation type="unfinished">Intersection</translation>
     </message>
     <message>
-        <location line="-3942"/>
-        <location line="+4011"/>
+        <location line="-3966"/>
+        <location line="+4035"/>
         <source>Shell</source>
         <translation type="unfinished">Coque</translation>
     </message>
     <message>
-        <location line="-4010"/>
-        <location line="+4030"/>
+        <location line="-4034"/>
+        <location line="+4054"/>
         <source>Draft</source>
         <translation type="unfinished">Dépouille</translation>
     </message>
     <message>
-        <location line="-4028"/>
+        <location line="-4052"/>
         <source>Pattern</source>
         <translation type="unfinished">Répétition</translation>
     </message>
@@ -3623,17 +3623,17 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+3"/>
         <location line="+10"/>
         <location line="+982"/>
-        <location line="+470"/>
+        <location line="+499"/>
         <location line="+15"/>
-        <location line="+471"/>
+        <location line="+466"/>
         <location line="+1439"/>
-        <location line="+1190"/>
+        <location line="+1203"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-4650"/>
+        <location line="-4687"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -3654,12 +3654,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4319"/>
+        <location line="+4343"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-4313"/>
+        <location line="-4337"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -3981,12 +3981,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="-233"/>
-        <location line="+756"/>
+        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">Assemblage</translation>
     </message>
     <message>
-        <location line="-734"/>
+        <location line="-758"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">Dessin</translation>
@@ -4156,12 +4156,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="-7"/>
-        <location line="+320"/>
+        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omis : %1</translation>
     </message>
     <message>
-        <location line="-317"/>
+        <location line="-341"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Approximé : %1</translation>
     </message>
@@ -4186,7 +4186,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Ce qui a été omis ne figure pas dans le document, et l&apos;enregistrement ne le conservera pas.</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location line="+52"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unité de longueur non indiquée</translation>
     </message>
@@ -4232,12 +4232,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Une importation STEP est déjà en cours</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+12"/>
         <source>Importing %1...</source>
         <translation type="unfinished">Importation de %1...</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importation annulée</translation>
     </message>
@@ -4249,13 +4249,13 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     <message>
         <location line="+16"/>
         <location line="+25"/>
-        <location line="+14"/>
-        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
         <source>Could not import</source>
         <translation type="unfinished">Impossible d&apos;importer</translation>
     </message>
     <message numerus="yes">
-        <location line="-44"/>
+        <location line="-39"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n corps importé.</numerusform>
@@ -4263,7 +4263,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         </translation>
     </message>
     <message>
-        <location line="+33"/>
+        <location line="+28"/>
         <source>A DXF is imported into a drawing or part, not an assembly</source>
         <translation type="unfinished">Un fichier DXF s&apos;importe dans un dessin ou une pièce, pas dans un assemblage</translation>
     </message>
@@ -5651,12 +5651,17 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction du modèle...</translation>
     </message>
     <message>
-        <location line="+96"/>
+        <location line="+64"/>
+        <source>Importing %1: %2 of %3 parts written...</source>
+        <translation type="unfinished">Importation de %1 : %2 pièces écrites sur %3...</translation>
+    </message>
+    <message>
+        <location line="+45"/>
         <source>Rebuild cancelled: the model is as it was before the last change.</source>
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-4666"/>
+        <location line="-4703"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
