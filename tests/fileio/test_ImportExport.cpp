@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 
+#include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -96,6 +97,97 @@ TEST(ImportReportTest, ADxfLoadCountsWhatItDidNotRead) {
     ASSERT_EQ(report.skipped.size(), 2u);
     EXPECT_EQ(report.skipped[0], "2 3DFACE entities not read");
     EXPECT_EQ(report.skipped[1], "1 SOLID entity not read");
+}
+
+// What a load leaves out goes with the document, report or none: the window
+// does not save a document read in part over its file.
+TEST(ImportReportTest, ADocumentKeepsWhatItsFileLeftOut) {
+    const std::string text = R"({"version": 16, "type": "hcad", "entities": [
+        {"type": "line", "id": 1, "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+        {"type": "line", "id": 2, "start": {"x": 0, "y": 0}}]})";
+    hz::doc::Document doc;
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(text, doc, &error)) << error;
+    ASSERT_EQ(doc.leftOut().size(), 1u);
+    EXPECT_TRUE(contains(doc.leftOut()[0], "entity 2 (line)")) << doc.leftOut()[0];
+    EXPECT_TRUE(doc.readInPart());
+
+    // Read again whole, into the same document: whole.
+    hz::doc::Document whole;
+    whole.draftDocument().addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 1)));
+    ImportReport report;
+    report.skipped.push_back("from an earlier read");  // a report is not the document's
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(whole, false), doc, &error, &report));
+    EXPECT_FALSE(doc.readInPart()) << doc.leftOut().front();
+    EXPECT_EQ(report.skipped.size(), 1u);
+}
+
+// A constraint of a kind this version does not know, one that holds an entity
+// the file does not have, a block's entity of a kind it does not know and a
+// configuration with no name were dropped without a word, and saving lost
+// them: each is said now.
+TEST(ImportReportTest, WhatWasDroppedSilentlyIsSaid) {
+    const std::string text = R"({"version": 16, "type": "hcad",
+        "entities": [
+            {"type": "line", "id": 1, "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}}
+        ],
+        "constraints": [
+            {"type": "gearing", "id": 40},
+            {"type": "horizontal", "id": 41, "refA": {"entityId": 1, "featureIndex": 0},
+             "refB": {"entityId": 1, "featureIndex": 1}},
+            {"type": "horizontal", "id": 42, "refA": {"entityId": 99, "featureIndex": 0},
+             "refB": {"entityId": 99, "featureIndex": 1}}
+        ],
+        "blocks": [{"name": "Bolt", "basePoint": {"x": 0, "y": 0}, "entities": [
+            {"type": "line", "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+            {"type": "hologram"}]}],
+        "configurations": {"table": [{"name": "Long", "values": {}}, {"values": {}}]}})";
+    hz::doc::Document doc;
+    std::string error;
+    ImportReport report;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(text, doc, &error, &report)) << error;
+    EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u) << "the good constraint stays";
+    std::string all;
+    for (const auto& line : report.skipped) all += line + "\n";
+    EXPECT_TRUE(contains(all, "constraint 1 (gearing): not a kind of constraint")) << all;
+    EXPECT_TRUE(contains(all, "constraint 3 (horizontal): an entity it holds is not in")) << all;
+    EXPECT_TRUE(contains(all, "block 1 entity 2 (hologram): not a kind of entity")) << all;
+    EXPECT_TRUE(contains(all, "configuration 2: it has no name")) << all;
+    EXPECT_EQ(report.skipped.size(), 4u) << all;
+    EXPECT_EQ(doc.leftOut(), report.skipped);
+}
+
+TEST(ImportReportTest, AnAssemblyKeepsWhatItsFileLeftOut) {
+    const std::string text = R"({"type": "hzasm", "components": [],
+        "mates": [{"type": "gearing", "id": 1}]})";
+    hz::doc::AssemblyDocument assembly;
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::assemblyFromJson(text, assembly, "", &error)) << error;
+    ASSERT_EQ(assembly.leftOut().size(), 1u);
+    EXPECT_TRUE(contains(assembly.leftOut()[0], "gearing")) << assembly.leftOut()[0];
+}
+
+// A DXF document written back over its file loses what was not read, and
+// what was not read as it was: both go with it.
+TEST(ImportReportTest, ADxfDocumentKeepsWhatItDidNotReadAsItWas) {
+    const std::string dxf =
+        "0\nSECTION\n2\nENTITIES\n"
+        "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n1\n"
+        "0\n3DFACE\n8\n0\n"
+        "0\nENDSEC\n0\nEOF\n";
+    hz::doc::Document doc;
+    std::string error;
+    ASSERT_TRUE(hz::io::DxfFormat::loadFromString(dxf, doc, &error)) << error;
+    ASSERT_EQ(doc.leftOut().size(), 1u);
+    EXPECT_EQ(doc.leftOut()[0], "1 3DFACE entity not read");
+
+    hz::doc::Document whole;
+    ASSERT_TRUE(hz::io::DxfFormat::loadFromString(
+        "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n1\n0\nENDSEC\n0\nEOF\n",
+        whole, &error))
+        << error;
+    EXPECT_FALSE(whole.readInPart());
 }
 
 TEST(StlExportTest, ABoxIsTwelveTrianglesWithUnitNormals) {

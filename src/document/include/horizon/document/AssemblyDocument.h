@@ -345,6 +345,15 @@ public:
     const std::string& filePath() const { return m_filePath; }
     void setFilePath(const std::string& path) { m_filePath = path; }
 
+    // --- Read in part ---
+
+    /// What of its file was left out when it was read (components, mates,
+    /// ...), each with why; empty when it was read whole. As a Document's:
+    /// the window does not save it over that file.
+    const std::vector<std::string>& leftOut() const { return m_leftOut; }
+    void setLeftOut(std::vector<std::string> items) { m_leftOut = std::move(items); }
+    bool readInPart() const { return !m_leftOut.empty(); }
+
     // --- Unit (Phase 154) ---
 
     /// The unit its lengths are shown and typed in, saved with it.
@@ -363,6 +372,7 @@ private:
     uint64_t m_shownView = 0;
     bool m_dirty = false;
     std::string m_filePath;
+    std::vector<std::string> m_leftOut;
     math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;
 };
 

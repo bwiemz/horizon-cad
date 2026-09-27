@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <set>
 #include <stdexcept>
@@ -505,6 +507,8 @@ static void constraintsFromJson(const json& array, const draft::DraftDocument& d
                                 cstr::ConstraintSystem& system, ImportReport* report,
                                 const std::string& kind) {
     size_t index = 0;
+    // Each constraint read, by its ID: where it is in the file, as its entry.
+    std::map<uint64_t, std::pair<size_t, const json*>> readAt;
     for (const auto& cObj : array) {
         const size_t thisConstraint = index++;
         try {
@@ -559,6 +563,10 @@ static void constraintsFromJson(const json& array, const draft::DraftDocument& d
                     constraint->setVariableReference(cObj.at("variableName").get<std::string>());
                 }
                 system.addConstraint(constraint);
+                readAt[constraint->id()] = {thisConstraint, &cObj};
+            } else {
+                noteSkipped(report, kind, thisConstraint, cObj,
+                            "not a kind of constraint this version reads");
             }
         } catch (const std::exception& e) {
             // As any item: this one is skipped, not the document.
@@ -583,6 +591,10 @@ static void constraintsFromJson(const json& array, const draft::DraftDocument& d
     }
     for (uint64_t cid : invalidConstraints) {
         system.removeConstraint(cid);
+        if (const auto at = readAt.find(cid); at != readAt.end()) {
+            noteSkipped(report, kind, at->second.first, *at->second.second,
+                        "an entity it holds is not in the document");
+        }
     }
 }
 
@@ -1278,7 +1290,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 def->basePoint = math::Vec2(blockObj.at("basePoint").at("x").get<double>(),
                                             blockObj.at("basePoint").at("y").get<double>());
                 if (blockObj.contains("entities")) {
+                    size_t subIndex = 0;
                     for (const auto& se : blockObj.at("entities")) {
+                        const size_t thisSub = subIndex++;
                         std::string stype = se.value("type", "");
                         std::shared_ptr<draft::DraftEntity> subEnt;
                         if (stype == "line") {
@@ -1361,6 +1375,10 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                             subEnt->setLineType(
                                 static_cast<int>(intField(se, "lineType", 0, 0, kLastLineType)));
                             def->entities.push_back(subEnt);
+                        } else {
+                            noteSkipped(report,
+                                        "block " + std::to_string(thisBlock + 1) + " entity",
+                                        thisSub, se, "not a kind of entity this version reads");
                         }
                     }
                 }
@@ -1431,8 +1449,11 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
         configurations != root.end() && configurations->is_object()) {
         if (const auto table = configurations->find("table");
             table != configurations->end() && table->is_array()) {
+            size_t rowIndex = 0;
             for (const json& row : *table) {
+                const size_t thisRow = rowIndex++;
                 if (!row.is_object() || !row.contains("name") || !row.at("name").is_string()) {
+                    noteSkipped(report, "configuration", thisRow, row, "it has no name");
                     continue;
                 }
                 doc::ConfigurationTable::Overrides overrides;
@@ -2035,8 +2056,17 @@ static bool loadDocumentChecked(const json& root, doc::Document& doc, std::strin
         return fail(error, "this is not a Horizon document (it has no version or entity list)");
     }
     if (!checkVersion(root, error)) return false;
+    // What it leaves out goes with the document, whether or not a report is
+    // asked for: the window does not save it over this file (Document::
+    // leftOut).
+    ImportReport own;
+    ImportReport& noted = report != nullptr ? *report : own;
+    const auto before = static_cast<std::ptrdiff_t>(noted.skipped.size());
     try {
-        if (loadDocumentRoot(root, doc, report)) return true;
+        if (loadDocumentRoot(root, doc, &noted)) {
+            doc.setLeftOut({noted.skipped.begin() + before, noted.skipped.end()});
+            return true;
+        }
         return fail(error, "the document could not be read");
     } catch (const std::exception& e) {
         return fail(error, "the file is damaged: " + jsonMessage(e));
@@ -2441,8 +2471,14 @@ static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
                                 ImportReport* report) {
     if (!root.is_object()) return fail(error, "this is not a Horizon assembly");
     if (root.contains("version") && !checkVersion(root, error)) return false;
+    ImportReport own;
+    ImportReport& noted = report != nullptr ? *report : own;
+    const auto before = static_cast<std::ptrdiff_t>(noted.skipped.size());
     try {
-        if (loadAssemblyRoot(root, asmDoc, filePath, report)) return true;
+        if (loadAssemblyRoot(root, asmDoc, filePath, &noted)) {
+            asmDoc.setLeftOut({noted.skipped.begin() + before, noted.skipped.end()});
+            return true;
+        }
         return fail(error, "this is not a Horizon assembly (its type is not \"hzasm\")");
     } catch (const std::exception& e) {
         return fail(error, "the file is damaged: " + jsonMessage(e));

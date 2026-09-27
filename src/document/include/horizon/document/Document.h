@@ -216,6 +216,16 @@ public:
     const std::string& filePath() const { return m_filePath; }
     void setFilePath(const std::string& path) { m_filePath = path; }
 
+    // --- Read in part ---
+
+    /// What of its file was left out when it was read, each item with why
+    /// ("entity 7 (spline): ..."); empty when it was read whole. Written
+    /// over that file, it would lose them: the window saves a document read
+    /// in part only where its user chooses, and it is whole from then on.
+    const std::vector<std::string>& leftOut() const { return m_leftOut; }
+    void setLeftOut(std::vector<std::string> items) { m_leftOut = std::move(items); }
+    bool readInPart() const { return !m_leftOut.empty(); }
+
     // --- Unit (Phase 154) ---
 
     /// The unit its lengths are shown and typed in, saved with it. The model
@@ -233,6 +243,7 @@ private:
     bool m_dirty = false;
     std::function<void()> m_onChange;
     std::string m_filePath;
+    std::vector<std::string> m_leftOut;
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;

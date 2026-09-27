@@ -489,9 +489,15 @@ private:
     void updateWindowTitle();
 
     bool isTabModified(const DocTab& tab) const;
+    /// Whether @p tab's document (or assembly) was read from its file in
+    /// part, and so is not saved over it (Document::leftOut).
+    static bool isTabReadInPart(const DocTab& tab);
     /// Tell the user what reading `file` left out or changed, if anything —
-    /// before a save could drop it for good.
-    void showImportReport(const QString& file, const io::ImportReport& report);
+    /// before a save could drop it for good. @p notSavedOver: the document
+    /// read from it is kept from being saved over it (it was read in part).
+    void showImportReport(const QString& file, const io::ImportReport& report,
+                          bool notSavedOver = false);
+    void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) override;
     /// The part's solid for an export, or null with a word in the status bar.
     const topo::Solid* solidToExport(const QString& format);
     /// Ask where to export; empty when cancelled.
