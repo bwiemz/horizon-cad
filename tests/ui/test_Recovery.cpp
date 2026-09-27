@@ -135,19 +135,21 @@ TEST(RecoveryManagerTest, ASnapshotSaysWhatItsDocumentsFileLacked) {
     addLine(doc);
     doc.setLeftOut({"entity 2 (line): no end"});
     ASSERT_TRUE(recovery.snapshot(3, doc, QStringLiteral("Plan"), QStringLiteral("/x/plan.hcad")));
-    QFile sidecar(QDir(recovery.sessionDirectory()).filePath(QStringLiteral("3.json")));
-    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
-    const QJsonArray leftOut =
-        QJsonDocument::fromJson(sidecar.readAll()).object().value("leftOut").toArray();
+    // Each read closes the sidecar before the next snapshot: Windows does not
+    // replace a file that is open.
+    const auto sidecar = [&recovery] {
+        QFile file(QDir(recovery.sessionDirectory()).filePath(QStringLiteral("3.json")));
+        EXPECT_TRUE(file.open(QIODevice::ReadOnly));
+        return QJsonDocument::fromJson(file.readAll()).object();
+    };
+    const QJsonArray leftOut = sidecar().value("leftOut").toArray();
     ASSERT_EQ(leftOut.size(), 1);
     EXPECT_EQ(leftOut[0].toString(), QStringLiteral("entity 2 (line): no end"));
 
     // Read whole, nothing is said.
     doc.setLeftOut({});
     ASSERT_TRUE(recovery.snapshot(3, doc, QStringLiteral("Plan"), QStringLiteral("/x/plan.hcad")));
-    sidecar.close();
-    ASSERT_TRUE(sidecar.open(QIODevice::ReadOnly));
-    EXPECT_FALSE(QJsonDocument::fromJson(sidecar.readAll()).object().contains("leftOut"));
+    EXPECT_FALSE(sidecar().contains("leftOut"));
 }
 
 TEST(RecoveryManagerTest, ATypeChangeLeavesOneSnapshot) {
