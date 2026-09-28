@@ -1,0 +1,130 @@
+name: Install check
+
+# The packages a Release run made, installed as a user would on machines that
+# never built them, and started with --self-test: it models, edits, saves and
+# reads back a part, an assembly and a drawing, opens the samples, loads the
+# translations, and shows the window (docs/BETA.md). What the build machine
+# lent a package (a library, a plug-in, a runtime) is not there, so it is
+# missed here. The scripts are packaging/*/check-install.*.
+#
+# release.yml calls it once the packages are made, before a release is
+# drafted. Run it by hand (Actions ▸ Install check ▸ Run workflow) with the id
+# of an earlier Release run, the number in its URL, to check its packages.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: The Release run whose packages to check; empty for the calling run's own
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: The Release run whose packages to check (the number in its URL)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read  # another run's packages
+
+env:
+  PACKAGES_RUN: ${{ inputs.run-id }}
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.image }}, ${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # A container of the distribution, with nothing but its base system.
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Ubuntu the packages are built for, the current one, and
+        # the newest Fedora: the newest libraries a user may have.
+        image: ['ubuntu:22.04', 'ubuntu:24.04', 'fedora:latest']
+        package: [appimage, tarball]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect the packages
+        if: env.PACKAGES_RUN == ''
+        uses: actions/download-artifact@v8
+        with:
+          name: linux
+          path: dist
+
+      - name: Collect the packages of run ${{ env.PACKAGES_RUN }}
+        if: env.PACKAGES_RUN != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: linux
+          path: dist
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+
+      - name: Install and start it
+        run: bash packaging/linux/check-install.sh ${{ matrix.package }} dist
+
+  windows:
+    name: Windows (installer)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect the packages
+        if: env.PACKAGES_RUN == ''
+        uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: dist
+
+      - name: Collect the packages of run ${{ env.PACKAGES_RUN }}
+        if: env.PACKAGES_RUN != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: dist
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+
+      - name: Install, start and uninstall it
+        shell: pwsh
+        run: packaging/windows/check-install.ps1 -Installer (Get-ChildItem dist/*.exe).FullName
+
+  macos:
+    name: macOS (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The macOS the disk image is built on, the oldest it runs on, and
+        # the next.
+        os: [macos-14, macos-15]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect the packages
+        if: env.PACKAGES_RUN == ''
+        uses: actions/download-artifact@v8
+        with:
+          name: macos
+          path: dist
+
+      - name: Collect the packages of run ${{ env.PACKAGES_RUN }}
+        if: env.PACKAGES_RUN != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: macos
+          path: dist
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+
+      - name: Install and start it
+        run: bash packaging/macos/check-install.sh dist/*.dmg
