@@ -809,8 +809,8 @@ TEST(AssembliesTest, ImportingAStepAssemblyKeepsItsPartsAsFiles) {
         FilePicker picker(QStringList{step, kept});
         trigger(w, "import_step_assembly");
     }
+    ASSERT_TRUE(waitUntil([&] { return w.activeAssembly() != nullptr; }, 30000));
     hz::doc::AssemblyDocument* assembly = w.activeAssembly();
-    ASSERT_NE(assembly, nullptr);
     EXPECT_FALSE(assembly->isDirty()) << "kept, as its files";
     ASSERT_EQ(assembly->components().size(), 3u);
     EXPECT_EQ(assembly->components()[0].name, "Bracket:1");
@@ -839,12 +839,14 @@ void writeRig(const QString& step) {
 
 // On a worker, a STEP assembly's parts are built and written there too, where
 // it was read: once read, they took the window's time, one part after another.
+// A small file goes there as well, as the window would choose (Auto): a few
+// kilobytes can name many parts.
 TEST(AssembliesTest, AStepAssemblyIsKeptOnAWorker) {
     QTemporaryDir dir;
     const QString step = dir.filePath(QStringLiteral("rig.step"));
     writeRig(step);
+    ASSERT_LT(QFileInfo(step).size(), MainWindow::kWorkerImportBytes) << "small";
     MainWindow w;
-    w.setRebuildMode(MainWindow::RebuildMode::Always);
     const QString kept = dir.filePath(QStringLiteral("Rig.hzasm"));
     {
         FilePicker picker(QStringList{step, kept});
