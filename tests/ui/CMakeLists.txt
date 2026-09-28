@@ -77,6 +77,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Variables.cpp
         test_Help.cpp
         test_Samples.cpp
+        test_SelfTest.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE
@@ -88,7 +89,8 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         # The catalogs the application ships, to check a window in another
         # language.
         target_compile_definitions(hz_ui_window_tests
-            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="${HZ_SHIPPED_DIR}/translations")
+            PRIVATE HZ_SHIPPED_TRANSLATIONS_DIR="${HZ_SHIPPED_DIR}/translations"
+                    HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations")
     endif()
     if(TARGET horizon_samples)
         # The samples the application ships (Phase 168b), made before the

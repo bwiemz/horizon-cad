@@ -164,6 +164,10 @@ else()
         set(HZ_LRELEASE_USED ${HZ_LRELEASE})
     endif()
 endif()
+# How many catalogs --self-test looks for where the application looks for
+# them: none in a build that has none.
+list(LENGTH HZ_QM_FILES HZ_QM_COUNT)
+target_compile_definitions(horizon PRIVATE HZ_TRANSLATION_CATALOGS=${HZ_QM_COUNT})
 if (HZ_QM_FILES)
     message(STATUS "Horizon translations: ENABLED (${HZ_LRELEASE_USED})")
     # Compile the catalogs and copy them where the application looks
