@@ -17,6 +17,39 @@ version has been released yet. The 80-phase roadmap was recorded here under
 carries the version the code had, and the work after it is post-roadmap
 work, not "post-1.0".
 
+## Unreleased — Toward a beta
+
+- **A file read in part is not saved over (#163).** A native, DXF or
+  drawing file with items this version could not read opens marked
+  "(incomplete)", and says what was left out. Save goes to Save As, and
+  replacing the file it was read from, by saving or exporting, asks first.
+  Items that used to be dropped silently are now reported.
+- **A STEP file's length unit is not guessed (#164).** A file that names no
+  unit this version reads was taken as millimetres, so a part in inches came
+  in 25.4 times too small. You are now asked which unit it is in.
+- **Mass properties say how precise they are (#166).** "Exact" is gone. The
+  dialog gives the estimated error, and says when the tolerance was not
+  reached.
+- **A STEP assembly imports on a worker (#167, #170).** Its parts are built
+  and written there, with progress and Cancel, whatever the file's size. A
+  failed or cancelled import leaves no files behind.
+- **Undoing a constraint** leaves the drawing as saved (#165).
+- **Installed on clean machines before release.** `horizon --self-test` now
+  does what a beta tester is asked to do. It models, edits, saves and reads
+  back a part, sends it through STEP, places it in an assembly, and draws and
+  exports a sheet; the samples must open and the catalogs load. The Release
+  workflow installs each package on machines that never built it and runs
+  the self-test there:
+  - Linux: Ubuntu 22.04 and 24.04 and Fedora containers;
+  - Windows: a silent install, then an uninstall that must leave nothing;
+  - macOS 14 and 15, checking no library comes from Homebrew.
+  A tag `vX.Y.Z-beta.N` makes a pre-release.
+  [docs/INSTALL.md](docs/INSTALL.md) is new. [docs/BETA.md](docs/BETA.md)
+  gives testers three tasks, and a Beta report issue form takes the results.
+- **CI.** clang-tidy runs one file at a time, with a time limit (it hung
+  for hours). A master run is no longer cancelled by the next merge
+  (#162, #168).
+
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
 - **Every string translated (166a).**

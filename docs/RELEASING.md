@@ -2,8 +2,10 @@
 
 A release is made from a tag. The Release workflow
 (`.github/workflows/release.yml`) builds and tests it on Windows, Linux and
-macOS, packages it, and opens a **draft** GitHub release for a person to
-check and publish.
+macOS, and packages it. It then installs each package on machines that never
+built it and starts it there with `--self-test`
+(`.github/workflows/install-check.yml`), and opens a **draft** GitHub
+release for a person to check and publish.
 
 1. **Set the version** in `project()` in the top-level `CMakeLists.txt`.
    Nothing else holds it: the About box, `horizon --version`, the installer
@@ -11,8 +13,8 @@ check and publish.
 2. **Move the CHANGELOG's "Unreleased" sections** under a heading for the
    version.
 3. **Try the packaging first.** Run the Release workflow by hand (Actions ▸
-   Release ▸ Run workflow). It builds every package without releasing, and
-   keeps them on the run.
+   Release ▸ Run workflow). It builds every package without releasing, keeps
+   them on the run, and installs and starts each one on clean machines.
 4. **Tag and push:** `git tag v0.2.0 && git push origin v0.2.0`. The workflow
    stops at once if the tag and `project()` disagree.
 5. **Check the draft release:**
@@ -25,6 +27,30 @@ check and publish.
      what a user does to run it.
 
    Install and start each package, then publish the release.
+
+## Shipping a beta
+
+A beta is a pre-release of the next version, made from one commit, so that
+every tester runs the same thing and a report names what it ran.
+
+1. **Choose the commit:** one on `master` whose CI run passed every job.
+2. **Try its packaging:** run the Release workflow by hand on that commit.
+   Its install check must pass on every system.
+3. **Tag it:** `git tag v0.2.0-beta.1 <commit> && git push origin
+   v0.2.0-beta.1`. The version before the dash must be `project()`'s. The
+   draft release is marked **Pre-release**, so it is not the latest release.
+   The packages keep the plain version (`HorizonCAD-0.2.0-win64.exe`); the
+   About box shows the source revision.
+4. **Publish the draft**, and point testers at
+   [docs/BETA.md](BETA.md): three tasks, and a **Beta report** issue form
+   for each result. The form labels its issues `beta`, if the repository has
+   that label.
+5. **Fix what they find** before adding features, then tag
+   `v0.2.0-beta.2` and repeat, or release `v0.2.0`.
+
+The install check runs by hand too (Actions ▸ Install check ▸ Run workflow),
+with the id of an earlier Release run, to check its packages again: on a
+newer runner image, say.
 
 ## Signing
 
