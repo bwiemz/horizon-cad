@@ -1,0 +1,6 @@
+{
+  "name": "freetype",
+  "version-string": "system",
+  "description": "The system's freetype, not one built by vcpkg: an empty port, and what uses it links the system's library (Linux only).",
+  "supports": "linux"
+}

@@ -85,8 +85,5 @@ Please do not report these; they are known:
 - The macOS package is for Apple silicon only.
 - On Linux, Horizon CAD draws through X11; on a Wayland desktop that is
   XWayland.
-- On a Linux system newer than the package's fontconfig, starting it from a
-  terminal prints many `Fontconfig warning` lines. They do not change what
-  it does.
 - The [Feature Maturity](../README.md#feature-maturity) table in the README
   lists what is experimental, and the STEP entities not yet read.
