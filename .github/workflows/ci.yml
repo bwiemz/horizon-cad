@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json', matrix.triplet == 'x64-linux' && 'cmake/vcpkg-overlays/**' || 'vcpkg.json') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ matrix.triplet }}-
 
@@ -336,7 +336,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 
@@ -474,7 +474,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 
@@ -646,7 +646,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 
@@ -747,7 +747,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 
@@ -912,7 +912,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 
@@ -1030,7 +1030,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/vcpkg-binary-cache
-          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json', 'cmake/vcpkg-overlays/**') }}-84bab45d
           restore-keys: |
             vcpkg-${{ runner.os }}-x64-linux-
 

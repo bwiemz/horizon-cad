@@ -20,7 +20,8 @@ dist="$(cd "${2:?${usage}}" && pwd)"
 if command -v apt-get >/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
     desktop=(xvfb xauth libgl1 libglx0 libopengl0 libegl1 libgl1-mesa-dri libx11-6 libx11-xcb1
-             libxcb1 libxkbcommon0 libxkbcommon-x11-0 fontconfig fonts-dejavu-core)
+             libxcb1 libxkbcommon0 libxkbcommon-x11-0 fontconfig libfontconfig1 libfreetype6
+             fonts-dejavu-core)
     # docs/INSTALL.md, "Linux": keep the lists the same.
     tarball=(libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1
              libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0
@@ -29,7 +30,7 @@ if command -v apt-get >/dev/null; then
 elif command -v dnf >/dev/null; then
     desktop=(xorg-x11-server-Xvfb mesa-libGL mesa-libEGL mesa-dri-drivers libglvnd-opengl
              libglvnd-glx libX11 libX11-xcb libxcb libxkbcommon libxkbcommon-x11 fontconfig
-             dejavu-sans-fonts util-linux shadow-utils)
+             freetype dejavu-sans-fonts util-linux shadow-utils)
     tarball=(xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm)
     install() { dnf install -y -q "$@"; }
 else
@@ -77,7 +78,7 @@ runuser -u tester -- env HOME=/home/tester DISPLAY=:99 LANG=C.UTF-8 QT_QPA_PLATF
     LIBGL_ALWAYS_SOFTWARE=1 timeout 120 "${command[@]}" --self-test >"${log}" 2>&1
 status=$?
 set -e
-grep -v 'Fontconfig warning' "${log}" || true
+cat "${log}"
 
 # What it wrote went to its user's folders.
 userlog="/home/tester/.local/share/Horizon CAD Project/Horizon CAD/logs/horizon.log"
@@ -89,10 +90,12 @@ if grep -q 'Fontconfig error' "${log}"; then
     echo "::error::fontconfig could not load this system's configuration"
     exit 1
 fi
+# The system's own fontconfig reads the system's configuration (#182): a
+# warning means one built into the package, for another version, is back.
 warnings=$(grep -c 'Fontconfig warning' "${log}" || true)
 if [[ "${warnings}" -gt 0 ]]; then
-    echo "::warning::fontconfig warned ${warnings} times on this system's configuration" \
-        "(a newer one than the fontconfig built into Horizon CAD reads)"
+    echo "::error::fontconfig warned ${warnings} times on this system's configuration"
+    exit 1
 fi
 if [[ "${status}" -ne 0 ]]; then
     echo "::error::horizon --self-test exited ${status}"
