@@ -220,15 +220,28 @@ ctest --test-dir build/debug -C Debug --output-on-failure
 Horizon CAD is licensed under the GNU GPL v3 or later, and a contribution is
 licensed under the same terms.
 
-CI runs these checks on every pull request, and a pull request should pass
-all of them locally first:
+CI runs these checks on every pull request. **Every one must pass, on a
+branch up to date with `master`, before it merges**: GitHub holds the merge
+button until then. When another pull request merges first, **Update branch**
+(or merging `master` into yours) runs them again on the two together. Run
+what you can locally first:
 
-| Gate | What it runs | Locally |
+| Check | What it runs | Locally |
 |---|---|---|
-| Build (Windows, Linux Debug, Linux Release) | MSVC; GCC 11 with `-Werror` | `cmake --preset linux-debug -DHZ_WARNINGS_AS_ERRORS=ON` and build |
+| Build (windows-latest) | MSVC, the whole suite | `cmake --preset debug` on Windows |
+| Build (macos-14) | Apple clang, the whole suite | `cmake --preset macos-debug` |
+| Build (ubuntu-22.04), Build (ubuntu-22.04, Release) | GCC 11 with `-Werror`, the whole suite, and `horizon --self-test` under Xvfb | `cmake --preset linux-debug -DHZ_WARNINGS_AS_ERRORS=ON`, build, `ctest` |
 | AddressSanitizer | the whole suite under ASan and UBSan | `-DHZ_ENABLE_SANITIZERS=ON` |
+| ThreadSanitizer | the suite but the window tests, under TSan | `-DHZ_ENABLE_TSAN=ON` |
+| Coverage | the whole suite; each module's line coverage must stay at or above its floor in `.github/coverage-floors.json` | |
 | Format Check | clang-format 15 | `clang-format --dry-run --Werror` on the files you changed |
 | Static Analysis | clang-tidy 15, `bugprone-*` and `performance-*` | `clang-tidy -p build/linux-debug --checks='-*,bugprone-*,performance-*' <file>` |
+| Fuzz (libFuzzer) | a minute of each file reader's fuzzer (native, STEP, DXF, binary, expressions, plug-in manifests, PDM) | `-DHZ_BUILD_FUZZERS=ON` with clang |
+
+Why all of them, and why up to date: two pull requests that each passed
+could fail together, and a check that did not have to pass was merged red
+(AddressSanitizer, Static Analysis and Format Check each failed on
+`master` that way in September 2026, and a later commit had to repair it).
 
 Things that pass a newer local toolchain and fail CI's older one:
 - clang 15 cannot capture a structured binding in a lambda; copy it into a
