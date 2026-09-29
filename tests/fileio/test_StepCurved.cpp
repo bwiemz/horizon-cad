@@ -1114,3 +1114,62 @@ TEST(StepCurvedTest, ATorusOfTwoBandsIsBothItsHalves) {
     expectRelative(m.ideal.properties.volume, torus, 1e-6, "the torus");
     EXPECT_EQ(importedBuildProblem(torusOfTwoBands()), "");
 }
+
+namespace {
+
+/// A cylinder of radius 1 cut on a slant: its base the circle round z = 0,
+/// its top the plane through (0, 0, 2) tilted 30 degrees about y, which cuts
+/// it in an ellipse of semi-axes 1/cos 30 and 1. Its side is a band between
+/// the circle and the ellipse; its volume is 2 pi, the slant's wedges even.
+std::string slantCutCylinder() {
+    return step(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = CARTESIAN_POINT('',(0.,0.,2.));
+#3 = DIRECTION('',(0.,0.,1.));
+#4 = DIRECTION('',(1.,0.,0.));
+#5 = DIRECTION('',(-0.5,0.,0.8660254037844387));
+#6 = DIRECTION('',(0.8660254037844387,0.,0.5));
+#7 = AXIS2_PLACEMENT_3D('',#1,#3,#4);
+#8 = AXIS2_PLACEMENT_3D('',#2,#5,#6);
+#9 = CIRCLE('',#7,1.);
+#10 = ELLIPSE('',#8,1.1547005383792515,1.);
+#11 = CARTESIAN_POINT('',(1.,0.,0.));
+#12 = CARTESIAN_POINT('',(1.,0.,2.5773502691896257));
+#13 = VERTEX_POINT('',#11);
+#14 = VERTEX_POINT('',#12);
+#15 = EDGE_CURVE('',#13,#13,#9,.T.);
+#16 = EDGE_CURVE('',#14,#14,#10,.T.);
+#17 = CYLINDRICAL_SURFACE('',#7,1.);
+#18 = PLANE('',#8);
+#19 = PLANE('',#7);
+#20 = ORIENTED_EDGE('',*,*,#15,.T.);
+#21 = ORIENTED_EDGE('',*,*,#16,.F.);
+#22 = ORIENTED_EDGE('',*,*,#16,.T.);
+#23 = ORIENTED_EDGE('',*,*,#15,.F.);
+#30 = EDGE_LOOP('',(#20));
+#31 = EDGE_LOOP('',(#21));
+#32 = EDGE_LOOP('',(#22));
+#33 = EDGE_LOOP('',(#23));
+#40 = FACE_OUTER_BOUND('',#30,.T.);
+#41 = FACE_BOUND('',#31,.T.);
+#42 = FACE_OUTER_BOUND('',#32,.T.);
+#43 = FACE_OUTER_BOUND('',#33,.T.);
+#50 = ADVANCED_FACE('',(#40,#41),#17,.T.);
+#51 = ADVANCED_FACE('',(#42),#18,.T.);
+#52 = ADVANCED_FACE('',(#43),#19,.F.);
+#53 = CLOSED_SHELL('',(#50,#51,#52));
+#54 = MANIFOLD_SOLID_BREP('slant',#53);
+)");
+}
+
+}  // namespace
+
+// An edge on an ELLIPSE, as Inventor writes where a hole meets a slanted
+// face, is read: a part with one was not read at all.
+TEST(StepCurvedTest, AnEllipseEdgeIsRead) {
+    const auto m = measure(slantCutCylinder());
+    EXPECT_EQ(m.outlined, 0u);
+    expectRelative(m.modelled, 2.0 * kPi, 0.01, "its facets, within 1 %");
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
+    expectRelative(m.ideal.properties.volume, 2.0 * kPi, 1e-6, "the slant-cut cylinder");
+    EXPECT_EQ(importedBuildProblem(slantCutCylinder()), "");
+}

@@ -1572,7 +1572,8 @@ private:
         // OCC-style writers (FreeCAD et al.) wrap the 3D geometry: a
         // SURFACE_CURVE / SEAM_CURVE carries the real curve as its curve_3d
         // attribute. Depth-limit the hop to survive self-referential files.
-        for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE"}) {
+        // An INTERSECTION_CURVE keeps it there too (IronCAD's).
+        for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE", "INTERSECTION_CURVE"}) {
             if (const StepList* sc = inst->leaf(wrapper)) {
                 if (sc->size() >= 2 && (*sc)[1].isRef()) {
                     return readEdgeGeometry((*sc)[1].ref, start, end, depth + 1);
@@ -1611,6 +1612,27 @@ private:
             const double a0 = std::atan2(ds.dot(yAxis), ds.dot(xAxis));
             const double a1 = std::atan2(de.dot(yAxis), de.dot(xAxis));
             return makeArcInFrame(center, radius, a0, a1, xAxis, yAxis);
+        }
+        // An ellipse, where a hole meets a slanted face (Inventor's): the
+        // circle's arc stretched along its axes, exact, a rational arc's
+        // affine image being one. Angles are its parameter's.
+        if (const StepList* ellipse = inst->leaf("ELLIPSE")) {
+            if (ellipse->size() < 4 || !(*ellipse)[1].isRef()) return nullptr;
+            Vec3 center;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (!readPlacement((*ellipse)[1].ref, center, zAxis, xAxis)) return nullptr;
+            const double major = (*ellipse)[2].num;
+            const double minor = (*ellipse)[3].num;
+            if (!(major > 0.0) || !(minor > 0.0)) return nullptr;
+            const Vec3 yAxis = zAxis.cross(xAxis);
+            const auto angleOf = [&](const Vec3& p) {
+                const Vec3 d = p - center;
+                return std::atan2(d.dot(yAxis) / minor, d.dot(xAxis) / major);
+            };
+            const double a0 = angleOf(start);
+            const double a1 = (start - end).length() < kMergeTol ? a0 + math::kTwoPi : angleOf(end);
+            return makeArcInFrame(center, 1.0, a0, a1, xAxis * major, yAxis * minor);
         }
         return nullptr;
     }
