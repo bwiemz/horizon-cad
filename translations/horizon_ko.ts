@@ -2344,7 +2344,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+375"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -2364,42 +2364,42 @@ begin building your part.</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
     <message>
-        <location line="-447"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+44"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">%2에서 시작하는 %1개 조각의 곡선</translation>
     </message>
     <message>
-        <location line="+49"/>
-        <location line="+108"/>
+        <location line="+48"/>
+        <location line="+84"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">%2 위치, %1 방향</translation>
     </message>
     <message>
-        <location line="-102"/>
+        <location line="-78"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">%2 주변, 패싯 %1개의 곡면</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-209"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+8"/>
-        <location line="+897"/>
+        <location line="+754"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
         <translation type="unfinished">거리</translation>
     </message>
     <message>
-        <location line="-913"/>
-        <location line="+897"/>
+        <location line="-16"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Angle</source>
         <translation type="unfinished">각도</translation>
     </message>
     <message>
-        <location line="-913"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Segments per turn</source>
         <translation type="unfinished">회전당 세그먼트 수</translation>
     </message>
@@ -2569,14 +2569,14 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location line="+180"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-704"/>
         <location line="+1"/>
-        <location line="+1047"/>
+        <location line="+1055"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-983"/>
+        <location line="-989"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2881,7 +2881,7 @@ begin building your part.</source>
         <translation type="unfinished">평면(&amp;P)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;Axis...</source>
         <translation type="unfinished">축(&amp;A)...</translation>
     </message>
@@ -2891,7 +2891,7 @@ begin building your part.</source>
         <translation type="unfinished">점(&amp;O)...</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>&amp;Assembly</source>
         <translation type="unfinished">어셈블리(&amp;A)</translation>
     </message>
@@ -3456,12 +3456,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+196"/>
+        <location line="+200"/>
         <source>Select</source>
         <translation type="unfinished">선택</translation>
     </message>
     <message>
-        <location line="-193"/>
+        <location line="-197"/>
         <source>Fit All</source>
         <translation type="unfinished">전체 맞춤</translation>
     </message>
@@ -3537,12 +3537,12 @@ begin building your part.</source>
         <location line="+9"/>
         <location line="+0"/>
         <location line="+11"/>
-        <location line="+57"/>
+        <location line="+59"/>
         <source>Modify</source>
         <translation type="unfinished">수정</translation>
     </message>
     <message>
-        <location line="-77"/>
+        <location line="-79"/>
         <source>Transform</source>
         <translation type="unfinished">변환</translation>
     </message>
@@ -3563,13 +3563,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+80"/>
-        <location line="+3660"/>
+        <location line="+84"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-3736"/>
+        <location line="-80"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3585,20 +3584,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+64"/>
-        <location line="+3509"/>
+        <location line="+66"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-3572"/>
-        <location line="+64"/>
-        <location line="+3508"/>
+        <location line="-65"/>
+        <location line="+66"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-3571"/>
+        <location line="-65"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3639,7 +3636,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message>
-        <location line="+3014"/>
+        <location line="+2889"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3683,12 +3680,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="+804"/>
-        <source>%1: &quot;%2&quot; cannot take that value</source>
-        <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
-    </message>
-    <message>
-        <location line="-3842"/>
+        <location line="-2913"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -3790,116 +3782,101 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2385"/>
+        <location line="+2389"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2382"/>
+        <location line="-2386"/>
         <location line="+7"/>
         <location line="+5"/>
-        <location line="+5"/>
+        <location line="+7"/>
         <location line="+6"/>
         <source>3D</source>
         <translation type="unfinished">3D</translation>
     </message>
     <message>
-        <location line="-23"/>
+        <location line="-25"/>
         <source>Primitives</source>
         <translation type="unfinished">기본 형상</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-2526"/>
-        <location line="+2536"/>
+        <location line="+1"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-2535"/>
-        <location line="+2542"/>
+        <location line="+1"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-2541"/>
-        <location line="+2548"/>
+        <location line="+1"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-2547"/>
-        <location line="+2558"/>
+        <location line="+1"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-2556"/>
+        <location line="+2"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3296"/>
-        <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3341"/>
-        <location line="+3360"/>
-        <location line="+27"/>
+        <location line="+1"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3386"/>
-        <location line="+3716"/>
+        <location line="+1"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-3714"/>
+        <location line="+2"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3466"/>
-        <location line="+3470"/>
+        <location line="+1"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3469"/>
-        <location line="+3473"/>
+        <location line="+2"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3468"/>
-        <location line="+3537"/>
+        <location line="+6"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-3536"/>
-        <location line="+3556"/>
+        <location line="+1"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-3554"/>
+        <location line="+2"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3910,12 +3887,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">선형 패턴</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Circular</source>
         <translation type="unfinished">원형</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
         <source>Ribbon</source>
         <translation type="unfinished">리본</translation>
     </message>
@@ -3931,14 +3908,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+1439"/>
-        <location line="+1201"/>
+        <location line="+1310"/>
+        <location line="+581"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4187"/>
+        <location line="-3438"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3959,12 +3936,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3845"/>
+        <location line="+3096"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-3839"/>
+        <location line="-3090"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -4649,91 +4626,17 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
-        <source>%1 works on a part; open or create one</source>
-        <translation type="unfinished">%1은(는) 부품에서 사용합니다. 부품을 열거나 새로 만드십시오</translation>
-    </message>
-    <message>
-        <location line="+25"/>
-        <source>At x:</source>
-        <translation type="unfinished">위치 x:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+749"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1451"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+1"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1450"/>
-        <source>Standing along:</source>
-        <translation type="unfinished">세우는 방향:</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Width (X):</source>
-        <translation type="unfinished">폭 (X):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Height (Y):</source>
-        <translation type="unfinished">높이 (Y):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Depth (Z):</source>
-        <translation type="unfinished">깊이 (Z):</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <location line="+7"/>
-        <location line="+988"/>
-        <source>Radius:</source>
-        <translation type="unfinished">반지름:</translation>
-    </message>
-    <message>
-        <location line="-995"/>
-        <location line="+17"/>
-        <source>Height:</source>
-        <translation type="unfinished">높이:</translation>
-    </message>
-    <message>
-        <location line="-2"/>
-        <source>Bottom radius:</source>
-        <translation type="unfinished">아래 반지름:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Top radius:</source>
-        <translation type="unfinished">위 반지름:</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Ring radius:</source>
-        <translation type="unfinished">링 반지름:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Tube radius:</source>
-        <translation type="unfinished">튜브 반지름:</translation>
-    </message>
-    <message>
-        <location line="+41"/>
-        <source>Profile %1</source>
-        <translation type="unfinished">프로파일 %1</translation>
-    </message>
-    <message>
-        <location line="+9"/>
+        <location line="-729"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">어셈블리에는 스케치가 없습니다: 부품에서 스케치하십시오</translation>
     </message>
@@ -4770,12 +4673,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">모서리:</translation>
     </message>
     <message>
-        <location line="-879"/>
+        <location line="+2"/>
         <source>As:</source>
         <translation type="unfinished">용도:</translation>
     </message>
@@ -4928,18 +4830,16 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">선형 패턴</translation>
     </message>
     <message>
-        <location line="-785"/>
-        <location line="+805"/>
+        <location line="+2"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">원형 패턴</translation>
     </message>
     <message>
-        <location line="-788"/>
+        <location line="+17"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">질량 특성(&amp;M)...</translation>
     </message>
@@ -5109,24 +5009,21 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+120"/>
         <source>X</source>
         <translation type="unfinished">X</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Y</source>
         <translation type="unfinished">Y</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Z</source>
         <translation type="unfinished">Z</translation>
     </message>
     <message>
-        <location line="-119"/>
+        <location line="+1"/>
         <source>At:</source>
         <translation type="unfinished">위치:</translation>
     </message>
@@ -5146,7 +5043,234 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">위쪽 부분</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+80"/>
+        <source>%1 added, but an earlier feature fails to rebuild</source>
+        <translation type="unfinished">%1을(를) 추가했지만, 이전 피처를 다시 빌드하지 못했습니다</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 added.</source>
+        <translation type="unfinished">%1을(를) 추가했습니다.</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>%1 not added: %2</source>
+        <translation type="unfinished">%1을(를) 추가하지 않았습니다: %2</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>%1 has nothing to edit</source>
+        <translation type="unfinished">%1에는 편집할 항목이 없습니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Edit %1</source>
+        <translation type="unfinished">%1 편집</translation>
+    </message>
+    <message>
+        <location line="+104"/>
+        <source>+X</source>
+        <translation type="unfinished">+X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-X</source>
+        <translation type="unfinished">-X</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Y</source>
+        <translation type="unfinished">+Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Y</source>
+        <translation type="unfinished">-Y</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Z</source>
+        <translation type="unfinished">+Z</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Z</source>
+        <translation type="unfinished">-Z</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source> x:</source>
+        <translation type="unfinished"> x:</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+28"/>
+        <source>As it is, %1</source>
+        <translation type="unfinished">현재 값, %1</translation>
+    </message>
+    <message>
+        <location line="-21"/>
+        <source>As the face or edge clicked, %1</source>
+        <translation type="unfinished">클릭한 면 또는 모서리와 같게, %1</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Against the face or edge clicked</source>
+        <translation type="unfinished">클릭한 면 또는 모서리의 반대 방향</translation>
+    </message>
+    <message>
+        <location line="+71"/>
+        <source>%1 cannot use the value given for: %2</source>
+        <translation type="unfinished">%1에서 지정한 값을 사용할 수 없는 항목: %2</translation>
+    </message>
+    <message>
+        <location line="+85"/>
+        <source>Feature rebuild failed at feature %1: %2</source>
+        <translation type="unfinished">피처 %1에서 다시 빌드하지 못했습니다: %2</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>Rebuilding the model...</source>
+        <translation type="unfinished">모델 다시 빌드 중...</translation>
+    </message>
+    <message>
+        <location line="+62"/>
+        <source>Importing %1: %2 of %3 parts written...</source>
+        <translation type="unfinished">%1 가져오는 중: 부품 %3개 중 %2개 기록됨...</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>Rebuild cancelled: the model is as it was before the last change.</source>
+        <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
+    </message>
+    <message>
+        <location line="-3454"/>
+        <source>0 selected</source>
+        <translation>0개 선택됨</translation>
+    </message>
+    <message>
+        <location line="-108"/>
+        <source>Linear</source>
+        <comment>a dimension</comment>
+        <translation type="unfinished">선형 치수</translation>
+    </message>
+    <message>
+        <location line="+197"/>
+        <source>1 selected</source>
+        <translation>1개 선택됨</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::PartCommands</name>
+    <message>
+        <location filename="../src/ui/src/PartCommands.cpp" line="+45"/>
+        <source>%1 works on a part; open or create one</source>
+        <translation type="unfinished">%1은(는) 부품에서 사용합니다. 부품을 열거나 새로 만드십시오</translation>
+    </message>
+    <message>
+        <location line="+25"/>
+        <source>At x:</source>
+        <translation type="unfinished">위치 x:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>y:</source>
+        <translation type="unfinished">y:</translation>
+    </message>
+    <message>
+        <location line="-231"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>z:</source>
+        <translation type="unfinished">z:</translation>
+    </message>
+    <message>
+        <location line="-230"/>
+        <source>Standing along:</source>
+        <translation type="unfinished">세우는 방향:</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Box</source>
+        <translation type="unfinished">상자</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Width (X):</source>
+        <translation type="unfinished">폭 (X):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Height (Y):</source>
+        <translation type="unfinished">높이 (Y):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Depth (Z):</source>
+        <translation type="unfinished">깊이 (Z):</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cylinder</source>
+        <translation type="unfinished">원통</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+7"/>
+        <location line="+388"/>
+        <source>Radius:</source>
+        <translation type="unfinished">반지름:</translation>
+    </message>
+    <message>
+        <location line="-395"/>
+        <location line="+17"/>
+        <source>Height:</source>
+        <translation type="unfinished">높이:</translation>
+    </message>
+    <message>
+        <location line="-10"/>
+        <source>Sphere</source>
+        <translation type="unfinished">구</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cone</source>
+        <translation type="unfinished">원뿔</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bottom radius:</source>
+        <translation type="unfinished">아래 반지름:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Top radius:</source>
+        <translation type="unfinished">위 반지름:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Torus</source>
+        <translation type="unfinished">토러스</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Ring radius:</source>
+        <translation type="unfinished">링 반지름:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tube radius:</source>
+        <translation type="unfinished">튜브 반지름:</translation>
+    </message>
+    <message>
+        <location line="+40"/>
+        <source>Profile %1</source>
+        <translation type="unfinished">프로파일 %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>on the plane through %1</source>
         <translation type="unfinished">%1을(를) 지나는 평면 위</translation>
     </message>
@@ -5239,7 +5363,22 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">x축 기준 회전:</translation>
     </message>
     <message>
-        <location line="+18"/>
+        <location line="+14"/>
+        <source>X</source>
+        <translation type="unfinished">X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Y</source>
+        <translation type="unfinished">Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Z</source>
+        <translation type="unfinished">Z</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>As the face or edge clicked</source>
         <translation type="unfinished">클릭한 면 또는 모서리와 같게</translation>
     </message>
@@ -5271,25 +5410,31 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">x:</translation>
     </message>
     <message>
-        <location line="+62"/>
-        <location line="+82"/>
+        <location line="+15"/>
+        <location line="+81"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">먼저 닫힌 프로파일을 그리십시오</translation>
     </message>
     <message>
         <location line="-60"/>
-        <location line="+228"/>
+        <location line="+46"/>
+        <source>Extrude</source>
+        <translation type="unfinished">돌출</translation>
+    </message>
+    <message>
+        <location line="-45"/>
+        <location line="+156"/>
         <source>Distance:</source>
         <translation type="unfinished">거리:</translation>
     </message>
     <message>
-        <location line="-227"/>
-        <location line="+456"/>
+        <location line="-155"/>
+        <location line="+386"/>
         <source>Goes:</source>
         <translation type="unfinished">종료 조건:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>To the distance</source>
         <translation type="unfinished">지정 거리</translation>
     </message>
@@ -5300,23 +5445,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+456"/>
+        <location line="+386"/>
         <source>Through all</source>
         <translation type="unfinished">관통</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">양방향 관통</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+455"/>
+        <location line="+385"/>
         <source>Up to a face</source>
         <translation type="unfinished">면까지</translation>
     </message>
     <message>
-        <location line="-451"/>
+        <location line="-381"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(스케치와 평행한 부품의 평평한 면이 없음)</translation>
     </message>
@@ -5327,12 +5472,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+332"/>
+        <location line="+262"/>
         <source>Direction:</source>
         <translation type="unfinished">방향:</translation>
     </message>
     <message>
-        <location line="-331"/>
+        <location line="-261"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">스케치 법선 방향</translation>
     </message>
@@ -5352,13 +5497,19 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">돌출 실패: %1</translation>
     </message>
     <message>
-        <location line="+28"/>
-        <location line="+214"/>
+        <location line="+26"/>
+        <location line="+27"/>
+        <source>Revolve</source>
+        <translation type="unfinished">회전</translation>
+    </message>
+    <message>
+        <location line="-26"/>
+        <location line="+144"/>
         <source>Angle:</source>
         <translation type="unfinished">각도:</translation>
     </message>
     <message>
-        <location line="-210"/>
+        <location line="-140"/>
         <source>Axis:</source>
         <translation type="unfinished">축:</translation>
     </message>
@@ -5378,22 +5529,22 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">회전 실패: %1</translation>
     </message>
     <message>
-        <location line="+50"/>
-        <source>%1 added, but an earlier feature fails to rebuild</source>
-        <translation type="unfinished">%1을(를) 추가했지만, 이전 피처를 다시 빌드하지 못했습니다</translation>
+        <location line="+19"/>
+        <source>Union</source>
+        <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="+2"/>
-        <source>%1 added.</source>
-        <translation type="unfinished">%1을(를) 추가했습니다.</translation>
+        <location line="+4"/>
+        <source>Subtract</source>
+        <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="+29"/>
-        <source>%1 not added: %2</source>
-        <translation type="unfinished">%1을(를) 추가하지 않았습니다: %2</translation>
+        <location line="+4"/>
+        <source>Intersect</source>
+        <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+9"/>
         <source>%1 combines the part&apos;s bodies, and it has fewer than two (make one with Result: New body)</source>
         <translation type="unfinished">%1은(는) 부품의 바디를 결합하지만, 바디가 두 개 미만입니다 (결과: 새 바디로 만드십시오)</translation>
     </message>
@@ -5403,12 +5554,32 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">%1은(는) 바디에 적용됩니다: 먼저 바디를 만드십시오</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+14"/>
+        <source>Fillet</source>
+        <translation type="unfinished">필렛</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Chamfer</source>
+        <translation type="unfinished">모따기</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Edges:</source>
+        <translation type="unfinished">모서리:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
         <source>%1 not added: no edges were chosen</source>
         <translation type="unfinished">%1을(를) 추가하지 않았습니다: 선택된 모서리가 없습니다</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+13"/>
+        <source>Shell</source>
+        <translation type="unfinished">쉘</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Wall thickness:</source>
         <translation type="unfinished">벽 두께:</translation>
     </message>
@@ -5418,7 +5589,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">개방할 면:</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+13"/>
+        <source>Draft</source>
+        <translation type="unfinished">구배</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Pull direction:</source>
         <translation type="unfinished">당기는 방향:</translation>
     </message>
@@ -5428,12 +5604,17 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">중립 평면 위치:</translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+36"/>
         <source>Repeat only (none: the whole part):</source>
         <translation type="unfinished">반복할 피처 (없으면 부품 전체):</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+23"/>
+        <source>Linear Pattern</source>
+        <translation type="unfinished">선형 패턴</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Spacing:</source>
         <translation type="unfinished">간격:</translation>
     </message>
@@ -5444,7 +5625,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">인스턴스 수:</translation>
     </message>
     <message>
-        <location line="-2"/>
+        <location line="-7"/>
+        <source>Circular Pattern</source>
+        <translation type="unfinished">원형 패턴</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>About the axis:</source>
         <translation type="unfinished">회전축:</translation>
     </message>
@@ -5454,7 +5640,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">전체 각도:</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+17"/>
+        <source>Mirror</source>
+        <translation type="unfinished">대칭</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>YZ plane (x = 0)</source>
         <translation type="unfinished">YZ 평면 (x = 0)</translation>
     </message>
@@ -5484,7 +5675,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">대칭할 피처 (없으면 부품 전체):</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+11"/>
+        <source>Hole</source>
+        <translation type="unfinished">구멍</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>%1: the part has no flat face to drill into</source>
         <translation type="unfinished">%1: 부품에 구멍을 뚫을 평평한 면이 없습니다</translation>
     </message>
@@ -5574,106 +5770,9 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">카운터싱크 각도:</translation>
     </message>
     <message>
-        <location line="+68"/>
-        <source>%1 has nothing to edit</source>
-        <translation type="unfinished">%1에는 편집할 항목이 없습니다</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Edit %1</source>
-        <translation type="unfinished">%1 편집</translation>
-    </message>
-    <message>
-        <location line="+104"/>
-        <source>+X</source>
-        <translation type="unfinished">+X</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-X</source>
-        <translation type="unfinished">-X</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Y</source>
-        <translation type="unfinished">+Y</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Y</source>
-        <translation type="unfinished">-Y</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Z</source>
-        <translation type="unfinished">+Z</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Z</source>
-        <translation type="unfinished">-Z</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source> x:</source>
-        <translation type="unfinished"> x:</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+28"/>
-        <source>As it is, %1</source>
-        <translation type="unfinished">현재 값, %1</translation>
-    </message>
-    <message>
-        <location line="-21"/>
-        <source>As the face or edge clicked, %1</source>
-        <translation type="unfinished">클릭한 면 또는 모서리와 같게, %1</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Against the face or edge clicked</source>
-        <translation type="unfinished">클릭한 면 또는 모서리의 반대 방향</translation>
-    </message>
-    <message>
-        <location line="+71"/>
-        <source>%1 cannot use the value given for: %2</source>
-        <translation type="unfinished">%1에서 지정한 값을 사용할 수 없는 항목: %2</translation>
-    </message>
-    <message>
-        <location line="+85"/>
-        <source>Feature rebuild failed at feature %1: %2</source>
-        <translation type="unfinished">피처 %1에서 다시 빌드하지 못했습니다: %2</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>Rebuilding the model...</source>
-        <translation type="unfinished">모델 다시 빌드 중...</translation>
-    </message>
-    <message>
-        <location line="+62"/>
-        <source>Importing %1: %2 of %3 parts written...</source>
-        <translation type="unfinished">%1 가져오는 중: 부품 %3개 중 %2개 기록됨...</translation>
-    </message>
-    <message>
-        <location line="+45"/>
-        <source>Rebuild cancelled: the model is as it was before the last change.</source>
-        <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
-    </message>
-    <message>
-        <location line="-4203"/>
-        <source>0 selected</source>
-        <translation>0개 선택됨</translation>
-    </message>
-    <message>
-        <location line="-104"/>
-        <source>Linear</source>
-        <comment>a dimension</comment>
-        <translation type="unfinished">선형 치수</translation>
-    </message>
-    <message>
-        <location line="+193"/>
-        <source>1 selected</source>
-        <translation>1개 선택됨</translation>
+        <location line="+34"/>
+        <source>%1: &quot;%2&quot; cannot take that value</source>
+        <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
     </message>
 </context>
 <context>

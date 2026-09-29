@@ -73,13 +73,10 @@
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/EdgeProjection.h"
-#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
-#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
-#include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/SceneGraph.h"
@@ -118,8 +115,10 @@
 #include "horizon/ui/MeasureAreaTool.h"
 #include "horizon/ui/MeasureDistanceTool.h"
 #include "horizon/ui/MirrorTool.h"
+#include "horizon/ui/ModelPicks.h"
 #include "horizon/ui/MoveTool.h"
 #include "horizon/ui/OffsetTool.h"
+#include "horizon/ui/PartCommands.h"
 #include "horizon/ui/PasteTool.h"
 #include "horizon/ui/PdfExport.h"
 #include "horizon/ui/PolarArrayDialog.h"
@@ -160,121 +159,6 @@ namespace {
 /// How often the files open or placed are looked at for changes on disk.
 constexpr int kPartWatchMs = 2000;
 
-/// Edges or faces of the part to choose from in a dialog, until the viewport
-/// can pick them: each one's name, and how it is listed ({text, tooltip}).
-struct PickList {
-    std::vector<topo::TopologyID> ids;
-    std::vector<std::pair<QString, QString>> items;
-};
-
-/// The part's edges, listed by their end points: a curve in chords once, as
-/// the curve (Stable names), and the seams between the facets of a curved
-/// face, which are no edge of the part, not at all.
-PickList edgesOf(const topo::Solid& solid) {
-    PickList list;
-    std::map<std::string, size_t> rowOf;
-    std::vector<int> pieces;
-    for (const auto& edge : solid.edges()) {
-        const topo::HalfEdge* he = edge.halfEdge;
-        if (!edge.topoId.isValid() || !he || !he->origin || !he->next || !he->next->origin) {
-            continue;
-        }
-        if (edge.topoId.tag().find("/seam:") != std::string::npos) continue;
-        const std::string logical = model::logicalEdge(edge.topoId.tag());
-        const auto found = rowOf.find(logical);
-        if (found != rowOf.end()) {
-            ++pieces[found->second];
-            continue;
-        }
-        rowOf.emplace(logical, list.ids.size());
-        pieces.push_back(1);
-        list.ids.push_back(topo::TopologyID::fromTag(logical));
-        list.items.emplace_back(formatPoint(he->origin->point) + QStringLiteral(" – ") +
-                                    formatPoint(he->next->origin->point),
-                                QString::fromStdString(logical));
-    }
-    for (size_t row = 0; row < pieces.size(); ++row) {
-        if (pieces[row] < 2) continue;
-        auto& text = list.items[row].first;
-        text = MainWindow::tr("a curve of %1 pieces, from %2")
-                   .arg(pieces[row])
-                   .arg(text.section(QStringLiteral(" – "), 0, 0));
-    }
-    return list;
-}
-
-/// The part's faces, listed by which way they face and where their middle is.
-PickList facesOf(const topo::Solid& solid) {
-    PickList list;
-    const double outward = model::outwardSign(solid);
-    struct Curved {
-        int facets = 0;
-        math::Vec3 centre;  ///< the sum of its facets' middles
-    };
-    std::map<std::string, size_t> rowOf;
-    std::map<size_t, Curved> curvedRows;
-    for (const auto& face : solid.faces()) {
-        if (!face.topoId.isValid() || !face.outerLoop || !face.outerLoop->halfEdge) continue;
-        // Newell's normal and the vertex average of the outer loop.
-        math::Vec3 normal, centre;
-        int count = 0;
-        const topo::HalfEdge* start = face.outerLoop->halfEdge;
-        const topo::HalfEdge* he = start;
-        do {
-            if (!he->origin || !he->next || !he->next->origin) break;
-            const math::Vec3& a = he->origin->point;
-            const math::Vec3& b = he->next->origin->point;
-            normal.x += (a.y - b.y) * (a.z + b.z);
-            normal.y += (a.z - b.z) * (a.x + b.x);
-            normal.z += (a.x - b.x) * (a.y + b.y);
-            centre = centre + a;
-            ++count;
-            he = he->next;
-        } while (he && he != start && count < 100000);
-        if (count == 0 || normal.length() < 1e-12) continue;
-        // A curved face in facets once, as the face (Stable names).
-        const std::string logical = model::logicalFace(face.topoId.tag());
-        const auto found = rowOf.find(logical);
-        if (found != rowOf.end()) {
-            Curved& curved = curvedRows[found->second];
-            ++curved.facets;
-            curved.centre = curved.centre + centre / count;
-            continue;
-        }
-        rowOf.emplace(logical, list.ids.size());
-        curvedRows[list.ids.size()] = Curved{1, centre / count};
-        list.ids.push_back(topo::TopologyID::fromTag(logical));
-        list.items.emplace_back(
-            MainWindow::tr("facing %1 at %2")
-                .arg(formatPoint(normal.normalized() * outward), formatPoint(centre / count)),
-            QString::fromStdString(logical));
-    }
-    for (const auto& [row, curved] : curvedRows) {
-        if (curved.facets < 2) continue;
-        list.items[row].first = MainWindow::tr("a curved face of %1 facets, around %2")
-                                    .arg(curved.facets)
-                                    .arg(formatPoint(curved.centre / curved.facets));
-    }
-    return list;
-}
-
-/// Check, in a list of @p picks, the part's own edges (@p edges) or faces
-/// chosen by clicking in the viewport, so a command offers what was clicked.
-void checkClicked(QListWidget* list, const PickList& picks,
-                  const std::vector<ViewportWidget::ModelPick>& clicked, bool edges) {
-    for (size_t row = 0; row < picks.ids.size(); ++row) {
-        const std::string& tag = picks.ids[row].tag();
-        const bool wasClicked =
-            std::any_of(clicked.begin(), clicked.end(), [&](const ViewportWidget::ModelPick& p) {
-                return p.owner == 0 && p.edge == edges && p.tag == tag;
-            });
-        if (!wasClicked) continue;
-        if (QListWidgetItem* item = list->item(static_cast<int>(row))) {
-            item->setCheckState(Qt::Checked);
-        }
-    }
-}
-
 /// A tab's close button named for its tab, as a screen reader says it
 /// (Phase 166): "Close Part 1". Qt gives it none. Whichever side the style
 /// puts it on.
@@ -284,161 +168,6 @@ void nameCloseButton(QTabBar& bar, int index) {
             button->setAccessibleName(MainWindow::tr("Close %1").arg(bar.tabText(index)));
         }
     }
-}
-
-/// How a feature's parameter or vector is labelled in its edit form.
-QString parameterLabel(const std::string& name) {
-    static const std::map<std::string, const char*> labels = {
-        {"distance", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Distance")},
-        {"angle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Angle")},
-        {"segments", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Segments per turn")},
-        {"arcSegments", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Segments across the round")},
-        {"chordTolerance", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Chord tolerance")},
-        {"radius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Radius")},
-        {"thickness", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Thickness")},
-        {"operation", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Operation")},
-        {"extent", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Goes")},
-        {"upToFace", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Up to face")},
-        {"count", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Count")},
-        {"spacing", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Spacing")},
-        {"width", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Width")},
-        {"height", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Height")},
-        {"depth", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Depth")},
-        {"bottomRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Bottom radius")},
-        {"topRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Top radius")},
-        {"majorRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Ring radius")},
-        {"minorRadius", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Tube radius")},
-        {"direction", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Direction")},
-        {"axisPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Axis through")},
-        {"axisDirection", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Axis direction")},
-        {"pullDirection", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Pull direction")},
-        {"neutralPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Neutral plane through")},
-        {"planePoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror plane through")},
-        {"planeNormal", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror plane facing")},
-        {"planeFace", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Mirror in the face")},
-        {"type", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Type")},
-        {"diameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Diameter")},
-        {"boreDiameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Counterbore diameter")},
-        {"boreDepth", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Counterbore depth")},
-        {"sinkDiameter", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Countersink diameter")},
-        {"sinkAngle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Countersink angle")},
-        {"pointAngle", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Point angle (0: flat)")},
-        {"positionPoint", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "At")},
-        {"face", QT_TRANSLATE_NOOP("hz::ui::MainWindow", "Into the face")},
-    };
-    const auto it = labels.find(name);
-    return it != labels.end() ? MainWindow::tr(it->second) : QString::fromStdString(name);
-}
-
-/// A plane to sketch on, and how it is listed.
-struct PlaneChoice {
-    QString text;
-    draft::SketchPlane plane;
-    std::string tag;  ///< the face's persistent name
-};
-
-/// The part's flat faces as planes to sketch on: through the middle of the
-/// face, facing out of the part, x along the world's x (or y, for a face
-/// that faces along x). A face that is not flat (a loft's or a fillet's can
-/// be twisted) is left out.
-std::vector<PlaneChoice> planarFacesOf(const topo::Solid& solid) {
-    std::vector<PlaneChoice> out;
-    const double outward = model::outwardSign(solid);
-    for (const auto& face : solid.faces()) {
-        // As a build finds it again (Phase 157), so a sketch on it is placed
-        // where it was drawn.
-        const auto plane = model::planeOf(face, outward);
-        if (!plane) continue;
-        const math::Vec3& normal = plane->normal;
-        const math::Vec3 across =
-            std::abs(normal.dot(math::Vec3::UnitX)) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
-        out.push_back(
-            {MainWindow::tr("facing %1 at %2").arg(formatPoint(normal), formatPoint(plane->origin)),
-             draft::SketchPlane(plane->origin, normal, across), face.topoId.tag()});
-    }
-    return out;
-}
-
-/// The part's flat faces, each once (by its whole name: the pieces of a face
-/// a Boolean split are one), for a command that works on a face by its name
-/// (Phase 162: a hole drilled into one, a mirror in one).
-struct FlatFace {
-    QString text;
-    math::Vec3 middle;
-    math::Vec3 normal;  ///< out of the part
-    std::string name;   ///< its whole name
-};
-std::vector<FlatFace> flatFacesOf(const topo::Solid& solid) {
-    std::vector<FlatFace> out;
-    std::set<std::string> listed;
-    for (const auto& choice : planarFacesOf(solid)) {
-        std::string whole = model::wholeFaceName(choice.tag);
-        if (!listed.insert(whole).second) continue;
-        out.push_back(
-            {choice.text, choice.plane.origin(), choice.plane.normal(), std::move(whole)});
-    }
-    return out;
-}
-
-/// Which of @p faces was clicked first in @p picks; @p otherwise when none.
-int clickedFlatFace(const std::vector<FlatFace>& faces,
-                    const std::vector<ViewportWidget::ModelPick>& picks, int otherwise) {
-    for (const auto& pick : picks) {
-        if (pick.edge || pick.tag.empty()) continue;
-        const std::string whole = model::wholeFaceName(pick.tag);
-        for (size_t i = 0; i < faces.size(); ++i) {
-            if (faces[i].name == whole) return static_cast<int>(i);
-        }
-    }
-    return otherwise;
-}
-
-/// The way the first face or edge clicked on the part points: the face's
-/// outward normal, or the edge from its first end to its second.
-std::optional<math::Vec3> clickedDirection(const topo::Solid& solid,
-                                           const std::vector<ViewportWidget::ModelPick>& picks) {
-    for (const auto& pick : picks) {
-        if (pick.owner != 0) continue;
-        if (pick.edge) {
-            for (const auto& edge : solid.edges()) {
-                const topo::HalfEdge* he = edge.halfEdge;
-                if (edge.topoId.tag() != pick.tag || !he || !he->origin || !he->next ||
-                    !he->next->origin) {
-                    continue;
-                }
-                const math::Vec3 along = he->next->origin->point - he->origin->point;
-                if (along.length() > 1e-12) return along.normalized();
-            }
-            continue;
-        }
-        for (const auto& face : planarFacesOf(solid)) {
-            if (face.tag == pick.tag) return face.plane.normal();
-        }
-    }
-    return std::nullopt;
-}
-
-/// Directions offered for a pull or a pattern: the six axis directions.
-const std::vector<std::pair<QString, math::Vec3>>& axisDirections() {
-    static const std::vector<std::pair<QString, math::Vec3>> directions = {
-        {QStringLiteral("+X"), math::Vec3(1, 0, 0)}, {QStringLiteral("−X"), math::Vec3(-1, 0, 0)},
-        {QStringLiteral("+Y"), math::Vec3(0, 1, 0)}, {QStringLiteral("−Y"), math::Vec3(0, -1, 0)},
-        {QStringLiteral("+Z"), math::Vec3(0, 0, 1)}, {QStringLiteral("−Z"), math::Vec3(0, 0, -1)},
-    };
-    return directions;
-}
-
-QComboBox* directionChoice(FeatureForm& form, const QString& name, const QString& label,
-                           const QString& initial) {
-    QStringList names;
-    for (const auto& [text, direction] : axisDirections()) names << text;
-    auto* combo = form.choice(name, label, names);
-    combo->setCurrentText(initial);
-    return combo;
-}
-
-math::Vec3 chosenDirection(const QComboBox* combo) {
-    return axisDirections().at(static_cast<size_t>(combo->currentIndex())).second;
 }
 
 }  // namespace
@@ -538,6 +267,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_drawings = std::make_unique<DrawingWorkbench>(static_cast<WorkbenchHost&>(*this));
     m_exchange = std::make_unique<ExchangeCommands>(static_cast<WorkbenchHost&>(*this),
                                                     *m_assemblies, *m_drawings);
+    // The commands that add a feature to the part.
+    m_part = std::make_unique<PartCommands>(static_cast<WorkbenchHost&>(*this));
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
@@ -551,8 +282,8 @@ MainWindow::MainWindow(QWidget* parent)
             &MainWindow::onConfigurationChosen);
     connect(m_featureTreePanel, &FeatureTreePanel::rollbackChanged, this,
             &MainWindow::onRollbackChanged);
-    connect(m_featureTreePanel, &FeatureTreePanel::createBoxRequested, this,
-            &MainWindow::onPrimitiveBox);
+    connect(m_featureTreePanel, &FeatureTreePanel::createBoxRequested, m_part.get(),
+            &PartCommands::onPrimitiveBox);
     connect(m_featureTreePanel, &FeatureTreePanel::openFileRequested, this,
             &MainWindow::onOpenFile);
     connect(m_featureTreePanel, &FeatureTreePanel::sketchEditRequested, this, [this](uint64_t id) {
@@ -854,12 +585,14 @@ void MainWindow::createMenus() {
                                         [this] { onToggleConstruction(); });
     m_constructionAction->setEnabled(false);
     modelMenu->addSeparator();
-    sketchAction(modelMenu, tr("&Loft..."), "action_loft", [this] { onLoft(); });
-    sketchAction(modelMenu, tr("S&weep..."), "action_sweep", [this] { onSweep(); });
+    sketchAction(modelMenu, tr("&Loft..."), "action_loft", [this] { m_part->onLoft(); });
+    sketchAction(modelMenu, tr("S&weep..."), "action_sweep", [this] { m_part->onSweep(); });
     QMenu* datumMenu = modelMenu->addMenu(tr("&Datum"));
-    sketchAction(datumMenu, tr("&Plane..."), "action_datum_plane", [this] { onDatumPlane(); });
-    sketchAction(datumMenu, tr("&Axis..."), "action_datum_axis", [this] { onDatumAxis(); });
-    sketchAction(datumMenu, tr("P&oint..."), "action_datum_point", [this] { onDatumPoint(); });
+    sketchAction(datumMenu, tr("&Plane..."), "action_datum_plane",
+                 [this] { m_part->onDatumPlane(); });
+    sketchAction(datumMenu, tr("&Axis..."), "action_datum_axis", [this] { m_part->onDatumAxis(); });
+    sketchAction(datumMenu, tr("P&oint..."), "action_datum_point",
+                 [this] { m_part->onDatumPoint(); });
 
     // ---- Assembly (Phase 143: its commands were three in the File menu) ----
     QMenu* assemblyMenu = menuBar()->addMenu(tr("&Assembly"));
@@ -1214,32 +947,36 @@ void MainWindow::createRibbonBar() {
 
     // ---- 3D tab ----
     g = group(tr("3D"), tr("Primitives"));
-    addAction(g, "box", tr("Box"), this, &MainWindow::onPrimitiveBox);
-    addAction(g, "cylinder", tr("Cylinder"), this, &MainWindow::onPrimitiveCylinder);
-    addAction(g, "sphere", tr("Sphere"), this, &MainWindow::onPrimitiveSphere);
-    addAction(g, "cone", tr("Cone"), this, &MainWindow::onPrimitiveCone);
-    addAction(g, "torus", tr("Torus"), this, &MainWindow::onPrimitiveTorus);
+    addAction(g, "box", tr("Box"), m_part.get(), &PartCommands::onPrimitiveBox);
+    addAction(g, "cylinder", tr("Cylinder"), m_part.get(), &PartCommands::onPrimitiveCylinder);
+    addAction(g, "sphere", tr("Sphere"), m_part.get(), &PartCommands::onPrimitiveSphere);
+    addAction(g, "cone", tr("Cone"), m_part.get(), &PartCommands::onPrimitiveCone);
+    addAction(g, "torus", tr("Torus"), m_part.get(), &PartCommands::onPrimitiveTorus);
 
     g = group(tr("3D"), tr("Features"));
-    addAction(g, "extrude", tr("Extrude"), this, &MainWindow::onExtrudeSketch);
-    addAction(g, "revolve", tr("Revolve"), this, &MainWindow::onRevolveSketch);
-    addAction(g, "hole", tr("Hole"), this, &MainWindow::onHole);
+    addAction(g, "extrude", tr("Extrude"), m_part.get(), &PartCommands::onExtrudeSketch);
+    addAction(g, "revolve", tr("Revolve"), m_part.get(), &PartCommands::onRevolveSketch);
+    addAction(g, "hole", tr("Hole"), m_part.get(), &PartCommands::onHole);
 
     g = group(tr("3D"), tr("Combine Bodies"));
-    addAction(g, "boolean-union", tr("Union"), this, &MainWindow::onBooleanUnion);
-    addAction(g, "boolean-subtract", tr("Subtract"), this, &MainWindow::onBooleanSubtract);
-    addAction(g, "boolean-intersect", tr("Intersect"), this, &MainWindow::onBooleanIntersect);
+    addAction(g, "boolean-union", tr("Union"), m_part.get(), &PartCommands::onBooleanUnion);
+    addAction(g, "boolean-subtract", tr("Subtract"), m_part.get(),
+              &PartCommands::onBooleanSubtract);
+    addAction(g, "boolean-intersect", tr("Intersect"), m_part.get(),
+              &PartCommands::onBooleanIntersect);
 
     g = group(tr("3D"), tr("Modify"));
-    addAction(g, "fillet-3d", tr("Fillet"), this, &MainWindow::onFillet);
-    addAction(g, "chamfer-3d", tr("Chamfer"), this, &MainWindow::onChamfer);
-    addAction(g, "shell", tr("Shell"), this, &MainWindow::onShell);
-    addAction(g, "draft", tr("Draft"), this, &MainWindow::onDraft);
+    addAction(g, "fillet-3d", tr("Fillet"), m_part.get(), &PartCommands::onFillet);
+    addAction(g, "chamfer-3d", tr("Chamfer"), m_part.get(), &PartCommands::onChamfer);
+    addAction(g, "shell", tr("Shell"), m_part.get(), &PartCommands::onShell);
+    addAction(g, "draft", tr("Draft"), m_part.get(), &PartCommands::onDraft);
 
     g = group(tr("3D"), tr("Pattern"));
-    addAction(g, "pattern-linear", tr("Linear", "a pattern"), this, &MainWindow::onLinearPattern);
-    addAction(g, "pattern-circular", tr("Circular"), this, &MainWindow::onCircularPattern);
-    addAction(g, "mirror-3d", tr("Mirror"), this, &MainWindow::onMirror);
+    addAction(g, "pattern-linear", tr("Linear", "a pattern"), m_part.get(),
+              &PartCommands::onLinearPattern);
+    addAction(g, "pattern-circular", tr("Circular"), m_part.get(),
+              &PartCommands::onCircularPattern);
+    addAction(g, "mirror-3d", tr("Mirror"), m_part.get(), &PartCommands::onMirror);
 
     // Wrap the ribbon in a QToolBar so QMainWindow places it below the menu bar.
     auto* ribbonToolBar = new QToolBar(tr("Ribbon"), this);
@@ -3691,137 +3428,8 @@ void MainWindow::onSelectionChanged() {
 }
 
 // ---------------------------------------------------------------------------
-// Slots -- 3D Primitives
+// Slots -- Sketches
 // ---------------------------------------------------------------------------
-
-bool MainWindow::requirePart(const QString& verb) {
-    if (m_assembly) {
-        statusBar()->showMessage(tr("%1 works on a part; open or create one").arg(verb));
-        return false;
-    }
-    return true;
-}
-
-doc::BodyOperation MainWindow::proposedOperation() const {
-    // Joining is what a second body usually means; the first has nothing to
-    // join, so it starts one.
-    return m_document->solid() ? doc::BodyOperation::Join : doc::BodyOperation::NewBody;
-}
-
-void MainWindow::addPrimitive(
-    const QString& verb, const std::vector<PrimitiveField>& fields,
-    const std::function<std::unique_ptr<doc::PrimitiveFeature>(const std::vector<double>&)>& make) {
-    if (!requirePart(verb)) return;
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    std::vector<QDoubleSpinBox*> sizes;
-    sizes.reserve(fields.size());
-    for (size_t i = 0; i < fields.size(); ++i) {
-        sizes.push_back(form.length(QStringLiteral("size%1").arg(i), fields[i].label,
-                                    fields[i].value, fields[i].min, 1e6));
-    }
-    // Where it stands: from a base point, its own z axis along one of the
-    // axis directions (Phase 134; primitives always stood at the origin).
-    auto* atX = form.length(QStringLiteral("atX"), tr("At x:"), 0.0, -1e6, 1e6);
-    auto* atY = form.length(QStringLiteral("atY"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* atZ = form.length(QStringLiteral("atZ"), tr("z:"), 0.0, -1e6, 1e6);
-    auto* axis =
-        directionChoice(form, QStringLiteral("axis"), tr("Standing along:"), QStringLiteral("+Z"));
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return;
-
-    std::vector<double> values;
-    values.reserve(sizes.size());
-    for (const auto* spin : sizes) values.push_back(spin->value());
-    auto feature = make(values);
-    feature->setVector("basePoint", math::Vec3(atX->value(), atY->value(), atZ->value()));
-    feature->setVector("axisDirection", chosenDirection(axis));
-    feature->setOperation(FeatureForm::operation(result));
-    addModelFeature(std::move(feature), verb);
-}
-
-void MainWindow::onPrimitiveBox() {
-    // From the origin to (width, height, depth).
-    addPrimitive(tr("Box"),
-                 {{tr("Width (X):"), 10.0, 0.001},
-                  {tr("Height (Y):"), 10.0, 0.001},
-                  {tr("Depth (Z):"), 10.0, 0.001}},
-                 [](const std::vector<double>& v) {
-                     return doc::PrimitiveFeature::makeBox(v[0], v[1], v[2]);
-                 });
-}
-
-void MainWindow::onPrimitiveCylinder() {
-    addPrimitive(tr("Cylinder"), {{tr("Radius:"), 5.0, 0.001}, {tr("Height:"), 10.0, 0.001}},
-                 [](const std::vector<double>& v) {
-                     return doc::PrimitiveFeature::makeCylinder(v[0], v[1]);
-                 });
-}
-
-void MainWindow::onPrimitiveSphere() {
-    addPrimitive(tr("Sphere"), {{tr("Radius:"), 5.0, 0.001}}, [](const std::vector<double>& v) {
-        return doc::PrimitiveFeature::makeSphere(v[0]);
-    });
-}
-
-void MainWindow::onPrimitiveCone() {
-    // A top radius of 0 is a pointed cone.
-    addPrimitive(tr("Cone"),
-                 {{tr("Bottom radius:"), 5.0, 0.0},
-                  {tr("Top radius:"), 0.0, 0.0},
-                  {tr("Height:"), 10.0, 0.001}},
-                 [](const std::vector<double>& v) {
-                     return doc::PrimitiveFeature::makeCone(v[0], v[1], v[2]);
-                 });
-}
-
-void MainWindow::onPrimitiveTorus() {
-    addPrimitive(
-        tr("Torus"), {{tr("Ring radius:"), 6.0, 0.001}, {tr("Tube radius:"), 2.0, 0.001}},
-        [](const std::vector<double>& v) { return doc::PrimitiveFeature::makeTorus(v[0], v[1]); });
-}
-
-// ---------------------------------------------------------------------------
-// Slots -- Extrude and Revolve
-// ---------------------------------------------------------------------------
-
-std::shared_ptr<doc::Sketch> MainWindow::resolveProfileSketch(bool& createdWrapper) {
-    createdWrapper = false;
-
-    // The sketch being edited, finished; else the one chosen in the list, or
-    // last made or finished.
-    if (auto edited = m_document->editedSketch()) {
-        onFinishSketch();
-        return edited;
-    }
-    if (auto chosen = m_document->findSketch(m_profileSketchId);
-        chosen && !chosen->entities().empty()) {
-        return chosen;
-    }
-
-    // Otherwise the drawing itself, as it is shown: what is on a hidden
-    // layer is not part of it. (Notes on it are passed over by the profile.)
-    std::vector<std::shared_ptr<draft::DraftEntity>> shown;
-    for (const auto& entity : m_document->draftDocument().entities()) {
-        const auto* layer = m_document->layerManager().getLayer(entity->layer());
-        if (layer == nullptr || layer->visible) shown.push_back(entity);
-    }
-    if (shown.empty()) return nullptr;
-
-    // Reuse an existing wrapper sketch when the top-level profile has not
-    // changed — repeated extrudes must not accumulate duplicate sketches.
-    for (const auto& sk : m_document->sketches()) {
-        if (sk->entities() == shown) return sk;
-    }
-
-    // Wrap the top-level profile in a sketch so the feature is replayable
-    // (parametric history requires a sketch reference). The caller must add
-    // it to the document only once the operation is validated.
-    auto sketch = std::make_shared<doc::Sketch>();
-    sketch->setName(tr("Profile %1").arg(m_document->sketches().size() + 1).toStdString());
-    for (const auto& entity : shown) sketch->addEntity(entity);
-    createdWrapper = true;
-    return sketch;
-}
 
 void MainWindow::newSketchOn(const draft::SketchPlane& plane, const QString& where,
                              const std::string& face) {
@@ -4093,7 +3701,7 @@ void MainWindow::completeMenusFromRibbon() {
 
 void MainWindow::onMassProperties() {
     const QString verb = tr("Mass Properties");
-    const topo::Solid* solid = requireBody(verb);
+    const topo::Solid* solid = m_part->requireBody(verb);
     if (!solid) return;
     const std::vector<std::pair<QString, std::optional<model::Material>>> materials = {
         {tr("None (volume only)"), std::nullopt},
@@ -4303,146 +3911,6 @@ void MainWindow::onSectionPlane() {
     m_viewport->setSectionPlane(math::Vec4(n, below ? at->value() : -at->value()));
 }
 
-void MainWindow::onLoft() {
-    if (m_assembly) return;
-    if (m_document->editedSketch()) onFinishSketch();
-    std::vector<std::shared_ptr<doc::Sketch>> drawn;
-    std::vector<std::pair<QString, QString>> items;
-    for (const auto& sketch : m_document->sketches()) {
-        if (sketch->entities().empty()) continue;
-        drawn.push_back(sketch);
-        items.emplace_back(
-            QString::fromStdString(sketch->name()),
-            tr("on the plane through %1").arg(formatPoint(sketch->plane().origin())));
-    }
-    if (drawn.size() < 2) {
-        statusBar()->showMessage(tr("A loft joins two or more sketches: make them first"));
-        return;
-    }
-    FeatureForm form(this, tr("Loft"), m_document->lengthUnit());
-    auto* list = form.checklist(QStringLiteral("sections"), tr("Sections, in order:"), items);
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return;
-    std::vector<std::shared_ptr<doc::Sketch>> sections;
-    for (const int row : FeatureForm::checkedRows(list)) {
-        sections.push_back(drawn[static_cast<size_t>(row)]);
-    }
-    if (sections.size() < 2) {
-        statusBar()->showMessage(tr("Loft not added: choose two sections or more"));
-        return;
-    }
-    auto feature = std::make_unique<doc::LoftFeature>(std::move(sections));
-    feature->setOperation(FeatureForm::operation(result));
-    addModelFeature(std::move(feature), tr("Loft"));
-}
-
-void MainWindow::onSweep() {
-    if (m_assembly) return;
-    if (m_document->editedSketch()) onFinishSketch();
-    std::vector<std::shared_ptr<doc::Sketch>> drawn;
-    QStringList names;
-    for (const auto& sketch : m_document->sketches()) {
-        if (sketch->entities().empty()) continue;
-        drawn.push_back(sketch);
-        names << QString::fromStdString(sketch->name());
-    }
-    if (drawn.size() < 2) {
-        statusBar()->showMessage(
-            tr("A sweep takes a profile sketch along a path sketch: make them first"));
-        return;
-    }
-    FeatureForm form(this, tr("Sweep"), m_document->lengthUnit());
-    auto* profile = form.choice(QStringLiteral("profile"), tr("Profile:"), names);
-    auto* path = form.choice(QStringLiteral("path"), tr("Path:"), names);
-    path->setCurrentIndex(1);
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return;
-    if (profile->currentIndex() == path->currentIndex()) {
-        statusBar()->showMessage(tr("Sweep not added: the profile and the path are one sketch"));
-        return;
-    }
-    auto feature =
-        std::make_unique<doc::SweepFeature>(drawn[static_cast<size_t>(profile->currentIndex())],
-                                            drawn[static_cast<size_t>(path->currentIndex())]);
-    feature->setOperation(FeatureForm::operation(result));
-    addModelFeature(std::move(feature), tr("Sweep"));
-}
-
-void MainWindow::onDatumPlane() {
-    if (m_assembly) return;
-    // Principal planes, and a flat face clicked on the part.
-    std::vector<std::pair<QString, model::DatumPlane>> bases = {
-        {tr("The XY plane"), {math::Vec3::Zero, math::Vec3::UnitZ, math::Vec3::UnitX}},
-        {tr("The XZ plane"), {math::Vec3::Zero, math::Vec3(0, -1, 0), math::Vec3::UnitX}},
-        {tr("The YZ plane"), {math::Vec3::Zero, math::Vec3::UnitX, math::Vec3::UnitY}},
-    };
-    if (m_document->solid()) {
-        for (const auto& pick : m_viewport->modelSelection()) {
-            if (pick.edge || pick.owner != 0) continue;
-            for (const auto& face : planarFacesOf(*m_document->solid())) {
-                if (face.tag != pick.tag) continue;
-                bases.insert(bases.begin(),
-                             {tr("The face clicked"),
-                              {face.plane.origin(), face.plane.normal(), face.plane.xAxis()}});
-                break;
-            }
-            break;
-        }
-    }
-    QStringList names;
-    for (const auto& [name, plane] : bases) names << name;
-    FeatureForm form(this, tr("Datum Plane"), m_document->lengthUnit());
-    auto* base = form.choice(QStringLiteral("base"), tr("From:"), names);
-    auto* offset =
-        form.length(QStringLiteral("offset"), tr("Offset along its normal:"), 10.0, -1e6, 1e6);
-    auto* angle =
-        form.angle(QStringLiteral("angle"), tr("Turned about its x axis:"), 0.0, -360.0, 360.0, 3);
-    if (!form.exec()) return;
-    model::DatumPlane plane = bases[static_cast<size_t>(std::max(base->currentIndex(), 0))].second;
-    if (angle->value() != 0.0) {
-        plane = model::refgeo::planeAtAngle(plane, plane.origin, plane.xAxis,
-                                            angle->value() * math::kDegToRad);
-    }
-    plane = model::refgeo::planeOffset(plane, offset->value());
-    addModelFeature(doc::DatumFeature::makePlane(plane), tr("Datum Plane"));
-}
-
-void MainWindow::onDatumAxis() {
-    if (m_assembly) return;
-    std::vector<std::pair<QString, math::Vec3>> directions = {
-        {tr("X"), math::Vec3::UnitX}, {tr("Y"), math::Vec3::UnitY}, {tr("Z"), math::Vec3::UnitZ}};
-    if (m_document->solid()) {
-        if (const auto clicked =
-                clickedDirection(*m_document->solid(), m_viewport->modelSelection())) {
-            directions.insert(directions.begin(), {tr("As the face or edge clicked"), *clicked});
-        }
-    }
-    QStringList names;
-    for (const auto& [name, direction] : directions) names << name;
-    FeatureForm form(this, tr("Datum Axis"), m_document->lengthUnit());
-    auto* along = form.choice(QStringLiteral("direction"), tr("Along:"), names);
-    auto* x = form.length(QStringLiteral("x"), tr("Through x:"), 0.0, -1e6, 1e6);
-    auto* y = form.length(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* z = form.length(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
-    if (!form.exec()) return;
-    const auto axis = model::refgeo::axisFromDirection(
-        math::Vec3(x->value(), y->value(), z->value()),
-        directions[static_cast<size_t>(std::max(along->currentIndex(), 0))].second);
-    addModelFeature(doc::DatumFeature::makeAxis(axis), tr("Datum Axis"));
-}
-
-void MainWindow::onDatumPoint() {
-    if (m_assembly) return;
-    FeatureForm form(this, tr("Datum Point"), m_document->lengthUnit());
-    auto* x = form.length(QStringLiteral("x"), tr("x:"), 0.0, -1e6, 1e6);
-    auto* y = form.length(QStringLiteral("y"), tr("y:"), 0.0, -1e6, 1e6);
-    auto* z = form.length(QStringLiteral("z"), tr("z:"), 0.0, -1e6, 1e6);
-    if (!form.exec()) return;
-    addModelFeature(doc::DatumFeature::makePoint(
-                        model::refgeo::pointAt(math::Vec3(x->value(), y->value(), z->value()))),
-                    tr("Datum Point"));
-}
-
 void MainWindow::editSketch(const std::shared_ptr<doc::Sketch>& sketch) {
     if (sketch) m_profileSketchId = sketch->id();
     m_document->editSketch(sketch);
@@ -4490,148 +3958,8 @@ void MainWindow::refreshSketchList() {
     m_featureTreePanel->refreshSketches(rows, m_profileSketchId);
 }
 
-void MainWindow::onExtrudeSketch() {
-    if (!m_viewport || !m_viewport->document()) return;
-
-    bool createdWrapper = false;
-    auto sketch = resolveProfileSketch(createdWrapper);
-    if (!sketch || sketch->entities().empty()) {
-        statusBar()->showMessage(tr("Draw a closed profile first"));
-        return;
-    }
-
-    // The part's flat faces parallel to the sketch, to go up to (Phase 157):
-    // the one clicked, if any, first.
-    std::vector<PlaneChoice> faces;
-    if (const topo::Solid* part = m_document->solid()) {
-        for (auto& face : planarFacesOf(*part)) {
-            if (face.plane.normal().cross(sketch->plane().normal()).length() > 1e-9) continue;
-            faces.push_back(std::move(face));
-        }
-    }
-    const auto clicked = std::find_if(faces.begin(), faces.end(), [this](const PlaneChoice& f) {
-        const auto& picks = m_viewport->modelSelection();
-        return std::any_of(picks.begin(), picks.end(), [&f](const ViewportWidget::ModelPick& p) {
-            return p.owner == 0 && !p.edge && p.tag == f.tag;
-        });
-    });
-    if (clicked != faces.end()) std::rotate(faces.begin(), clicked, clicked + 1);
-
-    FeatureForm form(this, tr("Extrude"), m_document->lengthUnit());
-    auto* size = form.length(QStringLiteral("size"), tr("Distance:"), 10.0, 0.01, 1e6, 2);
-    auto* goes = form.choice(QStringLiteral("extent"), tr("Goes:"),
-                             {tr("To the distance"), tr("Both ways, half each"), tr("Through all"),
-                              tr("Through all, both ways"), tr("Up to a face")});
-    QStringList faceNames;
-    for (const auto& face : faces) faceNames << face.text;
-    if (faceNames.isEmpty())
-        faceNames << tr("(no flat face of the part is parallel to the sketch)");
-    auto* upTo = form.choice(QStringLiteral("upToFace"), tr("Up to face:"), faceNames);
-    auto* way = form.choice(QStringLiteral("way"), tr("Direction:"),
-                            {tr("Out of the sketch"), tr("Reversed")});
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return;
-    const double distance = size->value();
-    const auto extent = static_cast<doc::ExtrudeFeature::Extent>(goes->currentIndex());
-    const doc::BodyOperation operation = FeatureForm::operation(result);
-    std::string upToFace;
-    if (extent == doc::ExtrudeFeature::Extent::UpToFace) {
-        if (faces.empty()) {
-            statusBar()->showMessage(
-                tr("Extrude not added: no flat face of the part is parallel to the sketch"));
-            return;
-        }
-        const auto& chosen = faces[static_cast<size_t>(std::max(upTo->currentIndex(), 0))];
-        upToFace = model::wholeFaceName(chosen.tag);
-    }
-
-    // As the sketch was drawn: one placed on a face takes it along (Phase 157).
-    const draft::SketchPlane& drawn = sketch->drawnPlane();
-    const math::Vec3 direction = drawn.normal() * (way->currentIndex() == 1 ? -1.0 : 1.0);
-
-    // Validate the profile BEFORE mutating the document: a failed extrude
-    // must not leave a wrapper sketch or a dead feature behind.
-    std::string why;
-    auto probe = model::Extrude::execute(sketch->entities(), drawn, direction, distance, "probe",
-                                         model::Extrude::kDefaultSegments, 0.0, &why);
-    if (!probe) {
-        statusBar()->showMessage(tr("Extrude failed: %1").arg(QString::fromStdString(why)));
-        return;
-    }
-
-    auto feature = std::make_unique<doc::ExtrudeFeature>(sketch, direction, distance);
-    feature->setExtent(extent);
-    feature->setUpToFace(upToFace);
-    feature->setOperation(operation);
-    if (!addModelFeature(std::move(feature), tr("Extrude"), createdWrapper ? sketch : nullptr)) {
-        return;
-    }
-
-    refreshSketchList();
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-}
-
-void MainWindow::onRevolveSketch() {
-    if (!m_viewport || !m_viewport->document()) return;
-
-    bool createdWrapper = false;
-    auto sketch = resolveProfileSketch(createdWrapper);
-    if (!sketch || sketch->entities().empty()) {
-        statusBar()->showMessage(tr("Draw a closed profile first"));
-        return;
-    }
-
-    FeatureForm form(this, tr("Revolve"), m_document->lengthUnit());
-    auto* size = form.angle(QStringLiteral("size"), tr("Angle:"), 360.0, 1.0, 360.0, 1);
-    // About one of the sketch's own axes, through its origin: on the XY
-    // plane, the world's Y or X.
-    auto* axis =
-        form.choice(QStringLiteral("axis"), tr("Axis:"),
-                    {tr("The sketch's vertical axis (Y)"), tr("The sketch's horizontal axis (X)")});
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return;
-    const double angle = size->value() * std::numbers::pi / 180.0;
-    const doc::BodyOperation operation = FeatureForm::operation(result);
-
-    // As the sketch was drawn: one placed on a face takes it along (Phase 157).
-    const draft::SketchPlane& plane = sketch->drawnPlane();
-    const math::Vec3 axisPoint = plane.origin();
-    const math::Vec3 axisDir = axis->currentIndex() == 1 ? plane.xAxis() : plane.yAxis();
-
-    std::string why;
-    auto probe = model::Revolve::execute(sketch->entities(), plane, axisPoint, axisDir, angle,
-                                         "probe", model::Revolve::kDefaultSegments, 0.0, &why);
-    if (!probe) {
-        statusBar()->showMessage(tr("Revolve failed: %1").arg(QString::fromStdString(why)));
-        return;
-    }
-
-    auto feature = std::make_unique<doc::RevolveFeature>(sketch, axisPoint, axisDir, angle);
-    feature->setOperation(operation);
-    if (!addModelFeature(std::move(feature), tr("Revolve"), createdWrapper ? sketch : nullptr)) {
-        return;
-    }
-
-    refreshSketchList();
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-}
-
-bool MainWindow::askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
-                                   double min, double max, int decimals,
-                                   doc::BodyOperation& operation) {
-    FeatureForm form(this, title, m_document->lengthUnit());
-    auto* size = form.number(QStringLiteral("size"), valueLabel, value, min, max, decimals);
-    auto* result = form.operationChoice(proposedOperation());
-    if (!form.exec()) return false;
-    value = size->value();
-    operation = FeatureForm::operation(result);
-    return true;
-}
-
-bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
-                                 const std::shared_ptr<doc::Sketch>& wrapperSketch) {
+bool MainWindow::addFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                            const std::shared_ptr<doc::Sketch>& wrapperSketch) {
     // The feature goes in as its step and the model is built once, on a
     // worker when builds are slow. It was built twice: first to try the
     // feature, always here on the GUI thread, then again to show it. One
@@ -4658,7 +3986,13 @@ bool MainWindow::addModelFeature(std::unique_ptr<doc::Feature> feature, const QS
             m_statusPrompt->setText(tr("%1 added.").arg(verb));
         }
     }
+    // A sketch it takes is listed as used by it.
+    refreshSketchList();
     return true;
+}
+
+std::shared_ptr<doc::Sketch> MainWindow::chosenSketch() {
+    return m_document->findSketch(m_profileSketchId);
 }
 
 bool MainWindow::settlePendingAdd(doc::Document& document) {
@@ -4686,352 +4020,6 @@ bool MainWindow::settlePendingAdd(doc::Document& document) {
     }
     statusBar()->showMessage(tr("%1 not added: %2").arg(pending.verb, reason));
     return true;
-}
-
-// ---------------------------------------------------------------------------
-// Slots -- Boolean Operations
-// ---------------------------------------------------------------------------
-
-void MainWindow::onBooleanUnion() {
-    combineBodies(model::BooleanType::Union, tr("Union"));
-}
-
-void MainWindow::onBooleanSubtract() {
-    combineBodies(model::BooleanType::Subtract, tr("Subtract"));
-}
-
-void MainWindow::onBooleanIntersect() {
-    combineBodies(model::BooleanType::Intersect, tr("Intersect"));
-}
-
-void MainWindow::combineBodies(model::BooleanType type, const QString& verb) {
-    if (!requirePart(verb)) return;
-    // Bodies, not shells: a cavity is a shell of the body around it.
-    const topo::Solid* solid = m_document->solid();
-    if (!solid || model::Pattern::separate(*solid).size() < 2) {
-        statusBar()->showMessage(
-            tr("%1 combines the part's bodies, and it has fewer than two (make one with "
-               "Result: New body)")
-                .arg(verb));
-        return;
-    }
-    addModelFeature(std::make_unique<doc::BooleanFeature>(type), verb);
-}
-
-// ---------------------------------------------------------------------------
-// Slots -- Fillet, Chamfer, Shell, Draft (3D solid operations)
-// ---------------------------------------------------------------------------
-
-const topo::Solid* MainWindow::requireBody(const QString& verb) {
-    if (!requirePart(verb)) return nullptr;
-    const topo::Solid* solid = m_document->solid();
-    if (!solid) {
-        statusBar()->showMessage(tr("%1 works on a body: make one first").arg(verb));
-    }
-    return solid;
-}
-
-void MainWindow::onFillet() {
-    addEdgeFeature(true);
-}
-
-void MainWindow::onChamfer() {
-    addEdgeFeature(false);
-}
-
-void MainWindow::addEdgeFeature(bool fillet) {
-    const QString verb = fillet ? tr("Fillet") : tr("Chamfer");
-    const topo::Solid* solid = requireBody(verb);
-    if (!solid) return;
-    const PickList edges = edgesOf(*solid);
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* size = form.length(QStringLiteral("size"), fillet ? tr("Radius:") : tr("Distance:"), 1.0,
-                             0.001, 1e6);
-    auto* list = form.checklist(QStringLiteral("edges"), tr("Edges:"), edges.items);
-    checkClicked(list, edges, m_viewport->modelSelection(), true);
-    if (!form.exec()) return;
-
-    std::vector<topo::TopologyID> chosen;
-    for (const int row : FeatureForm::checkedRows(list)) {
-        chosen.push_back(edges.ids[static_cast<size_t>(row)]);
-    }
-    if (chosen.empty()) {
-        statusBar()->showMessage(tr("%1 not added: no edges were chosen").arg(verb));
-        return;
-    }
-    std::unique_ptr<doc::Feature> feature;
-    if (fillet) {
-        feature = std::make_unique<doc::FilletFeature>(std::move(chosen), size->value());
-    } else {
-        feature = std::make_unique<doc::ChamferFeature>(std::move(chosen), size->value());
-    }
-    addModelFeature(std::move(feature), verb);
-}
-
-void MainWindow::onShell() {
-    const QString verb = tr("Shell");
-    const topo::Solid* solid = requireBody(verb);
-    if (!solid) return;
-    const PickList faces = facesOf(*solid);
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* thickness =
-        form.length(QStringLiteral("thickness"), tr("Wall thickness:"), 1.0, 0.001, 1e6);
-    auto* list = form.checklist(QStringLiteral("faces"), tr("Faces to open:"), faces.items);
-    checkClicked(list, faces, m_viewport->modelSelection(), false);
-    if (!form.exec()) return;
-
-    std::vector<topo::TopologyID> open;
-    for (const int row : FeatureForm::checkedRows(list)) {
-        open.push_back(faces.ids[static_cast<size_t>(row)]);
-    }
-    addModelFeature(std::make_unique<doc::ShellFeature>(thickness->value(), std::move(open)), verb);
-}
-
-void MainWindow::onDraft() {
-    const QString verb = tr("Draft");
-    if (!requireBody(verb)) return;
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* pull =
-        directionChoice(form, QStringLiteral("pull"), tr("Pull direction:"), QStringLiteral("+Z"));
-    auto* neutral = form.length(QStringLiteral("neutral"), tr("Neutral plane at:"), 0.0, -1e6, 1e6);
-    auto* angle = form.angle(QStringLiteral("angle"), tr("Angle:"), 3.0, 0.01, 89.0, 2);
-    if (!form.exec()) return;
-
-    // The neutral plane is square to the pull, at that distance along it.
-    const math::Vec3 direction = chosenDirection(pull);
-    addModelFeature(std::make_unique<doc::DraftFeature>(direction, direction * neutral->value(),
-                                                        angle->value() * std::numbers::pi / 180.0),
-                    verb);
-}
-
-// ---------------------------------------------------------------------------
-// Slots -- Patterns
-// ---------------------------------------------------------------------------
-
-namespace {
-
-/// The features a pattern can repeat instead of the whole part: those that
-/// add or cut material, active in the build.
-std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree) {
-    std::vector<const doc::Feature*> out;
-    const int last = tree.rollbackIndex() >= 0 ? tree.rollbackIndex()
-                                               : static_cast<int>(tree.featureCount()) - 1;
-    for (int i = 0; i <= last; ++i) {
-        const doc::Feature* feature = tree.feature(static_cast<size_t>(i));
-        if (feature && feature->createsNewBody() && !feature->isSuppressed())
-            out.push_back(feature);
-    }
-    return out;
-}
-
-/// A checklist of @p features for a pattern to repeat (or a mirror to
-/// mirror, said by @p label); the ids of those checked are read with
-/// checkedTargets().
-QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features,
-                        const QString& label = MainWindow::tr("Repeat only (none: the whole "
-                                                              "part):")) {
-    std::vector<std::pair<QString, QString>> items;
-    items.reserve(features.size());
-    for (const doc::Feature* feature : features) {
-        items.emplace_back(QString::fromStdString(feature->name()),
-                           QString::fromStdString(feature->featureID()));
-    }
-    return form.checklist(QStringLiteral("features"), label, items);
-}
-
-std::vector<std::string> checkedTargets(const QListWidget* list,
-                                        const std::vector<const doc::Feature*>& features) {
-    std::vector<std::string> ids;
-    for (const int row : FeatureForm::checkedRows(list)) {
-        ids.push_back(features[static_cast<size_t>(row)]->featureID());
-    }
-    return ids;
-}
-
-}  // namespace
-
-void MainWindow::onLinearPattern() {
-    const QString verb = tr("Linear Pattern");
-    if (!requireBody(verb)) return;
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* direction =
-        directionChoice(form, QStringLiteral("direction"), tr("Direction:"), QStringLiteral("+X"));
-    auto* spacing = form.length(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
-    auto* count =
-        form.count(QStringLiteral("count"), tr("Instances:"), 3, 2, doc::kMaxPatternCount);
-    const auto repeatable = repeatableFeatures(m_document->featureTree());
-    auto* targets = targetList(form, repeatable);
-    if (!form.exec()) return;
-
-    auto pattern = doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
-                                                   count->value());
-    pattern->setTargets(checkedTargets(targets, repeatable));
-    addModelFeature(std::move(pattern), verb);
-}
-
-void MainWindow::onCircularPattern() {
-    const QString verb = tr("Circular Pattern");
-    if (!requireBody(verb)) return;
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* axis =
-        directionChoice(form, QStringLiteral("axis"), tr("About the axis:"), QStringLiteral("+Z"));
-    auto* count =
-        form.count(QStringLiteral("count"), tr("Instances:"), 4, 2, doc::kMaxPatternCount);
-    auto* total = form.angle(QStringLiteral("angle"), tr("Over:"), 360.0, 1.0, 360.0, 2);
-    const auto repeatable = repeatableFeatures(m_document->featureTree());
-    auto* targets = targetList(form, repeatable);
-    if (!form.exec()) return;
-
-    // A full turn spaces the instances evenly around it; a partial one puts
-    // the first and last at its ends.
-    const int n = count->value();
-    const double degrees = total->value();
-    const double step = degrees >= 360.0 ? 360.0 / n : degrees / (n - 1);
-    auto pattern = doc::PatternFeature::makeCircular(math::Vec3::Zero, chosenDirection(axis),
-                                                     step * std::numbers::pi / 180.0, n);
-    pattern->setTargets(checkedTargets(targets, repeatable));
-    addModelFeature(std::move(pattern), verb);
-}
-
-void MainWindow::onMirror() {
-    const QString verb = tr("Mirror");
-    if (!requireBody(verb)) return;
-
-    // In a base plane through the origin, or a flat face of the part (the
-    // first clicked, at first), followed by its name.
-    struct Plane {
-        QString text;
-        math::Vec3 point;
-        math::Vec3 normal;
-        std::string face;  ///< its whole name; empty for a base plane
-    };
-    std::vector<Plane> planes = {
-        {tr("YZ plane (x = 0)"), math::Vec3::Zero, math::Vec3::UnitX, {}},
-        {tr("ZX plane (y = 0)"), math::Vec3::Zero, math::Vec3::UnitY, {}},
-        {tr("XY plane (z = 0)"), math::Vec3::Zero, math::Vec3::UnitZ, {}},
-    };
-    const auto faces = flatFacesOf(*m_document->solid());
-    const int bases = static_cast<int>(planes.size());
-    for (const auto& face : faces) {
-        planes.push_back({tr("the face %1").arg(face.text), face.middle, face.normal, face.name});
-    }
-    const int clicked = clickedFlatFace(faces, m_viewport->modelSelection(), -1);
-    QStringList names;
-    for (const auto& plane : planes) names << plane.text;
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* which = form.choice(QStringLiteral("plane"), tr("In:"), names);
-    which->setCurrentIndex(clicked < 0 ? 0 : bases + clicked);
-    const auto mirrorable = repeatableFeatures(m_document->featureTree());
-    auto* targets = targetList(form, mirrorable, tr("Mirror only (none: the whole part):"));
-    if (!form.exec()) return;
-
-    const Plane& plane = planes.at(static_cast<size_t>(std::max(which->currentIndex(), 0)));
-    auto mirror = doc::MirrorFeature::make(plane.point, plane.normal);
-    if (!plane.face.empty()) mirror->setReference("planeFace", plane.face);
-    mirror->setTargets(checkedTargets(targets, mirrorable));
-    addModelFeature(std::move(mirror), verb);
-}
-
-void MainWindow::onHole() {
-    const QString verb = tr("Hole");
-    if (!requireBody(verb)) return;
-    const auto faces = flatFacesOf(*m_document->solid());
-    if (faces.empty()) {
-        statusBar()->showMessage(tr("%1: the part has no flat face to drill into").arg(verb));
-        return;
-    }
-    // Into the face clicked (else the first facing up), at its middle.
-    int facingUp = 0;
-    for (size_t i = 0; i < faces.size(); ++i) {
-        if (faces[i].normal.z > 0.99) {
-            facingUp = static_cast<int>(i);
-            break;
-        }
-    }
-    const int start = clickedFlatFace(faces, m_viewport->modelSelection(), facingUp);
-    QStringList names;
-    for (const auto& face : faces) names << face.text;
-
-    FeatureForm form(this, verb, m_document->lengthUnit());
-    auto* face = form.choice(QStringLiteral("face"), tr("Into the face:"), names);
-    face->setCurrentIndex(start);
-    const math::Vec3& middle = faces.at(static_cast<size_t>(start)).middle;
-    auto* x = form.length(QStringLiteral("x"), tr("At X:"), middle.x, -1e6, 1e6);
-    auto* y = form.length(QStringLiteral("y"), tr("At Y:"), middle.y, -1e6, 1e6);
-    auto* z = form.length(QStringLiteral("z"), tr("At Z:"), middle.z, -1e6, 1e6);
-    // Another face chosen: at its middle, to be moved from there.
-    connect(face, &QComboBox::currentIndexChanged, &form.dialog(), [&faces, x, y, z](int row) {
-        if (row < 0 || row >= static_cast<int>(faces.size())) return;
-        const math::Vec3& at = faces[static_cast<size_t>(row)].middle;
-        x->setValue(at.x);
-        y->setValue(at.y);
-        z->setValue(at.z);
-    });
-    auto* type = form.choice(QStringLiteral("type"), tr("Type:"),
-                             {tr("Simple"), tr("Counterbore"), tr("Countersink")});
-    auto* extent = form.choice(QStringLiteral("extent"), tr("Goes:"),
-                               {tr("To the depth"), tr("Through all"), tr("Up to a face")});
-    auto* upTo = form.choice(QStringLiteral("upToFace"), tr("Up to the face:"), names);
-    auto* diameter = form.length(QStringLiteral("diameter"), tr("Diameter:"), 5.0, 0.001, 1e6);
-    auto* depth = form.length(QStringLiteral("depth"), tr("Depth:"), 10.0, 0.001, 1e6);
-    auto* point =
-        form.angle(QStringLiteral("pointAngle"), tr("Point (0: flat):"), 118.0, 0.0, 179.0);
-    auto* boreDiameter =
-        form.length(QStringLiteral("boreDiameter"), tr("Counterbore diameter:"), 9.0, 0.001, 1e6);
-    auto* boreDepth =
-        form.length(QStringLiteral("boreDepth"), tr("Counterbore depth:"), 3.0, 0.001, 1e6);
-    auto* sinkDiameter =
-        form.length(QStringLiteral("sinkDiameter"), tr("Countersink diameter:"), 10.0, 0.001, 1e6);
-    auto* sinkAngle =
-        form.angle(QStringLiteral("sinkAngle"), tr("Countersink angle:"), 90.0, 1.0, 179.0);
-    const auto offer = [type, extent, upTo, depth, point, boreDiameter, boreDepth, sinkDiameter,
-                        sinkAngle] {
-        const bool blind = extent->currentIndex() == 0;
-        upTo->setEnabled(extent->currentIndex() == 2);
-        depth->setEnabled(blind);
-        point->setEnabled(blind);
-        boreDiameter->setEnabled(type->currentIndex() == 1);
-        boreDepth->setEnabled(type->currentIndex() == 1);
-        sinkDiameter->setEnabled(type->currentIndex() == 2);
-        sinkAngle->setEnabled(type->currentIndex() == 2);
-    };
-    connect(type, &QComboBox::currentIndexChanged, &form.dialog(), offer);
-    connect(extent, &QComboBox::currentIndexChanged, &form.dialog(), offer);
-    offer();
-    if (!form.exec()) return;
-
-    const FlatFace& into = faces.at(static_cast<size_t>(std::max(face->currentIndex(), 0)));
-    auto hole = doc::HoleFeature::make(into.name, math::Vec3(x->value(), y->value(), z->value()),
-                                       diameter->value(), depth->value());
-    const double toRadians = std::numbers::pi / 180.0;
-    const std::map<std::string, double> sizes = {
-        {"type", type->currentIndex()},
-        {"extent", extent->currentIndex()},
-        {"pointAngle", point->value() * toRadians},
-        {"boreDiameter", boreDiameter->value()},
-        {"boreDepth", boreDepth->value()},
-        {"sinkDiameter", sinkDiameter->value()},
-        {"sinkAngle", sinkAngle->value() * toRadians},
-    };
-    for (const auto& [name, value] : sizes) {
-        if (!hole->setParameter(name, value)) {
-            statusBar()->showMessage(
-                // The label as it is: lowercased, a German noun was wrong.
-                tr("%1: \"%2\" cannot take that value").arg(verb, parameterLabel(name)));
-            return;
-        }
-    }
-    if (extent->currentIndex() == 2) {
-        hole->setReference("upToFace",
-                           faces.at(static_cast<size_t>(std::max(upTo->currentIndex(), 0))).name);
-    }
-    addModelFeature(std::move(hole), verb);
 }
 
 // ---------------------------------------------------------------------------

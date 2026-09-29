@@ -2353,7 +2353,7 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+375"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
@@ -2373,42 +2373,42 @@ um Ihr Teil aufzubauen.</translation>
         <translation>&amp;Neue Zeichnung</translation>
     </message>
     <message>
-        <location line="-447"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+44"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">eine Kurve aus %1 Teilstücken, ab %2</translation>
     </message>
     <message>
-        <location line="+49"/>
-        <location line="+108"/>
+        <location line="+48"/>
+        <location line="+84"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">Normale %1 bei %2</translation>
     </message>
     <message>
-        <location line="-102"/>
+        <location line="-78"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">eine gekrümmte Fläche aus %1 Facetten, um %2</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-209"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 schließen</translation>
     </message>
     <message>
-        <location line="+8"/>
-        <location line="+897"/>
+        <location line="+754"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
         <translation type="unfinished">Abstand</translation>
     </message>
     <message>
-        <location line="-913"/>
-        <location line="+897"/>
+        <location line="-16"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Angle</source>
         <translation type="unfinished">Winkel</translation>
     </message>
     <message>
-        <location line="-913"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Segments per turn</source>
         <translation type="unfinished">Segmente pro Umdrehung</translation>
     </message>
@@ -2578,14 +2578,14 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">In die Fläche</translation>
     </message>
     <message>
-        <location line="+180"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-704"/>
         <location line="+1"/>
-        <location line="+1047"/>
+        <location line="+1055"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-983"/>
+        <location line="-989"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -2890,7 +2890,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">&amp;Ebene...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;Axis...</source>
         <translation type="unfinished">&amp;Achse...</translation>
     </message>
@@ -2900,7 +2900,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">&amp;Punkt...</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>&amp;Assembly</source>
         <translation type="unfinished">Bau&amp;gruppe</translation>
     </message>
@@ -3465,12 +3465,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+196"/>
+        <location line="+200"/>
         <source>Select</source>
         <translation type="unfinished">Auswählen</translation>
     </message>
     <message>
-        <location line="-193"/>
+        <location line="-197"/>
         <source>Fit All</source>
         <translation type="unfinished">Alles anzeigen</translation>
     </message>
@@ -3546,12 +3546,12 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+9"/>
         <location line="+0"/>
         <location line="+11"/>
-        <location line="+57"/>
+        <location line="+59"/>
         <source>Modify</source>
         <translation type="unfinished">Ändern</translation>
     </message>
     <message>
-        <location line="-77"/>
+        <location line="-79"/>
         <source>Transform</source>
         <translation type="unfinished">Transformieren</translation>
     </message>
@@ -3572,13 +3572,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+80"/>
-        <location line="+3660"/>
+        <location line="+84"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-3736"/>
+        <location line="-80"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3594,20 +3593,18 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+64"/>
-        <location line="+3509"/>
+        <location line="+66"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-3572"/>
-        <location line="+64"/>
-        <location line="+3508"/>
+        <location line="-65"/>
+        <location line="+66"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-3571"/>
+        <location line="-65"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3648,7 +3645,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
     <message>
-        <location line="+3014"/>
+        <location line="+2889"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3694,12 +3691,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="+804"/>
-        <source>%1: &quot;%2&quot; cannot take that value</source>
-        <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
-    </message>
-    <message>
-        <location line="-3842"/>
+        <location line="-2913"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3801,116 +3793,101 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2385"/>
+        <location line="+2389"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
-        <location line="-2382"/>
+        <location line="-2386"/>
         <location line="+7"/>
         <location line="+5"/>
-        <location line="+5"/>
+        <location line="+7"/>
         <location line="+6"/>
         <source>3D</source>
         <translation type="unfinished">3D</translation>
     </message>
     <message>
-        <location line="-23"/>
+        <location line="-25"/>
         <source>Primitives</source>
         <translation type="unfinished">Grundkörper</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">Quader</translation>
     </message>
     <message>
-        <location line="-2526"/>
-        <location line="+2536"/>
+        <location line="+1"/>
         <source>Cylinder</source>
         <translation type="unfinished">Zylinder</translation>
     </message>
     <message>
-        <location line="-2535"/>
-        <location line="+2542"/>
+        <location line="+1"/>
         <source>Sphere</source>
         <translation type="unfinished">Kugel</translation>
     </message>
     <message>
-        <location line="-2541"/>
-        <location line="+2548"/>
+        <location line="+1"/>
         <source>Cone</source>
         <translation type="unfinished">Kegel</translation>
     </message>
     <message>
-        <location line="-2547"/>
-        <location line="+2558"/>
+        <location line="+1"/>
         <source>Torus</source>
         <translation type="unfinished">Torus</translation>
     </message>
     <message>
-        <location line="-2556"/>
+        <location line="+2"/>
         <source>Features</source>
         <translation type="unfinished">Features</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3296"/>
-        <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3341"/>
-        <location line="+3360"/>
-        <location line="+27"/>
+        <location line="+1"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3386"/>
-        <location line="+3716"/>
+        <location line="+1"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-3714"/>
+        <location line="+2"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3466"/>
-        <location line="+3470"/>
+        <location line="+1"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3469"/>
-        <location line="+3473"/>
+        <location line="+2"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3468"/>
-        <location line="+3537"/>
+        <location line="+6"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-3536"/>
-        <location line="+3556"/>
+        <location line="+1"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-3554"/>
+        <location line="+2"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
@@ -3921,12 +3898,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Linear</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Circular</source>
         <translation type="unfinished">Kreisförmig</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
         <source>Ribbon</source>
         <translation type="unfinished">Menüband</translation>
     </message>
@@ -3942,14 +3919,14 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+1439"/>
-        <location line="+1201"/>
+        <location line="+1310"/>
+        <location line="+581"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4187"/>
+        <location line="-3438"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3970,12 +3947,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3845"/>
+        <location line="+3096"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-3839"/>
+        <location line="-3090"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
@@ -4662,91 +4639,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
-        <source>%1 works on a part; open or create one</source>
-        <translation type="unfinished">%1 wirkt auf ein Teil; öffnen oder erstellen Sie eines</translation>
-    </message>
-    <message>
-        <location line="+25"/>
-        <source>At x:</source>
-        <translation type="unfinished">Position x:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+749"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1451"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+1"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1450"/>
-        <source>Standing along:</source>
-        <translation type="unfinished">Ausgerichtet entlang:</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Width (X):</source>
-        <translation type="unfinished">Breite (X):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Height (Y):</source>
-        <translation type="unfinished">Höhe (Y):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Depth (Z):</source>
-        <translation type="unfinished">Tiefe (Z):</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <location line="+7"/>
-        <location line="+988"/>
-        <source>Radius:</source>
-        <translation type="unfinished">Radius:</translation>
-    </message>
-    <message>
-        <location line="-995"/>
-        <location line="+17"/>
-        <source>Height:</source>
-        <translation type="unfinished">Höhe:</translation>
-    </message>
-    <message>
-        <location line="-2"/>
-        <source>Bottom radius:</source>
-        <translation type="unfinished">Unterer Radius:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Top radius:</source>
-        <translation type="unfinished">Oberer Radius:</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Ring radius:</source>
-        <translation type="unfinished">Ringradius:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Tube radius:</source>
-        <translation type="unfinished">Rohrradius:</translation>
-    </message>
-    <message>
-        <location line="+41"/>
-        <source>Profile %1</source>
-        <translation type="unfinished">Profil %1</translation>
-    </message>
-    <message>
-        <location line="+9"/>
+        <location line="-729"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Eine Baugruppe hat keine Skizzen: skizzieren Sie in einem Teil</translation>
     </message>
@@ -4783,12 +4686,11 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="-7"/>
-        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">Kanten:</translation>
     </message>
     <message>
-        <location line="-879"/>
+        <location line="+2"/>
         <source>As:</source>
         <translation type="unfinished">Als:</translation>
     </message>
@@ -4944,18 +4846,16 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+21"/>
-        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">Lineares Muster</translation>
     </message>
     <message>
-        <location line="-785"/>
-        <location line="+805"/>
+        <location line="+2"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Kreisförmiges Muster</translation>
     </message>
     <message>
-        <location line="-788"/>
+        <location line="+17"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">&amp;Masseeigenschaften...</translation>
     </message>
@@ -5125,24 +5025,21 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+120"/>
         <source>X</source>
         <translation type="unfinished">X</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Y</source>
         <translation type="unfinished">Y</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Z</source>
         <translation type="unfinished">Z</translation>
     </message>
     <message>
-        <location line="-119"/>
+        <location line="+1"/>
         <source>At:</source>
         <translation type="unfinished">Bei:</translation>
     </message>
@@ -5162,7 +5059,234 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Was darüber liegt</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+80"/>
+        <source>%1 added, but an earlier feature fails to rebuild</source>
+        <translation type="unfinished">%1 hinzugefügt, aber ein früheres Feature lässt sich nicht neu aufbauen</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 added.</source>
+        <translation type="unfinished">%1 hinzugefügt.</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>%1 not added: %2</source>
+        <translation type="unfinished">%1 nicht hinzugefügt: %2</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>%1 has nothing to edit</source>
+        <translation type="unfinished">%1 hat nichts zu bearbeiten</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Edit %1</source>
+        <translation type="unfinished">%1 bearbeiten</translation>
+    </message>
+    <message>
+        <location line="+104"/>
+        <source>+X</source>
+        <translation type="unfinished">+X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-X</source>
+        <translation type="unfinished">-X</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Y</source>
+        <translation type="unfinished">+Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Y</source>
+        <translation type="unfinished">-Y</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Z</source>
+        <translation type="unfinished">+Z</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Z</source>
+        <translation type="unfinished">-Z</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source> x:</source>
+        <translation type="unfinished"> x:</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+28"/>
+        <source>As it is, %1</source>
+        <translation type="unfinished">Unverändert, %1</translation>
+    </message>
+    <message>
+        <location line="-21"/>
+        <source>As the face or edge clicked, %1</source>
+        <translation type="unfinished">Wie die angeklickte Fläche oder Kante, %1</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Against the face or edge clicked</source>
+        <translation type="unfinished">Entgegen der angeklickten Fläche oder Kante</translation>
+    </message>
+    <message>
+        <location line="+71"/>
+        <source>%1 cannot use the value given for: %2</source>
+        <translation type="unfinished">%1 kann den angegebenen Wert nicht verwenden für: %2</translation>
+    </message>
+    <message>
+        <location line="+85"/>
+        <source>Feature rebuild failed at feature %1: %2</source>
+        <translation type="unfinished">Neuaufbau fehlgeschlagen bei Feature %1: %2</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>Rebuilding the model...</source>
+        <translation type="unfinished">Modell wird neu aufgebaut...</translation>
+    </message>
+    <message>
+        <location line="+62"/>
+        <source>Importing %1: %2 of %3 parts written...</source>
+        <translation type="unfinished">%1 wird importiert: %2 von %3 Teilen geschrieben...</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>Rebuild cancelled: the model is as it was before the last change.</source>
+        <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
+    </message>
+    <message>
+        <location line="-3454"/>
+        <source>0 selected</source>
+        <translation>0 ausgewählt</translation>
+    </message>
+    <message>
+        <location line="-108"/>
+        <source>Linear</source>
+        <comment>a dimension</comment>
+        <translation type="unfinished">Linear</translation>
+    </message>
+    <message>
+        <location line="+197"/>
+        <source>1 selected</source>
+        <translation>1 ausgewählt</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::PartCommands</name>
+    <message>
+        <location filename="../src/ui/src/PartCommands.cpp" line="+45"/>
+        <source>%1 works on a part; open or create one</source>
+        <translation type="unfinished">%1 wirkt auf ein Teil; öffnen oder erstellen Sie eines</translation>
+    </message>
+    <message>
+        <location line="+25"/>
+        <source>At x:</source>
+        <translation type="unfinished">Position x:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>y:</source>
+        <translation type="unfinished">y:</translation>
+    </message>
+    <message>
+        <location line="-231"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>z:</source>
+        <translation type="unfinished">z:</translation>
+    </message>
+    <message>
+        <location line="-230"/>
+        <source>Standing along:</source>
+        <translation type="unfinished">Ausgerichtet entlang:</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Box</source>
+        <translation type="unfinished">Quader</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Width (X):</source>
+        <translation type="unfinished">Breite (X):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Height (Y):</source>
+        <translation type="unfinished">Höhe (Y):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Depth (Z):</source>
+        <translation type="unfinished">Tiefe (Z):</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cylinder</source>
+        <translation type="unfinished">Zylinder</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+7"/>
+        <location line="+388"/>
+        <source>Radius:</source>
+        <translation type="unfinished">Radius:</translation>
+    </message>
+    <message>
+        <location line="-395"/>
+        <location line="+17"/>
+        <source>Height:</source>
+        <translation type="unfinished">Höhe:</translation>
+    </message>
+    <message>
+        <location line="-10"/>
+        <source>Sphere</source>
+        <translation type="unfinished">Kugel</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cone</source>
+        <translation type="unfinished">Kegel</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bottom radius:</source>
+        <translation type="unfinished">Unterer Radius:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Top radius:</source>
+        <translation type="unfinished">Oberer Radius:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Torus</source>
+        <translation type="unfinished">Torus</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Ring radius:</source>
+        <translation type="unfinished">Ringradius:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tube radius:</source>
+        <translation type="unfinished">Rohrradius:</translation>
+    </message>
+    <message>
+        <location line="+40"/>
+        <source>Profile %1</source>
+        <translation type="unfinished">Profil %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>on the plane through %1</source>
         <translation type="unfinished">auf der Ebene durch %1</translation>
     </message>
@@ -5255,7 +5379,22 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Gedreht um ihre x-Achse:</translation>
     </message>
     <message>
-        <location line="+18"/>
+        <location line="+14"/>
+        <source>X</source>
+        <translation type="unfinished">X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Y</source>
+        <translation type="unfinished">Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Z</source>
+        <translation type="unfinished">Z</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>As the face or edge clicked</source>
         <translation type="unfinished">Wie die angeklickte Fläche oder Kante</translation>
     </message>
@@ -5287,25 +5426,31 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">x:</translation>
     </message>
     <message>
-        <location line="+62"/>
-        <location line="+82"/>
+        <location line="+15"/>
+        <location line="+81"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">Zeichnen Sie zuerst ein geschlossenes Profil</translation>
     </message>
     <message>
         <location line="-60"/>
-        <location line="+228"/>
+        <location line="+46"/>
+        <source>Extrude</source>
+        <translation type="unfinished">Extrusion</translation>
+    </message>
+    <message>
+        <location line="-45"/>
+        <location line="+156"/>
         <source>Distance:</source>
         <translation type="unfinished">Abstand:</translation>
     </message>
     <message>
-        <location line="-227"/>
-        <location line="+456"/>
+        <location line="-155"/>
+        <location line="+386"/>
         <source>Goes:</source>
         <translation type="unfinished">Ausdehnung:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>To the distance</source>
         <translation type="unfinished">Bis zum Abstand</translation>
     </message>
@@ -5316,23 +5461,23 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+456"/>
+        <location line="+386"/>
         <source>Through all</source>
         <translation type="unfinished">Durch alles</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">Durch alles, beidseitig</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+455"/>
+        <location line="+385"/>
         <source>Up to a face</source>
         <translation type="unfinished">Bis zu einer Fläche</translation>
     </message>
     <message>
-        <location line="-451"/>
+        <location line="-381"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(keine ebene Fläche des Teils ist parallel zur Skizze)</translation>
     </message>
@@ -5343,12 +5488,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+332"/>
+        <location line="+262"/>
         <source>Direction:</source>
         <translation type="unfinished">Richtung:</translation>
     </message>
     <message>
-        <location line="-331"/>
+        <location line="-261"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">Aus der Skizze heraus</translation>
     </message>
@@ -5368,13 +5513,19 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Extrusion fehlgeschlagen: %1</translation>
     </message>
     <message>
-        <location line="+28"/>
-        <location line="+214"/>
+        <location line="+26"/>
+        <location line="+27"/>
+        <source>Revolve</source>
+        <translation type="unfinished">Rotation</translation>
+    </message>
+    <message>
+        <location line="-26"/>
+        <location line="+144"/>
         <source>Angle:</source>
         <translation type="unfinished">Winkel:</translation>
     </message>
     <message>
-        <location line="-210"/>
+        <location line="-140"/>
         <source>Axis:</source>
         <translation type="unfinished">Achse:</translation>
     </message>
@@ -5394,22 +5545,22 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Rotation fehlgeschlagen: %1</translation>
     </message>
     <message>
-        <location line="+50"/>
-        <source>%1 added, but an earlier feature fails to rebuild</source>
-        <translation type="unfinished">%1 hinzugefügt, aber ein früheres Feature lässt sich nicht neu aufbauen</translation>
+        <location line="+19"/>
+        <source>Union</source>
+        <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="+2"/>
-        <source>%1 added.</source>
-        <translation type="unfinished">%1 hinzugefügt.</translation>
+        <location line="+4"/>
+        <source>Subtract</source>
+        <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="+29"/>
-        <source>%1 not added: %2</source>
-        <translation type="unfinished">%1 nicht hinzugefügt: %2</translation>
+        <location line="+4"/>
+        <source>Intersect</source>
+        <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+9"/>
         <source>%1 combines the part&apos;s bodies, and it has fewer than two (make one with Result: New body)</source>
         <translation type="unfinished">%1 kombiniert die Körper des Teils, und es hat weniger als zwei (erstellen Sie einen mit Ergebnis: Neuer Körper)</translation>
     </message>
@@ -5419,12 +5570,32 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">%1 wirkt auf einen Körper: erstellen Sie zuerst einen</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+14"/>
+        <source>Fillet</source>
+        <translation type="unfinished">Verrundung</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Chamfer</source>
+        <translation type="unfinished">Fase</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Edges:</source>
+        <translation type="unfinished">Kanten:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
         <source>%1 not added: no edges were chosen</source>
         <translation type="unfinished">%1 nicht hinzugefügt: es wurden keine Kanten gewählt</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+13"/>
+        <source>Shell</source>
+        <translation type="unfinished">Schale</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Wall thickness:</source>
         <translation type="unfinished">Wandstärke:</translation>
     </message>
@@ -5434,7 +5605,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Zu öffnende Flächen:</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+13"/>
+        <source>Draft</source>
+        <translation type="unfinished">Formschräge</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Pull direction:</source>
         <translation type="unfinished">Ausformrichtung:</translation>
     </message>
@@ -5444,12 +5620,17 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neutrale Ebene bei:</translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+36"/>
         <source>Repeat only (none: the whole part):</source>
         <translation type="unfinished">Nur wiederholen (keine: das ganze Teil):</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+23"/>
+        <source>Linear Pattern</source>
+        <translation type="unfinished">Lineares Muster</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Spacing:</source>
         <translation type="unfinished">Abstand:</translation>
     </message>
@@ -5460,7 +5641,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Instanzen:</translation>
     </message>
     <message>
-        <location line="-2"/>
+        <location line="-7"/>
+        <source>Circular Pattern</source>
+        <translation type="unfinished">Kreisförmiges Muster</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>About the axis:</source>
         <translation type="unfinished">Um die Achse:</translation>
     </message>
@@ -5470,7 +5656,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Gesamtwinkel:</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+17"/>
+        <source>Mirror</source>
+        <translation type="unfinished">Spiegeln</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>YZ plane (x = 0)</source>
         <translation type="unfinished">YZ-Ebene (x = 0)</translation>
     </message>
@@ -5500,7 +5691,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Nur spiegeln (keine: das ganze Teil):</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+11"/>
+        <source>Hole</source>
+        <translation type="unfinished">Bohrung</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>%1: the part has no flat face to drill into</source>
         <translation type="unfinished">%1: das Teil hat keine ebene Fläche zum Bohren</translation>
     </message>
@@ -5590,106 +5786,9 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Winkel der Kegelsenkung:</translation>
     </message>
     <message>
-        <location line="+68"/>
-        <source>%1 has nothing to edit</source>
-        <translation type="unfinished">%1 hat nichts zu bearbeiten</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Edit %1</source>
-        <translation type="unfinished">%1 bearbeiten</translation>
-    </message>
-    <message>
-        <location line="+104"/>
-        <source>+X</source>
-        <translation type="unfinished">+X</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-X</source>
-        <translation type="unfinished">-X</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Y</source>
-        <translation type="unfinished">+Y</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Y</source>
-        <translation type="unfinished">-Y</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Z</source>
-        <translation type="unfinished">+Z</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Z</source>
-        <translation type="unfinished">-Z</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source> x:</source>
-        <translation type="unfinished"> x:</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+28"/>
-        <source>As it is, %1</source>
-        <translation type="unfinished">Unverändert, %1</translation>
-    </message>
-    <message>
-        <location line="-21"/>
-        <source>As the face or edge clicked, %1</source>
-        <translation type="unfinished">Wie die angeklickte Fläche oder Kante, %1</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Against the face or edge clicked</source>
-        <translation type="unfinished">Entgegen der angeklickten Fläche oder Kante</translation>
-    </message>
-    <message>
-        <location line="+71"/>
-        <source>%1 cannot use the value given for: %2</source>
-        <translation type="unfinished">%1 kann den angegebenen Wert nicht verwenden für: %2</translation>
-    </message>
-    <message>
-        <location line="+85"/>
-        <source>Feature rebuild failed at feature %1: %2</source>
-        <translation type="unfinished">Neuaufbau fehlgeschlagen bei Feature %1: %2</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>Rebuilding the model...</source>
-        <translation type="unfinished">Modell wird neu aufgebaut...</translation>
-    </message>
-    <message>
-        <location line="+62"/>
-        <source>Importing %1: %2 of %3 parts written...</source>
-        <translation type="unfinished">%1 wird importiert: %2 von %3 Teilen geschrieben...</translation>
-    </message>
-    <message>
-        <location line="+45"/>
-        <source>Rebuild cancelled: the model is as it was before the last change.</source>
-        <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
-    </message>
-    <message>
-        <location line="-4203"/>
-        <source>0 selected</source>
-        <translation>0 ausgewählt</translation>
-    </message>
-    <message>
-        <location line="-104"/>
-        <source>Linear</source>
-        <comment>a dimension</comment>
-        <translation type="unfinished">Linear</translation>
-    </message>
-    <message>
-        <location line="+193"/>
-        <source>1 selected</source>
-        <translation>1 ausgewählt</translation>
+        <location line="+34"/>
+        <source>%1: &quot;%2&quot; cannot take that value</source>
+        <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
     </message>
 </context>
 <context>

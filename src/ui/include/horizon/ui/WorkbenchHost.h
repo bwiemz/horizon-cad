@@ -11,6 +11,8 @@ namespace hz::doc {
 class AssemblyDocument;
 class Document;
 class DocumentManager;
+class Feature;
+class Sketch;
 }  // namespace hz::doc
 
 namespace hz::io {
@@ -86,6 +88,20 @@ public:
     virtual void refreshPanels() = 0;
     /// Build the active part again, on a worker when it is slow, and show it.
     virtual void rebuildModel() = 0;
+
+    /// Add @p feature at the end of the active part's history, as one
+    /// undoable step (with @p wrapperSketch, a profile sketch made for it),
+    /// and build the part, on a worker when builds are slow. A feature that
+    /// fails itself is withdrawn when its build is shown, and why is said
+    /// with @p verb, its command. False when it was refused at once.
+    virtual bool addFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                            const std::shared_ptr<doc::Sketch>& wrapperSketch = nullptr) = 0;
+    /// The sketch chosen in the sketch list, or the one last made or
+    /// finished; null when there is none.
+    virtual std::shared_ptr<doc::Sketch> chosenSketch() = 0;
+    /// Stop editing the sketch edited, as Finish Sketch does, making it the
+    /// chosen one.
+    virtual void finishSketch() = 0;
 
     /// Whether work of this size goes to a worker thread: the window's
     /// rebuild mode decides (Always; Auto for @p large work; Never).
