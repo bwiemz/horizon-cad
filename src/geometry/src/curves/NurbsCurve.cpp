@@ -281,6 +281,48 @@ NurbsCurve NurbsCurve::insertKnot(double t) const {
 // elevateDegree — Bezier degree elevation
 // ---------------------------------------------------------------------------
 
+NurbsCurve NurbsCurve::segment(double t0, double t1) const {
+    t0 = std::clamp(t0, tMin(), tMax());
+    t1 = std::clamp(t1, tMin(), tMax());
+    if (t1 < t0) std::swap(t0, t1);
+    const int p = m_degree;
+    // Each end a knot of multiplicity p (a knot already there taken as it),
+    // so the curve passes through a control point there.
+    const double eps = 1e-12 * std::max(1.0, tMax() - tMin());
+    NurbsCurve c = *this;
+    for (double* t : {&t0, &t1}) {
+        for (const double k : c.m_knots) {
+            if (std::abs(k - *t) <= eps) *t = k;
+        }
+        const auto multiplicity = [&c, t] {
+            return static_cast<int>(std::count(c.m_knots.begin(), c.m_knots.end(), *t));
+        };
+        for (int m = multiplicity(); m < p; ++m) c = c.insertKnot(*t);
+    }
+    if (!(t1 > t0)) return *this;  // no span: nothing to cut out
+    // C(t) is the control point before a run of p knots equal to t: t0's
+    // run ends at `last0`, t1's starts at `first1`.
+    const auto& knots = c.m_knots;
+    const int last0 =
+        static_cast<int>(
+            std::find_if(knots.rbegin(), knots.rend(), [t0](double k) { return k == t0; }).base() -
+            knots.begin()) -
+        1;
+    const int first1 = static_cast<int>(std::find(knots.begin(), knots.end(), t1) - knots.begin());
+    const int from = last0 - p;
+    const int to = first1 - 1;
+    if (from < 0 || to >= static_cast<int>(c.m_controlPoints.size()) || to < from) return *this;
+    std::vector<math::Vec3> points(c.m_controlPoints.begin() + from,
+                                   c.m_controlPoints.begin() + to + 1);
+    std::vector<double> weights(c.m_weights.begin() + from, c.m_weights.begin() + to + 1);
+    std::vector<double> segmentKnots(static_cast<std::size_t>(p + 1), t0);
+    for (const double k : knots) {
+        if (k > t0 && k < t1) segmentKnots.push_back(k);
+    }
+    segmentKnots.insert(segmentKnots.end(), static_cast<std::size_t>(p + 1), t1);
+    return NurbsCurve(std::move(points), std::move(weights), std::move(segmentKnots), p);
+}
+
 NurbsCurve NurbsCurve::elevateDegree() const {
     const int p = m_degree;
 

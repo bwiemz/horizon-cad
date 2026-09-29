@@ -324,3 +324,29 @@ TEST(ExtrudeTest, EmptyProfileReturnsNull) {
     auto solid = Extrude::execute(profile, plane, dir, 1.0, "empty");
     EXPECT_EQ(solid, nullptr);
 }
+
+// A lens (two gentle arcs between the same two points): each arc turns too
+// little for more than one chord at the default resolution, and both were
+// the same chord, so the profile had two points and was refused. A profile
+// of two corners has its arcs cut into two chords or more.
+TEST(ExtrudeTest, ALensOfTwoGentleArcsExtrudes) {
+    const double half = 3.0 * hz::math::kPi / 180.0;
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> lens = {
+        std::make_shared<hz::draft::DraftArc>(hz::math::Vec2(0, -100 * std::cos(half)), 100.0,
+                                              hz::math::kPi / 2 - half, hz::math::kPi / 2 + half),
+        std::make_shared<hz::draft::DraftArc>(hz::math::Vec2(0, 100 * std::cos(half)), 100.0,
+                                              -hz::math::kPi / 2 - half, -hz::math::kPi / 2 + half),
+    };
+    std::string why;
+    const auto slab = Extrude::execute(lens, hz::draft::SketchPlane(), hz::math::Vec3(0, 0, 1), 2.0,
+                                       "lens", Extrude::kDefaultSegments, 0.0, &why);
+    ASSERT_NE(slab, nullptr) << why;
+    EXPECT_TRUE(slab->isValid()) << slab->validationReport();
+    // Two circular segments of radius 100 and 6 degrees, 2 thick; its
+    // chords cut a little off.
+    const double angle = 2.0 * half;
+    const double exact = 2.0 * 2.0 * 0.5 * 100.0 * 100.0 * (angle - std::sin(angle));
+    const double volume = MassPropertiesCalculator::compute(*slab).volume;
+    EXPECT_GT(volume, 0.5 * exact);
+    EXPECT_LE(volume, exact * (1.0 + 1e-9));
+}

@@ -119,11 +119,7 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 1
-      },
-      "known_gaps": {
-        "import-build": "B-spline faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
-        "reopen": "the same"
+        "approximated": 0
       }
     },
     {

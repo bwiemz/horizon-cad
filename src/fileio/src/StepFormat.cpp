@@ -1676,6 +1676,32 @@ private:
                                                    std::move(ku), std::move(kv), degU, degV);
     }
 
+    /// @p curve cut to the span of it an edge from @p start to @p end uses.
+    /// Another system may give an edge a longer curve (IronCAD runs a blade's
+    /// edges along the whole side of its surface), and the kernel samples an
+    /// edge's curve from one end to the other: a face of two such edges was
+    /// read inside out. A closed edge, or one whose ends are not on the
+    /// curve, keeps the curve whole.
+    static std::shared_ptr<geo::NurbsCurve> spanOf(std::shared_ptr<geo::NurbsCurve> curve,
+                                                   const Vec3& start, const Vec3& end) {
+        if (curve == nullptr || (start - end).length() < kMergeTol) return curve;
+        math::BoundingBox hull;
+        for (const Vec3& p : curve->controlPoints()) hull.expand(p);
+        const double near = std::max(1e-2, 1e-4 * (hull.max() - hull.min()).length());
+        const double ts = curve->closestPoint(start);
+        const double te = curve->closestPoint(end);
+        if ((curve->evaluate(ts) - start).length() > near ||
+            (curve->evaluate(te) - end).length() > near) {
+            return curve;
+        }
+        const double domain = curve->tMax() - curve->tMin();
+        const double a = std::min(ts, te);
+        const double b = std::max(ts, te);
+        if (a - curve->tMin() <= 1e-9 * domain && curve->tMax() - b <= 1e-9 * domain) return curve;
+        if (!(b - a > 1e-9 * domain)) return curve;
+        return std::make_shared<geo::NurbsCurve>(curve->segment(a, b));
+    }
+
     /// Curve for an EDGE_CURVE, given the edge's endpoint positions.
     std::shared_ptr<geo::NurbsCurve> readEdgeGeometry(int curveId, const Vec3& start,
                                                       const Vec3& end, int depth = 0) const {
@@ -1696,7 +1722,7 @@ private:
         }
 
         if (inst->hasType("B_SPLINE_CURVE_WITH_KNOTS") || inst->hasType("B_SPLINE_CURVE")) {
-            return readBSplineCurve(*inst);
+            return spanOf(readBSplineCurve(*inst), start, end);
         }
         if (inst->hasType("LINE")) {
             // STEP lines are unbounded; the edge vertices bound them exactly.

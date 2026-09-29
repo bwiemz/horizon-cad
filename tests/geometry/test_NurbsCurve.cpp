@@ -431,3 +431,33 @@ TEST(NurbsCurveTest, SemicircleArc) {
     EXPECT_NEAR(end.x, -5.0, 1e-6);
     EXPECT_NEAR(end.y, 0.0, 1e-5);
 }
+
+// A segment is the same curve on less of it: at every parameter in its span
+// it is where the whole curve is, and its ends are the span's (a STEP edge
+// uses part of a longer B-spline, between its vertices).
+TEST(NurbsCurveTest, ASegmentIsTheCurveOnItsSpan) {
+    const hz::geo::NurbsCurve cubic(
+        {{0, 0, 0}, {1, 2, 0}, {3, 3, 1}, {4, 0, 2}, {6, 1, 0}, {7, 4, 1}}, {1, 1, 1, 1, 1, 1},
+        {0, 0, 0, 0, 0.3, 0.6, 1, 1, 1, 1}, 3);
+    const auto arc = hz::geo::NurbsCurve::makeArc({1, 1, 0}, 2.0, 0.0, 2.5);
+    for (const hz::geo::NurbsCurve* curve : {&cubic, &arc}) {
+        const double a = curve->tMin() + 0.2 * (curve->tMax() - curve->tMin());
+        const double b = curve->tMin() + 0.7 * (curve->tMax() - curve->tMin());
+        for (const auto& part : {curve->segment(a, b), curve->segment(b, a)}) {
+            EXPECT_NEAR(part.tMin(), a, 1e-12);
+            EXPECT_NEAR(part.tMax(), b, 1e-12);
+            EXPECT_EQ(part.degree(), curve->degree());
+            for (int i = 0; i <= 20; ++i) {
+                const double t = a + (b - a) * i / 20.0;
+                EXPECT_LT((part.evaluate(t) - curve->evaluate(t)).length(), 1e-9) << "at " << t;
+            }
+        }
+        // The whole of it is itself.
+        const auto whole = curve->segment(curve->tMin(), curve->tMax());
+        EXPECT_EQ(whole.controlPointCount(), curve->controlPointCount());
+    }
+    // At a knot already there, the same.
+    const auto fromKnot = cubic.segment(0.3, 1.0);
+    EXPECT_LT((fromKnot.evaluate(0.3) - cubic.evaluate(0.3)).length(), 1e-12);
+    EXPECT_LT((fromKnot.evaluate(0.8) - cubic.evaluate(0.8)).length(), 1e-9);
+}
