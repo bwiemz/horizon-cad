@@ -1434,13 +1434,15 @@ private:
     }
 
     /// Whether shell @p shellId closes: each of its edges bounds two of its
-    /// faces (a surface model's shell may be a solid's, or a surface's).
+    /// faces, once each way, as linkTwins needs (a surface model's shell
+    /// may be a solid's, or a surface's; one whose faces disagree which way
+    /// they run is no solid either).
     bool closes(int shellId) const {
         const StepInstance* shell = m_parser.find(shellId);
         const StepList* args = shell ? shell->leaf("OPEN_SHELL") : nullptr;
         if (args == nullptr && shell != nullptr) args = shell->leaf("CLOSED_SHELL");
         if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) return false;
-        std::map<int, int> uses;
+        std::map<int, std::pair<int, int>> uses;  // by edge: its uses each way
         for (const StepValue& faceRef : *(*args)[1].items) {
             const StepInstance* face = faceRef.isRef() ? m_parser.find(faceRef.ref) : nullptr;
             const StepList* fArgs = face ? face->leaf("ADVANCED_FACE") : nullptr;
@@ -1456,16 +1458,23 @@ private:
                                                : nullptr;
                 const StepList* edges = loop ? loop->leaf("EDGE_LOOP") : nullptr;
                 if (edges == nullptr || edges->size() < 2 || !(*edges)[1].isList()) continue;
+                const bool boundSense =
+                    b->size() < 3 || (*b)[2].kind != StepValue::Enum || (*b)[2].text == "T";
                 for (const StepValue& oeRef : *(*edges)[1].items) {
                     const StepInstance* oe = oeRef.isRef() ? m_parser.find(oeRef.ref) : nullptr;
                     const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
-                    if (oeArgs != nullptr && oeArgs->size() >= 4 && (*oeArgs)[3].isRef()) {
-                        ++uses[(*oeArgs)[3].ref];
+                    if (oeArgs != nullptr && oeArgs->size() >= 5 && (*oeArgs)[3].isRef()) {
+                        const bool along = ((*oeArgs)[4].kind == StepValue::Enum &&
+                                            (*oeArgs)[4].text == "T") == boundSense;
+                        auto& [forward, backward] = uses[(*oeArgs)[3].ref];
+                        ++(along ? forward : backward);
                     }
                 }
             }
         }
-        return std::all_of(uses.begin(), uses.end(), [](const auto& u) { return u.second == 2; });
+        return std::all_of(uses.begin(), uses.end(), [](const auto& u) {
+            return u.second.first == 1 && u.second.second == 1;
+        });
     }
 
     /// The shells of solid @p solidId, onto @p shells: a MANIFOLD_SOLID_BREP's
@@ -2950,9 +2959,11 @@ constexpr int kMaxDepth = 64;
 ProductStructure readStructure(const StepParser& parser, const std::vector<SolidGroup>& groups,
                                const StepReadOptions& options) {
     ProductStructure structure;
-    std::unordered_map<int, std::size_t> groupOfRep;
+    // A representation's groups: its solids', and its surface model's (a
+    // plain SHAPE_REPRESENTATION may hold both).
+    std::unordered_map<int, std::vector<std::size_t>> groupsOfRep;
     for (std::size_t g = 0; g < groups.size(); ++g) {
-        if (groups[g].rep != 0) groupOfRep.emplace(groups[g].rep, g);
+        if (groups[g].rep != 0) groupsOfRep[groups[g].rep].push_back(g);
     }
 
     // Representations related without a transformation are one shape
@@ -3050,8 +3061,11 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
         std::set<int> shape = shapeOf(reps->second);
         ProductStructure::Product product;
         for (int rep : shape) {
-            const auto group = groupOfRep.find(rep);
-            if (group != groupOfRep.end()) product.groups.push_back(group->second);
+            const auto found = groupsOfRep.find(rep);
+            if (found != groupsOfRep.end()) {
+                product.groups.insert(product.groups.end(), found->second.begin(),
+                                      found->second.end());
+            }
         }
         std::sort(product.groups.begin(), product.groups.end());
         shapeReps.emplace(definition, std::move(shape));

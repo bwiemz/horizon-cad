@@ -384,6 +384,21 @@ TEST(StepFixtures, ASurfaceModelsOpenShellIsSaidToBeASurface) {
         << StepFormat::lastError();
 }
 
+// A surface model's shell whose faces disagree which way they run (one
+// face's bound turned round, its edges run as its neighbours' do) bounds no
+// solid, though each edge bounds two faces.
+TEST(StepFixtures, ASurfaceModelsShellWithAFaceTurnedIsNoSolid) {
+    std::string text = tetrahedronAsSurfaceModel();
+    std::smatch bound;
+    ASSERT_TRUE(std::regex_search(text, bound, std::regex(R"(FACE_OUTER_BOUND\('',#\d+,\.T\.\))")));
+    const auto sense = static_cast<std::size_t>(bound.position(0) + bound.length(0)) - 4;
+    ASSERT_EQ(text.substr(sense, 3), ".T.");
+    text.replace(sense, 3, ".F.");
+    EXPECT_TRUE(StepFormat::fromString(text).empty());
+    EXPECT_NE(StepFormat::lastError().find("open surface, not a solid"), std::string::npos)
+        << StepFormat::lastError();
+}
+
 // A flat face whose corner lies off its plane (Creo's, by 0.75 mm) is cut
 // into triangles, each flat, the corners its edges' own: the part is valid.
 TEST(StepFixtures, AFlatFaceOffItsPlaneIsCutIntoFlatTriangles) {
