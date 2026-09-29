@@ -1055,3 +1055,62 @@ TEST(StepCurvedTest, AFaceOfPlainBoundsHasItsWidestLoopForItsOutline) {
     expectRelative(m.ideal.properties.volume, 6.0 * kPi, 1e-8, "the tube");
     EXPECT_EQ(importedBuildProblem(alibreTube()), "");
 }
+
+namespace {
+
+/// A torus of radii 4 and 1 as Unigraphics writes one: two faces on it, its
+/// outer half and its inner half, each a band between the circles of radius
+/// 4 round its top and its bottom, with no seam; the two the same circles,
+/// each face going round them the other way.
+std::string torusOfTwoBands() {
+    return step(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = CARTESIAN_POINT('',(0.,0.,1.));
+#3 = CARTESIAN_POINT('',(0.,0.,-1.));
+#4 = DIRECTION('',(0.,0.,1.));
+#5 = DIRECTION('',(1.,0.,0.));
+#6 = AXIS2_PLACEMENT_3D('',#1,#4,#5);
+#7 = AXIS2_PLACEMENT_3D('',#2,#4,#5);
+#8 = AXIS2_PLACEMENT_3D('',#3,#4,#5);
+#9 = CIRCLE('',#7,4.);
+#10 = CIRCLE('',#8,4.);
+#11 = CARTESIAN_POINT('',(4.,0.,1.));
+#12 = CARTESIAN_POINT('',(4.,0.,-1.));
+#13 = VERTEX_POINT('',#11);
+#14 = VERTEX_POINT('',#12);
+#15 = EDGE_CURVE('',#13,#13,#9,.T.);
+#16 = EDGE_CURVE('',#14,#14,#10,.T.);
+#17 = TOROIDAL_SURFACE('',#6,4.,1.);
+#20 = ORIENTED_EDGE('',*,*,#15,.T.);
+#21 = ORIENTED_EDGE('',*,*,#16,.F.);
+#22 = ORIENTED_EDGE('',*,*,#15,.F.);
+#23 = ORIENTED_EDGE('',*,*,#16,.T.);
+#30 = EDGE_LOOP('',(#20));
+#31 = EDGE_LOOP('',(#21));
+#32 = EDGE_LOOP('',(#22));
+#33 = EDGE_LOOP('',(#23));
+#40 = FACE_OUTER_BOUND('',#30,.T.);
+#41 = FACE_BOUND('',#31,.T.);
+#42 = FACE_OUTER_BOUND('',#32,.T.);
+#43 = FACE_BOUND('',#33,.T.);
+#50 = ADVANCED_FACE('',(#40,#41),#17,.T.);
+#51 = ADVANCED_FACE('',(#42,#43),#17,.T.);
+#52 = CLOSED_SHELL('',(#50,#51));
+#53 = MANIFOLD_SOLID_BREP('torus',#52);
+)");
+}
+
+}  // namespace
+
+// A torus closed both ways round: two circles round it bound two bands, the
+// outer half and the inner, and each face is the one its loops keep on their
+// left. Took whichever lay between the circles' angles, both faces were one
+// half, and the solid did not close.
+TEST(StepCurvedTest, ATorusOfTwoBandsIsBothItsHalves) {
+    const auto m = measure(torusOfTwoBands());
+    EXPECT_EQ(m.outlined, 0u);
+    const double torus = 2.0 * kPi * kPi * 4.0 * 1.0;
+    expectRelative(m.modelled, torus, 0.02, "its facets, within 2 %");
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
+    expectRelative(m.ideal.properties.volume, torus, 1e-6, "the torus");
+    EXPECT_EQ(importedBuildProblem(torusOfTwoBands()), "");
+}

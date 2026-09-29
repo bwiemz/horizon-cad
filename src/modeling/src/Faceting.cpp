@@ -708,7 +708,10 @@ std::optional<Band> bandInUV(std::vector<UVChain> loops, SurfaceMap& map, double
     for (std::size_t k = 0; k < pts.size(); ++k) {
         double d = coord(pts[k].uv, dir) - coord(from.uv, dir);
         d -= period * std::round(d / period);
-        const double far = std::hypot(d, coord(pts[k].uv, 1 - dir) - coord(from.uv, 1 - dir));
+        // Across it too, on a surface closed that way as well (a torus).
+        double e = coord(pts[k].uv, 1 - dir) - coord(from.uv, 1 - dir);
+        if (map.closed(1 - dir)) e -= map.period(1 - dir) * std::round(e / map.period(1 - dir));
+        const double far = std::hypot(d, e);
         if (far < best) {
             best = far;
             nearest = k;
