@@ -1885,14 +1885,34 @@ private:
         }
 
         if (face->outerLoop == nullptr) {
-            // Files that use plain FACE_BOUND for the outer loop: promote the
-            // first inner loop.
+            // Files that use plain FACE_BOUND for every loop (Alibre's): the
+            // outer is the one that encloses the others, so the widest. The
+            // first was taken, and an annulus whose inner circle came first
+            // was read inside out.
             if (face->innerLoops.empty()) {
                 error = "face #" + std::to_string(faceId) + " has no bounds";
                 return false;
             }
-            face->outerLoop = face->innerLoops.front();
-            face->innerLoops.erase(face->innerLoops.begin());
+            const auto widthOf = [](const topo::Wire* wire) {
+                // Its vertices and its curves' control points, which bound
+                // them: a circle's loop has one vertex.
+                math::BoundingBox box;
+                const topo::HalfEdge* he = wire->halfEdge;
+                do {
+                    box.expand(he->origin->point);
+                    if (he->edge != nullptr && he->edge->curve != nullptr) {
+                        for (const Vec3& p : he->edge->curve->controlPoints()) box.expand(p);
+                    }
+                    he = he->next;
+                } while (he != nullptr && he != wire->halfEdge);
+                return box.isValid() ? (box.max() - box.min()).length() : 0.0;
+            };
+            auto widest = face->innerLoops.begin();
+            for (auto it = std::next(widest); it != face->innerLoops.end(); ++it) {
+                if (widthOf(*it) > widthOf(*widest)) widest = it;
+            }
+            face->outerLoop = *widest;
+            face->innerLoops.erase(widest);
         }
 
         face->surface = readFaceGeometry((*args)[2].ref, loopPoints);

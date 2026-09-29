@@ -878,3 +878,180 @@ TEST(StepCurvedTest, AWideHoleIsCutRoundFinely) {
     expectRelative(fineVolume, exact, 1e-3, "its fine facets, within 0.1 %");
     EXPECT_LT(std::abs(fineVolume - exact), std::abs(coarseVolume - exact)) << "nearer when finer";
 }
+
+// ---------------------------------------------------------------------------
+// As other systems write them (the external corpus, tests/interop/step)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A cylinder of radius 1 and height 2 whose side is bounded by its two
+/// rims and no seam, as Solid Edge, Alibre, NX and Onshape write one: two
+/// loops that each go once round it. @p surfaceRadius is its surface's,
+/// which may be a little off the rims' circles, as another system's is.
+std::string bandCylinder(const std::string& surfaceRadius = "1.") {
+    return step(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(0.,1.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(1.,0.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,2.));
+#9 = DIRECTION('',(1.,0.,0.));
+#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
+#11 = CIRCLE('',#10,1.);
+#12 = CARTESIAN_POINT('',(1.,0.,2.));
+#13 = VERTEX_POINT('',#12);
+#14 = EDGE_CURVE('',#7,#7,#5,.T.);
+#15 = EDGE_CURVE('',#13,#13,#11,.T.);
+#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
+#20 = CYLINDRICAL_SURFACE('',#19,)" +
+                surfaceRadius + R"();
+#21 = ORIENTED_EDGE('',*,*,#14,.T.);
+#22 = EDGE_LOOP('',(#21));
+#23 = FACE_OUTER_BOUND('',#22,.T.);
+#24 = ORIENTED_EDGE('',*,*,#15,.F.);
+#25 = EDGE_LOOP('',(#24));
+#26 = FACE_BOUND('',#25,.T.);
+#27 = ADVANCED_FACE('',(#23,#26),#20,.T.);
+#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
+#29 = PLANE('',#28);
+#30 = ORIENTED_EDGE('',*,*,#15,.T.);
+#31 = EDGE_LOOP('',(#30));
+#32 = FACE_OUTER_BOUND('',#31,.T.);
+#33 = ADVANCED_FACE('',(#32),#29,.T.);
+#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
+#35 = PLANE('',#34);
+#36 = ORIENTED_EDGE('',*,*,#14,.F.);
+#37 = EDGE_LOOP('',(#36));
+#38 = FACE_OUTER_BOUND('',#37,.T.);
+#39 = ADVANCED_FACE('',(#38),#35,.F.);
+#40 = CLOSED_SHELL('',(#27,#33,#39));
+#41 = MANIFOLD_SOLID_BREP('band',#40);
+)");
+}
+
+/// Why @p text's one solid, imported as a body, does not build; empty when
+/// it does.
+std::string importedBuildProblem(const std::string& text) {
+    auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+    if (solids.size() != 1) return "not read: " + StepFormat::lastError();
+    hz::doc::Document part;
+    part.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids[0])), "band.step"));
+    if (part.rebuildModel() && part.failedFeatureIndex() == -1 && part.solid() != nullptr) {
+        return {};
+    }
+    return part.lastBuildMessage();
+}
+
+}  // namespace
+
+// A cylinder's side between its two rims, with no seam, is a band: cut
+// along a seam of its own, it is cut into facets like any side. It came in
+// as one facet, its outline: not flat, so the imported part failed to build,
+// and 11 times too light in facets (the Solid Edge part of the corpus).
+TEST(StepCurvedTest, ASideBetweenTwoRimsWithNoSeamIsCutIntoFacets) {
+    const auto m = measure(bandCylinder());
+    EXPECT_EQ(m.outlined, 0u);
+    expectRelative(m.modelled, 2.0 * kPi, 0.01, "its facets, within 1 %");
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
+    expectRelative(m.ideal.properties.volume, 2.0 * kPi, 1e-8, "the cylinder");
+    EXPECT_EQ(importedBuildProblem(bandCylinder()), "");
+}
+
+// Another system's edges lie a little off their surfaces: up to 4.6
+// micrometres in the corpus (Onshape; SolidWorks, Shapr3D and Pro/ENGINEER
+// less). Within ten micrometres, and a thousandth of the surface's size, a
+// rim still bounds its face; beyond, it does not: this cylinder's thousandth
+// is under 3 micrometres, and a rim 10 off is not on it.
+TEST(StepCurvedTest, ARimAMicrometreOffItsSurfaceStillBoundsIt) {
+    const auto near = measure(bandCylinder("1.0005"));
+    EXPECT_EQ(near.outlined, 0u) << "half a micrometre off";
+    expectRelative(near.modelled, 2.0 * kPi, 0.01, "its facets, within 1 %");
+    EXPECT_EQ(importedBuildProblem(bandCylinder("1.0005")), "");
+
+    const auto far = measure(bandCylinder("1.01"));
+    EXPECT_EQ(far.outlined, 1u) << "ten micrometres off: not on it";
+}
+
+namespace {
+
+/// A tube, 2 across its bore and 4 outside, 2 long, written as Alibre writes
+/// one: every loop a plain FACE_BOUND, each end's inner circle first; each
+/// side a band between its rims, the bore's facing into it.
+std::string alibreTube() {
+    return step(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = CARTESIAN_POINT('',(0.,0.,2.));
+#3 = DIRECTION('',(0.,0.,1.));
+#4 = DIRECTION('',(1.,0.,0.));
+#5 = AXIS2_PLACEMENT_3D('',#1,#3,#4);
+#6 = AXIS2_PLACEMENT_3D('',#2,#3,#4);
+#7 = CIRCLE('',#5,2.);
+#8 = CIRCLE('',#6,2.);
+#9 = CIRCLE('',#5,1.);
+#10 = CIRCLE('',#6,1.);
+#31 = CARTESIAN_POINT('',(2.,0.,0.));
+#32 = CARTESIAN_POINT('',(2.,0.,2.));
+#33 = CARTESIAN_POINT('',(1.,0.,0.));
+#34 = CARTESIAN_POINT('',(1.,0.,2.));
+#11 = VERTEX_POINT('',#31);
+#12 = VERTEX_POINT('',#32);
+#13 = VERTEX_POINT('',#33);
+#14 = VERTEX_POINT('',#34);
+#15 = EDGE_CURVE('',#11,#11,#7,.T.);
+#16 = EDGE_CURVE('',#12,#12,#8,.T.);
+#17 = EDGE_CURVE('',#13,#13,#9,.T.);
+#18 = EDGE_CURVE('',#14,#14,#10,.T.);
+#40 = ORIENTED_EDGE('',*,*,#15,.T.);
+#41 = ORIENTED_EDGE('',*,*,#16,.F.);
+#42 = ORIENTED_EDGE('',*,*,#17,.F.);
+#43 = ORIENTED_EDGE('',*,*,#18,.T.);
+#44 = ORIENTED_EDGE('',*,*,#18,.F.);
+#45 = ORIENTED_EDGE('',*,*,#16,.T.);
+#46 = ORIENTED_EDGE('',*,*,#17,.T.);
+#47 = ORIENTED_EDGE('',*,*,#15,.F.);
+#50 = EDGE_LOOP('',(#40));
+#51 = EDGE_LOOP('',(#41));
+#52 = EDGE_LOOP('',(#42));
+#53 = EDGE_LOOP('',(#43));
+#54 = EDGE_LOOP('',(#44));
+#55 = EDGE_LOOP('',(#45));
+#56 = EDGE_LOOP('',(#46));
+#57 = EDGE_LOOP('',(#47));
+#60 = FACE_BOUND('',#50,.T.);
+#61 = FACE_BOUND('',#51,.T.);
+#62 = FACE_BOUND('',#52,.T.);
+#63 = FACE_BOUND('',#53,.T.);
+#64 = FACE_BOUND('',#54,.T.);
+#65 = FACE_BOUND('',#55,.T.);
+#66 = FACE_BOUND('',#56,.T.);
+#67 = FACE_BOUND('',#57,.T.);
+#70 = CYLINDRICAL_SURFACE('',#5,2.);
+#71 = CYLINDRICAL_SURFACE('',#5,1.);
+#72 = PLANE('',#6);
+#73 = PLANE('',#5);
+#20 = ADVANCED_FACE('',(#60,#61),#70,.T.);
+#21 = ADVANCED_FACE('',(#62,#63),#71,.F.);
+#22 = ADVANCED_FACE('',(#64,#65),#72,.T.);
+#23 = ADVANCED_FACE('',(#66,#67),#73,.F.);
+#24 = CLOSED_SHELL('',(#20,#21,#22,#23));
+#25 = MANIFOLD_SOLID_BREP('tube',#24);
+)");
+}
+
+}  // namespace
+
+// A face whose loops are all plain FACE_BOUNDs has for its outline the one
+// that encloses the others, whichever comes first. The first was taken: the
+// Alibre part of the corpus (tests/interop/step), a tube whose ends list
+// their inner circle first, measured 14.6 of its 44.2 mm³ in facets.
+TEST(StepCurvedTest, AFaceOfPlainBoundsHasItsWidestLoopForItsOutline) {
+    const auto m = measure(alibreTube());
+    EXPECT_EQ(m.outlined, 0u);
+    expectRelative(m.modelled, 6.0 * kPi, 0.01, "its facets, within 1 %");
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
+    expectRelative(m.ideal.properties.volume, 6.0 * kPi, 1e-8, "the tube");
+    EXPECT_EQ(importedBuildProblem(alibreTube()), "");
+}
