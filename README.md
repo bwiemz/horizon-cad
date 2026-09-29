@@ -1,10 +1,48 @@
 # Horizon CAD
 
-An open-source 2D drafting application built from scratch in C++20. Horizon provides a familiar CAD workflow with drawing tools, dimension annotations, constraints, layers, blocks, undo/redo, and file I/O — all rendered with OpenGL and wrapped in a modern Qt6 desktop interface.
+An open-source, parametric 3D CAD application for Windows, macOS and Linux,
+built from scratch in C++20 with Qt 6 and OpenGL. Model parts from sketches
+and a feature history, put them together in assemblies held by mates, and
+make drawing sheets of them that follow the model. It also has a full 2D
+drafting workspace, and exchanges files with other CAD systems through STEP
+and DXF.
+
+Horizon CAD is **0.1.0 and not yet released**: a first beta is being
+prepared. [Installing](docs/INSTALL.md) says how to install a package, and
+[Testing a beta](docs/BETA.md) what testers are asked to try. The
+[Feature Maturity](#feature-maturity) table below says, module by module,
+what is solid and what is not yet.
 
 ## Features
 
-### Drawing Tools
+### Parts
+- Sketches on the XY, XZ or YZ plane, on a face of the part (the sketch follows the face when the part changes), or on a datum plane; part edges projected into a sketch; construction geometry
+- Features in a history (the Feature Tree): **Extrude** (to a distance, both ways, through all, or up to a face), **Revolve**, **Loft**, **Sweep**, **Hole** (simple, counterbored or countersunk), **Fillet**, **Chamfer**, **Shell**, **Draft**, **Linear** and **Circular Pattern**, **Mirror**, the primitives (box, cylinder, sphere, cone, torus), Union, Subtract and Intersect, and datum planes, axes and points
+- Any feature edited, suppressed, reordered or rolled back, and the part built again from it; every change one step of Undo
+- Faces and edges keep their names through a rebuild, so a fillet, a sketch or a mate stays on the face it was made on
+- **Units** per document (mm, cm, m, in, ft); **variables** and **expressions** for feature sizes ("wall", "10 * wall"); **configurations** in a design table
+- **Mass Properties**: volume, surface area, centre of mass and inertia, of the part as designed (with its estimated error) and as faceted
+- A part that takes a while to build is built in the background, with progress and Cancel
+
+### Assemblies
+- Parts and whole assemblies placed as components; the triad or a drag moves them, keeping their mates
+- **Mates** on faces, straight and round edges, and datums: coincident, concentric, distance, angle (each with limits), parallel, perpendicular, tangent, fixed
+- Component patterns, mirrored components, named exploded views
+- **Interference** checking and a **bill of materials**
+- A part changed and saved, here or on disk, changes in every assembly that uses it
+
+### Drawing sheets
+- A sheet of a part or an assembly: the standard views at an ISO scale, a border and a title block, on A0–A4 or ANSI A–D paper
+- Section and detail views; dimensions picked on edges and measured from the model; centre lines on holes and bosses
+- An assembly's sheet has numbered balloons and a parts list
+- The sheet follows the model: its views are projected again when the part is saved
+- Exported to PDF, SVG and DXF at 1:1
+
+### 2D drafting
+
+A drafting workspace of its own (`.hcad`, and DXF), and the tools sketches are drawn with.
+
+#### Drawing Tools
 - **Line** (chaining), **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polyline** (multi-click; closed with Polyline Edit)
 - **Ellipse** (center + semi-axes), **Spline** (cubic B-spline with control points)
 - **Text** (standalone text entities of one line or several, with height, rotation, alignment)
@@ -12,7 +50,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Snapping to endpoints, midpoints, centers, quadrants, intersections and the grid, each switchable (F3, F9); ortho (F8) and polar tracking (F10)
 - Points typed while drawing and dimensioning: `x,y`, `@dx,dy`, `@length<angle`, or a length toward the cursor
 
-### Editing Tools
+#### Editing Tools
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
 - **Entity grouping** (Ctrl+G / Ctrl+Shift+G) — lightweight selection groups without block overhead
 - Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale
@@ -21,7 +59,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Polyline editing (add/remove vertices, toggle closed, join polylines)
 - Grip editing for direct point manipulation
 
-### Dimensions & Annotations
+#### Dimensions & Annotations
 - **Linear** dimensions (horizontal, vertical, aligned) with auto-orientation detection
 - **Radial** dimensions (radius or diameter) placed on circles and arcs
 - **Angular** dimensions measuring the angle between two lines
@@ -30,51 +68,44 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 - Text override support on all dimension types
 - A dimension style editor (text height, arrows, extension lines, decimal places, and the unit: mm, cm, m, in or ft) kept with the drawing
 
-### Measurement Tools
+#### Measurement Tools
 - **Distance** measurement between two points
 - **Angle** measurement between two lines
 - **Area** measurement of closed polygons
 
-### Geometric Constraints
+#### Geometric Constraints
 - Coincident, Horizontal, Vertical, Perpendicular, Parallel, Tangent
 - Equal length, Fixed position, Distance, and Angle constraints
 - Constraint solver with real-time visual indicators
 
-### Blocks & Components
+#### Blocks & Components
 - Create reusable block definitions from selected entities, at a base point you choose
 - Insert block references with position, rotation, and scale
 - Explode block references back to individual entities
 
-### Layers & Properties
+#### Layers & Properties
 - Layer management with visibility, lock, color, line width, and line type
 - **Line types**: Continuous, Dashed, Dotted, DashDot, Center, Hidden, Phantom — rendered via GPU shader
 - ByLayer property inheritance — entities can inherit color, line width, and line type from their layer
 - Property panel for inspecting and editing selected entities, including a line's, circle's or arc's geometry
 - Layer panel with add, remove, rename, current layer, and per-layer visibility, lock, color, line weight and line type
 
-### Document System
-- Full undo/redo with composite command support
-- Native JSON file format (`.hcad`/`.hzpart`, format v18) with backward-compatible versioning
-- DXF import/export (LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, SPLINE, HATCH, INSERT)
-- New, Open, Save, Save As workflow
-- PDF and SVG export of a drawing, on a chosen paper, fitted or to scale, with line weights and text to scale
+### Files and exchange
+- Native files: parts (`.hzpart`), assemblies (`.hzasm`), drawing sheets (`.hzdwg`) and 2D drawings (`.hcad`), versioned JSON, each reading every earlier version of itself (parts, assemblies and 2D drawings are written as format 29)
+- **STEP** (AP242) import, as a part or as an assembly of part files, and export of parts and assemblies, curved faces written as designed where they can be
+- **DXF** import and export; **STL** and **glTF** export; drawing sheets to **PDF** and **SVG**
+- What a file holds that Horizon CAD cannot read is reported, never dropped silently, and a file read in part is not saved over without asking
 
-### Modern UI
-- **Dark theme** with Fusion style, custom palette, and QSS stylesheet
-- **Ribbon toolbar** with tabbed categories (Home, Draw, Modify, Annotate, Constrain, Block, 3D)
-- **Programmatic icons** — 45+ vector-style icons generated via QPainter (no external assets)
-- **Keyboard shortcuts** for the common tools (single-key access: L=Line, C=Circle, etc.)
-- **Enhanced status bar** showing coordinates, active tool, the drafting aids (as toggles), selection count, tool prompts and what is typed
-- **Viewport overlays** — crosshair cursor, snap markers, axis indicator (all GL-rendered)
-- **Styled panels** — consistent dark theme across property and layer panels
+### Working safely
+- Undo and redo for every change to a part, an assembly or a 2D drawing (a drawing sheet's changes are saved with it, but not yet undone)
+- Autosave snapshots, offered back after a crash; a crash report is kept and offered at the next start (nothing is sent anywhere)
+- Long work (rebuilds, imports, interference checks) runs in the background and can be cancelled
 
-### Rendering
-- OpenGL 3.3 Core Profile with batched line rendering
-- Pan, orbit, and zoom camera controls
-- Grid overlay with fit-all view
-- Real-time snap indicators and tool previews
-- GL texture-based text overlay for dimension and entity text
-- Selection highlighting and color-aware rendering
+### The window
+- A ribbon and menus, a command palette (**Ctrl+K**), keyboard shortcuts, and a dark theme
+- A user guide in the application (**F1** opens the page for what you are doing), a Getting Started tour, and samples to open
+- English, German, Spanish, French, Japanese, Korean and Chinese (the translations are machine-made and marked for review)
+- OpenGL 3.3 viewport: orbit, pan and zoom, a view cube, selection highlighting, and snap and tool previews
 
 ## Tech Stack
 
@@ -98,7 +129,7 @@ An open-source 2D drafting application built from scratch in C++20. Horizon prov
 ```bash
 cmake --preset debug
 cmake --build build/debug --config Debug
-ctest --test-dir build/debug -C Debug            # ~1030 tests
+ctest --test-dir build/debug -C Debug
 ./build/debug/src/app/Debug/horizon.exe
 ```
 
@@ -171,7 +202,7 @@ src/
   scripting/     Embedded CPython (pybind11) `horizon` module (optional feature)
   ui/            Qt widgets, ribbon toolbar, tools, panels, document tabs, i18n
   app/           Application entry point, dark theme, resources, locale loading
-tests/           One suite per module + cross-module integration tests (~1030 tests)
+tests/           One suite per module, window tests, fuzzers, cross-module integration tests
 ```
 
 ## Feature Maturity
@@ -193,20 +224,22 @@ the application, so users cannot reach it yet. Ratings:
 |--------|----------|-------|
 | math | stable | Closed-form-validated linear algebra, R*-tree, expressions |
 | drafting (2D) | stable | The original core of the application |
-| document / undo | stable | Feature tree + multi-document are newer but well-tested. Faceting resolution is a parameter of the feature that owns it (`segments` on curved primitives, revolves and sweep path arcs, `arcSegments` on fillets), or a `chordTolerance` from which the count is re-derived at the governing radius on every rebuild, so accuracy is editable and persists across save/reload |
+| document / undo | stable | Feature tree, multi-document, units, variables and expressions, configurations. Faceting resolution is a parameter of the feature that owns it (`segments` on curved primitives, revolves and sweep path arcs, `arcSegments` on fillets), or a `chordTolerance` from which the count is re-derived at the governing radius on every rebuild, so accuracy is editable and persists across save/reload |
+| assemblies | experimental | Components placed and dragged with their mates solved, subassemblies, component patterns, mirrored components, exploded views, interference, bill of materials, STEP export. A subassembly is rigid in its parent (its own mates are not solved there); a pattern's instances cannot be mated (mate the seed); a drawing's parts list is the top level only, and a sheet cannot show an exploded view |
 | constraint | stable | Newton-Raphson + LM solver, exercised by sketch tests |
 | geometry (NURBS) | stable | Curves/surfaces/tessellation, rational surfaces exact between knots; Coons patches experimental and library-only |
 | topology (B-Rep) | stable | `Solid::isValid()` is combinatorial (twin/Euler structure); `GeometryValidator` adds the geometric checks — vertex-chain and twin coincidence, degenerate edges/faces, loop planarity against the face's own carrier, self-intersecting loops, shell closure |
 | modeling — Booleans | experimental | BSP-CSG with face splitting, exact fragment classification, coplanar handling, manifold sewing; volumes closed-form-tested. Operates on the faceted boundary, which since Phase 84 is the whole solid rather than a 4-sided caricature of it — a bored cylinder now comes out within the facet error instead of 36% light. Tolerances are relative to the operands, and results are sound (valid and volume-conserving, or refused with a reason) far from the origin, at very small and large scales, and with faces in exact contact (142). A convex solid's BSP is a chain, so very large faceted solids (thousands of facets) are slow. Analytic surface–surface intersection is still future work |
-| modeling — extrude/revolve/primitives/patterns | stable | Exact volumes verified. Profile arcs and circles are faceted (`segments` / `chordTolerance`) with their ideal cylinder and circles recorded, so an extruded circle is a true inscribed prism rather than a square. Curved primitives (cylinder/cone/sphere/torus) and revolves are faceted at construction — `segments` is tunable, `segmentsForTolerance()` derives it from a chord-sag budget — so their volumes converge to the analytic value rather than matching it exactly; each facet records the analytic surface it approximates. Revolve takes any closed profile through any angle in (0, 2π], and refuses a profile that crosses the axis or a plane the axis does not lie in |
-| modeling — fillet/chamfer | experimental | Chamfer rebuilt on `SolidSewer` (82) with vertex blends (83), and both ops now work on faceted geometry (85–86): a cylinder rim chamfers to the exact truncated cone up to the cap's inradius, and fillet blends are faceted across the arc so their volume converges to `r²(1−π/4)L` instead of integrating as a chamfer. Capacity is the adjacent face's width, not a proxy. Both refuse geometrically invalid output. Straight edges of planar-faced solids at any angle, convex or concave (140), on parts of several bodies; oblique or concave three-edge corners are refused, not mis-built. Fillet chains (two edges per vertex, e.g. a cylinder rim) are mitered |
-| modeling — loft/sweep/shell/draft | experimental | Core paths tested; complex inputs unverified. Twisted loft bands are faceted on alternating diagonals, so a loft's volume is the ruled solid's exactly. Sweep carries the profile by a rotation-minimizing (mitered) frame, so its volume is exactly section area × path length; path arcs are sampled at a `segments` resolution. A path that crosses itself far from any single turn is not caught: the geometric gate checks each face on its own, not faces crossing each other. Shell hollows a plain prism only (two caps, straight sides) and refuses anything else, which it would have stripped; Draft tilts every side face, outward by each body's winding |
+| modeling — extrude/revolve/primitives/patterns | stable | Exact volumes verified. Profile arcs and circles are faceted (`segments` / `chordTolerance`) with their ideal cylinder and circles recorded, so an extruded circle is a true inscribed prism rather than a square. Curved primitives (cylinder/cone/sphere/torus) and revolves are faceted at construction — `segments` is tunable, `segmentsForTolerance()` derives it from a chord-sag budget — so their volumes converge to the analytic value rather than matching it exactly; each facet records the analytic surface it approximates. Revolve takes any closed profile through any angle in (0, 2π], and refuses a profile that crosses the axis or a plane the axis does not lie in. Extrude goes up to a face only when the face is parallel to the sketch |
+| modeling — hole/mirror | experimental | New in 162. Hole (simple, counterbored, countersunk; to a depth, through all, or up to a parallel face) follows its face, and is repeated by patterns and mirrors; its walls are true cylinders and cones. Mirror (in a base plane or a flat face) follows its face, but a pattern or another mirror cannot repeat it |
+| modeling — fillet/chamfer | experimental | Chamfer rebuilt on `SolidSewer` (82) with vertex blends (83), and both ops work on faceted geometry (85–86): a cylinder rim chamfers to the exact truncated cone up to the cap's inradius, and fillet blends are faceted across the arc so their volume converges to `r²(1−π/4)L` instead of integrating as a chamfer. Capacity is the adjacent face's width, not a proxy. Both refuse geometrically invalid output. Straight edges of planar-faced solids at any angle, convex or concave (140), on parts of several bodies; oblique or concave three-edge corners are refused, not mis-built. Fillet chains (two edges per vertex, e.g. a cylinder rim) are mitered, and a revolve's cylindrical rims (a disk's, and a ring's outer rim) fillet on facets inscribed in their true torus (164); a cone's rim is untested. A hole's rim cannot be filleted yet: the hole's cut splits the face around it |
+| modeling — loft/sweep/shell/draft | experimental | Core paths tested; complex inputs unverified. Twisted loft bands are faceted on alternating diagonals, so a loft's volume is the ruled solid's exactly. Sweep carries the profile by a rotation-minimizing (mitered) frame, so its volume is exactly section area × path length; path arcs are sampled at a `segments` resolution. A path that crosses itself far from any single turn is not caught: the geometric gate checks each face on its own, not faces crossing each other. Shell hollows a single body whose faces are flat or on cylinders, cones and spheres, with holes, bosses and curved walls, opening one face or more (163); its inner walls lie on true surfaces. It refuses a closed hollow (no face opened), a corner whose moved faces do not meet in a point (a pyramid's tip), a cone too near a cylinder or a plane, and a face opened in part. A cavity whose moved faces would cross each other is not detected, for the same reason. Draft tilts every side face, outward by each body's winding |
 | modeling — sheet metal | experimental, library-only | Validated against analytic bend formulas; no command in the application yet |
-| fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary, backward compatible v1-v9. Feature faceting resolution round-trips; files written before it existed load at the feature defaults |
+| fileio — native (.hcad/.hzpart/.hzasm) | stable | JSON + FlatBuffers binary. Written as format 29; every earlier version reads. What a file holds that this version cannot read is reported, and the document opens marked incomplete: it is saved elsewhere, never over that file, unless its user confirms. Feature faceting resolution round-trips; files written before it existed load at the feature defaults |
 | fileio — DXF | stable | Entity subset documented. A hatch keeps one boundary (its islands are reported); blocks nested in blocks are flattened up to 2,000,000 entities, and the rest reported |
-| fileio — STEP AP242 | experimental | File ▸ Import ▸ STEP as a New Part, and File ▸ Export ▸ STEP, curved faces written as designed where they can be (cylinders, bosses, holes, extrusions; not yet spheres or apexes, which go out as facets and are listed). Assemblies (153): a file's product structure places its parts, nested assemblies and their units compounded, into a part (a body per placement) or, with File ▸ Import ▸ STEP as an Assembly, kept as an assembly of part files; an assembly tab exports as a STEP assembly (placements by MAPPED_ITEM are not read). Core B-Rep subset with documented limitations (no BREP_WITH_VOIDS — pinned by fixture tests in `tests/fileio/fixtures/step/`); what an import skips or approximates is reported. Plane, cylinder, cone, sphere, torus and B-spline faces are read; an imported part is built in facets that record their surface (141), a face bounded by a rectangle of its surface's (u, v) as a grid, any other curved face as one facet, its outline, and reported. Export writes the facets |
+| fileio — STEP AP242 | experimental | **Import** (File ▸ Import ▸ STEP as a New Part, or as an Assembly of part files): plane, cylinder, cone, sphere, torus and B-spline faces, whatever their outline and with their holes (152), built as facets that record their true surface (a face that cannot be cut so, such as a pole on a trimmed outline or a hole across a seam, comes in as one facet, and is reported); an assembly's product structure (153), nested assemblies and repeated parts placed as the file says; the file's length unit, and when it names none this version reads, its user is asked which. Not read: BREP_WITH_VOIDS (pinned by fixture tests in `tests/fileio/fixtures/step/`) and placements by MAPPED_ITEM (those parts come in where drawn, and it is said). What an import skips or approximates is reported. **Export** (File ▸ Export ▸ STEP): parts and assemblies, curved faces written on their surfaces (cylinders, cones, holes, bosses, extrusions, 151); spheres, tori, cone apexes and filleted rims still go out as facets, and the export lists them |
 | fileio — glTF/STL | experimental | Export-only, from File ▸ Export |
-| fileio — drawings (`.hzdwg`, drawing DXF) | experimental | Drawing ▸ New Drawing from Part makes a sheet tab: the standard views at an ISO scale, with border and title block, saved as `.hzdwg`, drawn again when the part changes, exported to DXF, PDF and SVG at 1:1. Sections and details added in the Drawing menu, captioned and marked on their views; views moved by clicks and removed; dimensions picked on edges, measured from the part and kept by the edges' names; centre lines on holes and bosses. Assemblies are drawn with a balloon on each part and a parts list; what is drawn on a sheet by hand is saved and moves with its view |
+| fileio — drawings (`.hzdwg`, drawing DXF) | experimental | Drawing ▸ New Drawing from Part or Assembly makes a sheet tab: the standard views at an ISO scale, with border and title block, saved as `.hzdwg`, drawn again when the model's file is saved or changes, exported to DXF, PDF and SVG at 1:1. Sections and details added in the Drawing menu, captioned and marked on their views; views moved by clicks and removed; dimensions picked on edges, measured from the part and kept by the edges' names; centre lines on holes and bosses. Assemblies are drawn with a balloon on each part and a parts list; what is drawn on a sheet by hand is saved and moves with its view. Balloons may overlap, and a sheet's changes are not undone |
 | render — OpenGL path | stable | The shipping viewport |
 | render — Vulkan / GPU tessellation / path tracer | experimental, library-only | Staged bring-up; the application draws with OpenGL only |
 | simulation (FEA) | prototype, library-only | Educational/basic analysis: structured box meshing, linear-static/thermal/modal on tets, validated against analytic bars — not a general-purpose FEA workbench. There is no mesher for arbitrary solids: the analyses mesh a solid's bounding box, so they refuse any solid that does not fill it (anything but an axis-aligned box), and say why |
@@ -215,7 +248,7 @@ the application, so users cannot reach it yet. Ratings:
 | cam | prototype, library-only | Contour/drill/rect-pocket slices; no cutter offsetting, gouge or collision checking, stock model or post-processors. A program starts from a known state (modal resets, tool with its length offset, spindle), rapids climb before they cross, and paths or programs that could run a rapid through the cut, cut with the spindle stopped, or carry a non-finite number are refused. Check any program in a simulator before running it on a machine |
 | plugin registry | experimental, library-only | Fail-closed validation without code execution; the execution bridge is future work |
 | scripting (Python) | experimental, library-only | Embedded CPython, off by default (`HZ_ENABLE_SCRIPTING`) because it is not sandboxed. A script's `doc` is valid only during its run; a copy it keeps raises if used later |
-| ui / app | experimental | Qt ribbon shell, i18n catalogs, 2D drafting tools with full undo. The 3D ribbon's commands add undoable features to the part; Extrude and Revolve join, cut, intersect or start a body. Offscreen window tests run every command and drive the drafting tools through the viewport |
+| ui / app | experimental | Qt ribbon and menus over four workbenches: 2D drafting, parts (sketches, features, the Feature Tree), assemblies, and drawing sheets. Long work runs on workers with Cancel; autosave and crash recovery; crash reports; a user guide, a tour and samples; seven languages (machine translations, marked for review); accessible names on every control. Window tests run every command and drive the tools through the viewport, headless, on Windows, macOS and Linux; `horizon --self-test` checks each package on clean machines before release |
 
 ## Roadmap
 
