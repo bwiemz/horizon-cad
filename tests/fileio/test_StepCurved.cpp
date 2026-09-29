@@ -1263,3 +1263,59 @@ TEST(StepCurvedTest, AFaceBetweenTwoGentleCurvesHasAnOutline) {
     EXPECT_NEAR(MassPropertiesCalculator::compute(*faceted.solid).volume, 2.0 * 2.0 * segment,
                 0.3 * 2.0 * 2.0 * segment);
 }
+
+namespace {
+
+/// @p text with @p from replaced by @p to, which it must hold once.
+std::string replaced(std::string text, const std::string& from, const std::string& to) {
+    const auto at = text.find(from);
+    EXPECT_NE(at, std::string::npos) << from;
+    if (at != std::string::npos) text.replace(at, from.size(), to);
+    return text;
+}
+
+}  // namespace
+
+// A closed surface's whole face bounded by a point alone, as Unigraphics
+// writes a ball and a ring: read as the seams other systems write for it,
+// a sphere's from pole to pole, a torus's two circles. Measured as they are.
+TEST(StepCurvedTest, AFaceBoundedByAPointAloneIsItsWholeSurface) {
+    const auto ball =
+        measure(replaced(sphere(), "#16 = EDGE_LOOP('',(#14,#15));", "#16 = VERTEX_LOOP('',#9);"));
+    expectRelative(ball.ideal.properties.volume, 4.0 / 3.0 * kPi * 3.375, 1e-9, "the ball");
+    EXPECT_EQ(ball.outlined, 0u);
+
+    const auto ring = measure(
+        replaced(torus(), "#19 = EDGE_LOOP('',(#15,#16,#17,#18));", "#19 = VERTEX_LOOP('',#7);"));
+    expectRelative(ring.ideal.properties.volume, 2.0 * kPi * kPi * 4.0 * 1.0, 1e-9, "the ring");
+    EXPECT_EQ(ring.outlined, 0u);
+}
+
+// A cone's apex written as a second bound, a point, beside its base circle
+// (Unigraphics'): its side reaches the apex along a seam, as other systems
+// write it, and it is the whole cone.
+TEST(StepCurvedTest, AConesApexWrittenAsAPointIsReached) {
+    std::string text = replaced(cone(), "#21 = EDGE_LOOP('',(#18,#19,#20));",
+                                "#21 = EDGE_LOOP('',(#18));\n#31 = VERTEX_LOOP('',#9);\n"
+                                "#32 = FACE_BOUND('',#31,.T.);");
+    text = replaced(text, "#23 = ADVANCED_FACE('',(#22),#17,.T.);",
+                    "#23 = ADVANCED_FACE('',(#22,#32),#17,.T.);");
+    const auto m = measure(text);
+    expectRelative(m.ideal.properties.volume, kPi * 4.0 * 3.0 / 3.0, 1e-9, "the cone");
+    EXPECT_EQ(m.outlined, 0u);
+}
+
+// A side written as its base swept along the axis (SURFACE_OF_LINEAR_
+// EXTRUSION, an ellipse's in Unigraphics'): an elliptic cylinder, 2 by 1
+// across and 2 high, its caps ellipses.
+TEST(StepCurvedTest, ASweptEllipseIsAnEllipticCylinder) {
+    std::string text = replaced(cylinder(), "#5 = CIRCLE('',#4,1.);", "#5 = ELLIPSE('',#4,2.,1.);");
+    text = replaced(text, "#11 = CIRCLE('',#10,1.);", "#11 = ELLIPSE('',#10,2.,1.);");
+    text = replaced(text, "#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);",
+                    "#10 = AXIS2_PLACEMENT_3D('',#8,#2,#3);");
+    text = replaced(text, "#20 = CYLINDRICAL_SURFACE('',#19,1.);",
+                    "#20 = SURFACE_OF_LINEAR_EXTRUSION('',#5,#50);\n#50 = VECTOR('',#2,1.);");
+    const auto m = measure(text);
+    expectRelative(m.ideal.properties.volume, kPi * 2.0 * 1.0 * 2.0, 1e-9, "the cylinder");
+    EXPECT_EQ(m.outlined, 0u);
+}

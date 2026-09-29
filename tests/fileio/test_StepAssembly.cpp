@@ -8,6 +8,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <regex>
@@ -543,4 +544,68 @@ TEST(StepAssemblyTest, APartOfManySolidsPlacedManyTimesIsCutShort) {
     EXPECT_GT(read.occurrences.size(), 600u);
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped[0].find("more times than can be read"), std::string::npos);
+}
+
+namespace {
+
+/// @p text, an assembly placing its parts by CONTEXT_DEPENDENT_SHAPE_
+/// REPRESENTATIONs, as Unigraphics writes it instead: each placement a
+/// MAPPED_ITEM in the assembly's representation, mapping the part's
+/// representation from its origin to the placement.
+std::string byMappedItems(std::string text) {
+    const std::regex cdsr(R"(#\d+ = CONTEXT_DEPENDENT_SHAPE_REPRESENTATION\([^;]*\);\n)");
+    text = std::regex_replace(text, cdsr, "");
+    const std::regex placing(R"(#\d+ = \(REPRESENTATION_RELATIONSHIP\('','',#(\d+),#(\d+)\) )"
+                             R"(REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION\(#(\d+)\))");
+    std::string added;
+    std::map<std::string, std::vector<std::string>> itemsOf;  // assembly rep → mapped items
+    int next = 900000;
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), placing);
+         it != std::sregex_iterator(); ++it) {
+        const std::string part = (*it)[1].str();
+        const std::string assembly = (*it)[2].str();
+        const std::regex transformation(
+            "#" + (*it)[3].str() + R"( = ITEM_DEFINED_TRANSFORMATION\('','',#(\d+),#(\d+)\);)");
+        std::smatch t;
+        EXPECT_TRUE(std::regex_search(text, t, transformation));
+        const std::string map = std::to_string(next++);
+        const std::string item = std::to_string(next++);
+        added += "#" + map + " = REPRESENTATION_MAP(#" + t[1].str() + ",#" + part + ");\n";
+        added += "#" + item + " = MAPPED_ITEM('',#" + map + ",#" + t[2].str() + ");\n";
+        itemsOf[assembly].push_back("#" + item);
+    }
+    for (const auto& [assembly, items] : itemsOf) {
+        const std::regex representation("(#" + assembly +
+                                        R"( = SHAPE_REPRESENTATION\('[^']*',\([^)]*)\))");
+        std::string list;
+        for (const auto& item : items) list += "," + item;
+        text = std::regex_replace(text, representation, "$1" + list + ")");
+    }
+    return withEntities(text, added);
+}
+
+}  // namespace
+
+// An assembly that places its parts by MAPPED_ITEM (Unigraphics'), not by
+// CONTEXT_DEPENDENT_SHAPE_REPRESENTATION: each placement read as the other
+// way of writing it is, a part used twice each where its item puts it.
+TEST(StepAssemblyTest, PlacementsByMappedItemsAreRead) {
+    const Rig rig;
+    const std::string text = byMappedItems(rig.text());
+    ASSERT_EQ(text.find("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION"), std::string::npos);
+    ASSERT_NE(text.find("MAPPED_ITEM"), std::string::npos);
+
+    ImportReport report;
+    const StepAssembly read = StepFormat::assemblyFromString(text, &report);
+    ASSERT_EQ(read.parts.size(), 2u) << StepFormat::lastError();
+    EXPECT_TRUE(read.structured);
+    const auto written = Rig::occurrences();
+    ASSERT_EQ(read.occurrences.size(), written.size());
+    for (std::size_t k = 0; k < written.size(); ++k) {
+        EXPECT_EQ(read.occurrences[k].part, written[k].part);
+        expectSameTransform(read.occurrences[k].transform, written[k].transform, written[k].name);
+    }
+    for (const auto& note : report.approximated) {
+        EXPECT_EQ(note.find("placed where drawn"), std::string::npos) << note;
+    }
 }
