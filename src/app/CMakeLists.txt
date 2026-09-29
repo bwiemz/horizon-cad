@@ -52,10 +52,31 @@ if (APPLE)
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
 endif()
 
+# On Windows, every DLL the executable needs that Windows does not have: the
+# libraries vcpkg built (fmt, spdlog, and Qt's own: zlib, pcre2, freetype,
+# harfbuzz, libpng, double-conversion...), found beside the executable in the
+# build tree, and what they need in turn. Qt's deployment tool (below) copies
+# Qt's DLLs, not theirs: the build tree has them all, so every test passed
+# there, and the installer's program did not start on a machine that never
+# built it (0xC0000135, found by the install check). The Visual C++ runtime
+# goes beside it too, for a Windows that has never had it installed.
+set(_hz_runtime_dependencies)
+if (WIN32)
+    set(_hz_runtime_dependencies
+        RUNTIME_DEPENDENCIES
+            DIRECTORIES "$<TARGET_FILE_DIR:horizon>"
+            PRE_EXCLUDE_REGEXES "^[Aa][Pp][Ii]-[Mm][Ss]-" "^[Ee][Xx][Tt]-[Mm][Ss]-"
+            POST_EXCLUDE_REGEXES ".*[Ss][Yy][Ss][Tt][Ee][Mm]32[/\\\\].*")
+endif()
 install(TARGETS horizon
+    ${_hz_runtime_dependencies}
     RUNTIME DESTINATION bin
     BUNDLE DESTINATION .
 )
+if (WIN32)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
+    include(InstallRequiredSystemLibraries)
+endif()
 
 # The Qt runtime in a Windows or macOS package: on Windows Qt's DLLs and the
 # plugins it needs next to the executable (the build tree deploys them itself;
@@ -164,6 +185,10 @@ else()
         set(HZ_LRELEASE_USED ${HZ_LRELEASE})
     endif()
 endif()
+# How many catalogs --self-test looks for where the application looks for
+# them: none in a build that has none.
+list(LENGTH HZ_QM_FILES HZ_QM_COUNT)
+target_compile_definitions(horizon PRIVATE HZ_TRANSLATION_CATALOGS=${HZ_QM_COUNT})
 if (HZ_QM_FILES)
     message(STATUS "Horizon translations: ENABLED (${HZ_LRELEASE_USED})")
     # Compile the catalogs and copy them where the application looks

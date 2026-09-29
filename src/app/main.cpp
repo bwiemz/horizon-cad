@@ -13,8 +13,10 @@
 #include <QStyleFactory>
 #include <QSurfaceFormat>
 #include <QSysInfo>
+#include <QTemporaryDir>
 #include <QTextStream>
 #include <QTimer>
+#include <vector>
 
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
@@ -23,6 +25,7 @@
 #include "horizon/ui/LocaleManager.h"
 #include "horizon/ui/Logging.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/SelfTest.h"
 #include "horizon/ui/ViewportWidget.h"
 
 // Suppress a specific Qt 6.10 qpixmap_win.cpp assertion on MSVC debug builds.
@@ -78,18 +81,45 @@ static void applyDarkTheme(QApplication& app) {
     }
 }
 
-/// horizon --self-test: the window shown, wait for its viewport to draw a
-/// frame, and report. Exit 0 once it has, 3 if it cannot (and why), 4 if it
-/// has not within 20 s. Neither a recovered session nor files are
-/// opened: a dialog must not keep it waiting. The packages are started this
-/// way before they are shipped, since every test runs headless, where a
-/// Qt with no platform plugin passed them all.
+/// horizon --self-test: what a beta tester is asked to do, done in a folder
+/// that goes when it is done (selftest::runWorkflows), then the window shown,
+/// wait for its viewport to draw a frame, and report. Exit 0 once it has, 3
+/// if it cannot (and why), 4 if it has not within 20 s, and 5, whatever the
+/// viewport did, when any of the rest failed. Neither a recovered session
+/// nor files are opened: a dialog must not keep it waiting. The packages are
+/// started this way before they are shipped, since every test runs headless,
+/// where a Qt with no platform plugin passed them all; and again on a
+/// machine that never built them.
 static int runSelfTest(QApplication& app, hz::ui::MainWindow& window) {
-    auto* viewport = window.findChild<hz::ui::ViewportWidget*>();
     QTextStream out(stdout);
+    bool workflowsPassed = true;
+    {
+        const QTemporaryDir folder;
+        std::vector<hz::ui::selftest::Step> steps;
+        if (folder.isValid()) {
+            const hz::ui::selftest::Shipped shipped{
+                hz::ui::MainWindow::sampleDirectory(),
+                QDir(hz::ui::Application::shippedFilesDirectory())
+                    .filePath(QStringLiteral("translations")),
+                HZ_TRANSLATION_CATALOGS};
+            steps = hz::ui::selftest::runWorkflows(folder.path(), shipped);
+        } else {
+            steps.push_back({QStringLiteral("folder"), false,
+                             QStringLiteral("no temporary folder: %1").arg(folder.errorString())});
+        }
+        for (const auto& step : steps) {
+            out << "self-test: " << step.name << ": " << (step.passed ? "" : "FAILED: ")
+                << step.detail << "\n";
+            spdlog::info("Self-test {} {}: {}", step.name.toStdString(),
+                         step.passed ? "passed" : "FAILED", step.detail.toStdString());
+            workflowsPassed = workflowsPassed && step.passed;
+        }
+        out.flush();
+    }
+    auto* viewport = window.findChild<hz::ui::ViewportWidget*>();
     if (viewport == nullptr) {
         out << "self-test: no viewport\n";
-        return 3;
+        return workflowsPassed ? 3 : 5;
     }
     QElapsedTimer clock;
     clock.start();
@@ -121,6 +151,7 @@ static int runSelfTest(QApplication& app, hz::ui::MainWindow& window) {
             out << "self-test: the viewport drew nothing within 20 s\n";
             break;
     }
+    if (!workflowsPassed) status = 5;
     spdlog::info("Self-test finished (status {})", status);
     return status;
 }
@@ -181,9 +212,11 @@ static int run(int argc, char* argv[]) {
                                  QStringLiteral("[files...]"));
     const QCommandLineOption selfTest(
         QStringLiteral("self-test"),
-        QCoreApplication::translate("main",
-                                    "Open the window, check that its viewport can draw, say "
-                                    "what was found, and exit: 0 if it can."));
+        QCoreApplication::translate(
+            "main",
+            "Make, save and read back a part, an assembly and a drawing in a temporary folder, "
+            "check the samples and translations, open the window, check that its viewport can "
+            "draw, say what was found, and exit: 0 if all is well."));
     parser.addOption(selfTest);
     // For a test of the crash handler (Phase 167): crash at once, as a fault
     // in native code would. Not shown in --help.

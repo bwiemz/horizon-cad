@@ -6216,14 +6216,14 @@ view and edit its properties.</source>
 <context>
     <name>main</name>
     <message>
-        <location filename="../src/app/main.cpp" line="+180"/>
+        <location filename="../src/app/main.cpp" line="+211"/>
         <source>Files to open.</source>
         <translation type="unfinished">要打开的文件。</translation>
     </message>
     <message>
         <location line="+4"/>
-        <source>Open the window, check that its viewport can draw, say what was found, and exit: 0 if it can.</source>
-        <translation type="unfinished">打开窗口，检查其视口能否绘制，报告检查结果后退出：可以绘制则返回 0。</translation>
+        <source>Make, save and read back a part, an assembly and a drawing in a temporary folder, check the samples and translations, open the window, check that its viewport can draw, say what was found, and exit: 0 if all is well.</source>
+        <translation type="unfinished">在临时文件夹中创建、保存并重新读取零件、装配体和工程图，检查示例和翻译，打开窗口，检查其视口能否绘制，报告检查结果后退出：一切正常则返回 0。</translation>
     </message>
 </context>
 </TS>

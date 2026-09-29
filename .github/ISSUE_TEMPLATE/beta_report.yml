@@ -1,0 +1,89 @@
+name: Beta report
+description: What happened when you tried a beta (docs/BETA.md), whether it worked or not.
+labels: [beta]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thank you for testing. One report for each problem, please; when everything
+        worked, one report saying so is just as useful. The tasks are in
+        [docs/BETA.md](https://github.com/bwiemz/horizon-cad/blob/master/docs/BETA.md).
+  - type: dropdown
+    id: task
+    attributes:
+      label: Task
+      options:
+        - "1: model and edit a part"
+        - "2: save and reopen an assembly"
+        - "3: create and export a drawing"
+        - Installing or starting it
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: How it went
+      options:
+        - It worked
+        - It worked, but something was wrong or hard
+        - It did not work
+        - Horizon CAD stopped (crashed) or froze
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - Windows installer
+        - macOS disk image
+        - Linux AppImage
+        - Linux tarball
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From Help ▸ About Horizon CAD, with its source revision.
+      placeholder: 0.1.0, source revision 1a2b3c4
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: System and graphics
+      description: For example "Windows 11 24H2, NVIDIA RTX 4070" or "Ubuntu 24.04, Intel Iris Xe".
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: About how long the task took
+      placeholder: 10 minutes
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: >-
+        What you did, what you expected, and what happened instead. For a task that
+        worked, anything that was slow, confusing or looked wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: >-
+        Attach the file you were working on (.hzpart, .hzasm, .hzdwg, a STEP or DXF file,
+        or an export that looks wrong), zipped if GitHub refuses its type, and a screenshot
+        if it shows the problem.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log or crash report
+      description: >-
+        The end of `logs/horizon.log`, or the crash report Horizon CAD offered at its next
+        start. docs/INSTALL.md says where they are. Nothing is sent anywhere by itself.
+      render: text

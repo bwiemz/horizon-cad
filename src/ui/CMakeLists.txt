@@ -81,6 +81,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/TypedPoint.h
     include/horizon/ui/TypedUnits.h
     include/horizon/ui/PdfExport.h
+    include/horizon/ui/SelfTest.h
     include/horizon/ui/ChainDimensionTool.h
     src/Application.cpp
     src/CrashReport.cpp
@@ -92,6 +93,7 @@ add_library(hz_ui STATIC
     src/Preferences.cpp
     src/PreferencesDialog.cpp
     src/RebuildJob.cpp
+    src/SelfTest.cpp
     src/WorkerThread.cpp
     src/MainWindow.cpp
     src/FeatureForm.cpp

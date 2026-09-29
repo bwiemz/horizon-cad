@@ -6232,14 +6232,14 @@ ver y editar sus propiedades.</translation>
 <context>
     <name>main</name>
     <message>
-        <location filename="../src/app/main.cpp" line="+180"/>
+        <location filename="../src/app/main.cpp" line="+211"/>
         <source>Files to open.</source>
         <translation type="unfinished">Archivos que abrir.</translation>
     </message>
     <message>
         <location line="+4"/>
-        <source>Open the window, check that its viewport can draw, say what was found, and exit: 0 if it can.</source>
-        <translation type="unfinished">Abre la ventana, comprueba que su ventana gráfica puede dibujar, informa de lo encontrado y sale: 0 si puede.</translation>
+        <source>Make, save and read back a part, an assembly and a drawing in a temporary folder, check the samples and translations, open the window, check that its viewport can draw, say what was found, and exit: 0 if all is well.</source>
+        <translation type="unfinished">Crea, guarda y vuelve a leer una pieza, un ensamblaje y un dibujo en una carpeta temporal, comprueba los ejemplos y las traducciones, abre la ventana, comprueba que su ventana gráfica puede dibujar, informa de lo encontrado y sale: 0 si todo está bien.</translation>
     </message>
 </context>
 </TS>
