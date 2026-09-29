@@ -80,10 +80,14 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
 4. **A nested assembly not placed whole.** 4 of the KiCad board's 9 placed
    solids were not read: KiCad puts them in a plain SHAPE_REPRESENTATION,
    not an ADVANCED_BREP_SHAPE_REPRESENTATION. #175 reads them.
-5. **Placements by MAPPED_ITEM** are not read. Their parts come in where
-   they were drawn, and this is reported. It affects 1 file, which has 23 of
-   them. Three more of that file's solids are skipped for malformed loops.
-   OpenCASCADE places 19 solids in it; Horizon CAD reads 9.
+5. **Placements by MAPPED_ITEM** were not read: their parts came in where
+   they were drawn, and this was reported. It affected 1 file, which has 23
+   of them. Three more of its solids were skipped for "malformed loops":
+   faces bounded by a VERTEX_LOOP, a whole ball and ring bounded by a point
+   alone, and a cone's apex. OpenCASCADE places 19 solids in it; Horizon
+   CAD read 9. Since #180 each is read (a point alone as the seams other
+   systems write), and it reads as OpenCASCADE reads it: 19 bodies, the
+   same volume and bounds.
 6. **BREP_WITH_VOIDS** affected 1 file. The part with a void was left out
    of the SolidWorks assembly: OpenCASCADE reads 6 solids in it; Horizon
    CAD read 4. Since #175 the import report said so; since #177 it is read,
@@ -93,8 +97,8 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
 7. **A surface type the reader does not build** affected 2 files. EUCLID's
    screw has a spindle torus, its tube wider than its ring: read since
    #181, and built, once facets that met an iso-line of the torus were cut
-   as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid is
-   still not read.
+   as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid (an
+   ellipse swept along a line) is read since #180.
 8. **An export that does not measure as the part:** OpenCASCADE reads
    Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
    #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%

@@ -1776,6 +1776,74 @@ private:
         return nullptr;
     }
 
+    /// A SURFACE_OF_LINEAR_EXTRUSION(name, swept curve, VECTOR): the curve
+    /// swept along the vector's direction (an ellipse's, a cylinder round
+    /// it, in Unigraphics'), as far as @p loopPoints reach along it. A
+    /// closed conic sweeps its whole round; a B-spline, itself.
+    std::shared_ptr<geo::NurbsSurface> linearExtrusion(const StepList& args,
+                                                       const std::vector<Vec3>& loopPoints) const {
+        if (args.size() < 3 || !args[1].isRef() || !args[2].isRef() || loopPoints.empty()) {
+            return nullptr;
+        }
+        const StepInstance* vector = m_parser.find(args[2].ref);
+        const StepList* vArgs = vector ? vector->leaf("VECTOR") : nullptr;
+        if (vArgs == nullptr || vArgs->size() < 2 || !(*vArgs)[1].isRef()) return nullptr;
+        const auto along = readDirection((*vArgs)[1].ref);
+        if (!along || !(along->length() > 0.0)) return nullptr;
+        const Vec3 d = along->normalized();
+
+        const StepInstance* curve = m_parser.find(args[1].ref);
+        if (curve == nullptr) return nullptr;
+        std::shared_ptr<geo::NurbsCurve> profile;
+        if (curve->hasType("B_SPLINE_CURVE_WITH_KNOTS") || curve->hasType("B_SPLINE_CURVE")) {
+            profile = readBSplineCurve(*curve);
+        } else {
+            const StepList* circle = curve->leaf("CIRCLE");
+            const StepList* ellipse = curve->leaf("ELLIPSE");
+            const StepList* conic = circle != nullptr ? circle : ellipse;
+            Vec3 centre;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (conic == nullptr || conic->size() < (ellipse != nullptr ? 4u : 3u) ||
+                !(*conic)[1].isRef() || !readPlacement((*conic)[1].ref, centre, zAxis, xAxis)) {
+                return nullptr;
+            }
+            const double a = (*conic)[2].num;
+            const double b = ellipse != nullptr ? (*conic)[3].num : a;
+            if (!(a > 0.0) || !(b > 0.0)) return nullptr;
+            profile =
+                makeArcInFrame(centre, 1.0, 0.0, math::kTwoPi, xAxis * a, zAxis.cross(xAxis) * b);
+        }
+        if (profile == nullptr) return nullptr;
+
+        // From below the lowest point of the face to above its highest,
+        // measured along the sweep from the profile.
+        double low = 1e300;
+        double high = -1e300;
+        for (const Vec3& p : loopPoints) {
+            low = std::min(low, p.dot(d));
+            high = std::max(high, p.dot(d));
+        }
+        double from = 1e300;
+        double to = -1e300;
+        for (const Vec3& q : profile->controlPoints()) {
+            from = std::min(from, q.dot(d));
+            to = std::max(to, q.dot(d));
+        }
+        const double start = low - to;
+        const double end = std::max(high - from, start + kMergeTol);
+        std::vector<std::vector<Vec3>> points;
+        std::vector<std::vector<double>> weights;
+        for (std::size_t i = 0; i < profile->controlPoints().size(); ++i) {
+            const Vec3& q = profile->controlPoints()[i];
+            points.push_back({q + d * start, q + d * end});
+            weights.push_back({profile->weights()[i], profile->weights()[i]});
+        }
+        return std::make_shared<geo::NurbsSurface>(
+            std::move(points), std::move(weights), profile->knots(),
+            std::vector<double>{0.0, 0.0, 1.0, 1.0}, profile->degree(), 1);
+    }
+
     /// Surface for an ADVANCED_FACE; @p loopPoints bounds analytic surfaces.
     std::shared_ptr<geo::NurbsSurface> readFaceGeometry(int surfId,
                                                         const std::vector<Vec3>& loopPoints) const {
@@ -1825,6 +1893,9 @@ private:
             const double height = std::max(hMax - hMin, kMergeTol);
             return std::make_shared<geo::NurbsSurface>(
                 geo::NurbsSurface::makeCylinder(origin + zAxis * hMin, zAxis, radius, height));
+        }
+        if (const StepList* swept = inst->leaf("SURFACE_OF_LINEAR_EXTRUSION")) {
+            return linearExtrusion(*swept, loopPoints);
         }
         if (const StepList* cone = inst->leaf("CONICAL_SURFACE")) {
             // The radius at the placement, widening along its axis at the
@@ -1953,6 +2024,112 @@ private:
         return &ins->second;
     }
 
+    /// The loop a whole closed face is bounded by, into @p loopEdges, as
+    /// Open CASCADE writes it: a sphere's seam from pole to pole, there and
+    /// back, on its placement's x side; a torus's two seam circles through
+    /// a point on its outer equator, each there and back. For a face whose
+    /// only bound is a VERTEX_LOOP; false, said why, for another surface.
+    bool seamsOf(int faceId, int surfaceId, std::vector<std::pair<EdgeRecord*, bool>>& loopEdges,
+                 std::string& error) {
+        const StepInstance* surface = m_parser.find(surfaceId);
+        const StepList* sphere = surface ? surface->leaf("SPHERICAL_SURFACE") : nullptr;
+        const StepList* torus = surface ? surface->leaf("TOROIDAL_SURFACE") : nullptr;
+        const StepList* args = sphere != nullptr ? sphere : torus;
+        Vec3 origin;
+        Vec3 zAxis;
+        Vec3 xAxis;
+        if (args == nullptr || args->size() < (torus != nullptr ? 4u : 3u) || !(*args)[1].isRef() ||
+            !readPlacement((*args)[1].ref, origin, zAxis, xAxis)) {
+            error = "face #" + std::to_string(faceId) +
+                    " is bounded by a point alone, on a surface that is not a sphere or a torus";
+            return false;
+        }
+        const Vec3 yAxis = zAxis.cross(xAxis);
+        const std::string at =
+            "solid:" + std::to_string(m_solidIndex) + "/f:" + std::to_string(faceId) + "/seam";
+        const auto vertexAt = [&](const Vec3& point, const std::string& name) {
+            topo::Vertex* v = m_solid->allocVertex();
+            v->point = point;
+            v->topoId = topo::TopologyID::make("step", at + "/v:" + name);
+            return v;
+        };
+        // Keyed below every edge the file names (they are all positive).
+        const auto seam = [&](int k, topo::Vertex* start, topo::Vertex* end,
+                              std::shared_ptr<geo::NurbsCurve> curve) {
+            topo::Edge* e = m_solid->allocEdge();
+            e->curve = std::move(curve);
+            e->topoId = topo::TopologyID::make("step", at + "/e:" + std::to_string(k));
+            EdgeRecord rec;
+            rec.edge = e;
+            rec.start = start;
+            rec.end = end;
+            return &m_edges.emplace(-4 * faceId - k, std::move(rec)).first->second;
+        };
+        if (sphere != nullptr) {
+            const double r = (*args)[2].num;
+            if (!(r > 0.0)) return false;
+            topo::Vertex* south = vertexAt(origin - zAxis * r, "s");
+            topo::Vertex* north = vertexAt(origin + zAxis * r, "n");
+            EdgeRecord* meridian =
+                seam(1, south, north,
+                     makeArcInFrame(origin, r, -math::kPi / 2.0, math::kPi / 2.0, xAxis, zAxis));
+            loopEdges = {{meridian, true}, {meridian, false}};
+            return true;
+        }
+        const double major = (*args)[2].num;
+        const double minor = (*args)[3].num;
+        if (!(minor > 0.0) || !(major >= 0.0)) return false;
+        topo::Vertex* corner = vertexAt(origin + xAxis * (major + minor), "p");
+        EdgeRecord* round =
+            seam(1, corner, corner,
+                 makeArcInFrame(origin, major + minor, 0.0, math::kTwoPi, xAxis, yAxis));
+        EdgeRecord* tube =
+            seam(2, corner, corner,
+                 makeArcInFrame(origin + xAxis * major, minor, 0.0, math::kTwoPi, xAxis, zAxis));
+        loopEdges = {{round, true}, {tube, true}, {round, false}, {tube, false}};
+        return true;
+    }
+
+    /// The seam of face @p faceId from @p rim up its surface to @p apex: a
+    /// cone's generator, a sphere's meridian. Null for another surface.
+    EdgeRecord* seamTo(int faceId, int surfaceId, topo::Vertex* rim, topo::Vertex* apex) {
+        const StepInstance* surface = m_parser.find(surfaceId);
+        std::shared_ptr<geo::NurbsCurve> curve;
+        if (surface != nullptr && surface->hasType("CONICAL_SURFACE")) {
+            curve = std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{rim->point, apex->point},
+                                                      std::vector<double>{1.0, 1.0},
+                                                      std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+        } else if (const StepList* sphere =
+                       surface != nullptr ? surface->leaf("SPHERICAL_SURFACE") : nullptr) {
+            Vec3 centre;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (sphere->size() < 3 || !(*sphere)[1].isRef() ||
+                !readPlacement((*sphere)[1].ref, centre, zAxis, xAxis)) {
+                return nullptr;
+            }
+            const double r = (*sphere)[2].num;
+            const Vec3 from = rim->point - centre;
+            Vec3 toward = (apex->point - centre) - from * ((apex->point - centre).dot(from) /
+                                                           std::max(from.dot(from), 1e-300));
+            if (!(r > 0.0) || !(toward.length() > 1e-12 * r)) return nullptr;
+            toward = toward.normalized();
+            const double angle = std::atan2((apex->point - centre).dot(toward),
+                                            (apex->point - centre).dot(from.normalized()));
+            curve = makeArcInFrame(centre, r, 0.0, angle, from.normalized(), toward);
+        }
+        if (curve == nullptr) return nullptr;
+        topo::Edge* e = m_solid->allocEdge();
+        e->curve = std::move(curve);
+        e->topoId = topo::TopologyID::make("step", "solid:" + std::to_string(m_solidIndex) +
+                                                       "/f:" + std::to_string(faceId) + "/seam");
+        EdgeRecord rec;
+        rec.edge = e;
+        rec.start = rim;
+        rec.end = apex;
+        return &m_edges.emplace(-4 * faceId - 3, std::move(rec)).first->second;
+    }
+
     /// Face @p faceId into @p shell; @p reversed, turned round: its loops
     /// run the other way and its normal is its surface's reversed.
     bool buildFace(int faceId, topo::Shell* shell, bool reversed, std::string& error) {
@@ -1972,6 +2149,27 @@ private:
 
         std::vector<Vec3> loopPoints;
 
+        // A point beside one other bound (a cone's apex, a sphere's pole, as
+        // Unigraphics writes them): the other loop runs from its rim up a
+        // seam to the point and back, as other writers give it, so that the
+        // face reaches the point.
+        topo::Vertex* apex = nullptr;
+        if ((*args)[1].items->size() == 2) {
+            for (const StepValue& boundRef : *(*args)[1].items) {
+                const StepInstance* bound =
+                    boundRef.isRef() ? m_parser.find(boundRef.ref) : nullptr;
+                const StepList* b = bound ? bound->leaf("FACE_BOUND") : nullptr;
+                if (b == nullptr && bound != nullptr) b = bound->leaf("FACE_OUTER_BOUND");
+                const StepInstance* loop = b != nullptr && b->size() >= 2 && (*b)[1].isRef()
+                                               ? m_parser.find((*b)[1].ref)
+                                               : nullptr;
+                const StepList* vl = loop ? loop->leaf("VERTEX_LOOP") : nullptr;
+                if (vl != nullptr && vl->size() >= 2 && (*vl)[1].isRef()) {
+                    apex = vertexFor((*vl)[1].ref);
+                }
+            }
+        }
+
         for (const StepValue& boundRef : *(*args)[1].items) {
             if (!boundRef.isRef()) continue;
             const StepInstance* bound = m_parser.find(boundRef.ref);
@@ -1986,15 +2184,24 @@ private:
                 ((*bArgs)[2].kind == StepValue::Enum && (*bArgs)[2].text == "T") != reversed;
 
             const StepInstance* loop = m_parser.find((*bArgs)[1].ref);
+            std::vector<std::pair<EdgeRecord*, bool>> loopEdges;
+            if (loop != nullptr && loop->hasType("VERTEX_LOOP")) {
+                // A point bounds nothing beside other bounds (a cone's apex).
+                // Alone, it bounds a closed surface's whole face (a sphere's,
+                // a torus's, as Unigraphics writes them): the seams other
+                // writers give it instead, which the kernel's loops need.
+                if ((*args)[1].items->size() > 1) continue;
+                if (!seamsOf(faceId, (*args)[2].ref, loopEdges, error)) return false;
+            }
             const StepList* lArgs = loop ? loop->leaf("EDGE_LOOP") : nullptr;
-            if (lArgs == nullptr || lArgs->size() < 2 || !(*lArgs)[1].isList()) {
+            if (loopEdges.empty() &&
+                (lArgs == nullptr || lArgs->size() < 2 || !(*lArgs)[1].isList())) {
                 error = "malformed EDGE_LOOP on face #" + std::to_string(faceId);
                 return false;
             }
 
             // Collect (edge, forward) pairs in loop order; honour bound orientation.
-            std::vector<std::pair<EdgeRecord*, bool>> loopEdges;
-            for (const StepValue& oeRef : *(*lArgs)[1].items) {
+            for (const StepValue& oeRef : lArgs != nullptr ? *(*lArgs)[1].items : StepList{}) {
                 if (!oeRef.isRef()) continue;
                 const StepInstance* oe = m_parser.find(oeRef.ref);
                 const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
@@ -2010,6 +2217,14 @@ private:
             if (!boundOrientation) {
                 std::reverse(loopEdges.begin(), loopEdges.end());
                 for (auto& [rec, fwd] : loopEdges) fwd = !fwd;
+            }
+            if (apex != nullptr && !loopEdges.empty()) {
+                const auto& [first, forward] = loopEdges.front();
+                topo::Vertex* rim = forward ? first->start : first->end;
+                if (EdgeRecord* up = seamTo(faceId, (*args)[2].ref, rim, apex)) {
+                    loopEdges.emplace_back(up, true);
+                    loopEdges.emplace_back(up, false);
+                }
             }
             if (loopEdges.empty()) {
                 error = "empty edge loop on face #" + std::to_string(faceId);
@@ -2811,6 +3026,73 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
         return partSecond ? rigidInverse(t) : t;
     };
 
+    // Uses a CONTEXT_DEPENDENT_SHAPE_REPRESENTATION does not place, placed by
+    // a MAPPED_ITEM instead (Unigraphics'): the assembly's representation
+    // holds a MAPPED_ITEM(name, REPRESENTATION_MAP(origin, the part's
+    // representation), target), the part's origin taken to the target. Each
+    // use of a part in an assembly takes the next such item mapping the
+    // part's shape, in the file's order.
+    std::unordered_map<int, Mat4> mappedPlacement;  // by the use's occurrence
+    {
+        struct Mapped {
+            int container = 0;  ///< the representation holding the item
+            int mapped = 0;     ///< the part's representation it places
+            int origin = 0;
+            int target = 0;
+        };
+        std::vector<Mapped> items;
+        std::unordered_map<int, std::vector<int>> containersOf;  // item → its representations
+        for (const char* type : {"SHAPE_REPRESENTATION", "ADVANCED_BREP_SHAPE_REPRESENTATION"}) {
+            for (int repId : parser.allOfType(type)) {
+                const StepList* args = parser.find(repId)->leaf(type);
+                if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
+                for (const StepValue& item : *(*args)[1].items) {
+                    if (item.isRef()) containersOf[item.ref].push_back(repId);
+                }
+            }
+        }
+        for (int id : parser.allOfType("MAPPED_ITEM")) {
+            const StepList* args = parser.find(id)->leaf("MAPPED_ITEM");
+            if (args == nullptr || args->size() < 3 || !(*args)[1].isRef() || !(*args)[2].isRef()) {
+                continue;
+            }
+            const StepInstance* map = parser.find((*args)[1].ref);
+            const StepList* mapArgs = map ? map->leaf("REPRESENTATION_MAP") : nullptr;
+            if (mapArgs == nullptr || mapArgs->size() < 2 || !(*mapArgs)[0].isRef() ||
+                !(*mapArgs)[1].isRef()) {
+                continue;
+            }
+            const auto containers = containersOf.find(id);
+            if (containers == containersOf.end()) continue;
+            for (int container : containers->second) {
+                items.push_back({container, (*mapArgs)[1].ref, (*mapArgs)[0].ref, (*args)[2].ref});
+            }
+        }
+        std::vector<bool> taken(items.size(), false);
+        for (const auto& [assembly, uses] : usesIn) {
+            const auto whole = shapeReps.find(assembly);
+            if (whole == shapeReps.end()) continue;
+            for (const Use& use : uses) {
+                if (placedBy.count(use.occurrence) != 0) continue;
+                const auto part = shapeReps.find(use.child);
+                if (part == shapeReps.end()) continue;
+                for (std::size_t k = 0; k < items.size(); ++k) {
+                    const Mapped& item = items[k];
+                    if (taken[k] || whole->second.count(item.container) == 0 ||
+                        part->second.count(item.mapped) == 0) {
+                        continue;
+                    }
+                    taken[k] = true;
+                    const auto from = axisMatrix(parser, item.origin, mmOf(item.mapped));
+                    const auto to = axisMatrix(parser, item.target, mmOf(item.container));
+                    if (from && to)
+                        mappedPlacement.emplace(use.occurrence, *to * rigidInverse(*from));
+                    break;
+                }
+            }
+        }
+    }
+
     // From each top assembly (a definition no assembly uses) down.
     std::set<int> onPath;
     std::vector<bool> placedProduct(structure.products.size(), false);
@@ -2845,6 +3127,10 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
                     continue;
                 }
                 auto t = placement(use);
+                if (!t) {
+                    const auto mapped = mappedPlacement.find(use.occurrence);
+                    if (mapped != mappedPlacement.end()) t = mapped->second;
+                }
                 if (!t) {
                     unplaced.insert(use.occurrence);
                     t = Mat4::identity();

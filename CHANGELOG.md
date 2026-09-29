@@ -67,6 +67,12 @@ work, not "post-1.0".
   file with it. It is read now, and its face is cut into facets: points
   found on a surface along one of its iso-lines are only nearly in line,
   and cutting the face treats them as in line.
+- **A Unigraphics assembly reads whole (#180).** It placed its parts by
+  MAPPED_ITEM, which was not read, so they came in where drawn. Placements
+  by MAPPED_ITEM are now read, and so are faces bounded by a point alone
+  (a VERTEX_LOOP: a whole ball, a ring, a cone's apex) and surfaces swept
+  along a line (SURFACE_OF_LINEAR_EXTRUSION). The Unigraphics buggy in the
+  STEP corpus reads as OpenCASCADE reads it: 19 bodies, not 9.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

@@ -164,8 +164,6 @@
       "license_file": "LICENSES/NIST-engineering-design-models.md",
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
       "expect": {
-        "skipped": 4,
-        "approximated": 1,
         "bodies": 19,
         "volume": 1889144085.224341,
         "bounds": [
@@ -179,12 +177,9 @@
             2336.8,
             254.0
           ]
-        ]
-      },
-      "known_gaps": {
-        "bodies": "placements by MAPPED_ITEM are not read (the parts come in where drawn), and 4 solids are skipped (3 for malformed loops, 1 at a SURFACE_OF_LINEAR_EXTRUSION)",
-        "volume": "the same",
-        "bounds": "the same"
+        ],
+        "skipped": 0,
+        "approximated": 0
       }
     },
     {
