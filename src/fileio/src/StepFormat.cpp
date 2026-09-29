@@ -441,7 +441,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         return i && *i == g;
     };
     const auto onSurface = [](const geo::NurbsSurface& surface, const Vec3& p, double scale) {
-        const auto [u, v] = surface.closestPoint(p);
+        const auto [u, v] = surface.locate(p);
         return (surface.evaluate(u, v) - p).length() <= 1e-7 * std::max(1.0, scale);
     };
 
@@ -490,7 +490,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         bool pole = false;
         for (const topo::Vertex* corner : corners) {
             if (onOutline.count(corner) != 0) continue;
-            const auto [u, v] = surface.closestPoint(corner->point);
+            const auto [u, v] = surface.locate(corner->point);
             const auto at = surface.evaluateWithDerivatives(u, v);
             if (!(at.du.cross(at.dv).length() > 1e-8 * size * size)) {
                 pole = true;
@@ -682,8 +682,8 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
             };
             // Along where it closes: both its ends on that line of it.
             const auto whereItCloses = [&](const Vec3& a, const Vec3& b) {
-                const auto [ua, va] = surface.closestPoint(a);
-                const auto [ub, vb] = surface.closestPoint(b);
+                const auto [ua, va] = surface.locate(a);
+                const auto [ub, vb] = surface.locate(b);
                 return (surface.closedU() &&
                         (surface.evaluate(surface.uMin(), va) - a).length() <= tol &&
                         (surface.evaluate(surface.uMin(), vb) - b).length() <= tol) ||
@@ -765,8 +765,8 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                 // share their parameter that way (a torus closes both ways).
                 const Vec3& a = face.seam.front()->origin->point;
                 const Vec3& b = face.seam.back()->next->origin->point;
-                const auto [ua, va] = surface.closestPoint(a);
-                const auto [ub, vb] = surface.closestPoint(b);
+                const auto [ua, va] = surface.locate(a);
+                const auto [ub, vb] = surface.locate(b);
                 const auto apart = [](double x, double y, double lo, double hi) {
                     const double d = std::fmod(std::abs(x - y), hi - lo);
                     return std::min(d, hi - lo - d) / (hi - lo);
@@ -775,7 +775,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                     surface.closedU() &&
                     (!surface.closedV() || apart(ua, ub, surface.uMin(), surface.uMax()) <=
                                                apart(va, vb, surface.vMin(), surface.vMax()));
-                const auto [u, v] = surface.closestPoint((a + b) * 0.5);
+                const auto [u, v] = surface.locate((a + b) * 0.5);
                 face.cut = inU ? surface.startingAtU(u) : surface.startingAtV(v);
                 if (!face.cut) {
                     face.why = "its surface closes where no line joining its outlines lies";
@@ -791,7 +791,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         for (std::size_t i = 0; i < face.facets.size(); i += step) {
             const auto plane = planeOf(*face.facets[i]);
             if (!plane) continue;
-            const auto [u, v] = surface.closestPoint(plane->second);
+            const auto [u, v] = surface.locate(plane->second);
             const double d = surface.normal(u, v).dot(plane->first);
             if (d > 1e-6) ++along;
             if (d < -1e-6) ++against;
