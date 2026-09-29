@@ -17,6 +17,7 @@
 #include "horizon/math/Units.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::interop {
@@ -110,9 +111,9 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         summary.error = StepFormat::lastError();
         return summary;
     }
-    // Bodies as OpenCASCADE counts solids: a shell each (one solid read here
-    // holds a compound's several).
-    for (const auto& solid : solids) summary.bodies += solid->shells().size();
+    // Bodies as OpenCASCADE counts solids: one solid read here holds a
+    // compound's several, and a body's cavities are shells of it.
+    for (const auto& solid : solids) summary.bodies += model::Pattern::bodyShells(*solid).size();
     summary.onIdealSurfaces = true;
     for (const auto& solid : solids) {
         summary.allValid = summary.allValid && solid->isValid();
@@ -138,7 +139,7 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         const auto again = StepFormat::load(exported.string());
         summary.reimportedBodies = 0;
         for (const auto& solid : again) {
-            *summary.reimportedBodies += solid->shells().size();
+            *summary.reimportedBodies += model::Pattern::bodyShells(*solid).size();
             summary.reimportedVolume += MassPropertiesCalculator::compute(*solid).volume;
         }
         if (again.empty()) summary.exportError = StepFormat::lastError();

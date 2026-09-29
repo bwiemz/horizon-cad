@@ -771,9 +771,10 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
     return faces;
 }
 
-/// Emit one solid; returns one MANIFOLD_SOLID_BREP id per shell (Horizon
-/// solids may hold several disjoint shells, e.g. Pattern results — STEP
-/// expresses those as sibling MANIFOLD_SOLID_BREPs in one representation).
+/// Emit one solid; returns one solid id per body (Horizon solids may hold
+/// several disjoint bodies, e.g. Pattern results — STEP expresses those as
+/// sibling solids in one representation): a MANIFOLD_SOLID_BREP, or a
+/// BREP_WITH_VOIDS for a body with cavities.
 std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, bool asDesigned,
                             std::vector<std::string>* faceted) {
     // Its curved faces as designed, where they can be (Phase 151).
@@ -860,8 +861,10 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
                             (senseForward ? ".T." : ".F.") + ")");
     }
 
-    // Faces.
-    auto writeFace = [&](const topo::Face& f) -> std::optional<int> {
+    // Faces; a cavity's @p reversed, facing out of its void as a closed
+    // shell of the void must (its bounds and its sense turned round).
+    const auto sense = [](bool forward) { return forward ? std::string(".T.") : ".F."; };
+    auto writeFace = [&](const topo::Face& f, bool reversed) -> std::optional<int> {
         if (f.outerLoop == nullptr || f.surface == nullptr) return std::nullopt;
 
         auto writeLoop = [&](const topo::Wire* wire, bool outer) -> std::optional<int> {
@@ -879,7 +882,7 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             } while (cur != nullptr && cur != start);
             const int loop = w.add("EDGE_LOOP(''," + StepWriter::refList(oriented) + ")");
             return w.add(std::string(outer ? "FACE_OUTER_BOUND" : "FACE_BOUND") + "('',#" +
-                         std::to_string(loop) + ",.T.)");
+                         std::to_string(loop) + "," + sense(!reversed) + ")");
         };
 
         std::vector<int> bounds;
@@ -891,13 +894,13 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
 
         const int surfId = writeSurface(w, *f.surface);
         return w.add("ADVANCED_FACE(''," + StepWriter::refList(bounds) + ",#" +
-                     std::to_string(surfId) + ",.T.)");
+                     std::to_string(surfId) + "," + sense(!reversed) + ")");
     };
 
     // A curved face as designed: one face on its surface, round its outline;
     // a closed one's two outlines joined into one loop along its seam, used
     // once each way, as other systems (and this one's reader) expect.
-    auto writeDesigned = [&](const CurvedFace& face) -> std::optional<int> {
+    auto writeDesigned = [&](const CurvedFace& face, bool reversed) -> std::optional<int> {
         const auto oriented = [&](const topo::HalfEdge* he) -> std::optional<int> {
             const auto it = edgeIds.find(he->edge);
             if (it == edgeIds.end()) return std::nullopt;
@@ -934,14 +937,16 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             edges.push_back(*id);
         }
         const int loop = w.add("EDGE_LOOP(''," + StepWriter::refList(edges) + ")");
-        const int bound = w.add("FACE_OUTER_BOUND('',#" + std::to_string(loop) + ",.T.)");
+        const int bound =
+            w.add("FACE_OUTER_BOUND('',#" + std::to_string(loop) + "," + sense(!reversed) + ")");
         const int surfId = writeSurface(w, *face.surface);
         return w.add("ADVANCED_FACE('',(#" + std::to_string(bound) + "),#" +
-                     std::to_string(surfId) + "," + (face.sameSense ? ".T." : ".F.") + ")");
+                     std::to_string(surfId) + "," + sense(face.sameSense != reversed) + ")");
     };
 
+    // A CLOSED_SHELL of @p faces.
     auto writeShell = [&](const std::vector<const topo::Face*>& faces,
-                          int shellIndex) -> std::optional<int> {
+                          bool reversed) -> std::optional<int> {
         std::vector<int> faceIds;
         std::unordered_set<const CurvedFace*> written;
         for (const topo::Face* f : faces) {
@@ -950,31 +955,51 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             if (designedFace != designedOf.end()) {
                 // Its facets are the one face: written once, for the first.
                 if (!written.insert(designedFace->second).second) continue;
-                if (auto id = writeDesigned(*designedFace->second)) faceIds.push_back(*id);
+                if (auto id = writeDesigned(*designedFace->second, reversed)) {
+                    faceIds.push_back(*id);
+                }
                 continue;
             }
-            if (auto id = writeFace(*f)) faceIds.push_back(*id);
+            if (auto id = writeFace(*f, reversed)) faceIds.push_back(*id);
         }
         if (faceIds.empty()) return std::nullopt;
-        const int shell = w.add("CLOSED_SHELL(''," + StepWriter::refList(faceIds) + ")");
-        return w.add("MANIFOLD_SOLID_BREP('solid_" + std::to_string(index) + "_" +
-                     std::to_string(shellIndex) + "',#" + std::to_string(shell) + ")");
+        return w.add("CLOSED_SHELL(''," + StepWriter::refList(faceIds) + ")");
+    };
+    const auto name = [index](std::size_t body) {
+        return "'solid_" + std::to_string(index) + "_" + std::to_string(body) + "'";
     };
 
-    std::vector<int> msbIds;
-    for (const auto& sh : solid.shells()) {
-        std::vector<const topo::Face*> faces(sh.faces.begin(), sh.faces.end());
-        if (auto msb = writeShell(faces, static_cast<int>(msbIds.size()))) {
-            msbIds.push_back(*msb);
+    // Each body: its outer shell, and a void for each cavity it encloses.
+    std::vector<int> solidIds;
+    for (const auto& shells : model::Pattern::bodyShells(solid)) {
+        const auto facesOf = [](const topo::Shell* shell) {
+            return std::vector<const topo::Face*>(shell->faces.begin(), shell->faces.end());
+        };
+        const auto outer = writeShell(facesOf(shells.front()), false);
+        if (!outer) continue;
+        std::vector<int> voids;
+        for (std::size_t i = 1; i < shells.size(); ++i) {
+            if (const auto cavity = writeShell(facesOf(shells[i]), true)) {
+                voids.push_back(
+                    w.add("ORIENTED_CLOSED_SHELL('',*,#" + std::to_string(*cavity) + ",.F.)"));
+            }
         }
+        solidIds.push_back(voids.empty() ? w.add("MANIFOLD_SOLID_BREP(" + name(solidIds.size()) +
+                                                 ",#" + std::to_string(*outer) + ")")
+                                         : w.add("BREP_WITH_VOIDS(" + name(solidIds.size()) + ",#" +
+                                                 std::to_string(*outer) + "," +
+                                                 StepWriter::refList(voids) + ")"));
     }
-    if (msbIds.empty()) {
+    if (solidIds.empty()) {
         // Defensive fallback for faces not registered with any shell.
         std::vector<const topo::Face*> faces;
         for (const auto& f : solid.faces()) faces.push_back(&f);
-        if (auto msb = writeShell(faces, 0)) msbIds.push_back(*msb);
+        if (auto shell = writeShell(faces, false)) {
+            solidIds.push_back(
+                w.add("MANIFOLD_SOLID_BREP(" + name(0) + ",#" + std::to_string(*shell) + ")"));
+        }
     }
-    return msbIds;
+    return solidIds;
 }
 
 // ===========================================================================
@@ -1315,44 +1340,64 @@ public:
           m_cancelled(cancelled),
           m_radiansPerUnit(radiansPerUnit) {}
 
-    /// Build one topo::Solid from a group of MANIFOLD_SOLID_BREP instance ids
-    /// (one shell per MSB — Horizon multi-shell solids export as siblings in
-    /// one shape representation).
-    std::unique_ptr<topo::Solid> build(const std::vector<int>& msbIds, std::string& error) {
-        m_solid = std::make_unique<topo::Solid>();
+    /// Build one topo::Solid from a group of solid ids: MANIFOLD_SOLID_BREPs,
+    /// one shell each (Horizon multi-shell solids export as siblings in one
+    /// shape representation), and BREP_WITH_VOIDS, an outer shell and a
+    /// shell round each void, facing into it: a cavity, as a Boolean leaves
+    /// one.
+    std::unique_ptr<topo::Solid> build(const std::vector<int>& solidIds, std::string& error) {
+        std::vector<ShellRef> plan;
+        for (int solidId : solidIds) {
+            if (!shellsOf(solidId, plan, error)) return nullptr;
+        }
+        auto solid = assemble(plan, error);
+        if (solid == nullptr) return nullptr;
 
-        for (int msbId : msbIds) {
-            const StepInstance* msb = m_parser.find(msbId);
-            const StepList* args = msb ? msb->leaf("MANIFOLD_SOLID_BREP") : nullptr;
-            if (args == nullptr || args->size() < 2 || !(*args)[1].isRef()) {
-                error = "malformed MANIFOLD_SOLID_BREP #" + std::to_string(msbId);
-                return nullptr;
-            }
-            const StepInstance* shellInst = m_parser.find((*args)[1].ref);
-            const StepList* shellArgs = shellInst ? shellInst->leaf("CLOSED_SHELL") : nullptr;
-            if (shellArgs == nullptr) {
-                shellArgs = shellInst ? shellInst->leaf("OPEN_SHELL") : nullptr;
-            }
-            if (shellArgs == nullptr || shellArgs->size() < 2 || !(*shellArgs)[1].isList()) {
-                error = "malformed shell for MANIFOLD_SOLID_BREP #" + std::to_string(msbId);
-                return nullptr;
-            }
-
-            topo::Shell* shell = m_solid->allocShell();
-            shell->solid = m_solid.get();
-
-            for (const StepValue& faceRef : *(*shellArgs)[1].items) {
-                if (m_cancelled != nullptr && m_cancelled->load(std::memory_order_relaxed)) {
-                    error = kCancelled;
-                    return nullptr;
+        // A void faces into itself, away from its body's material: a closed
+        // shell of the void turned round, as the standard has it. Some files
+        // (a SolidWorks one) write the closed shell facing in already, and
+        // mark it turned round too, which would make the void more material:
+        // one that measures as its outer shell does is turned round again.
+        bool turned = false;
+        if (std::any_of(plan.begin(), plan.end(), [](const ShellRef& s) { return s.isVoid; })) {
+            const auto measures = model::measureShells(*solid);
+            for (std::size_t i = 0; i < plan.size() && measures.size() == plan.size(); ++i) {
+                if (!plan[i].isVoid) continue;
+                if (measures[i].volume * measures[plan[i].outer].volume > 0.0) {
+                    plan[i].reversed = !plan[i].reversed;
+                    turned = true;
                 }
-                if (!faceRef.isRef()) continue;
-                if (!buildFace(faceRef.ref, shell, error)) return nullptr;
             }
+        }
+        return turned ? assemble(plan, error) : std::move(solid);
+    }
+
+private:
+    /// A shell to build: its CLOSED_SHELL (or OPEN_SHELL), and whether its
+    /// faces are to be turned round; a void's, and the index of its body's
+    /// outer shell.
+    struct ShellRef {
+        int id = 0;
+        bool reversed = false;
+        bool isVoid = false;
+        std::size_t outer = 0;
+    };
+
+    /// The solid of the shells in @p plan, each built as it says.
+    std::unique_ptr<topo::Solid> assemble(const std::vector<ShellRef>& plan, std::string& error) {
+        m_solid = std::make_unique<topo::Solid>();
+        m_vertices.clear();
+        m_edges.clear();
+        for (const ShellRef& shellRef : plan) {
+            if (!buildShell(shellRef, error)) return nullptr;
         }
 
         if (!linkTwins(error)) return nullptr;
 
+        if (m_solid->faceCount() == 0) {
+            error = "it has no faces";
+            return nullptr;
+        }
         if (!m_solid->isValid()) {
             error = "imported solid failed validation:\n" + m_solid->validationReport();
             return nullptr;
@@ -1360,7 +1405,75 @@ public:
         return std::move(m_solid);
     }
 
-private:
+    /// The shells of solid @p solidId, onto @p shells: a MANIFOLD_SOLID_BREP's
+    /// one, or a BREP_WITH_VOIDS' outer shell and its voids. Either as a
+    /// simple instance, BREP_WITH_VOIDS(name, outer, (voids)), or a complex
+    /// one, each of whose parts has its own attributes alone:
+    /// (BREP_WITH_VOIDS((voids)) MANIFOLD_SOLID_BREP(outer) ... ).
+    bool shellsOf(int solidId, std::vector<ShellRef>& shells, std::string& error) const {
+        const StepInstance* solid = m_parser.find(solidId);
+        const StepList* msb = solid ? solid->leaf("MANIFOLD_SOLID_BREP") : nullptr;
+        const StepList* withVoids = solid ? solid->leaf("BREP_WITH_VOIDS") : nullptr;
+        const StepValue* outer = nullptr;
+        const StepValue* voids = nullptr;
+        if (withVoids != nullptr && withVoids->size() >= 3) {
+            outer = &(*withVoids)[1];
+            voids = &(*withVoids)[2];
+        } else if (msb != nullptr && !msb->empty()) {
+            outer = &(*msb)[msb->size() >= 2 ? 1 : 0];
+            if (withVoids != nullptr && !withVoids->empty()) voids = &(*withVoids)[0];
+        }
+        if (outer == nullptr || !outer->isRef() || (voids != nullptr && !voids->isList())) {
+            error = "malformed solid #" + std::to_string(solidId);
+            return false;
+        }
+        const std::size_t body = shells.size();
+        shells.push_back({outer->ref, false, false, body});
+        if (voids == nullptr) return true;
+        for (const StepValue& voidRef : *voids->items) {
+            // An ORIENTED_CLOSED_SHELL(name, *, closed shell, orientation):
+            // .F., as the standard has every void, turns the closed shell's
+            // faces, which face out of the void, round to face into it.
+            const StepInstance* oriented = voidRef.isRef() ? m_parser.find(voidRef.ref) : nullptr;
+            const StepList* args = oriented ? oriented->leaf("ORIENTED_CLOSED_SHELL") : nullptr;
+            if (args != nullptr && args->size() >= 4 && (*args)[2].isRef()) {
+                const bool sameWay = (*args)[3].kind == StepValue::Enum && (*args)[3].text == "T";
+                shells.push_back({(*args)[2].ref, !sameWay, true, body});
+            } else if (oriented != nullptr && oriented->hasType("CLOSED_SHELL")) {
+                shells.push_back({voidRef.ref, true, true, body});  // a closed shell alone: as .F.
+            } else {
+                error = "malformed void of solid #" + std::to_string(solidId);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool buildShell(const ShellRef& shellRef, std::string& error) {
+        const StepInstance* shellInst = m_parser.find(shellRef.id);
+        const StepList* shellArgs = shellInst ? shellInst->leaf("CLOSED_SHELL") : nullptr;
+        if (shellArgs == nullptr) {
+            shellArgs = shellInst ? shellInst->leaf("OPEN_SHELL") : nullptr;
+        }
+        if (shellArgs == nullptr || shellArgs->size() < 2 || !(*shellArgs)[1].isList()) {
+            error = "malformed shell #" + std::to_string(shellRef.id);
+            return false;
+        }
+
+        topo::Shell* shell = m_solid->allocShell();
+        shell->solid = m_solid.get();
+
+        for (const StepValue& faceRef : *(*shellArgs)[1].items) {
+            if (m_cancelled != nullptr && m_cancelled->load(std::memory_order_relaxed)) {
+                error = kCancelled;
+                return false;
+            }
+            if (!faceRef.isRef()) continue;
+            if (!buildFace(faceRef.ref, shell, shellRef.reversed, error)) return false;
+        }
+        return true;
+    }
+
     // -- Geometry ------------------------------------------------------------
 
     std::optional<Vec3> readPoint(int id) const {
@@ -1810,7 +1923,9 @@ private:
         return &ins->second;
     }
 
-    bool buildFace(int faceId, topo::Shell* shell, std::string& error) {
+    /// Face @p faceId into @p shell; @p reversed, turned round: its loops
+    /// run the other way and its normal is its surface's reversed.
+    bool buildFace(int faceId, topo::Shell* shell, bool reversed, std::string& error) {
         const StepInstance* inst = m_parser.find(faceId);
         const StepList* args = inst ? inst->leaf("ADVANCED_FACE") : nullptr;
         if (args == nullptr) args = inst ? inst->leaf("FACE_SURFACE") : nullptr;
@@ -1838,7 +1953,7 @@ private:
                 return false;
             }
             const bool boundOrientation =
-                (*bArgs)[2].kind == StepValue::Enum && (*bArgs)[2].text == "T";
+                ((*bArgs)[2].kind == StepValue::Enum && (*bArgs)[2].text == "T") != reversed;
 
             const StepInstance* loop = m_parser.find((*bArgs)[1].ref);
             const StepList* lArgs = loop ? loop->leaf("EDGE_LOOP") : nullptr;
@@ -1947,8 +2062,8 @@ private:
         // of the surface normal.  The kernel has no per-face sense flag (its
         // convention is surface normal == outward face normal), so bake the
         // flip into the surface itself.
-        const bool sameSenseFace =
-            args->size() < 4 || (*args)[3].kind != StepValue::Enum || (*args)[3].text != "F";
+        const bool sameSenseFace = (args->size() < 4 || (*args)[3].kind != StepValue::Enum ||
+                                    (*args)[3].text != "F") != reversed;
         if (!sameSenseFace) {
             face->surface = reverseSurfaceU(*face->surface);
         }
@@ -2395,8 +2510,9 @@ bool isIdentity(const Mat4& m) {
     return true;
 }
 
-/// MANIFOLD_SOLID_BREPs that make one solid: the shells in one shape
-/// representation, with its context (which holds its units).
+/// The solids (MANIFOLD_SOLID_BREPs, and BREP_WITH_VOIDS) that make one
+/// topo::Solid: those in one shape representation, with its context (which
+/// holds its units).
 struct SolidGroup {
     std::vector<int> msbs;
     int context = 0;
@@ -2424,7 +2540,8 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
             for (const StepValue& item : *(*args)[1].items) {
                 if (!item.isRef() || grouped.count(item.ref) != 0) continue;
                 const StepInstance* it = parser.find(item.ref);
-                if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
+                if (it != nullptr &&
+                    (it->hasType("MANIFOLD_SOLID_BREP") || it->hasType("BREP_WITH_VOIDS"))) {
                     group.msbs.push_back(item.ref);
                     grouped.insert(item.ref);
                 }
@@ -2439,8 +2556,10 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
         fileContext = id;
         break;
     }
-    for (int id : parser.allOfType("MANIFOLD_SOLID_BREP")) {
-        if (grouped.count(id) == 0) groups.push_back({{id}, fileContext, 0});
+    for (const char* type : {"MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS"}) {
+        for (int id : parser.allOfType(type)) {
+            if (grouped.insert(id).second) groups.push_back({{id}, fileContext, 0});
+        }
     }
     return groups;
 }
@@ -2745,6 +2864,7 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
         if (inProduct[g]) continue;
         const StepInstance* msb = parser.find(groups[g].msbs.front());
         const StepList* args = msb ? msb->leaf("MANIFOLD_SOLID_BREP") : nullptr;
+        if (args == nullptr && msb != nullptr) args = msb->leaf("BREP_WITH_VOIDS");
         std::string name = args != nullptr && !args->empty() ? textOf((*args)[0]) : std::string();
         if (blank(name)) name = "solid " + std::to_string(g + 1);
         structure.placed.push_back({structure.products.size(), name, Mat4::identity()});
@@ -2864,29 +2984,6 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         built.solids[index] = std::move(solid);
     }
     return built;
-}
-
-/// Each solid with voids (BREP_WITH_VOIDS), which is not read: its part,
-/// and the part's placements, are left out. Said, not dropped silently: a
-/// SolidWorks assembly lost its part with a void, and said nothing.
-std::vector<std::string> solidsWithVoids(const StepParser& parser) {
-    std::vector<std::string> items;
-    for (int id : parser.allOfType("BREP_WITH_VOIDS")) {
-        const StepInstance* inst = parser.find(id);
-        const StepList* args = inst ? inst->leaf("BREP_WITH_VOIDS") : nullptr;
-        const std::string name = args != nullptr && !args->empty() ? textOf((*args)[0]) : "";
-        items.push_back("solid #" + std::to_string(id) + (blank(name) ? "" : " (" + name + ")") +
-                        " has voids (BREP_WITH_VOIDS), which this version does not read: it, "
-                        "and its part where an assembly places it, are left out");
-    }
-    return items;
-}
-
-/// Why a file has no solid to read: its solids have voids, or it has none.
-std::string noSolidError(const StepParser& parser) {
-    return parser.allOfType("BREP_WITH_VOIDS").empty()
-               ? "no MANIFOLD_SOLID_BREP found in file"
-               : "its solids have voids (BREP_WITH_VOIDS), which this version does not read";
 }
 
 /// What @p built and @p structure fell short of, into @p report.
@@ -3229,7 +3326,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
     if (!parseText(parser, cancelled)) return {};
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = noSolidError(parser);
+        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
         return {};
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3288,10 +3385,6 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
         return out;
     }
     reportRead(built, structure, report);
-    if (report != nullptr) {
-        for (std::string& item : solidsWithVoids(parser))
-            report->skipped.push_back(std::move(item));
-    }
     return out;
 }
 
@@ -3305,7 +3398,7 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
     if (!parseText(parser, cancelled)) return assembly;
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = noSolidError(parser);
+        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
         return assembly;
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3353,10 +3446,6 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
         return assembly;
     }
     reportRead(built, structure, report);
-    if (report != nullptr) {
-        for (std::string& item : solidsWithVoids(parser))
-            report->skipped.push_back(std::move(item));
-    }
     return assembly;
 }
 

@@ -8,9 +8,9 @@ Part-21 files exercised by `tests/fileio/test_StepFixtures.cpp`.
   one solid, manifold topology, positive enclosed volume.  The scanning test
   picks up new files automatically.
 - `reject/` — every `*.step` file here must be **rejected with a clear
-  error** (`StepFormat::lastError()` non-empty).  Used to pin documented
-  limitations (e.g. `BREP_WITH_VOIDS`) so a silent-import regression fails
-  the suite.
+  error** (`StepFormat::lastError()` non-empty): malformed files (a
+  `BREP_WITH_VOIDS` with empty loops) and documented limitations, so a
+  silent-import regression fails the suite.
 
 ## Real third-party exports
 

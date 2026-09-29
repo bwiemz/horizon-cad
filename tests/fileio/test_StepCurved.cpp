@@ -1173,3 +1173,55 @@ TEST(StepCurvedTest, AnEllipseEdgeIsRead) {
     expectRelative(m.ideal.properties.volume, 2.0 * kPi, 1e-6, "the slant-cut cylinder");
     EXPECT_EQ(importedBuildProblem(slantCutCylinder()), "");
 }
+
+// The kernel's own solids are not described by curves (their edges are
+// chords, each with the curve it stands for beside it): telling a cavity
+// from a body in them, in a Boolean's or a fillet's rebuild, measures their
+// corners and never facets them. A box with a ball cut out of it is one
+// body with a cavity.
+TEST(StepCurvedTest, AKernelSolidIsNotDescribedByCurves) {
+    const auto cylinder = hz::model::PrimitiveFactory::makeCylinder(5.0, 10.0);
+    ASSERT_NE(cylinder, nullptr);
+    EXPECT_FALSE(hz::model::describedByCurves(*cylinder));
+
+    const auto box = hz::model::PrimitiveFactory::makeBox(20, 20, 20);
+    const auto ball = hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeSphere(4.0),
+                                                      hz::math::Mat4::translation({10, 10, 10}));
+    const auto hollow =
+        hz::model::BooleanOp::execute(*box, *ball, hz::model::BooleanType::Subtract);
+    ASSERT_NE(hollow, nullptr);
+    ASSERT_EQ(hollow->shells().size(), 2u);
+    EXPECT_FALSE(hz::model::describedByCurves(*hollow));
+    EXPECT_EQ(hz::model::Pattern::bodyShells(*hollow).size(), 1u);
+}
+
+// A cavity with curved faces, written on its surfaces, is read as a solid
+// described by curves: its shells are told apart on their facets
+// (measureShells), and it is one body with its void.
+TEST(StepCurvedTest, ACurvedCavityComesBackAsOneBody) {
+    const auto box = hz::model::PrimitiveFactory::makeBox(20, 20, 20);
+    const auto core =
+        hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeCylinder(3.0, 10.0),
+                                        hz::math::Mat4::translation({10, 10, 5}));
+    const auto hollow =
+        hz::model::BooleanOp::execute(*box, *core, hz::model::BooleanType::Subtract);
+    ASSERT_NE(hollow, nullptr);
+    ASSERT_EQ(hollow->shells().size(), 2u);
+
+    hz::io::StepWriteReport written;
+    const std::string text = StepFormat::toString({hollow.get()}, {}, &written);
+    EXPECT_NE(text.find("BREP_WITH_VOIDS("), std::string::npos);
+    EXPECT_TRUE(written.faceted.empty()) << "the void on its cylinder, its rims circles";
+    EXPECT_NE(text.find("CIRCLE("), std::string::npos);
+
+    const auto again = StepFormat::fromString(text);
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    ASSERT_TRUE(hz::model::describedByCurves(*again[0]));
+    EXPECT_EQ(hz::model::Pattern::bodyShells(*again[0]).size(), 1u);
+    const auto shells = hz::model::measureShells(*again[0]);
+    ASSERT_EQ(shells.size(), 2u);
+    EXPECT_LT(shells[0].volume * shells[1].volume, 0.0) << "the void faces into itself";
+    const double exact = 20.0 * 20 * 20 - kPi * 9.0 * 10.0;
+    const auto ideal = MassPropertiesCalculator::computeIdeal(*again[0], nullptr, 1e-6);
+    EXPECT_NEAR(ideal.properties.volume, exact, 1e-3 * exact);
+}

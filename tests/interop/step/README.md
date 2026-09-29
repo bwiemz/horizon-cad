@@ -82,9 +82,12 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    they were drawn, and this is reported. It affects 1 file, which has 23 of
    them. Three more of that file's solids are skipped for malformed loops.
    OpenCASCADE places 19 solids in it; Horizon CAD reads 9.
-6. **BREP_WITH_VOIDS** affects 1 file. The part with a void is left out of
-   the SolidWorks assembly: OpenCASCADE reads 6 solids in it; Horizon CAD
-   reads 4. Nothing reported it; since #175 the import report does.
+6. **BREP_WITH_VOIDS** affected 1 file. The part with a void was left out
+   of the SolidWorks assembly: OpenCASCADE reads 6 solids in it; Horizon
+   CAD read 4. Since #175 the import report said so; since #177 it is read,
+   6 bodies and OpenCASCADE's volume. SolidWorks writes the void's closed
+   shell facing into the void and marks it turned round as well, so the
+   reader turns a void round by what it measures, not by the mark.
 7. **A surface type the reader does not build** affects 2 files: EUCLID's
    torus, and a SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid.
 8. **An export that does not measure as the part:** OpenCASCADE reads

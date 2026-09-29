@@ -1,10 +1,9 @@
 ISO-10303-21;
 HEADER;
-/* Hand-authored fixture: a solid expressed as BREP_WITH_VOIDS (a B-Rep with
-   an internal cavity shell).  Horizon's STEP importer does not map
-   BREP_WITH_VOIDS yet — this is a documented limitation, and the importer
-   must reject the file with a clear error instead of silently importing
-   partial or broken geometry. */
+/* Hand-authored fixture: a malformed BREP_WITH_VOIDS (a B-Rep with an
+   internal cavity shell), whose faces' loops are empty. The importer reads
+   solids with voids, and must reject this one with a clear error instead of
+   importing partial or broken geometry. */
 FILE_DESCRIPTION(('cavity fixture'),'2;1');
 FILE_NAME('brep_with_voids.step','2026-07-06T12:00:00',('Horizon fixtures'),(''),
   'none','none','none');
