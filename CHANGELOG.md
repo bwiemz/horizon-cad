@@ -80,13 +80,18 @@ work, not "post-1.0".
   surfaces, not solids, instead of the file being refused without a
   reason. A flat face whose edges stray off its plane (Creo's, by 0.75 mm)
   is cut into flat triangles, so the part is valid.
-- **The STEP corpus checks the export users make (#184).** OpenCASCADE
-  measured three exports up to 0.4% off. The corpus harness wrote each
-  solid as it was read, which no user does: a band round a hole went out
-  without a seam, and OpenCASCADE, trimming its B-spline surface, took
-  every cylinder 0.18% long. It now exports what File ▸ Export writes, the
-  imported part's model, which OpenCASCADE reads as the part. When an
-  export does measure otherwise, the check lists the faces that differ.
+- **An exported cylinder is cut where its surface closes (#184).**
+  OpenCASCADE measured the STEP exports of several corpus parts up to 0.4%
+  off. A cylinder's or cone's side goes out as one face on a closed B-spline
+  surface, and was cut along the first ruling of its facets, not where the
+  surface closes; OpenCASCADE, which takes a closed B-spline surface for
+  open, trims such a face across that join, and measured the sides and the
+  planes they bound short. A side is now cut along the ruling where its
+  surface closes, or, where it has none there, written on its surface cut to
+  close along the ruling it is cut along. The STEP corpus harness also now
+  exports what File ▸ Export writes, the imported part's model, not the
+  solids as read, and when an export measures otherwise the OpenCASCADE
+  check lists the faces that differ.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

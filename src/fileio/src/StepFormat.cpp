@@ -375,6 +375,8 @@ struct CurvedFace {
     /// outlines it is cut along, and its half-edge from the first to the
     /// second.
     const topo::HalfEdge* seamUp = nullptr;
+    /// Its surface cut to close along seamUp, where it closed elsewhere.
+    std::optional<geo::NurbsSurface> cut;
     bool sameSense = true;
     std::string why;  ///< empty: written as designed
 };
@@ -657,13 +659,39 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         if (!face.why.empty()) continue;
 
         // Two outlines (a cylinder's side): cut along an edge between them
-        // that lies on the surface (a ruling, not a triangle's diagonal).
+        // that lies on the surface (a ruling, not a triangle's diagonal),
+        // where the surface closes if one does. A face cut elsewhere crosses
+        // where it closes, and a reader that takes a closed B-spline surface
+        // for an open one (OpenCASCADE) trims it there, measuring it short
+        // (#184): where no edge is, the surface is cut to close along one.
         if (face.loops.size() == 2) {
             std::unordered_set<const topo::Vertex*> first;
             std::unordered_set<const topo::Vertex*> second;
             for (const auto* he : face.loops[0]) first.insert(he->origin);
             for (const auto* he : face.loops[1]) second.insert(he->origin);
+            const double tol = 1e-7 * std::max(1.0, scale);
+            // Straight: a ruling of the file's own, which keeps its line.
+            const auto straight = [tol](const topo::Edge& e) {
+                if (!e.analyticCurve) return true;
+                const Vec3 a = e.analyticCurve->evaluate(e.analyticCurve->tMin());
+                const Vec3 b = e.analyticCurve->evaluate(e.analyticCurve->tMax());
+                const Vec3 m = e.analyticCurve->evaluate(
+                    0.5 * (e.analyticCurve->tMin() + e.analyticCurve->tMax()));
+                return ((a + b) * 0.5 - m).length() <= tol;
+            };
+            // Along where it closes: both its ends on that line of it.
+            const auto whereItCloses = [&](const Vec3& a, const Vec3& b) {
+                const auto [ua, va] = surface.closestPoint(a);
+                const auto [ub, vb] = surface.closestPoint(b);
+                return (surface.closedU() &&
+                        (surface.evaluate(surface.uMin(), va) - a).length() <= tol &&
+                        (surface.evaluate(surface.uMin(), vb) - b).length() <= tol) ||
+                       (surface.closedV() &&
+                        (surface.evaluate(ua, surface.vMin()) - a).length() <= tol &&
+                        (surface.evaluate(ub, surface.vMin()) - b).length() <= tol);
+            };
             bool joined = false;
+            bool onJoin = false;
             for (const topo::Face* f : face.facets) {
                 const topo::HalfEdge* start = f->outerLoop->halfEdge;
                 const topo::HalfEdge* he = start;
@@ -673,19 +701,45 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                         second.count(he->next->origin) != 0) {
                         joined = true;
                         const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
-                        if (!he->edge->analyticCurve && onSurface(surface, mid, scale)) {
-                            face.seamUp = he;
-                            break;
+                        if (straight(*he->edge) && onSurface(surface, mid, scale)) {
+                            if (face.seamUp == nullptr) face.seamUp = he;
+                            if (whereItCloses(he->origin->point, he->next->origin->point)) {
+                                face.seamUp = he;
+                                onJoin = true;
+                                break;
+                            }
                         }
                     }
                     he = he->next;
                 } while (he != nullptr && he != start);
-                if (face.seamUp != nullptr) break;
+                if (onJoin) break;
             }
             if (face.seamUp == nullptr) {
                 face.why = joined ? "no edge joining its two outlines lies on its surface"
                                   : "no edge joins its two outlines";
                 continue;
+            }
+            if (!onJoin && (surface.closedU() || surface.closedV())) {
+                // Cut the way it goes round: across the seam, whose ends
+                // share their parameter that way (a torus closes both ways).
+                const Vec3& a = face.seamUp->origin->point;
+                const Vec3& b = face.seamUp->next->origin->point;
+                const auto [ua, va] = surface.closestPoint(a);
+                const auto [ub, vb] = surface.closestPoint(b);
+                const auto apart = [](double x, double y, double lo, double hi) {
+                    const double d = std::fmod(std::abs(x - y), hi - lo);
+                    return std::min(d, hi - lo - d) / (hi - lo);
+                };
+                const bool inU =
+                    surface.closedU() &&
+                    (!surface.closedV() || apart(ua, ub, surface.uMin(), surface.uMax()) <=
+                                               apart(va, vb, surface.vMin(), surface.vMax()));
+                const auto [u, v] = surface.closestPoint((a + b) * 0.5);
+                face.cut = inU ? surface.startingAtU(u) : surface.startingAtV(v);
+                if (!face.cut) {
+                    face.why = "its surface closes where no edge joining its outlines lies";
+                    continue;
+                }
             }
         }
 
@@ -939,7 +993,7 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         const int loop = w.add("EDGE_LOOP(''," + StepWriter::refList(edges) + ")");
         const int bound =
             w.add("FACE_OUTER_BOUND('',#" + std::to_string(loop) + "," + sense(!reversed) + ")");
-        const int surfId = writeSurface(w, *face.surface);
+        const int surfId = writeSurface(w, face.cut ? *face.cut : *face.surface);
         return w.add("ADVANCED_FACE('',(#" + std::to_string(bound) + "),#" +
                      std::to_string(surfId) + "," + sense(face.sameSense != reversed) + ")");
     };

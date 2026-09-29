@@ -107,13 +107,14 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid (an
    ellipse swept along a line) is read since #180.
 8. **An export that did not measure as the part:** OpenCASCADE read the
-   exports of the Shapr3D lid, the Alibre guide and the KiCad board up to
-   0.4% off. Its face-by-face comparison (occt_check.py) found every
-   cylinder and cone 0.18% too large, and the planes right: the harness
-   wrote the solids as read, a path no user takes, whose bands round a
-   hole go out without the seam other readers need to trim a B-spline
-   surface. Since #184 it exports what File ▸ Export does, the imported
-   part's model, and OpenCASCADE reads it as the part.
+   exports of several parts up to 0.4% off (#184). Its face-by-face
+   comparison (occt_check.py) found the cylinders and cones off, and the
+   planes they bound. Each side went out on a closed B-spline surface but
+   was cut elsewhere than where the surface closes (as read, a band round a
+   hole, not cut at all), and OpenCASCADE, which takes a closed B-spline
+   surface for open, trims such a face across that join. A side is now cut
+   where its surface closes, and the harness exports what File ▸ Export
+   does, the imported part's model, not the solids as read.
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
