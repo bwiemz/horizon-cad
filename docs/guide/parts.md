@@ -29,7 +29,7 @@ part, Keep the intersection, or New body. A feature that would leave nothing
 | **Sweep...** | A profile sketch and a path sketch; the profile is carried along the path. |
 | **Hole** | The face and the point (the point is moved onto the face), the type (simple, counterbored or countersunk), how far (to a depth, through all, or up to a face), the diameter and depth, and the drill point's angle (0 for a flat bottom). |
 | **Fillet** (**Ctrl+Shift+F**), **Chamfer** (**Ctrl+Shift+C**) | The radius or distance, and the edges. |
-| **Shell** (**Ctrl+Shift+H**) | The wall thickness, and the faces to leave open (none makes a closed hollow). |
+| **Shell** (**Ctrl+Shift+H**) | The wall thickness, and the faces to leave open: one or more (a closed hollow is not made yet). |
 | **Draft** | The pull direction, the neutral plane, and the angle. |
 | **Linear Pattern** | The direction, the spacing and the number of instances, and the features to repeat (none repeats the whole part). |
 | **Circular Pattern** | The axis, the number of instances, and the angle they span. A full turn spaces them evenly. |
