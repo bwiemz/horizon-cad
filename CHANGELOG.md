@@ -56,6 +56,12 @@ work, not "post-1.0".
   the wrong way, as SolidWorks does, is turned round by what it measures.
   The SolidWorks assembly in the STEP corpus now reads as OpenCASCADE reads
   it: 6 bodies, not 4.
+- **Linux packages read fonts with the system's fontconfig (#182).** The
+  fontconfig built into them warned about 45 times at every start on a
+  newer distribution: its configuration used rules that copy did not know.
+  fontconfig and FreeType now come from the system, as an AppImage expects,
+  so fonts are found and drawn as the rest of the desktop's are. A
+  fontconfig warning now fails the install check.
 - **An IronCAD part with B-spline faces builds (#179).** 24 of its faces
   came in as one facet each, and its Imported feature failed. Its edges lie
   up to 20 micrometres off surfaces 600 mm across, which is now close
