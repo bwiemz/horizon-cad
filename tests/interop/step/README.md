@@ -87,8 +87,11 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    reads 4. Nothing reported it; since #175 the import report does.
 7. **A surface type the reader does not build** affects 2 files: EUCLID's
    torus, and a SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid.
-8. **An export that measures under the part:** OpenCASCADE reads Horizon
-   CAD's export of the Shapr3D lid 0.4% under the part; not yet known why.
+8. **An export that does not measure as the part:** OpenCASCADE reads
+   Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
+   #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%
+   over; Horizon CAD reads each back as it wrote it. Not yet known why
+   (#184).
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
