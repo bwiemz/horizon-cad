@@ -801,10 +801,22 @@ double cross2(const RegionVertex& a, const RegionVertex& b, const RegionVertex& 
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-/// Whether @p p is in the triangle a, b, c (anticlockwise), or on its edges.
+/// Whether @p p is in the triangle a, b, c (anticlockwise), or within
+/// @p near of its edges: a point found on a surface is as exact as finding
+/// it, so points of one iso-line of it (a torus's, EUCLID's) are not quite
+/// on a line, and one a hair outside an ear's edge let the ear be cut.
 bool inOrOn(const RegionVertex& p, const RegionVertex& a, const RegionVertex& b,
-            const RegionVertex& c, double eps) {
-    return cross2(a, b, p) >= -eps && cross2(b, c, p) >= -eps && cross2(c, a, p) >= -eps;
+            const RegionVertex& c, double near) {
+    const auto inside = [&p, near](const RegionVertex& s, const RegionVertex& t) {
+        return cross2(s, t, p) >= -near * std::hypot(t.x - s.x, t.y - s.y);
+    };
+    return inside(a, b) && inside(b, c) && inside(c, a);
+}
+
+/// Whether @p b turns left from a to c by more than @p near: it is no
+/// corner when it is straight on within that.
+bool turnsLeft(const RegionVertex& a, const RegionVertex& b, const RegionVertex& c, double near) {
+    return cross2(a, b, c) > near * std::hypot(c.x - a.x, c.y - a.y);
 }
 
 /// The triangles of a region: its outer loop anticlockwise, its holes
@@ -820,7 +832,7 @@ struct Clipped {
 };
 
 std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<std::size_t> outer,
-                               std::vector<std::vector<std::size_t>> holes, double eps,
+                               std::vector<std::vector<std::size_t>> holes, double eps, double near,
                                double spacing,
                                const std::function<RegionVertex(double, double)>& onSurface) {
     // Holes, rightmost first, each bridged from its rightmost point to a
@@ -936,7 +948,7 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
             const RegionVertex& a = vertices[ia];
             const RegionVertex& b = vertices[ib];
             const RegionVertex& c = vertices[ic];
-            if (cross2(a, b, c) <= eps) continue;  // reflex, or straight on
+            if (!turnsLeft(a, b, c, near)) continue;  // reflex, or straight on
             bool empty = true;
             for (std::size_t other : left) {
                 if (other == ia || other == ib || other == ic) continue;
@@ -946,7 +958,7 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
                     return std::abs(v.x - w.x) <= eps && std::abs(v.y - w.y) <= eps;
                 };
                 if (same(a) || same(b) || same(c)) continue;
-                if (inOrOn(v, a, b, c, eps)) {
+                if (inOrOn(v, a, b, c, near)) {
                     empty = false;
                     break;
                 }
@@ -959,7 +971,7 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
         }
         if (!cut || ++guard > 1000000) return std::nullopt;
     }
-    if (cross2(vertices[left[0]], vertices[left[1]], vertices[left[2]]) <= eps) {
+    if (!turnsLeft(vertices[left[0]], vertices[left[1]], vertices[left[2]], near)) {
         return std::nullopt;
     }
     triangles.push_back({left[0], left[1], left[2]});
@@ -1236,6 +1248,9 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     for (const auto& hole : holes) holeIndices.push_back(add(hole));
     const double extent = std::max((u1 - u0) * su, (v1 - v0) * sv);
     const double eps = 1e-12 * extent;
+    // Near enough to an edge to be on it: points found on a surface are as
+    // exact as finding them (SurfaceMap::uvOf, a ten-millionth of it).
+    const double near = 1e-6 * extent;
 
     // How far apart the points go: as near as the surface turns by
     // @p maxAngle across the region each way (its straight ways not at all),
@@ -1270,7 +1285,7 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         const UV uv{x / su, y / sv};
         return RegionVertex{x, y, {map.at(uv), uv, -1}};
     };
-    auto clipped = earClip(vertices, outerIndices, holeIndices, eps, spacing, onSurface);
+    auto clipped = earClip(vertices, outerIndices, holeIndices, eps, near, spacing, onSurface);
     if (!clipped) return std::nullopt;
     auto& triangles = clipped->triangles;
     // The polygon's edges, the outline and the bridges to its holes: never
