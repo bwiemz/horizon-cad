@@ -49,40 +49,49 @@ ends included (`.gitattributes`).
 
 ## What it found
 
-These are ranked by how many of the twenty files they affect, which is the
-order to fix them in. `known_gaps` and `not_read` in the manifest pin each
-one. A test fails once a gap closes, so the manifest is updated when it is
-fixed. OpenCASCADE's reading confirmed each of them.
+These were ranked by how many of the twenty files they affected, which was
+the order to fix them in. `known_gaps` and `not_read` in the manifest pin
+each one still open. A test fails once a gap closes, so the manifest is
+updated when it is fixed. OpenCASCADE's reading confirmed each of them.
 
-1. **A curved face not bounded by its surface's own edges** comes in as one
-   flat facet, its outline. That holds for 8 files.
-   - For 4 of them (Pro/E, SolidWorks, Onshape and Shapr3D), the facet is not
-     flat. The part imports, then its Imported feature fails ("a flat face is
-     not flat"), and it cannot be saved and opened again.
-   - For others, the part measures wrong. The Onshape tube measures 132,720
+1. **A curved face not bounded by its surface's own edges** came in as one
+   flat facet, its outline. That held for 8 files.
+   - For 4 of them (Pro/E, SolidWorks, Onshape and Shapr3D), the facet was
+     not flat. The part imported, then its Imported feature failed ("a flat
+     face is not flat"), and it could not be saved and opened again.
+   - For others, the part measured wrong. The Onshape tube measured 132,720
      mm³ against OpenCASCADE's 712,990, and the Solid Edge part 61 mm³ in
      facets against 685.
    - The causes: a cylinder's side written as a band between two rims with
      no seam; edges a few micrometres off their surfaces; and faces of plain
-     FACE_BOUNDs whose inner loop comes first. #175 fixes all three, and
-     those files then agree with OpenCASCADE.
+     FACE_BOUNDs whose inner loop comes first. #175 fixed all three, and
+     those files agree with OpenCASCADE.
+   - **Still open:** the IronCAD impeller's B-spline faces, read since #175
+     (3), are not bounded by their surface's own edges either. Its volume
+     agrees with OpenCASCADE's, but its Imported feature fails (#179).
 2. **Surface models**, with open shells and no solid, are not read at all.
    That holds for 3 files (Rhino, Creo 2015 and I-DEAS).
-3. **Edge curves the reader does not build** stop a solid from coming in.
-   That holds for 3 files: the Inventor 2023 part and the IronCAD impeller
-   are not read, and one of the Unigraphics solids is skipped.
+3. **Edge curves the reader did not build** (ELLIPSE, INTERSECTION_CURVE)
+   stopped a solid from coming in: the Inventor 2023 part and the IronCAD
+   impeller were not read, and one of the Unigraphics solids was skipped.
+   #175 reads them; the Unigraphics solid then stops at its surface (7).
 4. **A nested assembly not placed whole.** 4 of the KiCad board's 9 placed
-   solids are not read; it is not yet known why.
+   solids were not read: KiCad puts them in a plain SHAPE_REPRESENTATION,
+   not an ADVANCED_BREP_SHAPE_REPRESENTATION. #175 reads them.
 5. **Placements by MAPPED_ITEM** are not read. Their parts come in where
    they were drawn, and this is reported. It affects 1 file, which has 23 of
    them. Three more of that file's solids are skipped for malformed loops.
    OpenCASCADE places 19 solids in it; Horizon CAD reads 9.
 6. **BREP_WITH_VOIDS** affects 1 file. The part with a void is left out of
-   the SolidWorks assembly, and **nothing reports it**. OpenCASCADE reads 6
-   solids in it; Horizon CAD reads 4.
-7. **A surface type the reader does not build** affects 1 file (EUCLID).
-8. **An export that measures under the part:** OpenCASCADE reads Horizon
-   CAD's export of the Shapr3D lid 0.4% under the part; not yet known why.
+   the SolidWorks assembly: OpenCASCADE reads 6 solids in it; Horizon CAD
+   reads 4. Nothing reported it; since #175 the import report does.
+7. **A surface type the reader does not build** affects 2 files: EUCLID's
+   torus, and a SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid.
+8. **An export that does not measure as the part:** OpenCASCADE reads
+   Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
+   #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%
+   over; Horizon CAD reads each back as it wrote it. Not yet known why
+   (#184).
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
