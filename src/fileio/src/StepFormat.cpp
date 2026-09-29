@@ -371,10 +371,12 @@ struct CurvedFace {
     /// Its outline: the half-edges of its facets whose other side is not
     /// one of them, in loops as its facets run.
     std::vector<std::vector<const topo::HalfEdge*>> loops;
-    /// A closed face's (a cylinder's side): the edge between its two
-    /// outlines it is cut along, and its half-edge from the first to the
-    /// second.
-    const topo::HalfEdge* seamUp = nullptr;
+    /// A closed face's (a cylinder's side): the edges between its two
+    /// outlines it is cut along, one straight line of them, as half-edges
+    /// from the first outline to the second.
+    std::vector<const topo::HalfEdge*> seam;
+    /// Its surface cut to close along its seam, where it closed elsewhere.
+    std::optional<geo::NurbsSurface> cut;
     bool sameSense = true;
     std::string why;  ///< empty: written as designed
 };
@@ -439,7 +441,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         return i && *i == g;
     };
     const auto onSurface = [](const geo::NurbsSurface& surface, const Vec3& p, double scale) {
-        const auto [u, v] = surface.closestPoint(p);
+        const auto [u, v] = surface.locate(p);
         return (surface.evaluate(u, v) - p).length() <= 1e-7 * std::max(1.0, scale);
     };
 
@@ -488,7 +490,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         bool pole = false;
         for (const topo::Vertex* corner : corners) {
             if (onOutline.count(corner) != 0) continue;
-            const auto [u, v] = surface.closestPoint(corner->point);
+            const auto [u, v] = surface.locate(corner->point);
             const auto at = surface.evaluateWithDerivatives(u, v);
             if (!(at.du.cross(at.dv).length() > 1e-8 * size * size)) {
                 pole = true;
@@ -656,36 +658,129 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         }
         if (!face.why.empty()) continue;
 
-        // Two outlines (a cylinder's side): cut along an edge between them
-        // that lies on the surface (a ruling, not a triangle's diagonal).
+        // Two outlines (a cylinder's side): cut along a line of its edges
+        // from one to the other, on the surface (a ruling, not a triangle's
+        // diagonal) — one edge, or several where its facets are a grid —
+        // where the surface closes if one does. A face cut elsewhere crosses
+        // where it closes, and a reader that takes a closed B-spline surface
+        // for an open one (OpenCASCADE) trims it there, measuring it short
+        // (#184): where no line is, the surface is cut to close along one.
         if (face.loops.size() == 2) {
             std::unordered_set<const topo::Vertex*> first;
             std::unordered_set<const topo::Vertex*> second;
             for (const auto* he : face.loops[0]) first.insert(he->origin);
             for (const auto* he : face.loops[1]) second.insert(he->origin);
-            bool joined = false;
+            const double tol = 1e-7 * std::max(1.0, scale);
+            // Straight: a ruling of the file's own, which keeps its line.
+            const auto straight = [tol](const topo::Edge& e) {
+                if (!e.analyticCurve) return true;
+                const Vec3 a = e.analyticCurve->evaluate(e.analyticCurve->tMin());
+                const Vec3 b = e.analyticCurve->evaluate(e.analyticCurve->tMax());
+                const Vec3 m = e.analyticCurve->evaluate(
+                    0.5 * (e.analyticCurve->tMin() + e.analyticCurve->tMax()));
+                return ((a + b) * 0.5 - m).length() <= tol;
+            };
+            // Along where it closes: both its ends on that line of it.
+            const auto whereItCloses = [&](const Vec3& a, const Vec3& b) {
+                const auto [ua, va] = surface.locate(a);
+                const auto [ub, vb] = surface.locate(b);
+                return (surface.closedU() &&
+                        (surface.evaluate(surface.uMin(), va) - a).length() <= tol &&
+                        (surface.evaluate(surface.uMin(), vb) - b).length() <= tol) ||
+                       (surface.closedV() &&
+                        (surface.evaluate(ua, surface.vMin()) - a).length() <= tol &&
+                        (surface.evaluate(ub, surface.vMin()) - b).length() <= tol);
+            };
+            // Its edges inside it, by the vertex they leave; a ruling's.
+            std::unordered_map<const topo::Vertex*, std::vector<const topo::HalfEdge*>> leaving;
             for (const topo::Face* f : face.facets) {
                 const topo::HalfEdge* start = f->outerLoop->halfEdge;
                 const topo::HalfEdge* he = start;
                 do {
-                    if (he->twin != nullptr && inGroup(he->twin->face, g) &&
-                        first.count(he->origin) != 0 && he->next != nullptr &&
-                        second.count(he->next->origin) != 0) {
-                        joined = true;
-                        const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
-                        if (!he->edge->analyticCurve && onSurface(surface, mid, scale)) {
-                            face.seamUp = he;
-                            break;
-                        }
+                    if (he->twin != nullptr && inGroup(he->twin->face, g) && he->next != nullptr) {
+                        leaving[he->origin].push_back(he);
                     }
                     he = he->next;
                 } while (he != nullptr && he != start);
-                if (face.seamUp != nullptr) break;
             }
-            if (face.seamUp == nullptr) {
-                face.why = joined ? "no edge joining its two outlines lies on its surface"
-                                  : "no edge joins its two outlines";
+            const auto ruling = [&](const topo::HalfEdge* he) {
+                const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
+                return straight(*he->edge) && onSurface(surface, mid, scale);
+            };
+            // From @p up, on to the second outline straight on: the line of
+            // edges, or none.
+            const auto lineFrom = [&](const topo::HalfEdge* up) {
+                std::vector<const topo::HalfEdge*> line{up};
+                const Vec3 way = up->next->origin->point - up->origin->point;
+                const double length = way.length();
+                if (!(length > 0.0)) return std::vector<const topo::HalfEdge*>{};
+                const Vec3 along = way * (1.0 / length);
+                while (second.count(line.back()->next->origin) == 0) {
+                    const topo::Vertex* at = line.back()->next->origin;
+                    if (first.count(at) != 0 || line.size() > face.facets.size())
+                        return std::vector<const topo::HalfEdge*>{};
+                    const topo::HalfEdge* next = nullptr;
+                    const auto out = leaving.find(at);
+                    if (out != leaving.end()) {
+                        for (const topo::HalfEdge* he : out->second) {
+                            const Vec3 step = he->next->origin->point - at->point;
+                            const double stepLength = step.length();
+                            if (stepLength > 0.0 && step.dot(along) >= (1.0 - 1e-9) * stepLength &&
+                                ruling(he)) {
+                                next = he;
+                                break;
+                            }
+                        }
+                    }
+                    if (next == nullptr) return std::vector<const topo::HalfEdge*>{};
+                    line.push_back(next);
+                }
+                return line;
+            };
+            bool onJoin = false;
+            for (const topo::HalfEdge* rim : face.loops[0]) {  // in its order: the file's too
+                const auto out = leaving.find(rim->origin);
+                if (out == leaving.end()) continue;
+                for (const topo::HalfEdge* up : out->second) {
+                    if (second.count(up->origin) != 0 || !ruling(up)) continue;
+                    auto line = lineFrom(up);
+                    if (line.empty()) continue;
+                    const bool closesHere = whereItCloses(line.front()->origin->point,
+                                                          line.back()->next->origin->point);
+                    if (face.seam.empty() || closesHere) face.seam = std::move(line);
+                    if (closesHere) {
+                        onJoin = true;
+                        break;
+                    }
+                }
+                if (onJoin) break;
+            }
+            if (face.seam.empty()) {
+                face.why =
+                    "no line of edges from one of its outlines to the other lies on its surface";
                 continue;
+            }
+            if (!onJoin && (surface.closedU() || surface.closedV())) {
+                // Cut the way it goes round: across the seam, whose ends
+                // share their parameter that way (a torus closes both ways).
+                const Vec3& a = face.seam.front()->origin->point;
+                const Vec3& b = face.seam.back()->next->origin->point;
+                const auto [ua, va] = surface.locate(a);
+                const auto [ub, vb] = surface.locate(b);
+                const auto apart = [](double x, double y, double lo, double hi) {
+                    const double d = std::fmod(std::abs(x - y), hi - lo);
+                    return std::min(d, hi - lo - d) / (hi - lo);
+                };
+                const bool inU =
+                    surface.closedU() &&
+                    (!surface.closedV() || apart(ua, ub, surface.uMin(), surface.uMax()) <=
+                                               apart(va, vb, surface.vMin(), surface.vMax()));
+                const auto [u, v] = surface.locate((a + b) * 0.5);
+                face.cut = inU ? surface.startingAtU(u) : surface.startingAtV(v);
+                if (!face.cut) {
+                    face.why = "its surface closes where no line joining its outlines lies";
+                    continue;
+                }
             }
         }
 
@@ -696,7 +791,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         for (std::size_t i = 0; i < face.facets.size(); i += step) {
             const auto plane = planeOf(*face.facets[i]);
             if (!plane) continue;
-            const auto [u, v] = surface.closestPoint(plane->second);
+            const auto [u, v] = surface.locate(plane->second);
             const double d = surface.normal(u, v).dot(plane->first);
             if (d > 1e-6) ++along;
             if (d < -1e-6) ++against;
@@ -793,7 +888,7 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             continue;
         }
         for (const topo::Face* f : face.facets) designedOf[f] = &face;
-        if (face.seamUp != nullptr) seams.insert(face.seamUp->edge);
+        for (const topo::HalfEdge* he : face.seam) seams.insert(he->edge);
     }
     // An edge between two facets of one face written as designed is inside
     // it, and not written: but for the seam it is cut along.
@@ -919,16 +1014,18 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             turned.insert(turned.end(), loop.begin(), at);
             return turned;
         };
-        if (face.seamUp == nullptr) {
+        if (face.seam.empty()) {
             path = face.loops.front();
         } else {
-            const auto first = from(face.loops[0], face.seamUp->origin);
-            const auto second = from(face.loops[1], face.seamUp->next->origin);
+            const auto first = from(face.loops[0], face.seam.front()->origin);
+            const auto second = from(face.loops[1], face.seam.back()->next->origin);
             if (first.empty() || second.empty()) return std::nullopt;
             path = first;
-            path.push_back(face.seamUp);
+            path.insert(path.end(), face.seam.begin(), face.seam.end());
             path.insert(path.end(), second.begin(), second.end());
-            path.push_back(face.seamUp->twin);
+            for (auto he = face.seam.rbegin(); he != face.seam.rend(); ++he) {
+                path.push_back((*he)->twin);
+            }
         }
         std::vector<int> edges;
         for (const topo::HalfEdge* he : path) {
@@ -939,7 +1036,7 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         const int loop = w.add("EDGE_LOOP(''," + StepWriter::refList(edges) + ")");
         const int bound =
             w.add("FACE_OUTER_BOUND('',#" + std::to_string(loop) + "," + sense(!reversed) + ")");
-        const int surfId = writeSurface(w, *face.surface);
+        const int surfId = writeSurface(w, face.cut ? *face.cut : *face.surface);
         return w.add("ADVANCED_FACE('',(#" + std::to_string(bound) + "),#" +
                      std::to_string(surfId) + "," + sense(face.sameSense != reversed) + ")");
     };
@@ -1345,10 +1442,30 @@ public:
     /// shape representation), and BREP_WITH_VOIDS, an outer shell and a
     /// shell round each void, facing into it: a cavity, as a Boolean leaves
     /// one.
-    std::unique_ptr<topo::Solid> build(const std::vector<int>& solidIds, std::string& error) {
+    std::unique_ptr<topo::Solid> build(const std::vector<int>& solidIds, bool surfaces,
+                                       std::string& error) {
         std::vector<ShellRef> plan;
-        for (int solidId : solidIds) {
-            if (!shellsOf(solidId, plan, error)) return nullptr;
+        if (surfaces) {
+            // A surface model's shells: each that closes (Creo writes its
+            // solids so) a body; one that does not, an open surface, is left
+            // out, and counted.
+            for (int shell : solidIds) {
+                if (closes(shell)) {
+                    plan.push_back({shell, false, false, plan.size()});
+                } else {
+                    ++m_openShells;
+                }
+            }
+            if (plan.empty()) {
+                error = m_openShells == 1 ? "its one shell is an open surface, not a solid"
+                                          : "its " + std::to_string(m_openShells) +
+                                                " shells are open surfaces, not solids";
+                return nullptr;
+            }
+        } else {
+            for (int solidId : solidIds) {
+                if (!shellsOf(solidId, plan, error)) return nullptr;
+            }
         }
         auto solid = assemble(plan, error);
         if (solid == nullptr) return nullptr;
@@ -1358,12 +1475,17 @@ public:
         // (a SolidWorks one) write the closed shell facing in already, and
         // mark it turned round too, which would make the void more material:
         // one that measures as its outer shell does is turned round again.
+        // A surface model's shell faces whichever way its writer wound it:
+        // one that measures inside out is turned round.
         bool turned = false;
-        if (std::any_of(plan.begin(), plan.end(), [](const ShellRef& s) { return s.isVoid; })) {
+        if (surfaces ||
+            std::any_of(plan.begin(), plan.end(), [](const ShellRef& s) { return s.isVoid; })) {
             const auto measures = model::measureShells(*solid);
             for (std::size_t i = 0; i < plan.size() && measures.size() == plan.size(); ++i) {
-                if (!plan[i].isVoid) continue;
-                if (measures[i].volume * measures[plan[i].outer].volume > 0.0) {
+                const bool wrongWay =
+                    plan[i].isVoid ? measures[i].volume * measures[plan[i].outer].volume > 0.0
+                                   : surfaces && measures[i].volume < 0.0;
+                if (wrongWay) {
                     plan[i].reversed = !plan[i].reversed;
                     turned = true;
                 }
@@ -1371,6 +1493,9 @@ public:
         }
         return turned ? assemble(plan, error) : std::move(solid);
     }
+
+    /// How many of a surface model's shells were open surfaces, left out.
+    std::size_t openShells() const { return m_openShells; }
 
 private:
     /// A shell to build: its CLOSED_SHELL (or OPEN_SHELL), and whether its
@@ -1403,6 +1528,50 @@ private:
             return nullptr;
         }
         return std::move(m_solid);
+    }
+
+    /// Whether shell @p shellId closes: each of its edges bounds two of its
+    /// faces, once each way, as linkTwins needs (a surface model's shell
+    /// may be a solid's, or a surface's; one whose faces disagree which way
+    /// they run is no solid either).
+    bool closes(int shellId) const {
+        const StepInstance* shell = m_parser.find(shellId);
+        const StepList* args = shell ? shell->leaf("OPEN_SHELL") : nullptr;
+        if (args == nullptr && shell != nullptr) args = shell->leaf("CLOSED_SHELL");
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) return false;
+        std::map<int, std::pair<int, int>> uses;  // by edge: its uses each way
+        for (const StepValue& faceRef : *(*args)[1].items) {
+            const StepInstance* face = faceRef.isRef() ? m_parser.find(faceRef.ref) : nullptr;
+            const StepList* fArgs = face ? face->leaf("ADVANCED_FACE") : nullptr;
+            if (fArgs == nullptr && face != nullptr) fArgs = face->leaf("FACE_SURFACE");
+            if (fArgs == nullptr || fArgs->size() < 2 || !(*fArgs)[1].isList()) return false;
+            for (const StepValue& boundRef : *(*fArgs)[1].items) {
+                const StepInstance* bound =
+                    boundRef.isRef() ? m_parser.find(boundRef.ref) : nullptr;
+                const StepList* b = bound ? bound->leaf("FACE_OUTER_BOUND") : nullptr;
+                if (b == nullptr && bound != nullptr) b = bound->leaf("FACE_BOUND");
+                const StepInstance* loop = b != nullptr && b->size() >= 2 && (*b)[1].isRef()
+                                               ? m_parser.find((*b)[1].ref)
+                                               : nullptr;
+                const StepList* edges = loop ? loop->leaf("EDGE_LOOP") : nullptr;
+                if (edges == nullptr || edges->size() < 2 || !(*edges)[1].isList()) continue;
+                const bool boundSense =
+                    b->size() < 3 || (*b)[2].kind != StepValue::Enum || (*b)[2].text == "T";
+                for (const StepValue& oeRef : *(*edges)[1].items) {
+                    const StepInstance* oe = oeRef.isRef() ? m_parser.find(oeRef.ref) : nullptr;
+                    const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
+                    if (oeArgs != nullptr && oeArgs->size() >= 5 && (*oeArgs)[3].isRef()) {
+                        const bool along = ((*oeArgs)[4].kind == StepValue::Enum &&
+                                            (*oeArgs)[4].text == "T") == boundSense;
+                        auto& [forward, backward] = uses[(*oeArgs)[3].ref];
+                        ++(along ? forward : backward);
+                    }
+                }
+            }
+        }
+        return std::all_of(uses.begin(), uses.end(), [](const auto& u) {
+            return u.second.first == 1 && u.second.second == 1;
+        });
     }
 
     /// The shells of solid @p solidId, onto @p shells: a MANIFOLD_SOLID_BREP's
@@ -2078,7 +2247,7 @@ private:
         }
         const double major = (*args)[2].num;
         const double minor = (*args)[3].num;
-        if (!(minor > 0.0) || !(major >= 0.0)) return false;
+        if (!(minor > 0.0) || !(major > 0.0)) return false;  // as the torus is read
         topo::Vertex* corner = vertexAt(origin + xAxis * (major + minor), "p");
         EdgeRecord* round =
             seam(1, corner, corner,
@@ -2341,6 +2510,7 @@ private:
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
+    std::size_t m_openShells = 0;
 };
 
 // ===========================================================================
@@ -2760,6 +2930,9 @@ bool isIdentity(const Mat4& m) {
 /// holds its units).
 struct SolidGroup {
     std::vector<int> msbs;
+    /// A surface model's (SHELL_BASED_SURFACE_MODEL): msbs are its shells,
+    /// each a solid if it closes.
+    bool surfaces = false;
     int context = 0;
     /// The ADVANCED_BREP_SHAPE_REPRESENTATION holding them; 0 for one
     /// outside any.
@@ -2794,6 +2967,39 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
             if (!group.msbs.empty()) groups.push_back(std::move(group));
         }
     }
+    // Surface models: their shells, which another system may write for a
+    // solid (Creo's closed OPEN_SHELLs), one group a representation.
+    std::unordered_set<int> modelled;
+    const auto shellsOfModel = [&parser](int model, std::vector<int>& shells) {
+        const StepList* args = parser.find(model)->leaf("SHELL_BASED_SURFACE_MODEL");
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) return;
+        for (const StepValue& shell : *(*args)[1].items) {
+            const StepInstance* it = shell.isRef() ? parser.find(shell.ref) : nullptr;
+            if (it != nullptr && (it->hasType("OPEN_SHELL") || it->hasType("CLOSED_SHELL"))) {
+                shells.push_back(shell.ref);
+            }
+        }
+    };
+    for (const char* type : {"MANIFOLD_SURFACE_SHAPE_REPRESENTATION", "SHAPE_REPRESENTATION"}) {
+        for (int repId : parser.allOfType(type)) {
+            const StepList* args = parser.find(repId)->leaf(type);
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
+            SolidGroup group;
+            group.rep = repId;
+            group.surfaces = true;
+            if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
+            for (const StepValue& item : *(*args)[1].items) {
+                const StepInstance* it = item.isRef() ? parser.find(item.ref) : nullptr;
+                if (it == nullptr || !it->hasType("SHELL_BASED_SURFACE_MODEL") ||
+                    !modelled.insert(item.ref).second) {
+                    continue;
+                }
+                shellsOfModel(item.ref, group.msbs);
+            }
+            if (!group.msbs.empty()) groups.push_back(std::move(group));
+        }
+    }
+
     // MSBs outside any representation (minimal files) import one solid each,
     // in the file's first context with units, if it has one.
     int fileContext = 0;
@@ -2803,8 +3009,16 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
     }
     for (const char* type : {"MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS"}) {
         for (int id : parser.allOfType(type)) {
-            if (grouped.insert(id).second) groups.push_back({{id}, fileContext, 0});
+            if (grouped.insert(id).second) groups.push_back({{id}, false, fileContext, 0});
         }
+    }
+    for (int id : parser.allOfType("SHELL_BASED_SURFACE_MODEL")) {
+        if (!modelled.insert(id).second) continue;
+        SolidGroup group;
+        group.surfaces = true;
+        group.context = fileContext;
+        shellsOfModel(id, group.msbs);
+        if (!group.msbs.empty()) groups.push_back(std::move(group));
     }
     return groups;
 }
@@ -2842,9 +3056,11 @@ constexpr int kMaxDepth = 64;
 ProductStructure readStructure(const StepParser& parser, const std::vector<SolidGroup>& groups,
                                const StepReadOptions& options) {
     ProductStructure structure;
-    std::unordered_map<int, std::size_t> groupOfRep;
+    // A representation's groups: its solids', and its surface model's (a
+    // plain SHAPE_REPRESENTATION may hold both).
+    std::unordered_map<int, std::vector<std::size_t>> groupsOfRep;
     for (std::size_t g = 0; g < groups.size(); ++g) {
-        if (groups[g].rep != 0) groupOfRep.emplace(groups[g].rep, g);
+        if (groups[g].rep != 0) groupsOfRep[groups[g].rep].push_back(g);
     }
 
     // Representations related without a transformation are one shape
@@ -2942,8 +3158,11 @@ ProductStructure readStructure(const StepParser& parser, const std::vector<Solid
         std::set<int> shape = shapeOf(reps->second);
         ProductStructure::Product product;
         for (int rep : shape) {
-            const auto group = groupOfRep.find(rep);
-            if (group != groupOfRep.end()) product.groups.push_back(group->second);
+            const auto found = groupsOfRep.find(rep);
+            if (found != groupsOfRep.end()) {
+                product.groups.insert(product.groups.end(), found->second.begin(),
+                                      found->second.end());
+            }
         }
         std::sort(product.groups.begin(), product.groups.end());
         shapeReps.emplace(definition, std::move(shape));
@@ -3255,7 +3474,7 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         std::unique_ptr<topo::Solid> solid;
         std::string error;
         try {
-            solid = builder.build(group.msbs, error);
+            solid = builder.build(group.msbs, group.surfaces, error);
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
             // checks let through (a degree-0 B-spline, ragged control rows).
@@ -3268,6 +3487,12 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             }
             built.failures.push_back(which + ": " + error);
             continue;
+        }
+        if (const std::size_t open = builder.openShells(); open > 0) {
+            built.failures.push_back(which + ": " + std::to_string(open) +
+                                     (open == 1 ? " of its shells is an open surface"
+                                                : " of its shells are open surfaces") +
+                                     ", not a solid, and left out");
         }
 
         // Into millimetres.

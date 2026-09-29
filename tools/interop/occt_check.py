@@ -14,6 +14,10 @@ compares what it finds with what hz_step_acceptance wrote in summary.json:
 - Horizon CAD's export of it: OpenCASCADE must read it, find it valid, with
   as many solids, and a volume between Horizon CAD's faceted and ideal ones.
 
+A surface model the manifest marks occt_reads_surfaces (its shells close,
+but OpenCASCADE makes no solids of them) has its bounds compared, not its
+bodies or volume.
+
 A file the manifest lists as not read, or a check its known_gaps name
 ("volume", "bounds", "bodies", "export", "export-valid", "export-bodies",
 "export-volume", "occt"), each with why, is reported and not failed. Exits 1 on any other mismatch. --out writes what
@@ -38,6 +42,11 @@ from typing import Any
 VOLUME_TOLERANCE = 1e-3  # relative, when the manifest gives none
 BOUNDS_TOLERANCE = 0.005  # of the box's diagonal, when the manifest gives none
 EXPORT_SLACK = 1e-3  # relative, around Horizon CAD's faceted..ideal volumes
+# Volumes and areas integrated adaptively, to this relative error. OpenCASCADE's
+# default, a Gauss rule of fixed points, measures an analytic surface exactly
+# but a rational B-spline one (an export's cylinder) a little out, and a part
+# far from the origin further out in volume.
+INTEGRATION_EPS = 1e-6
 
 
 @dataclass
@@ -48,6 +57,7 @@ class Reading:
     volume: float
     bounds: list[list[float]] | None
     valid: bool
+    fixed_volume: float = 0.0  # by OpenCASCADE's default fixed Gauss rule
 
 
 def static(owner: Any, name: str) -> Any:
@@ -79,11 +89,15 @@ def occt_read(path: Path) -> Reading | None:
         return None
     solids = 0
     volume = 0.0
+    fixed_volume = 0.0
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     while explorer.More():
         props = GProp_GProps()
-        static(BRepGProp, "VolumeProperties")(explorer.Current(), props)
+        static(BRepGProp, "VolumeProperties")(explorer.Current(), props, INTEGRATION_EPS)
         volume += abs(props.Mass())
+        fixed = GProp_GProps()
+        static(BRepGProp, "VolumeProperties")(explorer.Current(), fixed)
+        fixed_volume += abs(fixed.Mass())
         solids += 1
         explorer.Next()
     box = Bnd_Box()
@@ -94,7 +108,65 @@ def occt_read(path: Path) -> Reading | None:
         # does not expose.
         low, high = box.CornerMin(), box.CornerMax()
         bounds = [[low.X(), low.Y(), low.Z()], [high.X(), high.Y(), high.Z()]]
-    return Reading(solids, volume, bounds, BRepCheck_Analyzer(shape).IsValid())
+    return Reading(solids, volume, bounds, BRepCheck_Analyzer(shape).IsValid(), fixed_volume)
+
+
+def occt_faces(path: Path) -> list[dict[str, Any]]:
+    """Each face of @path as OpenCASCADE reads it: its surface's kind, area
+    and centre, in millimetres; none when it cannot be read."""
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+    from OCP.IFSelect import IFSelect_RetDone
+    from OCP.Interface import Interface_Static
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+
+    static(Interface_Static, "SetCVal")("xstep.cascade.unit", "MM")
+    reader = STEPControl_Reader()
+    if reader.ReadFile(str(path)) != IFSelect_RetDone:
+        return []
+    reader.TransferRoots()
+    shape = reader.OneShape()
+    faces: list[dict[str, Any]] = []
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    while explorer.More():
+        face = static(TopoDS, "Face")(explorer.Current())
+        props = GProp_GProps()
+        static(BRepGProp, "SurfaceProperties")(face, props, INTEGRATION_EPS)
+        fixed = GProp_GProps()
+        static(BRepGProp, "SurfaceProperties")(face, fixed)
+        centre = props.CentreOfMass()
+        kind = BRepAdaptor_Surface(face).GetType()
+        faces.append({"kind": getattr(kind, "name", str(kind)).removeprefix("GeomAbs_"),
+                      "area": props.Mass(), "fixed area": fixed.Mass(),
+                      "centre": [centre.X(), centre.Y(), centre.Z()]})
+        explorer.Next()
+    return faces
+
+
+def face_diff(original: Path, export: Path) -> dict[str, list[dict[str, Any]]]:
+    """The faces of @export no face of @original has the area and centre of,
+    and the other way round: where an export measures differently."""
+    ours, theirs = occt_faces(original), occt_faces(export)
+
+    def unmatched(these: list[dict[str, Any]], those: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        left = list(those)
+        out = []
+        for face in these:
+            match = next((other for other in left
+                          if near(other["area"], face["area"], 1e-4)
+                          and math.dist(other["centre"], face["centre"]) <=
+                          1e-3 * max(1.0, math.sqrt(face["area"]))), None)
+            if match is None:
+                out.append(face)
+            else:
+                left.remove(match)
+        return out
+
+    return {"original only": unmatched(ours, theirs), "export only": unmatched(theirs, ours)}
 
 
 def near(value: float, expected: float, relative: float) -> bool:
@@ -136,10 +208,13 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
         elif theirs is not None:
             checked.update({"bodies", "volume", "bounds"})
             expect = entry.get("expect", {})
-            if ours["bodies"] != theirs.solids:
+            # A surface model whose shells close: solids to Horizon CAD,
+            # surfaces to OpenCASCADE, whose bounds alone are compared.
+            surfaces = "occt_reads_surfaces" in entry
+            if not surfaces and ours["bodies"] != theirs.solids:
                 problems["bodies"] = f"bodies {ours['bodies']}, OpenCASCADE {theirs.solids}"
             tolerance = expect.get("volume_tolerance", VOLUME_TOLERANCE)
-            if not near(ours["idealVolume"], theirs.volume, tolerance):
+            if not surfaces and not near(ours["idealVolume"], theirs.volume, tolerance):
                 problems["volume"] = (f"volume {ours['idealVolume']:.6g}, "
                                       f"OpenCASCADE {theirs.volume:.6g}")
             if ours["bounds"] and theirs.bounds:
@@ -158,6 +233,11 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
                 low = min(ours["facetedVolume"], ours["idealVolume"]) * (1 - EXPORT_SLACK)
                 high = max(ours["facetedVolume"], ours["idealVolume"]) * (1 + EXPORT_SLACK)
                 export = f"{exported.solids} solids, {exported.volume:.6g} mm³"
+                # Where the fixed rule measures otherwise, in the log.
+                for which, reading in (("the file", theirs), ("the export", exported)):
+                    if reading is not None and not near(reading.fixed_volume, reading.volume, 1e-5):
+                        print(f"{name}: {which}: {reading.volume:.8g} mm³ integrated adaptively, "
+                              f"{reading.fixed_volume:.8g} by the fixed rule")
                 if not exported.valid:
                     problems["export-valid"] = "the export is not a valid shape to OpenCASCADE"
                 if exported.solids != ours["bodies"]:
@@ -165,6 +245,14 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
                 if not low <= exported.volume <= high:
                     problems["export-volume"] = (f"the export's volume {exported.volume:.6g} "
                                                  f"is outside {low:.6g}..{high:.6g}")
+                    # Which faces measure differently: in the log, and kept.
+                    diff = face_diff(corpus / name, Path(ours["exportPath"]))
+                    found.setdefault(name, {})["export faces"] = diff
+                    for side, faces in diff.items():
+                        for face in faces[:12]:
+                            print(f"{name}: {side}: {face['kind']} {face['area']:.6g} mm² "
+                                  f"({face['fixed area']:.6g} by the fixed rule) at "
+                                  + ", ".join(f"{c:.4g}" for c in face["centre"]))
         unexpected = {key: why for key, why in problems.items() if key not in known}
         # A known gap that no longer fails: the manifest is to say so.
         for key in sorted(known.keys() & checked - problems.keys()):

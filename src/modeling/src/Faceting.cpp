@@ -816,6 +816,28 @@ bool inOrOn(const RegionVertex& p, const RegionVertex& a, const RegionVertex& b,
     return inside(a, b) && inside(b, c) && inside(c, a);
 }
 
+/// Whether the points @p loop of @p vertices all lie within @p near of the
+/// line through the two furthest apart of them: a region with no width.
+bool flatWithin(const std::vector<RegionVertex>& vertices, const std::vector<std::size_t>& loop,
+                double near) {
+    if (loop.size() < 3) return true;
+    const RegionVertex& a = vertices[loop.front()];
+    std::size_t far = loop.front();
+    double reach = 0.0;
+    for (std::size_t i : loop) {
+        const double d = std::hypot(vertices[i].x - a.x, vertices[i].y - a.y);
+        if (d > reach) {
+            reach = d;
+            far = i;
+        }
+    }
+    if (!(reach > 0.0)) return true;
+    const RegionVertex& b = vertices[far];
+    return std::all_of(loop.begin(), loop.end(), [&](std::size_t i) {
+        return std::abs(cross2(a, b, vertices[i])) <= 2.0 * near * reach;
+    });
+}
+
 /// Whether @p b turns left from a to c by more than @p near: it is no
 /// corner when it is straight on within that.
 bool turnsLeft(const RegionVertex& a, const RegionVertex& b, const RegionVertex& c, double near) {
@@ -971,6 +993,16 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
             left.erase(left.begin() + static_cast<std::ptrdiff_t>(k));
             cut = true;
             break;
+        }
+        if (!cut && flatWithin(vertices, left, near)) {
+            // What is left lies along a line within near of it: the last of
+            // an edge bent a hair (a Creo strip's rim, 3e-4 mm over 50),
+            // whose ears were cut as slivers down to straight. A fan of
+            // slivers finishes it, every point of the outline a corner.
+            for (std::size_t k = 1; k + 1 < left.size(); ++k) {
+                triangles.push_back({left[0], left[k], left[k + 1]});
+            }
+            return clipped;
         }
         if (!cut || ++guard > 1000000) return std::nullopt;
     }
@@ -1438,6 +1470,81 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
 
 }  // namespace
 
+/// A flat face whose outline strays off its plane, cut into triangles, each
+/// flat, their corners the outline's own points: nullopt when it is flat
+/// within half what a solid's validity allows (1e-7, or 1e-9 of the part's
+/// @p size, times the face's extent), and is one polygon. Creo writes a
+/// flat face with a corner 0.75 mm off its plane; others' edges stray by
+/// micrometres.
+std::optional<std::vector<std::vector<Vec3>>> offPlaneFacets(
+    const std::vector<Vec3>& outline, const std::vector<std::vector<Vec3>>& holes, double size) {
+    if (outline.size() < 4) return std::nullopt;
+    Vec3 normal;
+    Vec3 centre;
+    math::BoundingBox box;
+    for (std::size_t i = 0; i < outline.size(); ++i) {
+        const Vec3& a = outline[i];
+        const Vec3& b = outline[(i + 1) % outline.size()];
+        normal.x += (a.y - b.y) * (a.z + b.z);
+        normal.y += (a.z - b.z) * (a.x + b.x);
+        normal.z += (a.x - b.x) * (a.y + b.y);
+        centre = centre + a;
+        box.expand(a);
+    }
+    if (!(normal.length() > 0.0)) return std::nullopt;
+    normal = normal.normalized();
+    centre = centre / static_cast<double>(outline.size());
+    const Vec3 extent = box.max() - box.min();
+    const double tol =
+        0.5 * std::max(1e-7, 1e-9 * size) * std::max({1.0, extent.x, extent.y, extent.z});
+    const auto off = [&](const Vec3& q) { return std::abs(normal.dot(q - centre)) > tol; };
+    bool flat = std::none_of(outline.begin(), outline.end(), off);
+    for (const auto& hole : holes) flat = flat && std::none_of(hole.begin(), hole.end(), off);
+    if (flat) return std::nullopt;
+
+    // In the plane that fits it best: its outline anticlockwise about its
+    // normal (Newell's), its holes clockwise.
+    const Vec3 across = std::abs(normal.dot(Vec3::UnitX)) < 0.9 ? Vec3::UnitX : Vec3::UnitY;
+    const Vec3 xAxis = (across - normal * normal.dot(across)).normalized();
+    const Vec3 yAxis = normal.cross(xAxis);
+    std::vector<RegionVertex> vertices;
+    const auto add = [&](const std::vector<Vec3>& loop) {
+        std::vector<std::size_t> indices;
+        for (const Vec3& q : loop) {
+            vertices.push_back({(q - centre).dot(xAxis), (q - centre).dot(yAxis), {q, {}, -1}});
+            indices.push_back(vertices.size() - 1);
+        }
+        return indices;
+    };
+    const std::vector<std::size_t> outer = add(outline);
+    std::vector<std::vector<std::size_t>> inner;
+    for (const auto& hole : holes) {
+        auto indices = add(hole);
+        double area = 0.0;
+        for (std::size_t k = 0; k < indices.size(); ++k) {
+            const RegionVertex& a = vertices[indices[k]];
+            const RegionVertex& b = vertices[indices[(k + 1) % indices.size()]];
+            area += a.x * b.y - b.x * a.y;
+        }
+        if (area > 0.0) std::reverse(indices.begin(), indices.end());
+        inner.push_back(std::move(indices));
+    }
+    const double reach = std::max({extent.x, extent.y, extent.z, 1e-300});
+    const auto onPlane = [&](double x, double y) {
+        const Vec3 q = centre + xAxis * x + yAxis * y;
+        return RegionVertex{x, y, {q, {}, -1}};
+    };
+    auto clipped =
+        earClip(vertices, outer, std::move(inner), 1e-12 * reach, tol, 2.0 * reach, onPlane);
+    if (!clipped) return std::nullopt;
+    std::vector<std::vector<Vec3>> facets;
+    facets.reserve(clipped->triangles.size());
+    for (const auto& [a, b, c] : clipped->triangles) {
+        facets.push_back({vertices[a].at.point, vertices[b].at.point, vertices[c].at.point});
+    }
+    return facets;
+}
+
 bool describedByCurves(const topo::Solid& solid) {
     return std::any_of(solid.edges().begin(), solid.edges().end(),
                        [](const Edge& e) { return e.curve && e.curve->degree() > 1; });
@@ -1582,6 +1689,18 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
         f.points = polygon(outer);
         for (const auto& loop : inner) f.holes.push_back(polygon(loop));
         f.topoId = face.topoId;
+        if (!curved) {
+            if (auto facets = offPlaneFacets(f.points, f.holes, size)) {
+                for (std::size_t k = 0; k < facets->size(); ++k) {
+                    SolidSewer::InputFace facet;
+                    facet.points = std::move((*facets)[k]);
+                    facet.topoId = topo::TopologyID::fromTag(face.topoId.tag() +
+                                                             "/facet:" + std::to_string(k));
+                    faces.push_back(std::move(facet));
+                }
+                continue;
+            }
+        }
         if (curved) {
             // Its outline alone: a loop that meets itself (a seam) is no
             // polygon, and cannot be one face.

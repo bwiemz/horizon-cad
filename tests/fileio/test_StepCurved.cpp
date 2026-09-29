@@ -26,6 +26,7 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
@@ -949,7 +950,88 @@ std::string importedBuildProblem(const std::string& text) {
     return part.lastBuildMessage();
 }
 
+/// @p text's one solid imported as a body, and exported as File ▸ Export
+/// writes the part: its model, curved faces as designed.
+std::string exportedAsAPart(const std::string& text) {
+    auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+    if (solids.size() != 1) return {};
+    hz::doc::Document part;
+    part.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids[0])), "part.step"));
+    if (!part.rebuildModel() || part.solid() == nullptr) return {};
+    return StepFormat::toString({part.solid()});
+}
+
+/// The seams of @p text's faces (an edge a face meets itself along) that
+/// lie where the face's surface closes, and those that do not: a face cut
+/// elsewhere crosses where its surface closes, and a reader that takes a
+/// closed B-spline surface for open (OpenCASCADE) trims it there (#184).
+std::pair<int, int> seamsWhereTheirSurfacesClose(const std::string& text) {
+    std::pair<int, int> seams{0, 0};
+    for (const auto& solid : StepFormat::fromString(text)) {
+        for (const auto& e : solid->edges()) {
+            const hz::topo::HalfEdge* he = e.halfEdge;
+            if (he == nullptr || he->twin == nullptr || he->face != he->twin->face ||
+                he->face->surface == nullptr) {
+                continue;
+            }
+            const auto& s = *he->face->surface;
+            const auto onJoin = [&s](const hz::math::Vec3& p) {
+                const auto [u, v] = s.closestPoint(p);
+                return (s.closedU() && (s.evaluate(s.uMin(), v) - p).length() < 1e-7) ||
+                       (s.closedV() && (s.evaluate(u, s.vMin()) - p).length() < 1e-7);
+            };
+            if (onJoin(he->origin->point) && onJoin(he->twin->origin->point)) {
+                ++seams.first;
+            } else {
+                ++seams.second;
+            }
+        }
+    }
+    return seams;
+}
+
 }  // namespace
+
+// An imported part goes out cut where its surfaces close, along the
+// file's own seam, which it keeps its line.
+TEST(StepCurvedTest, AnImportedPartIsCutWhereItsSurfacesClose) {
+    const std::string text = exportedAsAPart(cylinder());
+    ASSERT_FALSE(text.empty()) << StepFormat::lastError();
+    EXPECT_EQ(seamsWhereTheirSurfacesClose(text), std::make_pair(1, 0));
+}
+
+// A side whose surface closes where none of its facets' rulings is goes
+// out on its surface cut to close along the ruling it is cut along, and
+// measures whole.
+TEST(StepCurvedTest, ASideIsWrittenOnItsSurfaceCutToCloseAlongItsSeam) {
+    auto cyl = hz::model::PrimitiveFactory::makeCylinder(4.0, 12.0);
+    std::shared_ptr<hz::geo::NurbsSurface> turned;
+    for (auto& face : cyl->faces()) {
+        if (!face.analyticSurface || !face.analyticSurface->closedU()) continue;
+        if (!turned) {
+            const auto& s = *face.analyticSurface;
+            // A tenth of a turn and a little: between two of its 32 rulings.
+            const auto cut = s.startingAtU(s.uMin() + 0.1037 * (s.uMax() - s.uMin()));
+            if (!cut) {
+                ADD_FAILURE() << "the cylinder is not cut";
+                return;
+            }
+            turned = std::make_shared<hz::geo::NurbsSurface>(*cut);
+        }
+        face.analyticSurface = turned;
+    }
+    ASSERT_NE(turned, nullptr);
+    const auto [text, faceted] = designed(*cyl);
+    EXPECT_TRUE(faceted.empty()) << faceted.front();
+    EXPECT_EQ(count(text, "ADVANCED_FACE("), 3u);
+    EXPECT_EQ(seamsWhereTheirSurfacesClose(text), std::make_pair(1, 0));
+    const auto m = measure(text);
+    EXPECT_TRUE(m.ideal.onIdealSurfaces);
+    expectRelative(m.ideal.properties.volume, kPi * 16.0 * 12.0, 1e-9, "the cylinder");
+    expectRelative(m.ideal.properties.surfaceArea, 2.0 * kPi * 4.0 * 12.0 + 2.0 * kPi * 16.0, 1e-9,
+                   "its area");
+}
 
 // A cylinder's side between its two rims, with no seam, is a band: cut
 // along a seam of its own, it is cut into facets like any side. It came in

@@ -11,9 +11,11 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 
 using hz::io::StepFormat;
@@ -271,7 +273,7 @@ TEST(StepFixtures, ASolidWithVoidsAsAComplexInstanceIsRead) {
     const std::regex simple(R"(BREP_WITH_VOIDS\('([^']*)',(#\d+),\((#\d+)\)\))");
     std::smatch m;
     ASSERT_TRUE(std::regex_search(text, m, simple));
-    text.replace(m.position(0), m.length(0),
+    text.replace(static_cast<std::size_t>(m.position(0)), static_cast<std::size_t>(m.length(0)),
                  "(BREP_WITH_VOIDS((" + m[3].str() + "))MANIFOLD_SOLID_BREP(" + m[2].str() +
                      ")REPRESENTATION_ITEM('" + m[1].str() + "')SOLID_MODEL())");
 
@@ -319,4 +321,100 @@ TEST(StepFixtures, AnEmptySolidWithVoidsIsNotReadAndSaysWhy) {
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped[0].find("(#9004): it has no faces"), std::string::npos)
         << report.skipped[0];
+}
+
+namespace {
+
+/// The FreeCAD-style tetrahedron (wound outward, as other systems' files
+/// are: this kernel's own primitives face in) rewritten as a surface model,
+/// as Creo writes a solid: its shell an OPEN_SHELL of a
+/// SHELL_BASED_SURFACE_MODEL in a MANIFOLD_SURFACE_SHAPE_REPRESENTATION.
+std::string tetrahedronAsSurfaceModel() {
+    std::ifstream in(kFixtureRoot / "import_ok" / "freecad_style_tetrahedron.step",
+                     std::ios::binary);
+    std::stringstream read;
+    read << in.rdbuf();
+    std::string text = read.str();
+    text = std::regex_replace(text, std::regex(R"(MANIFOLD_SOLID_BREP\('[^']*',(#\d+)\))"),
+                              "SHELL_BASED_SURFACE_MODEL('',($1))");
+    text = std::regex_replace(text, std::regex("CLOSED_SHELL"), "OPEN_SHELL");
+    text = std::regex_replace(text, std::regex("ADVANCED_BREP_SHAPE_REPRESENTATION"),
+                              "MANIFOLD_SURFACE_SHAPE_REPRESENTATION");
+    return text;
+}
+
+}  // namespace
+
+// A surface model's shell that closes is a solid (Creo writes solids so);
+// one wound inside out is turned round, to face out as the file's others.
+TEST(StepFixtures, ASurfaceModelsClosedShellIsASolid) {
+    const std::string text = tetrahedronAsSurfaceModel();
+    ASSERT_EQ(text.find("MANIFOLD_SOLID_BREP"), std::string::npos);
+    const auto solids = StepFormat::fromString(text);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    EXPECT_TRUE(solids[0]->isValid()) << solids[0]->validationReport();
+    ASSERT_EQ(hz::model::measureShells(*solids[0]).size(), 1u);
+    EXPECT_NEAR(hz::model::measureShells(*solids[0])[0].volume, kTetraVolume, 1e-6);
+
+    // Every face turned round, its bound and its sense: inside out, which
+    // the reader turns back (a solid's volume is positive either way; its
+    // shell's signed volume is not).
+    std::string inward = std::regex_replace(
+        text, std::regex(R"(FACE_OUTER_BOUND\('',(#\d+),\.T\.\))"), "FACE_OUTER_BOUND('',$1,.F.)");
+    inward = std::regex_replace(inward, std::regex(R"((ADVANCED_FACE\('',\(#\d+\),#\d+,)\.T\.\))"),
+                                "$1.F.)");
+    ASSERT_NE(inward, text);
+    const auto turned = StepFormat::fromString(inward);
+    ASSERT_EQ(turned.size(), 1u) << StepFormat::lastError();
+    const auto shells = hz::model::measureShells(*turned[0]);
+    ASSERT_EQ(shells.size(), 1u);
+    EXPECT_NEAR(shells[0].volume, kTetraVolume, 1e-6) << "turned round, not inside out";
+}
+
+// A surface model's shell that does not close is an open surface, not a
+// solid: not read, and said so.
+TEST(StepFixtures, ASurfaceModelsOpenShellIsSaidToBeASurface) {
+    std::string text = tetrahedronAsSurfaceModel();
+    std::smatch shell;
+    ASSERT_TRUE(std::regex_search(text, shell, std::regex(R"(OPEN_SHELL\('',\((#\d+),)")));
+    text.replace(static_cast<std::size_t>(shell.position(0)),
+                 static_cast<std::size_t>(shell.length(0)), "OPEN_SHELL('',(");
+    EXPECT_TRUE(StepFormat::fromString(text).empty());
+    EXPECT_NE(StepFormat::lastError().find("open surface, not a solid"), std::string::npos)
+        << StepFormat::lastError();
+}
+
+// A surface model's shell whose faces disagree which way they run (one
+// face's bound turned round, its edges run as its neighbours' do) bounds no
+// solid, though each edge bounds two faces.
+TEST(StepFixtures, ASurfaceModelsShellWithAFaceTurnedIsNoSolid) {
+    std::string text = tetrahedronAsSurfaceModel();
+    std::smatch bound;
+    ASSERT_TRUE(std::regex_search(text, bound, std::regex(R"(FACE_OUTER_BOUND\('',#\d+,\.T\.\))")));
+    const auto sense = static_cast<std::size_t>(bound.position(0) + bound.length(0)) - 4;
+    ASSERT_EQ(text.substr(sense, 3), ".T.");
+    text.replace(sense, 3, ".F.");
+    EXPECT_TRUE(StepFormat::fromString(text).empty());
+    EXPECT_NE(StepFormat::lastError().find("open surface, not a solid"), std::string::npos)
+        << StepFormat::lastError();
+}
+
+// A flat face whose corner lies off its plane (Creo's, by 0.75 mm) is cut
+// into triangles, each flat, the corners its edges' own: the part is valid.
+TEST(StepFixtures, AFlatFaceOffItsPlaneIsCutIntoFlatTriangles) {
+    auto box = PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
+    std::string text = StepFormat::toString({box.get()});
+    // The corner at (7, 11, 13) moved 0.2 up, off the planes of its faces.
+    const std::string corner = "(7.,11.,13.)";
+    const auto at = text.find(corner);
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, corner.size(), "(7.,11.,13.2)");
+    const auto solids = StepFormat::fromString(text);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const auto faceted = hz::model::facetCurved(*solids[0]);
+    ASSERT_NE(faceted.solid, nullptr) << faceted.error;
+    EXPECT_TRUE(faceted.solid->isValid()) << faceted.solid->validationReport();
+    const auto issues = hz::topo::GeometryValidator::check(*faceted.solid);
+    EXPECT_EQ(issues.nonPlanarLoops, 0);
+    EXPECT_NEAR(volumeOf(*faceted.solid), 7.0 * 11 * 13, 20.0) << "about the box";
 }

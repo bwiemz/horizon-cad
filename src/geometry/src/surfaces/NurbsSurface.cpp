@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -649,6 +650,98 @@ NurbsSurface NurbsSurface::reversedU() const {
     std::vector<double> rk(k.rbegin(), k.rend());
     for (double& v : rk) v = lo + hi - v;
     return {std::move(cps), std::move(wts), std::move(rk), knotsV(), degreeU(), degreeV()};
+}
+
+namespace {
+
+/// Closed curves @p lines, the lines of a surface's net one way, each cut at
+/// @p t and joined again where it closed: each starting at @p t, and all
+/// with the same knots. Nothing where a line's two ends differ in weight.
+std::optional<std::vector<NurbsCurve>> startedAt(const std::vector<NurbsCurve>& lines, double t) {
+    std::vector<NurbsCurve> started;
+    started.reserve(lines.size());
+    for (const NurbsCurve& line : lines) {
+        const double lo = line.tMin();
+        const double hi = line.tMax();
+        const int p = line.degree();
+        const NurbsCurve after = line.segment(t, hi);
+        const NurbsCurve before = line.segment(lo, t);
+        if (!(after.tMin() > lo) || !(before.tMax() < hi)) return std::nullopt;  // not cut
+        // One curve through the join: its point the same from both sides,
+        // in weight too.
+        const double wa = after.weights().back();
+        const double wb = before.weights().front();
+        if (std::abs(wa - wb) > 1e-12 * std::max(std::abs(wa), std::abs(wb))) return std::nullopt;
+        const auto& ka = after.knots();
+        const auto& kb = before.knots();
+        const auto end = static_cast<std::ptrdiff_t>(p + 1);
+        std::vector<double> knots(ka.begin(), ka.end() - end);
+        knots.insert(knots.end(), static_cast<std::size_t>(p), hi);
+        for (auto k = kb.begin() + end; k != kb.end(); ++k) knots.push_back(*k + (hi - lo));
+        std::vector<math::Vec3> points = after.controlPoints();
+        points.insert(points.end(), before.controlPoints().begin() + 1,
+                      before.controlPoints().end());
+        std::vector<double> weights = after.weights();
+        weights.insert(weights.end(), before.weights().begin() + 1, before.weights().end());
+        started.emplace_back(std::move(points), std::move(weights), std::move(knots), p);
+        if (started.back().knots() != started.front().knots()) return std::nullopt;
+    }
+    return started;
+}
+
+}  // namespace
+
+std::optional<NurbsSurface> NurbsSurface::startingAtU(double u) const {
+    if (!m_closedU) return std::nullopt;
+    const double eps = 1e-12 * std::max(1.0, uMax() - uMin());
+    if (u <= uMin() + eps || u >= uMax() - eps) return *this;  // it closes there already
+    const int numU = controlPointCountU();
+    const int numV = controlPointCountV();
+    std::vector<NurbsCurve> columns;
+    columns.reserve(static_cast<std::size_t>(numV));
+    for (int j = 0; j < numV; ++j) {
+        std::vector<math::Vec3> points;
+        std::vector<double> weights;
+        for (int i = 0; i < numU; ++i) {
+            points.push_back(m_controlPoints[i][j]);
+            weights.push_back(m_weights[i][j]);
+        }
+        columns.emplace_back(std::move(points), std::move(weights), m_knotsU, m_degreeU);
+    }
+    const auto started = startedAt(columns, u);
+    if (!started) return std::nullopt;
+    const std::size_t rows = started->front().controlPoints().size();
+    std::vector<std::vector<math::Vec3>> points(rows);
+    std::vector<std::vector<double>> weights(rows);
+    for (const NurbsCurve& column : *started) {
+        for (std::size_t i = 0; i < rows; ++i) {
+            points[i].push_back(column.controlPoints()[i]);
+            weights[i].push_back(column.weights()[i]);
+        }
+    }
+    return NurbsSurface(std::move(points), std::move(weights), started->front().knots(), m_knotsV,
+                        m_degreeU, m_degreeV);
+}
+
+std::optional<NurbsSurface> NurbsSurface::startingAtV(double v) const {
+    if (!m_closedV) return std::nullopt;
+    const double eps = 1e-12 * std::max(1.0, vMax() - vMin());
+    if (v <= vMin() + eps || v >= vMax() - eps) return *this;  // it closes there already
+    std::vector<NurbsCurve> rows;
+    rows.reserve(m_controlPoints.size());
+    for (std::size_t i = 0; i < m_controlPoints.size(); ++i) {
+        rows.emplace_back(m_controlPoints[i], m_weights[i], m_knotsV, m_degreeV);
+    }
+    const auto started = startedAt(rows, v);
+    if (!started) return std::nullopt;
+    std::vector<std::vector<math::Vec3>> points;
+    std::vector<std::vector<double>> weights;
+    for (const NurbsCurve& row : *started) {
+        points.push_back(row.controlPoints());
+        weights.push_back(row.weights());
+    }
+    return NurbsSurface(std::move(points), std::move(weights), m_knotsU, started->front().knots(),
+                        m_degreeU, m_degreeV);
 }
 
 NurbsSurface NurbsSurface::makePlane(const math::Vec3& origin, const math::Vec3& uDir,

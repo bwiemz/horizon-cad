@@ -812,6 +812,59 @@ TEST(NurbsSurfaceTest, AClosedSurfaceKnowsItsSeam) {
     EXPECT_FALSE(plane.closedV());
 }
 
+// A closed surface cut to close elsewhere: the same surface, its
+// parameters starting where it now closes, a period round; where it closed,
+// now inside it. Not closed that way: nothing to cut.
+TEST(NurbsSurfaceTest, AClosedSurfaceIsCutToCloseWhereAsked) {
+    const auto same = [](const NurbsSurface& cut, const NurbsSurface& s, bool inU, double at) {
+        const double period = inU ? s.uMax() - s.uMin() : s.vMax() - s.vMin();
+        const double start = inU ? s.uMin() : s.vMin();
+        for (int i = 0; i <= 16; ++i) {
+            for (int j = 0; j <= 16; ++j) {
+                const double along = at + period * i / 16.0;  // from where it now closes
+                double wrapped = along;
+                if (wrapped > start + period) wrapped -= period;
+                const double across = (inU ? s.vMin() + (s.vMax() - s.vMin()) * j / 16.0
+                                           : s.uMin() + (s.uMax() - s.uMin()) * j / 16.0);
+                const Vec3 a = inU ? cut.evaluate(along, across) : cut.evaluate(across, along);
+                const Vec3 b = inU ? s.evaluate(wrapped, across) : s.evaluate(across, wrapped);
+                EXPECT_LT((a - b).length(), 1e-9) << i << " " << j;
+            }
+        }
+    };
+    const auto cylinder = NurbsSurface::makeCylinder(Vec3(1, 2, 3), Vec3(0, 0, 1), 2.0, 3.0);
+    const double u = cylinder.uMin() + 0.3 * (cylinder.uMax() - cylinder.uMin());
+    const auto cut = cylinder.startingAtU(u);
+    ASSERT_TRUE(cut.has_value());
+    EXPECT_NEAR(cut->uMin(), u, 1e-12);
+    EXPECT_NEAR(cut->uMax() - cut->uMin(), cylinder.uMax() - cylinder.uMin(), 1e-12);
+    EXPECT_TRUE(cut->closedU());
+    same(*cut, cylinder, true, u);
+    // On a knot, too (a quarter round), where no knot is put in.
+    const double quarter = cylinder.uMin() + 0.25 * (cylinder.uMax() - cylinder.uMin());
+    const auto onKnot = cylinder.startingAtU(quarter);
+    ASSERT_TRUE(onKnot.has_value());
+    EXPECT_EQ(onKnot->controlPointCountU(), cylinder.controlPointCountU());
+    same(*onKnot, cylinder, true, quarter);
+
+    const auto torus = NurbsSurface::makeTorus(Vec3(), Vec3(0, 0, 1), 5.0, 1.0);
+    const double v = torus.vMin() + 0.7 * (torus.vMax() - torus.vMin());
+    const auto turned = torus.startingAtV(v);
+    ASSERT_TRUE(turned.has_value());
+    EXPECT_TRUE(turned->closedU());
+    EXPECT_TRUE(turned->closedV());
+    same(*turned, torus, false, v);
+
+    // Where it closes already: itself.
+    const auto asIs = cylinder.startingAtU(cylinder.uMin());
+    ASSERT_TRUE(asIs.has_value());
+    EXPECT_EQ(asIs->knotsU(), cylinder.knotsU());
+    // Not closed that way: nothing.
+    EXPECT_FALSE(cylinder.startingAtV(1.0).has_value());
+    const auto plane = NurbsSurface::makePlane(Vec3(), Vec3(1, 0, 0), Vec3(0, 1, 0), 2.0, 2.0);
+    EXPECT_FALSE(plane.startingAtU(0.5).has_value());
+}
+
 // A point off the surface projects to its foot, the start being near: on the
 // far side of a seam, and beside a pole, too.
 TEST(NurbsSurfaceTest, APointProjectsToItsFoot) {

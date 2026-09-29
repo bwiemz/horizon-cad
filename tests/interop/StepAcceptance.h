@@ -68,6 +68,9 @@ struct StepSummary {
     std::optional<std::size_t> reimportedBodies;
     double reimportedVolume = 0.0;  ///< faceted, mm³
     std::string exportError;
+    /// The curved faces the export kept in facets, each with why (File ▸
+    /// Export's report): an export so kept measures as its facets there.
+    std::vector<std::string> exportFaceted;
 };
 
 /// One file of the corpus, as its manifest (manifest.json) describes it:

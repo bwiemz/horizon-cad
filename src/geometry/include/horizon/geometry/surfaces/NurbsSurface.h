@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -166,6 +167,17 @@ public:
     /// face reversed (a mirror, a STEP face of the other sense) reverses
     /// its surface with it.
     NurbsSurface reversedU() const;
+
+    /// The same surface, closed in U, cut to close at the iso-line @p u
+    /// instead: its U parameters run from @p u round to it again, a period
+    /// on. A face cut along a line of a closed surface is bounded where the
+    /// surface closes only when this is where it closes, as a reader that
+    /// takes the surface for open needs. Nothing for a surface not closed
+    /// in U, or whose two ends' weights differ, which no one curve joins.
+    std::optional<NurbsSurface> startingAtU(double u) const;
+
+    /// startingAtU, in V.
+    std::optional<NurbsSurface> startingAtV(double v) const;
 
 private:
     std::vector<std::vector<math::Vec3>> m_controlPoints;  // [row_u][col_v]

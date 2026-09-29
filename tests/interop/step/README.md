@@ -16,7 +16,8 @@ a user's would be, and checked two ways:
 - **Against OpenCASCADE, an independent reader, in CI** (the STEP interop
   job, `tools/interop/occt_check.py`). OpenCASCADE reads each original file,
   and must find the same solids, volume and box. It then reads Horizon CAD's
-  export of the file, and must find a valid shape with as many solids.
+  export of the file (what File ▸ Export writes of the part imported from
+  it), and must find a valid shape with as many solids and the volume.
 
 The expected numbers are OpenCASCADE's, never Horizon CAD's own: a reader
 that agrees with itself proves nothing.
@@ -71,8 +72,14 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
      micrometres off surfaces 600 mm across, and each blade's rim is two
      edges whose curves run the whole side of their surface. Since #179 the
      reader takes the span of a curve an edge uses, and the part builds.
-2. **Surface models**, with open shells and no solid, are not read at all.
-   That holds for 3 files (Rhino, Creo 2015 and I-DEAS).
+2. **Surface models**, with open shells and no solid, were not read at all.
+   That held for 3 files (Rhino, Creo 2015 and I-DEAS). Since #178, a
+   surface model's shells that close are read as solids: Creo's emblem is
+   twelve of them, which OpenCASCADE reads as surfaces (its bounds agree).
+   The others' surfaces do not close, and the reader says so: I-DEAS'
+   card cage is open surfaces, and Rhino writes each surface of its
+   bearings with edges of its own, up to 0.08 mm from its neighbour's,
+   which would need sewing (#192).
 3. **Edge curves the reader did not build** (ELLIPSE, INTERSECTION_CURVE)
    stopped a solid from coming in: the Inventor 2023 part and the IronCAD
    impeller were not read, and one of the Unigraphics solids was skipped.
@@ -99,11 +106,20 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    #181, and built, once facets that met an iso-line of the torus were cut
    as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid (an
    ellipse swept along a line) is read since #180.
-8. **An export that does not measure as the part:** OpenCASCADE reads
-   Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
-   #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%
-   over; Horizon CAD reads each back as it wrote it. Not yet known why
-   (#184).
+8. **An export that did not measure as the part:** OpenCASCADE read the
+   exports of several parts up to 1% off (#184). Its face-by-face
+   comparison (occt_check.py) found three causes. Each cylinder's side went
+   out on a closed B-spline surface but was cut elsewhere than where the
+   surface closes (as read, a band round a hole, not cut at all), and
+   OpenCASCADE, which takes a closed B-spline surface for open, trims such
+   a face across that join. A side whose facets are a grid (the Alibre
+   guide's hole) had no one edge from rim to rim, and went out in facets.
+   And the check measured with OpenCASCADE's fixed Gauss rule, not exact on
+   a B-spline surface: the Shapr3D lid's export measured 1.1% short, and,
+   integrated adaptively, as the part. A side is now cut where its surface
+   closes, along a line of its edges where it takes several; the harness
+   exports what File ▸ Export does, the imported part's model; and the
+   check integrates adaptively.
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
@@ -135,8 +151,9 @@ OpenCASCADE reads as a second solid.
    `import-build`, `reopen`, `bodies`, `volume` and `bounds`, and for the
    OpenCASCADE job also `export`, `export-valid`, `export-bodies` and
    `export-volume`. If it is not read at all, set `not_read` to part of the
-   error, and `why_not_read`. Set `expect.skipped` and `expect.approximated`
-   to what it reports now.
+   error, and `why_not_read`. Set `expect.skipped`, `expect.approximated`
+   and `expect.export_faceted` (the curved faces its export keeps in facets,
+   the `exportFaceted` of `summary.json`) to what it reports now.
 
 ## Provenance and licences
 

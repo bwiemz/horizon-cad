@@ -609,3 +609,30 @@ TEST(StepAssemblyTest, PlacementsByMappedItemsAreRead) {
         EXPECT_EQ(note.find("placed where drawn"), std::string::npos) << note;
     }
 }
+
+// A part's plain SHAPE_REPRESENTATION holding a solid and a surface model
+// whose shell closes (Creo's way): both are the part's bodies, placed with
+// it, not the surface model a stray part of its own where drawn.
+TEST(StepAssemblyTest, APartsSolidAndSurfaceModelAreBothItsBodies) {
+    const Rig rig;
+    std::string text = rig.text();
+    const std::regex bracket(
+        R"(#(\d+) = ADVANCED_BREP_SHAPE_REPRESENTATION\('Bracket',\((#\d+)\),(#\d+)\);)");
+    std::smatch rep;
+    ASSERT_TRUE(std::regex_search(text, rep, bracket));
+    std::smatch pin;
+    ASSERT_TRUE(
+        std::regex_search(text, pin, std::regex(R"(MANIFOLD_SOLID_BREP\('solid_1_0',(#\d+)\))")));
+    // As strings first: the matches point into the text, which changes.
+    const std::string pinShell = pin[1].str();
+    text.replace(static_cast<std::size_t>(rep.position(0)), static_cast<std::size_t>(rep.length(0)),
+                 "#" + rep[1].str() + " = SHAPE_REPRESENTATION('Bracket',(" + rep[2].str() +
+                     ",#900100)," + rep[3].str() + ");");
+    text = withEntities(text, "#900100 = SHELL_BASED_SURFACE_MODEL('',(" + pinShell + "));\n");
+
+    const StepAssembly read = StepFormat::assemblyFromString(text);
+    ASSERT_EQ(read.parts.size(), 2u) << "no stray part: " << StepFormat::lastError();
+    EXPECT_EQ(read.parts[0].name, "Bracket");
+    EXPECT_EQ(read.parts[0].bodies.size(), 2u) << "its solid, and its surface model's";
+    EXPECT_EQ(read.parts[1].bodies.size(), 1u);
+}

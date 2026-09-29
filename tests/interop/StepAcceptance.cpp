@@ -129,13 +129,29 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         include(summary.bounds, faceted.solid ? *faceted.solid : *solid);
     }
 
-    // Sent out again, and read back.
-    std::vector<const topo::Solid*> placed;
-    placed.reserve(solids.size());
-    for (const auto& solid : solids) placed.push_back(solid.get());
+    // Kept as a part, a body each, as File ▸ Import ▸ STEP as a New Part
+    // keeps it.
+    doc::Document part;
+    part.setType(doc::DocumentType::Part);
+    for (auto& solid : solids) {
+        part.featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
+            std::shared_ptr<const topo::Solid>(std::move(solid)), summary.file));
+    }
+    if (!part.rebuildModel() || part.failedFeatureIndex() != -1) {
+        summary.importBuildError = part.lastBuildMessage();
+    }
+
+    // Sent out as File ▸ Export ▸ STEP sends it, the part's model (its curved
+    // faces on their surfaces, as designed), and read back. The solids as
+    // read went out before, a path no user takes, a band round a hole
+    // written without the seam other readers need (#184).
     const fs::path exported = work / "export" / (name + ".step");
     summary.exportPath = exported.string();
-    if (StepFormat::save(exported.string(), placed)) {
+    if (!summary.importBuildError.empty() || part.solid() == nullptr) {
+        summary.exportError = "not exported: the part does not build";
+    } else if (StepFormat::WriteReport report;
+               StepFormat::save(exported.string(), {part.solid()}, {}, &report)) {
+        summary.exportFaceted = report.faceted;
         const auto again = StepFormat::load(exported.string());
         summary.reimportedBodies = 0;
         for (const auto& solid : again) {
@@ -147,17 +163,8 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         summary.exportError = StepFormat::lastError();
     }
 
-    // Kept as a part, a body each, saved and read back.
+    // Saved as a part file and read back.
     {
-        doc::Document part;
-        part.setType(doc::DocumentType::Part);
-        for (auto& solid : solids) {
-            part.featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
-                std::shared_ptr<const topo::Solid>(std::move(solid)), summary.file));
-        }
-        if (!part.rebuildModel() || part.failedFeatureIndex() != -1) {
-            summary.importBuildError = part.lastBuildMessage();
-        }
         const fs::path kept = work / (name + ".hzpart");
         doc::Document read;
         std::string error;
@@ -227,6 +234,7 @@ nlohmann::json toJson(const StepSummary& s) {
     out["reopenedVolume"] = s.reopenedVolume ? json(*s.reopenedVolume) : json(nullptr);
     out["keptComponents"] = s.keptComponents ? json(*s.keptComponents) : json(nullptr);
     out["reimportedBodies"] = s.reimportedBodies ? json(*s.reimportedBodies) : json(nullptr);
+    out["exportFaceted"] = s.exportFaceted;
     return out;
 }
 
