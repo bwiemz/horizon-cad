@@ -2387,22 +2387,28 @@ struct SolidGroup {
 std::vector<SolidGroup> solidGroups(const StepParser& parser) {
     std::vector<SolidGroup> groups;
     std::unordered_set<int> grouped;
-    for (int repId : parser.allOfType("ADVANCED_BREP_SHAPE_REPRESENTATION")) {
-        const StepInstance* rep = parser.find(repId);
-        const StepList* args = rep ? rep->leaf("ADVANCED_BREP_SHAPE_REPRESENTATION") : nullptr;
-        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
-        SolidGroup group;
-        group.rep = repId;
-        if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
-        for (const StepValue& item : *(*args)[1].items) {
-            if (!item.isRef() || grouped.count(item.ref) != 0) continue;
-            const StepInstance* it = parser.find(item.ref);
-            if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
-                group.msbs.push_back(item.ref);
-                grouped.insert(item.ref);
+    // The solids in an ADVANCED_BREP representation, then those a plain
+    // SHAPE_REPRESENTATION holds itself, as Open CASCADE writes a compound
+    // of solids (KiCad's boards): read as no product's, each came in once,
+    // where drawn, however often the assembly used the product.
+    for (const char* type : {"ADVANCED_BREP_SHAPE_REPRESENTATION", "SHAPE_REPRESENTATION"}) {
+        for (int repId : parser.allOfType(type)) {
+            const StepInstance* rep = parser.find(repId);
+            const StepList* args = rep ? rep->leaf(type) : nullptr;
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
+            SolidGroup group;
+            group.rep = repId;
+            if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
+            for (const StepValue& item : *(*args)[1].items) {
+                if (!item.isRef() || grouped.count(item.ref) != 0) continue;
+                const StepInstance* it = parser.find(item.ref);
+                if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
+                    group.msbs.push_back(item.ref);
+                    grouped.insert(item.ref);
+                }
             }
+            if (!group.msbs.empty()) groups.push_back(std::move(group));
         }
-        if (!group.msbs.empty()) groups.push_back(std::move(group));
     }
     // MSBs outside any representation (minimal files) import one solid each,
     // in the file's first context with units, if it has one.

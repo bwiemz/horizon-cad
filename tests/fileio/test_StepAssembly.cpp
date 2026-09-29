@@ -12,6 +12,7 @@
 #include <numbers>
 #include <regex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -196,6 +197,27 @@ TEST(StepAssemblyTest, ANestedAssemblyCompoundsItsPlacementsAndUnits) {
     for (const auto& solid : solids) EXPECT_NEAR(volumeOf(*solid), kTetraVolume, 1e-9);
     EXPECT_TRUE(report.skipped.empty());
     EXPECT_TRUE(report.approximated.empty()) << report.approximated.front();
+}
+
+// A part's solids held by a plain SHAPE_REPRESENTATION itself, as Open
+// CASCADE writes a compound of solids (KiCad's boards), are the part's: it
+// is placed where the assembly puts it, as often. They were no product's,
+// and came in once each, where drawn.
+TEST(StepAssemblyTest, ASolidInAPlainShapeRepresentationIsItsPartsAndPlaced) {
+    std::ifstream in(fixture("assembly_nested_placed.step"), std::ios::binary);
+    std::stringstream text;
+    text << in.rdbuf();
+    std::string file = text.str();
+    const std::string advanced = "#464=ADVANCED_BREP_SHAPE_REPRESENTATION('PartB'";
+    ASSERT_NE(file.find(advanced), std::string::npos);
+    file.replace(file.find(advanced), advanced.size(), "#464=SHAPE_REPRESENTATION('PartB'");
+    const auto solids = StepFormat::fromString(file);
+    ASSERT_EQ(solids.size(), 3u) << StepFormat::lastError();
+    expectNear(centroidOf(*solids[2]), {22.5, 32.5, 2.5}, 1e-9, "part B, placed");
+    const StepAssembly read = StepFormat::assemblyFromString(file);
+    ASSERT_EQ(read.parts.size(), 2u);
+    EXPECT_EQ(read.parts[1].name, "Gr\xC3\xBCn") << "part B, a product";
+    EXPECT_EQ(read.occurrences.size(), 3u);
 }
 
 TEST(StepAssemblyTest, ANestedAssemblysPartsAreReadOnceEach) {
