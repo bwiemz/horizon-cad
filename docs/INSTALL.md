@@ -30,7 +30,9 @@ Security** and choose **Open Anyway**. The release notes say whether it is.
 
 ## Linux
 
-**The AppImage** holds everything it needs. Make it executable and run it:
+**The AppImage** holds everything it needs but fontconfig and FreeType, which
+every desktop has: it reads fonts with the system's own, as the rest of the
+desktop does. Make it executable and run it:
 
 ```sh
 chmod +x HorizonCAD-*-x86_64.AppImage
@@ -45,9 +47,9 @@ desktop entry, icons and file types under `share/`. It uses these libraries
 of the system; install them first:
 
 - Debian and Ubuntu:
-  `sudo apt install libgl1 libglx0 libopengl0 libegl1 libx11-6 libx11-xcb1 libxcb1 libxkbcommon0 libxkbcommon-x11-0 fontconfig libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xinput0 libxcb-xkb1`
+  `sudo apt install libgl1 libglx0 libopengl0 libegl1 libx11-6 libx11-xcb1 libxcb1 libxkbcommon0 libxkbcommon-x11-0 fontconfig libfontconfig1 libfreetype6 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xinput0 libxcb-xkb1`
 - Fedora:
-  `sudo dnf install mesa-libGL mesa-libEGL libglvnd-opengl libglvnd-glx libX11 libX11-xcb libxcb libxkbcommon libxkbcommon-x11 fontconfig xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm`
+  `sudo dnf install mesa-libGL mesa-libEGL libglvnd-opengl libglvnd-glx libX11 libX11-xcb libxcb libxkbcommon libxkbcommon-x11 fontconfig freetype xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm`
 
 `libxcb-cursor0` is the one a desktop most often lacks. Without it, the
 program does not start: `error while loading shared libraries:

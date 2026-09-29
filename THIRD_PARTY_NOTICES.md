@@ -22,7 +22,8 @@ from the vcpkg build that made the package).
 Qt's own dependencies (zlib, libpng, FreeType, HarfBuzz, PCRE2 and others,
 depending on how Qt was built) are listed with their licences under
 `third-party/` when vcpkg built Qt into the package. A package built against
-an installed Qt carries that Qt's own licence files instead.
+an installed Qt carries that Qt's own licence files instead. On Linux,
+fontconfig and FreeType are the system's, and are not in the package.
 
 GoogleTest (BSD-3-Clause) is used only by the test suite and is not part of
 a package.

@@ -56,6 +56,12 @@ work, not "post-1.0".
   the wrong way, as SolidWorks does, is turned round by what it measures.
   The SolidWorks assembly in the STEP corpus now reads as OpenCASCADE reads
   it: 6 bodies, not 4.
+- **Linux packages read fonts with the system's fontconfig (#182).** The
+  fontconfig built into them warned about 45 times at every start on a
+  newer distribution: its configuration used rules that copy did not know.
+  fontconfig and FreeType now come from the system, as an AppImage expects,
+  so fonts are found and drawn as the rest of the desktop's are. A
+  fontconfig warning now fails the install check.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
