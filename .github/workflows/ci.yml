@@ -712,8 +712,10 @@ jobs:
       - name: Build
         run: cmake --build build/linux-debug --config Debug
 
+      # The STEP corpus (label interop) is left out too: it runs no threads,
+      # and reads twenty files from other systems many times over.
       - name: Test
-        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4 --label-exclude window
+        run: ctest --test-dir build/linux-debug -C Debug --output-on-failure --parallel 4 --label-exclude "window|interop"
 
   # Which lines the tests run (N4). Reported, not gated: the job summary has
   # a table by module, and the full report is kept with the run.
@@ -1006,4 +1008,110 @@ jobs:
         with:
           name: fuzz-artifacts
           path: fuzz-artifacts/
+          if-no-files-found: ignore
+
+  # The external STEP corpus (tests/interop/step): each file from another CAD
+  # system read by Horizon CAD and by OpenCASCADE, an independent reader, and
+  # compared; and Horizon CAD's export of each read back by OpenCASCADE.
+  interop:
+    name: STEP interop (OpenCASCADE)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,read"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The vcpkg packages the other Linux jobs build and save; this job only
+      # reads them.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}-84bab45d
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-linux-
+
+      - name: Create the vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '84bab45d415d22042bd0b9081aea57f362da3f35'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-cursor-dev \
+            libxcb-icccm4-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-shape0-dev \
+            libxcb-shm0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-glx0-dev \
+            libxcb-util-dev \
+            libxcb-xinput-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            autoconf \
+            autoconf-archive \
+            automake \
+            libtool \
+            ninja-build \
+            pkg-config
+
+      - name: Configure
+        run: cmake --preset linux-release -DHZ_BUILD_TESTS=ON -DHZ_ENABLE_SCRIPTING=OFF
+
+      - name: Build the acceptance suite
+        run: cmake --build build/linux-release --target hz_step_acceptance hz_interop_tests
+
+      - name: Read the corpus
+        run: build/linux-release/tests/interop/hz_step_acceptance tests/interop/step interop-work
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # Pinned: the reference reader changes only when this line does.
+      - name: Install OpenCASCADE's Python binding
+        run: python -m pip install cadquery-ocp==8.0.1.0.0
+
+      - name: Compare with OpenCASCADE
+        run: python tools/interop/occt_check.py check tests/interop/step interop-work/summary.json --out interop-work/occt.json
+
+      # What OpenCASCADE found, to merge into the manifest (occt_check.py
+      # merge) when a file is added.
+      - name: Keep what was found
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: step-interop
+          path: |
+            interop-work/summary.json
+            interop-work/occt.json
           if-no-files-found: ignore

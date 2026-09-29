@@ -1,0 +1,559 @@
+{
+  "_comment": "The external STEP corpus (README.md). expect.bodies, volume and bounds are OpenCASCADE's reading of each file (tools/interop/occt_check.py merge), never Horizon CAD's own; skipped and approximated are how many items Horizon CAD reports. known_gaps names the checks a file still fails, each with why: the test fails when one of them passes, so the entry is updated.",
+  "files": [
+    {
+      "file": "alibre_jacktheripper_guide.stp",
+      "exporter": "Alibre",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "centimetre",
+      "content": "A small guide part, 4 faces, two of them cylindrical: a centimetre unit from a rare exporter.",
+      "source": "https://raw.githubusercontent.com/ajayre/JacktheRipperBot/41fbabc37807a69af750ebb7e0130eea0b1add46/Parts/STEP/Guide.stp",
+      "repository": "ajayre/JacktheRipperBot",
+      "license": "GPL-3.0",
+      "license_file": "../../../LICENSE",
+      "attribution": "Jack the Ripper Bot by ajayre, GPL-3.0",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 1,
+        "volume": 44.178647,
+        "bounds": [
+          [
+            -0.5,
+            -14.169336,
+            -12.234136
+          ],
+          [
+            2.5,
+            -9.169336,
+            -7.234136
+          ]
+        ]
+      },
+      "known_gaps": {
+        "volume": "a face of plain FACE_BOUNDs whose inner circle comes first is read inside out (fixed by #175)",
+        "export-volume": "the same"
+      }
+    },
+    {
+      "file": "build123d_m4x10_screw.step",
+      "exporter": "build123d (Open CASCADE STEP processor 7.9)",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "An M4x10 socket head cap screw from a code-CAD library.",
+      "source": "https://raw.githubusercontent.com/jdegenstein/OpenPartVault/52b20075736971b9175e3f1bc1e36ccbabbc3d1a/parts/m4_screws/M4x10.step",
+      "repository": "jdegenstein/OpenPartVault",
+      "license": "Apache-2.0",
+      "license_file": "LICENSES/OpenPartVault-Apache-2.0.txt",
+      "attribution": "M4 socket head cap screws by jdegenstein (OpenPartVault); MIT by the part's metadata, Apache-2.0 by the repository",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 1,
+        "volume": 239.854826,
+        "bounds": [
+          [
+            -3.5,
+            -3.5,
+            -5.0
+          ],
+          [
+            3.5,
+            3.5,
+            7.0
+          ]
+        ]
+      }
+    },
+    {
+      "file": "creo_opencellular_emblem.stp",
+      "exporter": "Creo Parametric 2015",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A plastic emblem as a surface model (no solid): 12 open shells, surfaces of linear extrusion, heavy styling (138 STYLED_ITEM).",
+      "source": "https://raw.githubusercontent.com/Telecominfraproject/OpenCellular/c03f7a1ae94b015fad80bcb8ece19c62d04f0533/hardware/connect-1/cad/individual_parts/227-001385_plastic_emblem_openc.stp",
+      "repository": "Telecominfraproject/OpenCellular",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSES/OpenCellular-CC-BY-4.0.txt",
+      "attribution": "OpenCellular, Telecom Infra Project, CC BY 4.0, https://github.com/Telecominfraproject/OpenCellular (the emblem is the project's; test data only)",
+      "not_read": "no MANIFOLD_SOLID_BREP",
+      "why_not_read": "a surface model: open shells, no solid"
+    },
+    {
+      "file": "edm_ideas_card_cage.stp",
+      "exporter": "I-DEAS Master Series 8 (ITI PDE/Lib 3.2.1)",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "millimetre",
+      "content": "A card cage as a surface model (no solid): 10 open shells of B-spline faces, and a wireframe representation. FILE_NAME's fields are misused (the system field says UNIX).",
+      "source": "https://raw.githubusercontent.com/usnistgov/engineering-design-models/dc4ed1c352bfa7fa0976c6abc6074a7a40aa1d5a/models/SDRC_I-DEAS/card_cage/card_cage.stp",
+      "repository": "usnistgov/engineering-design-models",
+      "license": "LicenseRef-NIST-Public-Domain",
+      "license_file": "LICENSES/NIST-engineering-design-models.md",
+      "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
+      "not_read": "no MANIFOLD_SOLID_BREP",
+      "why_not_read": "a surface model: open shells, no solid"
+    },
+    {
+      "file": "edm_ironcad_impeller.stp",
+      "exporter": "IronCAD 2.0 (ST-DEVELOPER 1.6)",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "millimetre",
+      "content": "An impeller, one solid, 56 of its 89 faces B-spline surfaces.",
+      "source": "https://raw.githubusercontent.com/usnistgov/engineering-design-models/dc4ed1c352bfa7fa0976c6abc6074a7a40aa1d5a/models/VDS/impeller/impeller.stp",
+      "repository": "usnistgov/engineering-design-models",
+      "license": "LicenseRef-NIST-Public-Domain",
+      "license_file": "LICENSES/NIST-engineering-design-models.md",
+      "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
+      "not_read": "unsupported curve geometry",
+      "why_not_read": "an edge curve type the reader does not build"
+    },
+    {
+      "file": "edm_proe_vaccase_asm.stp",
+      "exporter": "Pro/ENGINEER (1996)",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "inch",
+      "content": "A vacuum-case plumbing assembly: 8 parts, 14 uses, one part placed 5 times, placed by CDSR; many cylinders.",
+      "source": "https://raw.githubusercontent.com/usnistgov/engineering-design-models/dc4ed1c352bfa7fa0976c6abc6074a7a40aa1d5a/models/NIST/Manfred_Osti/suitcase/vaccase/vaccase.stp",
+      "repository": "usnistgov/engineering-design-models",
+      "license": "LicenseRef-NIST-Public-Domain",
+      "license_file": "LICENSES/NIST-engineering-design-models.md",
+      "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
+      "expect": {
+        "skipped": 0,
+        "approximated": 2,
+        "bodies": 14,
+        "volume": 76444937.223998,
+        "bounds": [
+          [
+            -500.38,
+            -589.534,
+            -280.924113
+          ],
+          [
+            230.632,
+            154.686,
+            379.679089
+          ]
+        ]
+      },
+      "known_gaps": {
+        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
+        "reopen": "the same",
+        "volume": "curved faces not bounded by their surface's own edges come in as one facet (fixed by #175)",
+        "export-volume": "the same"
+      }
+    },
+    {
+      "file": "edm_ug_moon_buggy_asm.stp",
+      "exporter": "EDS Unigraphics 10.5 (ST-DEVELOPER v1.4)",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "inch",
+      "content": "A nested assembly 4 levels deep, parts placed only by MAPPED_ITEM, repeated parts; B-spline, cone, torus, sphere and linear-extrusion surfaces.",
+      "source": "https://raw.githubusercontent.com/usnistgov/engineering-design-models/dc4ed1c352bfa7fa0976c6abc6074a7a40aa1d5a/models/STEP/STI/moon_buggy_asm/moon_buggy_asm.stp",
+      "repository": "usnistgov/engineering-design-models",
+      "license": "LicenseRef-NIST-Public-Domain",
+      "license_file": "LICENSES/NIST-engineering-design-models.md",
+      "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
+      "expect": {
+        "skipped": 4,
+        "approximated": 5,
+        "bodies": 19,
+        "volume": 1889144085.224341,
+        "bounds": [
+          [
+            -1460.5,
+            -457.2,
+            -2159.0
+          ],
+          [
+            1092.2,
+            2336.8,
+            254.0
+          ]
+        ]
+      },
+      "known_gaps": {
+        "bodies": "placements by MAPPED_ITEM are not read (the parts come in where drawn), and 3 solids are skipped (malformed loops, an unsupported edge curve)",
+        "volume": "the same",
+        "bounds": "the same",
+        "export-volume": "curved faces come in as one facet (fixed by #175)"
+      }
+    },
+    {
+      "file": "freecad_thor_basetop.step",
+      "exporter": "FreeCAD (Open CASCADE STEP processor 7.5)",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A robot arm's base top, with holes and a colour.",
+      "source": "https://raw.githubusercontent.com/AngelLM/Thor/9e4a1127ec66e6e33e867b8f3e998530a59f46ba/step/BaseTop.step",
+      "repository": "AngelLM/Thor",
+      "license": "CC-BY-SA-4.0",
+      "license_file": "LICENSES/Thor-CC-BY-SA-4.0.txt",
+      "attribution": "Thor by AngelLM, CC BY-SA 4.0, https://github.com/AngelLM/Thor",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 1,
+        "volume": 222336.2316,
+        "bounds": [
+          [
+            -75.0,
+            -75.0,
+            -0.0
+          ],
+          [
+            75.0,
+            75.0,
+            27.5
+          ]
+        ]
+      }
+    },
+    {
+      "file": "fusion_smallrobotarm_axistot1.step",
+      "exporter": "Fusion 360 (Autodesk Translation Framework v8.6)",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A nested assembly 2 levels deep, one part placed 6 times, placed by CDSR, with colours.",
+      "source": "https://raw.githubusercontent.com/SkyentificGit/SmallRobotArm/e4c262022f657b7254b1c09795995f98689d616f/Fusion360/AxisTot1%20v14.step",
+      "repository": "SkyentificGit/SmallRobotArm",
+      "license": "GPL-3.0",
+      "license_file": "../../../LICENSE",
+      "attribution": "SmallRobotArm by Skyentific, GPL-3.0",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 9,
+        "volume": 159968.99787,
+        "bounds": [
+          [
+            -49.81679,
+            -244.0,
+            -50.0
+          ],
+          [
+            223.5,
+            -217.0,
+            163.238525
+          ]
+        ]
+      }
+    },
+    {
+      "file": "inventor_prusa_encl_door_hinge.stp",
+      "exporter": "Autodesk Inventor 2023",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A printed hinge, 177 faces (B-spline, cones, cylinders), with a wireframe representation beside the solid.",
+      "source": "https://raw.githubusercontent.com/prusa3d/Original-Prusa-Enclosure/ff8bbcbb21ae900c8d4c49a19977d8f528e46ceb/Printed-Parts/STEP/door_hinge-R1.stp",
+      "repository": "prusa3d/Original-Prusa-Enclosure",
+      "license": "GPL-3.0",
+      "license_file": "../../../LICENSE",
+      "attribution": "Original Prusa Enclosure, Prusa Research, GPL-3.0",
+      "not_read": "unsupported curve geometry",
+      "why_not_read": "an edge curve type the reader does not build"
+    },
+    {
+      "file": "irnas_tightener_asm.step",
+      "exporter": "SolidWorks 2016",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "millimetre",
+      "content": "An assembly: 5 parts, 6 uses, a bolt placed twice, placed by CDSR; one part is a BREP_WITH_VOIDS.",
+      "source": "https://raw.githubusercontent.com/IRNAS/GoodEnoughCNC-PlasmaCutter/af5f9e3c777952eae5cfe4cdc4198d826288b168/HybridCNC_v3/HybridCNC%20-%203D%20model/STEP%20Files/Tightener%20Plate%20-%20Assembly.STEP",
+      "repository": "IRNAS/GoodEnoughCNC-PlasmaCutter",
+      "license": "CERN-OHL-1.2",
+      "license_file": "LICENSES/CERN-OHL-1.2.txt",
+      "attribution": "GoodEnoughCNC by Institute IRNAS Rače, CERN OHL v1.2 (LICENSES/IRNAS-GoodEnoughCNC.txt); the IRNAS marks do not imply endorsement",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 6,
+        "volume": 40459.278227,
+        "bounds": [
+          [
+            16.654016,
+            40.725421,
+            5.605055
+          ],
+          [
+            71.654016,
+            122.225421,
+            60.133724
+          ]
+        ]
+      },
+      "known_gaps": {
+        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
+        "reopen": "the same",
+        "bodies": "the part with a void (BREP_WITH_VOIDS) is left out, and not reported",
+        "volume": "the part with a void (BREP_WITH_VOIDS) is left out, and not reported"
+      }
+    },
+    {
+      "file": "kicad_kicon2019_pcb.step",
+      "exporter": "KiCad to STEP converter (Open CASCADE 6.9)",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A circuit board: a nested assembly 2 levels deep, one component placed twice, colours.",
+      "source": "https://raw.githubusercontent.com/Anool/kicon2019/a0aa6af28fe17800e76c75dd65fa5895f25a295d/kicon_kicad/kicon_kicad.step",
+      "repository": "Anool/kicon2019",
+      "license": "GPL-3.0",
+      "license_file": "../../../LICENSE",
+      "attribution": "kicon2019 workshop by Anool Mahidharia, GPL-3.0 (component shapes from KiCad's libraries, CC-BY-SA-4.0 with their exception)",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 9,
+        "volume": 1187.53765,
+        "bounds": [
+          [
+            75.0,
+            55.0,
+            0.0
+          ],
+          [
+            95.0,
+            75.0,
+            6.5
+          ]
+        ]
+      },
+      "known_gaps": {
+        "bodies": "4 of its 9 placed solids are not read: its nested assembly is not placed whole (not yet known why)",
+        "volume": "the same",
+        "bounds": "the same"
+      }
+    },
+    {
+      "file": "nist_uuid_catia_plate.stp",
+      "exporter": "CATIA V5-6 R2022",
+      "schema": "AP242 edition 4",
+      "unit": "millimetre",
+      "content": "A plate with a hole: semantic and presented PMI, a tessellated solid beside the B-rep, V5_UUID_ATTRIBUTE records.",
+      "source": "https://raw.githubusercontent.com/usnistgov/UUID/69ec43aea967e788eeff3ac6e6b0f34b817e55b4/design_and_measurement_collaboration/Plate_w_Hole_Rev_0.3/V56R2022_plate_w_hole_UUIDS_Rev_0.3.stp",
+      "repository": "usnistgov/UUID",
+      "license": "NIST-Software",
+      "license_file": "LICENSES/NIST-UUID.md",
+      "attribution": "NIST, dataset for NIST AMS 300-12 (doi:10.6028/NIST.AMS.300-12). NIST edited the exporter's output by hand (UUID_SET_ITEM added, AP242 edition 4).",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 2,
+        "volume": 45717.336377,
+        "bounds": [
+          [
+            -25.4,
+            -38.1,
+            0.0
+          ],
+          [
+            25.4,
+            38.1,
+            6.4
+          ]
+        ]
+      },
+      "known_gaps": {
+        "bodies": "OpenCASCADE also reads the tessellated copy CATIA writes beside the part (TESSELLATED_SOLID) as a second solid; Horizon CAD reads the part once",
+        "volume": "the same"
+      }
+    },
+    {
+      "file": "nist_uuid_creo_plate.stp",
+      "exporter": "Creo Parametric 9",
+      "schema": "AP242 edition 4",
+      "unit": "millimetre",
+      "content": "The same plate from Creo: PMI as polyline annotation curves, colours, V5_UUID_ATTRIBUTE records.",
+      "source": "https://raw.githubusercontent.com/usnistgov/UUID/69ec43aea967e788eeff3ac6e6b0f34b817e55b4/design_and_measurement_collaboration/Plate_w_Hole_Rev_0.3/creo903_plate_w_hole_UUIDS_Rev_0-3.stp",
+      "repository": "usnistgov/UUID",
+      "license": "NIST-Software",
+      "license_file": "LICENSES/NIST-UUID.md",
+      "attribution": "NIST, dataset for NIST AMS 300-12 (doi:10.6028/NIST.AMS.300-12). NIST edited the exporter's output by hand (UUID_SET_ITEM added, AP242 edition 4).",
+      "expect": {
+        "skipped": 0,
+        "approximated": 0,
+        "bodies": 1,
+        "volume": 35680.51263,
+        "bounds": [
+          [
+            -25.4,
+            -38.1,
+            0.0
+          ],
+          [
+            25.4,
+            38.1,
+            10.0
+          ]
+        ]
+      }
+    },
+    {
+      "file": "nist_uuid_nx_plate.stp",
+      "exporter": "Siemens NX 2027",
+      "schema": "AP242 edition 4",
+      "unit": "millimetre",
+      "content": "The same plate from NX: semantic PMI, tessellated annotations, 9 MAPPED_ITEM, V5_UUID_ATTRIBUTE records.",
+      "source": "https://raw.githubusercontent.com/usnistgov/UUID/69ec43aea967e788eeff3ac6e6b0f34b817e55b4/design_and_measurement_collaboration/Plate_w_Hole_Rev_0.3/NX_Plate_w_Hole_UUIDS_Rev_0.3.stp",
+      "repository": "usnistgov/UUID",
+      "license": "NIST-Software",
+      "license_file": "LICENSES/NIST-UUID.md",
+      "attribution": "NIST, dataset for NIST AMS 300-12 (doi:10.6028/NIST.AMS.300-12). NIST edited the exporter's output by hand (UUID_SET_ITEM added, AP242 edition 4).",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 1,
+        "volume": 35680.51263,
+        "bounds": [
+          [
+            -25.4,
+            -38.1,
+            -0.0
+          ],
+          [
+            25.4,
+            38.1,
+            10.0
+          ]
+        ]
+      },
+      "known_gaps": {
+        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
+        "export-volume": "the same"
+      }
+    },
+    {
+      "file": "occt_euclid_screw.step",
+      "exporter": "Matra Datavision EUCLID",
+      "schema": "AP214 draft (AUTOMOTIVE_DESIGN_CC1)",
+      "unit": "millimetre",
+      "content": "A screw, one solid of tori, cones and a cylinder, under the pre-release AP214 schema name.",
+      "source": "https://raw.githubusercontent.com/Open-Cascade-SAS/OCCT/7fd59977dfb3a75f75670474b59dfc0f3f5f90ba/data/step/screw.step",
+      "repository": "Open-Cascade-SAS/OCCT",
+      "license": "LGPL-2.1-only WITH OCCT-exception-1.0",
+      "license_file": "LICENSES/OCCT-LGPL-2.1.txt",
+      "attribution": "Open CASCADE Technology sample data, (c) OPEN CASCADE SAS (LICENSES/OCCT-LGPL-exception.txt)",
+      "not_read": "unsupported surface geometry",
+      "why_not_read": "a surface type the reader does not build"
+    },
+    {
+      "file": "onshape_rocketsmith_upper_airframe.step",
+      "exporter": "Onshape 1.212",
+      "schema": "AP242 edition 3",
+      "unit": "metre",
+      "content": "A rocket airframe tube in metres; its PMI uses an inch unit whose factor Onshape writes inverted (39.37 m).",
+      "source": "https://raw.githubusercontent.com/ppak10/RocketSmith/5f660c8228a462927b39e66c0efed44e0955857f/src/rocketsmith/data/part/upper_airframe.step",
+      "repository": "ppak10/RocketSmith",
+      "license": "MIT",
+      "license_file": "LICENSES/RocketSmith-MIT.txt",
+      "attribution": "Copyright (c) 2026 Peter Pak, MIT",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 1,
+        "volume": 712989.578317,
+        "bounds": [
+          [
+            -50.8,
+            -50.800001,
+            -50.8
+          ],
+          [
+            50.8,
+            50.8,
+            330.2
+          ]
+        ]
+      },
+      "known_gaps": {
+        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
+        "reopen": "the same",
+        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
+        "export-volume": "the same"
+      }
+    },
+    {
+      "file": "rhino_axom_bearings.step",
+      "exporter": "Rhino 8.19",
+      "schema": "AP203 (CONFIG_CONTROL_DESIGN)",
+      "unit": "metre",
+      "content": "A covered bearing as a surface model in metres: 48 open shells, B-spline faces.",
+      "source": "https://raw.githubusercontent.com/llnl/axom_data/db98d588940329cd96b52fe76d39c31a34e14550/quest/step/bearings.step",
+      "repository": "llnl/axom_data",
+      "license": "BSD-3-Clause",
+      "license_file": "LICENSES/axom_data-BSD-3-Clause.txt",
+      "attribution": "Copyright (c) 2017-2024, Lawrence Livermore National Security, LLC, BSD-3-Clause",
+      "not_read": "no MANIFOLD_SOLID_BREP",
+      "why_not_read": "a surface model: open shells, no solid"
+    },
+    {
+      "file": "shapr3d_hkcam_lid.step",
+      "exporter": "Shapr3D (HOOPS Exchange 2018.1)",
+      "schema": "AP203 edition 2 (long-form name)",
+      "unit": "millimetre",
+      "content": "A camera enclosure lid, 93 faces with cones and cylinders.",
+      "source": "https://raw.githubusercontent.com/brutella/hkcam/bed2ce8c4d631fc284a2809af08dd7bc3eee1014/enclosure/Lid.step",
+      "repository": "brutella/hkcam",
+      "license": "Apache-2.0",
+      "license_file": "LICENSES/hkcam-Apache-2.0.txt",
+      "attribution": "hkcam by brutella, Apache-2.0",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 1,
+        "volume": 7556.510756,
+        "bounds": [
+          [
+            69.0,
+            -18.0,
+            -0.0
+          ],
+          [
+            165.9,
+            17.6,
+            9.6
+          ]
+        ]
+      },
+      "known_gaps": {
+        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
+        "reopen": "the same",
+        "export-volume": "OpenCASCADE measures the export 0.4% under the part (not yet known why)"
+      }
+    },
+    {
+      "file": "solidedge_ercf_knife_holder.step",
+      "exporter": "Solid Edge (ST-DEVELOPER v16.7)",
+      "schema": "AP214 (AUTOMOTIVE_DESIGN)",
+      "unit": "millimetre",
+      "content": "A small prismatic part with countersinks (9 conical faces) and holes.",
+      "source": "https://raw.githubusercontent.com/Carrot-collective/ERCF_v2/33e50c4661703bae298adda7282be53719e89567/Recommended_Options/ERF_Filament_Cutter/CAD/Knife_Holder.step",
+      "repository": "Carrot-collective/ERCF_v2",
+      "license": "GPL-3.0",
+      "license_file": "../../../LICENSE",
+      "attribution": "ERCF v2 community project, GPL-3.0",
+      "expect": {
+        "skipped": 0,
+        "approximated": 1,
+        "bodies": 1,
+        "volume": 684.683543,
+        "bounds": [
+          [
+            -4.0,
+            0.0,
+            -3.15
+          ],
+          [
+            4.0,
+            15.9,
+            3.15
+          ]
+        ]
+      },
+      "known_gaps": {
+        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
+        "export-volume": "the same"
+      }
+    }
+  ]
+}
