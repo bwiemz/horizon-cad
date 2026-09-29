@@ -99,8 +99,8 @@ public:
     bool backgroundWorkRunning() const;
 
     /// What goes to a worker in Auto: a rebuild after one that took longer
-    /// than this, a STEP file at least this big, an interference check of at
-    /// least this many faces.
+    /// than this, a STEP file at least this big (a STEP assembly, whatever
+    /// its size), an interference check of at least this many faces.
     static constexpr qint64 kWorkerRebuildMs = 300;
     /// A part's build time before it was first built here (opened, not
     /// built): Auto builds it on a worker, as a slow one.
@@ -414,8 +414,9 @@ private:
                              const std::atomic<bool>* cancelled = nullptr,
                              const io::StepReadOptions& options = {},
                              const std::shared_ptr<ImportProgress>& progress = nullptr);
-    /// Read @p fileName, on a worker when it is large; into a new part, or
-    /// kept as an assembly at @p assemblyPath when one is given.
+    /// Read @p fileName into a new part, or keep it as an assembly at
+    /// @p assemblyPath when one is given: on a worker when the file is large,
+    /// and for an assembly however small.
     void startStepImport(const QString& fileName, const QString& assemblyPath,
                          const io::StepReadOptions& options = {});
     /// Ask which unit @p fileName's lengths are in, the file not saying:

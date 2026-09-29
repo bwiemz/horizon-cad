@@ -2801,9 +2801,11 @@ void MainWindow::startStepImport(const QString& fileName, const QString& assembl
                                  const io::StepReadOptions& options) {
     const std::string path = fileName.toStdString();
     const std::string keptAt = assemblyPath.toStdString();
-    const bool onWorker =
-        m_rebuildMode == RebuildMode::Always ||
-        (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
+    // An assembly goes to a worker however small its file: a few kilobytes
+    // can name many parts, each built and written before the window is free.
+    const bool onWorker = m_rebuildMode == RebuildMode::Always ||
+                          (m_rebuildMode == RebuildMode::Auto &&
+                           (!keptAt.empty() || QFileInfo(fileName).size() >= kWorkerImportBytes));
     if (!onWorker) {
         finishStepImport(fileName, loadStep(path, keptAt, nullptr, options));
         return;
