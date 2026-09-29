@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::topo {
@@ -49,5 +50,18 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 /// facetCurved makes them so. The kernel's own solids never are: their edges
 /// are chords, and the curve a chord stands in for is its analyticCurve.
 bool describedByCurves(const topo::Solid& solid);
+
+/// What one shell of a solid encloses: its signed volume (negative for a
+/// shell facing in, as a cavity's does) and the box round it.
+struct ShellMeasure {
+    double volume = 0.0;
+    math::BoundingBox box;
+};
+
+/// Each shell of @p solid measured, in shell order (an empty shell measures
+/// nothing). A solid described by curves is measured on its facets: its
+/// faces' corners do not span them (a sphere's are one point), and a cavity
+/// of curved faces measures nothing by them.
+std::vector<ShellMeasure> measureShells(const topo::Solid& solid);
 
 }  // namespace hz::model

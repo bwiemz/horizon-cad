@@ -49,6 +49,13 @@ work, not "post-1.0".
 - **CI.** clang-tidy runs one file at a time, with a time limit (it hung
   for hours). A master run is no longer cancelled by the next merge
   (#162, #168).
+- **STEP solids with voids are read (#177).** A `BREP_WITH_VOIDS` comes in
+  as a body with a cavity, the way a Boolean leaves one, and a body with a
+  cavity goes out as one `BREP_WITH_VOIDS`: it used to go out as two
+  solids, which another reader takes for two bodies. A void written facing
+  the wrong way, as SolidWorks does, is turned round by what it measures.
+  The SolidWorks assembly in the STEP corpus now reads as OpenCASCADE reads
+  it: 6 bodies, not 4.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

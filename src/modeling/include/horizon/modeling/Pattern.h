@@ -55,6 +55,12 @@ public:
     /// order.
     static std::vector<std::unique_ptr<topo::Solid>> separate(const topo::Solid& solid);
 
+    /// The shells of each of @p solid's bodies, as `separate` makes them:
+    /// its outer shell first, then the cavities it encloses. A cavity that
+    /// nothing encloses is a body of its own. For a writer that must say
+    /// which shell is which (STEP's BREP_WITH_VOIDS).
+    static std::vector<std::vector<const topo::Shell*>> bodyShells(const topo::Solid& solid);
+
     /// A deep copy of @p source moved by the rigid transform @p xform, with
     /// every carrier and ideal moved with it and every TopologyID kept.  This
     /// is how a component is placed in an assembly's world space. A mirror

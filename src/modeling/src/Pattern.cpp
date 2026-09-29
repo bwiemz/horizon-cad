@@ -1,6 +1,7 @@
 #include "horizon/modeling/Pattern.h"
 
 #include <algorithm>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -12,6 +13,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -323,7 +325,7 @@ std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::
     return out;
 }
 
-std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& solid) {
+std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Solid& solid) {
     // A shell is either the outside of a body or a cavity inside one: an
     // enclosed void comes out of a Boolean as a second shell of the same
     // body, facing into the void. Its signed volume tells them apart —
@@ -334,17 +336,29 @@ std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& s
         double volume;
         BoundingBox box;
     };
-    std::vector<Part> parts;
-    double total = 0.0;
+    // One shell is one body, and needs no measuring (which facets a solid
+    // described by curves).
+    std::vector<const Shell*> filled;
     for (const auto& shell : solid.shells()) {
-        if (shell.faces.empty()) continue;
-        Part part{&shell, signedVolume(shell), BoundingBox()};
-        for (const Face* face : shell.faces) {
-            forEachLoopVertex(*face, [&part](const Vec3& p) { part.box.expand(p); });
-        }
-        total += part.volume;
-        parts.push_back(part);
+        if (!shell.faces.empty()) filled.push_back(&shell);
     }
+    if (filled.size() <= 1) {
+        if (filled.empty()) return {};
+        return {filled};
+    }
+
+    // Measured on its facets when it is described by curves, whose corners
+    // do not span its faces (measureShells).
+    std::vector<Part> parts;
+    const auto measures = measureShells(solid);
+    std::size_t index = 0;
+    for (const auto& shell : solid.shells()) {
+        const ShellMeasure& measure = measures[index++];
+        if (shell.faces.empty()) continue;
+        parts.push_back({&shell, measure.volume, measure.box});
+    }
+    double total = 0.0;
+    for (const Part& part : parts) total += part.volume;
     const double orientation = total < 0.0 ? -1.0 : 1.0;
 
     // Each body is an outer shell and the cavities it encloses: a cavity
@@ -378,6 +392,11 @@ std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& s
         }
     }
 
+    return groups;
+}
+
+std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& solid) {
+    const auto groups = bodyShells(solid);
     std::vector<std::unique_ptr<topo::Solid>> bodies;
     for (const auto& group : groups) {
         auto body = std::make_unique<Solid>();

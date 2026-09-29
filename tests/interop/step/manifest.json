@@ -293,7 +293,7 @@
       "license_file": "LICENSES/CERN-OHL-1.2.txt",
       "attribution": "GoodEnoughCNC by Institute IRNAS Rače, CERN OHL v1.2 (LICENSES/IRNAS-GoodEnoughCNC.txt); the IRNAS marks do not imply endorsement",
       "expect": {
-        "skipped": 1,
+        "skipped": 0,
         "approximated": 0,
         "bodies": 6,
         "volume": 40459.278227,
@@ -309,10 +309,6 @@
             60.133724
           ]
         ]
-      },
-      "known_gaps": {
-        "bodies": "the part with a void (BREP_WITH_VOIDS) is left out, and reported",
-        "volume": "the part with a void (BREP_WITH_VOIDS) is left out, and reported"
       }
     },
     {

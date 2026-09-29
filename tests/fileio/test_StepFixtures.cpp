@@ -2,13 +2,17 @@
 
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -138,14 +142,14 @@ TEST(StepFixtures, AssemblyProductStructureIsFlattenedToParts) {
     EXPECT_NEAR(volumeOf(*solids[1]), kTetraVolume, 1e-6);
 }
 
-TEST(StepFixtures, BrepWithVoidsIsRejectedWithDocumentedError) {
-    // Documented limitation: BREP_WITH_VOIDS (internal cavities) is not
-    // mapped.  The file must be rejected with a diagnostic naming what it
-    // holds — never silently imported without its cavity.
+TEST(StepFixtures, AMalformedSolidWithVoidsIsRejectedWithWhy) {
+    // A BREP_WITH_VOIDS whose faces have empty loops: rejected, saying why,
+    // never imported without its cavity.
     auto solids =
-        StepFormat::load((kFixtureRoot / "reject" / "brep_with_voids_minimal.step").string());
+        StepFormat::load((kFixtureRoot / "reject" / "brep_with_voids_minimal.step").string(),
+                         nullptr, nullptr, inMillimetres());
     EXPECT_TRUE(solids.empty());
-    EXPECT_NE(StepFormat::lastError().find("BREP_WITH_VOIDS"), std::string::npos)
+    EXPECT_NE(StepFormat::lastError().find("empty edge loop"), std::string::npos)
         << StepFormat::lastError();
 }
 
@@ -220,11 +224,84 @@ TEST(StepFixtures, ReimportSurvivesEntityReordering) {
     expectRestyledReimportMatches(*box, restyled);
 }
 
-// A solid with voids beside a solid without: the one is read, the other,
-// which this version does not read, is said to be left out. A SolidWorks
-// assembly of the external corpus lost its part with a void, and said
-// nothing.
-TEST(StepFixtures, ASolidWithVoidsIsSaidToBeLeftOut) {
+namespace {
+
+/// A 10 mm cube with a 4 mm cube cut out of its middle: a body with a
+/// cavity, the second shell a Boolean leaves.
+std::unique_ptr<hz::topo::Solid> hollowCube() {
+    auto outer = PrimitiveFactory::makeBox(10, 10, 10);
+    auto inner = hz::model::Pattern::transformed(*PrimitiveFactory::makeBox(4, 4, 4),
+                                                 hz::math::Mat4::translation({3, 3, 3}));
+    return hz::model::BooleanOp::execute(*outer, *inner, hz::model::BooleanType::Subtract);
+}
+
+}  // namespace
+
+// A body with a cavity goes out as one BREP_WITH_VOIDS (its void a closed
+// shell turned round, as the standard has it), not two sibling solids that
+// another reader takes for two bodies; and comes back as it went.
+TEST(StepFixtures, ASolidWithAVoidGoesOutAndComesBackWithIt) {
+    const auto hollow = hollowCube();
+    ASSERT_NE(hollow, nullptr);
+    ASSERT_EQ(hollow->shells().size(), 2u);
+    ASSERT_EQ(hz::model::Pattern::bodyShells(*hollow).size(), 1u) << "one body, with a cavity";
+    ASSERT_NEAR(volumeOf(*hollow), 1000.0 - 64.0, 1e-6);
+
+    const std::string text = StepFormat::toString({hollow.get()});
+    EXPECT_NE(text.find("BREP_WITH_VOIDS("), std::string::npos);
+    EXPECT_NE(text.find("ORIENTED_CLOSED_SHELL('',*,"), std::string::npos);
+    EXPECT_EQ(text.find("MANIFOLD_SOLID_BREP("), std::string::npos) << "not a solid per shell";
+
+    hz::io::ImportReport report;
+    const auto again = StepFormat::fromString(text, &report);
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    EXPECT_TRUE(again[0]->isValid()) << again[0]->validationReport();
+    EXPECT_EQ(again[0]->shells().size(), 2u);
+    EXPECT_EQ(hz::model::Pattern::bodyShells(*again[0]).size(), 1u);
+    EXPECT_NEAR(volumeOf(*again[0]), 1000.0 - 64.0, 1e-6);
+    EXPECT_TRUE(report.skipped.empty());
+}
+
+// Other systems write a solid with voids as a complex instance, each part
+// with its own attributes: read the same.
+TEST(StepFixtures, ASolidWithVoidsAsAComplexInstanceIsRead) {
+    const auto hollow = hollowCube();
+    ASSERT_NE(hollow, nullptr);
+    std::string text = StepFormat::toString({hollow.get()});
+    const std::regex simple(R"(BREP_WITH_VOIDS\('([^']*)',(#\d+),\((#\d+)\)\))");
+    std::smatch m;
+    ASSERT_TRUE(std::regex_search(text, m, simple));
+    text.replace(m.position(0), m.length(0),
+                 "(BREP_WITH_VOIDS((" + m[3].str() + "))MANIFOLD_SOLID_BREP(" + m[2].str() +
+                     ")REPRESENTATION_ITEM('" + m[1].str() + "')SOLID_MODEL())");
+
+    const auto again = StepFormat::fromString(text);
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    EXPECT_EQ(again[0]->shells().size(), 2u);
+    EXPECT_NEAR(volumeOf(*again[0]), 1000.0 - 64.0, 1e-6);
+}
+
+// SolidWorks writes a void's closed shell facing into the void already, and
+// marks it turned round as well: taken at its word, the void would be more
+// material. It is turned round by what it measures.
+TEST(StepFixtures, AVoidMarkedTheWrongWayIsTurnedRound) {
+    const auto hollow = hollowCube();
+    ASSERT_NE(hollow, nullptr);
+    std::string text = StepFormat::toString({hollow.get()});
+    const std::string turned = ",.F.)";
+    const auto at = text.find(turned, text.find("ORIENTED_CLOSED_SHELL("));
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, turned.size(), ",.T.)");
+
+    const auto again = StepFormat::fromString(text);
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    EXPECT_EQ(hz::model::Pattern::bodyShells(*again[0]).size(), 1u);
+    EXPECT_NEAR(volumeOf(*again[0]), 1000.0 - 64.0, 1e-6);
+}
+
+// A solid with voids whose shells have no faces: not read, and said why;
+// the solid beside it is read.
+TEST(StepFixtures, AnEmptySolidWithVoidsIsNotReadAndSaysWhy) {
     std::ifstream in(kFixtureRoot / "import_ok" / "freecad_style_tetrahedron.step",
                      std::ios::binary);
     std::stringstream text;
@@ -240,12 +317,6 @@ TEST(StepFixtures, ASolidWithVoidsIsSaidToBeLeftOut) {
     const auto solids = StepFormat::fromString(file, &report, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     ASSERT_EQ(report.skipped.size(), 1u);
-    EXPECT_NE(report.skipped[0].find("#9004 (hollow part) has voids"), std::string::npos)
+    EXPECT_NE(report.skipped[0].find("(#9004): it has no faces"), std::string::npos)
         << report.skipped[0];
-
-    // Voids alone: not read, and said why.
-    EXPECT_TRUE(
-        StepFormat::load((kFixtureRoot / "reject" / "brep_with_voids_minimal.step").string())
-            .empty());
-    EXPECT_NE(StepFormat::lastError().find("voids"), std::string::npos) << StepFormat::lastError();
 }

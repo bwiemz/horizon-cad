@@ -103,7 +103,8 @@ struct StepWritePart {
 /// that names none, or one this reader cannot read, is read only in a unit
 /// its reader is told (StepReadOptions): a guess would give every length
 /// the wrong size. A solid that cannot be rebuilt is reported and the rest
-/// still come in.
+/// still come in. A solid with voids (BREP_WITH_VOIDS) comes in as a body
+/// with cavities, each a shell facing into its void, and goes out as one.
 ///
 /// Known limitations (documented, by design of this first slice):
 /// - Faces on analytic surfaces import with an untrimmed carrier patch sized
@@ -111,7 +112,6 @@ struct StepWritePart {
 ///   the full closed surface (CYLINDRICAL_SURFACE); non-rectangular planar
 ///   faces and partial cylindrical faces therefore over-cover visually until
 ///   surface trimming lands.
-/// - BREP_WITH_VOIDS (inner cavities) is not yet mapped.
 /// - Curved faces are measured by their vertex polygons (see
 ///   MassProperties), so a round hole's wall, bounded by a few arcs, adds
 ///   little to a volume, although the faces around it are drawn with it.

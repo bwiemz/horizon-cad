@@ -19,6 +19,7 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -1571,6 +1572,54 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
     }
     result.solid = std::move(solid);
     return result;
+}
+
+std::vector<ShellMeasure> measureShells(const topo::Solid& solid) {
+    const auto corners = [](const topo::Face& face, math::BoundingBox& box) {
+        std::vector<const Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const Wire* wire : loops) {
+            if (wire == nullptr || wire->halfEdge == nullptr) continue;
+            const HalfEdge* he = wire->halfEdge;
+            do {
+                if (he->origin != nullptr) box.expand(he->origin->point);
+                he = he->next;
+            } while (he != nullptr && he != wire->halfEdge);
+        }
+    };
+    std::vector<ShellMeasure> measures;
+    std::unordered_map<std::string, std::size_t> shellOfFace;
+    for (const auto& shell : solid.shells()) {
+        ShellMeasure measure;
+        if (!shell.faces.empty()) {
+            measure.volume = topo::signedVolume(shell);
+            for (const Face* face : shell.faces) {
+                corners(*face, measure.box);
+                shellOfFace[face->topoId.tag()] = measures.size();
+            }
+        }
+        measures.push_back(measure);
+    }
+    if (!describedByCurves(solid)) return measures;
+    const auto cut = facetCurved(solid);
+    if (!cut.solid) return measures;  // measured by its corners, as well as can be
+    // Each facet is named for its face, `<face>` or `<face>/facet:<k>`.
+    std::vector<bool> measured(measures.size(), false);
+    for (const auto& shell : cut.solid->shells()) {
+        if (shell.faces.empty()) continue;
+        std::string tag = shell.faces.front()->topoId.tag();
+        if (const auto facet = tag.rfind("/facet:"); facet != std::string::npos) tag.erase(facet);
+        const auto it = shellOfFace.find(tag);
+        if (it == shellOfFace.end()) continue;
+        ShellMeasure& measure = measures[it->second];
+        if (!measured[it->second]) {
+            measured[it->second] = true;
+            measure = ShellMeasure{};
+        }
+        measure.volume += topo::signedVolume(shell);
+        for (const Face* face : shell.faces) corners(*face, measure.box);
+    }
+    return measures;
 }
 
 }  // namespace hz::model
