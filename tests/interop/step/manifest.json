@@ -15,6 +15,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 44.178647,
         "bounds": [
@@ -45,6 +46,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 239.854826,
         "bounds": [
@@ -88,7 +90,8 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 0
+        "approximated": 0,
+        "export_faceted": 23
       },
       "occt_reads_surfaces": "its twelve shells close, but are written as a surface model's open shells, which OpenCASCADE reads as surfaces, not solids: its bodies and volume are Horizon CAD's, its bounds OpenCASCADE's"
     },
@@ -133,7 +136,8 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 0
+        "approximated": 0,
+        "export_faceted": 50
       }
     },
     {
@@ -150,6 +154,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 32,
         "bodies": 14,
         "volume": 76444937.223998,
         "bounds": [
@@ -193,7 +198,8 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 0
+        "approximated": 0,
+        "export_faceted": 16
       }
     },
     {
@@ -210,6 +216,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 222336.2316,
         "bounds": [
@@ -240,6 +247,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 9,
         "volume": 159968.99787,
         "bounds": [
@@ -283,7 +291,8 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 0
+        "approximated": 0,
+        "export_faceted": 24
       }
     },
     {
@@ -300,6 +309,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 18,
         "bodies": 6,
         "volume": 40459.278227,
         "bounds": [
@@ -330,6 +340,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 9,
         "volume": 1187.53765,
         "bounds": [
@@ -360,6 +371,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 2,
         "volume": 45717.336377,
         "bounds": [
@@ -394,6 +406,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 35680.51263,
         "bounds": [
@@ -424,6 +437,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 35680.51263,
         "bounds": [
@@ -467,7 +481,8 @@
           ]
         ],
         "skipped": 0,
-        "approximated": 0
+        "approximated": 0,
+        "export_faceted": 6
       }
     },
     {
@@ -484,6 +499,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 9,
         "bodies": 1,
         "volume": 712989.578317,
         "bounds": [
@@ -528,6 +544,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 8,
         "bodies": 1,
         "volume": 7556.510756,
         "bounds": [
@@ -558,6 +575,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 684.683543,
         "bounds": [

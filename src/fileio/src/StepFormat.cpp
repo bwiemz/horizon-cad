@@ -371,11 +371,11 @@ struct CurvedFace {
     /// Its outline: the half-edges of its facets whose other side is not
     /// one of them, in loops as its facets run.
     std::vector<std::vector<const topo::HalfEdge*>> loops;
-    /// A closed face's (a cylinder's side): the edge between its two
-    /// outlines it is cut along, and its half-edge from the first to the
-    /// second.
-    const topo::HalfEdge* seamUp = nullptr;
-    /// Its surface cut to close along seamUp, where it closed elsewhere.
+    /// A closed face's (a cylinder's side): the edges between its two
+    /// outlines it is cut along, one straight line of them, as half-edges
+    /// from the first outline to the second.
+    std::vector<const topo::HalfEdge*> seam;
+    /// Its surface cut to close along its seam, where it closed elsewhere.
     std::optional<geo::NurbsSurface> cut;
     bool sameSense = true;
     std::string why;  ///< empty: written as designed
@@ -658,12 +658,13 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
         }
         if (!face.why.empty()) continue;
 
-        // Two outlines (a cylinder's side): cut along an edge between them
-        // that lies on the surface (a ruling, not a triangle's diagonal),
+        // Two outlines (a cylinder's side): cut along a line of its edges
+        // from one to the other, on the surface (a ruling, not a triangle's
+        // diagonal) — one edge, or several where its facets are a grid —
         // where the surface closes if one does. A face cut elsewhere crosses
         // where it closes, and a reader that takes a closed B-spline surface
         // for an open one (OpenCASCADE) trims it there, measuring it short
-        // (#184): where no edge is, the surface is cut to close along one.
+        // (#184): where no line is, the surface is cut to close along one.
         if (face.loops.size() == 2) {
             std::unordered_set<const topo::Vertex*> first;
             std::unordered_set<const topo::Vertex*> second;
@@ -690,40 +691,80 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                         (surface.evaluate(ua, surface.vMin()) - a).length() <= tol &&
                         (surface.evaluate(ub, surface.vMin()) - b).length() <= tol);
             };
-            bool joined = false;
-            bool onJoin = false;
+            // Its edges inside it, by the vertex they leave; a ruling's.
+            std::unordered_map<const topo::Vertex*, std::vector<const topo::HalfEdge*>> leaving;
             for (const topo::Face* f : face.facets) {
                 const topo::HalfEdge* start = f->outerLoop->halfEdge;
                 const topo::HalfEdge* he = start;
                 do {
-                    if (he->twin != nullptr && inGroup(he->twin->face, g) &&
-                        first.count(he->origin) != 0 && he->next != nullptr &&
-                        second.count(he->next->origin) != 0) {
-                        joined = true;
-                        const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
-                        if (straight(*he->edge) && onSurface(surface, mid, scale)) {
-                            if (face.seamUp == nullptr) face.seamUp = he;
-                            if (whereItCloses(he->origin->point, he->next->origin->point)) {
-                                face.seamUp = he;
-                                onJoin = true;
+                    if (he->twin != nullptr && inGroup(he->twin->face, g) && he->next != nullptr) {
+                        leaving[he->origin].push_back(he);
+                    }
+                    he = he->next;
+                } while (he != nullptr && he != start);
+            }
+            const auto ruling = [&](const topo::HalfEdge* he) {
+                const Vec3 mid = (he->origin->point + he->next->origin->point) * 0.5;
+                return straight(*he->edge) && onSurface(surface, mid, scale);
+            };
+            // From @p up, on to the second outline straight on: the line of
+            // edges, or none.
+            const auto lineFrom = [&](const topo::HalfEdge* up) {
+                std::vector<const topo::HalfEdge*> line{up};
+                const Vec3 way = up->next->origin->point - up->origin->point;
+                const double length = way.length();
+                if (!(length > 0.0)) return std::vector<const topo::HalfEdge*>{};
+                const Vec3 along = way * (1.0 / length);
+                while (second.count(line.back()->next->origin) == 0) {
+                    const topo::Vertex* at = line.back()->next->origin;
+                    if (first.count(at) != 0 || line.size() > face.facets.size())
+                        return std::vector<const topo::HalfEdge*>{};
+                    const topo::HalfEdge* next = nullptr;
+                    const auto out = leaving.find(at);
+                    if (out != leaving.end()) {
+                        for (const topo::HalfEdge* he : out->second) {
+                            const Vec3 step = he->next->origin->point - at->point;
+                            const double stepLength = step.length();
+                            if (stepLength > 0.0 && step.dot(along) >= (1.0 - 1e-9) * stepLength &&
+                                ruling(he)) {
+                                next = he;
                                 break;
                             }
                         }
                     }
-                    he = he->next;
-                } while (he != nullptr && he != start);
+                    if (next == nullptr) return std::vector<const topo::HalfEdge*>{};
+                    line.push_back(next);
+                }
+                return line;
+            };
+            bool onJoin = false;
+            for (const topo::HalfEdge* rim : face.loops[0]) {  // in its order: the file's too
+                const auto out = leaving.find(rim->origin);
+                if (out == leaving.end()) continue;
+                for (const topo::HalfEdge* up : out->second) {
+                    if (second.count(up->origin) != 0 || !ruling(up)) continue;
+                    auto line = lineFrom(up);
+                    if (line.empty()) continue;
+                    const bool closesHere = whereItCloses(line.front()->origin->point,
+                                                          line.back()->next->origin->point);
+                    if (face.seam.empty() || closesHere) face.seam = std::move(line);
+                    if (closesHere) {
+                        onJoin = true;
+                        break;
+                    }
+                }
                 if (onJoin) break;
             }
-            if (face.seamUp == nullptr) {
-                face.why = joined ? "no edge joining its two outlines lies on its surface"
-                                  : "no edge joins its two outlines";
+            if (face.seam.empty()) {
+                face.why =
+                    "no line of edges from one of its outlines to the other lies on its surface";
                 continue;
             }
             if (!onJoin && (surface.closedU() || surface.closedV())) {
                 // Cut the way it goes round: across the seam, whose ends
                 // share their parameter that way (a torus closes both ways).
-                const Vec3& a = face.seamUp->origin->point;
-                const Vec3& b = face.seamUp->next->origin->point;
+                const Vec3& a = face.seam.front()->origin->point;
+                const Vec3& b = face.seam.back()->next->origin->point;
                 const auto [ua, va] = surface.closestPoint(a);
                 const auto [ub, vb] = surface.closestPoint(b);
                 const auto apart = [](double x, double y, double lo, double hi) {
@@ -737,7 +778,7 @@ std::vector<CurvedFace> planCurvedFaces(const topo::Solid& solid,
                 const auto [u, v] = surface.closestPoint((a + b) * 0.5);
                 face.cut = inU ? surface.startingAtU(u) : surface.startingAtV(v);
                 if (!face.cut) {
-                    face.why = "its surface closes where no edge joining its outlines lies";
+                    face.why = "its surface closes where no line joining its outlines lies";
                     continue;
                 }
             }
@@ -847,7 +888,7 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             continue;
         }
         for (const topo::Face* f : face.facets) designedOf[f] = &face;
-        if (face.seamUp != nullptr) seams.insert(face.seamUp->edge);
+        for (const topo::HalfEdge* he : face.seam) seams.insert(he->edge);
     }
     // An edge between two facets of one face written as designed is inside
     // it, and not written: but for the seam it is cut along.
@@ -973,16 +1014,18 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
             turned.insert(turned.end(), loop.begin(), at);
             return turned;
         };
-        if (face.seamUp == nullptr) {
+        if (face.seam.empty()) {
             path = face.loops.front();
         } else {
-            const auto first = from(face.loops[0], face.seamUp->origin);
-            const auto second = from(face.loops[1], face.seamUp->next->origin);
+            const auto first = from(face.loops[0], face.seam.front()->origin);
+            const auto second = from(face.loops[1], face.seam.back()->next->origin);
             if (first.empty() || second.empty()) return std::nullopt;
             path = first;
-            path.push_back(face.seamUp);
+            path.insert(path.end(), face.seam.begin(), face.seam.end());
             path.insert(path.end(), second.begin(), second.end());
-            path.push_back(face.seamUp->twin);
+            for (auto he = face.seam.rbegin(); he != face.seam.rend(); ++he) {
+                path.push_back((*he)->twin);
+            }
         }
         std::vector<int> edges;
         for (const topo::HalfEdge* he : path) {

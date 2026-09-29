@@ -143,14 +143,15 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
 
     // Sent out as File ▸ Export ▸ STEP sends it, the part's model (its curved
     // faces on their surfaces, as designed), and read back. The solids as
-    // read went out before, a path no user takes: written without the seams
-    // other readers need, a band round a hole measured 0.18% long to
-    // OpenCASCADE (#184).
+    // read went out before, a path no user takes, a band round a hole
+    // written without the seam other readers need (#184).
     const fs::path exported = work / "export" / (name + ".step");
     summary.exportPath = exported.string();
     if (!summary.importBuildError.empty() || part.solid() == nullptr) {
         summary.exportError = "not exported: the part does not build";
-    } else if (StepFormat::save(exported.string(), {part.solid()})) {
+    } else if (StepFormat::WriteReport report;
+               StepFormat::save(exported.string(), {part.solid()}, {}, &report)) {
+        summary.exportFaceted = report.faceted;
         const auto again = StepFormat::load(exported.string());
         summary.reimportedBodies = 0;
         for (const auto& solid : again) {
@@ -233,6 +234,7 @@ nlohmann::json toJson(const StepSummary& s) {
     out["reopenedVolume"] = s.reopenedVolume ? json(*s.reopenedVolume) : json(nullptr);
     out["keptComponents"] = s.keptComponents ? json(*s.keptComponents) : json(nullptr);
     out["reimportedBodies"] = s.reimportedBodies ? json(*s.reimportedBodies) : json(nullptr);
+    out["exportFaceted"] = s.exportFaceted;
     return out;
 }
 

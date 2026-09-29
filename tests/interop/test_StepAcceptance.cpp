@@ -166,6 +166,12 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
         EXPECT_EQ(s.approximated.size(), expect["approximated"].get<std::size_t>())
             << "approximated: " << json(s.approximated).dump(1);
     }
+    // Its curved faces the export keeps in facets, as many as the manifest
+    // says: one more is a face that went out whole before.
+    if (expect.contains("export_faceted")) {
+        EXPECT_EQ(s.exportFaceted.size(), expect["export_faceted"].get<std::size_t>())
+            << "kept in facets when sent out: " << json(s.exportFaceted).dump(1);
+    }
     if (expect.value("valid", true)) {
         EXPECT_TRUE(s.allValid);
     }

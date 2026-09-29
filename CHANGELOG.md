@@ -80,18 +80,23 @@ work, not "post-1.0".
   surfaces, not solids, instead of the file being refused without a
   reason. A flat face whose edges stray off its plane (Creo's, by 0.75 mm)
   is cut into flat triangles, so the part is valid.
-- **An exported cylinder is cut where its surface closes (#184).**
-  OpenCASCADE measured the STEP exports of several corpus parts up to 0.4%
-  off. A cylinder's or cone's side goes out as one face on a closed B-spline
-  surface, and was cut along the first ruling of its facets, not where the
-  surface closes; OpenCASCADE, which takes a closed B-spline surface for
-  open, trims such a face across that join, and measured the sides and the
-  planes they bound short. A side is now cut along the ruling where its
-  surface closes, or, where it has none there, written on its surface cut to
-  close along the ruling it is cut along. The STEP corpus harness also now
-  exports what File ▸ Export writes, the imported part's model, not the
-  solids as read, and when an export measures otherwise the OpenCASCADE
-  check lists the faces that differ.
+- **STEP exports measure as their parts to OpenCASCADE (#184).** It
+  measured the exports of several corpus parts up to 1% off, for three
+  reasons. A cylinder's or cone's side goes out as one face on a closed
+  B-spline surface, and was cut along the first ruling of its facets found,
+  not where the surface closes; OpenCASCADE, which takes a closed B-spline
+  surface for open, trims such a face across that join. A side is now cut
+  where its surface closes, or written on its surface cut to close where it
+  is cut. A side whose facets are a grid, with rows of them between its
+  rims, has no one edge from rim to rim, and went out in its facets; it is
+  now cut along a line of its edges. And the check measured with
+  OpenCASCADE's default, a Gauss rule of fixed points, exact on an analytic
+  surface but not on a B-spline one: it put the Shapr3D lid's export 1.1%
+  short, which, integrated adaptively, measures as the part. The corpus
+  harness also now exports what File ▸ Export writes, the imported part's
+  model, not the solids as read; holds each file to how many curved faces
+  its export keeps in facets; and, when an export measures otherwise, lists
+  the faces that differ.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

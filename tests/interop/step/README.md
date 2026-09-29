@@ -107,14 +107,19 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid (an
    ellipse swept along a line) is read since #180.
 8. **An export that did not measure as the part:** OpenCASCADE read the
-   exports of several parts up to 0.4% off (#184). Its face-by-face
-   comparison (occt_check.py) found the cylinders and cones off, and the
-   planes they bound. Each side went out on a closed B-spline surface but
-   was cut elsewhere than where the surface closes (as read, a band round a
-   hole, not cut at all), and OpenCASCADE, which takes a closed B-spline
-   surface for open, trims such a face across that join. A side is now cut
-   where its surface closes, and the harness exports what File ▸ Export
-   does, the imported part's model, not the solids as read.
+   exports of several parts up to 1% off (#184). Its face-by-face
+   comparison (occt_check.py) found three causes. Each cylinder's side went
+   out on a closed B-spline surface but was cut elsewhere than where the
+   surface closes (as read, a band round a hole, not cut at all), and
+   OpenCASCADE, which takes a closed B-spline surface for open, trims such
+   a face across that join. A side whose facets are a grid (the Alibre
+   guide's hole) had no one edge from rim to rim, and went out in facets.
+   And the check measured with OpenCASCADE's fixed Gauss rule, not exact on
+   a B-spline surface: the Shapr3D lid's export measured 1.1% short, and,
+   integrated adaptively, as the part. A side is now cut where its surface
+   closes, along a line of its edges where it takes several; the harness
+   exports what File ▸ Export does, the imported part's model; and the
+   check integrates adaptively.
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
@@ -146,8 +151,9 @@ OpenCASCADE reads as a second solid.
    `import-build`, `reopen`, `bodies`, `volume` and `bounds`, and for the
    OpenCASCADE job also `export`, `export-valid`, `export-bodies` and
    `export-volume`. If it is not read at all, set `not_read` to part of the
-   error, and `why_not_read`. Set `expect.skipped` and `expect.approximated`
-   to what it reports now.
+   error, and `why_not_read`. Set `expect.skipped`, `expect.approximated`
+   and `expect.export_faceted` (the curved faces its export keeps in facets,
+   the `exportFaceted` of `summary.json`) to what it reports now.
 
 ## Provenance and licences
 
