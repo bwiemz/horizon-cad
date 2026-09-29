@@ -183,7 +183,7 @@
         ]
       },
       "known_gaps": {
-        "bodies": "placements by MAPPED_ITEM are not read (the parts come in where drawn), and 3 solids are skipped (malformed loops, an unsupported edge curve)",
+        "bodies": "placements by MAPPED_ITEM are not read (the parts come in where drawn), and 4 solids are skipped (3 for malformed loops, 1 at a SURFACE_OF_LINEAR_EXTRUSION)",
         "volume": "the same",
         "bounds": "the same"
       }
