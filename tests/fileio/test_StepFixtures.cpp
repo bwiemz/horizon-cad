@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -137,12 +140,12 @@ TEST(StepFixtures, AssemblyProductStructureIsFlattenedToParts) {
 
 TEST(StepFixtures, BrepWithVoidsIsRejectedWithDocumentedError) {
     // Documented limitation: BREP_WITH_VOIDS (internal cavities) is not
-    // mapped.  The file must be rejected with a diagnostic naming what was
-    // missing — never silently imported without its cavity.
+    // mapped.  The file must be rejected with a diagnostic naming what it
+    // holds — never silently imported without its cavity.
     auto solids =
         StepFormat::load((kFixtureRoot / "reject" / "brep_with_voids_minimal.step").string());
     EXPECT_TRUE(solids.empty());
-    EXPECT_NE(StepFormat::lastError().find("MANIFOLD_SOLID_BREP"), std::string::npos)
+    EXPECT_NE(StepFormat::lastError().find("BREP_WITH_VOIDS"), std::string::npos)
         << StepFormat::lastError();
 }
 
@@ -215,4 +218,34 @@ TEST(StepFixtures, ReimportSurvivesEntityReordering) {
     }
     restyled += text.substr(endPos);
     expectRestyledReimportMatches(*box, restyled);
+}
+
+// A solid with voids beside a solid without: the one is read, the other,
+// which this version does not read, is said to be left out. A SolidWorks
+// assembly of the external corpus lost its part with a void, and said
+// nothing.
+TEST(StepFixtures, ASolidWithVoidsIsSaidToBeLeftOut) {
+    std::ifstream in(kFixtureRoot / "import_ok" / "freecad_style_tetrahedron.step",
+                     std::ios::binary);
+    std::stringstream text;
+    text << in.rdbuf();
+    std::string file = text.str();
+    const auto data = file.rfind("ENDSEC;");
+    ASSERT_NE(data, std::string::npos);
+    file.insert(data,
+                "#9001=CLOSED_SHELL('',());\n#9002=CLOSED_SHELL('',());\n"
+                "#9003=ORIENTED_CLOSED_SHELL('',*,#9002,.F.);\n"
+                "#9004=BREP_WITH_VOIDS('hollow part',#9001,(#9003));\n");
+    hz::io::ImportReport report;
+    const auto solids = StepFormat::fromString(file, &report, nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    ASSERT_EQ(report.skipped.size(), 1u);
+    EXPECT_NE(report.skipped[0].find("#9004 (hollow part) has voids"), std::string::npos)
+        << report.skipped[0];
+
+    // Voids alone: not read, and said why.
+    EXPECT_TRUE(
+        StepFormat::load((kFixtureRoot / "reject" / "brep_with_voids_minimal.step").string())
+            .empty());
+    EXPECT_NE(StepFormat::lastError().find("voids"), std::string::npos) << StepFormat::lastError();
 }

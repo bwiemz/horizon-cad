@@ -1572,7 +1572,8 @@ private:
         // OCC-style writers (FreeCAD et al.) wrap the 3D geometry: a
         // SURFACE_CURVE / SEAM_CURVE carries the real curve as its curve_3d
         // attribute. Depth-limit the hop to survive self-referential files.
-        for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE"}) {
+        // An INTERSECTION_CURVE keeps it there too (IronCAD's).
+        for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE", "INTERSECTION_CURVE"}) {
             if (const StepList* sc = inst->leaf(wrapper)) {
                 if (sc->size() >= 2 && (*sc)[1].isRef()) {
                     return readEdgeGeometry((*sc)[1].ref, start, end, depth + 1);
@@ -1611,6 +1612,27 @@ private:
             const double a0 = std::atan2(ds.dot(yAxis), ds.dot(xAxis));
             const double a1 = std::atan2(de.dot(yAxis), de.dot(xAxis));
             return makeArcInFrame(center, radius, a0, a1, xAxis, yAxis);
+        }
+        // An ellipse, where a hole meets a slanted face (Inventor's): the
+        // circle's arc stretched along its axes, exact, a rational arc's
+        // affine image being one. Angles are its parameter's.
+        if (const StepList* ellipse = inst->leaf("ELLIPSE")) {
+            if (ellipse->size() < 4 || !(*ellipse)[1].isRef()) return nullptr;
+            Vec3 center;
+            Vec3 zAxis;
+            Vec3 xAxis;
+            if (!readPlacement((*ellipse)[1].ref, center, zAxis, xAxis)) return nullptr;
+            const double major = (*ellipse)[2].num;
+            const double minor = (*ellipse)[3].num;
+            if (!(major > 0.0) || !(minor > 0.0)) return nullptr;
+            const Vec3 yAxis = zAxis.cross(xAxis);
+            const auto angleOf = [&](const Vec3& p) {
+                const Vec3 d = p - center;
+                return std::atan2(d.dot(yAxis) / minor, d.dot(xAxis) / major);
+            };
+            const double a0 = angleOf(start);
+            const double a1 = (start - end).length() < kMergeTol ? a0 + math::kTwoPi : angleOf(end);
+            return makeArcInFrame(center, 1.0, a0, a1, xAxis * major, yAxis * minor);
         }
         return nullptr;
     }
@@ -1885,14 +1907,34 @@ private:
         }
 
         if (face->outerLoop == nullptr) {
-            // Files that use plain FACE_BOUND for the outer loop: promote the
-            // first inner loop.
+            // Files that use plain FACE_BOUND for every loop (Alibre's): the
+            // outer is the one that encloses the others, so the widest. The
+            // first was taken, and an annulus whose inner circle came first
+            // was read inside out.
             if (face->innerLoops.empty()) {
                 error = "face #" + std::to_string(faceId) + " has no bounds";
                 return false;
             }
-            face->outerLoop = face->innerLoops.front();
-            face->innerLoops.erase(face->innerLoops.begin());
+            const auto widthOf = [](const topo::Wire* wire) {
+                // Its vertices and its curves' control points, which bound
+                // them: a circle's loop has one vertex.
+                math::BoundingBox box;
+                const topo::HalfEdge* he = wire->halfEdge;
+                do {
+                    box.expand(he->origin->point);
+                    if (he->edge != nullptr && he->edge->curve != nullptr) {
+                        for (const Vec3& p : he->edge->curve->controlPoints()) box.expand(p);
+                    }
+                    he = he->next;
+                } while (he != nullptr && he != wire->halfEdge);
+                return box.isValid() ? (box.max() - box.min()).length() : 0.0;
+            };
+            auto widest = face->innerLoops.begin();
+            for (auto it = std::next(widest); it != face->innerLoops.end(); ++it) {
+                if (widthOf(*it) > widthOf(*widest)) widest = it;
+            }
+            face->outerLoop = *widest;
+            face->innerLoops.erase(widest);
         }
 
         face->surface = readFaceGeometry((*args)[2].ref, loopPoints);
@@ -2367,22 +2409,28 @@ struct SolidGroup {
 std::vector<SolidGroup> solidGroups(const StepParser& parser) {
     std::vector<SolidGroup> groups;
     std::unordered_set<int> grouped;
-    for (int repId : parser.allOfType("ADVANCED_BREP_SHAPE_REPRESENTATION")) {
-        const StepInstance* rep = parser.find(repId);
-        const StepList* args = rep ? rep->leaf("ADVANCED_BREP_SHAPE_REPRESENTATION") : nullptr;
-        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
-        SolidGroup group;
-        group.rep = repId;
-        if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
-        for (const StepValue& item : *(*args)[1].items) {
-            if (!item.isRef() || grouped.count(item.ref) != 0) continue;
-            const StepInstance* it = parser.find(item.ref);
-            if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
-                group.msbs.push_back(item.ref);
-                grouped.insert(item.ref);
+    // The solids in an ADVANCED_BREP representation, then those a plain
+    // SHAPE_REPRESENTATION holds itself, as Open CASCADE writes a compound
+    // of solids (KiCad's boards): read as no product's, each came in once,
+    // where drawn, however often the assembly used the product.
+    for (const char* type : {"ADVANCED_BREP_SHAPE_REPRESENTATION", "SHAPE_REPRESENTATION"}) {
+        for (int repId : parser.allOfType(type)) {
+            const StepInstance* rep = parser.find(repId);
+            const StepList* args = rep ? rep->leaf(type) : nullptr;
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
+            SolidGroup group;
+            group.rep = repId;
+            if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
+            for (const StepValue& item : *(*args)[1].items) {
+                if (!item.isRef() || grouped.count(item.ref) != 0) continue;
+                const StepInstance* it = parser.find(item.ref);
+                if (it != nullptr && it->hasType("MANIFOLD_SOLID_BREP")) {
+                    group.msbs.push_back(item.ref);
+                    grouped.insert(item.ref);
+                }
             }
+            if (!group.msbs.empty()) groups.push_back(std::move(group));
         }
-        if (!group.msbs.empty()) groups.push_back(std::move(group));
     }
     // MSBs outside any representation (minimal files) import one solid each,
     // in the file's first context with units, if it has one.
@@ -2818,6 +2866,29 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
     return built;
 }
 
+/// Each solid with voids (BREP_WITH_VOIDS), which is not read: its part,
+/// and the part's placements, are left out. Said, not dropped silently: a
+/// SolidWorks assembly lost its part with a void, and said nothing.
+std::vector<std::string> solidsWithVoids(const StepParser& parser) {
+    std::vector<std::string> items;
+    for (int id : parser.allOfType("BREP_WITH_VOIDS")) {
+        const StepInstance* inst = parser.find(id);
+        const StepList* args = inst ? inst->leaf("BREP_WITH_VOIDS") : nullptr;
+        const std::string name = args != nullptr && !args->empty() ? textOf((*args)[0]) : "";
+        items.push_back("solid #" + std::to_string(id) + (blank(name) ? "" : " (" + name + ")") +
+                        " has voids (BREP_WITH_VOIDS), which this version does not read: it, "
+                        "and its part where an assembly places it, are left out");
+    }
+    return items;
+}
+
+/// Why a file has no solid to read: its solids have voids, or it has none.
+std::string noSolidError(const StepParser& parser) {
+    return parser.allOfType("BREP_WITH_VOIDS").empty()
+               ? "no MANIFOLD_SOLID_BREP found in file"
+               : "its solids have voids (BREP_WITH_VOIDS), which this version does not read";
+}
+
 /// What @p built and @p structure fell short of, into @p report.
 void reportRead(const BuiltSolids& built, const ProductStructure& structure, ImportReport* report) {
     if (report == nullptr) return;
@@ -3158,7 +3229,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
     if (!parseText(parser, cancelled)) return {};
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        g_lastError = noSolidError(parser);
         return {};
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3217,6 +3288,10 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
         return out;
     }
     reportRead(built, structure, report);
+    if (report != nullptr) {
+        for (std::string& item : solidsWithVoids(parser))
+            report->skipped.push_back(std::move(item));
+    }
     return out;
 }
 
@@ -3230,7 +3305,7 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
     if (!parseText(parser, cancelled)) return assembly;
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        g_lastError = noSolidError(parser);
         return assembly;
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3278,6 +3353,10 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
         return assembly;
     }
     reportRead(built, structure, report);
+    if (report != nullptr) {
+        for (std::string& item : solidsWithVoids(parser))
+            report->skipped.push_back(std::move(item));
+    }
     return assembly;
 }
 

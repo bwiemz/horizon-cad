@@ -132,6 +132,10 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle) {
 }
 
 /// A surface's (u, v) for points on it, found once each.
+/// How far off its surface, in millimetres, another system's edge may lie
+/// and still bound its face: ten micrometres (see SurfaceMap::uvOf).
+constexpr double kOffSurface = 1e-2;
+
 class SurfaceMap {
 public:
     explicit SurfaceMap(const geo::NurbsSurface& s) : m_s(s), m_size(sizeOf(s)) {}
@@ -150,11 +154,20 @@ public:
         const auto miss = [&](const UV& uv) {
             return (m_s.evaluateWithDerivatives(uv.first, uv.second).point - p).length();
         };
+        // On it within a millionth of its size, or within ten micrometres:
+        // as near as other systems keep an edge to its surface. In the
+        // external corpus the files say they are accurate to 0.02 mm and
+        // more, and their edges lie up to 4.6 micrometres off. Never a
+        // thousandth of its size.
+        const double onIt =
+            std::max(1e-6 * m_size, std::min(kOffSurface, 1e-3 * std::max(m_size, 1e-300)));
         UV best = m_s.locate(p);
         const double tol = 1e-7 * std::max(m_size, 1e-300);
-        if (miss(best) > tol) {
+        if (miss(best) > tol && miss(best) > onIt) {
             // Not found from the best starts of a grid: from every cell of
-            // a finer one.
+            // a finer one. (A point already on it, as near as another
+            // system's is, is not looked for again: that took a second a
+            // face.)
             constexpr int kStarts = 32;
             for (int i = 0; i < kStarts && miss(best) > tol; ++i) {
                 for (int j = 0; j < kStarts; ++j) {
@@ -165,7 +178,7 @@ public:
             }
         }
         std::optional<UV> result;
-        if (miss(best) <= 1e-6 * std::max(m_size, 1e-300)) result = best;
+        if (miss(best) <= onIt) result = best;
         m_uv.emplace(key, result);
         return result;
     }
@@ -542,9 +555,19 @@ std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, Sur
 /// placed where the one before ends, round the surface's seams. Nullopt when
 /// a point is off the surface, a pole is on it, or the loop does not close
 /// in (u, v) (it winds round the surface).
-std::optional<std::vector<LoopPoint>> loopInUV(const std::vector<std::vector<Vec3>>& edges,
-                                               SurfaceMap& map) {
-    std::vector<LoopPoint> loop;
+/// A boundary loop in (u, v), continuous along it: it closes there, or it
+/// winds once round a closed direction of the surface (a circle round a
+/// cylinder), and its last point is its first a period on.
+struct UVChain {
+    std::vector<LoopPoint> points;  ///< its first point again at the end
+    int winds = -1;                 ///< the direction it winds round, or -1: it closes
+};
+
+/// @p edges, one loop's, in (u, v); nullopt when a point is off the surface
+/// or a pole, or it neither closes nor winds once round.
+std::optional<UVChain> chainInUV(const std::vector<std::vector<Vec3>>& edges, SurfaceMap& map) {
+    UVChain chain;
+    auto& loop = chain.points;
     for (const auto& samples : edges) {
         auto part = edgeInUV(samples, map);
         if (!part || part->empty()) return std::nullopt;
@@ -565,16 +588,197 @@ std::optional<std::vector<LoopPoint>> loopInUV(const std::vector<std::vector<Vec
             loop = std::move(*part);
         }
     }
-    if (loop.size() < 4) return std::nullopt;
+    if (loop.size() < 3) return std::nullopt;
     const LoopPoint& first = loop.front();
     const LoopPoint& last = loop.back();
     const double tol = 1e-9 * std::max({1.0, std::abs(first.uv.first), std::abs(first.uv.second)});
-    if (std::abs(first.uv.first - last.uv.first) > tol ||
-        std::abs(first.uv.second - last.uv.second) > tol) {
-        return std::nullopt;  // winds round the surface: no polygon in (u, v)
+    const double off[2] = {last.uv.first - first.uv.first, last.uv.second - first.uv.second};
+    if (std::abs(off[0]) <= tol && std::abs(off[1]) <= tol) return chain;
+    for (int dir = 0; dir < 2; ++dir) {
+        if (map.closed(dir) && std::abs(off[1 - dir]) <= tol &&
+            std::abs(std::abs(off[dir]) - map.period(dir)) <= tol * map.period(dir)) {
+            chain.winds = dir;
+            return chain;
+        }
     }
-    loop.pop_back();
-    return loop;
+    return std::nullopt;
+}
+
+/// @p edges, a loop that closes in (u, v), as a polygon there; nullopt when
+/// it does not (see chainInUV), or it winds round the surface.
+std::optional<std::vector<LoopPoint>> loopInUV(const std::vector<std::vector<Vec3>>& edges,
+                                               SurfaceMap& map) {
+    auto chain = chainInUV(edges, map);
+    if (!chain || chain->winds >= 0 || chain->points.size() < 4) return std::nullopt;
+    chain->points.pop_back();
+    return std::move(chain->points);
+}
+
+/// A band round a closed surface, as a polygon in (u, v) with holes.
+struct Band {
+    std::vector<LoopPoint> outline;
+    std::vector<std::vector<LoopPoint>> holes;
+};
+
+/// A face bounded by two loops that each wind once round a closed surface,
+/// the other way from each other, with no seam between them: as other
+/// systems write a cylinder's side between its two rims. Cut along a seam of
+/// its own, from a point of the one straight to the nearest of the other in
+/// (u, v), it is one polygon: the one loop, the seam, the other loop, and the
+/// seam back a period away. The seam's points are on the surface, the same
+/// on both sides, as close as the surface turns by @p maxAngle. The face's
+/// other loops, which close, are its holes. It faces as its loops say, or,
+/// when they go the same way round, as its surface does. Nullopt when it is
+/// not a band.
+std::optional<Band> bandInUV(std::vector<UVChain> loops, SurfaceMap& map, double maxAngle) {
+    std::vector<std::size_t> winding;
+    for (std::size_t k = 0; k < loops.size(); ++k) {
+        if (loops[k].winds >= 0) winding.push_back(k);
+    }
+    if (winding.size() != 2) return std::nullopt;
+    UVChain& one = loops[winding[0]];
+    UVChain& other = loops[winding[1]];
+    const int dir = one.winds;
+    if (other.winds != dir) return std::nullopt;
+    const double period = map.period(dir);
+    const auto way = [dir](const UVChain& c) {
+        return coord(c.points.back().uv, dir) - coord(c.points.front().uv, dir);
+    };
+    // Round it the other way from the one. Solid Edge writes a band's two
+    // rims the same way round, both loops forward, which leaves the face on
+    // the left of one and the right of the other; the band between them is
+    // the face all the same, facing out as its surface does (below).
+    const bool sameWay = way(one) * way(other) > 0.0;
+    if (sameWay) std::reverse(other.points.begin(), other.points.end());
+
+    // Cut where the seam crosses no hole: at the one's point furthest round
+    // from every hole. (From its first point, the seam went through one of
+    // the holes round a tube, and the band could not be cut.)
+    if (loops.size() > 2) {
+        std::vector<std::pair<double, double>> spans;  // each hole's, round the period
+        for (std::size_t k = 0; k < loops.size(); ++k) {
+            if (loops[k].winds >= 0) continue;
+            double lo = 1e300, hi = -1e300;
+            for (const LoopPoint& p : loops[k].points) {
+                lo = std::min(lo, coord(p.uv, dir));
+                hi = std::max(hi, coord(p.uv, dir));
+            }
+            spans.emplace_back(lo, hi);
+        }
+        const auto clearance = [&](double t) {
+            double nearest = 1e300;
+            for (const auto& [lo, hi] : spans) {
+                double d = t - lo;
+                d -= period * std::floor(d / period);  // round from lo, in [0, period)
+                if (d <= hi - lo) return 0.0;          // within it
+                nearest = std::min({nearest, d - (hi - lo), period - d});
+            }
+            return nearest;
+        };
+        auto& pts = one.points;
+        std::size_t cut = 0;
+        double widest = -1.0;
+        for (std::size_t k = 0; k + 1 < pts.size(); ++k) {
+            const double c = clearance(coord(pts[k].uv, dir));
+            if (c > widest) {
+                widest = c;
+                cut = k;
+            }
+        }
+        if (cut > 0) {
+            const double across = coord(pts.back().uv, dir) - coord(pts.front().uv, dir);
+            std::vector<LoopPoint> rotated(pts.begin() + static_cast<std::ptrdiff_t>(cut),
+                                           pts.end());
+            for (std::size_t k = 1; k <= cut; ++k) {
+                LoopPoint p = pts[k];
+                coord(p.uv, dir) += across;
+                rotated.push_back(p);
+            }
+            pts = std::move(rotated);
+        }
+    }
+
+    // The other loop from its point nearest the one's start round the
+    // period, a period on, so it runs back from the one's end to its start.
+    const LoopPoint& from = one.points.front();
+    auto& pts = other.points;
+    pts.pop_back();  // its start, a period on
+    std::size_t nearest = 0;
+    double best = 1e300;
+    for (std::size_t k = 0; k < pts.size(); ++k) {
+        double d = coord(pts[k].uv, dir) - coord(from.uv, dir);
+        d -= period * std::round(d / period);
+        // Across it too, on a surface closed that way as well (a torus).
+        double e = coord(pts[k].uv, 1 - dir) - coord(from.uv, 1 - dir);
+        if (map.closed(1 - dir)) e -= map.period(1 - dir) * std::round(e / map.period(1 - dir));
+        const double far = std::hypot(d, e);
+        if (far < best) {
+            best = far;
+            nearest = k;
+        }
+    }
+    std::vector<LoopPoint> back;
+    back.reserve(pts.size() + 1);
+    const double step = way(other) < 0.0 ? -period : period;
+    for (std::size_t k = 0; k <= pts.size(); ++k) {
+        LoopPoint p = pts[(nearest + k) % pts.size()];
+        if (nearest + k >= pts.size()) coord(p.uv, dir) += step;  // round past its start
+        back.push_back(p);
+    }
+    // Onto the one's end: it starts a period on from the one's start.
+    const double target = coord(one.points.back().uv, dir);
+    shift(back, dir, period * std::round((target - coord(back.front().uv, dir)) / period));
+
+    // The seam, from the one's start to the other's end, and back from the
+    // other's start to the one's end: the same points a period apart. The
+    // outline runs along the one, down the seam's far side, back along the
+    // other, and up the seam's near side to the start.
+    const auto outlineWith = [&](const std::vector<LoopPoint>& back) {
+        const UV a = from.uv;
+        const UV b = back.back().uv;
+        const std::size_t pieces = std::max(piecesAcross(map, a, b, 1 - dir, maxAngle),
+                                            piecesAcross(map, a, b, dir, maxAngle));
+        std::vector<LoopPoint> seam;  // from the one's start to the other's end, inside
+        for (std::size_t k = 1; k < pieces; ++k) {
+            const double t = static_cast<double>(k) / static_cast<double>(pieces);
+            const UV uv{a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t};
+            seam.push_back({map.at(uv), uv, -1});
+        }
+        std::vector<LoopPoint> outline = one.points;  // start to end, a period round
+        const double across = coord(one.points.back().uv, dir) - coord(one.points.front().uv, dir);
+        for (LoopPoint p : seam) {
+            coord(p.uv, dir) += across;
+            outline.push_back(p);
+        }
+        outline.insert(outline.end(), back.begin(), back.end());
+        outline.insert(outline.end(), seam.rbegin(), seam.rend());
+        return outline;
+    };
+    Band band;
+    band.outline = outlineWith(back);
+    if (signedArea(band.outline) < 0.0) {
+        // Round the other way in (u, v): on the right of its loops. On a
+        // surface closed the other way too (a torus), two loops round it
+        // bound two bands, and the face is the other one, on their left.
+        if (!sameWay && map.closed(1 - dir)) {
+            const double round = map.period(1 - dir);
+            shift(back, 1 - dir,
+                  coord(back.front().uv, 1 - dir) > coord(from.uv, 1 - dir) ? -round : round);
+            band.outline = outlineWith(back);
+        }
+        // Otherwise its loops are not what its surface says (Solid Edge's):
+        // it faces as its surface does, out of the solid, as the reader
+        // made every surface face.
+        if (signedArea(band.outline) < 0.0) {
+            std::reverse(band.outline.begin(), band.outline.end());
+        }
+    }
+    for (std::size_t k = 0; k < loops.size(); ++k) {
+        if (k == winding[0] || k == winding[1]) continue;
+        loops[k].points.pop_back();
+        band.holes.push_back(std::move(loops[k].points));
+    }
+    return band;
 }
 
 /// A vertex of a region being cut into triangles: where it is in (u, v),
@@ -1037,8 +1241,10 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
             lengths.push_back(std::hypot(a.x - b.x, a.y - b.y));
         }
     };
+    // The outline's own, not its holes': a tube's wall with a few small
+    // holes in it was cut as finely as their edges, into a third of a
+    // million triangles, and took 20 s. Near a hole, the cut follows it.
     lengthsOf(outerIndices);
-    for (const auto& h : holeIndices) lengthsOf(h);
     std::nth_element(lengths.begin(),
                      lengths.begin() + static_cast<std::ptrdiff_t>(lengths.size() / 2),
                      lengths.end());
@@ -1307,6 +1513,22 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
                 if (read) {
                     if (auto facets =
                             trimmedFacets(std::move(*outline), std::move(holes), map, maxAngle)) {
+                        emit(std::move(*facets));
+                        continue;
+                    }
+                }
+            }
+            // A band round the surface between two loops that wind round it,
+            // with no seam: cut along a seam of its own.
+            std::vector<UVChain> chains;
+            if (auto chain = chainInUV(edges, map)) chains.push_back(std::move(*chain));
+            for (const auto& loop : inner) {
+                if (auto chain = chainInUV(edgesOf(loop), map)) chains.push_back(std::move(*chain));
+            }
+            if (chains.size() == inner.size() + 1) {
+                if (auto band = bandInUV(std::move(chains), map, maxAngle)) {
+                    if (auto facets = trimmedFacets(std::move(band->outline),
+                                                    std::move(band->holes), map, maxAngle)) {
                         emit(std::move(*facets));
                         continue;
                     }
