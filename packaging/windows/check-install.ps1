@@ -27,10 +27,11 @@ if (-not (Test-Path $exe)) { throw "Nothing was installed at $exe" }
 Write-Output "Installed at $dir"
 
 # Its shortcut, on the desktop of whoever it was installed for.
-$shortcuts = @(
+# @(): one path found is a string, and a string's [0] its first letter.
+$shortcuts = @(@(
     (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Horizon CAD.lnk'),
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Horizon CAD.lnk')
-) | Where-Object { Test-Path $_ }
+) | Where-Object { Test-Path $_ })
 if ($shortcuts.Count -eq 0) { throw 'No "Horizon CAD" shortcut on the desktop' }
 $target = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcuts[0]).TargetPath
 if ($target -ne $exe) { throw "The shortcut starts $target, not $exe" }

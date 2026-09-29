@@ -11,6 +11,8 @@ name: Install check
 # drafted. Run it by hand (Actions ▸ Install check ▸ Run workflow) with the id
 # of an earlier Release run, the number in its URL, to check its packages.
 on:
+  push:  # TEMPORARY: to try the checks on this branch's Release run; dropped before merging
+    branches: [beta/clean-install-check]
   workflow_call:
     inputs:
       run-id:
@@ -29,7 +31,7 @@ permissions:
   actions: read  # another run's packages
 
 env:
-  PACKAGES_RUN: ${{ inputs.run-id }}
+  PACKAGES_RUN: ${{ inputs.run-id || (github.event_name == 'push' && '36500656490') || '' }}
 
 jobs:
   linux:
