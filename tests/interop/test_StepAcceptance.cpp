@@ -31,11 +31,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-const fs::path kCorpus{HZ_STEP_CORPUS_DIR};
+/// The corpus's folder (a function, not a static path: constructing one
+/// can throw, and nothing would catch it before main).
+fs::path corpusDir() {
+    return fs::path(HZ_STEP_CORPUS_DIR);
+}
 
 const std::vector<CorpusEntry>& corpus() {
     static const std::vector<CorpusEntry> entries =
-        hz::interop::readManifest(kCorpus / "manifest.json");
+        hz::interop::readManifest(corpusDir() / "manifest.json");
     return entries;
 }
 
@@ -95,7 +99,7 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
     const json& manifest = entry.manifest;
     WorkDir work;
     const StepSummary s =
-        hz::interop::summarize(kCorpus / entry.file, work.path(), entry.unitIfUnnamed);
+        hz::interop::summarize(corpusDir() / entry.file, work.path(), entry.unitIfUnnamed);
 
     // A known gap: it is still not read, and says why. Once it is, the
     // manifest says what it gives instead.
@@ -143,9 +147,9 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
         const double tolerance = expect.value("bounds_tolerance", 0.005) * diagonal;
         const hz::math::Vec3 got[2] = {s.bounds.min, s.bounds.max};
         double worst = 0.0;
-        for (int corner = 0; corner < 2; ++corner) {
+        for (std::size_t corner = 0; corner < 2; ++corner) {
             const double axes[3] = {got[corner].x, got[corner].y, got[corner].z};
-            for (int axis = 0; axis < 3; ++axis) {
+            for (std::size_t axis = 0; axis < 3; ++axis) {
                 worst = std::max(worst, std::abs(axes[axis] - bounds[corner][axis].get<double>()));
             }
         }
@@ -180,16 +184,17 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
             << "it reopens now: take reopen out of known_gaps";
     } else {
         ASSERT_TRUE(s.reopenedVolume.has_value()) << "kept as a part: " << s.reopenError;
-        EXPECT_TRUE(near(*s.reopenedVolume, s.facetedVolume, 1e-9))
-            << "kept as a part and read back: " << *s.reopenedVolume << " mm³, not "
-            << s.facetedVolume;
+        const double reopened = s.reopenedVolume.value_or(0.0);
+        EXPECT_TRUE(near(reopened, s.facetedVolume, 1e-9))
+            << "kept as a part and read back: " << reopened << " mm³, not " << s.facetedVolume;
     }
     if (s.parts > 0) {
         ASSERT_TRUE(s.keptComponents.has_value()) << "kept as an assembly: " << s.keepError;
-        EXPECT_EQ(*s.keptComponents, s.occurrences) << "kept as an assembly and read back";
+        EXPECT_EQ(s.keptComponents.value_or(0), s.occurrences)
+            << "kept as an assembly and read back";
     }
     ASSERT_TRUE(s.reimportedBodies.has_value()) << "sent out as STEP: " << s.exportError;
-    EXPECT_EQ(*s.reimportedBodies, s.bodies) << "sent out as STEP and read back";
+    EXPECT_EQ(s.reimportedBodies.value_or(0), s.bodies) << "sent out as STEP and read back";
     EXPECT_TRUE(near(s.reimportedVolume, s.facetedVolume, 2e-3))
         << "sent out as STEP and read back: " << s.reimportedVolume << " mm³, not "
         << s.facetedVolume;
@@ -204,7 +209,7 @@ TEST(StepCorpusManifest, EveryFileIsListedWithItsProvenance) {
     for (const CorpusEntry& entry : corpus()) {
         SCOPED_TRACE(entry.file);
         EXPECT_TRUE(listed.insert(entry.file).second) << "listed twice";
-        EXPECT_TRUE(fs::exists(kCorpus / entry.file)) << "not in the corpus";
+        EXPECT_TRUE(fs::exists(corpusDir() / entry.file)) << "not in the corpus";
         for (const char* field : {"source", "license", "exporter", "schema", "content"}) {
             EXPECT_TRUE(entry.manifest.contains(field) &&
                         !entry.manifest[field].get<std::string>().empty())
@@ -218,7 +223,7 @@ TEST(StepCorpusManifest, EveryFileIsListedWithItsProvenance) {
             }
         }
     }
-    for (const auto& file : fs::directory_iterator(kCorpus)) {
+    for (const auto& file : fs::directory_iterator(corpusDir())) {
         const std::string ext = file.path().extension().string();
         if (ext == ".step" || ext == ".stp" || ext == ".STEP" || ext == ".STP") {
             EXPECT_EQ(listed.count(file.path().filename().string()), 1u)
