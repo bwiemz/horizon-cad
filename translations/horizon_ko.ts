@@ -1639,6 +1639,334 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::ExchangeCommands</name>
+    <message>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+104"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">길이 단위가 주어지지 않음</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot;은(는) 길이의 단위를 밝히지 않거나, 이 버전이 읽을 수 없는 단위로 밝힙니다. 잘못 읽으면 모든 길이의 크기가 틀립니다.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">길이 단위:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Import STEP</source>
+        <translation type="unfinished">STEP 가져오기</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+8"/>
+        <source>STEP Files (*.step *.stp);;All Files (*)</source>
+        <translation type="unfinished">STEP 파일 (*.step *.stp);;모든 파일 (*)</translation>
+    </message>
+    <message>
+        <location line="-1"/>
+        <source>Import STEP as an Assembly</source>
+        <translation type="unfinished">STEP을 어셈블리로 가져오기</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Save the Assembly As</source>
+        <translation type="unfinished">어셈블리를 다른 이름으로 저장</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon Assemblies (*.hzasm)</source>
+        <translation type="unfinished">Horizon 어셈블리 (*.hzasm)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>A STEP import is already running</source>
+        <translation type="unfinished">STEP 가져오기가 이미 실행 중입니다</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Importing %1...</source>
+        <translation type="unfinished">%1 가져오는 중...</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+15"/>
+        <source>Ready</source>
+        <translation type="unfinished">준비</translation>
+    </message>
+    <message>
+        <location line="-14"/>
+        <source>Import cancelled</source>
+        <translation type="unfinished">가져오기가 취소되었습니다</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot;을(를) 가져오지 않았습니다: 길이의 단위가 주어지지 않았습니다</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
+        <source>Could not import</source>
+        <translation type="unfinished">가져올 수 없음</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-39"/>
+        <source>Imported %n bodies.</source>
+        <translation type="unfinished">
+            <numerusform>바디 %n개를 가져왔습니다.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+22"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>%n개 부품을 &quot;%1&quot;(으)로 가져왔습니다.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>어셈블리의 구성 요소는 %n개입니다.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>A DXF is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DXF는 어셈블리가 아닌 도면 또는 부품으로 가져옵니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+13"/>
+        <source>Import DXF</source>
+        <translation type="unfinished">DXF 가져오기</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>DXF Files (*.dxf);;All Files (*)</source>
+        <translation type="unfinished">DXF 파일 (*.dxf);;모든 파일 (*)</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+35"/>
+        <source>Imported %n entities.</source>
+        <translation type="unfinished">
+            <numerusform>개체 %n개를 가져왔습니다.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 export writes a part&apos;s body; this document has none</source>
+        <translation type="unfinished">%1 내보내기는 부품의 바디를 기록합니다. 이 문서에는 바디가 없습니다</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+170"/>
+        <location line="+44"/>
+        <source>Export %1</source>
+        <translation type="unfinished">%1 내보내기</translation>
+    </message>
+    <message>
+        <location line="-201"/>
+        <location line="+3"/>
+        <location line="+22"/>
+        <source>STEP</source>
+        <translation type="unfinished">STEP</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <location line="+22"/>
+        <source>STEP Files (*.step *.stp)</source>
+        <translation type="unfinished">STEP 파일 (*.step *.stp)</translation>
+    </message>
+    <message>
+        <location line="-18"/>
+        <location line="+28"/>
+        <location line="+52"/>
+        <location line="+17"/>
+        <location line="+17"/>
+        <location line="+103"/>
+        <source>Could not export</source>
+        <translation type="unfinished">내보낼 수 없음</translation>
+    </message>
+    <message>
+        <location line="-213"/>
+        <location line="+28"/>
+        <location line="+51"/>
+        <location line="+18"/>
+        <location line="+16"/>
+        <location line="+103"/>
+        <source>Exported %1.</source>
+        <translation type="unfinished">%1을(를) 내보냈습니다.</translation>
+    </message>
+    <message>
+        <location line="-207"/>
+        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
+        <translation type="unfinished">STEP 내보내기는 어셈블리의 구성 요소를 기록합니다. 이 어셈블리의 부품을 하나도 읽을 수 없습니다</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assembly</source>
+        <translation type="unfinished">어셈블리</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Left out: &quot;%1&quot;: its part could not be read</source>
+        <translation type="unfinished">생략됨: &quot;%1&quot;: 부품을 읽을 수 없습니다</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Left out: %1</source>
+        <translation type="unfinished">생략됨: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+8"/>
+        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
+        <translation type="unfinished">
+            <numerusform>곡면 %n개를 곡면 자체가 아닌 패싯으로 기록했습니다.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Export STEP</source>
+        <translation type="unfinished">STEP 내보내기</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>%n component(s) were not written.</source>
+        <translation type="unfinished">
+            <numerusform>구성 요소 %n개를 기록하지 않았습니다.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
+        <translation type="unfinished">부품은 모델링한 그대로 정확합니다. 다른 시스템에서는 해당 면이 평평한 패싯으로 표시됩니다.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+3"/>
+        <source>STL</source>
+        <translation type="unfinished">STL</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>STL Files (*.stl)</source>
+        <translation type="unfinished">STL 파일 (*.stl)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>glTF</source>
+        <translation type="unfinished">glTF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>glTF Binary (*.glb)</source>
+        <translation type="unfinished">glTF 바이너리 (*.glb)</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DXF export writes a drawing; this document has nothing drawn</source>
+        <translation type="unfinished">DXF 내보내기는 도면을 기록합니다. 이 문서에는 그려진 것이 없습니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>DXF</source>
+        <translation type="unfinished">DXF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>DXF Files (*.dxf)</source>
+        <translation type="unfinished">DXF 파일 (*.dxf)</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>PDF</source>
+        <translation type="unfinished">PDF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>SVG</source>
+        <translation type="unfinished">SVG</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 export plots a drawing, not an assembly</source>
+        <translation type="unfinished">%1 내보내기는 어셈블리가 아닌 도면을 출력합니다</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>%1 export plots a drawing; nothing visible is drawn</source>
+        <translation type="unfinished">%1 내보내기는 도면을 출력합니다. 표시된 요소가 없습니다</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Paper:</source>
+        <translation type="unfinished">용지:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Orientation:</source>
+        <translation type="unfinished">방향:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Landscape</source>
+        <translation type="unfinished">가로</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Portrait</source>
+        <translation type="unfinished">세로</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Scale:</source>
+        <translation type="unfinished">축척:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fit to paper</source>
+        <translation type="unfinished">용지에 맞춤</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Colours:</source>
+        <translation type="unfinished">색상:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>As drawn</source>
+        <translation type="unfinished">그린 그대로</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Black</source>
+        <translation type="unfinished">검은색</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
+        <translation type="unfinished">%1 축척에서는 도면이 용지보다 큽니다: 용지 밖의 부분은 잘립니다.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>PDF Files (*.pdf)</source>
+        <translation type="unfinished">PDF 파일 (*.pdf)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>SVG Files (*.svg)</source>
+        <translation type="unfinished">SVG 파일 (*.svg)</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::FeatureForm</name>
     <message>
         <location filename="../src/ui/src/FeatureForm.cpp" line="+104"/>
@@ -2016,12 +2344,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+641"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
     <message>
-        <location line="+69"/>
+        <location line="+78"/>
         <source>&amp;Edit</source>
         <translation>편집(&amp;E)</translation>
     </message>
@@ -2031,12 +2359,12 @@ begin building your part.</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-115"/>
+        <location line="-124"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
     <message>
-        <location line="-445"/>
+        <location line="-447"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">%2에서 시작하는 %1개 조각의 곡선</translation>
     </message>
@@ -2058,20 +2386,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+886"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">거리</translation>
     </message>
     <message>
-        <location line="-902"/>
-        <location line="+886"/>
+        <location line="-913"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">각도</translation>
     </message>
     <message>
-        <location line="-902"/>
+        <location line="-913"/>
         <source>Segments per turn</source>
         <translation type="unfinished">회전당 세그먼트 수</translation>
     </message>
@@ -2243,12 +2571,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1016"/>
+        <location line="+1047"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-954"/>
+        <location line="-983"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2293,17 +2621,17 @@ begin building your part.</source>
         <translation type="unfinished">가져오기(&amp;I)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP as a New Part...</source>
         <translation type="unfinished">STEP을 새 부품으로(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>STEP as an &amp;Assembly...</source>
         <translation type="unfinished">STEP을 어셈블리로(&amp;A)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF를 이 도면으로(&amp;D)...</translation>
     </message>
@@ -2313,27 +2641,27 @@ begin building your part.</source>
         <translation type="unfinished">내보내기(&amp;E)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP...</source>
         <translation type="unfinished">STEP(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>S&amp;TL...</source>
         <translation type="unfinished">STL(&amp;T)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;glTF...</source>
         <translation type="unfinished">glTF(&amp;G)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;DXF...</source>
         <translation type="unfinished">DXF(&amp;D)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;PDF...</source>
         <translation type="unfinished">PDF(&amp;P)...</translation>
     </message>
@@ -3236,12 +3564,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4158"/>
+        <location line="+3660"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-4234"/>
+        <location line="-3736"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3258,19 +3586,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+4007"/>
+        <location line="+3509"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-4070"/>
+        <location line="-3572"/>
         <location line="+64"/>
-        <location line="+4006"/>
+        <location line="+3508"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-4069"/>
+        <location line="-3571"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3310,22 +3638,8 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">치수</translation>
     </message>
-    <message numerus="yes">
-        <location line="+1745"/>
-        <source>Imported %n part(s) into &quot;%1&quot;.</source>
-        <translation type="unfinished">
-            <numerusform>%n개 부품을 &quot;%1&quot;(으)로 가져왔습니다.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>The assembly has %n component(s).</source>
-        <translation type="unfinished">
-            <numerusform>어셈블리의 구성 요소는 %n개입니다.</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+1766"/>
+        <location line="+3014"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3688,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1: &quot;%2&quot;에 그 값을 지정할 수 없습니다</translation>
     </message>
     <message>
-        <location line="-4340"/>
+        <location line="-3842"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -3476,12 +3790,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2883"/>
+        <location line="+2385"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
-        <location line="-2880"/>
+        <location line="-2382"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3810,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3025"/>
+        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">상자</translation>
     </message>
     <message>
-        <location line="-3024"/>
-        <location line="+3034"/>
+        <location line="-2526"/>
+        <location line="+2536"/>
         <source>Cylinder</source>
         <translation type="unfinished">원통</translation>
     </message>
     <message>
-        <location line="-3033"/>
-        <location line="+3040"/>
+        <location line="-2535"/>
+        <location line="+2542"/>
         <source>Sphere</source>
         <translation type="unfinished">구</translation>
     </message>
     <message>
-        <location line="-3039"/>
-        <location line="+3046"/>
+        <location line="-2541"/>
+        <location line="+2548"/>
         <source>Cone</source>
         <translation type="unfinished">원뿔</translation>
     </message>
     <message>
-        <location line="-3045"/>
-        <location line="+3056"/>
+        <location line="-2547"/>
+        <location line="+2558"/>
         <source>Torus</source>
         <translation type="unfinished">토러스</translation>
     </message>
     <message>
-        <location line="-3054"/>
+        <location line="-2556"/>
         <source>Features</source>
         <translation type="unfinished">피처</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3794"/>
+        <location line="+3296"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">돌출</translation>
     </message>
     <message>
-        <location line="-3839"/>
-        <location line="+3858"/>
+        <location line="-3341"/>
+        <location line="+3360"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">회전</translation>
     </message>
     <message>
-        <location line="-3884"/>
-        <location line="+4214"/>
+        <location line="-3386"/>
+        <location line="+3716"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>
     <message>
-        <location line="-4212"/>
+        <location line="-3714"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">바디 결합</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3965"/>
+        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">합집합</translation>
     </message>
     <message>
-        <location line="-3964"/>
-        <location line="+3968"/>
+        <location line="-3466"/>
+        <location line="+3470"/>
         <source>Subtract</source>
         <translation type="unfinished">빼기</translation>
     </message>
     <message>
-        <location line="-3967"/>
-        <location line="+3971"/>
+        <location line="-3469"/>
+        <location line="+3473"/>
         <source>Intersect</source>
         <translation type="unfinished">교차</translation>
     </message>
     <message>
-        <location line="-3966"/>
-        <location line="+4035"/>
+        <location line="-3468"/>
+        <location line="+3537"/>
         <source>Shell</source>
         <translation type="unfinished">쉘</translation>
     </message>
     <message>
-        <location line="-4034"/>
-        <location line="+4054"/>
+        <location line="-3536"/>
+        <location line="+3556"/>
         <source>Draft</source>
         <translation type="unfinished">구배</translation>
     </message>
     <message>
-        <location line="-4052"/>
+        <location line="-3554"/>
         <source>Pattern</source>
         <translation type="unfinished">패턴</translation>
     </message>
@@ -3615,18 +3929,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+982"/>
-        <location line="+499"/>
-        <location line="+15"/>
-        <location line="+466"/>
+        <location line="+986"/>
+        <location line="+478"/>
         <location line="+1439"/>
-        <location line="+1203"/>
+        <location line="+1201"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-4687"/>
+        <location line="-4187"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -3647,17 +3959,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4343"/>
+        <location line="+3845"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-4337"/>
+        <location line="-3839"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+291"/>
+        <location line="+311"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -3790,7 +4102,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">어셈블리 %1</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location filename="../src/ui/src/TypedUnits.cpp" line="+41"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">밀리미터 (mm)</translation>
     </message>
@@ -3815,7 +4127,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">피트 (ft)</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+48"/>
         <source>Document Units</source>
         <translation type="unfinished">문서 단위</translation>
     </message>
@@ -3972,12 +4284,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-233"/>
-        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
-        <location line="-758"/>
+        <location line="+22"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">도면</translation>
@@ -4147,12 +4458,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
     <message>
-        <location line="-341"/>
+        <location line="+3"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">근사 처리됨: %1</translation>
     </message>
@@ -4177,302 +4487,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">생략된 항목은 문서에 포함되지 않으며, 저장해도 보존되지 않습니다.</translation>
     </message>
     <message>
-        <location line="+52"/>
-        <source>Length Unit Not Given</source>
-        <translation type="unfinished">길이 단위가 주어지지 않음</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
-        <translation type="unfinished">&quot;%1&quot;은(는) 길이의 단위를 밝히지 않거나, 이 버전이 읽을 수 없는 단위로 밝힙니다. 잘못 읽으면 모든 길이의 크기가 틀립니다.</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Its lengths are in:</source>
-        <translation type="unfinished">길이 단위:</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Import STEP</source>
-        <translation type="unfinished">STEP 가져오기</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <location line="+8"/>
-        <source>STEP Files (*.step *.stp);;All Files (*)</source>
-        <translation type="unfinished">STEP 파일 (*.step *.stp);;모든 파일 (*)</translation>
-    </message>
-    <message>
-        <location line="-1"/>
-        <source>Import STEP as an Assembly</source>
-        <translation type="unfinished">STEP을 어셈블리로 가져오기</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Save the Assembly As</source>
-        <translation type="unfinished">어셈블리를 다른 이름으로 저장</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Horizon Assemblies (*.hzasm)</source>
-        <translation type="unfinished">Horizon 어셈블리 (*.hzasm)</translation>
-    </message>
-    <message>
-        <location line="+18"/>
-        <source>A STEP import is already running</source>
-        <translation type="unfinished">STEP 가져오기가 이미 실행 중입니다</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Importing %1...</source>
-        <translation type="unfinished">%1 가져오는 중...</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Import cancelled</source>
-        <translation type="unfinished">가져오기가 취소되었습니다</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
-        <translation type="unfinished">&quot;%1&quot;을(를) 가져오지 않았습니다: 길이의 단위가 주어지지 않았습니다</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <location line="+25"/>
-        <location line="+6"/>
-        <location line="+28"/>
-        <source>Could not import</source>
-        <translation type="unfinished">가져올 수 없음</translation>
-    </message>
-    <message numerus="yes">
-        <location line="-39"/>
-        <source>Imported %n bodies.</source>
-        <translation type="unfinished">
-            <numerusform>바디 %n개를 가져왔습니다.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+28"/>
-        <source>A DXF is imported into a drawing or part, not an assembly</source>
-        <translation type="unfinished">DXF는 어셈블리가 아닌 도면 또는 부품으로 가져옵니다</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <location line="+14"/>
-        <source>Import DXF</source>
-        <translation type="unfinished">DXF 가져오기</translation>
-    </message>
-    <message>
-        <location line="-13"/>
-        <source>DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">DXF 파일 (*.dxf);;모든 파일 (*)</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+35"/>
-        <source>Imported %n entities.</source>
-        <translation type="unfinished">
-            <numerusform>개체 %n개를 가져왔습니다.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export writes a part&apos;s body; this document has none</source>
-        <translation type="unfinished">%1 내보내기는 부품의 바디를 기록합니다. 이 문서에는 바디가 없습니다</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+171"/>
-        <location line="+43"/>
-        <source>Export %1</source>
-        <translation type="unfinished">%1 내보내기</translation>
-    </message>
-    <message>
-        <location line="-201"/>
-        <location line="+3"/>
-        <location line="+22"/>
-        <source>STEP</source>
-        <translation type="unfinished">STEP</translation>
-    </message>
-    <message>
-        <location line="-22"/>
-        <location line="+22"/>
-        <source>STEP Files (*.step *.stp)</source>
-        <translation type="unfinished">STEP 파일 (*.step *.stp)</translation>
-    </message>
-    <message>
-        <location line="-18"/>
-        <location line="+27"/>
-        <location line="+52"/>
-        <location line="+17"/>
-        <location line="+18"/>
-        <location line="+103"/>
-        <source>Could not export</source>
-        <translation type="unfinished">내보낼 수 없음</translation>
-    </message>
-    <message>
-        <location line="-213"/>
-        <location line="+27"/>
-        <location line="+51"/>
-        <location line="+18"/>
-        <location line="+17"/>
-        <location line="+103"/>
-        <source>Exported %1.</source>
-        <translation type="unfinished">%1을(를) 내보냈습니다.</translation>
-    </message>
-    <message>
-        <location line="-207"/>
-        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
-        <translation type="unfinished">STEP 내보내기는 어셈블리의 구성 요소를 기록합니다. 이 어셈블리의 부품을 하나도 읽을 수 없습니다</translation>
-    </message>
-    <message>
-        <location line="+30"/>
-        <source>Left out: &quot;%1&quot;: its part could not be read</source>
-        <translation type="unfinished">생략됨: &quot;%1&quot;: 부품을 읽을 수 없습니다</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+11"/>
-        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
-        <translation type="unfinished">
-            <numerusform>곡면 %n개를 곡면 자체가 아닌 패싯으로 기록했습니다.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Export STEP</source>
-        <translation type="unfinished">STEP 내보내기</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>%n component(s) were not written.</source>
-        <translation type="unfinished">
-            <numerusform>구성 요소 %n개를 기록하지 않았습니다.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
-        <translation type="unfinished">부품은 모델링한 그대로 정확합니다. 다른 시스템에서는 해당 면이 평평한 패싯으로 표시됩니다.</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+3"/>
-        <source>STL</source>
-        <translation type="unfinished">STL</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>STL Files (*.stl)</source>
-        <translation type="unfinished">STL 파일 (*.stl)</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+3"/>
-        <source>glTF</source>
-        <translation type="unfinished">glTF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>glTF Binary (*.glb)</source>
-        <translation type="unfinished">glTF 바이너리 (*.glb)</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>DXF export writes a drawing; this document has nothing drawn</source>
-        <translation type="unfinished">DXF 내보내기는 도면을 기록합니다. 이 문서에는 그려진 것이 없습니다</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>DXF</source>
-        <translation type="unfinished">DXF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>DXF Files (*.dxf)</source>
-        <translation type="unfinished">DXF 파일 (*.dxf)</translation>
-    </message>
-    <message>
-        <location line="+27"/>
-        <source>PDF</source>
-        <translation type="unfinished">PDF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>SVG</source>
-        <translation type="unfinished">SVG</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>%1 export plots a drawing, not an assembly</source>
-        <translation type="unfinished">%1 내보내기는 어셈블리가 아닌 도면을 출력합니다</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export plots a drawing; nothing visible is drawn</source>
-        <translation type="unfinished">%1 내보내기는 도면을 출력합니다. 표시된 요소가 없습니다</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Paper:</source>
-        <translation type="unfinished">용지:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Orientation:</source>
-        <translation type="unfinished">방향:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Landscape</source>
-        <translation type="unfinished">가로</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Portrait</source>
-        <translation type="unfinished">세로</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Scale:</source>
-        <translation type="unfinished">축척:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Fit to paper</source>
-        <translation type="unfinished">용지에 맞춤</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Colours:</source>
-        <translation type="unfinished">색상:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>As drawn</source>
-        <translation type="unfinished">그린 그대로</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Black</source>
-        <translation type="unfinished">검은색</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
-        <translation type="unfinished">%1 축척에서는 도면이 용지보다 큽니다: 용지 밖의 부분은 잘립니다.</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>PDF Files (*.pdf)</source>
-        <translation type="unfinished">PDF 파일 (*.pdf)</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>SVG Files (*.svg)</source>
-        <translation type="unfinished">SVG 파일 (*.svg)</translation>
-    </message>
-    <message>
-        <location line="+45"/>
+        <location line="+32"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되었습니다: 변경 내용을 보려면 닫았다가 다시 여십시오</translation>
     </message>
@@ -5635,7 +5650,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">모델 다시 빌드 중...</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+62"/>
         <source>Importing %1: %2 of %3 parts written...</source>
         <translation type="unfinished">%1 가져오는 중: 부품 %3개 중 %2개 기록됨...</translation>
     </message>
@@ -5645,7 +5660,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-4703"/>
+        <location line="-4203"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

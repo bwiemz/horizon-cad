@@ -13,6 +13,10 @@ class Document;
 class DocumentManager;
 }  // namespace hz::doc
 
+namespace hz::io {
+struct ImportReport;
+}  // namespace hz::io
+
 namespace hz::ui {
 
 class Tool;
@@ -67,6 +71,21 @@ public:
     /// Tell the user what of @p fileName was left out when it was read
     /// (@p items, each with why), and that its document is not saved over it.
     virtual void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) = 0;
+    /// Tell the user what reading @p fileName left out or changed; with
+    /// @p notSavedOver, that its document is not saved over it.
+    virtual void showImportReport(const QString& fileName, const io::ImportReport& report,
+                                  bool notSavedOver = false) = 0;
+    /// Whether @p fileName may be written: asked when it is the file the
+    /// active document was read from in part, which it would lose.
+    virtual bool mayReplaceSource(const QString& fileName) = 0;
+
+    /// The active tab's title.
+    virtual QString currentTitle() = 0;
+    /// The panels (layers, properties, the trees) and the view shown again
+    /// for the active document, changed by more than a command's step.
+    virtual void refreshPanels() = 0;
+    /// Build the active part again, on a worker when it is slow, and show it.
+    virtual void rebuildModel() = 0;
 
     /// Whether work of this size goes to a worker thread: the window's
     /// rebuild mode decides (Always; Auto for @p large work; Never).

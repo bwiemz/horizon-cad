@@ -143,6 +143,7 @@
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ToolManager.h"
 #include "horizon/ui/TrimTool.h"
+#include "horizon/ui/TypedUnits.h"
 #include "horizon/ui/VariablesDialog.h"
 #include "horizon/ui/ViewportWidget.h"
 
@@ -535,6 +536,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_viewport->setComponentDragger(m_assemblies.get());
     // Drawing sheets made from parts (Phase 148).
     m_drawings = std::make_unique<DrawingWorkbench>(static_cast<WorkbenchHost&>(*this));
+    m_exchange = std::make_unique<ExchangeCommands>(static_cast<WorkbenchHost&>(*this),
+                                                    *m_assemblies, *m_drawings);
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
@@ -601,7 +604,7 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() {
     // Stop work on workers before anything it could report to is gone.
     m_rebuildJob.reset();
-    m_importTask.reset();
+    m_exchange.reset();
     m_viewport->setComponentDragger(nullptr);
     m_assemblies.reset();
     m_openTask.reset();
@@ -670,21 +673,30 @@ void MainWindow::createMenus() {
     fileMenu->addSeparator();
 
     QMenu* importMenu = fileMenu->addMenu(tr("&Import"));
-    importMenu->addAction(tr("&STEP as a New Part..."), this, &MainWindow::onImportStep)
+    importMenu
+        ->addAction(tr("&STEP as a New Part..."), this, [this] { m_exchange->onImportStep(); })
         ->setObjectName(QStringLiteral("import_step"));
-    importMenu->addAction(tr("STEP as an &Assembly..."), this, &MainWindow::onImportStepAssembly)
+    importMenu
+        ->addAction(tr("STEP as an &Assembly..."), this,
+                    [this] { m_exchange->onImportStepAssembly(); })
         ->setObjectName(QStringLiteral("import_step_assembly"));
-    importMenu->addAction(tr("&DXF into This Drawing..."), this, &MainWindow::onImportDxf)
+    importMenu
+        ->addAction(tr("&DXF into This Drawing..."), this, [this] { m_exchange->onImportDxf(); })
         ->setObjectName(QStringLiteral("import_dxf"));
 
     QMenu* exportMenu = fileMenu->addMenu(tr("&Export"));
-    QAction* exportStep = exportMenu->addAction(tr("&STEP..."), this, &MainWindow::onExportStep);
-    QAction* exportStl = exportMenu->addAction(tr("S&TL..."), this, &MainWindow::onExportStl);
-    QAction* exportGltf = exportMenu->addAction(tr("&glTF..."), this, &MainWindow::onExportGltf);
-    QAction* exportDxf = exportMenu->addAction(tr("&DXF..."), this, &MainWindow::onExportDxf);
-    QAction* exportPdf = exportMenu->addAction(tr("&PDF..."), this, [this] { onExportPlot(true); });
+    QAction* exportStep =
+        exportMenu->addAction(tr("&STEP..."), this, [this] { m_exchange->onExportStep(); });
+    QAction* exportStl =
+        exportMenu->addAction(tr("S&TL..."), this, [this] { m_exchange->onExportStl(); });
+    QAction* exportGltf =
+        exportMenu->addAction(tr("&glTF..."), this, [this] { m_exchange->onExportGltf(); });
+    QAction* exportDxf =
+        exportMenu->addAction(tr("&DXF..."), this, [this] { m_exchange->onExportDxf(); });
+    QAction* exportPdf =
+        exportMenu->addAction(tr("&PDF..."), this, [this] { m_exchange->onExportPlot(true); });
     QAction* exportSvg =
-        exportMenu->addAction(tr("S&VG..."), this, [this] { onExportPlot(false); });
+        exportMenu->addAction(tr("S&VG..."), this, [this] { m_exchange->onExportPlot(false); });
     exportPdf->setObjectName(QStringLiteral("export_pdf"));
     exportSvg->setObjectName(QStringLiteral("export_svg"));
     exportStep->setObjectName(QStringLiteral("export_step"));
@@ -1293,7 +1305,7 @@ void MainWindow::createStatusBar() {
             m_rebuildAgain = false;
             m_rebuildJob->cancel();
         }
-        if (m_importTask) m_importTask->cancel();
+        m_exchange->cancelWork();
         m_assemblies->cancelWork();
         if (m_openTask) m_openTask->cancel();  // dropped once it is read
         if (m_reloadTask) m_reloadTask->cancel();
@@ -1476,6 +1488,26 @@ void MainWindow::activateTabDocument() {
 
 void MainWindow::addTab(std::shared_ptr<doc::Document> document, const QString& title) {
     addDocumentTab(std::move(document), nullptr, title);
+}
+
+QString MainWindow::currentTitle() {
+    const DocTab* tab = activeTab();
+    return tab ? tab->title : QString();
+}
+
+void MainWindow::refreshPanels() {
+    refreshAllPanels();
+    m_viewport->update();
+}
+
+void MainWindow::backgroundWorkChanged() {
+    // A STEP assembly's parts are counted as they are written.
+    if (m_exchange && m_exchange->busy()) {
+        m_rebuildPoll->start();
+    } else if (!m_rebuildJob) {
+        m_rebuildPoll->stop();
+    }
+    updateBusyIndicator();
 }
 
 void MainWindow::runTool(std::unique_ptr<Tool> tool) {
@@ -1984,25 +2016,9 @@ void MainWindow::onPreferences() {
     applyPreferences(prefs);
 }
 
-QString MainWindow::lengthUnitName(math::LengthUnit unit) {
-    switch (unit) {
-        case math::LengthUnit::Millimetre:
-            return tr("Millimetres (mm)");
-        case math::LengthUnit::Centimetre:
-            return tr("Centimetres (cm)");
-        case math::LengthUnit::Metre:
-            return tr("Metres (m)");
-        case math::LengthUnit::Inch:
-            return tr("Inches (in)");
-        case math::LengthUnit::Foot:
-            return tr("Feet (ft)");
-    }
-    return QString();
-}
-
 void MainWindow::onDocumentUnits() {
     // Each unit by its name and symbol, in the order they are offered.
-    const auto nameOf = &MainWindow::lengthUnitName;
+    const auto nameOf = &lengthUnitName;
     QStringList names;
     int current = 0;
     for (std::size_t k = 0; k < math::kLengthUnits.size(); ++k) {
@@ -2711,510 +2727,6 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
             : tr("What was left out is not in the document, and saving will not keep it."));
     box.setDetailedText(lines.join(QLatin1Char('\n')));
     box.exec();
-}
-
-MainWindow::StepLoad MainWindow::loadStep(const std::string& path, const std::string& assemblyPath,
-                                          const std::atomic<bool>* cancelled,
-                                          const io::StepReadOptions& options,
-                                          const std::shared_ptr<ImportProgress>& progress) {
-    StepLoad load;
-    load.assemblyPath = assemblyPath;
-    if (assemblyPath.empty()) {
-        load.solids = io::StepFormat::load(path, &load.report, cancelled, options);
-        if (load.solids.empty()) load.error = io::StepFormat::lastError();
-    } else {
-        load.assembly = io::StepFormat::loadAssembly(path, &load.report, cancelled, options);
-        if (load.assembly.parts.empty()) load.error = io::StepFormat::lastError();
-    }
-    // Asked on the thread that read: what it says is that thread's.
-    load.unitUnknown = io::StepFormat::lastLengthUnitUnknown();
-    const bool stopped = cancelled != nullptr && cancelled->load();
-    if (!assemblyPath.empty() && !load.assembly.parts.empty() && !stopped) {
-        // Each part a part file, in a folder named for the assembly beside
-        // it: the assembly refers to its parts by their files. Built and
-        // written here, where it was read; stopped, or failed, it leaves
-        // nothing behind.
-        const QFileInfo kept(QString::fromStdString(assemblyPath));
-        const QString partsDir =
-            kept.dir().filePath(kept.completeBaseName() + QStringLiteral(" parts"));
-        io::StepAssemblyProgress told;
-        if (progress) {
-            told = [progress](std::size_t written, std::size_t total) {
-                progress->total = total;
-                progress->written = written;
-            };
-        }
-        load.kept =
-            io::saveStepAssembly(load.assembly, assemblyPath, partsDir.toStdString(),
-                                 QFileInfo(QString::fromStdString(path)).fileName().toStdString(),
-                                 &load.files, &load.error, cancelled, told);
-    }
-    return load;
-}
-
-std::optional<math::LengthUnit> MainWindow::askStepLengthUnit(const QString& fileName) {
-    QStringList names;
-    int current = 0;
-    for (std::size_t k = 0; k < math::kLengthUnits.size(); ++k) {
-        names << lengthUnitName(math::kLengthUnits[k]);
-        // The unit new documents are made in: the likeliest.
-        if (math::kLengthUnits[k] == m_docManager.newDocumentUnit()) current = static_cast<int>(k);
-    }
-    FeatureForm form(this, tr("Length Unit Not Given"), m_docManager.newDocumentUnit());
-    auto* note = new QLabel(tr("\"%1\" does not say which unit its lengths are in, or says it in "
-                               "one this version cannot read. Read wrong, every length is the "
-                               "wrong size.")
-                                .arg(QFileInfo(fileName).fileName()),
-                            &form.dialog());
-    note->setWordWrap(true);
-    form.dialog().layout()->addWidget(note);
-    QComboBox* unit = form.choice(QStringLiteral("unit"), tr("Its lengths are in:"), names);
-    unit->setCurrentIndex(current);
-    if (!form.exec()) return std::nullopt;
-    return math::kLengthUnits[static_cast<std::size_t>(std::max(unit->currentIndex(), 0))];
-}
-
-void MainWindow::onImportStep() {
-    const QString fileName = QFileDialog::getOpenFileName(
-        this, tr("Import STEP"), QString(), tr("STEP Files (*.step *.stp);;All Files (*)"));
-    if (fileName.isEmpty()) return;
-    startStepImport(fileName, QString());
-}
-
-void MainWindow::onImportStepAssembly() {
-    const QString fileName =
-        QFileDialog::getOpenFileName(this, tr("Import STEP as an Assembly"), QString(),
-                                     tr("STEP Files (*.step *.stp);;All Files (*)"));
-    if (fileName.isEmpty()) return;
-    // Where the assembly goes; its parts go in a folder beside it.
-    const QFileInfo step(fileName);
-    QString assemblyPath = QFileDialog::getSaveFileName(
-        this, tr("Save the Assembly As"),
-        step.dir().filePath(step.completeBaseName() + QStringLiteral(".hzasm")),
-        tr("Horizon Assemblies (*.hzasm)"));
-    if (assemblyPath.isEmpty()) return;
-    if (QFileInfo(assemblyPath).suffix().isEmpty()) assemblyPath += QStringLiteral(".hzasm");
-    startStepImport(fileName, assemblyPath);
-}
-
-void MainWindow::startStepImport(const QString& fileName, const QString& assemblyPath,
-                                 const io::StepReadOptions& options) {
-    const std::string path = fileName.toStdString();
-    const std::string keptAt = assemblyPath.toStdString();
-    // An assembly goes to a worker however small its file: a few kilobytes
-    // can name many parts, each built and written before the window is free.
-    const bool onWorker = m_rebuildMode == RebuildMode::Always ||
-                          (m_rebuildMode == RebuildMode::Auto &&
-                           (!keptAt.empty() || QFileInfo(fileName).size() >= kWorkerImportBytes));
-    if (!onWorker) {
-        finishStepImport(fileName, loadStep(path, keptAt, nullptr, options));
-        return;
-    }
-    if (m_importTask) {
-        statusBar()->showMessage(tr("A STEP import is already running"));
-        return;
-    }
-    m_importFile = fileName;
-    m_importProgress = std::make_shared<ImportProgress>();
-    m_importTask = std::make_unique<BackgroundTask<StepLoad>>(
-        [path, keptAt, options, progress = m_importProgress](const std::atomic<bool>& cancelled) {
-            return loadStep(path, keptAt, &cancelled, options, progress);
-        });
-    m_importTask->start([this] {
-        QMetaObject::invokeMethod(this, &MainWindow::onImportFinished, Qt::QueuedConnection);
-    });
-    m_statusPrompt->setText(tr("Importing %1...").arg(QFileInfo(fileName).fileName()));
-    m_rebuildPoll->start();  // the parts written, as they are
-    updateBusyIndicator();
-}
-
-void MainWindow::onImportFinished() {
-    if (!m_importTask || !m_importTask->finished()) return;
-    const std::unique_ptr<BackgroundTask<StepLoad>> task = std::move(m_importTask);
-    m_importProgress.reset();
-    if (!m_rebuildJob) m_rebuildPoll->stop();
-    updateBusyIndicator();
-    if (task->cancelled()) {
-        // Cancelled once its files were written: they go too.
-        StepLoad late = task->take();
-        if (late.kept) io::removeStepAssemblyFiles(late.files);
-        m_statusPrompt->setText(tr("Ready"));
-        statusBar()->showMessage(tr("Import cancelled"), 10000);
-        return;
-    }
-    StepLoad load = task->take();
-    if (!task->error().empty()) load.error = task->error();
-    finishStepImport(m_importFile, std::move(load));
-}
-
-void MainWindow::finishStepImport(const QString& fileName, StepLoad load) {
-    if (load.unitUnknown) {
-        // Not guessed: a file in inches read as millimetres is 25.4 times
-        // too small. Its user says which, or it is not read.
-        const auto unit = askStepLengthUnit(fileName);
-        if (!unit) {
-            m_statusPrompt->setText(tr("Ready"));
-            statusBar()->showMessage(
-                tr("\"%1\" was not imported: which unit its lengths are in was not given")
-                    .arg(QFileInfo(fileName).fileName()),
-                15000);
-            return;
-        }
-        io::StepReadOptions options;
-        options.unknownLengthUnit = *unit;
-        startStepImport(fileName, QString::fromStdString(load.assemblyPath), options);
-        return;
-    }
-    if (!load.assemblyPath.empty()) {
-        finishStepAssemblyImport(fileName, std::move(load));
-        return;
-    }
-    const std::string path = fileName.toStdString();
-    if (load.solids.empty()) {
-        reportFileError(tr("Could not import"), path, load.error);
-        return;
-    }
-
-    // A new part, one body per solid, each kept in the part itself so it does
-    // not depend on the STEP file any more.
-    auto document = m_docManager.newDocument(doc::DocumentType::Part);
-    const std::string source = QFileInfo(fileName).fileName().toStdString();
-    const auto count = static_cast<int>(load.solids.size());
-    for (auto& solid : load.solids) {
-        document->featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
-            std::shared_ptr<const topo::Solid>(std::move(solid)), source));
-    }
-    document->rebuildModel();
-    document->setDirty(true);  // it has not been saved anywhere yet
-    addDocumentTab(std::move(document), nullptr, QFileInfo(fileName).completeBaseName());
-    rebuildFeatureTree();
-    m_viewport->camera().setIsometricView();
-    m_viewport->update();
-    showImportReport(QFileInfo(fileName).fileName(), load.report);
-    m_statusPrompt->setText(tr("Imported %n bodies.", "", count));
-}
-
-void MainWindow::finishStepAssemblyImport(const QString& fileName, StepLoad load) {
-    if (load.assembly.parts.empty()) {
-        reportFileError(tr("Could not import"), fileName.toStdString(), load.error);
-        return;
-    }
-    // Its files were written where it was read (loadStep); one that could not
-    // be took the others with it.
-    if (!load.kept) {
-        reportFileError(tr("Could not import"), load.assemblyPath, load.error);
-        return;
-    }
-    const QString partsDir = QString::fromStdString(load.files.partsDir);
-    const auto parts = static_cast<int>(load.assembly.parts.size());
-    const auto placed = static_cast<int>(load.assembly.occurrences.size());
-    if (!openPath(QString::fromStdString(load.files.assembly))) return;
-    showImportReport(QFileInfo(fileName).fileName(), load.report);
-    m_statusPrompt->setText(
-        // Two sentences, each whole: one split across two messages could not
-        // be translated.
-        tr("Imported %n part(s) into \"%1\".", "", parts).arg(QDir::toNativeSeparators(partsDir)) +
-        QLatin1Char(' ') + tr("The assembly has %n component(s).", "", placed));
-}
-
-void MainWindow::onImportDxf() {
-    if (m_assembly) {
-        statusBar()->showMessage(tr("A DXF is imported into a drawing or part, not an assembly"));
-        return;
-    }
-    const QString fileName = QFileDialog::getOpenFileName(this, tr("Import DXF"), QString(),
-                                                          tr("DXF Files (*.dxf);;All Files (*)"));
-    if (fileName.isEmpty()) return;
-    const std::string path = fileName.toStdString();
-    doc::Document imported;
-    std::string error;
-    io::ImportReport report;
-    if (!io::DxfFormat::load(path, imported, &error, &report)) {
-        reportFileError(tr("Could not import"), path, error);
-        return;
-    }
-
-    // Its layers and block definitions (one of the same name already here is
-    // kept) and its entities come in as one undoable step.
-    auto composite = std::make_unique<doc::CompositeCommand>(tr("Import DXF").toStdString());
-    auto& layers = m_document->layerManager();
-    for (const auto& name : imported.layerManager().layerNames()) {
-        if (!layers.getLayer(name)) {
-            composite->addCommand(std::make_unique<doc::AddLayerCommand>(
-                layers, *imported.layerManager().getLayer(name)));
-        }
-    }
-    auto& target = m_document->draftDocument();
-    for (const auto& name : imported.draftDocument().blockTable().blockNames()) {
-        if (!target.blockTable().findBlock(name)) {
-            composite->addCommand(std::make_unique<doc::AddBlockDefinitionCommand>(
-                target, imported.draftDocument().blockTable().findBlock(name)));
-        }
-    }
-    for (const auto& entity : imported.draftDocument().entities()) {
-        composite->addCommand(std::make_unique<doc::AddEntityCommand>(target, entity));
-    }
-    const auto count = static_cast<int>(imported.draftDocument().entities().size());
-    if (!composite->empty()) m_document->undoStack().push(std::move(composite));
-    refreshAllPanels();
-    m_viewport->update();
-    m_statusPrompt->setText(tr("Imported %n entities.", "", count));
-    showImportReport(QFileInfo(fileName).fileName(), report);
-}
-
-const topo::Solid* MainWindow::solidToExport(const QString& format) {
-    const topo::Solid* solid = m_assembly ? nullptr : m_document->solid();
-    if (!solid) {
-        statusBar()->showMessage(
-            tr("%1 export writes a part's body; this document has none").arg(format));
-    }
-    return solid;
-}
-
-QString MainWindow::askExportPath(const QString& format, const QString& filter,
-                                  const QString& suffix) {
-    QString fileName =
-        QFileDialog::getSaveFileName(this, tr("Export %1").arg(format), QString(), filter);
-    if (!fileName.isEmpty() && QFileInfo(fileName).suffix().isEmpty()) fileName += suffix;
-    // An export is written over the file the document was read from in part
-    // (a DXF, exported as one) only as a save is: when its user says so.
-    if (!fileName.isEmpty() && !mayReplaceSource(fileName)) return {};
-    return fileName;
-}
-
-void MainWindow::onExportStep() {
-    if (m_assembly) {
-        exportAssemblyStep();
-        return;
-    }
-    const topo::Solid* solid = solidToExport(tr("STEP"));
-    if (!solid) return;
-    const QString fileName =
-        askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
-    if (fileName.isEmpty()) return;
-    io::StepFormat::WriteReport report;
-    if (!io::StepFormat::save(fileName.toStdString(), {solid}, {}, &report)) {
-        reportFileError(tr("Could not export"), fileName.toStdString(),
-                        io::StepFormat::lastError());
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
-    showStepExportReport(report);
-}
-
-void MainWindow::exportAssemblyStep() {
-    // Each part once, and each component a use of it where it is placed.
-    const AssemblyWorkbench::StepExport gathered = m_assemblies->stepExport();
-    if (gathered.occurrences.empty()) {
-        statusBar()->showMessage(
-            tr("STEP export writes an assembly's components; none of this one's parts can be "
-               "read"));
-        return;
-    }
-    const QString fileName =
-        askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
-    if (fileName.isEmpty()) return;
-    const QString title =
-        m_assembly->filePath().empty()
-            ? tr("Assembly")
-            : QFileInfo(QString::fromStdString(m_assembly->filePath())).completeBaseName();
-    io::StepFormat::WriteReport report;
-    if (!io::StepFormat::saveAssembly(fileName.toStdString(), title.toStdString(), gathered.parts,
-                                      gathered.occurrences, {}, &report)) {
-        reportFileError(tr("Could not export"), fileName.toStdString(),
-                        io::StepFormat::lastError());
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
-    showStepExportReport(report, gathered.unread);
-}
-
-void MainWindow::showStepExportReport(const io::StepWriteReport& report,
-                                      const std::vector<std::string>& unread) {
-    // Written as designed, but for faces that could not be: said, not
-    // left for the other system to find as a mesh of facets. And any
-    // component left out.
-    QStringList lines;
-    for (const std::string& name : unread) {
-        lines
-            << tr("Left out: \"%1\": its part could not be read").arg(QString::fromStdString(name));
-    }
-    for (const std::string& why : report.leftOut) {
-        lines << tr("Left out: %1").arg(QString::fromStdString(why));
-    }
-    for (const std::string& why : report.faceted) lines << QString::fromStdString(why);
-    if (lines.isEmpty()) return;
-    const auto leftOut = static_cast<int>(unread.size() + report.leftOut.size());
-    const QString faceted =
-        report.faceted.empty()
-            ? QString()
-            : tr("%n curved face(s) were written as their facets, not on their surfaces.", nullptr,
-                 static_cast<int>(report.faceted.size()));
-    QMessageBox box(leftOut > 0 ? QMessageBox::Warning : QMessageBox::Information,
-                    tr("Export STEP"),
-                    leftOut > 0 ? (tr("%n component(s) were not written.", nullptr, leftOut) +
-                                   (faceted.isEmpty() ? QString() : QStringLiteral(" ") + faceted))
-                                : faceted,
-                    QMessageBox::Ok, this);
-    if (!report.faceted.empty()) {
-        box.setInformativeText(
-            tr("The part is exact as modelled; other systems will see those "
-               "faces as flat facets."));
-    }
-    box.setDetailedText(lines.join(QLatin1Char('\n')));
-    box.exec();
-}
-
-void MainWindow::onExportStl() {
-    const topo::Solid* solid = solidToExport(tr("STL"));
-    if (!solid) return;
-    const QString fileName =
-        askExportPath(tr("STL"), tr("STL Files (*.stl)"), QStringLiteral(".stl"));
-    if (fileName.isEmpty()) return;
-    std::string error;
-    if (!io::StlExport::save(fileName.toStdString(), *solid, &error)) {
-        reportFileError(tr("Could not export"), fileName.toStdString(), error);
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
-}
-
-void MainWindow::onExportGltf() {
-    const topo::Solid* solid = solidToExport(tr("glTF"));
-    if (!solid) return;
-    const QString fileName =
-        askExportPath(tr("glTF"), tr("glTF Binary (*.glb)"), QStringLiteral(".glb"));
-    if (fileName.isEmpty()) return;
-    const DocTab* tab = activeTab();
-    const std::string name = tab ? tab->title.toStdString() : std::string("Part");
-    if (!io::GltfExport::saveSolid(
-            fileName.toStdString(), *solid,
-            render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f}, name)) {
-        reportFileError(tr("Could not export"), fileName.toStdString(),
-                        "the file could not be written");
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
-}
-
-void MainWindow::onExportDxf() {
-    if (m_assembly || m_document->draftDocument().entities().empty()) {
-        statusBar()->showMessage(
-            tr("DXF export writes a drawing; this document has nothing drawn"));
-        return;
-    }
-    const QString fileName =
-        askExportPath(tr("DXF"), tr("DXF Files (*.dxf)"), QStringLiteral(".dxf"));
-    if (fileName.isEmpty()) return;
-    std::string error;
-    if (!io::DxfFormat::save(fileName.toStdString(), *m_document, &error)) {
-        reportFileError(tr("Could not export"), fileName.toStdString(), error);
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
-}
-
-namespace {
-
-/// "1:50" as paper millimetres per drawing millimetre (0.02); "2:1" as 2; 0
-/// for anything else ("Fit to paper").
-double plotScaleFrom(const QString& text) {
-    const QStringList parts = text.split(QLatin1Char(':'));
-    if (parts.size() != 2) return 0.0;
-    bool paperOk = false;
-    bool drawingOk = false;
-    const double paper = parts[0].toDouble(&paperOk);
-    const double drawing = parts[1].toDouble(&drawingOk);
-    return paperOk && drawingOk && paper > 0.0 && drawing > 0.0 ? paper / drawing : 0.0;
-}
-
-}  // namespace
-
-void MainWindow::onExportPlot(bool pdf) {
-    const QString format = pdf ? tr("PDF") : tr("SVG");
-    if (m_assembly) {
-        statusBar()->showMessage(tr("%1 export plots a drawing, not an assembly").arg(format));
-        return;
-    }
-    const draft::DraftDocument& drawing = m_document->draftDocument();
-    const draft::PlotScene scene =
-        draft::buildPlotScene(drawing, m_document->layerManager(), drawing.dimensionStyle());
-    if (scene.empty()) {
-        statusBar()->showMessage(
-            tr("%1 export plots a drawing; nothing visible is drawn").arg(format));
-        return;
-    }
-
-    FeatureForm form(this, tr("Export %1").arg(format), m_document->lengthUnit());
-    QStringList papers;
-    for (const auto& size : draft::standardPaperSizes()) papers << QString::fromLatin1(size.name);
-    auto* paper = form.choice(QStringLiteral("paper"), tr("Paper:"), papers);
-    auto* orientation = form.choice(QStringLiteral("orientation"), tr("Orientation:"),
-                                    {tr("Landscape"), tr("Portrait")});
-    auto* scale =
-        form.choice(QStringLiteral("scale"), tr("Scale:"),
-                    {tr("Fit to paper"), QStringLiteral("1:1"), QStringLiteral("1:2"),
-                     QStringLiteral("1:5"), QStringLiteral("1:10"), QStringLiteral("1:20"),
-                     QStringLiteral("1:50"), QStringLiteral("1:100"), QStringLiteral("1:200"),
-                     QStringLiteral("2:1"), QStringLiteral("5:1"), QStringLiteral("10:1")});
-    auto* colours =
-        form.choice(QStringLiteral("colours"), tr("Colours:"), {tr("As drawn"), tr("Black")});
-    // A drawing sheet is drawn to size: plotted on its own paper, at 1:1.
-    if (const model::Sheet* sheet = m_drawings->paperOf(m_document.get())) {
-        const double shortSide = std::min(sheet->widthMm(), sheet->heightMm());
-        const double longSide = std::max(sheet->widthMm(), sheet->heightMm());
-        const auto& sizes = draft::standardPaperSizes();
-        for (size_t i = 0; i < sizes.size(); ++i) {
-            if (std::abs(sizes[i].widthMm - shortSide) < 0.5 &&
-                std::abs(sizes[i].heightMm - longSide) < 0.5) {
-                paper->setCurrentIndex(static_cast<int>(i));
-            }
-        }
-        orientation->setCurrentIndex(sheet->widthMm() >= sheet->heightMm() ? 0 : 1);
-        scale->setCurrentIndex(scale->findText(QStringLiteral("1:1")));
-    }
-    if (!form.exec()) return;
-
-    draft::PlotLayout layout;
-    const draft::PaperSize& size =
-        draft::standardPaperSizes()[static_cast<size_t>(std::max(paper->currentIndex(), 0))];
-    const bool landscape = orientation->currentIndex() == 0;
-    layout.paperWidthMm = landscape ? size.heightMm : size.widthMm;
-    layout.paperHeightMm = landscape ? size.widthMm : size.heightMm;
-    layout.scale = plotScaleFrom(scale->currentText());
-    layout.monochrome = colours->currentIndex() == 1;
-
-    // At a chosen scale the drawing may not fit: say so before cutting it off.
-    bool fits = true;
-    draft::plotTransform(scene, layout, &fits);
-    if (!fits) {
-        QMessageBox box(QMessageBox::Warning, tr("Export %1").arg(format),
-                        tr("At %1 the drawing is larger than the paper: what is outside it will be "
-                           "cut off.")
-                            .arg(scale->currentText()),
-                        QMessageBox::Save | QMessageBox::Cancel, this);
-        box.setDefaultButton(QMessageBox::Cancel);
-        if (box.exec() != QMessageBox::Save) return;
-    }
-
-    const QString fileName =
-        pdf ? askExportPath(format, tr("PDF Files (*.pdf)"), QStringLiteral(".pdf"))
-            : askExportPath(format, tr("SVG Files (*.svg)"), QStringLiteral(".svg"));
-    if (fileName.isEmpty()) return;
-    std::string error;
-    bool ok = false;
-    if (pdf) {
-        QString why;
-        ok = exportPdf(fileName, scene, layout, &why);
-        error = why.toStdString();
-    } else {
-        ok = io::SvgExport::save(fileName.toStdString(), scene, layout, &error);
-    }
-    if (!ok) {
-        reportFileError(tr("Could not export"), fileName.toStdString(), error);
-        return;
-    }
-    m_statusPrompt->setText(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
 }
 
 // ---------------------------------------------------------------------------
@@ -5876,7 +5388,7 @@ void MainWindow::startRebuild() {
 // ---------------------------------------------------------------------------
 
 bool MainWindow::backgroundWorkRunning() const {
-    return m_rebuildJob != nullptr || m_importTask != nullptr || m_assemblies->busy() ||
+    return m_rebuildJob != nullptr || m_exchange->busy() || m_assemblies->busy() ||
            m_openTask != nullptr || m_massTask != nullptr || m_reloadTask != nullptr;
 }
 
@@ -5917,7 +5429,7 @@ void MainWindow::updateRebuildProgress() {
     // Steps are shown for one piece of work alone that counts them: a
     // rebuild's features, or the parts of a STEP assembly as they are written.
     if (m_assemblies->busy() || m_openTask || m_massTask || m_reloadTask) return;
-    if (m_rebuildJob && !m_importTask) {
+    if (m_rebuildJob && !m_exchange->busy()) {
         const int total = m_rebuildJob->total();
         if (total > 0) {
             m_rebuildProgress->setRange(0, total);
@@ -5925,16 +5437,14 @@ void MainWindow::updateRebuildProgress() {
         }
         return;
     }
-    if (m_importTask && !m_rebuildJob && m_importProgress) {
-        const std::size_t total = m_importProgress->total.load();
-        if (total == 0) return;  // still reading: nothing written to count
-        const std::size_t written = std::min(m_importProgress->written.load(), total);
-        m_rebuildProgress->setRange(0, static_cast<int>(total));
-        m_rebuildProgress->setValue(static_cast<int>(written));
+    const auto importing = m_exchange->progress();
+    if (importing && !m_rebuildJob) {
+        m_rebuildProgress->setRange(0, static_cast<int>(importing->total));
+        m_rebuildProgress->setValue(static_cast<int>(importing->written));
         m_statusPrompt->setText(tr("Importing %1: %2 of %3 parts written...")
-                                    .arg(QFileInfo(m_importFile).fileName())
-                                    .arg(written)
-                                    .arg(total));
+                                    .arg(importing->file)
+                                    .arg(importing->written)
+                                    .arg(importing->total));
     }
 }
 
@@ -5944,7 +5454,7 @@ void MainWindow::onRebuildFinished() {
     const std::unique_ptr<RebuildJob> job = std::move(m_rebuildJob);
     const std::shared_ptr<doc::Document> document = std::move(m_rebuildDocument);
     bool again = std::exchange(m_rebuildAgain, false);
-    if (!m_importTask) m_rebuildPoll->stop();  // an import's parts are still counted
+    if (!m_exchange->busy()) m_rebuildPoll->stop();  // an import's parts are still counted
     updateBusyIndicator();
 
     DocTab* tab = nullptr;

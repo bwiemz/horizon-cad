@@ -14,7 +14,6 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
-#include "horizon/fileio/StepAssemblyFiles.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec2.h"
@@ -22,6 +21,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/Clipboard.h"
+#include "horizon/ui/ExchangeCommands.h"
 #include "horizon/ui/GettingStartedTour.h"
 #include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/PendingAdds.h"
@@ -108,7 +108,8 @@ public:
 
     /// How many times a model has been tessellated for the view (for tests).
     std::uint64_t tessellations() const { return m_tessellations; }
-    static constexpr qint64 kWorkerImportBytes = 1'000'000;  ///< and a file opened
+    static constexpr qint64 kWorkerImportBytes =
+        ExchangeCommands::kWorkerImportBytes;  ///< and a file opened
     /// Mass Properties measures the ideal on a worker, in Auto, for a part
     /// with at least this many faces on curved surfaces.
     static constexpr std::size_t kWorkerIdealFaces = 100;
@@ -183,17 +184,6 @@ private slots:
     void onAbout();
     void onSaveFile();
     void onSaveFileAs();
-    void onImportStep();
-    /// A STEP file kept as an assembly: its parts as part files (Phase 153).
-    void onImportStepAssembly();
-    void onImportDxf();
-    void onExportStep();
-    void onExportStl();
-    void onExportGltf();
-    void onExportDxf();
-    /// Plot the drawing to a PDF (@p pdf) or an SVG file, on a paper, at a
-    /// scale, chosen in a form.
-    void onExportPlot(bool pdf);
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
 
@@ -385,46 +375,6 @@ private:
     /// Show the progress bar and Cancel while anything runs on a worker.
     void updateBusyIndicator();
 
-    /// A STEP file read — on the GUI thread or a worker: into solids, or,
-    /// to be kept as an assembly at `assemblyPath`, into its parts and their
-    /// placements (Phase 153).
-    struct StepLoad {
-        std::vector<std::unique_ptr<topo::Solid>> solids;
-        io::StepAssembly assembly;
-        std::string assemblyPath;
-        io::ImportReport report;
-        std::string error;  ///< why nothing was read (lastError is per thread)
-        /// Nothing was read: the file does not say which unit its lengths
-        /// are in (StepFormat::lastLengthUnitUnknown).
-        bool unitUnknown = false;
-        /// Kept as an assembly: its files, written where it was read.
-        io::StepAssemblyFiles files;
-        bool kept = false;
-    };
-    /// How far a STEP assembly's parts are written, as the worker writing
-    /// them says: shown in the status bar.
-    struct ImportProgress {
-        std::atomic<std::size_t> written{0};
-        std::atomic<std::size_t> total{0};
-    };
-    /// Read @p path; to be kept as an assembly at @p assemblyPath, its parts
-    /// built and written as files there too, on the same thread (they took
-    /// the window's time once it was read), each counted into @p progress.
-    static StepLoad loadStep(const std::string& path, const std::string& assemblyPath = {},
-                             const std::atomic<bool>* cancelled = nullptr,
-                             const io::StepReadOptions& options = {},
-                             const std::shared_ptr<ImportProgress>& progress = nullptr);
-    /// Read @p fileName into a new part, or keep it as an assembly at
-    /// @p assemblyPath when one is given: on a worker when the file is large,
-    /// and for an assembly however small.
-    void startStepImport(const QString& fileName, const QString& assemblyPath,
-                         const io::StepReadOptions& options = {});
-    /// Ask which unit @p fileName's lengths are in, the file not saying:
-    /// none when its user cancels.
-    std::optional<math::LengthUnit> askStepLengthUnit(const QString& fileName);
-    /// @p unit's name and symbol, as the unit choices show it.
-    static QString lengthUnitName(math::LengthUnit unit);
-
     /// A drawing or part file read into a document of its own, on a worker
     /// when the file is large (openOnWorker).
     struct FileOpen {
@@ -442,18 +392,6 @@ private:
     /// it; and in the recent files.
     void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
                     const QString& fallbackTitle, io::ImportReport report);
-    void finishStepImport(const QString& fileName, StepLoad load);
-    /// @p load's parts written as part files beside its assembly, and the
-    /// assembly opened (Phase 153).
-    void finishStepAssemblyImport(const QString& fileName, StepLoad load);
-    /// The active assembly written as a STEP assembly (Phase 153).
-    void exportAssemblyStep();
-    /// What a STEP export could not write as asked: the curved faces kept in
-    /// facets, and the components left out (@p unread, whose parts could
-    /// not be read, and those in @p report).
-    void showStepExportReport(const io::StepWriteReport& report,
-                              const std::vector<std::string>& unread = {});
-    void onImportFinished();
     void onMassPropertiesFinished();
 
     /// The window's size and position and where its docks are, kept across
@@ -501,7 +439,7 @@ private:
     QString currentStatus() override;
     void setPrompt(const QString& text) override;
     bool onWorker(bool large) override;
-    void backgroundWorkChanged() override { updateBusyIndicator(); }
+    void backgroundWorkChanged() override;
     void addTab(std::shared_ptr<doc::Document> document, const QString& title) override;
     void runTool(std::unique_ptr<Tool> tool) override;
     void endTool() override;
@@ -521,15 +459,14 @@ private:
     /// before a save could drop it for good. @p notSavedOver: the document
     /// read from it is kept from being saved over it (it was read in part).
     void showImportReport(const QString& file, const io::ImportReport& report,
-                          bool notSavedOver = false);
+                          bool notSavedOver = false) override;
     void reportLeftOut(const QString& fileName, const std::vector<std::string>& items) override;
-    /// The part's solid for an export, or null with a word in the status bar.
-    const topo::Solid* solidToExport(const QString& format);
     /// Whether @p fileName may be written: true unless it is the file the
     /// active document was read from in part, and its user, asked, keeps it.
-    bool mayReplaceSource(const QString& fileName);
-    /// Ask where to export; empty when cancelled.
-    QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
+    bool mayReplaceSource(const QString& fileName) override;
+    QString currentTitle() override;
+    void refreshPanels() override;
+    void rebuildModel() override { rebuildFeatureTree(); }
     /// The feature at a panel row of the active part, or null.
     const doc::Feature* featureAt(int featureIndex) const;
     /// Undo (or redo) on the active document, and rebuild what it changed.
@@ -653,9 +590,6 @@ private:
     QProgressBar* m_rebuildProgress = nullptr;
     QToolButton* m_rebuildCancel = nullptr;
     QTimer* m_rebuildPoll = nullptr;
-    std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
-    std::shared_ptr<ImportProgress> m_importProgress;  ///< of m_importTask
-    QString m_importFile;
     std::unique_ptr<BackgroundTask<FileOpen>> m_openTask;
     /// A tab's file read again on a worker, the document it replaces and
     /// whether that one's changes were given up. Files changed meanwhile
@@ -672,6 +606,9 @@ private:
     std::unique_ptr<AssemblyWorkbench> m_assemblies;
     /// The drawing sheets made from parts (Phase 148), likewise.
     std::unique_ptr<DrawingWorkbench> m_drawings;
+    /// File ▸ Import and File ▸ Export, and a STEP import on a worker,
+    /// likewise.
+    std::unique_ptr<ExchangeCommands> m_exchange;
     /// The ideal mass properties being measured, the dialog waiting for them,
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;

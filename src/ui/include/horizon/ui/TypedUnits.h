@@ -1,6 +1,9 @@
 #pragma once
 
+#include <QString>
 #include <string>
+
+#include "horizon/math/Units.h"
 
 namespace hz::ui {
 
@@ -14,5 +17,8 @@ bool typeUnitKey(int key, std::string& text);
 /// Take back the last character typed in @p text, all of its bytes (the
 /// degree sign is two).
 void takeBack(std::string& text);
+
+/// @p unit's name and symbol, as the unit choices show it ("Inches (in)").
+QString lengthUnitName(math::LengthUnit unit);
 
 }  // namespace hz::ui
