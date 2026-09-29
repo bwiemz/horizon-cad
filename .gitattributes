@@ -10,3 +10,9 @@
 *.icns binary
 *.qm binary
 *.pdf binary
+
+# The external STEP corpus is kept byte for byte as its exporters wrote it
+# (tests/interop/step/README.md): some end their lines in CRLF, which a
+# reader must take too.
+tests/interop/step/*.step -text
+tests/interop/step/*.stp -text

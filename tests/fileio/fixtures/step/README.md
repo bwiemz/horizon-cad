@@ -12,17 +12,10 @@ Part-21 files exercised by `tests/fileio/test_StepFixtures.cpp`.
   limitations (e.g. `BREP_WITH_VOIDS`) so a silent-import regression fails
   the suite.
 
-## Adding real third-party exports
+## Real third-party exports
 
-The checked-in fixtures are hand-authored in the styles of common exporters
-(FreeCAD/Open CASCADE, SolidWorks) because real vendor files cannot be
-redistributed here.  When you have real exports from FreeCAD, Onshape,
-SolidWorks, Fusion, etc.:
-
-1. Drop the `.step`/`.STEP` file into `import_ok/`.
-2. Run `hz_fileio_tests` — the scan test validates it imports cleanly.
-3. If it exercises a known limitation instead (voids, assembly transforms,
-   trimmed analytic faces), move it to `reject/` or add a dedicated test
-   documenting the current behavior.
-
-Keep fixtures small (single parts, few faces) so failures stay debuggable.
+These fixtures are hand-written in the styles of common exporters. Real
+exports from twenty other CAD systems, with their licences, are in the
+external corpus, `tests/interop/step/`, which OpenCASCADE checks too. Add a
+real file there (its README says how), and keep these small and
+hand-written, so a failure here stays easy to debug.
