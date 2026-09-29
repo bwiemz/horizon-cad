@@ -71,8 +71,14 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
      micrometres off surfaces 600 mm across, and each blade's rim is two
      edges whose curves run the whole side of their surface. Since #179 the
      reader takes the span of a curve an edge uses, and the part builds.
-2. **Surface models**, with open shells and no solid, are not read at all.
-   That holds for 3 files (Rhino, Creo 2015 and I-DEAS).
+2. **Surface models**, with open shells and no solid, were not read at all.
+   That held for 3 files (Rhino, Creo 2015 and I-DEAS). Since #178, a
+   surface model's shells that close are read as solids: Creo's emblem is
+   twelve of them, which OpenCASCADE reads as surfaces (its bounds agree).
+   The others' surfaces do not close, and the reader says so: I-DEAS'
+   card cage is open surfaces, and Rhino writes each surface of its
+   bearings with edges of its own, up to 0.08 mm from its neighbour's,
+   which would need sewing (#192).
 3. **Edge curves the reader did not build** (ELLIPSE, INTERSECTION_CURVE)
    stopped a solid from coming in: the Inventor 2023 part and the IronCAD
    impeller were not read, and one of the Unigraphics solids was skipped.

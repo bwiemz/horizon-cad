@@ -1345,10 +1345,30 @@ public:
     /// shape representation), and BREP_WITH_VOIDS, an outer shell and a
     /// shell round each void, facing into it: a cavity, as a Boolean leaves
     /// one.
-    std::unique_ptr<topo::Solid> build(const std::vector<int>& solidIds, std::string& error) {
+    std::unique_ptr<topo::Solid> build(const std::vector<int>& solidIds, bool surfaces,
+                                       std::string& error) {
         std::vector<ShellRef> plan;
-        for (int solidId : solidIds) {
-            if (!shellsOf(solidId, plan, error)) return nullptr;
+        if (surfaces) {
+            // A surface model's shells: each that closes (Creo writes its
+            // solids so) a body; one that does not, an open surface, is left
+            // out, and counted.
+            for (int shell : solidIds) {
+                if (closes(shell)) {
+                    plan.push_back({shell, false, false, plan.size()});
+                } else {
+                    ++m_openShells;
+                }
+            }
+            if (plan.empty()) {
+                error = m_openShells == 1 ? "its one shell is an open surface, not a solid"
+                                          : "its " + std::to_string(m_openShells) +
+                                                " shells are open surfaces, not solids";
+                return nullptr;
+            }
+        } else {
+            for (int solidId : solidIds) {
+                if (!shellsOf(solidId, plan, error)) return nullptr;
+            }
         }
         auto solid = assemble(plan, error);
         if (solid == nullptr) return nullptr;
@@ -1358,12 +1378,17 @@ public:
         // (a SolidWorks one) write the closed shell facing in already, and
         // mark it turned round too, which would make the void more material:
         // one that measures as its outer shell does is turned round again.
+        // A surface model's shell faces whichever way its writer wound it:
+        // one that measures inside out is turned round.
         bool turned = false;
-        if (std::any_of(plan.begin(), plan.end(), [](const ShellRef& s) { return s.isVoid; })) {
+        if (surfaces ||
+            std::any_of(plan.begin(), plan.end(), [](const ShellRef& s) { return s.isVoid; })) {
             const auto measures = model::measureShells(*solid);
             for (std::size_t i = 0; i < plan.size() && measures.size() == plan.size(); ++i) {
-                if (!plan[i].isVoid) continue;
-                if (measures[i].volume * measures[plan[i].outer].volume > 0.0) {
+                const bool wrongWay =
+                    plan[i].isVoid ? measures[i].volume * measures[plan[i].outer].volume > 0.0
+                                   : surfaces && measures[i].volume < 0.0;
+                if (wrongWay) {
                     plan[i].reversed = !plan[i].reversed;
                     turned = true;
                 }
@@ -1371,6 +1396,9 @@ public:
         }
         return turned ? assemble(plan, error) : std::move(solid);
     }
+
+    /// How many of a surface model's shells were open surfaces, left out.
+    std::size_t openShells() const { return m_openShells; }
 
 private:
     /// A shell to build: its CLOSED_SHELL (or OPEN_SHELL), and whether its
@@ -1403,6 +1431,41 @@ private:
             return nullptr;
         }
         return std::move(m_solid);
+    }
+
+    /// Whether shell @p shellId closes: each of its edges bounds two of its
+    /// faces (a surface model's shell may be a solid's, or a surface's).
+    bool closes(int shellId) const {
+        const StepInstance* shell = m_parser.find(shellId);
+        const StepList* args = shell ? shell->leaf("OPEN_SHELL") : nullptr;
+        if (args == nullptr && shell != nullptr) args = shell->leaf("CLOSED_SHELL");
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) return false;
+        std::map<int, int> uses;
+        for (const StepValue& faceRef : *(*args)[1].items) {
+            const StepInstance* face = faceRef.isRef() ? m_parser.find(faceRef.ref) : nullptr;
+            const StepList* fArgs = face ? face->leaf("ADVANCED_FACE") : nullptr;
+            if (fArgs == nullptr && face != nullptr) fArgs = face->leaf("FACE_SURFACE");
+            if (fArgs == nullptr || fArgs->size() < 2 || !(*fArgs)[1].isList()) return false;
+            for (const StepValue& boundRef : *(*fArgs)[1].items) {
+                const StepInstance* bound =
+                    boundRef.isRef() ? m_parser.find(boundRef.ref) : nullptr;
+                const StepList* b = bound ? bound->leaf("FACE_OUTER_BOUND") : nullptr;
+                if (b == nullptr && bound != nullptr) b = bound->leaf("FACE_BOUND");
+                const StepInstance* loop = b != nullptr && b->size() >= 2 && (*b)[1].isRef()
+                                               ? m_parser.find((*b)[1].ref)
+                                               : nullptr;
+                const StepList* edges = loop ? loop->leaf("EDGE_LOOP") : nullptr;
+                if (edges == nullptr || edges->size() < 2 || !(*edges)[1].isList()) continue;
+                for (const StepValue& oeRef : *(*edges)[1].items) {
+                    const StepInstance* oe = oeRef.isRef() ? m_parser.find(oeRef.ref) : nullptr;
+                    const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
+                    if (oeArgs != nullptr && oeArgs->size() >= 4 && (*oeArgs)[3].isRef()) {
+                        ++uses[(*oeArgs)[3].ref];
+                    }
+                }
+            }
+        }
+        return std::all_of(uses.begin(), uses.end(), [](const auto& u) { return u.second == 2; });
     }
 
     /// The shells of solid @p solidId, onto @p shells: a MANIFOLD_SOLID_BREP's
@@ -2078,7 +2141,7 @@ private:
         }
         const double major = (*args)[2].num;
         const double minor = (*args)[3].num;
-        if (!(minor > 0.0) || !(major >= 0.0)) return false;
+        if (!(minor > 0.0) || !(major > 0.0)) return false;  // as the torus is read
         topo::Vertex* corner = vertexAt(origin + xAxis * (major + minor), "p");
         EdgeRecord* round =
             seam(1, corner, corner,
@@ -2341,6 +2404,7 @@ private:
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
+    std::size_t m_openShells = 0;
 };
 
 // ===========================================================================
@@ -2760,6 +2824,9 @@ bool isIdentity(const Mat4& m) {
 /// holds its units).
 struct SolidGroup {
     std::vector<int> msbs;
+    /// A surface model's (SHELL_BASED_SURFACE_MODEL): msbs are its shells,
+    /// each a solid if it closes.
+    bool surfaces = false;
     int context = 0;
     /// The ADVANCED_BREP_SHAPE_REPRESENTATION holding them; 0 for one
     /// outside any.
@@ -2794,6 +2861,39 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
             if (!group.msbs.empty()) groups.push_back(std::move(group));
         }
     }
+    // Surface models: their shells, which another system may write for a
+    // solid (Creo's closed OPEN_SHELLs), one group a representation.
+    std::unordered_set<int> modelled;
+    const auto shellsOfModel = [&parser](int model, std::vector<int>& shells) {
+        const StepList* args = parser.find(model)->leaf("SHELL_BASED_SURFACE_MODEL");
+        if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) return;
+        for (const StepValue& shell : *(*args)[1].items) {
+            const StepInstance* it = shell.isRef() ? parser.find(shell.ref) : nullptr;
+            if (it != nullptr && (it->hasType("OPEN_SHELL") || it->hasType("CLOSED_SHELL"))) {
+                shells.push_back(shell.ref);
+            }
+        }
+    };
+    for (const char* type : {"MANIFOLD_SURFACE_SHAPE_REPRESENTATION", "SHAPE_REPRESENTATION"}) {
+        for (int repId : parser.allOfType(type)) {
+            const StepList* args = parser.find(repId)->leaf(type);
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isList()) continue;
+            SolidGroup group;
+            group.rep = repId;
+            group.surfaces = true;
+            if (args->size() > 2 && (*args)[2].isRef()) group.context = (*args)[2].ref;
+            for (const StepValue& item : *(*args)[1].items) {
+                const StepInstance* it = item.isRef() ? parser.find(item.ref) : nullptr;
+                if (it == nullptr || !it->hasType("SHELL_BASED_SURFACE_MODEL") ||
+                    !modelled.insert(item.ref).second) {
+                    continue;
+                }
+                shellsOfModel(item.ref, group.msbs);
+            }
+            if (!group.msbs.empty()) groups.push_back(std::move(group));
+        }
+    }
+
     // MSBs outside any representation (minimal files) import one solid each,
     // in the file's first context with units, if it has one.
     int fileContext = 0;
@@ -2803,8 +2903,16 @@ std::vector<SolidGroup> solidGroups(const StepParser& parser) {
     }
     for (const char* type : {"MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS"}) {
         for (int id : parser.allOfType(type)) {
-            if (grouped.insert(id).second) groups.push_back({{id}, fileContext, 0});
+            if (grouped.insert(id).second) groups.push_back({{id}, false, fileContext, 0});
         }
+    }
+    for (int id : parser.allOfType("SHELL_BASED_SURFACE_MODEL")) {
+        if (!modelled.insert(id).second) continue;
+        SolidGroup group;
+        group.surfaces = true;
+        group.context = fileContext;
+        shellsOfModel(id, group.msbs);
+        if (!group.msbs.empty()) groups.push_back(std::move(group));
     }
     return groups;
 }
@@ -3255,7 +3363,7 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         std::unique_ptr<topo::Solid> solid;
         std::string error;
         try {
-            solid = builder.build(group.msbs, error);
+            solid = builder.build(group.msbs, group.surfaces, error);
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
             // checks let through (a degree-0 B-spline, ragged control rows).
@@ -3268,6 +3376,12 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             }
             built.failures.push_back(which + ": " + error);
             continue;
+        }
+        if (const std::size_t open = builder.openShells(); open > 0) {
+            built.failures.push_back(which + ": " + std::to_string(open) +
+                                     (open == 1 ? " of its shells is an open surface"
+                                                : " of its shells are open surfaces") +
+                                     ", not a solid, and left out");
         }
 
         // Into millimetres.

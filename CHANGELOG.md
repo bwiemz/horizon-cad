@@ -73,6 +73,13 @@ work, not "post-1.0".
   (a VERTEX_LOOP: a whole ball, a ring, a cone's apex) and surfaces swept
   along a line (SURFACE_OF_LINEAR_EXTRUSION). The Unigraphics buggy in the
   STEP corpus reads as OpenCASCADE reads it: 19 bodies, not 9.
+- **A surface model's closed shells are read as solids (#178).** Creo
+  writes solids as a surface model's open shells, which close: they were
+  refused ("no MANIFOLD_SOLID_BREP"), and are read now, turned outward
+  where they face in. Shells that do not close are said to be open
+  surfaces, not solids, instead of the file being refused without a
+  reason. A flat face whose edges stray off its plane (Creo's, by 0.75 mm)
+  is cut into flat triangles, so the part is valid.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

@@ -75,8 +75,25 @@
       "license": "CC-BY-4.0",
       "license_file": "LICENSES/OpenCellular-CC-BY-4.0.txt",
       "attribution": "OpenCellular, Telecom Infra Project, CC BY 4.0, https://github.com/Telecominfraproject/OpenCellular (the emblem is the project's; test data only)",
-      "not_read": "no MANIFOLD_SOLID_BREP",
-      "why_not_read": "a surface model: open shells, no solid"
+      "expect": {
+        "bodies": 12,
+        "volume": 9657.479022,
+        "bounds": [
+          [
+            -30.111515,
+            -56.080296,
+            -34.573665
+          ],
+          [
+            30.111524,
+            -52.330295,
+            25.649347
+          ]
+        ],
+        "skipped": 0,
+        "approximated": 0
+      },
+      "occt_reads_surfaces": "its twelve shells close, but are written as a surface model's open shells, which OpenCASCADE reads as surfaces, not solids: its bodies and volume are Horizon CAD's, its bounds OpenCASCADE's"
     },
     {
       "file": "edm_ideas_card_cage.stp",
@@ -89,8 +106,8 @@
       "license": "LicenseRef-NIST-Public-Domain",
       "license_file": "LICENSES/NIST-engineering-design-models.md",
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
-      "not_read": "no MANIFOLD_SOLID_BREP",
-      "why_not_read": "a surface model: open shells, no solid"
+      "not_read": "shells are open surfaces, not solids",
+      "why_not_read": "a surface model whose surfaces do not close into a solid"
     },
     {
       "file": "edm_ironcad_impeller.stp",
@@ -500,8 +517,8 @@
       "license": "BSD-3-Clause",
       "license_file": "LICENSES/axom_data-BSD-3-Clause.txt",
       "attribution": "Copyright (c) 2017-2024, Lawrence Livermore National Security, LLC, BSD-3-Clause",
-      "not_read": "no MANIFOLD_SOLID_BREP",
-      "why_not_read": "a surface model: open shells, no solid"
+      "not_read": "shells are open surfaces, not solids",
+      "why_not_read": "a surface model whose surfaces do not close into a solid: Rhino writes each surface with edges of its own, up to 0.08 mm apart"
     },
     {
       "file": "shapr3d_hkcam_lid.step",

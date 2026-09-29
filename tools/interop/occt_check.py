@@ -14,6 +14,10 @@ compares what it finds with what hz_step_acceptance wrote in summary.json:
 - Horizon CAD's export of it: OpenCASCADE must read it, find it valid, with
   as many solids, and a volume between Horizon CAD's faceted and ideal ones.
 
+A surface model the manifest marks occt_reads_surfaces (its shells close,
+but OpenCASCADE makes no solids of them) has its bounds compared, not its
+bodies or volume.
+
 A file the manifest lists as not read, or a check its known_gaps name
 ("volume", "bounds", "bodies", "export", "export-valid", "export-bodies",
 "export-volume", "occt"), each with why, is reported and not failed. Exits 1 on any other mismatch. --out writes what
@@ -136,10 +140,13 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
         elif theirs is not None:
             checked.update({"bodies", "volume", "bounds"})
             expect = entry.get("expect", {})
-            if ours["bodies"] != theirs.solids:
+            # A surface model whose shells close: solids to Horizon CAD,
+            # surfaces to OpenCASCADE, whose bounds alone are compared.
+            surfaces = "occt_reads_surfaces" in entry
+            if not surfaces and ours["bodies"] != theirs.solids:
                 problems["bodies"] = f"bodies {ours['bodies']}, OpenCASCADE {theirs.solids}"
             tolerance = expect.get("volume_tolerance", VOLUME_TOLERANCE)
-            if not near(ours["idealVolume"], theirs.volume, tolerance):
+            if not surfaces and not near(ours["idealVolume"], theirs.volume, tolerance):
                 problems["volume"] = (f"volume {ours['idealVolume']:.6g}, "
                                       f"OpenCASCADE {theirs.volume:.6g}")
             if ours["bounds"] and theirs.bounds:
