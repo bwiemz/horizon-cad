@@ -18,8 +18,7 @@ class Feature;
 namespace hz::ui {
 
 /// A feature just added, whose build is yet to be seen (MainWindow::
-/// addModelFeature): the step, as long as the history is where the add left
-/// it.
+/// addFeature): the step, as long as the history is where the add left it.
 struct PendingAdd {
     std::weak_ptr<doc::Document> document;
     const doc::Command* step = nullptr;

@@ -1,5 +1,6 @@
 // Workbenches (Phase 146): the assembly commands, moved out of MainWindow,
-// work through WorkbenchHost alone, as do the drawing sheets (Phase 148).
+// work through WorkbenchHost alone, as do the drawing sheets (Phase 148) and
+// the commands that add a feature to a part.
 // Here they run against a stand-in host with no window at all, which is what
 // the interface is for.
 
@@ -8,12 +9,14 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,6 +26,8 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/ModelCommands.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
@@ -30,10 +35,12 @@
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/AssemblyWorkbench.h"
 #include "horizon/ui/DrawingWorkbench.h"
+#include "horizon/ui/PartCommands.h"
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
 #include "horizon/ui/WorkbenchHost.h"
@@ -64,6 +71,9 @@ public:
     std::unique_ptr<hz::ui::Tool> tool;  ///< the last a workbench ran
     int toolsEnded = 0;
     int rebuilds = 0;
+    std::vector<QString> added;               ///< the features added, by their commands
+    std::shared_ptr<hz::doc::Sketch> chosen;  ///< as the sketch list has it
+    int sketchesFinished = 0;
 
     QWidget* dialogParent() override { return &m_viewport; }
     hz::doc::Document* currentDocument() override {
@@ -104,6 +114,21 @@ public:
     void refreshPanels() override {}
     void rebuildModel() override {}
     bool onWorker(bool /*large*/) override { return false; }
+    bool addFeature(std::unique_ptr<hz::doc::Feature> feature, const QString& verb,
+                    const std::shared_ptr<hz::doc::Sketch>& wrapperSketch) override {
+        hz::doc::Document& part = *currentDocument();
+        part.undoStack().push(
+            std::make_unique<hz::doc::AddFeatureCommand>(part, std::move(feature), wrapperSketch));
+        added.push_back(verb);
+        return part.rebuildModel();
+    }
+    std::shared_ptr<hz::doc::Sketch> chosenSketch() override { return chosen; }
+    void finishSketch() override {
+        ++sketchesFinished;
+        hz::doc::Document& part = *currentDocument();
+        if (part.editedSketch()) chosen = part.editedSketch();
+        part.editSketch(nullptr);
+    }
     void backgroundWorkChanged() override {}
 
 private:
@@ -124,6 +149,35 @@ std::string saveCube(const QString& path) {
     }
     ADD_FAILURE() << "no top face";
     return {};
+}
+
+/// Run @p command, answering the form titled @p title it opens: filled in
+/// by @p fill, then OK. False when no such form opened in ten seconds.
+bool answering(const QString& title, const std::function<void(QDialog&)>& fill,
+               const std::function<void()>& command) {
+    bool answered = false;
+    QTimer answer;
+    QObject::connect(&answer, &QTimer::timeout, [&] {
+        auto* form = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (form == nullptr || form->windowTitle() != title) return;
+        answer.stop();
+        fill(*form);
+        answered = true;
+        form->accept();
+    });
+    answer.start(5);
+    QTimer::singleShot(10'000, &answer, [] {
+        if (auto* form = qobject_cast<QDialog*>(QApplication::activeModalWidget())) form->reject();
+    });
+    command();
+    return answered;
+}
+
+/// Set the length (or number) named @p name in @p form.
+void setField(QDialog& form, const char* name, double value) {
+    auto* spin = form.findChild<QDoubleSpinBox*>(QString::fromLatin1(name));
+    ASSERT_NE(spin, nullptr) << name;
+    spin->setValue(value);
 }
 
 }  // namespace
@@ -688,4 +742,123 @@ TEST(WorkbenchesTest, ASheetKeepsWhatItWasDrawnFromUntilItChanges) {
     ASSERT_FALSE(host.statuses.empty());
     EXPECT_TRUE(host.statuses.back().contains(QStringLiteral("could not be drawn again")))
         << host.statuses.back().toStdString();
+}
+
+// A part's commands through a stand-in host (the window's part commands,
+// moved out of it): what one needs and the part has not got is said where the
+// host shows messages, and nothing is added.
+TEST(WorkbenchesTest, APartCommandSaysWhatThePartLacks) {
+    StandInHost host;
+    host.backing.setType(hz::doc::DocumentType::Part);
+    hz::ui::PartCommands commands(host);
+
+    commands.onFillet();
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("works on a body")))
+        << host.currentStatus().toStdString();
+    commands.onBooleanUnion();
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("fewer than two")))
+        << host.currentStatus().toStdString();
+    commands.onLoft();
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("two or more sketches")))
+        << host.currentStatus().toStdString();
+
+    // In an assembly's tab, not at all: no form is shown.
+    host.assembly = std::make_shared<hz::doc::AssemblyDocument>();
+    commands.onPrimitiveBox();
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("works on a part")))
+        << host.currentStatus().toStdString();
+    EXPECT_TRUE(host.added.empty());
+    EXPECT_EQ(host.backing.featureTree().featureCount(), 0u);
+}
+
+// A box as its form says: its sizes, and where it stands.
+TEST(WorkbenchesTest, ABoxIsAddedAsItsFormSays) {
+    StandInHost host;
+    host.backing.setType(hz::doc::DocumentType::Part);
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Box"),
+        [](QDialog& form) {
+            setField(form, "size0", 20.0);
+            setField(form, "size1", 10.0);
+            setField(form, "size2", 5.0);
+            setField(form, "atZ", 3.0);
+        },
+        [&] { commands.onPrimitiveBox(); }));
+
+    ASSERT_EQ(host.added, std::vector<QString>{QStringLiteral("Box")});
+    const hz::topo::Solid* box = host.backing.solid();
+    ASSERT_NE(box, nullptr);
+    const auto measured = hz::model::MassPropertiesCalculator::compute(*box);
+    EXPECT_NEAR(measured.volume, 1000.0, 1e-6);
+    EXPECT_NEAR(measured.centerOfMass.z, 5.5, 1e-6) << "standing at z = 3, 5 deep";
+}
+
+// Extrude takes the sketch being edited, and finishes it (not a sketch made
+// of the drawing), as far as its form says.
+TEST(WorkbenchesTest, AnExtrudeTakesTheSketchEditedAndFinishesIt) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    const std::vector<hz::math::Vec2> corners = {{0, 0}, {20, 0}, {20, 10}, {0, 10}};
+    for (size_t i = 0; i < corners.size(); ++i) {
+        sketch->addEntity(
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]));
+    }
+    part.undoStack().push(std::make_unique<hz::doc::AddSketchCommand>(part, sketch));
+    part.editSketch(sketch);
+
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Extrude"), [](QDialog& form) { setField(form, "size", 5.0); },
+        [&] { commands.onExtrudeSketch(); }));
+
+    EXPECT_EQ(host.sketchesFinished, 1);
+    EXPECT_EQ(part.editedSketch(), nullptr);
+    EXPECT_EQ(host.chosen, sketch) << "the sketch finished is the one chosen";
+    ASSERT_EQ(host.added, std::vector<QString>{QStringLiteral("Extrude")});
+    EXPECT_EQ(part.sketches().size(), 1u) << "no sketch made of the drawing";
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume, 1000.0, 1e-6);
+}
+
+// Extrude again with the sketch chosen in the list, not edited: it is taken
+// as it is, and the extrude cuts it through the first.
+TEST(WorkbenchesTest, AnExtrudeTakesTheSketchChosen) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(20, 20, 20));
+    ASSERT_TRUE(part.rebuildModel());
+    auto hole = std::make_shared<hz::doc::Sketch>();
+    const std::vector<hz::math::Vec2> corners = {{5, 5}, {15, 5}, {15, 15}, {5, 15}};
+    for (size_t i = 0; i < corners.size(); ++i) {
+        hole->addEntity(
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]));
+    }
+    part.undoStack().push(std::make_unique<hz::doc::AddSketchCommand>(part, hole));
+    part.editSketch(nullptr);
+    host.chosen = hole;
+
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Extrude"),
+        [](QDialog& form) {
+            auto* goes = form.findChild<QComboBox*>(QStringLiteral("extent"));
+            ASSERT_NE(goes, nullptr);
+            goes->setCurrentIndex(2);  // through all
+            auto* result = form.findChild<QComboBox*>(QStringLiteral("bodyOperation"));
+            ASSERT_NE(result, nullptr);
+            result->setCurrentIndex(
+                result->findData(static_cast<int>(hz::doc::BodyOperation::Cut)));
+            ASSERT_GE(result->currentIndex(), 0);
+        },
+        [&] { commands.onExtrudeSketch(); }));
+
+    EXPECT_EQ(host.sketchesFinished, 0);
+    ASSERT_EQ(host.added, std::vector<QString>{QStringLiteral("Extrude")});
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume,
+                20.0 * 20 * 20 - 10.0 * 10 * 20, 1e-6);
 }

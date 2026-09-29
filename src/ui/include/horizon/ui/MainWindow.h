@@ -56,6 +56,7 @@ class AssemblyTreePanel;
 class AssemblyWorkbench;
 class DrawingWorkbench;
 class FeatureForm;
+class PartCommands;
 
 /// The main application window for Horizon CAD.
 class MainWindow : public QMainWindow, private WorkbenchHost {
@@ -252,15 +253,6 @@ private slots:
     void onGroupEntities();
     void onUngroupEntities();
 
-    void onPrimitiveBox();
-    void onPrimitiveCylinder();
-    void onPrimitiveSphere();
-    void onPrimitiveCone();
-    void onPrimitiveTorus();
-
-    void onExtrudeSketch();
-    void onRevolveSketch();
-
     // Sketches (Phase 131): a new one on a principal plane (0 XY, 1 XZ,
     // 2 YZ), a face or a datum plane; editing one, and finishing it.
     void onNewSketchOnPlane(int which);
@@ -275,30 +267,8 @@ private slots:
     /// all of them are, made geometry of the profile again (Phase 157).
     void onToggleConstruction();
 
-    // Loft, Sweep and datums (Phase 133).
-    void onLoft();
-    void onSweep();
     void onMassProperties();
     void onSectionPlane();
-    void onDatumPlane();
-    void onDatumAxis();
-    void onDatumPoint();
-
-    void onBooleanUnion();
-    void onBooleanSubtract();
-    void onBooleanIntersect();
-
-    void onFillet();
-    void onChamfer();
-    void onShell();
-    void onDraft();
-
-    void onLinearPattern();
-    void onCircularPattern();
-    /// A part mirrored in a plane, or some of its features (Phase 162).
-    void onMirror();
-    /// A hole drilled into a flat face of the part (Phase 162).
-    void onHole();
 
     void onCreateBlock();
     void onInsertBlock();
@@ -398,7 +368,6 @@ private:
     /// sessions.
     void saveWindowLayout() const;
     void restoreWindowLayout();
-    std::shared_ptr<doc::Sketch> resolveProfileSketch(bool& createdWrapper);
     /// Add a sketch on @p plane (one undo step) and start editing it; one
     /// on a part's face follows @p face, its whole name (Phase 157).
     void newSketchOn(const draft::SketchPlane& plane, const QString& where,
@@ -467,6 +436,19 @@ private:
     QString currentTitle() override;
     void refreshPanels() override;
     void rebuildModel() override { rebuildFeatureTree(); }
+    /// Add a feature at the end of the history, as one undoable step, and
+    /// build the model once, on a worker when builds are slow. A feature
+    /// that fails there itself (a Cut that would leave nothing, a fillet too
+    /// big for its edge) is refused when that build is shown: the step is
+    /// withdrawn, so the part and the undo history are as they were, with
+    /// the reason in the status bar. Returns false when it was refused at
+    /// once (a build here); true when it was added, or its build is still
+    /// running. `wrapperSketch` is a profile sketch made for the feature,
+    /// added and undone with it.
+    bool addFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
+                    const std::shared_ptr<doc::Sketch>& wrapperSketch = nullptr) override;
+    std::shared_ptr<doc::Sketch> chosenSketch() override;
+    void finishSketch() override { onFinishSketch(); }
     /// The feature at a panel row of the active part, or null.
     const doc::Feature* featureAt(int featureIndex) const;
     /// Undo (or redo) on the active document, and rebuild what it changed.
@@ -481,50 +463,11 @@ private:
     /// Cancel. Returns false when the user cancels or the save fails.
     bool maybeSaveTab(int index);
 
-    /// Ask for a body-creating feature's size (`value`) and how its body
-    /// combines with the part. False when cancelled.
-    bool askForBodyFeature(const QString& title, const QString& valueLabel, double& value,
-                           double min, double max, int decimals, doc::BodyOperation& operation);
-    /// Add a feature at the end of the history, as one undoable step, and
-    /// build the model once, on a worker when builds are slow. A feature
-    /// that fails there itself (a Cut that would leave nothing, a fillet too
-    /// big for its edge) is refused when that build is shown: the step is
-    /// withdrawn, so the part and the undo history are as they were, with
-    /// the reason in the status bar. Returns false when it was refused at
-    /// once (a build here); true when it was added, or its build is still
-    /// running. `wrapperSketch` is a profile sketch made for the feature,
-    /// added and undone with it.
-    bool addModelFeature(std::unique_ptr<doc::Feature> feature, const QString& verb,
-                         const std::shared_ptr<doc::Sketch>& wrapperSketch = nullptr);
     /// A build of @p document is shown or applied: if it was the one made
     /// for a feature just added, and nothing changed since, and the feature
     /// failed itself, withdraw it and build the part as it was. Returns
     /// whether it did.
     bool settlePendingAdd(doc::Document& document);
-
-    /// False, with a word in the status bar, when the active tab is not a
-    /// part (`verb` names the command).
-    bool requirePart(const QString& verb);
-    /// The part's solid, or null — with a word in the status bar — when there
-    /// is no part or it has no body yet.
-    const topo::Solid* requireBody(const QString& verb);
-    /// Join once the part has a body; a new body for the first.
-    doc::BodyOperation proposedOperation() const;
-
-    struct PrimitiveField {
-        QString label;
-        double value;
-        double min;
-    };
-    /// Ask for a primitive's sizes (`fields`) and body operation, then add it.
-    void addPrimitive(
-        const QString& verb, const std::vector<PrimitiveField>& fields,
-        const std::function<std::unique_ptr<doc::PrimitiveFeature>(const std::vector<double>&)>&
-            make);
-    /// Add a feature combining the part's bodies.
-    void combineBodies(model::BooleanType type, const QString& verb);
-    /// Ask for edges and a size, then add a fillet (or chamfer) on them.
-    void addEdgeFeature(bool fillet);
 
     /// Route a document's change notifications to the markers and autosave.
     void watchDocument(const std::shared_ptr<doc::Document>& document);
@@ -609,6 +552,8 @@ private:
     /// File ▸ Import and File ▸ Export, and a STEP import on a worker,
     /// likewise.
     std::unique_ptr<ExchangeCommands> m_exchange;
+    /// The commands that add a feature to the part, likewise.
+    std::unique_ptr<PartCommands> m_part;
     /// The ideal mass properties being measured, the dialog waiting for them,
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;

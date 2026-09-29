@@ -2344,7 +2344,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+375"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
@@ -2364,42 +2364,42 @@ begin building your part.</source>
         <translation>新建图纸(&amp;N)</translation>
     </message>
     <message>
-        <location line="-447"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+44"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">由 %1 段组成的曲线，起于 %2</translation>
     </message>
     <message>
-        <location line="+49"/>
-        <location line="+108"/>
+        <location line="+48"/>
+        <location line="+84"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">位于 %2，朝向 %1</translation>
     </message>
     <message>
-        <location line="-102"/>
+        <location line="-78"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">由 %1 个小平面组成的曲面，位于 %2 附近</translation>
     </message>
     <message>
-        <location line="+30"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-209"/>
         <source>Close %1</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+8"/>
-        <location line="+897"/>
+        <location line="+754"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
         <translation type="unfinished">距离</translation>
     </message>
     <message>
-        <location line="-913"/>
-        <location line="+897"/>
+        <location line="-16"/>
         <location line="+17"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Angle</source>
         <translation type="unfinished">角度</translation>
     </message>
     <message>
-        <location line="-913"/>
+        <location filename="../src/ui/src/ModelPicks.cpp" line="+1"/>
         <source>Segments per turn</source>
         <translation type="unfinished">每圈段数</translation>
     </message>
@@ -2569,14 +2569,14 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location line="+180"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-704"/>
         <location line="+1"/>
-        <location line="+1047"/>
+        <location line="+1055"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-983"/>
+        <location line="-989"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -2881,7 +2881,7 @@ begin building your part.</source>
         <translation type="unfinished">基准面(&amp;P)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;Axis...</source>
         <translation type="unfinished">基准轴(&amp;A)...</translation>
     </message>
@@ -2891,7 +2891,7 @@ begin building your part.</source>
         <translation type="unfinished">基准点(&amp;O)...</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>&amp;Assembly</source>
         <translation type="unfinished">装配体(&amp;A)</translation>
     </message>
@@ -3456,12 +3456,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+196"/>
+        <location line="+200"/>
         <source>Select</source>
         <translation type="unfinished">选择</translation>
     </message>
     <message>
-        <location line="-193"/>
+        <location line="-197"/>
         <source>Fit All</source>
         <translation type="unfinished">整屏显示</translation>
     </message>
@@ -3537,12 +3537,12 @@ begin building your part.</source>
         <location line="+9"/>
         <location line="+0"/>
         <location line="+11"/>
-        <location line="+57"/>
+        <location line="+59"/>
         <source>Modify</source>
         <translation type="unfinished">修改</translation>
     </message>
     <message>
-        <location line="-77"/>
+        <location line="-79"/>
         <source>Transform</source>
         <translation type="unfinished">变换</translation>
     </message>
@@ -3563,13 +3563,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+80"/>
-        <location line="+3660"/>
+        <location line="+84"/>
         <source>Mirror</source>
         <translation type="unfinished">镜像</translation>
     </message>
     <message>
-        <location line="-3736"/>
+        <location line="-80"/>
         <source>Trim</source>
         <translation type="unfinished">修剪</translation>
     </message>
@@ -3585,20 +3584,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+64"/>
-        <location line="+3509"/>
+        <location line="+66"/>
         <source>Fillet</source>
         <translation type="unfinished">圆角</translation>
     </message>
     <message>
-        <location line="-3572"/>
-        <location line="+64"/>
-        <location line="+3508"/>
+        <location line="-65"/>
+        <location line="+66"/>
         <source>Chamfer</source>
         <translation type="unfinished">倒角</translation>
     </message>
     <message>
-        <location line="-3571"/>
+        <location line="-65"/>
         <source>Break</source>
         <translation type="unfinished">打断</translation>
     </message>
@@ -3639,7 +3636,7 @@ begin building your part.</source>
         <translation type="unfinished">尺寸</translation>
     </message>
     <message>
-        <location line="+3014"/>
+        <location line="+2889"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3683,12 +3680,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="+804"/>
-        <source>%1: &quot;%2&quot; cannot take that value</source>
-        <translation type="unfinished">%1：&quot;%2&quot; 不能取该值</translation>
-    </message>
-    <message>
-        <location line="-3842"/>
+        <location line="-2913"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -3790,116 +3782,101 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2385"/>
+        <location line="+2389"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2382"/>
+        <location line="-2386"/>
         <location line="+7"/>
         <location line="+5"/>
-        <location line="+5"/>
+        <location line="+7"/>
         <location line="+6"/>
         <source>3D</source>
         <translation type="unfinished">3D</translation>
     </message>
     <message>
-        <location line="-23"/>
+        <location line="-25"/>
         <source>Primitives</source>
         <translation type="unfinished">基本体</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">长方体</translation>
     </message>
     <message>
-        <location line="-2526"/>
-        <location line="+2536"/>
+        <location line="+1"/>
         <source>Cylinder</source>
         <translation type="unfinished">圆柱体</translation>
     </message>
     <message>
-        <location line="-2535"/>
-        <location line="+2542"/>
+        <location line="+1"/>
         <source>Sphere</source>
         <translation type="unfinished">球体</translation>
     </message>
     <message>
-        <location line="-2541"/>
-        <location line="+2548"/>
+        <location line="+1"/>
         <source>Cone</source>
         <translation type="unfinished">圆锥体</translation>
     </message>
     <message>
-        <location line="-2547"/>
-        <location line="+2558"/>
+        <location line="+1"/>
         <source>Torus</source>
         <translation type="unfinished">圆环体</translation>
     </message>
     <message>
-        <location line="-2556"/>
+        <location line="+2"/>
         <source>Features</source>
         <translation type="unfinished">特征</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3296"/>
-        <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">拉伸</translation>
     </message>
     <message>
-        <location line="-3341"/>
-        <location line="+3360"/>
-        <location line="+27"/>
+        <location line="+1"/>
         <source>Revolve</source>
         <translation type="unfinished">旋转</translation>
     </message>
     <message>
-        <location line="-3386"/>
-        <location line="+3716"/>
+        <location line="+1"/>
         <source>Hole</source>
         <translation type="unfinished">孔</translation>
     </message>
     <message>
-        <location line="-3714"/>
+        <location line="+2"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">组合实体</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">合并</translation>
     </message>
     <message>
-        <location line="-3466"/>
-        <location line="+3470"/>
+        <location line="+1"/>
         <source>Subtract</source>
         <translation type="unfinished">减去</translation>
     </message>
     <message>
-        <location line="-3469"/>
-        <location line="+3473"/>
+        <location line="+2"/>
         <source>Intersect</source>
         <translation type="unfinished">相交</translation>
     </message>
     <message>
-        <location line="-3468"/>
-        <location line="+3537"/>
+        <location line="+6"/>
         <source>Shell</source>
         <translation type="unfinished">抽壳</translation>
     </message>
     <message>
-        <location line="-3536"/>
-        <location line="+3556"/>
+        <location line="+1"/>
         <source>Draft</source>
         <translation type="unfinished">拔模</translation>
     </message>
     <message>
-        <location line="-3554"/>
+        <location line="+2"/>
         <source>Pattern</source>
         <translation type="unfinished">阵列</translation>
     </message>
@@ -3910,12 +3887,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">线性阵列</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Circular</source>
         <translation type="unfinished">圆周</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
         <source>Ribbon</source>
         <translation type="unfinished">功能区</translation>
     </message>
@@ -3931,14 +3908,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+1439"/>
-        <location line="+1201"/>
+        <location line="+1310"/>
+        <location line="+581"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-4187"/>
+        <location line="-3438"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -3959,12 +3936,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3845"/>
+        <location line="+3096"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-3839"/>
+        <location line="-3090"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
@@ -4649,91 +4626,17 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
-        <source>%1 works on a part; open or create one</source>
-        <translation type="unfinished">%1 用于零件；请打开或创建一个零件</translation>
-    </message>
-    <message>
-        <location line="+25"/>
-        <source>At x:</source>
-        <translation type="unfinished">位于 x:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+749"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-1451"/>
-        <location line="+700"/>
-        <location line="+13"/>
-        <location line="+739"/>
+        <location line="+1"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-1450"/>
-        <source>Standing along:</source>
-        <translation type="unfinished">竖立方向:</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Width (X):</source>
-        <translation type="unfinished">宽度 (X):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Height (Y):</source>
-        <translation type="unfinished">高度 (Y):</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Depth (Z):</source>
-        <translation type="unfinished">深度 (Z):</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <location line="+7"/>
-        <location line="+988"/>
-        <source>Radius:</source>
-        <translation type="unfinished">半径:</translation>
-    </message>
-    <message>
-        <location line="-995"/>
-        <location line="+17"/>
-        <source>Height:</source>
-        <translation type="unfinished">高度:</translation>
-    </message>
-    <message>
-        <location line="-2"/>
-        <source>Bottom radius:</source>
-        <translation type="unfinished">底面半径:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Top radius:</source>
-        <translation type="unfinished">顶面半径:</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Ring radius:</source>
-        <translation type="unfinished">圆环半径:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Tube radius:</source>
-        <translation type="unfinished">圆管半径:</translation>
-    </message>
-    <message>
-        <location line="+41"/>
-        <source>Profile %1</source>
-        <translation type="unfinished">轮廓 %1</translation>
-    </message>
-    <message>
-        <location line="+9"/>
+        <location line="-729"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">装配体中没有草图：请在零件中绘制草图</translation>
     </message>
@@ -4770,12 +4673,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+881"/>
         <source>Edges:</source>
         <translation type="unfinished">边:</translation>
     </message>
     <message>
-        <location line="-879"/>
+        <location line="+2"/>
         <source>As:</source>
         <translation type="unfinished">作为:</translation>
     </message>
@@ -4928,18 +4830,16 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+787"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">线性阵列</translation>
     </message>
     <message>
-        <location line="-785"/>
-        <location line="+805"/>
+        <location line="+2"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">圆周阵列</translation>
     </message>
     <message>
-        <location line="-788"/>
+        <location line="+17"/>
         <source>&amp;Mass Properties...</source>
         <translation type="unfinished">质量属性(&amp;M)...</translation>
     </message>
@@ -5109,24 +5009,21 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+120"/>
         <source>X</source>
         <translation type="unfinished">X</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Y</source>
         <translation type="unfinished">Y</translation>
     </message>
     <message>
-        <location line="-120"/>
-        <location line="+120"/>
+        <location line="+0"/>
         <source>Z</source>
         <translation type="unfinished">Z</translation>
     </message>
     <message>
-        <location line="-119"/>
+        <location line="+1"/>
         <source>At:</source>
         <translation type="unfinished">位置:</translation>
     </message>
@@ -5146,7 +5043,234 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">平面以上部分</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+80"/>
+        <source>%1 added, but an earlier feature fails to rebuild</source>
+        <translation type="unfinished">已添加 %1，但之前的某个特征重建失败</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 added.</source>
+        <translation type="unfinished">已添加 %1。</translation>
+    </message>
+    <message>
+        <location line="+35"/>
+        <source>%1 not added: %2</source>
+        <translation type="unfinished">未添加 %1：%2</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>%1 has nothing to edit</source>
+        <translation type="unfinished">%1 没有可编辑的内容</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Edit %1</source>
+        <translation type="unfinished">编辑 %1</translation>
+    </message>
+    <message>
+        <location line="+104"/>
+        <source>+X</source>
+        <translation type="unfinished">+X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-X</source>
+        <translation type="unfinished">-X</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Y</source>
+        <translation type="unfinished">+Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Y</source>
+        <translation type="unfinished">-Y</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>+Z</source>
+        <translation type="unfinished">+Z</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>-Z</source>
+        <translation type="unfinished">-Z</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source> x:</source>
+        <translation type="unfinished"> x:</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+28"/>
+        <source>As it is, %1</source>
+        <translation type="unfinished">保持当前，%1</translation>
+    </message>
+    <message>
+        <location line="-21"/>
+        <source>As the face or edge clicked, %1</source>
+        <translation type="unfinished">与所单击的面或边相同，%1</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Against the face or edge clicked</source>
+        <translation type="unfinished">与所单击的面或边相反</translation>
+    </message>
+    <message>
+        <location line="+71"/>
+        <source>%1 cannot use the value given for: %2</source>
+        <translation type="unfinished">%1 无法使用为以下参数指定的值：%2</translation>
+    </message>
+    <message>
+        <location line="+85"/>
+        <source>Feature rebuild failed at feature %1: %2</source>
+        <translation type="unfinished">特征重建在特征 %1 处失败：%2</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>Rebuilding the model...</source>
+        <translation type="unfinished">正在重建模型...</translation>
+    </message>
+    <message>
+        <location line="+62"/>
+        <source>Importing %1: %2 of %3 parts written...</source>
+        <translation type="unfinished">正在导入 %1：已写入 %3 个零件中的 %2 个...</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>Rebuild cancelled: the model is as it was before the last change.</source>
+        <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
+    </message>
+    <message>
+        <location line="-3454"/>
+        <source>0 selected</source>
+        <translation>已选择 0 个</translation>
+    </message>
+    <message>
+        <location line="-108"/>
+        <source>Linear</source>
+        <comment>a dimension</comment>
+        <translation type="unfinished">线性标注</translation>
+    </message>
+    <message>
+        <location line="+197"/>
+        <source>1 selected</source>
+        <translation>已选择 1 个</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::PartCommands</name>
+    <message>
+        <location filename="../src/ui/src/PartCommands.cpp" line="+45"/>
+        <source>%1 works on a part; open or create one</source>
+        <translation type="unfinished">%1 用于零件；请打开或创建一个零件</translation>
+    </message>
+    <message>
+        <location line="+25"/>
+        <source>At x:</source>
+        <translation type="unfinished">位于 x:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>y:</source>
+        <translation type="unfinished">y:</translation>
+    </message>
+    <message>
+        <location line="-231"/>
+        <location line="+219"/>
+        <location line="+13"/>
+        <source>z:</source>
+        <translation type="unfinished">z:</translation>
+    </message>
+    <message>
+        <location line="-230"/>
+        <source>Standing along:</source>
+        <translation type="unfinished">竖立方向:</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Box</source>
+        <translation type="unfinished">长方体</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Width (X):</source>
+        <translation type="unfinished">宽度 (X):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Height (Y):</source>
+        <translation type="unfinished">高度 (Y):</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Depth (Z):</source>
+        <translation type="unfinished">深度 (Z):</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cylinder</source>
+        <translation type="unfinished">圆柱体</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+7"/>
+        <location line="+388"/>
+        <source>Radius:</source>
+        <translation type="unfinished">半径:</translation>
+    </message>
+    <message>
+        <location line="-395"/>
+        <location line="+17"/>
+        <source>Height:</source>
+        <translation type="unfinished">高度:</translation>
+    </message>
+    <message>
+        <location line="-10"/>
+        <source>Sphere</source>
+        <translation type="unfinished">球体</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Cone</source>
+        <translation type="unfinished">圆锥体</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bottom radius:</source>
+        <translation type="unfinished">底面半径:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Top radius:</source>
+        <translation type="unfinished">顶面半径:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Torus</source>
+        <translation type="unfinished">圆环体</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Ring radius:</source>
+        <translation type="unfinished">圆环半径:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tube radius:</source>
+        <translation type="unfinished">圆管半径:</translation>
+    </message>
+    <message>
+        <location line="+40"/>
+        <source>Profile %1</source>
+        <translation type="unfinished">轮廓 %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <source>on the plane through %1</source>
         <translation type="unfinished">在经过 %1 的平面上</translation>
     </message>
@@ -5239,7 +5363,22 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">绕其 x 轴旋转:</translation>
     </message>
     <message>
-        <location line="+18"/>
+        <location line="+14"/>
+        <source>X</source>
+        <translation type="unfinished">X</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Y</source>
+        <translation type="unfinished">Y</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Z</source>
+        <translation type="unfinished">Z</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>As the face or edge clicked</source>
         <translation type="unfinished">与所单击的面或边相同</translation>
     </message>
@@ -5271,25 +5410,31 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">x:</translation>
     </message>
     <message>
-        <location line="+62"/>
-        <location line="+82"/>
+        <location line="+15"/>
+        <location line="+81"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">请先绘制封闭轮廓</translation>
     </message>
     <message>
         <location line="-60"/>
-        <location line="+228"/>
+        <location line="+46"/>
+        <source>Extrude</source>
+        <translation type="unfinished">拉伸</translation>
+    </message>
+    <message>
+        <location line="-45"/>
+        <location line="+156"/>
         <source>Distance:</source>
         <translation type="unfinished">距离:</translation>
     </message>
     <message>
-        <location line="-227"/>
-        <location line="+456"/>
+        <location line="-155"/>
+        <location line="+386"/>
         <source>Goes:</source>
         <translation type="unfinished">终止条件:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>To the distance</source>
         <translation type="unfinished">给定深度</translation>
     </message>
@@ -5300,23 +5445,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+456"/>
+        <location line="+386"/>
         <source>Through all</source>
         <translation type="unfinished">完全贯穿</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-385"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">完全贯穿（两侧）</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+455"/>
+        <location line="+385"/>
         <source>Up to a face</source>
         <translation type="unfinished">成形到一面</translation>
     </message>
     <message>
-        <location line="-451"/>
+        <location line="-381"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">（零件没有与草图平行的平面）</translation>
     </message>
@@ -5327,12 +5472,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+332"/>
+        <location line="+262"/>
         <source>Direction:</source>
         <translation type="unfinished">方向:</translation>
     </message>
     <message>
-        <location line="-331"/>
+        <location line="-261"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">草图法向</translation>
     </message>
@@ -5352,13 +5497,19 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">拉伸失败：%1</translation>
     </message>
     <message>
-        <location line="+28"/>
-        <location line="+214"/>
+        <location line="+26"/>
+        <location line="+27"/>
+        <source>Revolve</source>
+        <translation type="unfinished">旋转</translation>
+    </message>
+    <message>
+        <location line="-26"/>
+        <location line="+144"/>
         <source>Angle:</source>
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location line="-210"/>
+        <location line="-140"/>
         <source>Axis:</source>
         <translation type="unfinished">轴:</translation>
     </message>
@@ -5378,22 +5529,22 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">旋转失败：%1</translation>
     </message>
     <message>
-        <location line="+50"/>
-        <source>%1 added, but an earlier feature fails to rebuild</source>
-        <translation type="unfinished">已添加 %1，但之前的某个特征重建失败</translation>
+        <location line="+19"/>
+        <source>Union</source>
+        <translation type="unfinished">合并</translation>
     </message>
     <message>
-        <location line="+2"/>
-        <source>%1 added.</source>
-        <translation type="unfinished">已添加 %1。</translation>
+        <location line="+4"/>
+        <source>Subtract</source>
+        <translation type="unfinished">减去</translation>
     </message>
     <message>
-        <location line="+29"/>
-        <source>%1 not added: %2</source>
-        <translation type="unfinished">未添加 %1：%2</translation>
+        <location line="+4"/>
+        <source>Intersect</source>
+        <translation type="unfinished">相交</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+9"/>
         <source>%1 combines the part&apos;s bodies, and it has fewer than two (make one with Result: New body)</source>
         <translation type="unfinished">%1 用于组合零件的实体，但零件的实体少于两个（可将结果设为新建实体来创建）</translation>
     </message>
@@ -5403,12 +5554,32 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">%1 需要作用于实体：请先创建实体</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+14"/>
+        <source>Fillet</source>
+        <translation type="unfinished">圆角</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Chamfer</source>
+        <translation type="unfinished">倒角</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Edges:</source>
+        <translation type="unfinished">边:</translation>
+    </message>
+    <message>
+        <location line="+9"/>
         <source>%1 not added: no edges were chosen</source>
         <translation type="unfinished">未添加 %1：未选择任何边</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+13"/>
+        <source>Shell</source>
+        <translation type="unfinished">抽壳</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Wall thickness:</source>
         <translation type="unfinished">壁厚:</translation>
     </message>
@@ -5418,7 +5589,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">要移除的面:</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+13"/>
+        <source>Draft</source>
+        <translation type="unfinished">拔模</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Pull direction:</source>
         <translation type="unfinished">拔模方向:</translation>
     </message>
@@ -5428,12 +5604,17 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">中性面位置:</translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+36"/>
         <source>Repeat only (none: the whole part):</source>
         <translation type="unfinished">仅阵列（不选则阵列整个零件）:</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+23"/>
+        <source>Linear Pattern</source>
+        <translation type="unfinished">线性阵列</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Spacing:</source>
         <translation type="unfinished">间距:</translation>
     </message>
@@ -5444,7 +5625,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">实例数:</translation>
     </message>
     <message>
-        <location line="-2"/>
+        <location line="-7"/>
+        <source>Circular Pattern</source>
+        <translation type="unfinished">圆周阵列</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>About the axis:</source>
         <translation type="unfinished">绕轴:</translation>
     </message>
@@ -5454,7 +5640,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">总角度:</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+17"/>
+        <source>Mirror</source>
+        <translation type="unfinished">镜像</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>YZ plane (x = 0)</source>
         <translation type="unfinished">YZ 平面 (x = 0)</translation>
     </message>
@@ -5484,7 +5675,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">仅镜像（不选则镜像整个零件）:</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+11"/>
+        <source>Hole</source>
+        <translation type="unfinished">孔</translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>%1: the part has no flat face to drill into</source>
         <translation type="unfinished">%1：零件没有可钻孔的平面</translation>
     </message>
@@ -5574,106 +5770,9 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">锥形沉头孔角度:</translation>
     </message>
     <message>
-        <location line="+68"/>
-        <source>%1 has nothing to edit</source>
-        <translation type="unfinished">%1 没有可编辑的内容</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Edit %1</source>
-        <translation type="unfinished">编辑 %1</translation>
-    </message>
-    <message>
-        <location line="+104"/>
-        <source>+X</source>
-        <translation type="unfinished">+X</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-X</source>
-        <translation type="unfinished">-X</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Y</source>
-        <translation type="unfinished">+Y</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Y</source>
-        <translation type="unfinished">-Y</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>+Z</source>
-        <translation type="unfinished">+Z</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>-Z</source>
-        <translation type="unfinished">-Z</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source> x:</source>
-        <translation type="unfinished"> x:</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+28"/>
-        <source>As it is, %1</source>
-        <translation type="unfinished">保持当前，%1</translation>
-    </message>
-    <message>
-        <location line="-21"/>
-        <source>As the face or edge clicked, %1</source>
-        <translation type="unfinished">与所单击的面或边相同，%1</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Against the face or edge clicked</source>
-        <translation type="unfinished">与所单击的面或边相反</translation>
-    </message>
-    <message>
-        <location line="+71"/>
-        <source>%1 cannot use the value given for: %2</source>
-        <translation type="unfinished">%1 无法使用为以下参数指定的值：%2</translation>
-    </message>
-    <message>
-        <location line="+85"/>
-        <source>Feature rebuild failed at feature %1: %2</source>
-        <translation type="unfinished">特征重建在特征 %1 处失败：%2</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>Rebuilding the model...</source>
-        <translation type="unfinished">正在重建模型...</translation>
-    </message>
-    <message>
-        <location line="+62"/>
-        <source>Importing %1: %2 of %3 parts written...</source>
-        <translation type="unfinished">正在导入 %1：已写入 %3 个零件中的 %2 个...</translation>
-    </message>
-    <message>
-        <location line="+45"/>
-        <source>Rebuild cancelled: the model is as it was before the last change.</source>
-        <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
-    </message>
-    <message>
-        <location line="-4203"/>
-        <source>0 selected</source>
-        <translation>已选择 0 个</translation>
-    </message>
-    <message>
-        <location line="-104"/>
-        <source>Linear</source>
-        <comment>a dimension</comment>
-        <translation type="unfinished">线性标注</translation>
-    </message>
-    <message>
-        <location line="+193"/>
-        <source>1 selected</source>
-        <translation>已选择 1 个</translation>
+        <location line="+34"/>
+        <source>%1: &quot;%2&quot; cannot take that value</source>
+        <translation type="unfinished">%1：&quot;%2&quot; 不能取该值</translation>
     </message>
 </context>
 <context>
