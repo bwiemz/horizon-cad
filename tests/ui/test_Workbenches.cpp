@@ -97,6 +97,12 @@ public:
         for (const std::string& item : items)
             leftOut.push_back(fileName.toStdString() + ": " + item);
     }
+    void showImportReport(const QString& /*fileName*/, const hz::io::ImportReport& /*report*/,
+                          bool /*notSavedOver*/) override {}
+    bool mayReplaceSource(const QString& /*fileName*/) override { return true; }
+    QString currentTitle() override { return {}; }
+    void refreshPanels() override {}
+    void rebuildModel() override {}
     bool onWorker(bool /*large*/) override { return false; }
     void backgroundWorkChanged() override {}
 

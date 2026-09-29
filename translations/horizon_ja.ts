@@ -1639,6 +1639,334 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::ExchangeCommands</name>
+    <message>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+104"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">長さの単位が指定されていません</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; は長さの単位を示していないか、このバージョンでは読めない単位で示しています。誤って読むと、すべての長さが誤った大きさになります。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">長さの単位:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Import STEP</source>
+        <translation type="unfinished">STEP のインポート</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+8"/>
+        <source>STEP Files (*.step *.stp);;All Files (*)</source>
+        <translation type="unfinished">STEP ファイル (*.step *.stp);;すべてのファイル (*)</translation>
+    </message>
+    <message>
+        <location line="-1"/>
+        <source>Import STEP as an Assembly</source>
+        <translation type="unfinished">STEP をアセンブリとしてインポート</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Save the Assembly As</source>
+        <translation type="unfinished">アセンブリに名前を付けて保存</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon Assemblies (*.hzasm)</source>
+        <translation type="unfinished">Horizon アセンブリ (*.hzasm)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>A STEP import is already running</source>
+        <translation type="unfinished">STEP のインポートは既に実行中です</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Importing %1...</source>
+        <translation type="unfinished">%1 をインポートしています...</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+15"/>
+        <source>Ready</source>
+        <translation type="unfinished">準備完了</translation>
+    </message>
+    <message>
+        <location line="-14"/>
+        <source>Import cancelled</source>
+        <translation type="unfinished">インポートをキャンセルしました</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
+        <source>Could not import</source>
+        <translation type="unfinished">インポートできませんでした</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-39"/>
+        <source>Imported %n bodies.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個のボディをインポートしました。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+22"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>アセンブリのコンポーネントは %n 個です。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>A DXF is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DXF は図面または部品にインポートします。アセンブリにはインポートできません</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+13"/>
+        <source>Import DXF</source>
+        <translation type="unfinished">DXF のインポート</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>DXF Files (*.dxf);;All Files (*)</source>
+        <translation type="unfinished">DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+35"/>
+        <source>Imported %n entities.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個のエンティティをインポートしました。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 export writes a part&apos;s body; this document has none</source>
+        <translation type="unfinished">%1 エクスポートは部品のボディを書き出します。このドキュメントにはボディがありません</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+170"/>
+        <location line="+44"/>
+        <source>Export %1</source>
+        <translation type="unfinished">%1 のエクスポート</translation>
+    </message>
+    <message>
+        <location line="-201"/>
+        <location line="+3"/>
+        <location line="+22"/>
+        <source>STEP</source>
+        <translation type="unfinished">STEP</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <location line="+22"/>
+        <source>STEP Files (*.step *.stp)</source>
+        <translation type="unfinished">STEP ファイル (*.step *.stp)</translation>
+    </message>
+    <message>
+        <location line="-18"/>
+        <location line="+28"/>
+        <location line="+52"/>
+        <location line="+17"/>
+        <location line="+17"/>
+        <location line="+103"/>
+        <source>Could not export</source>
+        <translation type="unfinished">エクスポートできませんでした</translation>
+    </message>
+    <message>
+        <location line="-213"/>
+        <location line="+28"/>
+        <location line="+51"/>
+        <location line="+18"/>
+        <location line="+16"/>
+        <location line="+103"/>
+        <source>Exported %1.</source>
+        <translation type="unfinished">%1 をエクスポートしました。</translation>
+    </message>
+    <message>
+        <location line="-207"/>
+        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
+        <translation type="unfinished">STEP エクスポートはアセンブリのコンポーネントを書き出しますが、このアセンブリの部品を 1 つも読み込めません</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assembly</source>
+        <translation type="unfinished">アセンブリ</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Left out: &quot;%1&quot;: its part could not be read</source>
+        <translation type="unfinished">除外: &quot;%1&quot;: 部品を読み込めませんでした</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Left out: %1</source>
+        <translation type="unfinished">除外: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+8"/>
+        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個の曲面は、曲面としてではなくファセットとして書き出されました。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Export STEP</source>
+        <translation type="unfinished">STEP のエクスポート</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>%n component(s) were not written.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個のコンポーネントは書き出されませんでした。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
+        <translation type="unfinished">部品はモデル化したとおり正確ですが、ほかのシステムではこれらの面が平面のファセットとして扱われます。</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+3"/>
+        <source>STL</source>
+        <translation type="unfinished">STL</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>STL Files (*.stl)</source>
+        <translation type="unfinished">STL ファイル (*.stl)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>glTF</source>
+        <translation type="unfinished">glTF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>glTF Binary (*.glb)</source>
+        <translation type="unfinished">glTF バイナリ (*.glb)</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DXF export writes a drawing; this document has nothing drawn</source>
+        <translation type="unfinished">DXF エクスポートは図面を書き出します。このドキュメントには何も描かれていません</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>DXF</source>
+        <translation type="unfinished">DXF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>DXF Files (*.dxf)</source>
+        <translation type="unfinished">DXF ファイル (*.dxf)</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>PDF</source>
+        <translation type="unfinished">PDF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>SVG</source>
+        <translation type="unfinished">SVG</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 export plots a drawing, not an assembly</source>
+        <translation type="unfinished">%1 エクスポートは図面を出力します。アセンブリは出力できません</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>%1 export plots a drawing; nothing visible is drawn</source>
+        <translation type="unfinished">%1 エクスポートは図面を出力しますが、表示されている要素がありません</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Paper:</source>
+        <translation type="unfinished">用紙:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Orientation:</source>
+        <translation type="unfinished">向き:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Landscape</source>
+        <translation type="unfinished">横</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Portrait</source>
+        <translation type="unfinished">縦</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Scale:</source>
+        <translation type="unfinished">尺度:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fit to paper</source>
+        <translation type="unfinished">用紙に合わせる</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Colours:</source>
+        <translation type="unfinished">色:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>As drawn</source>
+        <translation type="unfinished">作図どおり</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Black</source>
+        <translation type="unfinished">黒</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
+        <translation type="unfinished">尺度 %1 では図面が用紙より大きくなります。はみ出した部分は切り取られます。</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>PDF Files (*.pdf)</source>
+        <translation type="unfinished">PDF ファイル (*.pdf)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>SVG Files (*.svg)</source>
+        <translation type="unfinished">SVG ファイル (*.svg)</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::FeatureForm</name>
     <message>
         <location filename="../src/ui/src/FeatureForm.cpp" line="+104"/>
@@ -2016,12 +2344,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+641"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
     <message>
-        <location line="+69"/>
+        <location line="+78"/>
         <source>&amp;Edit</source>
         <translation>編集(&amp;E)</translation>
     </message>
@@ -2031,12 +2359,12 @@ begin building your part.</source>
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location line="-115"/>
+        <location line="-124"/>
         <source>&amp;New Drawing</source>
         <translation>新規図面(&amp;N)</translation>
     </message>
     <message>
-        <location line="-445"/>
+        <location line="-447"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">%1 個のセグメントからなる曲線 (%2 から)</translation>
     </message>
@@ -2058,20 +2386,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+886"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">距離</translation>
     </message>
     <message>
-        <location line="-902"/>
-        <location line="+886"/>
+        <location line="-913"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">角度</translation>
     </message>
     <message>
-        <location line="-902"/>
+        <location line="-913"/>
         <source>Segments per turn</source>
         <translation type="unfinished">1 回転あたりのセグメント数</translation>
     </message>
@@ -2243,12 +2571,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1016"/>
+        <location line="+1047"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-954"/>
+        <location line="-983"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -2293,17 +2621,17 @@ begin building your part.</source>
         <translation type="unfinished">インポート(&amp;I)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP as a New Part...</source>
         <translation type="unfinished">STEP を新規部品として(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>STEP as an &amp;Assembly...</source>
         <translation type="unfinished">STEP をアセンブリとして(&amp;A)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF をこの図面に(&amp;D)...</translation>
     </message>
@@ -2313,27 +2641,27 @@ begin building your part.</source>
         <translation type="unfinished">エクスポート(&amp;E)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP...</source>
         <translation type="unfinished">STEP(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>S&amp;TL...</source>
         <translation type="unfinished">STL(&amp;T)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;glTF...</source>
         <translation type="unfinished">glTF(&amp;G)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;DXF...</source>
         <translation type="unfinished">DXF(&amp;D)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;PDF...</source>
         <translation type="unfinished">PDF(&amp;P)...</translation>
     </message>
@@ -3236,12 +3564,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4158"/>
+        <location line="+3660"/>
         <source>Mirror</source>
         <translation type="unfinished">ミラー</translation>
     </message>
     <message>
-        <location line="-4234"/>
+        <location line="-3736"/>
         <source>Trim</source>
         <translation type="unfinished">トリム</translation>
     </message>
@@ -3258,19 +3586,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+4007"/>
+        <location line="+3509"/>
         <source>Fillet</source>
         <translation type="unfinished">フィレット</translation>
     </message>
     <message>
-        <location line="-4070"/>
+        <location line="-3572"/>
         <location line="+64"/>
-        <location line="+4006"/>
+        <location line="+3508"/>
         <source>Chamfer</source>
         <translation type="unfinished">面取り</translation>
     </message>
     <message>
-        <location line="-4069"/>
+        <location line="-3571"/>
         <source>Break</source>
         <translation type="unfinished">部分削除</translation>
     </message>
@@ -3310,22 +3638,8 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">寸法</translation>
     </message>
-    <message numerus="yes">
-        <location line="+1745"/>
-        <source>Imported %n part(s) into &quot;%1&quot;.</source>
-        <translation type="unfinished">
-            <numerusform>%n 個の部品を &quot;%1&quot; にインポートしました。</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>The assembly has %n component(s).</source>
-        <translation type="unfinished">
-            <numerusform>アセンブリのコンポーネントは %n 個です。</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+1766"/>
+        <location line="+3014"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3688,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1: &quot;%2&quot; にその値は指定できません</translation>
     </message>
     <message>
-        <location line="-4340"/>
+        <location line="-3842"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -3476,12 +3790,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2883"/>
+        <location line="+2385"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2880"/>
+        <location line="-2382"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3810,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3025"/>
+        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">ボックス</translation>
     </message>
     <message>
-        <location line="-3024"/>
-        <location line="+3034"/>
+        <location line="-2526"/>
+        <location line="+2536"/>
         <source>Cylinder</source>
         <translation type="unfinished">円柱</translation>
     </message>
     <message>
-        <location line="-3033"/>
-        <location line="+3040"/>
+        <location line="-2535"/>
+        <location line="+2542"/>
         <source>Sphere</source>
         <translation type="unfinished">球</translation>
     </message>
     <message>
-        <location line="-3039"/>
-        <location line="+3046"/>
+        <location line="-2541"/>
+        <location line="+2548"/>
         <source>Cone</source>
         <translation type="unfinished">円錐</translation>
     </message>
     <message>
-        <location line="-3045"/>
-        <location line="+3056"/>
+        <location line="-2547"/>
+        <location line="+2558"/>
         <source>Torus</source>
         <translation type="unfinished">トーラス</translation>
     </message>
     <message>
-        <location line="-3054"/>
+        <location line="-2556"/>
         <source>Features</source>
         <translation type="unfinished">フィーチャー</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3794"/>
+        <location line="+3296"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-3839"/>
-        <location line="+3858"/>
+        <location line="-3341"/>
+        <location line="+3360"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-3884"/>
-        <location line="+4214"/>
+        <location line="-3386"/>
+        <location line="+3716"/>
         <source>Hole</source>
         <translation type="unfinished">穴</translation>
     </message>
     <message>
-        <location line="-4212"/>
+        <location line="-3714"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">ボディの結合</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3965"/>
+        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">結合</translation>
     </message>
     <message>
-        <location line="-3964"/>
-        <location line="+3968"/>
+        <location line="-3466"/>
+        <location line="+3470"/>
         <source>Subtract</source>
         <translation type="unfinished">除去</translation>
     </message>
     <message>
-        <location line="-3967"/>
-        <location line="+3971"/>
+        <location line="-3469"/>
+        <location line="+3473"/>
         <source>Intersect</source>
         <translation type="unfinished">共通</translation>
     </message>
     <message>
-        <location line="-3966"/>
-        <location line="+4035"/>
+        <location line="-3468"/>
+        <location line="+3537"/>
         <source>Shell</source>
         <translation type="unfinished">シェル</translation>
     </message>
     <message>
-        <location line="-4034"/>
-        <location line="+4054"/>
+        <location line="-3536"/>
+        <location line="+3556"/>
         <source>Draft</source>
         <translation type="unfinished">抜き勾配</translation>
     </message>
     <message>
-        <location line="-4052"/>
+        <location line="-3554"/>
         <source>Pattern</source>
         <translation type="unfinished">パターン</translation>
     </message>
@@ -3615,18 +3929,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+982"/>
-        <location line="+499"/>
-        <location line="+15"/>
-        <location line="+466"/>
+        <location line="+986"/>
+        <location line="+478"/>
         <location line="+1439"/>
-        <location line="+1203"/>
+        <location line="+1201"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-4687"/>
+        <location line="-4187"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -3647,17 +3959,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4343"/>
+        <location line="+3845"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-4337"/>
+        <location line="-3839"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+291"/>
+        <location line="+311"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
     </message>
@@ -3790,7 +4102,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">アセンブリ %1</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location filename="../src/ui/src/TypedUnits.cpp" line="+41"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">ミリメートル (mm)</translation>
     </message>
@@ -3815,7 +4127,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">フィート (ft)</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+48"/>
         <source>Document Units</source>
         <translation type="unfinished">ドキュメントの単位</translation>
     </message>
@@ -3972,12 +4284,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-233"/>
-        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
-        <location line="-758"/>
+        <location line="+22"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
@@ -4147,12 +4458,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message>
-        <location line="-341"/>
+        <location line="+3"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">近似: %1</translation>
     </message>
@@ -4177,302 +4487,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">除外された内容はドキュメントに含まれず、保存しても保持されません。</translation>
     </message>
     <message>
-        <location line="+52"/>
-        <source>Length Unit Not Given</source>
-        <translation type="unfinished">長さの単位が指定されていません</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
-        <translation type="unfinished">&quot;%1&quot; は長さの単位を示していないか、このバージョンでは読めない単位で示しています。誤って読むと、すべての長さが誤った大きさになります。</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Its lengths are in:</source>
-        <translation type="unfinished">長さの単位:</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Import STEP</source>
-        <translation type="unfinished">STEP のインポート</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <location line="+8"/>
-        <source>STEP Files (*.step *.stp);;All Files (*)</source>
-        <translation type="unfinished">STEP ファイル (*.step *.stp);;すべてのファイル (*)</translation>
-    </message>
-    <message>
-        <location line="-1"/>
-        <source>Import STEP as an Assembly</source>
-        <translation type="unfinished">STEP をアセンブリとしてインポート</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Save the Assembly As</source>
-        <translation type="unfinished">アセンブリに名前を付けて保存</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Horizon Assemblies (*.hzasm)</source>
-        <translation type="unfinished">Horizon アセンブリ (*.hzasm)</translation>
-    </message>
-    <message>
-        <location line="+18"/>
-        <source>A STEP import is already running</source>
-        <translation type="unfinished">STEP のインポートは既に実行中です</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Importing %1...</source>
-        <translation type="unfinished">%1 をインポートしています...</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Import cancelled</source>
-        <translation type="unfinished">インポートをキャンセルしました</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
-        <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <location line="+25"/>
-        <location line="+6"/>
-        <location line="+28"/>
-        <source>Could not import</source>
-        <translation type="unfinished">インポートできませんでした</translation>
-    </message>
-    <message numerus="yes">
-        <location line="-39"/>
-        <source>Imported %n bodies.</source>
-        <translation type="unfinished">
-            <numerusform>%n 個のボディをインポートしました。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+28"/>
-        <source>A DXF is imported into a drawing or part, not an assembly</source>
-        <translation type="unfinished">DXF は図面または部品にインポートします。アセンブリにはインポートできません</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <location line="+14"/>
-        <source>Import DXF</source>
-        <translation type="unfinished">DXF のインポート</translation>
-    </message>
-    <message>
-        <location line="-13"/>
-        <source>DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+35"/>
-        <source>Imported %n entities.</source>
-        <translation type="unfinished">
-            <numerusform>%n 個のエンティティをインポートしました。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export writes a part&apos;s body; this document has none</source>
-        <translation type="unfinished">%1 エクスポートは部品のボディを書き出します。このドキュメントにはボディがありません</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+171"/>
-        <location line="+43"/>
-        <source>Export %1</source>
-        <translation type="unfinished">%1 のエクスポート</translation>
-    </message>
-    <message>
-        <location line="-201"/>
-        <location line="+3"/>
-        <location line="+22"/>
-        <source>STEP</source>
-        <translation type="unfinished">STEP</translation>
-    </message>
-    <message>
-        <location line="-22"/>
-        <location line="+22"/>
-        <source>STEP Files (*.step *.stp)</source>
-        <translation type="unfinished">STEP ファイル (*.step *.stp)</translation>
-    </message>
-    <message>
-        <location line="-18"/>
-        <location line="+27"/>
-        <location line="+52"/>
-        <location line="+17"/>
-        <location line="+18"/>
-        <location line="+103"/>
-        <source>Could not export</source>
-        <translation type="unfinished">エクスポートできませんでした</translation>
-    </message>
-    <message>
-        <location line="-213"/>
-        <location line="+27"/>
-        <location line="+51"/>
-        <location line="+18"/>
-        <location line="+17"/>
-        <location line="+103"/>
-        <source>Exported %1.</source>
-        <translation type="unfinished">%1 をエクスポートしました。</translation>
-    </message>
-    <message>
-        <location line="-207"/>
-        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
-        <translation type="unfinished">STEP エクスポートはアセンブリのコンポーネントを書き出しますが、このアセンブリの部品を 1 つも読み込めません</translation>
-    </message>
-    <message>
-        <location line="+30"/>
-        <source>Left out: &quot;%1&quot;: its part could not be read</source>
-        <translation type="unfinished">除外: &quot;%1&quot;: 部品を読み込めませんでした</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+11"/>
-        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
-        <translation type="unfinished">
-            <numerusform>%n 個の曲面は、曲面としてではなくファセットとして書き出されました。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Export STEP</source>
-        <translation type="unfinished">STEP のエクスポート</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>%n component(s) were not written.</source>
-        <translation type="unfinished">
-            <numerusform>%n 個のコンポーネントは書き出されませんでした。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
-        <translation type="unfinished">部品はモデル化したとおり正確ですが、ほかのシステムではこれらの面が平面のファセットとして扱われます。</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+3"/>
-        <source>STL</source>
-        <translation type="unfinished">STL</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>STL Files (*.stl)</source>
-        <translation type="unfinished">STL ファイル (*.stl)</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+3"/>
-        <source>glTF</source>
-        <translation type="unfinished">glTF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>glTF Binary (*.glb)</source>
-        <translation type="unfinished">glTF バイナリ (*.glb)</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>DXF export writes a drawing; this document has nothing drawn</source>
-        <translation type="unfinished">DXF エクスポートは図面を書き出します。このドキュメントには何も描かれていません</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>DXF</source>
-        <translation type="unfinished">DXF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>DXF Files (*.dxf)</source>
-        <translation type="unfinished">DXF ファイル (*.dxf)</translation>
-    </message>
-    <message>
-        <location line="+27"/>
-        <source>PDF</source>
-        <translation type="unfinished">PDF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>SVG</source>
-        <translation type="unfinished">SVG</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>%1 export plots a drawing, not an assembly</source>
-        <translation type="unfinished">%1 エクスポートは図面を出力します。アセンブリは出力できません</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export plots a drawing; nothing visible is drawn</source>
-        <translation type="unfinished">%1 エクスポートは図面を出力しますが、表示されている要素がありません</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Paper:</source>
-        <translation type="unfinished">用紙:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Orientation:</source>
-        <translation type="unfinished">向き:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Landscape</source>
-        <translation type="unfinished">横</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Portrait</source>
-        <translation type="unfinished">縦</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Scale:</source>
-        <translation type="unfinished">尺度:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Fit to paper</source>
-        <translation type="unfinished">用紙に合わせる</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Colours:</source>
-        <translation type="unfinished">色:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>As drawn</source>
-        <translation type="unfinished">作図どおり</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Black</source>
-        <translation type="unfinished">黒</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
-        <translation type="unfinished">尺度 %1 では図面が用紙より大きくなります。はみ出した部分は切り取られます。</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>PDF Files (*.pdf)</source>
-        <translation type="unfinished">PDF ファイル (*.pdf)</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>SVG Files (*.svg)</source>
-        <translation type="unfinished">SVG ファイル (*.svg)</translation>
-    </message>
-    <message>
-        <location line="+45"/>
+        <location line="+32"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot; がほかのプログラムによって変更されました。変更を確認するには、閉じてから開き直してください</translation>
     </message>
@@ -5635,7 +5650,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">モデルを再構築しています...</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+62"/>
         <source>Importing %1: %2 of %3 parts written...</source>
         <translation type="unfinished">%1 をインポート中: %3 個中 %2 個の部品を書き込みました...</translation>
     </message>
@@ -5645,7 +5660,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-4703"/>
+        <location line="-4203"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

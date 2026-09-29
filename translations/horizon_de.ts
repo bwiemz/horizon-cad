@@ -1642,6 +1642,340 @@ Details stehen im Protokoll:
     </message>
 </context>
 <context>
+    <name>hz::ui::ExchangeCommands</name>
+    <message>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+104"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">Längeneinheit nicht angegeben</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; gibt nicht an, in welcher Einheit seine Längen sind, oder gibt eine an, die diese Version nicht lesen kann. Falsch gelesen, hat jede Länge die falsche Größe.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">Seine Längen sind in:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Import STEP</source>
+        <translation type="unfinished">STEP importieren</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+8"/>
+        <source>STEP Files (*.step *.stp);;All Files (*)</source>
+        <translation type="unfinished">STEP-Dateien (*.step *.stp);;Alle Dateien (*)</translation>
+    </message>
+    <message>
+        <location line="-1"/>
+        <source>Import STEP as an Assembly</source>
+        <translation type="unfinished">STEP als Baugruppe importieren</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Save the Assembly As</source>
+        <translation type="unfinished">Baugruppe speichern unter</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon Assemblies (*.hzasm)</source>
+        <translation type="unfinished">Horizon-Baugruppen (*.hzasm)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>A STEP import is already running</source>
+        <translation type="unfinished">Ein STEP-Import läuft bereits</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Importing %1...</source>
+        <translation type="unfinished">%1 wird importiert...</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+15"/>
+        <source>Ready</source>
+        <translation type="unfinished">Bereit</translation>
+    </message>
+    <message>
+        <location line="-14"/>
+        <source>Import cancelled</source>
+        <translation type="unfinished">Import abgebrochen</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">&quot;%1&quot; wurde nicht importiert: Die Einheit seiner Längen wurde nicht angegeben</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
+        <source>Could not import</source>
+        <translation type="unfinished">Fehler beim Importieren von</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-39"/>
+        <source>Imported %n bodies.</source>
+        <translation type="unfinished">
+            <numerusform>%n Körper importiert.</numerusform>
+            <numerusform>%n Körper importiert.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+22"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>%n Teil nach &quot;%1&quot; importiert.</numerusform>
+            <numerusform>%n Teile nach &quot;%1&quot; importiert.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>Die Baugruppe hat %n Komponente.</numerusform>
+            <numerusform>Die Baugruppe hat %n Komponenten.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>A DXF is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">Eine DXF-Datei wird in eine Zeichnung oder ein Teil importiert, nicht in eine Baugruppe</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+13"/>
+        <source>Import DXF</source>
+        <translation type="unfinished">DXF importieren</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>DXF Files (*.dxf);;All Files (*)</source>
+        <translation type="unfinished">DXF-Dateien (*.dxf);;Alle Dateien (*)</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+35"/>
+        <source>Imported %n entities.</source>
+        <translation type="unfinished">
+            <numerusform>%n Element importiert.</numerusform>
+            <numerusform>%n Elemente importiert.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 export writes a part&apos;s body; this document has none</source>
+        <translation type="unfinished">Der %1-Export schreibt den Körper eines Teils; dieses Dokument hat keinen</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+170"/>
+        <location line="+44"/>
+        <source>Export %1</source>
+        <translation type="unfinished">%1 exportieren</translation>
+    </message>
+    <message>
+        <location line="-201"/>
+        <location line="+3"/>
+        <location line="+22"/>
+        <source>STEP</source>
+        <translation type="unfinished">STEP</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <location line="+22"/>
+        <source>STEP Files (*.step *.stp)</source>
+        <translation type="unfinished">STEP-Dateien (*.step *.stp)</translation>
+    </message>
+    <message>
+        <location line="-18"/>
+        <location line="+28"/>
+        <location line="+52"/>
+        <location line="+17"/>
+        <location line="+17"/>
+        <location line="+103"/>
+        <source>Could not export</source>
+        <translation type="unfinished">Fehler beim Exportieren von</translation>
+    </message>
+    <message>
+        <location line="-213"/>
+        <location line="+28"/>
+        <location line="+51"/>
+        <location line="+18"/>
+        <location line="+16"/>
+        <location line="+103"/>
+        <source>Exported %1.</source>
+        <translation type="unfinished">%1 exportiert.</translation>
+    </message>
+    <message>
+        <location line="-207"/>
+        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
+        <translation type="unfinished">Der STEP-Export schreibt die Komponenten einer Baugruppe; keines der Teile dieser Baugruppe kann gelesen werden</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assembly</source>
+        <translation type="unfinished">Baugruppe</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Left out: &quot;%1&quot;: its part could not be read</source>
+        <translation type="unfinished">Ausgelassen: &quot;%1&quot;: das zugehörige Teil konnte nicht gelesen werden</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Left out: %1</source>
+        <translation type="unfinished">Ausgelassen: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+8"/>
+        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
+        <translation type="unfinished">
+            <numerusform>%n gekrümmte Fläche wurde als Facetten geschrieben, nicht als exakte Oberfläche.</numerusform>
+            <numerusform>%n gekrümmte Flächen wurden als Facetten geschrieben, nicht als exakte Oberflächen.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Export STEP</source>
+        <translation type="unfinished">STEP exportieren</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>%n component(s) were not written.</source>
+        <translation type="unfinished">
+            <numerusform>%n Komponente wurde nicht geschrieben.</numerusform>
+            <numerusform>%n Komponenten wurden nicht geschrieben.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
+        <translation type="unfinished">Das Teil ist exakt wie modelliert; andere Systeme sehen diese Flächen als ebene Facetten.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+3"/>
+        <source>STL</source>
+        <translation type="unfinished">STL</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>STL Files (*.stl)</source>
+        <translation type="unfinished">STL-Dateien (*.stl)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>glTF</source>
+        <translation type="unfinished">glTF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>glTF Binary (*.glb)</source>
+        <translation type="unfinished">glTF-Binärdatei (*.glb)</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DXF export writes a drawing; this document has nothing drawn</source>
+        <translation type="unfinished">Der DXF-Export schreibt eine Zeichnung; in diesem Dokument ist nichts gezeichnet</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>DXF</source>
+        <translation type="unfinished">DXF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>DXF Files (*.dxf)</source>
+        <translation type="unfinished">DXF-Dateien (*.dxf)</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>PDF</source>
+        <translation type="unfinished">PDF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>SVG</source>
+        <translation type="unfinished">SVG</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 export plots a drawing, not an assembly</source>
+        <translation type="unfinished">Der %1-Export gibt eine Zeichnung aus, keine Baugruppe</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>%1 export plots a drawing; nothing visible is drawn</source>
+        <translation type="unfinished">Der %1-Export gibt eine Zeichnung aus; es ist nichts Sichtbares gezeichnet</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Paper:</source>
+        <translation type="unfinished">Papier:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Orientation:</source>
+        <translation type="unfinished">Ausrichtung:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Landscape</source>
+        <translation type="unfinished">Querformat</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Portrait</source>
+        <translation type="unfinished">Hochformat</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Scale:</source>
+        <translation type="unfinished">Maßstab:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fit to paper</source>
+        <translation type="unfinished">An Papier anpassen</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Colours:</source>
+        <translation type="unfinished">Farben:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>As drawn</source>
+        <translation type="unfinished">Wie gezeichnet</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Black</source>
+        <translation type="unfinished">Schwarz</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
+        <translation type="unfinished">Bei %1 ist die Zeichnung größer als das Papier: was außerhalb liegt, wird abgeschnitten.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>PDF Files (*.pdf)</source>
+        <translation type="unfinished">PDF-Dateien (*.pdf)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>SVG Files (*.svg)</source>
+        <translation type="unfinished">SVG-Dateien (*.svg)</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::FeatureForm</name>
     <message>
         <location filename="../src/ui/src/FeatureForm.cpp" line="+104"/>
@@ -2019,12 +2353,12 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+641"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
     <message>
-        <location line="+69"/>
+        <location line="+78"/>
         <source>&amp;Edit</source>
         <translation>&amp;Bearbeiten</translation>
     </message>
@@ -2034,12 +2368,12 @@ um Ihr Teil aufzubauen.</translation>
         <translation>&amp;Ansicht</translation>
     </message>
     <message>
-        <location line="-115"/>
+        <location line="-124"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Neue Zeichnung</translation>
     </message>
     <message>
-        <location line="-445"/>
+        <location line="-447"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">eine Kurve aus %1 Teilstücken, ab %2</translation>
     </message>
@@ -2061,20 +2395,20 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+886"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">Abstand</translation>
     </message>
     <message>
-        <location line="-902"/>
-        <location line="+886"/>
+        <location line="-913"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">Winkel</translation>
     </message>
     <message>
-        <location line="-902"/>
+        <location line="-913"/>
         <source>Segments per turn</source>
         <translation type="unfinished">Segmente pro Umdrehung</translation>
     </message>
@@ -2246,12 +2580,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1016"/>
+        <location line="+1047"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-954"/>
+        <location line="-983"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -2296,17 +2630,17 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">&amp;Importieren</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP as a New Part...</source>
         <translation type="unfinished">&amp;STEP als neues Teil...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>STEP as an &amp;Assembly...</source>
         <translation type="unfinished">STEP als &amp;Baugruppe...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">&amp;DXF in diese Zeichnung...</translation>
     </message>
@@ -2316,27 +2650,27 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">&amp;Exportieren</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP...</source>
         <translation type="unfinished">&amp;STEP...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>S&amp;TL...</source>
         <translation type="unfinished">S&amp;TL...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;glTF...</source>
         <translation type="unfinished">&amp;glTF...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;DXF...</source>
         <translation type="unfinished">&amp;DXF...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;PDF...</source>
         <translation type="unfinished">&amp;PDF...</translation>
     </message>
@@ -3239,12 +3573,12 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4158"/>
+        <location line="+3660"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-4234"/>
+        <location line="-3736"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3261,19 +3595,19 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+4007"/>
+        <location line="+3509"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-4070"/>
+        <location line="-3572"/>
         <location line="+64"/>
-        <location line="+4006"/>
+        <location line="+3508"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-4069"/>
+        <location line="-3571"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3313,24 +3647,8 @@ um Ihr Teil aufzubauen.</translation>
         <source>Dimensions</source>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
-    <message numerus="yes">
-        <location line="+1745"/>
-        <source>Imported %n part(s) into &quot;%1&quot;.</source>
-        <translation type="unfinished">
-            <numerusform>%n Teil nach &quot;%1&quot; importiert.</numerusform>
-            <numerusform>%n Teile nach &quot;%1&quot; importiert.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>The assembly has %n component(s).</source>
-        <translation type="unfinished">
-            <numerusform>Die Baugruppe hat %n Komponente.</numerusform>
-            <numerusform>Die Baugruppe hat %n Komponenten.</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+1766"/>
+        <location line="+3014"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3381,7 +3699,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">%1: &quot;%2&quot; kann diesen Wert nicht annehmen</translation>
     </message>
     <message>
-        <location line="-4340"/>
+        <location line="-3842"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3483,12 +3801,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2883"/>
+        <location line="+2385"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
-        <location line="-2880"/>
+        <location line="-2382"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3503,96 +3821,96 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3025"/>
+        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">Quader</translation>
     </message>
     <message>
-        <location line="-3024"/>
-        <location line="+3034"/>
+        <location line="-2526"/>
+        <location line="+2536"/>
         <source>Cylinder</source>
         <translation type="unfinished">Zylinder</translation>
     </message>
     <message>
-        <location line="-3033"/>
-        <location line="+3040"/>
+        <location line="-2535"/>
+        <location line="+2542"/>
         <source>Sphere</source>
         <translation type="unfinished">Kugel</translation>
     </message>
     <message>
-        <location line="-3039"/>
-        <location line="+3046"/>
+        <location line="-2541"/>
+        <location line="+2548"/>
         <source>Cone</source>
         <translation type="unfinished">Kegel</translation>
     </message>
     <message>
-        <location line="-3045"/>
-        <location line="+3056"/>
+        <location line="-2547"/>
+        <location line="+2558"/>
         <source>Torus</source>
         <translation type="unfinished">Torus</translation>
     </message>
     <message>
-        <location line="-3054"/>
+        <location line="-2556"/>
         <source>Features</source>
         <translation type="unfinished">Features</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3794"/>
+        <location line="+3296"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-3839"/>
-        <location line="+3858"/>
+        <location line="-3341"/>
+        <location line="+3360"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-3884"/>
-        <location line="+4214"/>
+        <location line="-3386"/>
+        <location line="+3716"/>
         <source>Hole</source>
         <translation type="unfinished">Bohrung</translation>
     </message>
     <message>
-        <location line="-4212"/>
+        <location line="-3714"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Körper kombinieren</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3965"/>
+        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">Vereinigung</translation>
     </message>
     <message>
-        <location line="-3964"/>
-        <location line="+3968"/>
+        <location line="-3466"/>
+        <location line="+3470"/>
         <source>Subtract</source>
         <translation type="unfinished">Subtraktion</translation>
     </message>
     <message>
-        <location line="-3967"/>
-        <location line="+3971"/>
+        <location line="-3469"/>
+        <location line="+3473"/>
         <source>Intersect</source>
         <translation type="unfinished">Schnittmenge</translation>
     </message>
     <message>
-        <location line="-3966"/>
-        <location line="+4035"/>
+        <location line="-3468"/>
+        <location line="+3537"/>
         <source>Shell</source>
         <translation type="unfinished">Schale</translation>
     </message>
     <message>
-        <location line="-4034"/>
-        <location line="+4054"/>
+        <location line="-3536"/>
+        <location line="+3556"/>
         <source>Draft</source>
         <translation type="unfinished">Formschräge</translation>
     </message>
     <message>
-        <location line="-4052"/>
+        <location line="-3554"/>
         <source>Pattern</source>
         <translation type="unfinished">Muster</translation>
     </message>
@@ -3622,18 +3940,16 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+982"/>
-        <location line="+499"/>
-        <location line="+15"/>
-        <location line="+466"/>
+        <location line="+986"/>
+        <location line="+478"/>
         <location line="+1439"/>
-        <location line="+1203"/>
+        <location line="+1201"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-4687"/>
+        <location line="-4187"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -3654,17 +3970,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4343"/>
+        <location line="+3845"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-4337"/>
+        <location line="-3839"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+291"/>
+        <location line="+311"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -3797,7 +4113,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Baugruppe %1</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location filename="../src/ui/src/TypedUnits.cpp" line="+41"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">Millimeter (mm)</translation>
     </message>
@@ -3822,7 +4138,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Fuß (ft)</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+48"/>
         <source>Document Units</source>
         <translation type="unfinished">Dokumenteinheiten</translation>
     </message>
@@ -3981,12 +4297,11 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="-233"/>
-        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">Baugruppe</translation>
     </message>
     <message>
-        <location line="-758"/>
+        <location line="+22"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">Zeichnung</translation>
@@ -4156,12 +4471,11 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="-7"/>
-        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Ausgelassen: %1</translation>
     </message>
     <message>
-        <location line="-341"/>
+        <location line="+3"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">Angenähert: %1</translation>
     </message>
@@ -4186,306 +4500,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Was ausgelassen wurde, ist nicht im Dokument, und beim Speichern bleibt es nicht erhalten.</translation>
     </message>
     <message>
-        <location line="+52"/>
-        <source>Length Unit Not Given</source>
-        <translation type="unfinished">Längeneinheit nicht angegeben</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
-        <translation type="unfinished">&quot;%1&quot; gibt nicht an, in welcher Einheit seine Längen sind, oder gibt eine an, die diese Version nicht lesen kann. Falsch gelesen, hat jede Länge die falsche Größe.</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Its lengths are in:</source>
-        <translation type="unfinished">Seine Längen sind in:</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Import STEP</source>
-        <translation type="unfinished">STEP importieren</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <location line="+8"/>
-        <source>STEP Files (*.step *.stp);;All Files (*)</source>
-        <translation type="unfinished">STEP-Dateien (*.step *.stp);;Alle Dateien (*)</translation>
-    </message>
-    <message>
-        <location line="-1"/>
-        <source>Import STEP as an Assembly</source>
-        <translation type="unfinished">STEP als Baugruppe importieren</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Save the Assembly As</source>
-        <translation type="unfinished">Baugruppe speichern unter</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Horizon Assemblies (*.hzasm)</source>
-        <translation type="unfinished">Horizon-Baugruppen (*.hzasm)</translation>
-    </message>
-    <message>
-        <location line="+18"/>
-        <source>A STEP import is already running</source>
-        <translation type="unfinished">Ein STEP-Import läuft bereits</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Importing %1...</source>
-        <translation type="unfinished">%1 wird importiert...</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Import cancelled</source>
-        <translation type="unfinished">Import abgebrochen</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
-        <translation type="unfinished">&quot;%1&quot; wurde nicht importiert: Die Einheit seiner Längen wurde nicht angegeben</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <location line="+25"/>
-        <location line="+6"/>
-        <location line="+28"/>
-        <source>Could not import</source>
-        <translation type="unfinished">Fehler beim Importieren von</translation>
-    </message>
-    <message numerus="yes">
-        <location line="-39"/>
-        <source>Imported %n bodies.</source>
-        <translation type="unfinished">
-            <numerusform>%n Körper importiert.</numerusform>
-            <numerusform>%n Körper importiert.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+28"/>
-        <source>A DXF is imported into a drawing or part, not an assembly</source>
-        <translation type="unfinished">Eine DXF-Datei wird in eine Zeichnung oder ein Teil importiert, nicht in eine Baugruppe</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <location line="+14"/>
-        <source>Import DXF</source>
-        <translation type="unfinished">DXF importieren</translation>
-    </message>
-    <message>
-        <location line="-13"/>
-        <source>DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">DXF-Dateien (*.dxf);;Alle Dateien (*)</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+35"/>
-        <source>Imported %n entities.</source>
-        <translation type="unfinished">
-            <numerusform>%n Element importiert.</numerusform>
-            <numerusform>%n Elemente importiert.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export writes a part&apos;s body; this document has none</source>
-        <translation type="unfinished">Der %1-Export schreibt den Körper eines Teils; dieses Dokument hat keinen</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+171"/>
-        <location line="+43"/>
-        <source>Export %1</source>
-        <translation type="unfinished">%1 exportieren</translation>
-    </message>
-    <message>
-        <location line="-201"/>
-        <location line="+3"/>
-        <location line="+22"/>
-        <source>STEP</source>
-        <translation type="unfinished">STEP</translation>
-    </message>
-    <message>
-        <location line="-22"/>
-        <location line="+22"/>
-        <source>STEP Files (*.step *.stp)</source>
-        <translation type="unfinished">STEP-Dateien (*.step *.stp)</translation>
-    </message>
-    <message>
-        <location line="-18"/>
-        <location line="+27"/>
-        <location line="+52"/>
-        <location line="+17"/>
-        <location line="+18"/>
-        <location line="+103"/>
-        <source>Could not export</source>
-        <translation type="unfinished">Fehler beim Exportieren von</translation>
-    </message>
-    <message>
-        <location line="-213"/>
-        <location line="+27"/>
-        <location line="+51"/>
-        <location line="+18"/>
-        <location line="+17"/>
-        <location line="+103"/>
-        <source>Exported %1.</source>
-        <translation type="unfinished">%1 exportiert.</translation>
-    </message>
-    <message>
-        <location line="-207"/>
-        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
-        <translation type="unfinished">Der STEP-Export schreibt die Komponenten einer Baugruppe; keines der Teile dieser Baugruppe kann gelesen werden</translation>
-    </message>
-    <message>
-        <location line="+30"/>
-        <source>Left out: &quot;%1&quot;: its part could not be read</source>
-        <translation type="unfinished">Ausgelassen: &quot;%1&quot;: das zugehörige Teil konnte nicht gelesen werden</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+11"/>
-        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
-        <translation type="unfinished">
-            <numerusform>%n gekrümmte Fläche wurde als Facetten geschrieben, nicht als exakte Oberfläche.</numerusform>
-            <numerusform>%n gekrümmte Flächen wurden als Facetten geschrieben, nicht als exakte Oberflächen.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Export STEP</source>
-        <translation type="unfinished">STEP exportieren</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>%n component(s) were not written.</source>
-        <translation type="unfinished">
-            <numerusform>%n Komponente wurde nicht geschrieben.</numerusform>
-            <numerusform>%n Komponenten wurden nicht geschrieben.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
-        <translation type="unfinished">Das Teil ist exakt wie modelliert; andere Systeme sehen diese Flächen als ebene Facetten.</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+3"/>
-        <source>STL</source>
-        <translation type="unfinished">STL</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>STL Files (*.stl)</source>
-        <translation type="unfinished">STL-Dateien (*.stl)</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+3"/>
-        <source>glTF</source>
-        <translation type="unfinished">glTF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>glTF Binary (*.glb)</source>
-        <translation type="unfinished">glTF-Binärdatei (*.glb)</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>DXF export writes a drawing; this document has nothing drawn</source>
-        <translation type="unfinished">Der DXF-Export schreibt eine Zeichnung; in diesem Dokument ist nichts gezeichnet</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>DXF</source>
-        <translation type="unfinished">DXF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>DXF Files (*.dxf)</source>
-        <translation type="unfinished">DXF-Dateien (*.dxf)</translation>
-    </message>
-    <message>
-        <location line="+27"/>
-        <source>PDF</source>
-        <translation type="unfinished">PDF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>SVG</source>
-        <translation type="unfinished">SVG</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>%1 export plots a drawing, not an assembly</source>
-        <translation type="unfinished">Der %1-Export gibt eine Zeichnung aus, keine Baugruppe</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export plots a drawing; nothing visible is drawn</source>
-        <translation type="unfinished">Der %1-Export gibt eine Zeichnung aus; es ist nichts Sichtbares gezeichnet</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Paper:</source>
-        <translation type="unfinished">Papier:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Orientation:</source>
-        <translation type="unfinished">Ausrichtung:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Landscape</source>
-        <translation type="unfinished">Querformat</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Portrait</source>
-        <translation type="unfinished">Hochformat</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Scale:</source>
-        <translation type="unfinished">Maßstab:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Fit to paper</source>
-        <translation type="unfinished">An Papier anpassen</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Colours:</source>
-        <translation type="unfinished">Farben:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>As drawn</source>
-        <translation type="unfinished">Wie gezeichnet</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Black</source>
-        <translation type="unfinished">Schwarz</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
-        <translation type="unfinished">Bei %1 ist die Zeichnung größer als das Papier: was außerhalb liegt, wird abgeschnitten.</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>PDF Files (*.pdf)</source>
-        <translation type="unfinished">PDF-Dateien (*.pdf)</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>SVG Files (*.svg)</source>
-        <translation type="unfinished">SVG-Dateien (*.svg)</translation>
-    </message>
-    <message>
-        <location line="+45"/>
+        <location line="+32"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert: schließen und erneut öffnen, um die Änderung zu sehen</translation>
     </message>
@@ -5651,7 +5666,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Modell wird neu aufgebaut...</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+62"/>
         <source>Importing %1: %2 of %3 parts written...</source>
         <translation type="unfinished">%1 wird importiert: %2 von %3 Teilen geschrieben...</translation>
     </message>
@@ -5661,7 +5676,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-4703"/>
+        <location line="-4203"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>

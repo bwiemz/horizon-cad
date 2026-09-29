@@ -1639,6 +1639,334 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::ExchangeCommands</name>
+    <message>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+104"/>
+        <source>Length Unit Not Given</source>
+        <translation type="unfinished">未给出长度单位</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
+        <translation type="unfinished">&quot;%1&quot; 未说明其长度所用的单位，或所用单位本版本无法读取。读错时，每个长度的大小都会出错。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Its lengths are in:</source>
+        <translation type="unfinished">其长度单位为：</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Import STEP</source>
+        <translation type="unfinished">导入 STEP</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+8"/>
+        <source>STEP Files (*.step *.stp);;All Files (*)</source>
+        <translation type="unfinished">STEP 文件 (*.step *.stp);;所有文件 (*)</translation>
+    </message>
+    <message>
+        <location line="-1"/>
+        <source>Import STEP as an Assembly</source>
+        <translation type="unfinished">将 STEP 导入为装配体</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Save the Assembly As</source>
+        <translation type="unfinished">装配体另存为</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Horizon Assemblies (*.hzasm)</source>
+        <translation type="unfinished">Horizon 装配体 (*.hzasm)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>A STEP import is already running</source>
+        <translation type="unfinished">STEP 导入已在运行</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Importing %1...</source>
+        <translation type="unfinished">正在导入 %1...</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+15"/>
+        <source>Ready</source>
+        <translation type="unfinished">就绪</translation>
+    </message>
+    <message>
+        <location line="-14"/>
+        <source>Import cancelled</source>
+        <translation type="unfinished">已取消导入</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
+        <translation type="unfinished">未导入 &quot;%1&quot;：未给出其长度所用的单位</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <location line="+25"/>
+        <location line="+6"/>
+        <location line="+28"/>
+        <source>Could not import</source>
+        <translation type="unfinished">无法导入</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-39"/>
+        <source>Imported %n bodies.</source>
+        <translation type="unfinished">
+            <numerusform>已导入 %n 个实体。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+22"/>
+        <source>Imported %n part(s) into &quot;%1&quot;.</source>
+        <translation type="unfinished">
+            <numerusform>已将 %n 个零件导入到 &quot;%1&quot;。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>The assembly has %n component(s).</source>
+        <translation type="unfinished">
+            <numerusform>装配体有 %n 个零部件。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>A DXF is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DXF 只能导入到工程图或零件中，不能导入到装配体</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+13"/>
+        <source>Import DXF</source>
+        <translation type="unfinished">导入 DXF</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>DXF Files (*.dxf);;All Files (*)</source>
+        <translation type="unfinished">DXF 文件 (*.dxf);;所有文件 (*)</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+35"/>
+        <source>Imported %n entities.</source>
+        <translation type="unfinished">
+            <numerusform>已导入 %n 个图元。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 export writes a part&apos;s body; this document has none</source>
+        <translation type="unfinished">%1 导出会写入零件的实体；此文档没有实体</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+170"/>
+        <location line="+44"/>
+        <source>Export %1</source>
+        <translation type="unfinished">导出 %1</translation>
+    </message>
+    <message>
+        <location line="-201"/>
+        <location line="+3"/>
+        <location line="+22"/>
+        <source>STEP</source>
+        <translation type="unfinished">STEP</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <location line="+22"/>
+        <source>STEP Files (*.step *.stp)</source>
+        <translation type="unfinished">STEP 文件 (*.step *.stp)</translation>
+    </message>
+    <message>
+        <location line="-18"/>
+        <location line="+28"/>
+        <location line="+52"/>
+        <location line="+17"/>
+        <location line="+17"/>
+        <location line="+103"/>
+        <source>Could not export</source>
+        <translation type="unfinished">无法导出</translation>
+    </message>
+    <message>
+        <location line="-213"/>
+        <location line="+28"/>
+        <location line="+51"/>
+        <location line="+18"/>
+        <location line="+16"/>
+        <location line="+103"/>
+        <source>Exported %1.</source>
+        <translation type="unfinished">已导出 %1。</translation>
+    </message>
+    <message>
+        <location line="-207"/>
+        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
+        <translation type="unfinished">STEP 导出会写入装配体的零部件；此装配体的零件均无法读取</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assembly</source>
+        <translation type="unfinished">装配体</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Left out: &quot;%1&quot;: its part could not be read</source>
+        <translation type="unfinished">已忽略：&quot;%1&quot;：无法读取其零件</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Left out: %1</source>
+        <translation type="unfinished">已忽略：%1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+8"/>
+        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
+        <translation type="unfinished">
+            <numerusform>%n 个曲面以小平面形式写入，而非写在其曲面上。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Export STEP</source>
+        <translation type="unfinished">导出 STEP</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>%n component(s) were not written.</source>
+        <translation type="unfinished">
+            <numerusform>%n 个零部件未写入。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
+        <translation type="unfinished">零件本身与建模结果完全一致；其他系统会将这些面视为平面小平面。</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+3"/>
+        <source>STL</source>
+        <translation type="unfinished">STL</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>STL Files (*.stl)</source>
+        <translation type="unfinished">STL 文件 (*.stl)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>glTF</source>
+        <translation type="unfinished">glTF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>glTF Binary (*.glb)</source>
+        <translation type="unfinished">glTF 二进制 (*.glb)</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>DXF export writes a drawing; this document has nothing drawn</source>
+        <translation type="unfinished">DXF 导出会写入工程图；此文档没有绘制任何内容</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>DXF</source>
+        <translation type="unfinished">DXF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>DXF Files (*.dxf)</source>
+        <translation type="unfinished">DXF 文件 (*.dxf)</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>PDF</source>
+        <translation type="unfinished">PDF</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>SVG</source>
+        <translation type="unfinished">SVG</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 export plots a drawing, not an assembly</source>
+        <translation type="unfinished">%1 导出用于输出工程图，而非装配体</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>%1 export plots a drawing; nothing visible is drawn</source>
+        <translation type="unfinished">%1 导出用于输出工程图；当前没有可见的绘制内容</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Paper:</source>
+        <translation type="unfinished">纸张:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Orientation:</source>
+        <translation type="unfinished">方向:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Landscape</source>
+        <translation type="unfinished">横向</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Portrait</source>
+        <translation type="unfinished">纵向</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Scale:</source>
+        <translation type="unfinished">比例:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fit to paper</source>
+        <translation type="unfinished">适合纸张</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Colours:</source>
+        <translation type="unfinished">颜色:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>As drawn</source>
+        <translation type="unfinished">按原样</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Black</source>
+        <translation type="unfinished">黑色</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
+        <translation type="unfinished">在 %1 比例下，工程图大于纸张：超出部分将被裁掉。</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>PDF Files (*.pdf)</source>
+        <translation type="unfinished">PDF 文件 (*.pdf)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>SVG Files (*.svg)</source>
+        <translation type="unfinished">SVG 文件 (*.svg)</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::FeatureForm</name>
     <message>
         <location filename="../src/ui/src/FeatureForm.cpp" line="+104"/>
@@ -2016,12 +2344,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+641"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+644"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
-        <location line="+69"/>
+        <location line="+78"/>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
     </message>
@@ -2031,12 +2359,12 @@ begin building your part.</source>
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
-        <location line="-115"/>
+        <location line="-124"/>
         <source>&amp;New Drawing</source>
         <translation>新建图纸(&amp;N)</translation>
     </message>
     <message>
-        <location line="-445"/>
+        <location line="-447"/>
         <source>a curve of %1 pieces, from %2</source>
         <translation type="unfinished">由 %1 段组成的曲线，起于 %2</translation>
     </message>
@@ -2058,20 +2386,20 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+886"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Distance</source>
         <translation type="unfinished">距离</translation>
     </message>
     <message>
-        <location line="-902"/>
-        <location line="+886"/>
+        <location line="-913"/>
+        <location line="+897"/>
         <location line="+17"/>
         <source>Angle</source>
         <translation type="unfinished">角度</translation>
     </message>
     <message>
-        <location line="-902"/>
+        <location line="-913"/>
         <source>Segments per turn</source>
         <translation type="unfinished">每圈段数</translation>
     </message>
@@ -2243,12 +2571,12 @@ begin building your part.</source>
     <message>
         <location line="+180"/>
         <location line="+1"/>
-        <location line="+1016"/>
+        <location line="+1047"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-954"/>
+        <location line="-983"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -2293,17 +2621,17 @@ begin building your part.</source>
         <translation type="unfinished">导入(&amp;I)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP as a New Part...</source>
         <translation type="unfinished">STEP 作为新零件(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>STEP as an &amp;Assembly...</source>
         <translation type="unfinished">STEP 作为装配体(&amp;A)...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF 到当前工程图(&amp;D)...</translation>
     </message>
@@ -2313,27 +2641,27 @@ begin building your part.</source>
         <translation type="unfinished">导出(&amp;E)</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;STEP...</source>
         <translation type="unfinished">STEP(&amp;S)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>S&amp;TL...</source>
         <translation type="unfinished">STL(&amp;T)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;glTF...</source>
         <translation type="unfinished">glTF(&amp;G)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;DXF...</source>
         <translation type="unfinished">DXF(&amp;D)...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;PDF...</source>
         <translation type="unfinished">PDF(&amp;P)...</translation>
     </message>
@@ -3236,12 +3564,12 @@ begin building your part.</source>
     <message>
         <location line="+2"/>
         <location line="+80"/>
-        <location line="+4158"/>
+        <location line="+3660"/>
         <source>Mirror</source>
         <translation type="unfinished">镜像</translation>
     </message>
     <message>
-        <location line="-4234"/>
+        <location line="-3736"/>
         <source>Trim</source>
         <translation type="unfinished">修剪</translation>
     </message>
@@ -3258,19 +3586,19 @@ begin building your part.</source>
     <message>
         <location line="+1"/>
         <location line="+64"/>
-        <location line="+4007"/>
+        <location line="+3509"/>
         <source>Fillet</source>
         <translation type="unfinished">圆角</translation>
     </message>
     <message>
-        <location line="-4070"/>
+        <location line="-3572"/>
         <location line="+64"/>
-        <location line="+4006"/>
+        <location line="+3508"/>
         <source>Chamfer</source>
         <translation type="unfinished">倒角</translation>
     </message>
     <message>
-        <location line="-4069"/>
+        <location line="-3571"/>
         <source>Break</source>
         <translation type="unfinished">打断</translation>
     </message>
@@ -3310,22 +3638,8 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">尺寸</translation>
     </message>
-    <message numerus="yes">
-        <location line="+1745"/>
-        <source>Imported %n part(s) into &quot;%1&quot;.</source>
-        <translation type="unfinished">
-            <numerusform>已将 %n 个零件导入到 &quot;%1&quot;。</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>The assembly has %n component(s).</source>
-        <translation type="unfinished">
-            <numerusform>装配体有 %n 个零部件。</numerusform>
-        </translation>
-    </message>
     <message>
-        <location line="+1766"/>
+        <location line="+3014"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3374,7 +3688,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">%1：&quot;%2&quot; 不能取该值</translation>
     </message>
     <message>
-        <location line="-4340"/>
+        <location line="-3842"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -3476,12 +3790,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2883"/>
+        <location line="+2385"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
-        <location line="-2880"/>
+        <location line="-2382"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+5"/>
@@ -3496,96 +3810,96 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3025"/>
+        <location line="+2527"/>
         <source>Box</source>
         <translation type="unfinished">长方体</translation>
     </message>
     <message>
-        <location line="-3024"/>
-        <location line="+3034"/>
+        <location line="-2526"/>
+        <location line="+2536"/>
         <source>Cylinder</source>
         <translation type="unfinished">圆柱体</translation>
     </message>
     <message>
-        <location line="-3033"/>
-        <location line="+3040"/>
+        <location line="-2535"/>
+        <location line="+2542"/>
         <source>Sphere</source>
         <translation type="unfinished">球体</translation>
     </message>
     <message>
-        <location line="-3039"/>
-        <location line="+3046"/>
+        <location line="-2541"/>
+        <location line="+2548"/>
         <source>Cone</source>
         <translation type="unfinished">圆锥体</translation>
     </message>
     <message>
-        <location line="-3045"/>
-        <location line="+3056"/>
+        <location line="-2547"/>
+        <location line="+2558"/>
         <source>Torus</source>
         <translation type="unfinished">圆环体</translation>
     </message>
     <message>
-        <location line="-3054"/>
+        <location line="-2556"/>
         <source>Features</source>
         <translation type="unfinished">特征</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3794"/>
+        <location line="+3296"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">拉伸</translation>
     </message>
     <message>
-        <location line="-3839"/>
-        <location line="+3858"/>
+        <location line="-3341"/>
+        <location line="+3360"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">旋转</translation>
     </message>
     <message>
-        <location line="-3884"/>
-        <location line="+4214"/>
+        <location line="-3386"/>
+        <location line="+3716"/>
         <source>Hole</source>
         <translation type="unfinished">孔</translation>
     </message>
     <message>
-        <location line="-4212"/>
+        <location line="-3714"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">组合实体</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+3965"/>
+        <location line="+3467"/>
         <source>Union</source>
         <translation type="unfinished">合并</translation>
     </message>
     <message>
-        <location line="-3964"/>
-        <location line="+3968"/>
+        <location line="-3466"/>
+        <location line="+3470"/>
         <source>Subtract</source>
         <translation type="unfinished">减去</translation>
     </message>
     <message>
-        <location line="-3967"/>
-        <location line="+3971"/>
+        <location line="-3469"/>
+        <location line="+3473"/>
         <source>Intersect</source>
         <translation type="unfinished">相交</translation>
     </message>
     <message>
-        <location line="-3966"/>
-        <location line="+4035"/>
+        <location line="-3468"/>
+        <location line="+3537"/>
         <source>Shell</source>
         <translation type="unfinished">抽壳</translation>
     </message>
     <message>
-        <location line="-4034"/>
-        <location line="+4054"/>
+        <location line="-3536"/>
+        <location line="+3556"/>
         <source>Draft</source>
         <translation type="unfinished">拔模</translation>
     </message>
     <message>
-        <location line="-4052"/>
+        <location line="-3554"/>
         <source>Pattern</source>
         <translation type="unfinished">阵列</translation>
     </message>
@@ -3615,18 +3929,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+982"/>
-        <location line="+499"/>
-        <location line="+15"/>
-        <location line="+466"/>
+        <location line="+986"/>
+        <location line="+478"/>
         <location line="+1439"/>
-        <location line="+1203"/>
+        <location line="+1201"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-4687"/>
+        <location line="-4187"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -3647,17 +3959,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+4343"/>
+        <location line="+3845"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-4337"/>
+        <location line="-3839"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+291"/>
+        <location line="+311"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -3790,7 +4102,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">装配体 %1</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location filename="../src/ui/src/TypedUnits.cpp" line="+41"/>
         <source>Millimetres (mm)</source>
         <translation type="unfinished">毫米 (mm)</translation>
     </message>
@@ -3815,7 +4127,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">英尺 (ft)</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+48"/>
         <source>Document Units</source>
         <translation type="unfinished">文档单位</translation>
     </message>
@@ -3972,12 +4284,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-233"/>
-        <location line="+780"/>
         <source>Assembly</source>
         <translation type="unfinished">装配体</translation>
     </message>
     <message>
-        <location line="-758"/>
+        <location line="+22"/>
         <location line="+103"/>
         <source>Drawing</source>
         <translation type="unfinished">工程图</translation>
@@ -4147,12 +4458,11 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="-7"/>
-        <location line="+344"/>
         <source>Left out: %1</source>
         <translation type="unfinished">已忽略：%1</translation>
     </message>
     <message>
-        <location line="-341"/>
+        <location line="+3"/>
         <source>Approximated: %1</source>
         <translation type="unfinished">已近似：%1</translation>
     </message>
@@ -4177,302 +4487,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">未读取的内容不在文档中，保存时也不会保留。</translation>
     </message>
     <message>
-        <location line="+52"/>
-        <source>Length Unit Not Given</source>
-        <translation type="unfinished">未给出长度单位</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>&quot;%1&quot; does not say which unit its lengths are in, or says it in one this version cannot read. Read wrong, every length is the wrong size.</source>
-        <translation type="unfinished">&quot;%1&quot; 未说明其长度所用的单位，或所用单位本版本无法读取。读错时，每个长度的大小都会出错。</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Its lengths are in:</source>
-        <translation type="unfinished">其长度单位为：</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Import STEP</source>
-        <translation type="unfinished">导入 STEP</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <location line="+8"/>
-        <source>STEP Files (*.step *.stp);;All Files (*)</source>
-        <translation type="unfinished">STEP 文件 (*.step *.stp);;所有文件 (*)</translation>
-    </message>
-    <message>
-        <location line="-1"/>
-        <source>Import STEP as an Assembly</source>
-        <translation type="unfinished">将 STEP 导入为装配体</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Save the Assembly As</source>
-        <translation type="unfinished">装配体另存为</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Horizon Assemblies (*.hzasm)</source>
-        <translation type="unfinished">Horizon 装配体 (*.hzasm)</translation>
-    </message>
-    <message>
-        <location line="+18"/>
-        <source>A STEP import is already running</source>
-        <translation type="unfinished">STEP 导入已在运行</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Importing %1...</source>
-        <translation type="unfinished">正在导入 %1...</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Import cancelled</source>
-        <translation type="unfinished">已取消导入</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
-        <translation type="unfinished">未导入 &quot;%1&quot;：未给出其长度所用的单位</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <location line="+25"/>
-        <location line="+6"/>
-        <location line="+28"/>
-        <source>Could not import</source>
-        <translation type="unfinished">无法导入</translation>
-    </message>
-    <message numerus="yes">
-        <location line="-39"/>
-        <source>Imported %n bodies.</source>
-        <translation type="unfinished">
-            <numerusform>已导入 %n 个实体。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+28"/>
-        <source>A DXF is imported into a drawing or part, not an assembly</source>
-        <translation type="unfinished">DXF 只能导入到工程图或零件中，不能导入到装配体</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <location line="+14"/>
-        <source>Import DXF</source>
-        <translation type="unfinished">导入 DXF</translation>
-    </message>
-    <message>
-        <location line="-13"/>
-        <source>DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">DXF 文件 (*.dxf);;所有文件 (*)</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+35"/>
-        <source>Imported %n entities.</source>
-        <translation type="unfinished">
-            <numerusform>已导入 %n 个图元。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export writes a part&apos;s body; this document has none</source>
-        <translation type="unfinished">%1 导出会写入零件的实体；此文档没有实体</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+171"/>
-        <location line="+43"/>
-        <source>Export %1</source>
-        <translation type="unfinished">导出 %1</translation>
-    </message>
-    <message>
-        <location line="-201"/>
-        <location line="+3"/>
-        <location line="+22"/>
-        <source>STEP</source>
-        <translation type="unfinished">STEP</translation>
-    </message>
-    <message>
-        <location line="-22"/>
-        <location line="+22"/>
-        <source>STEP Files (*.step *.stp)</source>
-        <translation type="unfinished">STEP 文件 (*.step *.stp)</translation>
-    </message>
-    <message>
-        <location line="-18"/>
-        <location line="+27"/>
-        <location line="+52"/>
-        <location line="+17"/>
-        <location line="+18"/>
-        <location line="+103"/>
-        <source>Could not export</source>
-        <translation type="unfinished">无法导出</translation>
-    </message>
-    <message>
-        <location line="-213"/>
-        <location line="+27"/>
-        <location line="+51"/>
-        <location line="+18"/>
-        <location line="+17"/>
-        <location line="+103"/>
-        <source>Exported %1.</source>
-        <translation type="unfinished">已导出 %1。</translation>
-    </message>
-    <message>
-        <location line="-207"/>
-        <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
-        <translation type="unfinished">STEP 导出会写入装配体的零部件；此装配体的零件均无法读取</translation>
-    </message>
-    <message>
-        <location line="+30"/>
-        <source>Left out: &quot;%1&quot;: its part could not be read</source>
-        <translation type="unfinished">已忽略：&quot;%1&quot;：无法读取其零件</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+11"/>
-        <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
-        <translation type="unfinished">
-            <numerusform>%n 个曲面以小平面形式写入，而非写在其曲面上。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Export STEP</source>
-        <translation type="unfinished">导出 STEP</translation>
-    </message>
-    <message numerus="yes">
-        <location line="+1"/>
-        <source>%n component(s) were not written.</source>
-        <translation type="unfinished">
-            <numerusform>%n 个零部件未写入。</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>The part is exact as modelled; other systems will see those faces as flat facets.</source>
-        <translation type="unfinished">零件本身与建模结果完全一致；其他系统会将这些面视为平面小平面。</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <location line="+3"/>
-        <source>STL</source>
-        <translation type="unfinished">STL</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>STL Files (*.stl)</source>
-        <translation type="unfinished">STL 文件 (*.stl)</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <location line="+3"/>
-        <source>glTF</source>
-        <translation type="unfinished">glTF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>glTF Binary (*.glb)</source>
-        <translation type="unfinished">glTF 二进制 (*.glb)</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>DXF export writes a drawing; this document has nothing drawn</source>
-        <translation type="unfinished">DXF 导出会写入工程图；此文档没有绘制任何内容</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>DXF</source>
-        <translation type="unfinished">DXF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>DXF Files (*.dxf)</source>
-        <translation type="unfinished">DXF 文件 (*.dxf)</translation>
-    </message>
-    <message>
-        <location line="+27"/>
-        <source>PDF</source>
-        <translation type="unfinished">PDF</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>SVG</source>
-        <translation type="unfinished">SVG</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>%1 export plots a drawing, not an assembly</source>
-        <translation type="unfinished">%1 导出用于输出工程图，而非装配体</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>%1 export plots a drawing; nothing visible is drawn</source>
-        <translation type="unfinished">%1 导出用于输出工程图；当前没有可见的绘制内容</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Paper:</source>
-        <translation type="unfinished">纸张:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Orientation:</source>
-        <translation type="unfinished">方向:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Landscape</source>
-        <translation type="unfinished">横向</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Portrait</source>
-        <translation type="unfinished">纵向</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Scale:</source>
-        <translation type="unfinished">比例:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Fit to paper</source>
-        <translation type="unfinished">适合纸张</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Colours:</source>
-        <translation type="unfinished">颜色:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>As drawn</source>
-        <translation type="unfinished">按原样</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Black</source>
-        <translation type="unfinished">黑色</translation>
-    </message>
-    <message>
-        <location line="+31"/>
-        <source>At %1 the drawing is larger than the paper: what is outside it will be cut off.</source>
-        <translation type="unfinished">在 %1 比例下，工程图大于纸张：超出部分将被裁掉。</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>PDF Files (*.pdf)</source>
-        <translation type="unfinished">PDF 文件 (*.pdf)</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>SVG Files (*.svg)</source>
-        <translation type="unfinished">SVG 文件 (*.svg)</translation>
-    </message>
-    <message>
-        <location line="+45"/>
+        <location line="+32"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot; 已被其他程序更改：请关闭后重新打开以查看更改</translation>
     </message>
@@ -5635,7 +5650,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">正在重建模型...</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+62"/>
         <source>Importing %1: %2 of %3 parts written...</source>
         <translation type="unfinished">正在导入 %1：已写入 %3 个零件中的 %2 个...</translation>
     </message>
@@ -5645,7 +5660,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-4703"/>
+        <location line="-4203"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

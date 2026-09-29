@@ -1,5 +1,6 @@
 #include "horizon/ui/TypedUnits.h"
 
+#include <QCoreApplication>
 #include <Qt>
 
 namespace hz::ui {
@@ -30,6 +31,24 @@ void takeBack(std::string& text) {
         text.pop_back();
     }
     if (!text.empty()) text.pop_back();
+}
+
+QString lengthUnitName(math::LengthUnit unit) {
+    // In the main window's context, where they were translated first; each
+    // call literal, for lupdate to find.
+    switch (unit) {
+        case math::LengthUnit::Millimetre:
+            return QCoreApplication::translate("hz::ui::MainWindow", "Millimetres (mm)");
+        case math::LengthUnit::Centimetre:
+            return QCoreApplication::translate("hz::ui::MainWindow", "Centimetres (cm)");
+        case math::LengthUnit::Metre:
+            return QCoreApplication::translate("hz::ui::MainWindow", "Metres (m)");
+        case math::LengthUnit::Inch:
+            return QCoreApplication::translate("hz::ui::MainWindow", "Inches (in)");
+        case math::LengthUnit::Foot:
+            return QCoreApplication::translate("hz::ui::MainWindow", "Feet (ft)");
+    }
+    return QString();
 }
 
 }  // namespace hz::ui
