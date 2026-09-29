@@ -29,9 +29,6 @@
             -7.234136
           ]
         ]
-      },
-      "known_gaps": {
-        "export-volume": "OpenCASCADE measures the export 0.3% over the part (not yet known why)"
       }
     },
     {
@@ -347,9 +344,6 @@
             6.5
           ]
         ]
-      },
-      "known_gaps": {
-        "export-volume": "OpenCASCADE measures the export 0.15% over the part (not yet known why)"
       }
     },
     {
@@ -548,9 +542,6 @@
             9.6
           ]
         ]
-      },
-      "known_gaps": {
-        "export-volume": "OpenCASCADE measures the export 0.4% under the part (not yet known why)"
       }
     },
     {

@@ -16,7 +16,8 @@ a user's would be, and checked two ways:
 - **Against OpenCASCADE, an independent reader, in CI** (the STEP interop
   job, `tools/interop/occt_check.py`). OpenCASCADE reads each original file,
   and must find the same solids, volume and box. It then reads Horizon CAD's
-  export of the file, and must find a valid shape with as many solids.
+  export of the file (what File ▸ Export writes of the part imported from
+  it), and must find a valid shape with as many solids and the volume.
 
 The expected numbers are OpenCASCADE's, never Horizon CAD's own: a reader
 that agrees with itself proves nothing.
@@ -105,11 +106,14 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    #181, and built, once facets that met an iso-line of the torus were cut
    as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid (an
    ellipse swept along a line) is read since #180.
-8. **An export that does not measure as the part:** OpenCASCADE reads
-   Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
-   #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%
-   over; Horizon CAD reads each back as it wrote it. Not yet known why
-   (#184).
+8. **An export that did not measure as the part:** OpenCASCADE read the
+   exports of the Shapr3D lid, the Alibre guide and the KiCad board up to
+   0.4% off. Its face-by-face comparison (occt_check.py) found every
+   cylinder and cone 0.18% too large, and the planes right: the harness
+   wrote the solids as read, a path no user takes, whose bands round a
+   hole go out without the seam other readers need to trim a B-spline
+   surface. Since #184 it exports what File ▸ Export does, the imported
+   part's model, and OpenCASCADE reads it as the part.
 
 One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
