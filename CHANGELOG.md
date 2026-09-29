@@ -68,6 +68,11 @@ work, not "post-1.0".
   enough on a surface that large. An edge whose curve runs past its
   vertices, as IronCAD writes a blade's, now takes only the part of the
   curve between them.
+- **A spindle torus is read (#181).** A torus whose tube is wider than its
+  ring, as EUCLID rounds a screw's head with, was refused, and the whole
+  file with it. It is read now, and its face is cut into facets: points
+  found on a surface along one of its iso-lines are only nearly in line,
+  and cutting the face treats them as in line.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

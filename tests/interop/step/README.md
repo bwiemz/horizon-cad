@@ -90,8 +90,11 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
    6 bodies and OpenCASCADE's volume. SolidWorks writes the void's closed
    shell facing into the void and marks it turned round as well, so the
    reader turns a void round by what it measures, not by the mark.
-7. **A surface type the reader does not build** affects 2 files: EUCLID's
-   torus, and a SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid.
+7. **A surface type the reader does not build** affected 2 files. EUCLID's
+   screw has a spindle torus, its tube wider than its ring: read since
+   #181, and built, once facets that met an iso-line of the torus were cut
+   as they lie. A SURFACE_OF_LINEAR_EXTRUSION in one Unigraphics solid is
+   still not read.
 8. **An export that does not measure as the part:** OpenCASCADE reads
    Horizon CAD's export of the Shapr3D lid 0.4% under the part, and, once
    #175 reads them right, of the Alibre guide 0.3% and the KiCad board 0.15%

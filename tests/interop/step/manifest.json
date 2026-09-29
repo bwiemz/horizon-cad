@@ -445,8 +445,24 @@
       "license": "LGPL-2.1-only WITH OCCT-exception-1.0",
       "license_file": "LICENSES/OCCT-LGPL-2.1.txt",
       "attribution": "Open CASCADE Technology sample data, (c) OPEN CASCADE SAS (LICENSES/OCCT-LGPL-exception.txt)",
-      "not_read": "unsupported surface geometry",
-      "why_not_read": "a surface type the reader does not build"
+      "expect": {
+        "bodies": 1,
+        "volume": 3788.270593,
+        "bounds": [
+          [
+            -27.819681,
+            -10.826297,
+            -34.56367
+          ],
+          [
+            -7.976546,
+            9.173703,
+            7.73145
+          ]
+        ],
+        "skipped": 0,
+        "approximated": 0
+      }
     },
     {
       "file": "onshape_rocketsmith_upper_airframe.step",
