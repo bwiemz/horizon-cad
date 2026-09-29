@@ -1878,10 +1878,11 @@ private:
             if (!readPlacement((*torus)[1].ref, origin, zAxis, xAxis)) return nullptr;
             const double major = (*torus)[2].num;
             const double minor = (*torus)[3].num;
-            // Any torus: one whose tube is wider than its ring (a spindle
-            // torus, round a screw's head in EUCLID's) crosses its axis, a
-            // surface of revolution still.
-            if (!(minor > 0.0) || !(major >= 0.0)) return nullptr;
+            // Any torus with a ring: one whose tube is wider than its ring (a
+            // spindle torus, round a screw's head in EUCLID's) crosses its
+            // axis, a surface of revolution still. No ring is a sphere gone
+            // round twice, each point two places on it: not read.
+            if (!(minor > 0.0) || !(major > 0.0)) return nullptr;
             return std::make_shared<geo::NurbsSurface>(
                 geo::NurbsSurface::makeTorus(origin, zAxis, major, minor));
         }

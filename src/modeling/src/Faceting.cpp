@@ -147,6 +147,9 @@ public:
     explicit SurfaceMap(const geo::NurbsSurface& s) : m_s(s), m_size(sizeOf(s)) {}
 
     const geo::NurbsSurface& surface() const { return m_s; }
+    /// How exactly a point is found on it (uvOf): a ten-millionth of its
+    /// size.
+    double precision() const { return 1e-7 * std::max(m_size, 1e-300); }
     double period(int dir) const {
         return dir == 0 ? m_s.uMax() - m_s.uMin() : m_s.vMax() - m_s.vMin();
     }
@@ -1249,8 +1252,9 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     const double extent = std::max((u1 - u0) * su, (v1 - v0) * sv);
     const double eps = 1e-12 * extent;
     // Near enough to an edge to be on it: points found on a surface are as
-    // exact as finding them (SurfaceMap::uvOf, a ten-millionth of it).
-    const double near = 1e-6 * extent;
+    // exact as finding them (a ten-millionth of the surface's size, however
+    // small the face on it), and no nearer: a corner that small is none.
+    const double near = std::max(eps, map.precision());
 
     // How far apart the points go: as near as the surface turns by
     // @p maxAngle across the region each way (its straight ways not at all),
