@@ -62,6 +62,12 @@ work, not "post-1.0".
   fontconfig and FreeType now come from the system, as an AppImage expects,
   so fonts are found and drawn as the rest of the desktop's are. A
   fontconfig warning now fails the install check.
+- **An IronCAD part with B-spline faces builds (#179).** 24 of its faces
+  came in as one facet each, and its Imported feature failed. Its edges lie
+  up to 20 micrometres off surfaces 600 mm across, which is now close
+  enough on a surface that large. An edge whose curve runs past its
+  vertices, as IronCAD writes a blade's, now takes only the part of the
+  curve between them.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

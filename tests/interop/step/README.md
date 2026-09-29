@@ -66,9 +66,11 @@ updated when it is fixed. OpenCASCADE's reading confirmed each of them.
      no seam; edges a few micrometres off their surfaces; and faces of plain
      FACE_BOUNDs whose inner loop comes first. #175 fixed all three, and
      those files agree with OpenCASCADE.
-   - **Still open:** the IronCAD impeller's B-spline faces, read since #175
-     (3), are not bounded by their surface's own edges either. Its volume
-     agrees with OpenCASCADE's, but its Imported feature fails (#179).
+   - The IronCAD impeller's B-spline faces, read since #175 (3), were one
+     facet each too, and its Imported feature failed. Their edges lie 20
+     micrometres off surfaces 600 mm across, and each blade's rim is two
+     edges whose curves run the whole side of their surface. Since #179 the
+     reader takes the span of a curve an edge uses, and the part builds.
 2. **Surface models**, with open shells and no solid, are not read at all.
    That holds for 3 files (Rhino, Creo 2015 and I-DEAS).
 3. **Edge curves the reader did not build** (ELLIPSE, INTERSECTION_CURVE)

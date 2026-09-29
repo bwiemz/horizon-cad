@@ -12,6 +12,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -82,8 +83,9 @@ bool isFlat(const geo::NurbsSurface& s) {
 
 /// The points of an edge from its half-edge's origin to its end: along its
 /// curve, equal lengths apart, as many as keep each chord within
-/// @p maxAngle of turning; the ends its vertices.
-std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle) {
+/// @p maxAngle of turning, and at least @p least chords of a curve that
+/// turns at all; the ends its vertices.
+std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1) {
     const Vec3 p = e.halfEdge->origin->point;
     const Vec3 q = e.halfEdge->next->origin->point;
     const geo::NurbsCurve* c = e.curve.get();
@@ -118,7 +120,8 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle) {
             }
         }
     }
-    const int n = std::max(1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
+    const int n =
+        std::max(turn > 1e-9 ? least : 1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
     std::vector<Vec3> out{p};
     size_t at = 1;
     for (int k = 1; k < n; ++k) {
@@ -134,8 +137,10 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle) {
 
 /// A surface's (u, v) for points on it, found once each.
 /// How far off its surface, in millimetres, another system's edge may lie
-/// and still bound its face: ten micrometres (see SurfaceMap::uvOf).
+/// and still bound its face: ten micrometres, or on a large surface this
+/// much of its size (see SurfaceMap::uvOf).
 constexpr double kOffSurface = 1e-2;
+constexpr double kOffSurfaceOfSize = 5e-5;
 
 class SurfaceMap {
 public:
@@ -155,13 +160,15 @@ public:
         const auto miss = [&](const UV& uv) {
             return (m_s.evaluateWithDerivatives(uv.first, uv.second).point - p).length();
         };
-        // On it within a millionth of its size, or within ten micrometres:
-        // as near as other systems keep an edge to its surface. In the
-        // external corpus the files say they are accurate to 0.02 mm and
-        // more, and their edges lie up to 4.6 micrometres off. Never a
-        // thousandth of its size.
+        // On it within a millionth of its size, or within ten micrometres,
+        // or on a large surface 5e-5 of its size: as near as other systems
+        // keep an edge to its surface. In the external corpus most files'
+        // edges lie up to 4.6 micrometres off; IronCAD's impeller's, 20
+        // micrometres off surfaces 600 mm across, though it says it is
+        // accurate to a micrometre. Never a thousandth of its size.
         const double onIt =
-            std::max(1e-6 * m_size, std::min(kOffSurface, 1e-3 * std::max(m_size, 1e-300)));
+            std::max(1e-6 * m_size, std::min(std::max(kOffSurface, kOffSurfaceOfSize * m_size),
+                                             1e-3 * std::max(m_size, 1e-300)));
         UV best = m_s.locate(p);
         const double tol = 1e-7 * std::max(m_size, 1e-300);
         if (miss(best) > tol && miss(best) > onIt) {
@@ -1425,6 +1432,22 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
         size = std::max(size, (v.point - exact.vertices().front().point).length());
     }
 
+    // A loop with two corners or fewer (a blade's rim: two gentle curves
+    // between the same two corners) is no polygon if its edges are a chord
+    // each, the same chord: its curves are two chords or more.
+    std::unordered_set<const Edge*> twoCorners;
+    for (const auto& face : exact.faces()) {
+        std::vector<const Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const Wire* wire : loops) {
+            const auto loop = loopOf(wire);
+            std::set<const topo::Vertex*> corners;
+            for (const HalfEdge* he : loop) corners.insert(he->origin);
+            if (corners.size() > 2) continue;
+            for (const HalfEdge* he : loop) twoCorners.insert(he->edge);
+        }
+    }
+
     // Each edge's points once, so the faces either side share them; each
     // chord's curve, by its ends.
     std::unordered_map<const Edge*, std::vector<Vec3>> samples;
@@ -1434,7 +1457,7 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
             e.halfEdge->next->origin == nullptr) {
             continue;
         }
-        auto points = sampleEdge(e, maxAngle);
+        auto points = sampleEdge(e, maxAngle, twoCorners.count(&e) != 0 ? 2 : 1);
         if (e.curve && e.curve->degree() > 1) {
             for (size_t i = 0; i + 1 < points.size(); ++i) {
                 auto a = keyOf(points[i]);

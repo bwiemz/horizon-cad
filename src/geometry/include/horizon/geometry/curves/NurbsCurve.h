@@ -48,6 +48,11 @@ public:
     /// Return a new curve with a knot inserted at parameter @p t (Boehm's algorithm).
     NurbsCurve insertKnot(double t) const;
 
+    /// The part of the curve between @p t0 and @p t1 (either order; each
+    /// clamped to the domain), exactly: the same points, on [t0, t1], each
+    /// end a knot of full multiplicity.
+    NurbsCurve segment(double t0, double t1) const;
+
     /// Return a new curve with polynomial degree raised by one.
     NurbsCurve elevateDegree() const;
 

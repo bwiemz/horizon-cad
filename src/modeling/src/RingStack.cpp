@@ -1,6 +1,7 @@
 #include "RingStack.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 
@@ -229,6 +230,28 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
         }
     }
 
+    // A profile of two corners (a lens: two gentle arcs between the same two
+    // points) is no polygon if each arc is one chord, the same chord: its
+    // arcs are two chords or more.
+    std::vector<Vec2> corners;
+    for (const auto& ent : orderedEdges) {
+        std::array<Vec2, 2> ends{};
+        if (auto* line = dynamic_cast<draft::DraftLine*>(ent.get())) {
+            ends = {line->start(), line->end()};
+        } else if (auto* arc = dynamic_cast<draft::DraftArc*>(ent.get())) {
+            ends = {arc->startPoint(), arc->endPoint()};
+        } else {
+            continue;
+        }
+        for (const Vec2& end : ends) {
+            if (std::none_of(corners.begin(), corners.end(),
+                             [&](const Vec2& c) { return (c - end).length() <= tolerance; })) {
+                corners.push_back(end);
+            }
+        }
+    }
+    const int leastArcSteps = corners.size() <= 2 ? 2 : 1;
+
     for (size_t source = 0; source < orderedEdges.size(); ++source) {
         const auto& ent = orderedEdges[source];
         Vec2 s, e;
@@ -242,7 +265,7 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
             s = arc->startPoint();
             e = arc->endPoint();
             const double sweep = arc->sweepAngle();
-            const int steps = resolution.stepsFor(arc->radius(), sweep);
+            const int steps = std::max(leastArcSteps, resolution.stepsFor(arc->radius(), sweep));
             for (int k = 1; k < steps; ++k) {
                 const double a = arc->startAngle() + sweep * static_cast<double>(k) / steps;
                 run.emplace_back(arc->center().x + arc->radius() * std::cos(a),

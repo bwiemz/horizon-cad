@@ -21,11 +21,14 @@
 
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
@@ -1224,4 +1227,39 @@ TEST(StepCurvedTest, ACurvedCavityComesBackAsOneBody) {
     const double exact = 20.0 * 20 * 20 - kPi * 9.0 * 10.0;
     const auto ideal = MassPropertiesCalculator::computeIdeal(*again[0], nullptr, 1e-6);
     EXPECT_NEAR(ideal.properties.volume, exact, 1e-3 * exact);
+}
+
+// A face bounded by two gentle curves between the same two corners (a
+// blade's rim, IronCAD's): each curve turns too little to be cut into more
+// than one chord, and both were the same chord, so the face had no outline
+// and came in as one facet that was no polygon. A curve of such a loop is
+// two chords or more. A lens, extruded, sent out on its curves and read back.
+TEST(StepCurvedTest, AFaceBetweenTwoGentleCurvesHasAnOutline) {
+    // Two arcs of radius 100, each turning 6 degrees, bulging apart.
+    const double half = 3.0 * kPi / 180.0;
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> lens = {
+        std::make_shared<hz::draft::DraftArc>(hz::math::Vec2(0, -100 * std::cos(half)), 100.0,
+                                              kPi / 2 - half, kPi / 2 + half),
+        std::make_shared<hz::draft::DraftArc>(hz::math::Vec2(0, 100 * std::cos(half)), 100.0,
+                                              -kPi / 2 - half, -kPi / 2 + half),
+    };
+    std::string why;
+    const auto slab =
+        hz::model::Extrude::execute(lens, hz::draft::SketchPlane(), hz::math::Vec3(0, 0, 1), 2.0,
+                                    "lens", hz::model::Extrude::kDefaultSegments, 0.0, &why);
+    ASSERT_NE(slab, nullptr) << why;
+    const std::string text = StepFormat::toString({slab.get()});
+    const auto again = StepFormat::fromString(text);
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    ASSERT_TRUE(hz::model::describedByCurves(*again[0]));
+
+    const auto faceted = hz::model::facetCurved(*again[0]);
+    ASSERT_NE(faceted.solid, nullptr) << faceted.error;
+    EXPECT_TRUE(faceted.outlined.empty());
+    EXPECT_TRUE(faceted.solid->isValid()) << faceted.solid->validationReport();
+    // A lens 2 thick: twice a circular segment of radius 100 and 6 degrees.
+    const double angle = 2.0 * half;
+    const double segment = 0.5 * 100.0 * 100.0 * (angle - std::sin(angle));
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*faceted.solid).volume, 2.0 * 2.0 * segment,
+                0.3 * 2.0 * 2.0 * segment);
 }
