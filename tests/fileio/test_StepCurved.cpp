@@ -1013,7 +1013,10 @@ TEST(StepCurvedTest, ASideIsWrittenOnItsSurfaceCutToCloseAlongItsSeam) {
             const auto& s = *face.analyticSurface;
             // A tenth of a turn and a little: between two of its 32 rulings.
             const auto cut = s.startingAtU(s.uMin() + 0.1037 * (s.uMax() - s.uMin()));
-            ASSERT_TRUE(cut.has_value());
+            if (!cut) {
+                ADD_FAILURE() << "the cylinder is not cut";
+                return;
+            }
             turned = std::make_shared<hz::geo::NurbsSurface>(*cut);
         }
         face.analyticSurface = turned;

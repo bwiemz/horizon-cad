@@ -273,7 +273,7 @@ TEST(StepFixtures, ASolidWithVoidsAsAComplexInstanceIsRead) {
     const std::regex simple(R"(BREP_WITH_VOIDS\('([^']*)',(#\d+),\((#\d+)\)\))");
     std::smatch m;
     ASSERT_TRUE(std::regex_search(text, m, simple));
-    text.replace(m.position(0), m.length(0),
+    text.replace(static_cast<std::size_t>(m.position(0)), static_cast<std::size_t>(m.length(0)),
                  "(BREP_WITH_VOIDS((" + m[3].str() + "))MANIFOLD_SOLID_BREP(" + m[2].str() +
                      ")REPRESENTATION_ITEM('" + m[1].str() + "')SOLID_MODEL())");
 
