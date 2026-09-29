@@ -2866,6 +2866,29 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
     return built;
 }
 
+/// Each solid with voids (BREP_WITH_VOIDS), which is not read: its part,
+/// and the part's placements, are left out. Said, not dropped silently: a
+/// SolidWorks assembly lost its part with a void, and said nothing.
+std::vector<std::string> solidsWithVoids(const StepParser& parser) {
+    std::vector<std::string> items;
+    for (int id : parser.allOfType("BREP_WITH_VOIDS")) {
+        const StepInstance* inst = parser.find(id);
+        const StepList* args = inst ? inst->leaf("BREP_WITH_VOIDS") : nullptr;
+        const std::string name = args != nullptr && !args->empty() ? textOf((*args)[0]) : "";
+        items.push_back("solid #" + std::to_string(id) + (blank(name) ? "" : " (" + name + ")") +
+                        " has voids (BREP_WITH_VOIDS), which this version does not read: it, "
+                        "and its part where an assembly places it, are left out");
+    }
+    return items;
+}
+
+/// Why a file has no solid to read: its solids have voids, or it has none.
+std::string noSolidError(const StepParser& parser) {
+    return parser.allOfType("BREP_WITH_VOIDS").empty()
+               ? "no MANIFOLD_SOLID_BREP found in file"
+               : "its solids have voids (BREP_WITH_VOIDS), which this version does not read";
+}
+
 /// What @p built and @p structure fell short of, into @p report.
 void reportRead(const BuiltSolids& built, const ProductStructure& structure, ImportReport* report) {
     if (report == nullptr) return;
@@ -3206,7 +3229,7 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
     if (!parseText(parser, cancelled)) return {};
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        g_lastError = noSolidError(parser);
         return {};
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3265,6 +3288,10 @@ std::vector<std::unique_ptr<topo::Solid>> StepFormat::fromString(const std::stri
         return out;
     }
     reportRead(built, structure, report);
+    if (report != nullptr) {
+        for (std::string& item : solidsWithVoids(parser))
+            report->skipped.push_back(std::move(item));
+    }
     return out;
 }
 
@@ -3278,7 +3305,7 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
     if (!parseText(parser, cancelled)) return assembly;
     const std::vector<SolidGroup> groups = solidGroups(parser);
     if (groups.empty()) {
-        g_lastError = "no MANIFOLD_SOLID_BREP found in file";
+        g_lastError = noSolidError(parser);
         return assembly;
     }
     BuiltSolids built = buildSolids(parser, groups, report != nullptr, cancelled, options);
@@ -3326,6 +3353,10 @@ StepAssembly StepFormat::assemblyFromString(const std::string& text, ImportRepor
         return assembly;
     }
     reportRead(built, structure, report);
+    if (report != nullptr) {
+        for (std::string& item : solidsWithVoids(parser))
+            report->skipped.push_back(std::move(item));
+    }
     return assembly;
 }
 
