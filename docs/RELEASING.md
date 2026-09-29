@@ -91,7 +91,8 @@ still packages everything, and the release notes say what is not signed.
   in the bundle's `Contents/Resources`).
 - `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the licence text of every library
   vcpkg built into it (under `third-party/`).
-- On Windows, the Qt runtime (from Qt's deployment script).
+- On Windows, the Qt runtime (from Qt's deployment script), every other DLL
+  the program needs (from vcpkg), and the Visual C++ runtime.
 - On macOS, the application bundle `HorizonCAD.app`, with Qt's frameworks
   in it (Qt's deployment script runs macdeployqt) and the two Qt plug-ins it
   uses, the platform and the style, its icon,
