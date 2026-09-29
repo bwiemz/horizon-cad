@@ -42,6 +42,11 @@ from typing import Any
 VOLUME_TOLERANCE = 1e-3  # relative, when the manifest gives none
 BOUNDS_TOLERANCE = 0.005  # of the box's diagonal, when the manifest gives none
 EXPORT_SLACK = 1e-3  # relative, around Horizon CAD's faceted..ideal volumes
+# Volumes and areas integrated adaptively, to this relative error. OpenCASCADE's
+# default, a Gauss rule of fixed points, measures an analytic surface exactly
+# but a rational B-spline one (an export's cylinder) a little out, and a part
+# far from the origin further out in volume.
+INTEGRATION_EPS = 1e-6
 
 
 @dataclass
@@ -52,6 +57,7 @@ class Reading:
     volume: float
     bounds: list[list[float]] | None
     valid: bool
+    fixed_volume: float = 0.0  # by OpenCASCADE's default fixed Gauss rule
 
 
 def static(owner: Any, name: str) -> Any:
@@ -83,11 +89,15 @@ def occt_read(path: Path) -> Reading | None:
         return None
     solids = 0
     volume = 0.0
+    fixed_volume = 0.0
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     while explorer.More():
         props = GProp_GProps()
-        static(BRepGProp, "VolumeProperties")(explorer.Current(), props)
+        static(BRepGProp, "VolumeProperties")(explorer.Current(), props, INTEGRATION_EPS)
         volume += abs(props.Mass())
+        fixed = GProp_GProps()
+        static(BRepGProp, "VolumeProperties")(explorer.Current(), fixed)
+        fixed_volume += abs(fixed.Mass())
         solids += 1
         explorer.Next()
     box = Bnd_Box()
@@ -98,7 +108,7 @@ def occt_read(path: Path) -> Reading | None:
         # does not expose.
         low, high = box.CornerMin(), box.CornerMax()
         bounds = [[low.X(), low.Y(), low.Z()], [high.X(), high.Y(), high.Z()]]
-    return Reading(solids, volume, bounds, BRepCheck_Analyzer(shape).IsValid())
+    return Reading(solids, volume, bounds, BRepCheck_Analyzer(shape).IsValid(), fixed_volume)
 
 
 def occt_faces(path: Path) -> list[dict[str, Any]]:
@@ -125,11 +135,14 @@ def occt_faces(path: Path) -> list[dict[str, Any]]:
     while explorer.More():
         face = static(TopoDS, "Face")(explorer.Current())
         props = GProp_GProps()
-        static(BRepGProp, "SurfaceProperties")(face, props)
+        static(BRepGProp, "SurfaceProperties")(face, props, INTEGRATION_EPS)
+        fixed = GProp_GProps()
+        static(BRepGProp, "SurfaceProperties")(face, fixed)
         centre = props.CentreOfMass()
         kind = BRepAdaptor_Surface(face).GetType()
         faces.append({"kind": getattr(kind, "name", str(kind)).removeprefix("GeomAbs_"),
-                      "area": props.Mass(), "centre": [centre.X(), centre.Y(), centre.Z()]})
+                      "area": props.Mass(), "fixed area": fixed.Mass(),
+                      "centre": [centre.X(), centre.Y(), centre.Z()]})
         explorer.Next()
     return faces
 
@@ -220,6 +233,11 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
                 low = min(ours["facetedVolume"], ours["idealVolume"]) * (1 - EXPORT_SLACK)
                 high = max(ours["facetedVolume"], ours["idealVolume"]) * (1 + EXPORT_SLACK)
                 export = f"{exported.solids} solids, {exported.volume:.6g} mm³"
+                # Where the fixed rule measures otherwise, in the log.
+                for which, reading in (("the file", theirs), ("the export", exported)):
+                    if reading is not None and not near(reading.fixed_volume, reading.volume, 1e-5):
+                        print(f"{name}: {which}: {reading.volume:.8g} mm³ integrated adaptively, "
+                              f"{reading.fixed_volume:.8g} by the fixed rule")
                 if not exported.valid:
                     problems["export-valid"] = "the export is not a valid shape to OpenCASCADE"
                 if exported.solids != ours["bodies"]:
@@ -232,7 +250,8 @@ def check(corpus: Path, summary_path: Path, out: Path | None) -> int:
                     found.setdefault(name, {})["export faces"] = diff
                     for side, faces in diff.items():
                         for face in faces[:12]:
-                            print(f"{name}: {side}: {face['kind']} {face['area']:.6g} mm² at "
+                            print(f"{name}: {side}: {face['kind']} {face['area']:.6g} mm² "
+                                  f"({face['fixed area']:.6g} by the fixed rule) at "
                                   + ", ".join(f"{c:.4g}" for c in face["centre"]))
         unexpected = {key: why for key, why in problems.items() if key not in known}
         # A known gap that no longer fails: the manifest is to say so.
