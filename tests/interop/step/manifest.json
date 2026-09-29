@@ -14,7 +14,7 @@
       "attribution": "Jack the Ripper Bot by ajayre, GPL-3.0",
       "expect": {
         "skipped": 0,
-        "approximated": 1,
+        "approximated": 0,
         "bodies": 1,
         "volume": 44.178647,
         "bounds": [
@@ -29,10 +29,6 @@
             -7.234136
           ]
         ]
-      },
-      "known_gaps": {
-        "volume": "a face of plain FACE_BOUNDs whose inner circle comes first is read inside out (fixed by #175)",
-        "export-volume": "the same"
       }
     },
     {
@@ -104,8 +100,28 @@
       "license": "LicenseRef-NIST-Public-Domain",
       "license_file": "LICENSES/NIST-engineering-design-models.md",
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
-      "not_read": "unsupported curve geometry",
-      "why_not_read": "an edge curve type the reader does not build"
+      "expect": {
+        "bodies": 1,
+        "volume": 70186580.126763,
+        "bounds": [
+          [
+            -461.962963,
+            -452.149852,
+            -356.004929
+          ],
+          [
+            63.701525,
+            359.969682,
+            456.114605
+          ]
+        ],
+        "skipped": 0,
+        "approximated": 1
+      },
+      "known_gaps": {
+        "import-build": "B-spline faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
+        "reopen": "the same"
+      }
     },
     {
       "file": "edm_proe_vaccase_asm.stp",
@@ -120,7 +136,7 @@
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
       "expect": {
         "skipped": 0,
-        "approximated": 2,
+        "approximated": 0,
         "bodies": 14,
         "volume": 76444937.223998,
         "bounds": [
@@ -135,12 +151,6 @@
             379.679089
           ]
         ]
-      },
-      "known_gaps": {
-        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
-        "reopen": "the same",
-        "volume": "curved faces not bounded by their surface's own edges come in as one facet (fixed by #175)",
-        "export-volume": "the same"
       }
     },
     {
@@ -156,7 +166,7 @@
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
       "expect": {
         "skipped": 4,
-        "approximated": 5,
+        "approximated": 1,
         "bodies": 19,
         "volume": 1889144085.224341,
         "bounds": [
@@ -175,8 +185,7 @@
       "known_gaps": {
         "bodies": "placements by MAPPED_ITEM are not read (the parts come in where drawn), and 3 solids are skipped (malformed loops, an unsupported edge curve)",
         "volume": "the same",
-        "bounds": "the same",
-        "export-volume": "curved faces come in as one facet (fixed by #175)"
+        "bounds": "the same"
       }
     },
     {
@@ -250,8 +259,24 @@
       "license": "GPL-3.0",
       "license_file": "../../../LICENSE",
       "attribution": "Original Prusa Enclosure, Prusa Research, GPL-3.0",
-      "not_read": "unsupported curve geometry",
-      "why_not_read": "an edge curve type the reader does not build"
+      "expect": {
+        "bodies": 1,
+        "volume": 8544.581776,
+        "bounds": [
+          [
+            -4.0,
+            -0.2,
+            -3.8
+          ],
+          [
+            3.8,
+            49.2,
+            32.0
+          ]
+        ],
+        "skipped": 0,
+        "approximated": 0
+      }
     },
     {
       "file": "irnas_tightener_asm.step",
@@ -265,8 +290,8 @@
       "license_file": "LICENSES/CERN-OHL-1.2.txt",
       "attribution": "GoodEnoughCNC by Institute IRNAS Rače, CERN OHL v1.2 (LICENSES/IRNAS-GoodEnoughCNC.txt); the IRNAS marks do not imply endorsement",
       "expect": {
-        "skipped": 0,
-        "approximated": 1,
+        "skipped": 1,
+        "approximated": 0,
         "bodies": 6,
         "volume": 40459.278227,
         "bounds": [
@@ -283,10 +308,8 @@
         ]
       },
       "known_gaps": {
-        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
-        "reopen": "the same",
-        "bodies": "the part with a void (BREP_WITH_VOIDS) is left out, and not reported",
-        "volume": "the part with a void (BREP_WITH_VOIDS) is left out, and not reported"
+        "bodies": "the part with a void (BREP_WITH_VOIDS) is left out, and reported",
+        "volume": "the part with a void (BREP_WITH_VOIDS) is left out, and reported"
       }
     },
     {
@@ -317,11 +340,6 @@
             6.5
           ]
         ]
-      },
-      "known_gaps": {
-        "bodies": "4 of its 9 placed solids are not read: its nested assembly is not placed whole (not yet known why)",
-        "volume": "the same",
-        "bounds": "the same"
       }
     },
     {
@@ -401,7 +419,7 @@
       "attribution": "NIST, dataset for NIST AMS 300-12 (doi:10.6028/NIST.AMS.300-12). NIST edited the exporter's output by hand (UUID_SET_ITEM added, AP242 edition 4).",
       "expect": {
         "skipped": 0,
-        "approximated": 1,
+        "approximated": 0,
         "bodies": 1,
         "volume": 35680.51263,
         "bounds": [
@@ -416,10 +434,6 @@
             10.0
           ]
         ]
-      },
-      "known_gaps": {
-        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
-        "export-volume": "the same"
       }
     },
     {
@@ -449,7 +463,7 @@
       "attribution": "Copyright (c) 2026 Peter Pak, MIT",
       "expect": {
         "skipped": 0,
-        "approximated": 1,
+        "approximated": 0,
         "bodies": 1,
         "volume": 712989.578317,
         "bounds": [
@@ -464,12 +478,6 @@
             330.2
           ]
         ]
-      },
-      "known_gaps": {
-        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
-        "reopen": "the same",
-        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
-        "export-volume": "the same"
       }
     },
     {
@@ -499,7 +507,7 @@
       "attribution": "hkcam by brutella, Apache-2.0",
       "expect": {
         "skipped": 0,
-        "approximated": 1,
+        "approximated": 0,
         "bodies": 1,
         "volume": 7556.510756,
         "bounds": [
@@ -516,8 +524,6 @@
         ]
       },
       "known_gaps": {
-        "import-build": "curved faces not bounded by their surface's own edges come in as one facet, not flat: the Imported feature fails",
-        "reopen": "the same",
         "export-volume": "OpenCASCADE measures the export 0.4% under the part (not yet known why)"
       }
     },
@@ -534,7 +540,7 @@
       "attribution": "ERCF v2 community project, GPL-3.0",
       "expect": {
         "skipped": 0,
-        "approximated": 1,
+        "approximated": 0,
         "bodies": 1,
         "volume": 684.683543,
         "bounds": [
@@ -549,10 +555,6 @@
             3.15
           ]
         ]
-      },
-      "known_gaps": {
-        "volume": "a side between two rims with no seam comes in as one facet, its outline (fixed by #175)",
-        "export-volume": "the same"
       }
     }
   ]
