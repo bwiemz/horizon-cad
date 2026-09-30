@@ -89,7 +89,6 @@
 #include "horizon/ui/ChainDimensionTool.h"
 #include "horizon/ui/ChamferTool.h"
 #include "horizon/ui/CircleTool.h"
-#include "horizon/ui/Clipboard.h"
 #include "horizon/ui/CommandPalette.h"
 #include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/ConstraintTool.h"
