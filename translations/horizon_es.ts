@@ -1227,6 +1227,116 @@ Los detalles están en el registro:
     </message>
 </context>
 <context>
+    <name>hz::ui::DraftingCommands</name>
+    <message>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+212"/>
+        <source>Dimension Style</source>
+        <translation type="unfinished">Estilo de cota</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Text height:</source>
+        <translation type="unfinished">Altura del texto:</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Arrow size:</source>
+        <translation type="unfinished">Tamaño de flecha:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Arrow half-angle:</source>
+        <translation type="unfinished">Semiángulo de flecha:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Extension gap:</source>
+        <translation type="unfinished">Separación de la línea auxiliar:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Extension overshoot:</source>
+        <translation type="unfinished">Prolongación de la línea auxiliar:</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Decimal places:</source>
+        <translation type="unfinished">Decimales:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Unit:</source>
+        <translation type="unfinished">Unidad:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Show the unit:</source>
+        <translation type="unfinished">Mostrar la unidad:</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No</source>
+        <translation type="unfinished">No</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Yes</source>
+        <translation type="unfinished">Sí</translation>
+    </message>
+    <message>
+        <location line="+32"/>
+        <location line="+19"/>
+        <location line="+10"/>
+        <source>Create Block</source>
+        <translation type="unfinished">Crear bloque</translation>
+    </message>
+    <message>
+        <location line="-28"/>
+        <source>Select entities first.</source>
+        <translation type="unfinished">Seleccione primero las entidades.</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Block name:</source>
+        <translation type="unfinished">Nombre del bloque:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Base point X:</source>
+        <translation type="unfinished">Punto base X:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Base point Y:</source>
+        <translation type="unfinished">Punto base Y:</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>A block with that name already exists.</source>
+        <translation type="unfinished">Ya existe un bloque con ese nombre.</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Insert Block</source>
+        <translation type="unfinished">Insertar bloque</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>No blocks defined. Create a block first.</source>
+        <translation type="unfinished">No hay bloques definidos. Cree primero un bloque.</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>Explode</source>
+        <translation type="unfinished">Descomponer</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Select one or more block references to explode.</source>
+        <translation type="unfinished">Seleccione una o más referencias a bloque para descomponer.</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::DrawingWorkbench</name>
     <message>
         <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+180"/>
@@ -2353,7 +2463,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+375"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -2363,12 +2473,12 @@ empezar a construir su pieza.</translation>
         <translation>&amp;Editar</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+52"/>
         <source>&amp;View</source>
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location line="-124"/>
+        <location line="-128"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Nuevo dibujo</translation>
     </message>
@@ -2389,12 +2499,12 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">una cara curva de %1 facetas, en torno a %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-209"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-210"/>
         <source>Close %1</source>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
     <message>
-        <location line="+754"/>
+        <location line="+767"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2578,14 +2688,14 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">En la cara</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-704"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-717"/>
         <location line="+1"/>
-        <location line="+1055"/>
+        <location line="+1068"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dibujo 1</translation>
     </message>
     <message>
-        <location line="-989"/>
+        <location line="-1001"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
@@ -2700,22 +2810,22 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">D&amp;uplicar</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+6"/>
         <source>&amp;Copy</source>
         <translation>&amp;Copiar</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Cu&amp;t</source>
         <translation type="unfinished">Cor&amp;tar</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>&amp;Paste</source>
         <translation>&amp;Pegar</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+6"/>
         <source>&amp;Group</source>
         <translation type="unfinished">A&amp;grupar</translation>
     </message>
@@ -3180,7 +3290,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Matri&amp;z rectangular</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Polar Arra&amp;y</source>
         <translation type="unfinished">Matriz pola&amp;r</translation>
     </message>
@@ -3236,12 +3346,12 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+33"/>
+        <location line="+34"/>
         <source>&amp;Distance</source>
         <translation type="unfinished">&amp;Distancia</translation>
     </message>
     <message>
-        <location line="-32"/>
+        <location line="-33"/>
         <source>&amp;Angle</source>
         <translation type="unfinished">Á&amp;ngulo</translation>
     </message>
@@ -3286,7 +3396,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">&amp;Directriz</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>&amp;Style...</source>
         <translation type="unfinished">&amp;Estilo...</translation>
     </message>
@@ -3351,12 +3461,12 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">&amp;Crear bloque...</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>&amp;Insert Block...</source>
         <translation type="unfinished">&amp;Insertar bloque...</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>&amp;Explode</source>
         <translation type="unfinished">&amp;Descomponer</translation>
     </message>
@@ -3388,13 +3498,13 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+67"/>
         <location line="+5"/>
-        <location line="+8"/>
+        <location line="+10"/>
         <location line="+6"/>
         <source>Home</source>
         <translation type="unfinished">Inicio</translation>
     </message>
     <message>
-        <location line="-19"/>
+        <location line="-21"/>
         <source>File</source>
         <translation type="unfinished">Archivo</translation>
     </message>
@@ -3434,12 +3544,12 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Copiar</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Paste</source>
         <translation type="unfinished">Pegar</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Duplicate</source>
         <translation type="unfinished">Duplicar</translation>
     </message>
@@ -3465,12 +3575,12 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+200"/>
+        <location line="+202"/>
         <source>Select</source>
         <translation type="unfinished">Seleccionar</translation>
     </message>
     <message>
-        <location line="-197"/>
+        <location line="-199"/>
         <source>Fit All</source>
         <translation type="unfinished">Ajustar todo</translation>
     </message>
@@ -3546,12 +3656,12 @@ empezar a construir su pieza.</translation>
         <location line="+9"/>
         <location line="+0"/>
         <location line="+11"/>
-        <location line="+59"/>
+        <location line="+61"/>
         <source>Modify</source>
         <translation type="unfinished">Modificar</translation>
     </message>
     <message>
-        <location line="-79"/>
+        <location line="-81"/>
         <source>Transform</source>
         <translation type="unfinished">Transformar</translation>
     </message>
@@ -3572,12 +3682,12 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+84"/>
+        <location line="+86"/>
         <source>Mirror</source>
         <translation type="unfinished">Simetría</translation>
     </message>
     <message>
-        <location line="-80"/>
+        <location line="-82"/>
         <source>Trim</source>
         <translation type="unfinished">Recortar</translation>
     </message>
@@ -3593,18 +3703,18 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+66"/>
+        <location line="+68"/>
         <source>Fillet</source>
         <translation type="unfinished">Redondeo</translation>
     </message>
     <message>
-        <location line="-65"/>
-        <location line="+66"/>
+        <location line="-67"/>
+        <location line="+68"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chaflán</translation>
     </message>
     <message>
-        <location line="-65"/>
+        <location line="-67"/>
         <source>Break</source>
         <translation type="unfinished">Partir</translation>
     </message>
@@ -3629,12 +3739,12 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Matriz rect.</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>Polar Array</source>
         <translation type="unfinished">Matriz polar</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <location line="+7"/>
         <source>Annotate</source>
         <translation type="unfinished">Anotar</translation>
@@ -3645,7 +3755,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Cotas</translation>
     </message>
     <message>
-        <location line="+2889"/>
+        <location line="+2482"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3691,7 +3801,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2913"/>
+        <location line="-2506"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -3793,12 +3903,11 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+2389"/>
         <source>Explode</source>
         <translation type="unfinished">Descomponer</translation>
     </message>
     <message>
-        <location line="-2386"/>
+        <location line="+3"/>
         <location line="+7"/>
         <location line="+5"/>
         <location line="+7"/>
@@ -3919,14 +4028,14 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+1310"/>
+        <location line="+903"/>
         <location line="+581"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3438"/>
+        <location line="-3031"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -3947,12 +4056,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+3096"/>
+        <location line="+2689"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-3090"/>
+        <location line="-2683"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
@@ -4532,114 +4641,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">&quot;%1&quot; ha sido modificado por otro programa, y se ha vuelto a leer</translation>
     </message>
     <message>
-        <location line="+428"/>
-        <source>Dimension Style</source>
-        <translation type="unfinished">Estilo de cota</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Text height:</source>
-        <translation type="unfinished">Altura del texto:</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Arrow size:</source>
-        <translation type="unfinished">Tamaño de flecha:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Arrow half-angle:</source>
-        <translation type="unfinished">Semiángulo de flecha:</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Extension gap:</source>
-        <translation type="unfinished">Separación de la línea auxiliar:</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Extension overshoot:</source>
-        <translation type="unfinished">Prolongación de la línea auxiliar:</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Decimal places:</source>
-        <translation type="unfinished">Decimales:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Unit:</source>
-        <translation type="unfinished">Unidad:</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Show the unit:</source>
-        <translation type="unfinished">Mostrar la unidad:</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>No</source>
-        <translation type="unfinished">No</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Yes</source>
-        <translation type="unfinished">Sí</translation>
-    </message>
-    <message>
-        <location line="+152"/>
-        <location line="+25"/>
-        <location line="+10"/>
-        <source>Create Block</source>
-        <translation type="unfinished">Crear bloque</translation>
-    </message>
-    <message>
-        <location line="-35"/>
-        <source>Select entities first.</source>
-        <translation type="unfinished">Seleccione primero las entidades.</translation>
-    </message>
-    <message>
-        <location line="+26"/>
-        <source>Block name:</source>
-        <translation type="unfinished">Nombre del bloque:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Base point X:</source>
-        <translation type="unfinished">Punto base X:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Base point Y:</source>
-        <translation type="unfinished">Punto base Y:</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>A block with that name already exists.</source>
-        <translation type="unfinished">Ya existe un bloque con ese nombre.</translation>
-    </message>
-    <message>
-        <location line="+20"/>
-        <source>Insert Block</source>
-        <translation type="unfinished">Insertar bloque</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>No blocks defined. Create a block first.</source>
-        <translation type="unfinished">No hay bloques definidos. Cree primero un bloque.</translation>
-    </message>
-    <message>
-        <location line="+36"/>
-        <source>Select one or more block references to explode.</source>
-        <translation type="unfinished">Seleccione una o más referencias a bloque para descomponer.</translation>
-    </message>
-    <message>
-        <location line="+80"/>
+        <location line="+359"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+749"/>
+        <location line="+753"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5160,7 +5167,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3454"/>
+        <location line="-3047"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>

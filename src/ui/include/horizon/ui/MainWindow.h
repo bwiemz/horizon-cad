@@ -20,7 +20,6 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/BackgroundTask.h"
-#include "horizon/ui/Clipboard.h"
 #include "horizon/ui/ExchangeCommands.h"
 #include "horizon/ui/GettingStartedTour.h"
 #include "horizon/ui/HelpWindow.h"
@@ -56,6 +55,7 @@ class AssemblyTreePanel;
 class AssemblyWorkbench;
 class DrawingWorkbench;
 class FeatureForm;
+class DraftingCommands;
 class PartCommands;
 
 /// The main application window for Horizon CAD.
@@ -190,10 +190,6 @@ private slots:
 
     void onUndo();
     void onRedo();
-    void onDuplicate();
-    void onCopy();
-    void onCut();
-    void onPaste();
 
     void onViewFront();
     void onViewTop();
@@ -219,12 +215,9 @@ private slots:
     void onExtendTool();
     void onStretchTool();
     void onPolylineEditTool();
-    void onRectangularArray();
-    void onPolarArray();
 
     void onLinearDimTool();
     /// Dimension > Style: the drawing's dimension style, in a form.
-    void onDimensionStyle();
     /// Make the registered tool called @p name the active one.
     void activateTool(const std::string& name);
     void onRadialDimTool();
@@ -250,9 +243,6 @@ private slots:
     void onConstraintDistance();
     void onConstraintAngle();
 
-    void onGroupEntities();
-    void onUngroupEntities();
-
     // Sketches (Phase 131): a new one on a principal plane (0 XY, 1 XZ,
     // 2 YZ), a face or a datum plane; editing one, and finishing it.
     void onNewSketchOnPlane(int which);
@@ -269,10 +259,6 @@ private slots:
 
     void onMassProperties();
     void onSectionPlane();
-
-    void onCreateBlock();
-    void onInsertBlock();
-    void onExplode();
 
     void onMouseMoved(const hz::math::Vec2& worldPos);
     void onSelectionChanged();
@@ -455,6 +441,7 @@ private:
     void undoOrRedo(bool undo);
     /// Tab captions and the window title show which documents are modified.
     void refreshModifiedIndicators() override;
+    void selectionChanged() override;
     /// The file of the part at @p path changed (saved, read again, changed
     /// by another program, or its edits discarded): the assemblies placing
     /// it and the drawings of it follow. @p report as refreshComponentsOf.
@@ -499,7 +486,6 @@ private:
     std::vector<DocTab> m_tabs;
     std::shared_ptr<doc::Document> m_document;
     std::shared_ptr<doc::AssemblyDocument> m_assembly;
-    Clipboard m_clipboard;
     PropertyPanel* m_propertyPanel = nullptr;
     LayerPanel* m_layerPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
@@ -554,6 +540,8 @@ private:
     std::unique_ptr<ExchangeCommands> m_exchange;
     /// The commands that add a feature to the part, likewise.
     std::unique_ptr<PartCommands> m_part;
+    /// The 2D drafting commands on the selection, and the clipboard.
+    std::unique_ptr<DraftingCommands> m_drafting;
     /// The ideal mass properties being measured, the dialog waiting for them,
     /// and its text given them (null: still measuring; a reason: none).
     std::unique_ptr<BackgroundTask<model::IdealMassProperties>> m_massTask;

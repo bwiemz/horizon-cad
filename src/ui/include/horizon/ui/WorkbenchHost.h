@@ -60,6 +60,9 @@ public:
     virtual void rebuildScene() = 0;
     /// Show which tabs have unsaved changes.
     virtual void refreshModifiedIndicators() = 0;
+    /// A command changed the view's selection: what shows it (the
+    /// properties, the status bar) follows.
+    virtual void selectionChanged() = 0;
 
     /// Open @p fileName in a tab, or show the tab it has; false, said to the
     /// user, when it cannot be read.
