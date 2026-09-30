@@ -62,6 +62,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/FeatureTreePanel.h
     include/horizon/ui/AssemblyTreePanel.h
     include/horizon/ui/AssemblyWorkbench.h
+    include/horizon/ui/DraftingCommands.h
     include/horizon/ui/DrawingWorkbench.h
     include/horizon/ui/ExchangeCommands.h
     include/horizon/ui/ModelPicks.h
@@ -162,6 +163,7 @@ add_library(hz_ui STATIC
     src/FeatureTreePanel.cpp
     src/AssemblyTreePanel.cpp
     src/AssemblyWorkbench.cpp
+    src/DraftingCommands.cpp
     src/DrawingWorkbench.cpp
     src/ExchangeCommands.cpp
     src/ModelPicks.cpp

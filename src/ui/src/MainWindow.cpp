@@ -55,7 +55,6 @@
 #include "horizon/document/Commands.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
-#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/fileio/BomExport.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GltfExport.h"
@@ -95,6 +94,7 @@
 #include "horizon/ui/ConfigurationsDialog.h"
 #include "horizon/ui/ConstraintTool.h"
 #include "horizon/ui/CrashReport.h"
+#include "horizon/ui/DraftingCommands.h"
 #include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
@@ -104,8 +104,6 @@
 #include "horizon/ui/HatchTool.h"
 #include "horizon/ui/HelpWindow.h"
 #include "horizon/ui/IconGenerator.h"
-#include "horizon/ui/InsertBlockDialog.h"
-#include "horizon/ui/InsertBlockTool.h"
 #include "horizon/ui/LayerPanel.h"
 #include "horizon/ui/LeaderTool.h"
 #include "horizon/ui/LineTool.h"
@@ -121,7 +119,6 @@
 #include "horizon/ui/PartCommands.h"
 #include "horizon/ui/PasteTool.h"
 #include "horizon/ui/PdfExport.h"
-#include "horizon/ui/PolarArrayDialog.h"
 #include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PreferencesDialog.h"
@@ -130,7 +127,6 @@
 #include "horizon/ui/RadialDimensionTool.h"
 #include "horizon/ui/RecentFiles.h"
 #include "horizon/ui/RecoveryManager.h"
-#include "horizon/ui/RectArrayDialog.h"
 #include "horizon/ui/RectangleTool.h"
 #include "horizon/ui/RibbonBar.h"
 #include "horizon/ui/RotateTool.h"
@@ -269,6 +265,7 @@ MainWindow::MainWindow(QWidget* parent)
                                                     *m_assemblies, *m_drawings);
     // The commands that add a feature to the part.
     m_part = std::make_unique<PartCommands>(static_cast<WorkbenchHost&>(*this));
+    m_drafting = std::make_unique<DraftingCommands>(static_cast<WorkbenchHost&>(*this));
 
     connect(m_featureTreePanel, &FeatureTreePanel::featureDoubleClicked, this,
             &MainWindow::onFeatureDoubleClicked);
@@ -461,27 +458,31 @@ void MainWindow::createMenus() {
     editMenu->addSeparator();
 
     QAction* duplicateAction =
-        editMenu->addAction(tr("&Duplicate"), this, &MainWindow::onDuplicate);
+        editMenu->addAction(tr("&Duplicate"), m_drafting.get(), &DraftingCommands::onDuplicate);
     duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
     editMenu->addSeparator();
 
-    QAction* copyAction = editMenu->addAction(tr("&Copy"), this, &MainWindow::onCopy);
+    QAction* copyAction =
+        editMenu->addAction(tr("&Copy"), m_drafting.get(), &DraftingCommands::onCopy);
     copyAction->setShortcut(QKeySequence::Copy);
 
-    QAction* cutAction = editMenu->addAction(tr("Cu&t"), this, &MainWindow::onCut);
+    QAction* cutAction =
+        editMenu->addAction(tr("Cu&t"), m_drafting.get(), &DraftingCommands::onCut);
     cutAction->setShortcut(QKeySequence::Cut);
 
-    QAction* pasteAction = editMenu->addAction(tr("&Paste"), this, &MainWindow::onPaste);
+    QAction* pasteAction =
+        editMenu->addAction(tr("&Paste"), m_drafting.get(), &DraftingCommands::onPaste);
     pasteAction->setShortcut(QKeySequence::Paste);
 
     editMenu->addSeparator();
 
-    QAction* groupAction = editMenu->addAction(tr("&Group"), this, &MainWindow::onGroupEntities);
+    QAction* groupAction =
+        editMenu->addAction(tr("&Group"), m_drafting.get(), &DraftingCommands::onGroupEntities);
     groupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
 
     QAction* ungroupAction =
-        editMenu->addAction(tr("U&ngroup"), this, &MainWindow::onUngroupEntities);
+        editMenu->addAction(tr("U&ngroup"), m_drafting.get(), &DraftingCommands::onUngroupEntities);
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
     editMenu->addSeparator();
@@ -697,8 +698,9 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
     toolsMenu->addAction(tr("Polyline Ed&it"), this, &MainWindow::onPolylineEditTool);
     toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("Rectangular &Array"), this, &MainWindow::onRectangularArray);
-    toolsMenu->addAction(tr("Polar Arra&y"), this, &MainWindow::onPolarArray);
+    toolsMenu->addAction(tr("Rectangular &Array"), m_drafting.get(),
+                         &DraftingCommands::onRectangularArray);
+    toolsMenu->addAction(tr("Polar Arra&y"), m_drafting.get(), &DraftingCommands::onPolarArray);
     toolsMenu->addSeparator();
 
     // Drafting aids: the status bar shows each as a toggle (iconText).
@@ -738,7 +740,8 @@ void MainWindow::createMenus() {
     dimMenu->addSeparator();
     dimMenu->addAction(tr("L&eader"), this, &MainWindow::onLeaderTool);
     dimMenu->addSeparator();
-    QAction* dimStyle = dimMenu->addAction(tr("&Style..."), this, &MainWindow::onDimensionStyle);
+    QAction* dimStyle =
+        dimMenu->addAction(tr("&Style..."), m_drafting.get(), &DraftingCommands::onDimensionStyle);
     dimStyle->setObjectName(QStringLiteral("action_dim_style"));
 
     // ---- Constraint ----
@@ -758,10 +761,12 @@ void MainWindow::createMenus() {
 
     // ---- Block ----
     QMenu* blockMenu = menuBar()->addMenu(tr("&Block"));
-    blockMenu->addAction(tr("&Create Block..."), this, &MainWindow::onCreateBlock);
-    blockMenu->addAction(tr("&Insert Block..."), this, &MainWindow::onInsertBlock);
+    blockMenu->addAction(tr("&Create Block..."), m_drafting.get(),
+                         &DraftingCommands::onCreateBlock);
+    blockMenu->addAction(tr("&Insert Block..."), m_drafting.get(),
+                         &DraftingCommands::onInsertBlock);
     blockMenu->addSeparator();
-    blockMenu->addAction(tr("&Explode"), this, &MainWindow::onExplode);
+    blockMenu->addAction(tr("&Explode"), m_drafting.get(), &DraftingCommands::onExplode);
 
     // ---- Help ----
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -850,15 +855,17 @@ void MainWindow::createRibbonBar() {
     g = group(tr("Home"), tr("Edit"));
     addAction(g, "undo", tr("Undo"), this, &MainWindow::onUndo, QKeySequence::Undo);
     addAction(g, "redo", tr("Redo"), this, &MainWindow::onRedo, QKeySequence::Redo);
-    addAction(g, "copy", tr("Copy"), this, &MainWindow::onCopy, QKeySequence::Copy);
-    addAction(g, "paste", tr("Paste"), this, &MainWindow::onPaste, QKeySequence::Paste);
-    addAction(g, "duplicate", tr("Duplicate"), this, &MainWindow::onDuplicate,
+    addAction(g, "copy", tr("Copy"), m_drafting.get(), &DraftingCommands::onCopy,
+              QKeySequence::Copy);
+    addAction(g, "paste", tr("Paste"), m_drafting.get(), &DraftingCommands::onPaste,
+              QKeySequence::Paste);
+    addAction(g, "duplicate", tr("Duplicate"), m_drafting.get(), &DraftingCommands::onDuplicate,
               QKeySequence(Qt::CTRL | Qt::Key_D));
 
     g = group(tr("Home"), tr("Organize"));
-    addAction(g, "group", tr("Group"), this, &MainWindow::onGroupEntities,
+    addAction(g, "group", tr("Group"), m_drafting.get(), &DraftingCommands::onGroupEntities,
               QKeySequence(Qt::CTRL | Qt::Key_G));
-    addAction(g, "ungroup", tr("Ungroup"), this, &MainWindow::onUngroupEntities,
+    addAction(g, "ungroup", tr("Ungroup"), m_drafting.get(), &DraftingCommands::onUngroupEntities,
               QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
     g = group(tr("Home"), tr("View"));
@@ -907,8 +914,10 @@ void MainWindow::createRibbonBar() {
     addToolAction(g, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
 
     g = group(tr("Modify"), tr("Array"));
-    addAction(g, "rect-array", tr("Rect Array"), this, &MainWindow::onRectangularArray);
-    addAction(g, "polar-array", tr("Polar Array"), this, &MainWindow::onPolarArray);
+    addAction(g, "rect-array", tr("Rect Array"), m_drafting.get(),
+              &DraftingCommands::onRectangularArray);
+    addAction(g, "polar-array", tr("Polar Array"), m_drafting.get(),
+              &DraftingCommands::onPolarArray);
 
     // ---- Annotate tab ----
     g = group(tr("Annotate"), tr("Dimensions"));
@@ -941,9 +950,9 @@ void MainWindow::createRibbonBar() {
 
     // ---- Block tab ----
     g = group(tr("Block"), tr("Blocks"));
-    addAction(g, "block-create", tr("Create"), this, &MainWindow::onCreateBlock);
-    addAction(g, "block-insert", tr("Insert"), this, &MainWindow::onInsertBlock);
-    addAction(g, "block-explode", tr("Explode"), this, &MainWindow::onExplode);
+    addAction(g, "block-create", tr("Create"), m_drafting.get(), &DraftingCommands::onCreateBlock);
+    addAction(g, "block-insert", tr("Insert"), m_drafting.get(), &DraftingCommands::onInsertBlock);
+    addAction(g, "block-explode", tr("Explode"), m_drafting.get(), &DraftingCommands::onExplode);
 
     // ---- 3D tab ----
     g = group(tr("3D"), tr("Primitives"));
@@ -1135,7 +1144,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<MirrorTool>());
     m_toolManager->registerTool(std::make_unique<RotateTool>());
     m_toolManager->registerTool(std::make_unique<ScaleTool>());
-    m_toolManager->registerTool(std::make_unique<PasteTool>(&m_clipboard));
+    m_toolManager->registerTool(std::make_unique<PasteTool>(&m_drafting->clipboard()));
     m_toolManager->registerTool(std::make_unique<LinearDimensionTool>());
     m_toolManager->registerTool(
         std::make_unique<ChainDimensionTool>(ChainDimensionTool::Mode::Continue));
@@ -2683,89 +2692,6 @@ void MainWindow::undoOrRedo(bool undo) {
     onSelectionChanged();
 }
 
-void MainWindow::onDuplicate() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Filter out entities on hidden/locked layers.
-    const auto& layerMgr = m_document->layerManager();
-    std::vector<uint64_t> idVec;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        idVec.push_back(entity->id());
-    }
-    if (idVec.empty()) return;
-
-    math::Vec2 offset(1.0, -1.0);
-    auto cmd =
-        std::make_unique<doc::DuplicateEntityCommand>(m_document->activeDrawing(), idVec, offset);
-    auto* rawCmd = cmd.get();
-    m_document->undoStack().push(std::move(cmd));
-
-    // Select the clones.
-    sel.clearSelection();
-    for (uint64_t id : rawCmd->clonedIds()) {
-        sel.select(id);
-    }
-    m_viewport->update();
-    onSelectionChanged();
-}
-
-void MainWindow::onCopy() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    std::vector<std::shared_ptr<draft::DraftEntity>> entities;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (sel.isSelected(entity->id())) {
-            entities.push_back(entity);
-        }
-    }
-    m_clipboard.copy(entities);
-}
-
-void MainWindow::onCut() {
-    onCopy();
-
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Only remove entities on visible/unlocked layers.
-    const auto& layerMgr = m_document->layerManager();
-    auto& drawing = m_document->activeDrawing();
-    std::vector<uint64_t> removable;
-    removable.reserve(ids.size());
-    for (uint64_t id : ids) {
-        const draft::DraftEntity* entity = drawing.findEntity(id);
-        if (entity == nullptr) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        removable.push_back(id);
-    }
-    if (!removable.empty()) {
-        auto composite = std::make_unique<doc::CompositeCommand>("Cut");
-        composite->addCommand(
-            std::make_unique<doc::RemoveEntitiesCommand>(drawing, std::move(removable)));
-        m_document->undoStack().push(std::move(composite));
-    }
-
-    sel.clearSelection();
-    m_viewport->update();
-    onSelectionChanged();
-}
-
-void MainWindow::onPaste() {
-    if (!m_clipboard.hasContent()) return;
-    m_toolManager->setActiveTool("Paste");
-    m_viewport->setActiveTool(m_toolManager->activeTool());
-    updateStatusBar();
-}
-
 // ---------------------------------------------------------------------------
 // Slots -- View
 // ---------------------------------------------------------------------------
@@ -2928,116 +2854,6 @@ void MainWindow::onScaleTool() {
     updateStatusBar();
 }
 
-void MainWindow::onRectangularArray() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Filter out entities on hidden/locked layers.
-    const auto& layerMgr = m_document->layerManager();
-    std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        filteredIds.push_back(entity->id());
-    }
-    if (filteredIds.empty()) return;
-
-    RectArrayDialog dlg(this, m_document->lengthUnit());
-    if (dlg.exec() != QDialog::Accepted) return;
-
-    int cols = dlg.columns();
-    int rows = dlg.rows();
-    double sx = dlg.spacingX();
-    double sy = dlg.spacingY();
-
-    auto composite = std::make_unique<doc::CompositeCommand>("Rectangular Array");
-    std::vector<uint64_t> newIds;
-    std::vector<std::shared_ptr<draft::DraftEntity>> allClones;
-
-    for (int r = 0; r < rows; ++r) {
-        for (int c = 0; c < cols; ++c) {
-            if (r == 0 && c == 0) continue;  // Skip original position.
-            math::Vec2 offset(c * sx, r * sy);
-            for (uint64_t id : filteredIds) {
-                if (const auto entity = m_document->activeDrawing().sharedEntity(id)) {
-                    auto clone = entity->clone();
-                    clone->translate(offset);
-                    newIds.push_back(clone->id());
-                    allClones.push_back(clone);
-                    composite->addCommand(std::make_unique<doc::AddEntityCommand>(
-                        m_document->activeDrawing(), clone));
-                }
-            }
-        }
-    }
-
-    doc::adoptClones(m_document->activeDrawing(), allClones);
-    m_document->undoStack().push(std::move(composite));
-
-    sel.clearSelection();
-    for (uint64_t id : newIds) {
-        sel.select(id);
-    }
-    m_viewport->update();
-    onSelectionChanged();
-}
-
-void MainWindow::onPolarArray() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Filter out entities on hidden/locked layers.
-    const auto& layerMgr = m_document->layerManager();
-    std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        filteredIds.push_back(entity->id());
-    }
-    if (filteredIds.empty()) return;
-
-    PolarArrayDialog dlg(this, m_document->lengthUnit());
-    if (dlg.exec() != QDialog::Accepted) return;
-
-    int count = dlg.count();
-    double totalAngleDeg = dlg.totalAngle();
-    math::Vec2 center(dlg.centerX(), dlg.centerY());
-    double totalAngleRad = math::degToRad(totalAngleDeg);
-    double step = totalAngleRad / count;
-
-    auto composite = std::make_unique<doc::CompositeCommand>("Polar Array");
-    std::vector<uint64_t> newIds;
-    std::vector<std::shared_ptr<draft::DraftEntity>> allClones;
-
-    for (int i = 1; i < count; ++i) {
-        double angle = step * i;
-        for (uint64_t id : filteredIds) {
-            if (const auto entity = m_document->activeDrawing().sharedEntity(id)) {
-                auto clone = entity->clone();
-                clone->rotate(center, angle);
-                newIds.push_back(clone->id());
-                allClones.push_back(clone);
-                composite->addCommand(
-                    std::make_unique<doc::AddEntityCommand>(m_document->activeDrawing(), clone));
-            }
-        }
-    }
-
-    doc::adoptClones(m_document->activeDrawing(), allClones);
-    m_document->undoStack().push(std::move(composite));
-
-    sel.clearSelection();
-    for (uint64_t id : newIds) {
-        sel.select(id);
-    }
-    m_viewport->update();
-    onSelectionChanged();
-}
-
 // ---------------------------------------------------------------------------
 // Slots -- Dimension tools
 // ---------------------------------------------------------------------------
@@ -3064,59 +2880,6 @@ void MainWindow::onAngularDimTool() {
     m_toolManager->setActiveTool("Angular Dimension");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
-}
-
-void MainWindow::onDimensionStyle() {
-    draft::DraftDocument& drawing = m_document->activeDrawing();
-    const draft::DimensionStyle& now = drawing.dimensionStyle();
-    const QStringList units = Preferences::lengthUnits();
-
-    FeatureForm form(this, tr("Dimension Style"), m_document->lengthUnit());
-    auto* height = form.length(QStringLiteral("textHeight"), tr("Text height:"), now.textHeight,
-                               0.01, 1000.0, 3);
-    auto* arrow =
-        form.length(QStringLiteral("arrowSize"), tr("Arrow size:"), now.arrowSize, 0.0, 1000.0, 3);
-    auto* angle = form.angle(QStringLiteral("arrowAngle"), tr("Arrow half-angle:"),
-                             now.arrowAngle * math::kRadToDeg, 1.0, 89.0, 1);
-    auto* gap = form.length(QStringLiteral("extensionGap"), tr("Extension gap:"), now.extensionGap,
-                            0.0, 1000.0, 3);
-    auto* overshoot = form.length(QStringLiteral("extensionOvershoot"), tr("Extension overshoot:"),
-                                  now.extensionOvershoot, 0.0, 1000.0, 3);
-    auto* precision =
-        form.count(QStringLiteral("precision"), tr("Decimal places:"), now.precision, 0, 12);
-    auto* unit = form.choice(QStringLiteral("unit"), tr("Unit:"), units);
-    unit->setCurrentIndex(
-        std::max(0, static_cast<int>(units.indexOf(QString::fromStdString(now.unit)))));
-    auto* showUnit =
-        form.choice(QStringLiteral("showUnits"), tr("Show the unit:"), {tr("No"), tr("Yes")});
-    showUnit->setCurrentIndex(now.showUnits ? 1 : 0);
-    // A field shows its value rounded to its decimals (the arrow's 0.3 radians
-    // as 17.2 degrees); left as shown, it keeps the value exactly.
-    const auto field = [](QDoubleSpinBox* spin, double was, double scale = 1.0) {
-        return [spin, was, scale, shown = spin->value()] {
-            return spin->value() == shown ? was : spin->value() * scale;
-        };
-    };
-    const auto newHeight = field(height, now.textHeight);
-    const auto newArrow = field(arrow, now.arrowSize);
-    const auto newAngle = field(angle, now.arrowAngle, math::kDegToRad);
-    const auto newGap = field(gap, now.extensionGap);
-    const auto newOvershoot = field(overshoot, now.extensionOvershoot);
-    if (!form.exec()) return;
-
-    draft::DimensionStyle style = now;
-    style.textHeight = newHeight();
-    style.arrowSize = newArrow();
-    style.arrowAngle = newAngle();
-    style.extensionGap = newGap();
-    style.extensionOvershoot = newOvershoot();
-    style.precision = precision->value();
-    style.unit = unit->currentText().toStdString();
-    style.showUnits = showUnit->currentIndex() == 1;
-    if (style == now) return;  // OK with nothing changed is not a step to undo
-    m_document->undoStack().push(
-        std::make_unique<doc::ChangeDimensionStyleCommand>(drawing, style));
-    m_viewport->update();
 }
 
 void MainWindow::onLeaderTool() {
@@ -3236,174 +2999,9 @@ void MainWindow::onConstraintAngle() {
 // Slots -- Block operations
 // ---------------------------------------------------------------------------
 
-void MainWindow::onCreateBlock() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) {
-        QMessageBox::information(this, tr("Create Block"), tr("Select entities first."));
-        return;
-    }
-
-    // Filter to visible/unlocked layers.
-    const auto& layerMgr = m_document->layerManager();
-    std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        filteredIds.push_back(entity->id());
-    }
-    if (filteredIds.empty()) return;
-
-    // The base point, where the block is inserted from: by default the centre
-    // of what was selected, or typed.
-    math::BoundingBox bounds;
-    for (uint64_t id : filteredIds) {
-        if (const auto* e = m_document->activeDrawing().findEntity(id)) {
-            const auto bb = e->boundingBox();
-            if (bb.isValid()) bounds.expand(bb);
-        }
-    }
-    const math::Vec3 centre = bounds.isValid() ? bounds.center() : math::Vec3(0, 0, 0);
-    FeatureForm form(this, tr("Create Block"), m_document->lengthUnit());
-    auto* nameField = form.text(QStringLiteral("blockName"), tr("Block name:"));
-    auto* baseX = form.length(QStringLiteral("baseX"), tr("Base point X:"), centre.x, -1e9, 1e9, 4);
-    auto* baseY = form.length(QStringLiteral("baseY"), tr("Base point Y:"), centre.y, -1e9, 1e9, 4);
-    if (!form.exec()) return;
-    const QString name = nameField->text().trimmed();
-    if (name.isEmpty()) return;
-
-    std::string blockName = name.toStdString();
-    if (m_document->activeDrawing().blockTable().findBlock(blockName)) {
-        QMessageBox::warning(this, tr("Create Block"),
-                             tr("A block with that name already exists."));
-        return;
-    }
-
-    const math::Vec2 base(baseX->value(), baseY->value());
-    auto cmd = std::make_unique<doc::CreateBlockCommand>(m_document->activeDrawing(), blockName,
-                                                         filteredIds, base,
-                                                         m_document->layerManager().currentLayer());
-    auto* rawCmd = cmd.get();
-    m_document->undoStack().push(std::move(cmd));
-
-    sel.clearSelection();
-    sel.select(rawCmd->blockRefId());
-    m_viewport->update();
-    onSelectionChanged();
-}
-
-void MainWindow::onInsertBlock() {
-    auto names = m_document->activeDrawing().blockTable().blockNames();
-    if (names.empty()) {
-        QMessageBox::information(this, tr("Insert Block"),
-                                 tr("No blocks defined. Create a block first."));
-        return;
-    }
-
-    InsertBlockDialog dlg(names, this);
-    if (dlg.exec() != QDialog::Accepted) return;
-
-    auto def = m_document->activeDrawing().blockTable().findBlock(dlg.selectedBlock());
-    if (!def) return;
-
-    // A new InsertBlockTool replaces the previous one, which may be the active
-    // tool: the viewport lets go of it (deactivating it while it still exists)
-    // before it is destroyed.
-    m_viewport->setActiveTool(nullptr);
-    auto tool = std::make_unique<InsertBlockTool>(def, dlg.rotation(), dlg.scale());
-    m_toolManager->registerTool(std::move(tool));
-    m_toolManager->setActiveTool("Insert Block");
-    m_viewport->setActiveTool(m_toolManager->activeTool());
-    updateStatusBar();
-}
-
-void MainWindow::onExplode() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Find block refs among the selection.
-    std::vector<uint64_t> blockRefIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        if (dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
-            blockRefIds.push_back(entity->id());
-        }
-    }
-    if (blockRefIds.empty()) {
-        QMessageBox::information(this, tr("Explode"),
-                                 tr("Select one or more block references to explode."));
-        return;
-    }
-
-    auto composite = std::make_unique<doc::CompositeCommand>("Explode");
-    std::vector<doc::ExplodeBlockCommand*> explodeCmds;
-    for (uint64_t id : blockRefIds) {
-        auto cmd = std::make_unique<doc::ExplodeBlockCommand>(m_document->activeDrawing(), id);
-        explodeCmds.push_back(cmd.get());
-        composite->addCommand(std::move(cmd));
-    }
-    m_document->undoStack().push(std::move(composite));
-
-    // Select the exploded entities.
-    sel.clearSelection();
-    for (auto* cmd : explodeCmds) {
-        for (uint64_t id : cmd->explodedIds()) {
-            sel.select(id);
-        }
-    }
-    m_viewport->update();
-    onSelectionChanged();
-}
-
 // ---------------------------------------------------------------------------
 // Slots -- Group / Ungroup
 // ---------------------------------------------------------------------------
-
-void MainWindow::onGroupEntities() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.size() < 2) return;  // Need at least 2 entities to group.
-
-    // Filter to visible/unlocked layers.
-    const auto& layerMgr = m_document->layerManager();
-    std::vector<uint64_t> filteredIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        const auto* lp = layerMgr.getLayer(entity->layer());
-        if (!lp || !lp->visible || lp->locked) continue;
-        filteredIds.push_back(entity->id());
-    }
-    if (filteredIds.size() < 2) return;
-
-    auto cmd =
-        std::make_unique<doc::GroupEntitiesCommand>(m_document->activeDrawing(), filteredIds);
-    m_document->undoStack().push(std::move(cmd));
-    m_viewport->update();
-}
-
-void MainWindow::onUngroupEntities() {
-    auto& sel = m_viewport->selectionManager();
-    auto ids = sel.selectedIds();
-    if (ids.empty()) return;
-
-    // Collect groupIds from selected entities.
-    std::set<uint64_t> groupIds;
-    for (const auto& entity : m_document->activeDrawing().entities()) {
-        if (!sel.isSelected(entity->id())) continue;
-        if (entity->groupId() != 0) {
-            groupIds.insert(entity->groupId());
-        }
-    }
-    if (groupIds.empty()) return;
-
-    std::vector<uint64_t> groupIdVec(groupIds.begin(), groupIds.end());
-    auto cmd =
-        std::make_unique<doc::UngroupEntitiesCommand>(m_document->activeDrawing(), groupIdVec);
-    m_document->undoStack().push(std::move(cmd));
-    m_viewport->update();
-}
 
 // ---------------------------------------------------------------------------
 // Slots -- Status bar updates
@@ -3418,6 +3016,10 @@ void MainWindow::onMouseMoved(const hz::math::Vec2& worldPos) {
 
     // Update tool prompt dynamically as mouse moves.
     if (m_viewport && m_viewport->activeTool()) m_statusPrompt->setText(toolPrompt());
+}
+
+void MainWindow::selectionChanged() {
+    onSelectionChanged();
 }
 
 void MainWindow::onSelectionChanged() {

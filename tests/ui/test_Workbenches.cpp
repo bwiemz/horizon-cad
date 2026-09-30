@@ -1,6 +1,6 @@
 // Workbenches (Phase 146): the assembly commands, moved out of MainWindow,
-// work through WorkbenchHost alone, as do the drawing sheets (Phase 148) and
-// the commands that add a feature to a part.
+// work through WorkbenchHost alone, as do the drawing sheets (Phase 148),
+// the commands that add a feature to a part, and the 2D drafting commands.
 // Here they run against a stand-in host with no window at all, which is what
 // the interface is for.
 
@@ -11,6 +11,7 @@
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -31,6 +32,7 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
@@ -39,6 +41,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/AssemblyWorkbench.h"
+#include "horizon/ui/DraftingCommands.h"
 #include "horizon/ui/DrawingWorkbench.h"
 #include "horizon/ui/PartCommands.h"
 #include "horizon/ui/Tool.h"
@@ -71,6 +74,7 @@ public:
     std::unique_ptr<hz::ui::Tool> tool;  ///< the last a workbench ran
     int toolsEnded = 0;
     int rebuilds = 0;
+    int selectionChanges = 0;
     std::vector<QString> added;               ///< the features added, by their commands
     std::shared_ptr<hz::doc::Sketch> chosen;  ///< as the sketch list has it
     int sketchesFinished = 0;
@@ -93,6 +97,7 @@ public:
     void setPrompt(const QString& /*text*/) override {}
     void rebuildScene() override { ++rebuilds; }
     void refreshModifiedIndicators() override {}
+    void selectionChanged() override { ++selectionChanges; }
     bool openPath(const QString& /*fileName*/) override { return false; }
     void addTab(std::shared_ptr<hz::doc::Document> document, const QString& title) override {
         tabs.emplace_back(std::move(document), title);
@@ -861,4 +866,136 @@ TEST(WorkbenchesTest, AnExtrudeTakesTheSketchChosen) {
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume,
                 20.0 * 20 * 20 - 10.0 * 10 * 20, 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// The 2D drafting commands, on the selection
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The lines drawn and selected by drawThree: two on the current layer, and
+/// one on a locked layer.
+struct ThreeLines {
+    uint64_t a = 0;
+    uint64_t b = 0;
+    uint64_t locked = 0;
+};
+
+ThreeLines drawThree(StandInHost& host) {
+    hz::doc::Document& document = *host.currentDocument();
+    hz::draft::LayerProperties lockedLayer;
+    lockedLayer.name = "Locked";
+    lockedLayer.locked = true;
+    document.layerManager().addLayer(lockedLayer);
+    using hz::math::Vec2;
+    const auto a = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    const auto b = std::make_shared<hz::draft::DraftLine>(Vec2(0, 1), Vec2(1, 1));
+    const auto c = std::make_shared<hz::draft::DraftLine>(Vec2(0, 2), Vec2(1, 2));
+    c->setLayer("Locked");
+    auto& sel = host.viewport().selectionManager();
+    for (const auto& line : {a, b, c}) {
+        document.activeDrawing().addEntity(line);
+        sel.select(line->id());
+    }
+    return {a->id(), b->id(), c->id()};
+}
+
+std::size_t entityCount(StandInHost& host) {
+    return host.currentDocument()->activeDrawing().entities().size();
+}
+
+}  // namespace
+
+// Duplicate, Group and Ungroup, Cut and Paste through the host alone: what
+// is on a locked layer is left as it is, and what a command makes is what is
+// selected after it.
+TEST(WorkbenchesTest, TheDraftingCommandsWorkOnTheSelectionThroughTheirHost) {
+    StandInHost host;
+    hz::ui::DraftingCommands drafting(host);
+    const ThreeLines lines = drawThree(host);
+    auto& sel = host.viewport().selectionManager();
+    hz::doc::Document& document = *host.currentDocument();
+
+    drafting.onDuplicate();
+    EXPECT_EQ(entityCount(host), 5u) << "the two on an unlocked layer, copied";
+    EXPECT_EQ(sel.selectedIds().size(), 2u) << "the copies selected";
+    EXPECT_FALSE(sel.isSelected(lines.a));
+    EXPECT_EQ(host.selectionChanges, 1);
+    document.undoStack().undo();
+    EXPECT_EQ(entityCount(host), 3u);
+
+    for (const uint64_t id : {lines.a, lines.b, lines.locked}) sel.select(id);
+    const auto groupOf = [&document](uint64_t id) {
+        return document.activeDrawing().findEntity(id)->groupId();
+    };
+    drafting.onGroupEntities();
+    EXPECT_NE(groupOf(lines.a), 0u);
+    EXPECT_EQ(groupOf(lines.a), groupOf(lines.b));
+    EXPECT_EQ(groupOf(lines.locked), 0u) << "a locked layer's line is left out";
+    drafting.onUngroupEntities();
+    EXPECT_EQ(groupOf(lines.a), 0u);
+
+    drafting.onCut();
+    EXPECT_EQ(entityCount(host), 1u) << "the locked layer's line stays";
+    EXPECT_TRUE(sel.selectedIds().empty());
+    EXPECT_TRUE(drafting.clipboard().hasContent());
+    drafting.onPaste();
+    ASSERT_NE(host.tool, nullptr);
+    EXPECT_EQ(host.tool->name(), "Paste");
+}
+
+// Arrays, a block made and exploded, a block inserted, and the dimension
+// style, each through its form and the host alone.
+TEST(WorkbenchesTest, TheDraftingFormsWorkThroughTheirHost) {
+    StandInHost host;
+    hz::ui::DraftingCommands drafting(host);
+    const ThreeLines lines = drawThree(host);
+    auto& sel = host.viewport().selectionManager();
+    hz::doc::Document& document = *host.currentDocument();
+
+    // Three by three, as the form has it: each unlocked line eight more times.
+    ASSERT_TRUE(answering(
+        "Rectangular Array", [](QDialog&) {}, [&] { drafting.onRectangularArray(); }));
+    EXPECT_EQ(entityCount(host), 3u + 16u);
+    EXPECT_EQ(sel.selectedIds().size(), 16u);
+    document.undoStack().undo();
+    sel.clearSelection();
+    sel.select(lines.a);
+    ASSERT_TRUE(answering(
+        "Polar Array", [](QDialog&) {}, [&] { drafting.onPolarArray(); }));
+    EXPECT_EQ(entityCount(host), 3u + 5u) << "six round, the line among them";
+    document.undoStack().undo();
+
+    // A block of two lines, where they were; exploded, they are back.
+    sel.clearSelection();
+    sel.select(lines.a);
+    sel.select(lines.b);
+    ASSERT_TRUE(answering(
+        "Create Block",
+        [](QDialog& form) {
+            auto* name = form.findChild<QLineEdit*>(QStringLiteral("blockName"));
+            ASSERT_NE(name, nullptr);
+            name->setText(QStringLiteral("Pair"));
+        },
+        [&] { drafting.onCreateBlock(); }));
+    EXPECT_EQ(entityCount(host), 2u) << "the locked layer's line, and the block";
+    ASSERT_EQ(sel.selectedIds().size(), 1u) << "the block selected";
+    drafting.onExplode();
+    EXPECT_EQ(entityCount(host), 3u);
+    EXPECT_EQ(sel.selectedIds().size(), 2u) << "what it held selected";
+
+    ASSERT_TRUE(answering(
+        "Insert Block", [](QDialog&) {}, [&] { drafting.onInsertBlock(); }));
+    ASSERT_NE(host.tool, nullptr);
+    EXPECT_EQ(host.tool->name(), "Insert Block");
+
+    // The text height doubled, as one step to undo.
+    const double was = document.activeDrawing().dimensionStyle().textHeight;
+    ASSERT_TRUE(answering(
+        "Dimension Style", [was](QDialog& form) { setField(form, "textHeight", was * 2.0); },
+        [&] { drafting.onDimensionStyle(); }));
+    EXPECT_DOUBLE_EQ(document.activeDrawing().dimensionStyle().textHeight, was * 2.0);
+    document.undoStack().undo();
+    EXPECT_DOUBLE_EQ(document.activeDrawing().dimensionStyle().textHeight, was);
 }
