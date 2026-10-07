@@ -1,7 +1,9 @@
 #include "horizon/fileio/DxfFormat.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <exception>
@@ -71,8 +73,19 @@ void writeGroup(std::ostream& out, int code, int value) {
     out << "  " << code << "\n" << value << "\n";
 }
 
+/// A real, as the shortest text that reads back as the same double, in no
+/// locale (std::to_chars). Six decimals lost what was smaller, and a whole
+/// ellipse's end parameter, 2 pi, read back short of a turn: the ellipse came
+/// back an open polyline. Fixed notation, as DXF files are written: no
+/// exponent for a reader to trip on.
 void writeGroup(std::ostream& out, int code, double value) {
-    out << "  " << code << "\n" << std::fixed << std::setprecision(6) << value << "\n";
+    // Room for any double: a tiny one is "-0.", over 300 zeros and its digits.
+    std::array<char, 400> text{};
+    const auto [end, ec] =
+        std::to_chars(text.data(), text.data() + text.size(), value, std::chars_format::fixed);
+    const size_t length = ec == std::errc{} ? static_cast<size_t>(end - text.data()) : 0;
+    const std::string_view written(text.data(), length);
+    out << "  " << code << "\n" << written << "\n";
 }
 
 int g_handleCounter = 0;
@@ -253,43 +266,53 @@ void writeText(std::ostream& out, const draft::DraftText& text) {
     writeGroup(out, 100, std::string("AcDbText"));
 }
 
+/// A spline as the drawing draws it (DraftSpline): a uniform cubic B-spline,
+/// which starts and ends inside its control polygon, not at its first and
+/// last points. Its knots are written evenly spaced, so another program
+/// draws the same curve; the clamped knots written before ran it through the
+/// end points, another curve. A closed one is written periodic, its first
+/// three points again at its end, as the knots run on over them; a weighted
+/// one with its weights. Too few points for a cubic are drawn straight, and
+/// written as a spline of degree 1, whose knots put each point on the curve.
 void writeSpline(std::ostream& out, const draft::DraftSpline& spline) {
+    std::vector<math::Vec2> points = spline.controlPoints();
+    if (points.size() < 2) return;  // a point: nothing is drawn
+    std::vector<double> weights = spline.weights();
+    weights.resize(points.size(), 1.0);
+    const bool cubic = points.size() >= (spline.closed() ? 3u : 4u);
+    const bool periodic = cubic && spline.closed();
+    if (periodic) {
+        for (size_t k = 0; k < 3; ++k) {
+            points.push_back(points[k]);
+            weights.push_back(weights[k]);
+        }
+    }
+    const bool rational = spline.hasNonUniformWeights();
+    const int degree = cubic ? 3 : 1;
+    const int count = static_cast<int>(points.size());
+
     writeGroup(out, 0, std::string("SPLINE"));
     writeCommonProps(out, spline);
     writeGroup(out, 100, std::string("AcDbEntity"));
     writeGroup(out, 100, std::string("AcDbSpline"));
-
-    const auto& cps = spline.controlPoints();
-    int n = static_cast<int>(cps.size());
-    int degree = 3;
-    int flags = spline.closed() ? 1 : 0;
-
-    writeGroup(out, 70, flags);
+    writeGroup(out, 70, (periodic ? 1 | 2 : 0) | (rational ? 4 : 0));  // closed, periodic, rational
     writeGroup(out, 71, degree);
-
-    // Generate clamped uniform knot vector for open spline.
-    int numKnots = n + degree + 1;
-    writeGroup(out, 72, numKnots);
-    writeGroup(out, 73, n);
-
-    if (spline.closed()) {
-        // Periodic knot vector.
-        for (int i = 0; i < numKnots; ++i) {
-            writeGroup(out, 40, static_cast<double>(i));
-        }
+    writeGroup(out, 72, count + degree + 1);
+    writeGroup(out, 73, count);
+    writeGroup(out, 74, 0);  // no fit points
+    if (cubic) {
+        for (int k = 0; k < count + 4; ++k) writeGroup(out, 40, static_cast<double>(k));
     } else {
-        // Clamped knot vector.
-        int numInternal = n - degree - 1;
-        for (int i = 0; i <= degree; ++i) writeGroup(out, 40, 0.0);
-        for (int i = 1; i <= numInternal; ++i) {
-            writeGroup(out, 40, static_cast<double>(i) / (numInternal + 1));
-        }
-        for (int i = 0; i <= degree; ++i) writeGroup(out, 40, 1.0);
+        writeGroup(out, 40, 0.0);
+        for (int k = 0; k < count; ++k) writeGroup(out, 40, static_cast<double>(k));
+        writeGroup(out, 40, static_cast<double>(count - 1));
     }
-
-    for (const auto& cp : cps) {
-        writeGroup(out, 10, cp.x);
-        writeGroup(out, 20, cp.y);
+    if (rational) {
+        for (const double w : weights) writeGroup(out, 41, w);
+    }
+    for (const auto& p : points) {
+        writeGroup(out, 10, p.x);
+        writeGroup(out, 20, p.y);
         writeGroup(out, 30, 0.0);
     }
 }
@@ -637,23 +660,6 @@ std::shared_ptr<draft::DraftEntity> parseArc(const std::vector<DxfPair>& groups)
     return std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
 }
 
-std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups) {
-    int flags = toInt(findGroup(groups, 70, "0"));
-    bool closed = (flags & 1) != 0;
-
-    auto xs = findAllDoubles(groups, 10);
-    auto ys = findAllDoubles(groups, 20);
-    size_t count = std::min(xs.size(), ys.size());
-    if (count < 2) return nullptr;
-
-    std::vector<math::Vec2> cps;
-    cps.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        cps.emplace_back(xs[i], ys[i]);
-    }
-    return std::make_shared<draft::DraftSpline>(cps, closed);
-}
-
 // ===========================================================================
 // DXF Import - Section parsers
 // ===========================================================================
@@ -976,7 +982,8 @@ void mirrorInYAxis(draft::DraftEntity& entity) {
 }
 
 /// The arc a polyline segment with `bulge` (the tangent of a quarter of its
-/// included angle; positive runs counterclockwise) makes from a to b.
+/// included angle; positive runs counterclockwise) makes from a to b; null
+/// when there is none to make.
 std::shared_ptr<draft::DraftEntity> arcFromBulge(const math::Vec2& a, const math::Vec2& b,
                                                  double bulge) {
     const math::Vec2 chord = b - a;
@@ -986,6 +993,8 @@ std::shared_ptr<draft::DraftEntity> arcFromBulge(const math::Vec2& a, const math
     const double h = d * (1.0 - bulge * bulge) / (4.0 * bulge);
     const math::Vec2 c = (a + b) * 0.5 + left * h;
     const double r = std::abs(d * (1.0 + bulge * bulge) / (4.0 * bulge));
+    // A bulge of 1e200 squares to infinity: no arc, and the centre was NaN.
+    if (!std::isfinite(c.x) || !std::isfinite(c.y) || !std::isfinite(r)) return nullptr;
     const double angA = std::atan2(a.y - c.y, a.x - c.x);
     const double angB = std::atan2(b.y - c.y, b.x - c.x);
     return bulge > 0.0 ? std::make_shared<draft::DraftArc>(c, r, angA, angB)
@@ -1017,11 +1026,8 @@ Entities polylineEntities(const std::vector<PolyVertex>& v, bool closed, const s
         const math::Vec2& a = v[k].p;
         const math::Vec2& b = v[(k + 1) % v.size()].p;
         std::shared_ptr<draft::DraftEntity> piece;
-        if (std::abs(v[k].bulge) > 1e-12) {
-            piece = arcFromBulge(a, b, v[k].bulge);
-        } else if ((b - a).length() > 1e-12) {
-            piece = std::make_shared<draft::DraftLine>(a, b);
-        }
+        if (std::abs(v[k].bulge) > 1e-12) piece = arcFromBulge(a, b, v[k].bulge);
+        if (!piece && (b - a).length() > 1e-12) piece = std::make_shared<draft::DraftLine>(a, b);
         if (!piece) continue;
         piece->setGroupId(group);
         pieces.push_back(std::move(piece));
@@ -1273,6 +1279,74 @@ HatchParse parseHatch(const std::vector<DxfPair>& groups) {
     return result;
 }
 
+/// A SPLINE. The drawing's spline is a uniform cubic B-spline (DraftSpline):
+/// one written so, with evenly spaced knots (as writeSpline writes it), comes
+/// back as it was. One of degree 1 is the polyline through its points. Any
+/// other, clamped as most programs write one, comes in as a uniform cubic on
+/// the same points, which is another curve, and is reported.
+std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups, Import& im) {
+    const bool closed = (toInt(findGroup(groups, 70, "0")) & 1) != 0;
+    const int degree = toInt(findGroup(groups, 71, "3"));
+
+    const auto xs = findAllDoubles(groups, 10);
+    const auto ys = findAllDoubles(groups, 20);
+    const size_t count = std::min(xs.size(), ys.size());
+    if (count < 2) return nullptr;
+
+    std::vector<math::Vec2> cps;
+    cps.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        cps.emplace_back(xs[i], ys[i]);
+    }
+    // A weight to each point, above 0, or none; others cannot be drawn.
+    std::vector<double> weights = findAllDoubles(groups, 41);
+    const bool positive =
+        std::all_of(weights.begin(), weights.end(), [](double w) { return w > 0.0; });
+    const bool badWeights = !weights.empty() && (weights.size() != count || !positive);
+    if (badWeights) weights.clear();
+    const auto spline = [&weights](const std::vector<math::Vec2>& points, bool isClosed) {
+        auto made = std::make_shared<draft::DraftSpline>(points, isClosed);
+        if (!weights.empty()) made->setWeights(weights);
+        return made;
+    };
+
+    if (degree == 1) {
+        // The drawing draws a spline of fewer than four points straight.
+        if (count <= 3 && !closed) return spline(cps, false);
+        return std::make_shared<draft::DraftPolyline>(cps, closed);
+    }
+    // Evenly spaced knots, one for each point and four more: within a
+    // millionth of their span, for a file written with six decimals.
+    const std::vector<double> knots = findAllDoubles(groups, 40);
+    const double span = knots.empty() ? 0.0 : knots.back() - knots.front();
+    bool uniform = degree == 3 && count >= 4 && knots.size() == count + 4 && span > 0.0;
+    for (size_t k = 0; uniform && k < knots.size(); ++k) {
+        const double even =
+            knots.front() + span * static_cast<double>(k) / static_cast<double>(knots.size() - 1);
+        uniform = std::abs(knots[k] - even) <= 1e-6 * span;
+    }
+    if (!uniform || badWeights) {
+        ++im.notes.approximated[{"SPLINE",
+                                 "not a uniform cubic, drawn as one on the same control points"}];
+    }
+    if (uniform && closed && count >= 6) {
+        // Periodic, as written now: its first three points (and weights)
+        // again at its end. A closed one without them is as this program
+        // wrote one before, closed by the drawing.
+        bool wrapped = true;
+        for (size_t k = 0; k < 3; ++k) {
+            const size_t again = count - 3 + k;
+            wrapped = wrapped && (cps[again] - cps[k]).length() <= 1e-9 * (1.0 + cps[k].length()) &&
+                      (weights.empty() || weights[again] == weights[k]);
+        }
+        if (wrapped) {
+            cps.resize(count - 3);
+            if (!weights.empty()) weights.resize(count - 3);
+        }
+    }
+    return spline(cps, closed);
+}
+
 /// A partial ELLIPSE (groups 41/42 its start and end parameters) as a
 /// polyline; a whole one as an ellipse.
 std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& groups, Import& im) {
@@ -1282,9 +1356,12 @@ std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& gr
     const double semiMajor = major.length();
     if (semiMajor < 1e-12 || !(ratio > 0.0)) return nullptr;
     const double start = toDouble(findGroup(groups, 41, "0"));
-    double end = toDouble(findGroup(groups, 42, std::to_string(math::kTwoPi)));
+    const std::string endText = findGroup(groups, 42);
+    double end = endText.empty() ? math::kTwoPi : toDouble(endText);
     if (end <= start) end += math::kTwoPi;
-    if (std::abs(end - start - math::kTwoPi) < 1e-9) {
+    // A whole turn, to the six decimals many programs write reals with
+    // (2 pi as 6.283185, at start and end both): within a millionth.
+    if (std::abs(end - start - math::kTwoPi) < 1e-6) {
         return std::make_shared<draft::DraftEllipse>(c, semiMajor, semiMajor * ratio,
                                                      std::atan2(major.y, major.x));
     }
@@ -1426,6 +1503,10 @@ Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, dou
 
 std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Import& im);
 
+/// How deep blocks are built inside blocks, each a call deeper. Drawings
+/// nest a few deep.
+constexpr size_t kMaxBlockNesting = 64;
+
 /// The drawing entities raws[i] becomes; a POLYLINE takes its VERTEX entities
 /// with it. Advances `i` past what it used. `inBlock` says whether this is a
 /// block's content, where an INSERT is flattened into the block.
@@ -1438,6 +1519,22 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         ++im.notes.unread[{type, where + why}];
         return {};
     };
+    // A POLYLINE left out takes its vertices with it — and nothing after
+    // them, SEQEND or not, so a missing SEQEND cannot swallow what follows.
+    const auto skipVertices = [&] {
+        if (type != "POLYLINE") return;
+        while (i < raws.size() && raws[i].type == "VERTEX") ++i;
+        if (i < raws.size() && raws[i].type == "SEQEND") ++i;
+    };
+
+    // From R2000 on, ENTITIES holds the active layout's paper space too,
+    // marked 67 = 1: a sheet's border, title block and viewports, drawn to
+    // the sheet's scale. Read, they lay over the model.
+    if (!inBlock && toInt(findGroup(g, 67, "0")) == 1) {
+        skipVertices();
+        ++im.notes.unread[{"paper space", " (on a layout, not the model)"}];
+        return {};
+    }
 
     // Entities placed in their object coordinate system. The rest (LINE,
     // SPLINE, ELLIPSE, MTEXT) are in world coordinates by the DXF reference;
@@ -1449,12 +1546,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
     if (kOcsTypes.count(type)) {
         ocs = ocsOf(g);
         if (ocs == Ocs::OutOfPlane) {
-            if (type == "POLYLINE") {
-                // Its vertices go with it — and nothing after them, SEQEND
-                // or not, so a missing SEQEND cannot swallow what follows.
-                while (i < raws.size() && raws[i].type == "VERTEX") ++i;
-                if (i < raws.size() && raws[i].type == "SEQEND") ++i;
-            }
+            skipVertices();
             return unread(" (not in the drawing's plane)");
         }
     }
@@ -1492,7 +1584,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         out = mtextEntities(g, im);
         if (out.empty()) return unread(" (it has no text)");
     } else if (type == "SPLINE") {
-        out.push_back(parseSpline(g));
+        out.push_back(parseSpline(g, im));
     } else if (type == "HATCH") {
         HatchParse hatch = parseHatch(g);
         if (hatch.islandsLeftOut > 0) {
@@ -1504,8 +1596,18 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         out.push_back(ellipseEntity(g, im));
     } else if (type == "INSERT") {
         const std::string name = findGroup(g, 2);
-        auto def =
-            inBlock ? buildBlock(name, im) : im.doc.draftDocument().blockTable().findBlock(name);
+        auto def = im.doc.draftDocument().blockTable().findBlock(name);
+        if (!def) {
+            // Not built yet: a block inserted in the one being built, or an
+            // anonymous block, built when first inserted. Each block inside a
+            // block is built a call deeper: 20,000 blocks, each inserting the
+            // next, ran out of stack.
+            if (im.building.size() >= kMaxBlockNesting) {
+                return unread(" (blocks nested more than " + std::to_string(kMaxBlockNesting) +
+                              " deep)");
+            }
+            def = buildBlock(name, im);
+        }
         if (!def) return unread(" (its block is missing)");
         const math::Vec2 at(toDouble(findGroup(g, 10)), toDouble(findGroup(g, 20)));
         const double sx = toDouble(findGroup(g, 41, "1.0"));
@@ -1583,6 +1685,19 @@ std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Impo
     return def;
 }
 
+/// Whether a block holds one of the drawing's layouts rather than something
+/// to insert: *Model_Space, *Paper_Space, *Paper_Space0... ($MODEL_SPACE and
+/// $PAPER_SPACE in R12), whatever their case. Every name starting "*" was
+/// taken for one, which left out the anonymous blocks too: a dynamic block's
+/// instance or an array (*U), whose inserts then said their block was missing.
+bool isLayoutBlock(std::string name) {
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (name.empty() || (name[0] != '*' && name[0] != '$')) return false;
+    return name.compare(1, std::string::npos, "model_space") == 0 ||
+           name.compare(1, 11, "paper_space") == 0;
+}
+
 void parseBlocksSection(DxfStream& in, Import& im) {
     DxfPair pair;
     nextPair(in, pair);
@@ -1606,11 +1721,14 @@ void parseBlocksSection(DxfStream& in, Import& im) {
                 if (pair.code == 0) break;  // ENDBLK's own groups
             }
         }
-        // Model and paper space blocks (names starting "*") hold the
-        // drawing's layouts, not reusable blocks.
-        if (!name.empty() && name[0] != '*') im.blocks[name] = std::move(block);
+        if (!name.empty() && !isLayoutBlock(name)) im.blocks[name] = std::move(block);
     }
-    for (const auto& entry : im.blocks) buildBlock(entry.first, im);
+    // An anonymous block ("*U1", "*D1"...) is built when something inserts
+    // it: a dimension's picture, say, is not a block to insert, and the
+    // dimensions are not read.
+    for (const auto& entry : im.blocks) {
+        if (entry.first[0] != '*') buildBlock(entry.first, im);
+    }
 }
 
 void parseEntitiesSection(DxfStream& in, Import& im) {
@@ -1865,7 +1983,9 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         writeGroup(out, 5, nextHandle());
         writeGroup(out, 8, std::string("0"));
         writeGroup(out, 2, name);
-        writeGroup(out, 70, 0);
+        // A "*" name is an anonymous block's (*U1, read from a DXF), which
+        // says so.
+        writeGroup(out, 70, name[0] == '*' ? 1 : 0);
         writeGroup(out, 10, def->basePoint.x);
         writeGroup(out, 20, def->basePoint.y);
         writeGroup(out, 30, 0.0);
