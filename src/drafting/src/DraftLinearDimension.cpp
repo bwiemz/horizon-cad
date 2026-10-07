@@ -27,6 +27,16 @@ static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, doub
     return center + (p - center) * factor;
 }
 
+/// What a turn by @p angle does to the axes: 0 when it leaves each where it
+/// was (or reversed), 1 when it turns each onto the other, -1 when it turns
+/// them off the axes.
+static int axesTurned(double angle) {
+    const double quarters = angle / math::kHalfPi;
+    const double whole = std::round(quarters);
+    if (std::abs(quarters - whole) > 1e-9) return -1;
+    return std::abs(std::fmod(whole, 2.0)) > 0.5 ? 1 : 0;
+}
+
 // ---- Construction ----
 
 DraftLinearDimension::DraftLinearDimension(const math::Vec2& defPoint1, const math::Vec2& defPoint2,
@@ -185,15 +195,50 @@ std::shared_ptr<DraftEntity> DraftLinearDimension::clone() const {
 }
 
 void DraftLinearDimension::mirror(const math::Vec2& axisP1, const math::Vec2& axisP2) {
+    // A mirror in a line at angle a turns the x axis to 2a.
+    const math::Vec2 axis = axisP2 - axisP1;
+    keepMeasuringUnder(2.0 * std::atan2(axis.y, axis.x));
     m_defPoint1 = mirrorPoint(m_defPoint1, axisP1, axisP2);
     m_defPoint2 = mirrorPoint(m_defPoint2, axisP1, axisP2);
     m_dimLinePoint = mirrorPoint(m_dimLinePoint, axisP1, axisP2);
 }
 
 void DraftLinearDimension::rotate(const math::Vec2& center, double angle) {
+    keepMeasuringUnder(angle);
     m_defPoint1 = rotatePoint(m_defPoint1, center, angle);
     m_defPoint2 = rotatePoint(m_defPoint2, center, angle);
     m_dimLinePoint = rotatePoint(m_dimLinePoint, center, angle);
+}
+
+void DraftLinearDimension::keepMeasuringUnder(double axisTurn) {
+    if (m_orientation == Orientation::Aligned) return;  // along its points, wherever they go
+    switch (axesTurned(axisTurn)) {
+        case 0:
+            return;
+        case 1:
+            m_orientation = m_orientation == Orientation::Horizontal ? Orientation::Vertical
+                                                                     : Orientation::Horizontal;
+            return;
+        default:
+            break;
+    }
+    // Turned off the axes, it measures along the turned direction: an
+    // aligned dimension does, once its two points are level along the
+    // direction measured. The point nearer the dimension line goes back along
+    // its extension line to the other's level, so the dimension line, the
+    // arrows and the value stay as they were, and each extension line still
+    // runs from the point it measures from.
+    const math::Vec2 along =
+        m_orientation == Orientation::Horizontal ? math::Vec2(1.0, 0.0) : math::Vec2(0.0, 1.0);
+    const math::Vec2 across = along.perpendicular();
+    const double height1 = (m_defPoint1 - m_dimLinePoint).dot(across);
+    const double height2 = (m_defPoint2 - m_dimLinePoint).dot(across);
+    if (std::abs(height1) >= std::abs(height2)) {
+        m_defPoint2 += across * (height1 - height2);
+    } else {
+        m_defPoint1 += across * (height2 - height1);
+    }
+    m_orientation = Orientation::Aligned;
 }
 
 void DraftLinearDimension::scale(const math::Vec2& center, double factor) {

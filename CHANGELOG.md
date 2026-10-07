@@ -119,6 +119,10 @@ work, not "post-1.0".
 - **Fillet and Chamfer keep the parts of the lines clicked.** Of two lines
   that cross, each kept the part nearer the crossing, whatever was
   clicked, so the lines ran away from the arc or the cut.
+- **A linear dimension turned or mirrored measures the same.** A horizontal
+  dimension turned a quarter read the vertical distance, 0 for a level
+  edge. A quarter turn now makes it a vertical one; turned or mirrored off
+  the axes, it is aligned to the turned direction.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

@@ -2,13 +2,16 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/math/Constants.h"
 
@@ -149,4 +152,83 @@ TEST(EntityTransformsTest, AMirroredTextCoversItsMirrorImage) {
     const auto below = level.boundingBox();
     EXPECT_LE(below.max().y, -1.0 + 0.25 + 1e-9) << "below its baseline, as the image is";
     EXPECT_GE(below.min().x, 2.0 - 1e-9) << "right of its point, as the image is";
+}
+
+// A horizontal or vertical dimension measures the same distance when turned
+// or mirrored: it kept measuring along the axes, so a horizontal one turned a
+// quarter read 0. A quarter turn, or a mirror in an axis or a diagonal, makes
+// a horizontal one vertical or keeps it so; any other turn or mirror measures
+// along the turned direction, between the same two points, with its
+// dimension line where it was turned to.
+TEST(EntityTransformsTest, ATurnedOrMirroredLinearDimensionMeasuresTheSame) {
+    using Dim = hz::draft::DraftLinearDimension;
+    const hz::draft::DimensionStyle style;
+    const auto turned = [](const Vec2& p, const Vec2& c, double a) {
+        const Vec2 v = p - c;
+        return Vec2(c.x + v.x * std::cos(a) - v.y * std::sin(a),
+                    c.y + v.x * std::sin(a) + v.y * std::cos(a));
+    };
+    const auto distanceToSegment = [](const Vec2& p, const std::pair<Vec2, Vec2>& seg) {
+        const Vec2 ab = seg.second - seg.first;
+        const double t = std::clamp((p - seg.first).dot(ab) / ab.dot(ab), 0.0, 1.0);
+        return p.distanceTo(seg.first + ab * t);
+    };
+    // 10 across between points at different heights, its line above both.
+    const Dim original(Vec2(0, 0), Vec2(10, 4), Vec2(5, 8), Dim::Orientation::Horizontal);
+    ASSERT_NEAR(original.computedValue(), 10.0, 1e-12);
+    const auto line = original.dimensionLines(style).front();
+
+    Dim quarter = original;
+    quarter.rotate(Vec2(0, 0), kHalfPi);
+    EXPECT_EQ(quarter.orientation(), Dim::Orientation::Vertical);
+    EXPECT_NEAR(quarter.computedValue(), 10.0, 1e-9);
+    EXPECT_TRUE(near(quarter.dimensionLines(style).front().first, Vec2(-8, 0)));
+    EXPECT_TRUE(near(quarter.dimensionLines(style).front().second, Vec2(-8, 10)));
+
+    Dim half = original;
+    half.rotate(Vec2(0, 0), 2 * kHalfPi);
+    EXPECT_EQ(half.orientation(), Dim::Orientation::Horizontal);
+    EXPECT_NEAR(half.computedValue(), 10.0, 1e-9);
+
+    const double angle = 0.5235987755982988;  // 30 degrees
+    const Vec2 centre(1, 2);
+    Dim slanted = original;
+    slanted.rotate(centre, angle);
+    EXPECT_NEAR(slanted.computedValue(), 10.0, 1e-9) << "it read " << slanted.computedValue();
+    const auto slantedLine = slanted.dimensionLines(style).front();
+    EXPECT_TRUE(near(slantedLine.first, turned(line.first, centre, angle)));
+    EXPECT_TRUE(near(slantedLine.second, turned(line.second, centre, angle)));
+    // Its extension lines still run from the two points it measures.
+    const auto extensions = slanted.extensionLines(style);
+    ASSERT_EQ(extensions.size(), 2u);
+    EXPECT_LT(distanceToSegment(turned(Vec2(0, 0), centre, angle), extensions[0]),
+              style.extensionGap + 1e-9);
+    EXPECT_LT(distanceToSegment(turned(Vec2(10, 4), centre, angle), extensions[1]),
+              style.extensionGap + 1e-9);
+
+    Dim diagonal = original;
+    diagonal.mirror(Vec2(0, 0), Vec2(1, 1));
+    EXPECT_EQ(diagonal.orientation(), Dim::Orientation::Vertical);
+    EXPECT_NEAR(diagonal.computedValue(), 10.0, 1e-9);
+    EXPECT_TRUE(near(diagonal.dimensionLines(style).front().first, Vec2(8, 0)));
+
+    Dim upright = original;
+    upright.mirror(Vec2(3, 0), Vec2(3, 1));
+    EXPECT_EQ(upright.orientation(), Dim::Orientation::Horizontal);
+    EXPECT_NEAR(upright.computedValue(), 10.0, 1e-9);
+
+    Dim mirrored = original;
+    mirrored.mirror(Vec2(0, 0), Vec2(1, 2));  // y = 2x
+    EXPECT_NEAR(mirrored.computedValue(), 10.0, 1e-9) << "it read " << mirrored.computedValue();
+    const auto image = [](const Vec2& p) {
+        return Vec2((-3 * p.x + 4 * p.y) / 5.0, (4 * p.x + 3 * p.y) / 5.0);
+    };
+    const auto mirroredLine = mirrored.dimensionLines(style).front();
+    EXPECT_TRUE(near(mirroredLine.first, image(line.first)));
+    EXPECT_TRUE(near(mirroredLine.second, image(line.second)));
+
+    // A vertical one the same way.
+    Dim vertical(Vec2(0, 0), Vec2(3, 7), Vec2(-4, 2), Dim::Orientation::Vertical);
+    vertical.rotate(Vec2(0, 0), angle);
+    EXPECT_NEAR(vertical.computedValue(), 7.0, 1e-9);
 }
