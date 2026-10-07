@@ -103,6 +103,25 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **A solid that runs into itself is refused.** The geometric checks each
+  looked at one face or edge at a time, so a solid whose faces pass through
+  each other passed them all: a sweep along a path that crosses itself
+  away from any one turn, or a shell whose cavity's faces cross. Every
+  feature's result is now checked for an edge passing through a face of
+  its own body, and refused with "it runs into itself: two of its faces
+  cross". Bodies that overlap are not compared: a part's bodies may
+  overlap until a Boolean combines them.
+- **A face's holes are checked.** A hole off its face's plane, crossing
+  the face's outline or another hole, or outside the face altogether
+  passed every check; each is now caught, and a hole outside its face is
+  refused by name.
+- **A large part's faces are held to a tolerance of their size.** The
+  feature gate's tolerance grows with the part, and the face checks grew it
+  again with the face: a plate 100 m by 10 m and 10 mm thick was refused as
+  its first feature ("a face's boundary crosses itself", its two long
+  edges 10 mm apart read as one), and a face a kilometre across could be
+  two metres out of flat. A face is now held to a ten-millionth of its
+  size, as a small part's always were.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
