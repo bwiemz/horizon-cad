@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -764,7 +765,10 @@ TEST(AssemblyDocumentTest, AMirroredComponentIsItsPartMirrored) {
     // The drawing's solid: the block where it is, and its image at x 30..40.
     const auto drawn = asmDoc.drawingSolid([](const ComponentInstance& c) { return c.ownSolid(); });
     ASSERT_NE(drawn, nullptr);
-    EXPECT_NEAR(enclosed(*drawn), 2.0 * enclosed(*part->solid()), 1e-9);
+    // Both facing out, the image as much as the block: gathered into one
+    // solid, each copy is wound facing out, whichever way the part is (a box
+    // primitive is wound in).
+    EXPECT_NEAR(enclosed(*drawn), 2.0 * std::abs(enclosed(*part->solid())), 1e-9);
     double far = 0.0;
     for (const auto& v : drawn->vertices()) far = std::max(far, v.point.x);
     EXPECT_NEAR(far, 40.0, 1e-9);

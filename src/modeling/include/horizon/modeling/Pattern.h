@@ -39,7 +39,10 @@ public:
 
     /// Both solids' shells in one solid, as separate bodies: no Boolean, so
     /// shared material is not merged (use BooleanOp for that). Topology IDs
-    /// are kept.
+    /// are kept. Each is copied wound facing out, as `append` and a
+    /// pattern's bodies are: the kernel's builders wind either way (a box
+    /// primitive inward, a cylinder outward), and a solid of both measured
+    /// the one less the other.
     static std::unique_ptr<topo::Solid> collect(const topo::Solid& a, const topo::Solid& b);
 
     /// @p source's bodies added to @p into, moved by the rigid @p xform, with
