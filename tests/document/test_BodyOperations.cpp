@@ -14,6 +14,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
 using hz::doc::BodyOperation;
@@ -205,4 +206,63 @@ TEST(BodyOperationsTest, CombiningWhatDoesNotOverlapSaysSo) {
     EXPECT_EQ(doc.failedFeatureIndex(), 2);
     EXPECT_NE(doc.lastBuildMessage().find("do not overlap"), std::string::npos)
         << doc.lastBuildMessage();
+}
+
+// Two bodies that overlap, then a cut and a pocket through the overlap. The
+// CSG read the part as one skin, so the second body's faces inside the first
+// were taken for the part's outside: the cut lost its walls and was refused,
+// and a pocket was lost. Each body is cut on its own now.
+TEST(BodyOperationsTest, ACutThroughOverlappingBodiesCutsEach) {
+    Document doc;
+    doc.featureTree().addFeature(extrude(rectangle(0, 0, 10, 10), 10.0, BodyOperation::NewBody));
+    doc.featureTree().addFeature(extrude(rectangle(5, 0, 15, 10), 10.0, BodyOperation::NewBody));
+    doc.featureTree().addFeature(extrude(rectangle(1, -1, 3, 11), 10.0, BodyOperation::Cut));
+    const auto& part = rebuilt(doc);
+    EXPECT_EQ(part.shellCount(), 3u) << "the slot cuts the first body in two";
+    // The first body less a 2 x 10 slot through it; the second untouched.
+    EXPECT_NEAR(volumeOf(part), (1000.0 - 200.0) + 1000.0, 1e-6);
+
+    // A pocket inside the overlap is taken from both.
+    Document pocketed;
+    pocketed.featureTree().addFeature(
+        extrude(rectangle(0, 0, 10, 10), 10.0, BodyOperation::NewBody));
+    pocketed.featureTree().addFeature(
+        extrude(rectangle(5, 0, 15, 10), 10.0, BodyOperation::NewBody));
+    pocketed.featureTree().addFeature(extrude(rectangle(6, 2, 8, 4), 5.0, BodyOperation::Cut));
+    EXPECT_NEAR(volumeOf(rebuilt(pocketed)), 2000.0 - 2 * 20.0, 1e-6);
+}
+
+TEST(BodyOperationsTest, JoinAndIntersectWithOverlappingBodies) {
+    Document joined;
+    joined.featureTree().addFeature(extrude(rectangle(0, 0, 10, 10), 10.0, BodyOperation::NewBody));
+    joined.featureTree().addFeature(extrude(rectangle(5, 0, 15, 10), 10.0, BodyOperation::NewBody));
+    joined.featureTree().addFeature(
+        extrude(rectangle(30, 0, 40, 10), 10.0, BodyOperation::NewBody));  // apart
+    joined.featureTree().addFeature(extrude(rectangle(2, 2, 12, 4), 20.0, BodyOperation::Join));
+    const auto& part = rebuilt(joined);
+    EXPECT_EQ(part.shellCount(), 2u) << "the two it met, joined; the one apart, kept";
+    EXPECT_NEAR(volumeOf(part), 1500.0 + 1000.0 + 20.0 * 10.0, 1e-6);
+
+    Document cut;
+    cut.featureTree().addFeature(extrude(rectangle(0, 0, 10, 10), 10.0, BodyOperation::NewBody));
+    cut.featureTree().addFeature(extrude(rectangle(5, 0, 15, 10), 10.0, BodyOperation::NewBody));
+    cut.featureTree().addFeature(extrude(rectangle(8, 0, 9, 10), 10.0, BodyOperation::Intersect));
+    const auto& common = rebuilt(cut);
+    EXPECT_EQ(common.shellCount(), 2u) << "each body's share, a body each";
+    EXPECT_NEAR(volumeOf(common), 2 * 100.0, 1e-6);
+}
+
+// A box primitive and a cylinder primitive, as two bodies: the box's loops
+// are wound in and the cylinder's out, and gathered as they were the part
+// measured as the box less the cylinder.
+TEST(BodyOperationsTest, BodiesWoundEitherWayMeasureAsBoth) {
+    Document doc;
+    doc.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(2, 10);
+    cylinder->setVector("basePoint", Vec3(30, 0, 0));
+    doc.featureTree().addFeature(std::move(cylinder));
+    const auto& part = rebuilt(doc);
+    EXPECT_EQ(part.shellCount(), 2u);
+    const double cylinderVolume = volumeOf(*hz::model::PrimitiveFactory::makeCylinder(2, 10, 32));
+    EXPECT_NEAR(volumeOf(part), 1000.0 + cylinderVolume, 1e-6);
 }

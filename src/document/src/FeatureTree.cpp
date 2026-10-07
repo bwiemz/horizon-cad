@@ -18,6 +18,7 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
@@ -1457,6 +1458,75 @@ std::vector<std::unique_ptr<topo::Solid>> executeMultiContained(
     }
 }
 
+math::BoundingBox boxOf(const topo::Solid& solid) {
+    math::BoundingBox box;
+    for (const auto& v : solid.vertices()) box.expand(v.point);
+    return box;
+}
+
+/// The reasons BooleanOp gives for a result that is empty, which is no
+/// failure when the tool is combined with one body of several.
+constexpr const char* kCutRemovesAll = "the cut removes the whole body";
+constexpr const char* kNoOverlap = "the bodies do not overlap";
+
+/// combine() for a part whose bodies' boxes meet: the tool with each body on
+/// its own. The CSG reads an operand as one skin, so with two bodies that
+/// overlap, one body's faces inside the other were taken for the part's
+/// outside: points inside the first body only were outside it, a cut through
+/// the overlap lost its walls (and was refused), or was lost altogether.
+std::unique_ptr<topo::Solid> combineBodyByBody(model::BooleanType type,
+                                               std::vector<std::unique_ptr<topo::Solid>> bodies,
+                                               std::unique_ptr<topo::Solid> tool,
+                                               std::string* reason, model::NamingScheme naming) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+    std::vector<std::unique_ptr<topo::Solid>> kept;
+    if (type == model::BooleanType::Union) {
+        // The tool, grown by every body it meets, until it meets no more.
+        bool grew = true;
+        while (grew) {
+            grew = false;
+            for (auto& body : bodies) {
+                if (!body || !boxOf(*tool).intersects(boxOf(*body))) continue;
+                std::string why;
+                auto joined = model::BooleanOp::execute(*tool, *body, type, &why, naming);
+                if (!joined) return fail(why);
+                tool = std::move(joined);
+                body.reset();
+                grew = true;
+            }
+        }
+        for (auto& body : bodies) {
+            if (body) kept.push_back(std::move(body));
+        }
+        kept.push_back(std::move(tool));
+    } else {
+        const math::BoundingBox toolBox = boxOf(*tool);
+        for (auto& body : bodies) {
+            if (!toolBox.intersects(boxOf(*body))) {
+                // Untouched by a cut; outside an intersection.
+                if (type == model::BooleanType::Subtract) kept.push_back(std::move(body));
+                continue;
+            }
+            std::string why;
+            auto result = model::BooleanOp::execute(*body, *tool, type, &why, naming);
+            if (result) {
+                kept.push_back(std::move(result));
+            } else if (why != kCutRemovesAll && why != kNoOverlap) {
+                return fail(why);
+            }
+        }
+        if (kept.empty()) {
+            return fail(type == model::BooleanType::Subtract ? kCutRemovesAll : kNoOverlap);
+        }
+    }
+    auto result = std::make_unique<topo::Solid>();
+    for (const auto& body : kept) model::Pattern::append(*result, *body, math::Mat4::identity());
+    return result;
+}
+
 /// Combine the body a creating feature built (`tool`) with the part so far,
 /// as the feature's operation says. nullptr, with `reason` set, when the
 /// operation cannot be carried out — never an empty part passed off as a
@@ -1483,7 +1553,21 @@ std::unique_ptr<topo::Solid> combine(BodyOperation operation, std::unique_ptr<to
     std::unique_ptr<topo::Solid> result;
     std::string booleanReason;
     try {
-        result = model::BooleanOp::execute(*part, *tool, type, &booleanReason, naming);
+        // Bodies whose boxes meet may overlap: each is combined on its own.
+        // Bodies apart are one sound skin, combined as they always were.
+        auto bodies = model::Pattern::separate(*part);
+        bool meet = false;
+        for (size_t i = 0; i < bodies.size() && !meet; ++i) {
+            for (size_t j = i + 1; j < bodies.size() && !meet; ++j) {
+                meet = boxOf(*bodies[i]).intersects(boxOf(*bodies[j]));
+            }
+        }
+        if (meet) {
+            result =
+                combineBodyByBody(type, std::move(bodies), std::move(tool), &booleanReason, naming);
+        } else {
+            result = model::BooleanOp::execute(*part, *tool, type, &booleanReason, naming);
+        }
     } catch (const std::exception& e) {
         if (reason) *reason = std::string("the Boolean failed: ") + e.what();
         return nullptr;
