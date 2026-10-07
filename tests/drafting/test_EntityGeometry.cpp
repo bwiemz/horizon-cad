@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftHatch.h"
 
 using hz::math::Vec2;
@@ -66,4 +67,32 @@ TEST(HatchTest, ALineThroughTwoCornersIsDrawn) {
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_TRUE(near(lines[0].first, Vec2(-1, 0)));
     EXPECT_TRUE(near(lines[0].second, Vec2(1, 0)));
+}
+
+// -- Picking an ellipse --------------------------------------------------------
+
+// A click is on an ellipse when it is within the pick distance of the curve.
+// The distance was taken along the line to the centre, which on a long thin
+// ellipse is several times the true one: a click half a unit off was taken
+// to be 2.4 off, and missed.
+TEST(EllipseTest, AClickIsMeasuredToTheNearestPointOfTheCurve) {
+    const hz::draft::DraftEllipse ellipse(Vec2(0, 0), 100.0, 10.0);
+    // The true distances, 0.4956 and 2.9729: (95, 0) is nearest the curve
+    // off the axis, not at its end 5 away.
+    EXPECT_TRUE(ellipse.hitTest(Vec2(80, 6.5), 0.5));
+    EXPECT_FALSE(ellipse.hitTest(Vec2(80, 6.5), 0.49));
+    EXPECT_TRUE(ellipse.hitTest(Vec2(95, 0), 2.98));
+    EXPECT_FALSE(ellipse.hitTest(Vec2(95, 0), 2.96));
+    EXPECT_TRUE(ellipse.hitTest(Vec2(0, 30), 20.01));
+    EXPECT_FALSE(ellipse.hitTest(Vec2(0, 30), 19.99));
+    EXPECT_TRUE(ellipse.hitTest(Vec2(0, 0), 10.01)) << "the centre";
+    EXPECT_FALSE(ellipse.hitTest(Vec2(0, 0), 9.99));
+
+    // Turned and moved, the same.
+    const double turn = 0.7;
+    const hz::draft::DraftEllipse turned(Vec2(5, -3), 100.0, 10.0, turn);
+    const Vec2 p(5 + 80 * std::cos(turn) - 6.5 * std::sin(turn),
+                 -3 + 80 * std::sin(turn) + 6.5 * std::cos(turn));
+    EXPECT_TRUE(turned.hitTest(p, 0.5));
+    EXPECT_FALSE(turned.hitTest(p, 0.49));
 }

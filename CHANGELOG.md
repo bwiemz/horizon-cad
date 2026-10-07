@@ -123,6 +123,9 @@ work, not "post-1.0".
   dimension turned a quarter read the vertical distance, 0 for a level
   edge. A quarter turn now makes it a vertical one; turned or mirrored off
   the axes, it is aligned to the turned direction.
+- **A long, thin ellipse is picked where it is.** A click half a unit off
+  an ellipse 200 long and 20 wide was taken to be 2.4 units off, and
+  missed: it is now measured to the nearest point of the curve.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
