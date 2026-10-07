@@ -3,8 +3,11 @@
 #include <memory>
 #include <vector>
 
+#include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftArc.h"
@@ -314,4 +317,102 @@ TEST(EntityCommandsTest, ACopyOfAProjectedEdgeFollowsNoEdge) {
         EXPECT_TRUE(entity->sourceEdge().empty()) << "a copy follows no edge";
         EXPECT_TRUE(entity->construction()) << "and is a guide still";
     }
+}
+
+namespace {
+
+/// Two lines joined end to start, as drawn and constrained by hand.
+struct JoinedLines {
+    std::shared_ptr<DraftLine> first;
+    std::shared_ptr<DraftLine> second;
+    uint64_t joint = 0;
+};
+
+JoinedLines joinLines(DraftDocument& drawing, hz::cstr::ConstraintSystem& constraints) {
+    JoinedLines lines;
+    lines.first = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    lines.second = std::make_shared<DraftLine>(Vec2(10, 0), Vec2(10, 10));
+    drawing.addEntity(lines.first);
+    drawing.addEntity(lines.second);
+    lines.joint = constraints.addConstraint(std::make_shared<hz::cstr::CoincidentConstraint>(
+        hz::cstr::GeometryRef{lines.first->id(), hz::cstr::FeatureType::Point, 1},
+        hz::cstr::GeometryRef{lines.second->id(), hz::cstr::FeatureType::Point, 0}));
+    return lines;
+}
+
+}  // namespace
+
+// Trim, Cut, Break and the rest take an entity away with no thought for its
+// constraints. They go with it, in the same step, and come back on undo: left
+// behind, the next solve stopped at the entity that was gone, and a Move
+// after it moved with no step to undo it.
+TEST(EntityCommandsTest, AnEntityTakenAwayTakesItsConstraints) {
+    hz::doc::Document doc;
+    auto& stack = doc.undoStack();
+    auto& drawing = doc.draftDocument();
+    auto& constraints = doc.constraintSystem();
+    const JoinedLines lines = joinLines(drawing, constraints);
+
+    // As Trim does: the line out, its piece in.
+    auto trim = std::make_unique<hz::doc::CompositeCommand>("Trim");
+    trim->addCommand(std::make_unique<RemoveEntityCommand>(drawing, lines.first->id()));
+    trim->addCommand(std::make_unique<hz::doc::AddEntityCommand>(
+        drawing, std::make_shared<DraftLine>(Vec2(0, 0), Vec2(5, 0))));
+    stack.push(std::move(trim));
+    EXPECT_TRUE(constraints.empty()) << "the joint went with the line";
+    EXPECT_EQ(stack.undoCount(), 1u) << "in one step";
+
+    stack.undo();
+    EXPECT_NE(drawing.findEntity(lines.first->id()), nullptr);
+    EXPECT_NE(constraints.getConstraint(lines.joint), nullptr) << "and came back with it";
+    stack.redo();
+    EXPECT_TRUE(constraints.empty());
+    stack.undo();
+
+    // As Cut does, and a Move after it.
+    stack.push(
+        std::make_unique<RemoveEntitiesCommand>(drawing, std::vector<uint64_t>{lines.first->id()}));
+    EXPECT_TRUE(constraints.empty());
+    const auto before = stack.undoCount();
+    EXPECT_NO_THROW(stack.push(std::make_unique<MoveEntityCommand>(
+        drawing, std::vector<uint64_t>{lines.second->id()}, Vec2(0, 5), constraints)));
+    EXPECT_EQ(stack.undoCount(), before + 1) << "the move is a step";
+    EXPECT_DOUBLE_EQ(lines.second->start().y, 5.0);
+    stack.undo();
+    EXPECT_DOUBLE_EQ(lines.second->start().y, 0.0);
+}
+
+// In a sketch as in the drawing: its constraints are its own.
+TEST(EntityCommandsTest, AnEntityTakenFromASketchTakesItsConstraints) {
+    hz::doc::Document doc;
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    doc.addSketch(sketch);
+    const JoinedLines lines = joinLines(sketch->drawing(), sketch->constraintSystem());
+    doc.undoStack().push(std::make_unique<hz::doc::CreateBlockCommand>(
+        sketch->drawing(), "Corner", std::vector<uint64_t>{lines.second->id()}));
+    EXPECT_TRUE(sketch->constraintSystem().empty());
+    doc.undoStack().undo();
+    EXPECT_NE(sketch->constraintSystem().getConstraint(lines.joint), nullptr);
+}
+
+// A constraint naming an entity that is not there (an older file's, or one
+// read in part) is left out of the solve, never the end of it: the rest are
+// still solved.
+TEST(EntityCommandsTest, AConstraintOnAMissingEntityIsLeftOutOfTheSolve) {
+    DraftDocument drawing;
+    hz::cstr::ConstraintSystem constraints;
+    auto line = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 3));
+    drawing.addEntity(line);
+    constraints.addConstraint(std::make_shared<hz::cstr::CoincidentConstraint>(
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 1},
+        hz::cstr::GeometryRef{line->id() + 1000, hz::cstr::FeatureType::Point, 0}));
+    constraints.addConstraint(std::make_shared<hz::cstr::HorizontalConstraint>(
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 0},
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 1}));
+
+    hz::doc::ConstraintSolveHelper::SolveAndApplyResult result;
+    ASSERT_NO_THROW(result = hz::doc::ConstraintSolveHelper::solveAndApply(drawing, constraints));
+    EXPECT_TRUE(result.success);
+    EXPECT_NEAR(line->start().y, line->end().y, 1e-9) << "the horizontal is solved";
+    EXPECT_EQ(constraints.constraints().size(), 2u) << "and the other kept, for what it names";
 }

@@ -103,6 +103,14 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **An entity's constraints go with it.** Trim, Extend, Break, Fillet,
+  Chamfer, Cut, Create Block and joining polylines took an entity away and
+  left its constraints behind, naming what was gone: the next Move or grip
+  edit stopped part way through its solve, stayed moved with nothing to
+  undo, and left the Move tool stuck in its drag. Whatever takes an entity
+  away now takes its constraints with it, as Delete did, and undo brings
+  them back. A constraint on an entity that is not there, as an older file
+  may have, is left out of the solve.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

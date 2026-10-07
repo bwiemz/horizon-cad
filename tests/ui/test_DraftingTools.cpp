@@ -16,7 +16,9 @@
 #include <vector>
 
 #include "UiTestSupport.h"
+#include "horizon/constraint/Constraint.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -116,6 +118,11 @@ void select(MainWindow& w, ToolDriver& drive, const std::vector<Vec2>& at) {
     }
 }
 
+/// A point of @p line for a constraint: its start (0) or its end (1).
+hz::cstr::GeometryRef endOf(const std::shared_ptr<DraftLine>& line, int end) {
+    return {line->id(), hz::cstr::FeatureType::Point, end};
+}
+
 /// Answers the next text dialog with @p text.
 class TextAnswer {
 public:
@@ -172,6 +179,39 @@ TEST(DraftingToolsTest, AConstraintUndoneLeavesTheDrawingAsSaved) {
     trigger(w, "action_redo");
     EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u);
     EXPECT_TRUE(doc.isDirty());
+}
+
+// Trim takes a line's constraints with it, in its step. Left behind, the
+// joint named a line that was gone: the next Move threw from its solve,
+// mid-command, and stayed moved with no step to undo it.
+TEST(DraftingToolsTest, ATrimTakesItsLinesConstraintsAndAMoveAfterIsAStep) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto first = addLine(w, Vec2(0, 0), Vec2(10, 0));
+    auto second = addLine(w, Vec2(10, 0), Vec2(10, 10));
+    addLine(w, Vec2(3, -5), Vec2(3, 5));  // to trim at
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::CoincidentConstraint>(endOf(first, 1), endOf(second, 0)));
+
+    trigger(w, "tool_trim");
+    drive.click(Vec2(6.5, 0));
+    ASSERT_EQ(doc.draftDocument().findEntity(first->id()), nullptr) << "trimmed";
+    EXPECT_TRUE(doc.constraintSystem().empty()) << "the joint went with the line";
+
+    select(w, drive, {Vec2(10, 5)});
+    trigger(w, "tool_move");
+    const auto steps = doc.undoStack().undoCount();
+    drive.drag(Vec2(10, 5), Vec2(13, 5));
+    EXPECT_TRUE(near(second->start(), Vec2(13, 0)));
+    EXPECT_EQ(doc.undoStack().undoCount(), steps + 1) << "the move is a step";
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(near(second->start(), Vec2(10, 0)));
+    trigger(w, "action_undo");
+    EXPECT_NE(doc.draftDocument().findEntity(first->id()), nullptr);
+    EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u) << "back with the line";
 }
 
 // -- Drawing tools -------------------------------------------------------------
