@@ -103,6 +103,12 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **A rectangle turned or mirrored keeps its shape.** Rotate, Mirror, a
+  polar array and exploding a block turned two opposite corners and drew
+  a box across them: a 4 x 2 rectangle turned 45 degrees came out
+  1.4 x 4.2. Turned off the axes, a rectangle now becomes a closed
+  polyline through its four corners; a quarter turn, or a mirror in a line
+  along an axis or a diagonal, leaves it a rectangle.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
