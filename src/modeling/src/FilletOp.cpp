@@ -1381,6 +1381,9 @@ int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
     const double ratio = std::max(-1.0, 1.0 - tolerance / radius);
     const double maxChordAngle = 2.0 * std::acos(ratio);
     const double n = (0.5 * math::kPi) / maxChordAngle;
+    // A budget too fine to tell from nothing at this radius (ratio rounds to
+    // 1) makes n infinite, which as an int was the least count, not the most.
+    if (!(n < 1024.0)) return 1024;
     return std::clamp(static_cast<int>(std::ceil(n - 1e-9)), 1, 1024);
 }
 

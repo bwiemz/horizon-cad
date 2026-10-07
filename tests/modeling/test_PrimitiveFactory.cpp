@@ -196,6 +196,14 @@ TEST(PrimitiveFactoryTest, SegmentsForToleranceInvertsTheChordSag) {
     EXPECT_EQ(PrimitiveFactory::segmentsForTolerance(5.0, 0.0), PrimitiveFactory::kDefaultSegments);
 }
 
+// A budget so fine against the radius that 1 - tolerance/radius rounds to 1
+// asks for the most facets, not the fewest: the count was infinite, and
+// converted to an int it came out as the least (a cylinder of 3 facets).
+TEST(PrimitiveFactoryTest, TheFinestToleranceGivesTheMostFacets) {
+    EXPECT_EQ(PrimitiveFactory::segmentsForTolerance(1000.0, 1e-14), 4096);
+    EXPECT_EQ(PrimitiveFactory::segmentsForTolerance(1.0, 1e-300), 4096);
+}
+
 TEST(PrimitiveFactoryTest, DegenerateCurvedPrimitivesAreRefused) {
     EXPECT_EQ(PrimitiveFactory::makeCylinder(0.0, 5.0), nullptr);
     EXPECT_EQ(PrimitiveFactory::makeCylinder(1.0, 0.0), nullptr);

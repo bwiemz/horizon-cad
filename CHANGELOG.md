@@ -117,6 +117,9 @@ work, not "post-1.0".
     inside: a cylinder made tangent to a box's left face went into the box.
     A saved Distance or Angle mate on such a face now measures the other
     way.
+  - A very fine chord tolerance gives the finest facets. One under about
+    1e-16 of the radius gave the coarsest: a cylinder of three facets, a
+    fillet of one chord.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
