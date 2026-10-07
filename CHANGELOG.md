@@ -115,6 +115,9 @@ work, not "post-1.0".
   the constraints after each stretched entity in turn: undo left the second
   of two joined lines stretched, and redo broke the constraints. The
   stretch is now solved once, after all of it.
+- **Undoing a layer's rename or removal** puts back on it an entity edited
+  since by its grips or in the property panel. The entity stayed on the new
+  name, or on 0, a layer that no longer existed, and could not be picked.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

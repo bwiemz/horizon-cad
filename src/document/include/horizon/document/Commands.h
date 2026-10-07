@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -334,7 +335,7 @@ private:
     std::vector<draft::DraftDocument*> m_drawings;
     std::string m_name;
     draft::LayerProperties m_savedProps;
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_movedEntities;  ///< were on it
+    std::unordered_set<uint64_t> m_movedEntities;  ///< IDs of what was on it
     bool m_wasCurrentLayer = false;
 };
 
@@ -391,7 +392,7 @@ private:
     std::string m_from;
     std::string m_to;
     bool m_applied = false;
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_moved;  ///< entities that were on it
+    std::unordered_set<uint64_t> m_moved;  ///< IDs of the entities that were on it
 };
 
 /// Command to set the current drawing layer.

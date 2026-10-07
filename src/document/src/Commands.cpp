@@ -13,6 +13,28 @@
 
 namespace hz::doc {
 
+namespace {
+
+/// @p visit for every entity of @p drawings, and of their blocks: what is on
+/// a layer, which the drawings share.
+template <typename Visit>
+void forEachEntity(const std::vector<draft::DraftDocument*>& drawings, const Visit& visit) {
+    for (draft::DraftDocument* drawing : drawings) {
+        for (const auto& entity : drawing->entities()) {
+            if (entity) visit(*entity);
+        }
+        for (const auto& name : drawing->blockTable().blockNames()) {
+            if (const auto block = drawing->blockTable().findBlock(name)) {
+                for (const auto& entity : block->entities) {
+                    if (entity) visit(*entity);
+                }
+            }
+        }
+    }
+}
+
+}  // namespace
+
 // --- AddBlockDefinitionCommand ---
 
 AddBlockDefinitionCommand::AddBlockDefinitionCommand(draft::DraftDocument& doc,
@@ -545,20 +567,12 @@ void RemoveLayerCommand::execute() {
 
     // Move entities on this layer to "0", in every drawing and its blocks.
     m_movedEntities.clear();
-    const auto move = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
-        if (entity && entity->layer() == m_name) {
-            m_movedEntities.push_back(entity);
-            entity->setLayer("0");
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_name) {
+            m_movedEntities.insert(entity.id());
+            entity.setLayer("0");
         }
-    };
-    for (draft::DraftDocument* drawing : m_drawings) {
-        for (const auto& e : drawing->entities()) move(e);
-        for (const auto& name : drawing->blockTable().blockNames()) {
-            if (const auto block = drawing->blockTable().findBlock(name)) {
-                for (const auto& e : block->entities) move(e);
-            }
-        }
-    }
+    });
 
     // If this is the current layer, switch to "0" first.
     m_wasCurrentLayer = (m_mgr.currentLayer() == m_name);
@@ -578,8 +592,13 @@ void RemoveLayerCommand::undo() {
         m_mgr.setCurrentLayer(m_name);
     }
 
-    // Restore entity layers.
-    for (const auto& entity : m_movedEntities) entity->setLayer(m_name);
+    // Restore entity layers: by ID, since a grip or property edit since
+    // put a new object in an entity's place.
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == "0" && m_movedEntities.count(entity.id()) != 0) {
+            entity.setLayer(m_name);
+        }
+    });
 }
 
 std::string RemoveLayerCommand::description() const {
@@ -646,26 +665,22 @@ void RenameLayerCommand::execute() {
     m_applied = m_mgr.renameLayer(m_from, m_to);
     m_moved.clear();
     if (!m_applied) return;
-    const auto carry = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
-        if (entity && entity->layer() == m_from) {
-            entity->setLayer(m_to);
-            m_moved.push_back(entity);
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_from) {
+            entity.setLayer(m_to);
+            m_moved.insert(entity.id());
         }
-    };
-    for (draft::DraftDocument* drawing : m_drawings) {
-        for (const auto& entity : drawing->entities()) carry(entity);
-        for (const auto& name : drawing->blockTable().blockNames()) {
-            if (const auto block = drawing->blockTable().findBlock(name)) {
-                for (const auto& entity : block->entities) carry(entity);
-            }
-        }
-    }
+    });
 }
 
 void RenameLayerCommand::undo() {
     if (!m_applied) return;
     m_mgr.renameLayer(m_to, m_from);
-    for (const auto& entity : m_moved) entity->setLayer(m_from);
+    // By ID, since a grip or property edit since put a new object in an
+    // entity's place.
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_to && m_moved.count(entity.id()) != 0) entity.setLayer(m_from);
+    });
 }
 
 std::string RenameLayerCommand::description() const {

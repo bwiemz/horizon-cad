@@ -459,3 +459,42 @@ TEST(EntityCommandsTest, EntitiesGripEditedTogetherAreSolvedOnce) {
     EXPECT_TRUE(holds());
     EXPECT_LT((line(lines.second)->start() - corner).length(), 1e-12);
 }
+
+// A grip edit puts a new object in the entity's place. Undoing a layer's
+// rename or removal after one found the entity by the object it had moved,
+// no longer in the drawing: the line stayed on a layer that was gone, and
+// could not be picked.
+TEST(EntityCommandsTest, UndoingALayerChangeFindsEntitiesAGripEditReplaced) {
+    for (const bool rename : {true, false}) {
+        SCOPED_TRACE(rename ? "renamed" : "removed");
+        hz::doc::Document doc;
+        auto& layers = doc.layerManager();
+        hz::draft::LayerProperties walls;
+        walls.name = "Walls";
+        layers.addLayer(walls);
+        auto& drawing = doc.draftDocument();
+        auto line = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0));
+        line->setLayer("Walls");
+        drawing.addEntity(line);
+        const uint64_t id = line->id();
+
+        auto& stack = doc.undoStack();
+        if (rename) {
+            stack.push(
+                std::make_unique<hz::doc::RenameLayerCommand>(layers, drawing, "Walls", "Outer"));
+        } else {
+            stack.push(std::make_unique<hz::doc::RemoveLayerCommand>(layers, drawing, "Walls"));
+        }
+        // A grip drag: the line's end moved, then the step that records it.
+        auto before = drawing.findEntity(id)->clone();
+        line->setEnd(Vec2(12, 3));
+        stack.push(std::make_unique<hz::doc::GripMoveCommand>(
+            drawing, id, std::move(before), line->clone(), doc.constraintSystem()));
+        stack.undo();
+        ASSERT_NE(drawing.sharedEntity(id), line) << "the grip's undo put another object there";
+        stack.undo();
+        EXPECT_EQ(drawing.findEntity(id)->layer(), "Walls");
+        stack.redo();
+        EXPECT_EQ(drawing.findEntity(id)->layer(), rename ? "Outer" : "0");
+    }
+}
