@@ -830,6 +830,76 @@ TEST(DraftingToolsTest, ChamferCutsTheCornerOfTwoLines) {
     EXPECT_EQ(all<DraftLine>(w).size(), 3u);
 }
 
+// Of two lines that cross, Fillet keeps the parts clicked: the arc goes in the
+// corner between them, and each line is cut back to it from the other side.
+// It kept the part each line had nearer the crossing instead, so the lines
+// ran away from the arc it drew.
+TEST(DraftingToolsTest, FilletKeepsThePartsOfCrossingLinesThatWereClicked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLine(w, Vec2(-10, 0), Vec2(4, 0));
+    addLine(w, Vec2(0, -10), Vec2(0, 4));
+
+    trigger(w, "tool_fillet");
+    drive.click(Vec2(2.5, 0));
+    drive.click(Vec2(0, 2.5));
+
+    auto lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(1, 0)) && near(lines[0]->end(), Vec2(4, 0)))
+        << "(" << lines[0]->start().x << ", " << lines[0]->start().y << ") - (" << lines[0]->end().x
+        << ", " << lines[0]->end().y << ")";
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    auto arcs = all<DraftArc>(w);
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_TRUE(near(arcs[0]->center(), Vec2(1, 1)));
+
+    // The other way: the long parts, the arc in the opposite corner.
+    trigger(w, "action_undo");
+    trigger(w, "tool_fillet");
+    drive.click(Vec2(-5, 0));
+    drive.click(Vec2(0, -5));
+    lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(-10, 0)) && near(lines[0]->end(), Vec2(-1, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, -10)) && near(lines[1]->end(), Vec2(0, -1)));
+    arcs = all<DraftArc>(w);
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_TRUE(near(arcs[0]->center(), Vec2(-1, -1)));
+}
+
+// Chamfer too: the cut joins the parts clicked. It went by which end of each
+// line was nearer the crossing, whatever was clicked.
+TEST(DraftingToolsTest, ChamferKeepsThePartsOfCrossingLinesThatWereClicked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLine(w, Vec2(-10, 0), Vec2(4, 0));
+    addLine(w, Vec2(0, -10), Vec2(0, 4));
+
+    trigger(w, "tool_chamfer");
+    drive.click(Vec2(2.5, 0));
+    drive.click(Vec2(0, 2.5));
+
+    auto lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(1, 0)) && near(lines[0]->end(), Vec2(4, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    EXPECT_TRUE(near(lines[2]->start(), Vec2(1, 0)) && near(lines[2]->end(), Vec2(0, 1)))
+        << "the cut";
+
+    trigger(w, "action_undo");
+    trigger(w, "tool_chamfer");
+    drive.click(Vec2(-5, 0));
+    drive.click(Vec2(0, 2.5));
+    lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(-10, 0)) && near(lines[0]->end(), Vec2(-1, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    EXPECT_TRUE(near(lines[2]->start(), Vec2(-1, 0)) && near(lines[2]->end(), Vec2(0, 1)));
+}
+
 // -- Dimensions ----------------------------------------------------------------
 
 // A linear dimension measures between its two clicked points, horizontally

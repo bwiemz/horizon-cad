@@ -116,6 +116,9 @@ work, not "post-1.0".
   reached the cursor, so a point beyond an entity's extent, such as the
   centre of a short arc or a block's insertion point, could not be snapped
   to.
+- **Fillet and Chamfer keep the parts of the lines clicked.** Of two lines
+  that cross, each kept the part nearer the crossing, whatever was
+  clicked, so the lines ran away from the arc or the cut.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
