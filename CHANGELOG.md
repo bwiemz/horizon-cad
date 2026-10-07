@@ -115,6 +115,11 @@ work, not "post-1.0".
     (`*U1`), are read. Their inserts were reported with their block missing.
   - A layout's paper space, its border, title block and viewports, is left
     out and reported. It was drawn over the model.
+  - A spline is written as the curve Horizon draws. Other programs drew it
+    through its end points, a closed one open, and without its weights. A
+    spline from another program that is not a uniform cubic, as most are not,
+    is still drawn as one on its control points, and is now reported; one of
+    degree 1 comes in as a polyline.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

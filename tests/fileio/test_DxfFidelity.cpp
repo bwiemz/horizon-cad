@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <clocale>
 #include <cmath>
@@ -28,6 +29,7 @@
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
@@ -576,6 +578,83 @@ std::vector<Groups> recordsIn(const std::filesystem::path& path, const std::stri
     return out;
 }
 
+/// A SPLINE as written: what another program draws from.
+struct WrittenSpline {
+    int flags = 0;
+    int degree = 0;
+    int knotCount = 0;
+    int pointCount = 0;
+    std::vector<double> knots;
+    std::vector<double> weights;
+    std::vector<Vec2> points;
+};
+
+WrittenSpline readSpline(const Groups& groups) {
+    WrittenSpline s;
+    for (const auto& [code, value] : groups) {
+        if (code == 70) s.flags = std::stoi(value);
+        if (code == 71) s.degree = std::stoi(value);
+        if (code == 72) s.knotCount = std::stoi(value);
+        if (code == 73) s.pointCount = std::stoi(value);
+        if (code == 40) s.knots.push_back(std::stod(value));
+        if (code == 41) s.weights.push_back(std::stod(value));
+        if (code == 10) s.points.emplace_back(std::stod(value), 0.0);
+        if (code == 20 && !s.points.empty()) s.points.back().y = std::stod(value);
+    }
+    return s;
+}
+
+/// The point at @p u of the B-spline of degree @p p on knots @p U, with
+/// control points @p P and weights @p W, by de Boor's algorithm: the curve
+/// any program draws from a SPLINE's groups. It is worked out here, apart
+/// from DraftSpline's own evaluation, which is the curve the drawing shows.
+Vec2 deBoor(int p, const std::vector<double>& U, const std::vector<Vec2>& P,
+            const std::vector<double>& W, double u) {
+    const int n = static_cast<int>(P.size());
+    int k = p;  // the span: U[k] <= u < U[k + 1], the last one closed
+    while (k < n - 1 && u >= U[k + 1]) ++k;
+    std::vector<std::array<double, 3>> d(p + 1);
+    for (int j = 0; j <= p; ++j) {
+        const int i = j + k - p;
+        d[j] = {P[i].x * W[i], P[i].y * W[i], W[i]};
+    }
+    for (int r = 1; r <= p; ++r) {
+        for (int j = p; j >= r; --j) {
+            const double a = (u - U[j + k - p]) / (U[j + 1 + k - r] - U[j + k - p]);
+            for (int c = 0; c < 3; ++c) d[j][c] = (1.0 - a) * d[j - 1][c] + a * d[j][c];
+        }
+    }
+    return {d[p][0] / d[p][2], d[p][1] / d[p][2]};
+}
+
+/// Splines of each kind the drawing has: open and closed, weighted or not,
+/// and with too few points for a cubic, which are drawn straight.
+std::vector<std::shared_ptr<hz::draft::DraftSpline>> splinesOfEachKind() {
+    using hz::draft::DraftSpline;
+    const std::vector<Vec2> six = {{0, 0}, {1, 3}, {4, 3}, {5, 0}, {8, -2}, {10, 1}};
+    const std::vector<Vec2> three(six.begin(), six.begin() + 3);
+    std::vector<std::shared_ptr<DraftSpline>> out = {
+        std::make_shared<DraftSpline>(six, false),
+        std::make_shared<DraftSpline>(six, true),
+        std::make_shared<DraftSpline>(three, true),
+        std::make_shared<DraftSpline>(three, false),
+        std::make_shared<DraftSpline>(std::vector<Vec2>(six.begin(), six.begin() + 2), false),
+    };
+    auto weighted = std::make_shared<DraftSpline>(six, false);
+    weighted->setWeights({1, 2, 0.5, 1, 3, 1});
+    out.push_back(weighted);
+    auto weightedClosed = std::make_shared<DraftSpline>(six, true);
+    weightedClosed->setWeights({1, 0.5, 2, 1, 1, 4});
+    out.push_back(weightedClosed);
+    return out;
+}
+
+/// Whether @p a and @p b are the same points, exactly.
+bool samePoints(const std::vector<Vec2>& a, const std::vector<Vec2>& b) {
+    const auto same = [](const Vec2& p, const Vec2& q) { return p.x == q.x && p.y == q.y; };
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), same);
+}
+
 }  // namespace
 
 // Reals were written with six decimals. A whole ellipse's end parameter,
@@ -763,4 +842,99 @@ TEST(DxfFidelityTest, PaperSpaceEntitiesAreReportedNotDrawnOverTheModel) {
     EXPECT_EQ(in.all<hz::draft::DraftText>().size(), 1u) << "67 = 0 is the model";
     EXPECT_TRUE(contains(in.report.skipped, "4 paper space entities"));
     EXPECT_FALSE(contains(in.report.skipped, "VERTEX")) << "a polyline's vertices go with it";
+}
+
+// The drawing's spline is a uniform cubic B-spline: it starts at
+// (P0 + 4 P1 + P2) / 6, not at P0. It was written with clamped knots, which
+// another program draws through P0 and the last point: another curve. A
+// closed one was written as an open one, and one of fewer than four points
+// with more knots than it said. Each spline written is drawn here from its
+// groups by de Boor's algorithm, as another program draws it, and must be the
+// curve the drawing shows, at the same parameters.
+TEST(DxfFidelityTest, ASavedSplineIsTheCurveTheDrawingShows) {
+    auto splines = splinesOfEachKind();
+    splines.push_back(std::make_shared<hz::draft::DraftSpline>(std::vector<Vec2>{{0, 0}, {3, 1}},
+                                                               true));  // drawn as one segment
+    hz::doc::Document doc;
+    for (const auto& spline : splines) doc.draftDocument().addEntity(spline);
+    const auto path = savedAs(doc, "hz_dxf_spline_curve.dxf");
+    const std::vector<Groups> written = recordsIn(path, "SPLINE");
+    std::filesystem::remove(path);
+    ASSERT_EQ(written.size(), splines.size());
+    for (size_t s = 0; s < splines.size(); ++s) {
+        SCOPED_TRACE("spline " + std::to_string(s));
+        const WrittenSpline w = readSpline(written[s]);
+        const int m = static_cast<int>(w.points.size());
+        ASSERT_GE(w.degree, 1);
+        ASSERT_EQ(w.pointCount, m);
+        ASSERT_EQ(w.knotCount, static_cast<int>(w.knots.size()));
+        ASSERT_EQ(w.knotCount, m + w.degree + 1) << "a knot for each point, and the order";
+        std::vector<double> weights = w.weights;
+        if ((w.flags & 4) != 0) {
+            ASSERT_EQ(static_cast<int>(weights.size()), m);
+        } else {
+            EXPECT_TRUE(weights.empty()) << "weights only on a rational spline";
+            weights.assign(m, 1.0);
+        }
+        // The curve runs from knot U[p] to U[m], a span between each two;
+        // the drawing samples each span evenly.
+        const int perSpan = w.degree == 1 ? 1 : 8;
+        std::vector<Vec2> other;
+        for (int k = w.degree; k < m; ++k) {
+            for (int j = 0; j < perSpan; ++j) {
+                const double u = w.knots[k] + (w.knots[k + 1] - w.knots[k]) * j / perSpan;
+                other.push_back(deBoor(w.degree, w.knots, w.points, weights, u));
+            }
+        }
+        other.push_back(deBoor(w.degree, w.knots, w.points, weights, w.knots[m]));
+        const std::vector<Vec2> drawn = splines[s]->evaluate(8);
+        ASSERT_EQ(other.size(), drawn.size());
+        for (size_t i = 0; i < drawn.size(); ++i) {
+            EXPECT_TRUE(near(other[i], drawn[i], 1e-9))
+                << i << ": (" << other[i].x << ", " << other[i].y << ") drawn at (" << drawn[i].x
+                << ", " << drawn[i].y << ")";
+        }
+    }
+}
+
+// A spline saved reads back as it was: its points, whether closed, its
+// weights. A closed one is written with its first points again at its end,
+// which the reader takes off.
+TEST(DxfFidelityTest, ASavedSplineReadsBackAsItWas) {
+    const auto splines = splinesOfEachKind();
+    hz::doc::Document doc;
+    for (const auto& spline : splines) doc.draftDocument().addEntity(spline);
+    const auto path = savedAs(doc, "hz_dxf_spline_back.dxf");
+    Loaded in(dxf(""));
+    std::string error;
+    ASSERT_TRUE(hz::io::DxfFormat::load(path.string(), in.doc, &error, &in.report)) << error;
+    std::filesystem::remove(path);
+    EXPECT_TRUE(in.report.approximated.empty());
+    const auto back = in.all<hz::draft::DraftSpline>();
+    ASSERT_EQ(back.size(), splines.size());
+    for (size_t s = 0; s < splines.size(); ++s) {
+        SCOPED_TRACE("spline " + std::to_string(s));
+        EXPECT_EQ(back[s]->closed(), splines[s]->closed());
+        EXPECT_TRUE(samePoints(back[s]->controlPoints(), splines[s]->controlPoints()));
+        EXPECT_EQ(back[s]->weights(), splines[s]->weights());
+    }
+}
+
+// A SPLINE the drawing cannot hold as it is, clamped as most programs write
+// one, comes in as a uniform cubic on its control points: another curve,
+// and the report says so. One of degree 1 is the polyline through its points.
+TEST(DxfFidelityTest, ASplineThatIsNotAUniformCubicIsReported) {
+    Loaded in(dxf(
+        "0\nSPLINE\n8\n0\n70\n8\n71\n3\n72\n8\n73\n4\n74\n0\n"
+        "40\n0\n40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n40\n1\n"
+        "10\n0\n20\n0\n30\n0\n10\n1\n20\n2\n30\n0\n10\n3\n20\n2\n30\n0\n10\n4\n20\n0\n30\n0\n"
+        "0\nSPLINE\n8\n0\n70\n8\n71\n1\n72\n6\n73\n4\n74\n0\n"
+        "40\n0\n40\n0\n40\n1\n40\n2\n40\n3\n40\n3\n"
+        "10\n0\n20\n0\n30\n0\n10\n1\n20\n2\n30\n0\n10\n3\n20\n2\n30\n0\n10\n4\n20\n0\n30\n0\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_EQ(in.all<hz::draft::DraftSpline>().size(), 1u);
+    EXPECT_TRUE(contains(in.report.approximated, "1 SPLINE entity: not a uniform cubic"));
+    const auto polys = in.all<hz::draft::DraftPolyline>();
+    ASSERT_EQ(polys.size(), 1u) << "degree 1";
+    EXPECT_TRUE(samePoints(polys[0]->points(), {{0, 0}, {1, 2}, {3, 2}, {4, 0}}));
 }

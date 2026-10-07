@@ -266,43 +266,53 @@ void writeText(std::ostream& out, const draft::DraftText& text) {
     writeGroup(out, 100, std::string("AcDbText"));
 }
 
+/// A spline as the drawing draws it (DraftSpline): a uniform cubic B-spline,
+/// which starts and ends inside its control polygon, not at its first and
+/// last points. Its knots are written evenly spaced, so another program
+/// draws the same curve; the clamped knots written before ran it through the
+/// end points, another curve. A closed one is written periodic, its first
+/// three points again at its end, as the knots run on over them; a weighted
+/// one with its weights. Too few points for a cubic are drawn straight, and
+/// written as a spline of degree 1, whose knots put each point on the curve.
 void writeSpline(std::ostream& out, const draft::DraftSpline& spline) {
+    std::vector<math::Vec2> points = spline.controlPoints();
+    if (points.size() < 2) return;  // a point: nothing is drawn
+    std::vector<double> weights = spline.weights();
+    weights.resize(points.size(), 1.0);
+    const bool cubic = points.size() >= (spline.closed() ? 3u : 4u);
+    const bool periodic = cubic && spline.closed();
+    if (periodic) {
+        for (size_t k = 0; k < 3; ++k) {
+            points.push_back(points[k]);
+            weights.push_back(weights[k]);
+        }
+    }
+    const bool rational = spline.hasNonUniformWeights();
+    const int degree = cubic ? 3 : 1;
+    const int count = static_cast<int>(points.size());
+
     writeGroup(out, 0, std::string("SPLINE"));
     writeCommonProps(out, spline);
     writeGroup(out, 100, std::string("AcDbEntity"));
     writeGroup(out, 100, std::string("AcDbSpline"));
-
-    const auto& cps = spline.controlPoints();
-    int n = static_cast<int>(cps.size());
-    int degree = 3;
-    int flags = spline.closed() ? 1 : 0;
-
-    writeGroup(out, 70, flags);
+    writeGroup(out, 70, (periodic ? 1 | 2 : 0) | (rational ? 4 : 0));  // closed, periodic, rational
     writeGroup(out, 71, degree);
-
-    // Generate clamped uniform knot vector for open spline.
-    int numKnots = n + degree + 1;
-    writeGroup(out, 72, numKnots);
-    writeGroup(out, 73, n);
-
-    if (spline.closed()) {
-        // Periodic knot vector.
-        for (int i = 0; i < numKnots; ++i) {
-            writeGroup(out, 40, static_cast<double>(i));
-        }
+    writeGroup(out, 72, count + degree + 1);
+    writeGroup(out, 73, count);
+    writeGroup(out, 74, 0);  // no fit points
+    if (cubic) {
+        for (int k = 0; k < count + 4; ++k) writeGroup(out, 40, static_cast<double>(k));
     } else {
-        // Clamped knot vector.
-        int numInternal = n - degree - 1;
-        for (int i = 0; i <= degree; ++i) writeGroup(out, 40, 0.0);
-        for (int i = 1; i <= numInternal; ++i) {
-            writeGroup(out, 40, static_cast<double>(i) / (numInternal + 1));
-        }
-        for (int i = 0; i <= degree; ++i) writeGroup(out, 40, 1.0);
+        writeGroup(out, 40, 0.0);
+        for (int k = 0; k < count; ++k) writeGroup(out, 40, static_cast<double>(k));
+        writeGroup(out, 40, static_cast<double>(count - 1));
     }
-
-    for (const auto& cp : cps) {
-        writeGroup(out, 10, cp.x);
-        writeGroup(out, 20, cp.y);
+    if (rational) {
+        for (const double w : weights) writeGroup(out, 41, w);
+    }
+    for (const auto& p : points) {
+        writeGroup(out, 10, p.x);
+        writeGroup(out, 20, p.y);
         writeGroup(out, 30, 0.0);
     }
 }
@@ -648,23 +658,6 @@ std::shared_ptr<draft::DraftEntity> parseArc(const std::vector<DxfPair>& groups)
     double ea = toDouble(findGroup(groups, 51)) * math::kDegToRad;
     if (r <= 0.0) return nullptr;
     return std::make_shared<draft::DraftArc>(math::Vec2(cx, cy), r, sa, ea);
-}
-
-std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups) {
-    int flags = toInt(findGroup(groups, 70, "0"));
-    bool closed = (flags & 1) != 0;
-
-    auto xs = findAllDoubles(groups, 10);
-    auto ys = findAllDoubles(groups, 20);
-    size_t count = std::min(xs.size(), ys.size());
-    if (count < 2) return nullptr;
-
-    std::vector<math::Vec2> cps;
-    cps.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        cps.emplace_back(xs[i], ys[i]);
-    }
-    return std::make_shared<draft::DraftSpline>(cps, closed);
 }
 
 // ===========================================================================
@@ -1286,6 +1279,74 @@ HatchParse parseHatch(const std::vector<DxfPair>& groups) {
     return result;
 }
 
+/// A SPLINE. The drawing's spline is a uniform cubic B-spline (DraftSpline):
+/// one written so, with evenly spaced knots (as writeSpline writes it), comes
+/// back as it was. One of degree 1 is the polyline through its points. Any
+/// other, clamped as most programs write one, comes in as a uniform cubic on
+/// the same points, which is another curve, and is reported.
+std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups, Import& im) {
+    const bool closed = (toInt(findGroup(groups, 70, "0")) & 1) != 0;
+    const int degree = toInt(findGroup(groups, 71, "3"));
+
+    const auto xs = findAllDoubles(groups, 10);
+    const auto ys = findAllDoubles(groups, 20);
+    const size_t count = std::min(xs.size(), ys.size());
+    if (count < 2) return nullptr;
+
+    std::vector<math::Vec2> cps;
+    cps.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        cps.emplace_back(xs[i], ys[i]);
+    }
+    // A weight to each point, above 0, or none; others cannot be drawn.
+    std::vector<double> weights = findAllDoubles(groups, 41);
+    const bool positive =
+        std::all_of(weights.begin(), weights.end(), [](double w) { return w > 0.0; });
+    const bool badWeights = !weights.empty() && (weights.size() != count || !positive);
+    if (badWeights) weights.clear();
+    const auto spline = [&weights](const std::vector<math::Vec2>& points, bool isClosed) {
+        auto made = std::make_shared<draft::DraftSpline>(points, isClosed);
+        if (!weights.empty()) made->setWeights(weights);
+        return made;
+    };
+
+    if (degree == 1) {
+        // The drawing draws a spline of fewer than four points straight.
+        if (count <= 3 && !closed) return spline(cps, false);
+        return std::make_shared<draft::DraftPolyline>(cps, closed);
+    }
+    // Evenly spaced knots, one for each point and four more: within a
+    // millionth of their span, for a file written with six decimals.
+    const std::vector<double> knots = findAllDoubles(groups, 40);
+    const double span = knots.empty() ? 0.0 : knots.back() - knots.front();
+    bool uniform = degree == 3 && count >= 4 && knots.size() == count + 4 && span > 0.0;
+    for (size_t k = 0; uniform && k < knots.size(); ++k) {
+        const double even =
+            knots.front() + span * static_cast<double>(k) / static_cast<double>(knots.size() - 1);
+        uniform = std::abs(knots[k] - even) <= 1e-6 * span;
+    }
+    if (!uniform || badWeights) {
+        ++im.notes.approximated[{"SPLINE",
+                                 "not a uniform cubic, drawn as one on the same control points"}];
+    }
+    if (uniform && closed && count >= 6) {
+        // Periodic, as written now: its first three points (and weights)
+        // again at its end. A closed one without them is as this program
+        // wrote one before, closed by the drawing.
+        bool wrapped = true;
+        for (size_t k = 0; k < 3; ++k) {
+            const size_t again = count - 3 + k;
+            wrapped = wrapped && (cps[again] - cps[k]).length() <= 1e-9 * (1.0 + cps[k].length()) &&
+                      (weights.empty() || weights[again] == weights[k]);
+        }
+        if (wrapped) {
+            cps.resize(count - 3);
+            if (!weights.empty()) weights.resize(count - 3);
+        }
+    }
+    return spline(cps, closed);
+}
+
 /// A partial ELLIPSE (groups 41/42 its start and end parameters) as a
 /// polyline; a whole one as an ellipse.
 std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& groups, Import& im) {
@@ -1523,7 +1584,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         out = mtextEntities(g, im);
         if (out.empty()) return unread(" (it has no text)");
     } else if (type == "SPLINE") {
-        out.push_back(parseSpline(g));
+        out.push_back(parseSpline(g, im));
     } else if (type == "HATCH") {
         HatchParse hatch = parseHatch(g);
         if (hatch.islandsLeftOut > 0) {
