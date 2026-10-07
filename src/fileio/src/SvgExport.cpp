@@ -1,9 +1,12 @@
 #include "horizon/fileio/SvgExport.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <string>
 #include <string_view>
 
 #include "horizon/fileio/AtomicFile.h"
@@ -33,10 +36,50 @@ std::string colour(uint32_t argb) {
     return buffer.data();
 }
 
+/// The length of the UTF-8 character at @p at in @p text; 0 when the bytes
+/// there are not one (a stray byte, a surrogate or an overlong form).
+size_t utf8Length(std::string_view text, size_t at) {
+    const auto byte = [&text](size_t i) {
+        return i < text.size() ? static_cast<unsigned char>(text[i]) : 0u;
+    };
+    const auto continues = [](unsigned b) { return (b & 0xC0u) == 0x80u; };
+    const unsigned lead = byte(at);
+    const unsigned second = byte(at + 1);
+    if (lead >= 0xC2 && lead <= 0xDF) return continues(second) ? 2 : 0;
+    if (lead >= 0xE0 && lead <= 0xEF) {
+        const bool whole = continues(second) && continues(byte(at + 2)) &&
+                           (lead != 0xE0 || second >= 0xA0) && (lead != 0xED || second < 0xA0);
+        return whole ? 3 : 0;
+    }
+    if (lead >= 0xF0 && lead <= 0xF4) {
+        const bool whole = continues(second) && continues(byte(at + 2)) &&
+                           continues(byte(at + 3)) && (lead != 0xF0 || second >= 0x90) &&
+                           (lead != 0xF4 || second < 0x90);
+        return whole ? 4 : 0;
+    }
+    return 0;
+}
+
+/// @p text as XML character data. Text read from a DXF can hold what XML
+/// has no character for: a control character (\U+0001, a raw 0x0B) made the
+/// file not well-formed, and a reader refuses all of it. Such a control
+/// character is left out; anything else that is not a character, a byte
+/// that is not UTF-8 among them, is U+FFFD.
 std::string escaped(std::string_view text) {
     std::string out;
     out.reserve(text.size());
-    for (const char c : text) {
+    for (size_t i = 0; i < text.size();) {
+        const char c = text[i];
+        if (static_cast<unsigned char>(c) >= 0x80) {
+            const size_t length = utf8Length(text, i);
+            const std::string_view character = text.substr(i, std::max<size_t>(length, 1));
+            // U+FFFE and U+FFFF are UTF-8, but not XML characters.
+            const bool xmlHasIt =
+                length > 0 && character != "\xEF\xBF\xBE" && character != "\xEF\xBF\xBF";
+            out += xmlHasIt ? character : std::string_view("\xEF\xBF\xBD");
+            i += character.size();
+            continue;
+        }
         switch (c) {
             case '&':
                 out += "&amp;";
@@ -51,8 +94,12 @@ std::string escaped(std::string_view text) {
                 out += "&quot;";
                 break;
             default:
-                out += c;
+                // Of the controls, XML has only tab, line feed and return.
+                if (static_cast<unsigned char>(c) >= 0x20 || c == '\t' || c == '\n' || c == '\r') {
+                    out += c;
+                }
         }
+        ++i;
     }
     return out;
 }

@@ -124,6 +124,10 @@ work, not "post-1.0".
   drawing from one is, and says which version wrote it. It was read
   without a word as this version reads it, and saving it destroyed what
   the newer version had written.
+- **SVG exports open whatever their text holds.** A DXF's text can hold
+  control characters, which XML has none of: the SVG was not well-formed,
+  and a browser showed none of it. They are left out now, and anything
+  else that is not text becomes U+FFFD.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
