@@ -92,7 +92,12 @@ static std::string dumpJson(const json& root, int indent) {
 /// older build would place its part unmirrored.
 /// 29: a shell may be made by offsetting each face, "method": "offset"
 /// (Phase 163). An older build would build it as a prism's, or refuse it.
-static constexpr int kFormatVersion = 29;
+/// 30: a block's entities are written as the drawing's are: of any kind,
+/// dimensions, leaders and other blocks' references among them, with their
+/// construction and group; a block comes after the blocks it places. An
+/// older build would leave those entities out of the block, and lose the
+/// rest's construction and group without a word.
+static constexpr int kFormatVersion = 30;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -615,6 +620,32 @@ static math::LengthUnit unitsFrom(const json& root) {
     return math::lengthUnitFrom(length->get<std::string>()).value_or(math::LengthUnit::Millimetre);
 }
 
+/// @p name, after every block it places, onto @p ordered; @p seen holds the
+/// names already there or on the way.
+static void appendAfterItsBlocks(const draft::BlockTable& table, const std::string& name,
+                                 std::set<std::string>& seen, std::vector<std::string>& ordered) {
+    if (!seen.insert(name).second) return;
+    const auto def = table.findBlock(name);
+    if (!def) return;
+    for (const auto& entity : def->entities) {
+        if (const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(entity.get())) {
+            appendAfterItsBlocks(table, ref->blockName(), seen, ordered);
+        }
+    }
+    ordered.push_back(name);
+}
+
+/// The table's block names, each after the blocks it places (format 30): a
+/// block's reference is read only to a block read before it, so that no
+/// chain of blocks can place itself. A chain that does is written as found,
+/// and the reference that closes it is left out when it is read.
+static std::vector<std::string> blocksInReadingOrder(const draft::BlockTable& table) {
+    std::vector<std::string> ordered;
+    std::set<std::string> seen;
+    for (const auto& name : table.blockNames()) appendAfterItsBlocks(table, name, seen, ordered);
+    return ordered;
+}
+
 static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
     json root;
     root["version"] = kFormatVersion;
@@ -651,78 +682,22 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
 
     // --- Block definitions ---
     json blocksArray = json::array();
-    for (const auto& name : doc.draftDocument().blockTable().blockNames()) {
-        auto def = doc.draftDocument().blockTable().findBlock(name);
+    const auto& blockTable = doc.draftDocument().blockTable();
+    for (const auto& name : blocksInReadingOrder(blockTable)) {
+        auto def = blockTable.findBlock(name);
         if (!def) continue;
         json blockObj;
         blockObj["name"] = def->name;
         blockObj["basePoint"] = {{"x", def->basePoint.x}, {"y", def->basePoint.y}};
+        // Every kind of entity, as the drawing's own are written: a block is
+        // made from whatever was selected, dimensions and other blocks too.
         json defEnts = json::array();
         for (const auto& subEnt : def->entities) {
-            json se;
-            se["layer"] = subEnt->layer();
-            se["color"] = subEnt->color();
-            se["lineWidth"] = subEnt->lineWidth();
-            se["lineType"] = subEnt->lineType();
-            if (auto* ln = dynamic_cast<const draft::DraftLine*>(subEnt.get())) {
-                se["type"] = "line";
-                se["start"] = {{"x", ln->start().x}, {"y", ln->start().y}};
-                se["end"] = {{"x", ln->end().x}, {"y", ln->end().y}};
-            } else if (auto* ci = dynamic_cast<const draft::DraftCircle*>(subEnt.get())) {
-                se["type"] = "circle";
-                se["center"] = {{"x", ci->center().x}, {"y", ci->center().y}};
-                se["radius"] = ci->radius();
-            } else if (auto* ar = dynamic_cast<const draft::DraftArc*>(subEnt.get())) {
-                se["type"] = "arc";
-                se["center"] = {{"x", ar->center().x}, {"y", ar->center().y}};
-                se["radius"] = ar->radius();
-                se["startAngle"] = ar->startAngle();
-                se["endAngle"] = ar->endAngle();
-            } else if (auto* re = dynamic_cast<const draft::DraftRectangle*>(subEnt.get())) {
-                se["type"] = "rectangle";
-                se["corner1"] = {{"x", re->corner1().x}, {"y", re->corner1().y}};
-                se["corner2"] = {{"x", re->corner2().x}, {"y", re->corner2().y}};
-            } else if (auto* pl = dynamic_cast<const draft::DraftPolyline*>(subEnt.get())) {
-                se["type"] = "polyline";
-                se["closed"] = pl->closed();
-                json pts = json::array();
-                for (const auto& pt : pl->points()) pts.push_back({{"x", pt.x}, {"y", pt.y}});
-                se["points"] = pts;
-            } else if (auto* sp = dynamic_cast<const draft::DraftSpline*>(subEnt.get())) {
-                se["type"] = "spline";
-                se["closed"] = sp->closed();
-                json cps = json::array();
-                for (const auto& cp : sp->controlPoints())
-                    cps.push_back({{"x", cp.x}, {"y", cp.y}});
-                se["controlPoints"] = cps;
-                if (sp->hasNonUniformWeights()) {
-                    json wArr = json::array();
-                    for (double w : sp->weights()) wArr.push_back(w);
-                    se["weights"] = wArr;
-                }
-            } else if (auto* txt = dynamic_cast<const draft::DraftText*>(subEnt.get())) {
-                se["type"] = "text";
-                se["position"] = {{"x", txt->position().x}, {"y", txt->position().y}};
-                se["text"] = txt->text();
-                se["textHeight"] = txt->textHeight();
-                se["rotation"] = txt->rotation();
-                se["alignment"] = static_cast<int>(txt->alignment());
-            } else if (auto* hatch = dynamic_cast<const draft::DraftHatch*>(subEnt.get())) {
-                se["type"] = "hatch";
-                se["pattern"] = static_cast<int>(hatch->pattern());
-                se["angle"] = hatch->angle();
-                se["spacing"] = hatch->spacing();
-                json bnd = json::array();
-                for (const auto& pt : hatch->boundary()) bnd.push_back({{"x", pt.x}, {"y", pt.y}});
-                se["boundary"] = bnd;
-            } else if (auto* el = dynamic_cast<const draft::DraftEllipse*>(subEnt.get())) {
-                se["type"] = "ellipse";
-                se["center"] = {{"x", el->center().x}, {"y", el->center().y}};
-                se["semiMajor"] = el->semiMajor();
-                se["semiMinor"] = el->semiMinor();
-                se["rotation"] = el->rotation();
-            }
-            defEnts.push_back(se);
+            json se = serializeEntity(*subEnt);
+            // A block's entities are given new IDs when it is read, as they
+            // always have been: theirs name nothing in the document.
+            se.erase("id");
+            defEnts.push_back(std::move(se));
         }
         blockObj["entities"] = defEnts;
         blocksArray.push_back(blockObj);
@@ -1033,11 +1008,15 @@ std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeT
 // Entity deserialization helper
 // ---------------------------------------------------------------------------
 
-static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
-                                                             const draft::BlockTable* blockTable) {
+/// An entity serializeEntity() wrote; null when it is of a kind this version
+/// does not read. A block reference is read only to a block @p blockTable
+/// already has. @p colorWhenAbsent is the colour of one that names none: a
+/// block's entities take the reference's (ByBlock).
+static std::shared_ptr<draft::DraftEntity> deserializeEntity(
+    const json& obj, const draft::BlockTable* blockTable, uint32_t colorWhenAbsent = 0xFFFFFFFFu) {
     std::string type = obj.value("type", "");
     std::string layer = obj.value("layer", "0");
-    const uint32_t color = colorField(obj, "color", 0xFFFFFFFFu);
+    const uint32_t color = colorField(obj, "color", colorWhenAbsent);
     double lineWidth = obj.value("lineWidth", 0.0);
 
     std::shared_ptr<draft::DraftEntity> entity;
@@ -1124,19 +1103,22 @@ static std::shared_ptr<draft::DraftEntity> deserializeEntity(const json& obj,
         if (blockTable) {
             std::string blockName = obj.value("blockName", "");
             auto def = blockTable->findBlock(blockName);
-            if (def) {
-                auto pos = math::Vec2(obj.at("insertPos").at("x").get<double>(),
-                                      obj.at("insertPos").at("y").get<double>());
-                double rot = obj.value("rotation", 0.0);
-                double scl = obj.value("scale", 1.0);
-                auto ref = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
-                // Absent before a reference could be mirrored.
-                const auto mirrored = obj.find("mirrored");
-                if (mirrored != obj.end() && mirrored->is_boolean()) {
-                    ref->setMirrored(mirrored->get<bool>());
-                }
-                entity = ref;
+            // Said, not taken for a kind of entity this version does not read.
+            if (!def) {
+                throw std::runtime_error("its block \"" + blockName +
+                                         "\" is not defined before it");
             }
+            auto pos = math::Vec2(obj.at("insertPos").at("x").get<double>(),
+                                  obj.at("insertPos").at("y").get<double>());
+            double rot = obj.value("rotation", 0.0);
+            double scl = obj.value("scale", 1.0);
+            auto ref = std::make_shared<draft::DraftBlockRef>(def, pos, rot, scl);
+            // Absent before a reference could be mirrored.
+            const auto mirrored = obj.find("mirrored");
+            if (mirrored != obj.end() && mirrored->is_boolean()) {
+                ref->setMirrored(mirrored->get<bool>());
+            }
+            entity = ref;
         }
     } else if (type == "text") {
         auto pos = math::Vec2(obj.at("position").at("x").get<double>(),
@@ -1289,96 +1271,30 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 def->name = blockObj.value("name", "");
                 def->basePoint = math::Vec2(blockObj.at("basePoint").at("x").get<double>(),
                                             blockObj.at("basePoint").at("y").get<double>());
+                // Read as the drawing's own entities are (format 30), each
+                // skipped alone. A reference is read only to a block before
+                // this one: this one is not in the table yet.
                 if (blockObj.contains("entities")) {
+                    const std::string where = "block " + std::to_string(thisBlock + 1) + " entity";
                     size_t subIndex = 0;
                     for (const auto& se : blockObj.at("entities")) {
                         const size_t thisSub = subIndex++;
-                        std::string stype = se.value("type", "");
-                        std::shared_ptr<draft::DraftEntity> subEnt;
-                        if (stype == "line") {
-                            subEnt = std::make_shared<draft::DraftLine>(
-                                math::Vec2(se.at("start").at("x").get<double>(),
-                                           se.at("start").at("y").get<double>()),
-                                math::Vec2(se.at("end").at("x").get<double>(),
-                                           se.at("end").at("y").get<double>()));
-                        } else if (stype == "circle") {
-                            subEnt = std::make_shared<draft::DraftCircle>(
-                                math::Vec2(se.at("center").at("x").get<double>(),
-                                           se.at("center").at("y").get<double>()),
-                                se.at("radius").get<double>());
-                        } else if (stype == "arc") {
-                            subEnt = std::make_shared<draft::DraftArc>(
-                                math::Vec2(se.at("center").at("x").get<double>(),
-                                           se.at("center").at("y").get<double>()),
-                                se.at("radius").get<double>(), se.at("startAngle").get<double>(),
-                                se.at("endAngle").get<double>());
-                        } else if (stype == "rectangle") {
-                            subEnt = std::make_shared<draft::DraftRectangle>(
-                                math::Vec2(se.at("corner1").at("x").get<double>(),
-                                           se.at("corner1").at("y").get<double>()),
-                                math::Vec2(se.at("corner2").at("x").get<double>(),
-                                           se.at("corner2").at("y").get<double>()));
-                        } else if (stype == "polyline") {
-                            std::vector<math::Vec2> pts;
-                            for (const auto& pt : se.at("points"))
-                                pts.emplace_back(pt.at("x").get<double>(),
-                                                 pt.at("y").get<double>());
-                            subEnt = std::make_shared<draft::DraftPolyline>(
-                                pts, se.value("closed", false));
-                        } else if (stype == "spline") {
-                            std::vector<math::Vec2> cps;
-                            for (const auto& cp : se.at("controlPoints"))
-                                cps.emplace_back(cp.at("x").get<double>(),
-                                                 cp.at("y").get<double>());
-                            auto blkSp = std::make_shared<draft::DraftSpline>(
-                                cps, se.value("closed", false));
-                            if (se.contains("weights")) {
-                                std::vector<double> wts;
-                                wts.reserve(se.at("weights").size());
-                                for (const auto& w : se.at("weights"))
-                                    wts.push_back(w.get<double>());
-                                blkSp->setWeights(wts);
+                        try {
+                            auto subEnt = deserializeEntity(se, &doc.draftDocument().blockTable(),
+                                                            /*colorWhenAbsent=*/0u);
+                            if (subEnt) {
+                                // Exploded, it is in its group again: a group
+                                // made since must not have its number.
+                                if (subEnt->groupId() != 0) {
+                                    doc.draftDocument().advanceGroupIdCounter(subEnt->groupId());
+                                }
+                                def->entities.push_back(subEnt);
+                            } else {
+                                noteSkipped(report, where, thisSub, se,
+                                            "not a kind of entity this version reads");
                             }
-                            subEnt = blkSp;
-                        } else if (stype == "text") {
-                            auto pos = math::Vec2(se.at("position").at("x").get<double>(),
-                                                  se.at("position").at("y").get<double>());
-                            auto txt = std::make_shared<draft::DraftText>(
-                                pos, se.value("text", ""), se.value("textHeight", 2.5));
-                            if (se.contains("rotation"))
-                                txt->setRotation(se.at("rotation").get<double>());
-                            if (se.contains("alignment"))
-                                txt->setAlignment(static_cast<draft::TextAlignment>(
-                                    intField(se, "alignment", 0, 0, kLastAlignment)));
-                            subEnt = txt;
-                        } else if (stype == "hatch") {
-                            std::vector<math::Vec2> boundary;
-                            for (const auto& pt : se.at("boundary"))
-                                boundary.emplace_back(pt.at("x").get<double>(),
-                                                      pt.at("y").get<double>());
-                            subEnt = std::make_shared<draft::DraftHatch>(
-                                boundary,
-                                static_cast<draft::HatchPattern>(
-                                    intField(se, "pattern", 1, 0, kLastHatchPattern)),
-                                se.value("angle", 0.0), se.value("spacing", 1.0));
-                        } else if (stype == "ellipse") {
-                            auto ctr = math::Vec2(se.at("center").at("x").get<double>(),
-                                                  se.at("center").at("y").get<double>());
-                            subEnt = std::make_shared<draft::DraftEllipse>(
-                                ctr, se.value("semiMajor", 1.0), se.value("semiMinor", 1.0),
-                                se.value("rotation", 0.0));
-                        }
-                        if (subEnt) {
-                            subEnt->setLayer(se.value("layer", "0"));
-                            subEnt->setColor(colorField(se, "color", 0u));
-                            subEnt->setLineWidth(se.value("lineWidth", 0.0));
-                            subEnt->setLineType(
-                                static_cast<int>(intField(se, "lineType", 0, 0, kLastLineType)));
-                            def->entities.push_back(subEnt);
-                        } else {
-                            noteSkipped(report,
-                                        "block " + std::to_string(thisBlock + 1) + " entity",
-                                        thisSub, se, "not a kind of entity this version reads");
+                        } catch (const std::exception& e) {
+                            noteSkipped(report, where, thisSub, se, jsonMessage(e));
                         }
                     }
                 }

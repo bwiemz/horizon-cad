@@ -103,6 +103,11 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **A block keeps everything it was made from.** A block made from a
+  selection with a dimension, a leader or another block in it lost them
+  when it was saved, and its file reopened marked incomplete. They are
+  saved now, and so is whether each entity in a block is construction
+  geometry, and its group. Files are saved as format version 30.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
