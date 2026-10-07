@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <pthread.h>
+#endif
+
 #include <clocale>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -9,6 +14,17 @@
 #include <utility>
 
 #include "horizon/math/Expression.h"
+
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define HZ_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define HZ_SANITIZED 1
+#endif
+#endif
+#ifndef HZ_SANITIZED
+#define HZ_SANITIZED 0
+#endif
 
 using namespace hz::math;
 
@@ -132,6 +148,86 @@ TEST(ExpressionLimitsTest, AReasonableChainStillParses) {
     auto e = hz::math::Expression::parse(flatSum(400));  // 799 nodes
     ASSERT_NE(e, nullptr);
     EXPECT_DOUBLE_EQ(e->evaluate({}), 400.0);
+}
+
+namespace {
+
+/// Runs @p work on a thread whose stack is @p bytes; whether it could.
+bool onStackOf(std::size_t bytes, void (*work)(void*), void* arg) {
+#if defined(__unix__) || defined(__APPLE__)
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) != 0) return false;
+    const bool sized = pthread_attr_setstacksize(&attr, bytes) == 0;
+    pthread_t thread;
+    struct Call {
+        void (*work)(void*);
+        void* arg;
+    } call{work, arg};
+    const bool started = sized && pthread_create(
+                                      &thread, &attr,
+                                      [](void* p) -> void* {
+                                          auto* c = static_cast<Call*>(p);
+                                          c->work(c->arg);
+                                          return nullptr;
+                                      },
+                                      &call) == 0;
+    pthread_attr_destroy(&attr);
+    if (started) pthread_join(thread, nullptr);
+    return started;
+#else
+    (void)bytes;
+    (void)work;
+    (void)arg;
+    return false;
+#endif
+}
+
+/// A unary minus nested @p levels deep round a literal, nested by moving, not
+/// copying: copying a json value recurses once per level.
+nlohmann::json negatedDeep(int levels) {
+    nlohmann::json deep = {{"type", "literal"}, {"value", 1.0}};
+    for (int i = 0; i < levels; ++i) {
+        nlohmann::json wrapper = {{"type", "unary"}, {"op", "-"}};
+        wrapper["child"] = std::move(deep);
+        deep = std::move(wrapper);
+    }
+    return deep;
+}
+
+}  // namespace
+
+// A tree nested deeper than parse() builds is refused, and read without
+// recursing: once per level reached Windows' 1 MB stack on a debug build
+// before the count of nodes stopped it. Here it is read on a 256 KB stack.
+TEST(ExpressionLimitsTest, ADeepTreeIsReadOnASmallStack) {
+    struct Case {
+        nlohmann::json deep = negatedDeep(5000);
+        nlohmann::json chain;
+        bool deepRefused = false;
+        bool chainRead = false;
+    } c;
+    // As deep as parse() lets a chain grow: 1+1+...+1, 512 terms.
+    std::string sum = "1";
+    for (int i = 1; i < 512; ++i) sum += "+1";
+    const auto parsed = Expression::parse(sum);
+    ASSERT_NE(parsed, nullptr);
+    c.chain = parsed->toJson();
+    // Sanitizers' frames are several times larger.
+    const std::size_t stack = HZ_SANITIZED ? std::size_t{1} << 20 : std::size_t{256} << 10;
+    const bool ran = onStackOf(
+        stack,
+        [](void* p) {
+            auto& c = *static_cast<Case*>(p);
+            c.deepRefused = Expression::fromJson(c.deep) == nullptr;
+            auto chain = Expression::fromJson(c.chain);
+            c.chainRead = chain != nullptr;
+            // Released here, as deep as it was read: its own recursion, as
+            // parse()'s tree's, is what the stack is sized for.
+        },
+        &c);
+    if (!ran) GTEST_SKIP() << "a thread's stack size is set here with POSIX threads";
+    EXPECT_TRUE(c.deepRefused);
+    EXPECT_TRUE(c.chainRead);
 }
 
 TEST(ExpressionLimitsTest, FromJsonRejectsDeepTreesAndWrongTypes) {
