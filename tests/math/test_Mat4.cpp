@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat3.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 
@@ -226,4 +227,36 @@ TEST(Mat4Test, AReflectionMirrorsInItsPlane) {
     EXPECT_NEAR(on.x, 2.0, 1e-12);
     EXPECT_NEAR(on.y, 0.0, 1e-12);
     EXPECT_NEAR(Mat4::rotationZ(0.7).determinant3(), 1.0, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// Singular is judged against the matrix's own size: a scale of a millionth
+// (determinant 1e-18) has an inverse, and read as singular against 1e-15,
+// coming back as the identity.
+// ---------------------------------------------------------------------------
+TEST(Mat4Test, ASmallScaleHasAnInverse) {
+    for (const double s : {1e-6, 1e-9, 1e6}) {
+        const Mat4 M = Mat4::translation(Vec3(3.0, -2.0, 7.0)) * Mat4::scale(Vec3(s, s, s));
+        expectMat4Near(M * M.inverse(), Mat4::identity(), 1e-9);
+        EXPECT_NEAR(M.inverse().at(0, 0), 1.0 / s, 1e-9 / s) << s;
+    }
+    // A singular one still comes back as the identity, at any size.
+    for (const double s : {1e-6, 1.0, 1e6}) {
+        const Mat4 flat = Mat4::scale(Vec3(s, s, 0.0));
+        expectMat4Near(flat.inverse(), Mat4::identity());
+    }
+}
+
+TEST(Mat3Test, ASmallScaleHasAnInverse) {
+    Mat3 m = Mat3::identity();
+    m.m[0][0] = 1e-7;
+    m.m[1][1] = 2e-7;
+    m.m[0][2] = 5.0;
+    const Mat3 inv = m.inverse();
+    EXPECT_NEAR(inv.m[0][0], 1e7, 1e-3);
+    EXPECT_NEAR(inv.m[1][1], 5e6, 1e-3);
+    EXPECT_NEAR(inv.m[0][2], -5e7, 1e-1);
+    Mat3 singular = Mat3::identity();
+    singular.m[1][1] = 0.0;
+    EXPECT_EQ(singular.inverse().m[1][1], 1.0) << "the identity, as before";
 }

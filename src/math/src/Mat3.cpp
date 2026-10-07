@@ -1,5 +1,6 @@
 #include "horizon/math/Mat3.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace hz::math {
@@ -75,7 +76,17 @@ Mat3 Mat3::inverse() const {
                  m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
                  m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
 
-    if (std::abs(det) < 1e-15) return identity();
+    // Singular relative to its size (see Mat4::inverse): |det| is at most the
+    // product of the rows' lengths, and of the columns'.
+    double rows = 1.0;
+    double columns = 1.0;
+    for (int i = 0; i < 3; ++i) {
+        rows *= std::sqrt(m[i][0] * m[i][0] + m[i][1] * m[i][1] + m[i][2] * m[i][2]);
+        columns *= std::sqrt(m[0][i] * m[0][i] + m[1][i] * m[1][i] + m[2][i] * m[2][i]);
+    }
+    if (!std::isfinite(det) || !(std::abs(det) > 1e-15 * std::min(rows, columns))) {
+        return identity();
+    }
 
     double invDet = 1.0 / det;
     Mat3 r;
