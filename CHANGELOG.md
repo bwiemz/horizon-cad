@@ -103,6 +103,25 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **DXF files read back as they were saved, and as other programs drew
+  them.**
+  - Reals were written to six decimals, so every ellipse saved came back an
+    open polyline, said to be partial: its whole turn, 2π, read back a little
+    short. Reals are now written so they read back exactly. An ellipse of a
+    whole turn that another program wrote to six decimals is whole too.
+  - A file of blocks nested 20,000 deep crashed the import. Blocks are
+    flattened 64 deep, and an insert deeper than that is reported.
+  - Anonymous blocks, such as a dynamic block's instance or an array
+    (`*U1`), are read. Their inserts were reported with their block missing.
+  - A layout's paper space, its border, title block and viewports, is left
+    out and reported. It was drawn over the model.
+  - A spline is written as the curve Horizon draws. Other programs drew it
+    through its end points, a closed one open, and without its weights. A
+    spline from another program that is not a uniform cubic, as most are not,
+    is still drawn as one on its control points, and is now reported; one of
+    degree 1 comes in as a polyline.
+  - A polyline bulge too large for an arc comes in as a straight segment,
+    not an arc with no centre.
 - **A block keeps everything it was made from.** A block made from a
   selection with a dimension, a leader or another block in it lost them
   when it was saved, and its file reopened marked incomplete. They are
