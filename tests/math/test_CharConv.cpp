@@ -9,6 +9,7 @@
 #include <clocale>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -143,3 +144,34 @@ TEST(CharConvPortableTest, AgreesWithTheStandardOne) {
     }
 }
 #endif
+
+// The shortest plain decimal that reads back as the same double: never an
+// exponent (the expression grammar does not read one), never a comma.
+TEST(CharConvDecimalTest, ADecimalReadsBackExactly) {
+    const std::vector<double> values = {
+        0.0,   0.1,    -2.5,       1.0 / 3.0, 1e-5,   2.5e-9,           1e21,
+        1e300, 5e-324, 123456.789, -0.0,      1e-300, 6.283185307179586};
+    for (const double value : values) {
+        const std::string text = hz::math::toDecimalString(value);
+        EXPECT_EQ(text.find_first_of("eE,"), std::string::npos) << text;
+        double back = 7.0;
+        const auto [end, error] = hz::math::fromChars(text.data(), text.data() + text.size(), back);
+        EXPECT_EQ(error, std::errc()) << text;
+        EXPECT_EQ(end, text.data() + text.size()) << text;
+        EXPECT_EQ(back, value) << text;
+    }
+    EXPECT_EQ(hz::math::toDecimalString(0.1), "0.1");
+    EXPECT_EQ(hz::math::toDecimalString(0.00005), "0.00005");
+    EXPECT_EQ(hz::math::toDecimalString(12.0), "12");
+    EXPECT_EQ(hz::math::toDecimalString(std::numeric_limits<double>::infinity()), "inf");
+}
+
+TEST(CharConvDecimalTest, ADecimalIsWrittenWithAPointInEveryLocale) {
+    const std::string before = std::setlocale(LC_ALL, nullptr);
+    const bool german = std::setlocale(LC_ALL, "de_DE.UTF-8") != nullptr ||
+                        std::setlocale(LC_ALL, "de_DE") != nullptr;
+    const std::string text = hz::math::toDecimalString(1.5);
+    std::setlocale(LC_ALL, before.c_str());
+    if (!german) GTEST_SKIP() << "no German locale here";
+    EXPECT_EQ(text, "1.5");
+}

@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <clocale>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -156,4 +158,58 @@ TEST(ExpressionLimitsTest, FromJsonRejectsDeepTreesAndWrongTypes) {
     auto back = hz::math::Expression::fromJson(e->toJson());
     ASSERT_NE(back, nullptr);
     EXPECT_DOUBLE_EQ(back->evaluate({{"x", 1.0}}), 32.0);
+}
+
+// Numbers are read in the C locale, whatever the user's: std::stod followed
+// the one Qt sets from the environment, and under de_DE read "1.5" as 1.
+TEST(ExpressionEdgeCaseTest, ADecimalPointIsReadInEveryLocale) {
+    const std::string before = std::setlocale(LC_ALL, nullptr);
+    const bool german = std::setlocale(LC_ALL, "de_DE.UTF-8") != nullptr ||
+                        std::setlocale(LC_ALL, "de_DE") != nullptr;
+    const auto e = hz::math::Expression::parse("x * 2.75 + 0.5");
+    const std::string printed = e ? e->toString() : std::string();
+    std::setlocale(LC_ALL, before.c_str());
+    if (!german) GTEST_SKIP() << "no German locale here";
+    ASSERT_NE(e, nullptr);
+    EXPECT_DOUBLE_EQ(e->evaluate({{"x", 2.0}}), 6.0);
+    EXPECT_EQ(printed, "((x * 2.75) + 0.5)");
+}
+
+// Printed as the tokenizer reads numbers: plainly, exactly, and never with an
+// exponent, which it does not read.
+TEST(ExpressionEdgeCaseTest, ALiteralIsPrintedSoItReadsBackExactly) {
+    for (const double value : {0.1, 0.00005, 1.0 / 3.0, 12.0, 1e21, 2.5e-9, 123456.789}) {
+        const hz::math::LiteralExpr literal(value);
+        const std::string text = literal.toString();
+        EXPECT_EQ(text.find_first_of("eE"), std::string::npos) << text;
+        const auto again = hz::math::Expression::parse(text);
+        ASSERT_NE(again, nullptr) << text;
+        EXPECT_EQ(again->evaluate({}), value) << text;
+    }
+    EXPECT_EQ(hz::math::LiteralExpr(0.1).toString(), "0.1");
+    EXPECT_EQ(hz::math::LiteralExpr(-2.5).toString(), "(-2.5)");
+    const auto infinite = hz::math::Expression::parse(
+        hz::math::LiteralExpr(std::numeric_limits<double>::infinity()).toString());
+    ASSERT_NE(infinite, nullptr);
+    EXPECT_TRUE(std::isinf(infinite->evaluate({})));
+}
+
+// A chain of one precedence is printed as one bracket, so a long one reads
+// back; and a different precedence, or a power, keeps its own brackets.
+TEST(ExpressionEdgeCaseTest, AChainIsPrintedAsOneBracket) {
+    const auto chain = hz::math::Expression::parse("a + b - c + d");
+    ASSERT_NE(chain, nullptr);
+    EXPECT_EQ(chain->toString(), "(a + b - c + d)");
+    const auto mixed = hz::math::Expression::parse("a * b + c / d * e - f ^ g ^ h");
+    ASSERT_NE(mixed, nullptr);
+    EXPECT_EQ(mixed->toString(), "((a * b) + (c / d * e) - (f ^ (g ^ h)))");
+    const auto right = hz::math::Expression::parse("a - (b - c)");
+    ASSERT_NE(right, nullptr);
+    EXPECT_EQ(right->toString(), "(a - (b - c))");
+
+    const auto longChain = hz::math::Expression::parse(flatSum(400));
+    ASSERT_NE(longChain, nullptr);
+    const auto again = hz::math::Expression::parse(longChain->toString());
+    ASSERT_NE(again, nullptr);
+    EXPECT_DOUBLE_EQ(again->evaluate({}), 400.0);
 }

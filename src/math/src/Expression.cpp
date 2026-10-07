@@ -2,12 +2,13 @@
 
 #include <cctype>
 #include <cmath>
-#include <iomanip>
 #include <nlohmann/json.hpp>
-#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
+
+#include "horizon/math/CharConv.h"
 
 namespace hz::math {
 
@@ -26,9 +27,13 @@ std::set<std::string> LiteralExpr::variables() const {
 }
 
 std::string LiteralExpr::toString() const {
-    std::ostringstream ss;
-    ss << std::setprecision(17) << m_value;
-    return ss.str();
+    // Plain decimals, as the tokenizer reads them: the value exactly, never an
+    // exponent ("5.0000000000000002e-05" did not read back), never a comma.
+    // A value that is not finite is written as an expression that makes it.
+    if (std::isnan(m_value)) return "(0 / 0)";
+    if (std::isinf(m_value)) return m_value > 0.0 ? "(1 / 0)" : "(-(1 / 0))";
+    if (std::signbit(m_value)) return "(-" + toDecimalString(-m_value) + ")";
+    return toDecimalString(m_value);
 }
 
 nlohmann::json LiteralExpr::toJson() const {
@@ -103,7 +108,30 @@ std::string BinaryOpExpr::toString() const {
             opChar = '^';
             break;
     }
-    return "(" + m_left->toString() + " " + opChar + " " + m_right->toString() + ")";
+    // A chain of one precedence ("a + b - c", "a * b / c") is written as one
+    // bracket, as parse() reads it back: each link in brackets of its own
+    // nested the chain one bracket deeper per term, and past
+    // kMaxNestingDepth terms the text no longer parsed.
+    std::string left = m_left->toString();
+    const auto* chained = dynamic_cast<const BinaryOpExpr*>(m_left.get());
+    if (chained != nullptr && m_op != Op::Pow && precedence(chained->m_op) == precedence(m_op)) {
+        left = left.substr(1, left.size() - 2);  // its own brackets
+    }
+    return "(" + left + " " + opChar + " " + m_right->toString() + ")";
+}
+
+int BinaryOpExpr::precedence(Op op) {
+    switch (op) {
+        case Op::Add:
+        case Op::Sub:
+            return 1;
+        case Op::Mul:
+        case Op::Div:
+            return 2;
+        case Op::Pow:
+            return 3;
+    }
+    return 0;  // unreachable
 }
 
 nlohmann::json BinaryOpExpr::toJson() const {
@@ -246,10 +274,14 @@ nlohmann::json UnitExpr::toJson() const {
 
 namespace {
 
-/// Expression::fromJson with the tree bounded: `depth` is the current level,
-/// `nodes` counts every node built so far.
-std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, int& nodes) {
-    if (depth > Expression::kMaxNestingDepth || ++nodes > Expression::kMaxNodes) return nullptr;
+/// Expression::fromJson with the tree bounded: `nodes` counts every node built
+/// so far. That bounds the depth too, and so the recursion here and in
+/// evaluating, printing and destroying the tree, to what parse() lets a long
+/// chain reach ("1+1+...+1"). A bound on the depth alone (it was
+/// kMaxNestingDepth) refused the copy of a 66-term sum that parse() had read:
+/// parse() counts brackets, minus signs and powers, not every level.
+std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int& nodes) {
+    if (++nodes > Expression::kMaxNodes) return nullptr;
     if (!j.is_object() || !j.contains("type")) {
         return nullptr;
     }
@@ -283,8 +315,8 @@ std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, 
         else
             return nullptr;
 
-        auto left = fromJsonBounded(j.at("left"), depth + 1, nodes);
-        auto right = fromJsonBounded(j.at("right"), depth + 1, nodes);
+        auto left = fromJsonBounded(j.at("left"), nodes);
+        auto right = fromJsonBounded(j.at("right"), nodes);
         if (!left || !right) return nullptr;
         return std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
     }
@@ -298,7 +330,7 @@ std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, 
         else
             return nullptr;
 
-        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
+        auto child = fromJsonBounded(j.at("child"), nodes);
         if (!child) return nullptr;
         return std::make_unique<UnaryOpExpr>(op, std::move(child));
     }
@@ -311,7 +343,7 @@ std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, 
 
         std::vector<std::unique_ptr<Expression>> args;
         for (const auto& argJson : argsJson) {
-            auto arg = fromJsonBounded(argJson, depth + 1, nodes);
+            auto arg = fromJsonBounded(argJson, nodes);
             if (!arg) return nullptr;
             args.push_back(std::move(arg));
         }
@@ -322,7 +354,7 @@ std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, 
         if (!j.contains("unit") || !j.contains("child")) return nullptr;
         std::string unit = j.at("unit").get<std::string>();
         if (!UnitExpr::factor(unit)) return nullptr;
-        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
+        auto child = fromJsonBounded(j.at("child"), nodes);
         if (!child) return nullptr;
         return std::make_unique<UnitExpr>(std::move(child), std::move(unit));
     }
@@ -337,7 +369,7 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
     // json::get throw; the contract is nullptr on any error.
     try {
         int nodes = 0;
-        return fromJsonBounded(j, 0, nodes);
+        return fromJsonBounded(j, nodes);
     } catch (const nlohmann::json::exception&) {
         return nullptr;
     }
@@ -445,12 +477,12 @@ private:
             }
         }
         std::string text = m_input.substr(start, m_pos - start);
+        // In the C locale, whatever the user's: std::stod follows the one Qt
+        // sets from the environment, and under de_DE read "1.5" as 1.
         double val = 0.0;
-        try {
-            val = std::stod(text);
-        } catch (...) {
-            return {TokenType::Error, text, 0.0};
-        }
+        const char* last = text.data() + text.size();
+        const auto [end, error] = fromChars(text.data(), last, val);
+        if (error != std::errc() || end != last) return {TokenType::Error, text, 0.0};
         return {TokenType::Number, text, val};
     }
 
@@ -589,9 +621,12 @@ private:
         return parsePrimary();
     }
 
-    /// @p value in the unit named next, if one is ("2 in", "(a + b) mm");
-    /// else as it is. Phase 155: a unit word after a number was an error
-    /// (nothing multiplies without a sign), so no expression changes meaning.
+    /// @p value in the unit named next, if one is ("2 in", "(a + b) mm",
+    /// "wall in", "sqrt(2) in"); else as it is. Phase 155: a unit word after a
+    /// number was an error (nothing multiplies without a sign), so no
+    /// expression changes meaning; nor after a name or a call, which
+    /// UnitExpr::toString writes for a plain number given the document's unit
+    /// ("(count in)"), and which did not read back.
     std::unique_ptr<Expression> withUnit(std::unique_ptr<Expression> value) {
         if (m_hasError || !value || m_current.type != TokenType::Identifier ||
             !UnitExpr::factor(m_current.text)) {
@@ -602,7 +637,7 @@ private:
         return node<UnitExpr>(std::move(value), std::move(unit));
     }
 
-    // primary = NUMBER unit? | IDENTIFIER '(' args ')' | IDENTIFIER
+    // primary = NUMBER unit? | IDENTIFIER '(' args ')' unit? | IDENTIFIER unit?
     //         | '(' expression ')' unit?
     std::unique_ptr<Expression> parsePrimary() {
         if (m_hasError) return nullptr;
@@ -641,16 +676,16 @@ private:
                 }
 
                 if (!expect(TokenType::RParen)) return nullptr;
-                return node<FunctionCallExpr>(name, std::move(args));
+                return withUnit(node<FunctionCallExpr>(name, std::move(args)));
             }
 
             // Built-in constant: pi
             if (name == "pi") {
-                return node<LiteralExpr>(3.14159265358979323846);
+                return withUnit(node<LiteralExpr>(3.14159265358979323846));
             }
 
             // Variable reference
-            return node<VariableExpr>(name);
+            return withUnit(node<VariableExpr>(name));
         }
 
         // '(' expression ')'
