@@ -103,6 +103,11 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **Modeling fixes.**
+  - Sweep and Loft take a sketch with a dimension, text or a hatch on it,
+    as Extrude and Revolve do. A circle with its radius dimensioned was
+    refused ("a circle cannot be joined to other curves"), and so was a
+    profile with a note.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

@@ -105,6 +105,25 @@ static Curves asCurves(const std::vector<std::shared_ptr<draft::DraftEntity>>& e
     return out;
 }
 
+/// A note on the sketch rather than part of its shape.
+static bool isAnnotation(const draft::DraftEntity& entity) {
+    return dynamic_cast<const draft::DraftText*>(&entity) != nullptr ||
+           dynamic_cast<const draft::DraftDimension*>(&entity) != nullptr ||  // leaders too
+           dynamic_cast<const draft::DraftHatch*>(&entity) != nullptr;
+}
+
+/// @p entities without the notes on the sketch (text, dimensions, leaders,
+/// hatches) and its construction geometry: the shape a profile is made of.
+static std::vector<std::shared_ptr<draft::DraftEntity>> shapeOf(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& entities) {
+    std::vector<std::shared_ptr<draft::DraftEntity>> shape;
+    shape.reserve(entities.size());
+    for (const auto& entity : entities) {
+        if (entity && !isAnnotation(*entity) && !entity->construction()) shape.push_back(entity);
+    }
+    return shape;
+}
+
 static bool pointsMatch(const Vec2& a, const Vec2& b, double tolerance) {
     const double dx = a.x - b.x;
     const double dy = a.y - b.y;
@@ -198,7 +217,9 @@ static std::optional<Vec2> selfCrossing(const std::vector<Vec2>& loop, double to
 ProfileValidationResult ProfileValidator::validate(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& input, double tolerance) {
     ProfileValidationResult result;
-    const Curves curves = asCurves(input);
+    // A dimension or a note is drawn into the sketch being edited, so a
+    // profile swept or lofted from it carries them; they are not its shape.
+    const Curves curves = asCurves(shapeOf(input));
     const std::vector<std::shared_ptr<draft::DraftEntity>>& entities = curves.curves;
 
     if (entities.empty()) {
@@ -300,13 +321,6 @@ ProfileValidationResult ProfileValidator::validate(
 
 namespace {
 
-/// A note on the sketch rather than part of its shape.
-bool isAnnotation(const draft::DraftEntity& entity) {
-    return dynamic_cast<const draft::DraftText*>(&entity) != nullptr ||
-           dynamic_cast<const draft::DraftDimension*>(&entity) != nullptr ||  // leaders too
-           dynamic_cast<const draft::DraftHatch*>(&entity) != nullptr;
-}
-
 /// A closed loop found among the curves, with its outline for nesting.
 struct FoundLoop {
     ProfileValidationResult loop;
@@ -371,10 +385,7 @@ std::optional<Vec2> loopsMeet(const std::vector<Vec2>& a, const std::vector<Vec2
 ProfileRegions ProfileValidator::regions(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& input, double tolerance) {
     ProfileRegions result;
-    std::vector<std::shared_ptr<draft::DraftEntity>> shape;
-    for (const auto& entity : input) {
-        if (entity && !isAnnotation(*entity) && !entity->construction()) shape.push_back(entity);
-    }
+    const std::vector<std::shared_ptr<draft::DraftEntity>> shape = shapeOf(input);
     if (shape.empty()) {
         result.errorMessage = "the profile is empty";
         return result;

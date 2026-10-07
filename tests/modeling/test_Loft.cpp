@@ -2,10 +2,13 @@
 
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
@@ -125,6 +128,22 @@ TEST(LoftTest, MismatchedVertexCountRejected) {
         {tri, planeAtZ(8.0)},
     };
     EXPECT_EQ(Loft::execute(sections, "loft_bad"), nullptr);
+}
+
+// A section's sketch may carry dimensions and notes: they are not its shape.
+TEST(LoftTest, DimensionsAndNotesOnASectionAreLeftOut) {
+    auto dimensioned = squareProfile(4.0);
+    dimensioned.push_back(std::make_shared<DraftLinearDimension>(
+        Vec2(-2, -2), Vec2(2, -2), Vec2(0, -4), DraftLinearDimension::Orientation::Horizontal));
+    dimensioned.push_back(std::make_shared<DraftText>(Vec2(0, 3), "base"));
+    std::vector<LoftSection> sections = {
+        {dimensioned, planeAtZ(0.0)},
+        {squareProfile(4.0), planeAtZ(10.0)},
+    };
+    std::string why;
+    auto solid = Loft::execute(sections, "loft_noted", Loft::kDefaultTwistSegments, &why);
+    ASSERT_NE(solid, nullptr) << why;
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, 160.0, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
