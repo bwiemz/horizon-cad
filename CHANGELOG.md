@@ -111,6 +111,12 @@ work, not "post-1.0".
   - Draft drops the cylinders and circles a part had before it. Shelled, a
     drafted cylinder's wall was thinner at the top than at the bottom, and
     mates and the ideal mass properties saw the cylinder as it was.
+  - Tangent, Distance and Angle mates on a flat face measure from its
+    outside. On a box's bottom, back and left faces, an extrusion's bottom
+    cap and the sides of a profile drawn clockwise they measured from the
+    inside: a cylinder made tangent to a box's left face went into the box.
+    A saved Distance or Angle mate on such a face now measures the other
+    way.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
