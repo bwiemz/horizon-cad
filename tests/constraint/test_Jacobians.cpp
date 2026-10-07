@@ -96,6 +96,8 @@ TEST(ConstraintJacobian, EachMatchesItsResidualsOnLinesAndCircles) {
         {"a and b", std::make_shared<cstr::ParallelConstraint>(edge(a), edge(b))},
         {"a and b", std::make_shared<cstr::AngleConstraint>(edge(a), edge(b), 0.7)},
         {"a and c", std::make_shared<cstr::TangentConstraint>(edge(a), rim(c))},
+        {"the arc and a, on a's other side",
+         std::make_shared<cstr::TangentConstraint>(rim(arc), edge(a))},
         {"b and the arc", std::make_shared<cstr::TangentConstraint>(edge(b), rim(arc))},
         {"a and b", std::make_shared<cstr::EqualConstraint>(edge(a), edge(b))},
         {"c and the arc", std::make_shared<cstr::EqualConstraint>(rim(c), rim(arc))},

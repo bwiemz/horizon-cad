@@ -67,6 +67,8 @@ private:
                                   const ConstraintSystem& constraints) const;
 
     int m_maxIterations = 100;
+    /// The norm of the residuals (lengths and angles) at which a solve is
+    /// met, once rounding is allowed for (SketchSolver.cpp, residualsMet()).
     double m_tolerance = 1e-10;
     double m_damping = 1.0;
 };

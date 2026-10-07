@@ -27,6 +27,12 @@ static std::vector<uint64_t> uniqueIds(uint64_t a, uint64_t b) {
     return {a, b};
 }
 
+/// @p v over its length; nothing for a zero vector, which has no direction.
+static math::Vec2 unit(const math::Vec2& v) {
+    const double len = v.length();
+    return len > 0.0 ? v / len : math::Vec2{};
+}
+
 /// Add to row @p row of @p jac the derivative of an equation that depends on
 /// a line only through its direction, end - start, as @p byDirection.
 static void addByDirection(const std::pair<PointJacobian, PointJacobian>& line,
@@ -129,8 +135,11 @@ std::shared_ptr<Constraint> VerticalConstraint::clone() const {
 }
 
 // ---------------------------------------------------------------------------
-// PerpendicularConstraint: d1.dot(d2) == 0  (1 eq)
+// PerpendicularConstraint: d1.dot(d2) / (|d1| |d2|) == 0  (1 eq)
 // d1 = lineA.end - lineA.start,  d2 = lineB.end - lineB.start
+// The cosine of the angle between them, as the angle constraint's residual
+// is an angle: d1.dot(d2) alone was a length squared, and the solver's
+// tolerance is absolute.
 // ---------------------------------------------------------------------------
 
 PerpendicularConstraint::PerpendicularConstraint(const GeometryRef& lineA, const GeometryRef& lineB)
@@ -144,22 +153,27 @@ void PerpendicularConstraint::evaluate(const ParameterTable& params, Eigen::Vect
                                        int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
-    double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
-    double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
-    residuals(offset) = dx1 * dx2 + dy1 * dy2;
+    const math::Vec2 d1 = eA - sA, d2 = eB - sB;
+    const double n = d1.length() * d2.length();
+    // A line of no length has no direction to hold.
+    residuals(offset) = n > 0.0 ? d1.dot(d2) / n : 0.0;
 }
 
 void PerpendicularConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                        int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
-    double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
-    double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
+    const math::Vec2 d1 = eA - sA, d2 = eB - sB;
+    const double n1 = d1.length(), n2 = d2.length();
+    if (n1 == 0.0 || n2 == 0.0) return;
 
-    // F = dx1*dx2 + dy1*dy2
-    // dF/d(d1) = d2,  dF/d(d2) = d1
-    addByDirection(params.lineJacobian(m_lineA), jac, offset, {dx2, dy2});
-    addByDirection(params.lineJacobian(m_lineB), jac, offset, {dx1, dy1});
+    // F = d1.d2 / (n1 n2)
+    // dF/d(d1) = d2 / (n1 n2) - F d1 / n1^2,  dF/d(d2) = d1 / (n1 n2) - F d2 / n2^2
+    const double f = d1.dot(d2) / (n1 * n2);
+    addByDirection(params.lineJacobian(m_lineA), jac, offset,
+                   d2 / (n1 * n2) - d1 * (f / (n1 * n1)));
+    addByDirection(params.lineJacobian(m_lineB), jac, offset,
+                   d1 / (n1 * n2) - d2 * (f / (n2 * n2)));
 }
 
 std::shared_ptr<Constraint> PerpendicularConstraint::clone() const {
@@ -167,8 +181,9 @@ std::shared_ptr<Constraint> PerpendicularConstraint::clone() const {
 }
 
 // ---------------------------------------------------------------------------
-// ParallelConstraint: d1.cross(d2) == 0  (1 eq)
+// ParallelConstraint: d1.cross(d2) / (|d1| |d2|) == 0  (1 eq)
 // cross = dx1*dy2 - dy1*dx2
+// The sine of the angle between them, as Perpendicular takes its cosine.
 // ---------------------------------------------------------------------------
 
 ParallelConstraint::ParallelConstraint(const GeometryRef& lineA, const GeometryRef& lineB)
@@ -182,22 +197,27 @@ void ParallelConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd&
                                   int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
-    double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
-    double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
-    residuals(offset) = dx1 * dy2 - dy1 * dx2;
+    const math::Vec2 d1 = eA - sA, d2 = eB - sB;
+    const double n = d1.length() * d2.length();
+    residuals(offset) = n > 0.0 ? d1.cross(d2) / n : 0.0;
 }
 
 void ParallelConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                   int offset) const {
     auto [sA, eA] = params.lineEndpoints(m_lineA);
     auto [sB, eB] = params.lineEndpoints(m_lineB);
-    double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
-    double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
+    const math::Vec2 d1 = eA - sA, d2 = eB - sB;
+    const double n1 = d1.length(), n2 = d2.length();
+    if (n1 == 0.0 || n2 == 0.0) return;
 
-    // F = dx1*dy2 - dy1*dx2
-    // dF/d(d1) = (dy2, -dx2),  dF/d(d2) = (-dy1, dx1)
-    addByDirection(params.lineJacobian(m_lineA), jac, offset, {dy2, -dx2});
-    addByDirection(params.lineJacobian(m_lineB), jac, offset, {-dy1, dx1});
+    // F = (dx1*dy2 - dy1*dx2) / (n1 n2)
+    // dF/d(d1) = (dy2, -dx2) / (n1 n2) - F d1 / n1^2
+    // dF/d(d2) = (-dy1, dx1) / (n1 n2) - F d2 / n2^2
+    const double f = d1.cross(d2) / (n1 * n2);
+    addByDirection(params.lineJacobian(m_lineA), jac, offset,
+                   math::Vec2{d2.y, -d2.x} / (n1 * n2) - d1 * (f / (n1 * n1)));
+    addByDirection(params.lineJacobian(m_lineB), jac, offset,
+                   math::Vec2{-d1.y, d1.x} / (n1 * n2) - d2 * (f / (n2 * n2)));
 }
 
 std::shared_ptr<Constraint> ParallelConstraint::clone() const {
@@ -205,9 +225,12 @@ std::shared_ptr<Constraint> ParallelConstraint::clone() const {
 }
 
 // ---------------------------------------------------------------------------
-// TangentConstraint: signed_dist(line, center)^2 - radius^2 == 0  (1 eq)
-// signed_dist = ((center - lineStart) cross d) / |d|
-// F = ((cx-sx)*(ey-sy) - (cy-sy)*(ex-sx))^2 - r^2 * ((ex-sx)^2 + (ey-sy)^2)
+// TangentConstraint: |signed_dist(line, center)| - radius == 0  (1 eq)
+// signed_dist = ((center - lineStart) cross d) / |d|,  d = lineEnd - lineStart
+// A length, as the solver's tolerance is. It was signed_dist^2 |d|^2 -
+// radius^2 |d|^2, a length to the fourth: for a line of 300 on a circle of
+// 500 about 2e10, whose last place alone (4e-6) is 40,000 times the
+// tolerance. Either side of the line is tangent, as before.
 // ---------------------------------------------------------------------------
 
 TangentConstraint::TangentConstraint(const GeometryRef& refA, const GeometryRef& refB)
@@ -230,68 +253,36 @@ void TangentConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& 
                                  int offset) const {
     auto [s, e] = params.lineEndpoints(m_lineRef);
     auto [center, radius] = params.circleData(m_circleRef);
-    double dx = e.x - s.x, dy = e.y - s.y;
-    double cross = (center.x - s.x) * dy - (center.y - s.y) * dx;
-    double lenSq = dx * dx + dy * dy;
-    // F = cross^2 - radius^2 * lenSq == 0
-    residuals(offset) = cross * cross - radius * radius * lenSq;
+    const math::Vec2 d = e - s;
+    const double len = d.length();
+    // A line of no length has no direction to be tangent along.
+    residuals(offset) = len > 0.0 ? std::abs((center - s).cross(d)) / len - radius : 0.0;
 }
 
 void TangentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                  int offset) const {
     auto [s, e] = params.lineEndpoints(m_lineRef);
     auto [center, radius] = params.circleData(m_circleRef);
-    double dx = e.x - s.x, dy = e.y - s.y;
-    double dcx = center.x - s.x, dcy = center.y - s.y;
-    double cross = dcx * dy - dcy * dx;
-    double lenSq = dx * dx + dy * dy;
+    const math::Vec2 d = e - s, dc = center - s;
+    const double len = d.length();
+    const int iC = params.parameterIndex(m_circleRef);  // [cx, cy, r]
+    // dF/d(r) = -1
+    jac(offset, iC + 2) += -1.0;
+    if (len == 0.0) return;
 
+    // F = sign * h - r,  h = cross / len,  cross = dc.cross(d) = dcx*dy - dcy*dx,
+    // sign the side of the line the centre is on (+ on it).
+    // d(cross)/d(s) = (dcy - dy, dx - dcx),  d(cross)/d(e) = (-dcy, dcx),
+    // d(cross)/d(c) = (dy, -dx);  d(len)/d(s) = -d / len,  d(len)/d(e) = d / len.
+    // dh/d(var) = d(cross)/d(var) / len - cross d(len)/d(var) / len^2
+    const double cross = dc.cross(d);
+    const double sign = cross < 0.0 ? -1.0 : 1.0;
+    const double k = cross / (len * len * len);
     const auto [jS, jE] = params.lineJacobian(m_lineRef);
-    int iC = params.parameterIndex(m_circleRef);  // [cx, cy, r]
-
-    // F = cross^2 - r^2 * lenSq
-    // d(cross)/d(sx) = -dy,  d(cross)/d(sy) = dx
-    // d(cross)/d(ex) = dcy,  d(cross)/d(ey) = -dcx  (wait, let me re-derive)
-    // cross = (cx-sx)*dy - (cy-sy)*dx = (cx-sx)*(ey-sy) - (cy-sy)*(ex-sx)
-    // d(cross)/d(sx) = -(ey-sy) + (cy-sy)*(-(-1)) = -dy + (cy-sy) ... no, let's be careful
-    // cross = (cx-sx)*(ey-sy) - (cy-sy)*(ex-sx)
-    // d(cross)/d(sx) = -(ey-sy) - (-(cy-sy)) = -dy + dcy = -(dy - dcy)
-    // Wait: cross = dcx*dy - dcy*dx where dcx=cx-sx, dcy=cy-sy, dx=ex-sx, dy=ey-sy
-    // d(cross)/d(sx): dcx depends on sx as d(dcx)/d(sx) = -1, dx depends on sx as d(dx)/d(sx) = -1
-    //   = -1*dy + dcx*0 - (dcy*(-1) + 0*dx) = -dy + dcy
-    // d(cross)/d(sy): d(dcy)/d(sy) = -1, d(dy)/d(sy) = -1
-    //   = dcx*(-1) - (-1*dx) = -dcx + dx = dx - dcx
-    // d(cross)/d(ex): d(dx)/d(ex) = 1
-    //   = 0 - dcy*1 = -dcy
-    // d(cross)/d(ey): d(dy)/d(ey) = 1
-    //   = dcx*1 - 0 = dcx
-    // d(cross)/d(cx): d(dcx)/d(cx) = 1
-    //   = 1*dy = dy
-    // d(cross)/d(cy): d(dcy)/d(cy) = 1
-    //   = -1*dx = -dx
-
-    double dc_dsx = -dy + dcy;
-    double dc_dsy = dx - dcx;
-    double dc_dex = -dcy;
-    double dc_dey = dcx;
-    double dc_dcx = dy;
-    double dc_dcy = -dx;
-
-    // d(lenSq)/d(sx) = -2*dx, d(lenSq)/d(sy) = -2*dy
-    // d(lenSq)/d(ex) = 2*dx,  d(lenSq)/d(ey) = 2*dy
-    double dl_dsx = -2.0 * dx, dl_dsy = -2.0 * dy;
-    double dl_dex = 2.0 * dx, dl_dey = 2.0 * dy;
-
-    // dF/d(var) = 2*cross*d(cross)/d(var) - r^2*d(lenSq)/d(var)
-    double r2 = radius * radius;
-    jS.addTo(jac, offset, {2.0 * cross * dc_dsx - r2 * dl_dsx, 2.0 * cross * dc_dsy - r2 * dl_dsy});
-    jE.addTo(jac, offset, {2.0 * cross * dc_dex - r2 * dl_dex, 2.0 * cross * dc_dey - r2 * dl_dey});
-
-    // dF/d(cx) = 2*cross*dy, dF/d(cy) = 2*cross*(-dx)
-    jac(offset, iC + 0) += 2.0 * cross * dc_dcx;
-    jac(offset, iC + 1) += 2.0 * cross * dc_dcy;
-    // dF/d(r) = -2*r*lenSq
-    jac(offset, iC + 2) += -2.0 * radius * lenSq;
+    jS.addTo(jac, offset, math::Vec2{dc.y - d.y, d.x - dc.x} * (sign / len) + d * (sign * k));
+    jE.addTo(jac, offset, math::Vec2{-dc.y, dc.x} * (sign / len) - d * (sign * k));
+    jac(offset, iC + 0) += sign * d.y / len;
+    jac(offset, iC + 1) += -sign * d.x / len;
 }
 
 std::shared_ptr<Constraint> TangentConstraint::clone() const {
@@ -300,7 +291,8 @@ std::shared_ptr<Constraint> TangentConstraint::clone() const {
 
 // ---------------------------------------------------------------------------
 // EqualConstraint: equal length (lines) or equal radius (circles)  (1 eq)
-// Lines:   |d1|^2 - |d2|^2 == 0
+// Lines:   |d1| - |d2| == 0  (a length, as the radii's is; the squares
+//          were a length squared)
 // Circles: r1 - r2 == 0
 // ---------------------------------------------------------------------------
 
@@ -322,9 +314,7 @@ void EqualConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& re
     if (m_refA.featureType == FeatureType::Line) {
         auto [sA, eA] = params.lineEndpoints(m_refA);
         auto [sB, eB] = params.lineEndpoints(m_refB);
-        double lenSqA = (eA.x - sA.x) * (eA.x - sA.x) + (eA.y - sA.y) * (eA.y - sA.y);
-        double lenSqB = (eB.x - sB.x) * (eB.x - sB.x) + (eB.y - sB.y) * (eB.y - sB.y);
-        residuals(offset) = lenSqA - lenSqB;
+        residuals(offset) = (eA - sA).length() - (eB - sB).length();
     } else {
         auto [cA, rA] = params.circleData(m_refA);
         auto [cB, rB] = params.circleData(m_refB);
@@ -337,11 +327,10 @@ void EqualConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& ja
     if (m_refA.featureType == FeatureType::Line) {
         auto [sA, eA] = params.lineEndpoints(m_refA);
         auto [sB, eB] = params.lineEndpoints(m_refB);
-        double dxA = eA.x - sA.x, dyA = eA.y - sA.y;
-        double dxB = eB.x - sB.x, dyB = eB.y - sB.y;
-        // F = lenSqA - lenSqB:  dF/d(dA) = 2 dA,  dF/d(dB) = -2 dB
-        addByDirection(params.lineJacobian(m_refA), jac, offset, {2.0 * dxA, 2.0 * dyA});
-        addByDirection(params.lineJacobian(m_refB), jac, offset, {-2.0 * dxB, -2.0 * dyB});
+        // F = |dA| - |dB|:  dF/d(dA) = dA / |dA|,  dF/d(dB) = -dB / |dB| (none
+        // for a line of no length, which has no direction to grow along)
+        addByDirection(params.lineJacobian(m_refA), jac, offset, unit(eA - sA));
+        addByDirection(params.lineJacobian(m_refB), jac, offset, -unit(eB - sB));
     } else {
         int iA = params.parameterIndex(m_refA);
         int iB = params.parameterIndex(m_refB);
@@ -385,8 +374,13 @@ std::shared_ptr<Constraint> FixedConstraint::clone() const {
 }
 
 // ---------------------------------------------------------------------------
-// DistanceConstraint: dist(A,B)^2 - value^2 == 0  (1 eq)
-// Using squared form to avoid sqrt singularity at zero distance.
+// DistanceConstraint: dist(A,B) - |value| == 0  (1 eq)
+// A length, as the solver's tolerance is. The squared form, dist^2 -
+// value^2, was a length squared: met, at a distance of 1000, its rounding
+// alone (one unit in the last place of a million) was more than the
+// tolerance. Nor did it spare the square root's corner at zero distance: its
+// derivative, 2 (A - B), is zero there too, and a distance of 0 was taken as
+// met with the points up to 1e-5 apart.
 // ---------------------------------------------------------------------------
 
 DistanceConstraint::DistanceConstraint(const GeometryRef& refA, const GeometryRef& refB,
@@ -401,18 +395,18 @@ void DistanceConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd&
                                   int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
-    double dx = pA.x - pB.x, dy = pA.y - pB.y;
-    residuals(offset) = dx * dx + dy * dy - m_distance * m_distance;
+    residuals(offset) = (pA - pB).length() - std::abs(m_distance);
 }
 
 void DistanceConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                   int offset) const {
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
-    double dx = pA.x - pB.x, dy = pA.y - pB.y;
-    // F = dx^2 + dy^2 - d^2
-    params.pointJacobian(m_refA).addTo(jac, offset, {2.0 * dx, 2.0 * dy});
-    params.pointJacobian(m_refB).addTo(jac, offset, {-2.0 * dx, -2.0 * dy});
+    // F = |A - B| - |value|:  dF/dA = (A - B) / |A - B| = -dF/dB, none where
+    // the points meet
+    const math::Vec2 u = unit(pA - pB);
+    params.pointJacobian(m_refA).addTo(jac, offset, u);
+    params.pointJacobian(m_refB).addTo(jac, offset, -u);
 }
 
 std::shared_ptr<Constraint> DistanceConstraint::clone() const {

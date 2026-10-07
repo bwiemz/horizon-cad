@@ -5,6 +5,7 @@
 #include <Eigen/SparseQR>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <set>
@@ -17,6 +18,32 @@
 #include "horizon/constraint/ParameterTable.h"
 
 namespace hz::cstr {
+
+namespace {
+
+/// How many units in the last place of its parameters a met residual may
+/// still be off by: what rounding them, and the arithmetic on them, leaves.
+constexpr double kRoundingUlps = 4.0;
+
+/// Whether residuals @p f are met, to @p tolerance, at parameters @p x with
+/// Jacobian @p j.
+///
+/// Each residual is a length or an angle (see Constraint.cpp), so one
+/// absolute tolerance suits them all at the sizes a sketch is drawn at. Far
+/// from the origin it does not: in survey coordinates (5e6) one unit in the
+/// last place of a coordinate is 9e-10, nine times the tolerance, and a met
+/// coincidence was a failure. So what rounding the parameters can leave in
+/// each residual (the change one unit in the last place of each makes, by
+/// the Jacobian) is taken off it first. Where the sketch is drawn that is
+/// far below the tolerance, and changes nothing.
+bool residualsMet(const Eigen::VectorXd& f, const Eigen::MatrixXd& j, const Eigen::VectorXd& x,
+                  double tolerance) {
+    const double eps = std::numeric_limits<double>::epsilon();
+    const Eigen::VectorXd rounding = kRoundingUlps * eps * (j.cwiseAbs() * x.cwiseAbs());
+    return (f.cwiseAbs() - rounding).cwiseMax(0.0).norm() < tolerance;
+}
+
+}  // namespace
 
 SketchSolver::SketchSolver() = default;
 
@@ -93,10 +120,10 @@ SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSyst
         double currentNorm = F.norm();
         result.residualNorm = currentNorm;
         result.iterations = iter + 1;
+        Eigen::MatrixXd J = buildJacobian(params, constraints);
 
-        if (currentNorm < m_tolerance) {
+        if (residualsMet(F, J, params.values(), m_tolerance)) {
             // Check degrees of freedom
-            Eigen::MatrixXd J = buildJacobian(params, constraints);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
             const int rank = static_cast<int>(qr.rank());
             result.degreesOfFreedom = n - params.fixedCount() - rank;
@@ -111,8 +138,6 @@ SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSyst
             }
             return result;
         }
-
-        Eigen::MatrixXd J = buildJacobian(params, constraints);
 
         // Gauss-Newton with Levenberg-Marquardt damping:
         // (J^T J + lambda * I) * dx = -J^T F

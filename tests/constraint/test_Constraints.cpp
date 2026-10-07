@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Eigen/Dense>
+#include <cmath>
 #include <stdexcept>
 
 #include "horizon/constraint/Constraint.h"
@@ -163,7 +164,7 @@ TEST(Constraints, DistanceResidual) {
     Eigen::VectorXd F = Eigen::VectorXd::Zero(1);
     dc.evaluate(params, F, 0);
 
-    // dist^2 - value^2 = 25 - 25 = 0.
+    // dist - value = 5 - 5 = 0.
     EXPECT_NEAR(F(0), 0.0, 1e-10);
 }
 
@@ -181,8 +182,8 @@ TEST(Constraints, DistanceResidualNonZero) {
     Eigen::VectorXd F = Eigen::VectorXd::Zero(1);
     dc.evaluate(params, F, 0);
 
-    // dist^2 - value^2 = 25 - 100 = -75.
-    EXPECT_NEAR(F(0), -75.0, 1e-10);
+    // dist - value = 5 - 10 = -5: a length, as the solver's tolerance is.
+    EXPECT_NEAR(F(0), -5.0, 1e-10);
 }
 
 TEST(Constraints, ClonePreservesType) {
@@ -275,4 +276,38 @@ TEST(Constraints, TangentAndEqualRefuseAPairTheyCannotHold) {
     EXPECT_NO_THROW((void)std::make_shared<Tangent>(circleA, lineA));
     EXPECT_NO_THROW((void)std::make_shared<Equal>(lineA, lineB));
     EXPECT_NO_THROW((void)std::make_shared<Equal>(circleA, circleB));
+}
+
+// Each residual is a length or an angle, so one tolerance suits them all.
+// Distance, equal lengths, perpendicular and parallel were lengths squared,
+// and a tangent a length to the fourth: met, at ordinary sizes, their
+// rounding alone was more than the tolerance.
+TEST(Constraints, EachResidualIsALengthOrAnAngle) {
+    draft::DraftLine across(math::Vec2(-10, 0), math::Vec2(10, 0));               // 20 long
+    draft::DraftLine slope(math::Vec2(0, 0), math::Vec2(5, 5 * std::sqrt(3.0)));  // 10, at 60 deg
+    draft::DraftCircle circle(math::Vec2(0, 8), 5.0);
+    cstr::ParameterTable params;
+    params.registerEntity(across);
+    params.registerEntity(slope);
+    params.registerEntity(circle);
+    const cstr::GeometryRef a{across.id(), cstr::FeatureType::Line, 0};
+    const cstr::GeometryRef b{slope.id(), cstr::FeatureType::Line, 0};
+    const cstr::GeometryRef c{circle.id(), cstr::FeatureType::Circle, 0};
+    const auto residual = [&](const cstr::Constraint& k) {
+        Eigen::VectorXd f = Eigen::VectorXd::Zero(1);
+        k.evaluate(params, f, 0);
+        return f(0);
+    };
+    EXPECT_NEAR(residual(cstr::TangentConstraint(a, c)), 8.0 - 5.0, 1e-12)
+        << "centre to line, less r";
+    EXPECT_NEAR(residual(cstr::EqualConstraint(a, b)), 20.0 - 10.0, 1e-12);
+    EXPECT_NEAR(residual(cstr::PerpendicularConstraint(a, b)), 0.5, 1e-12) << "cos 60 deg";
+    EXPECT_NEAR(residual(cstr::ParallelConstraint(a, b)), std::sqrt(3.0) / 2, 1e-12)
+        << "sin 60 deg";
+    const cstr::GeometryRef start{across.id(), cstr::FeatureType::Point, 0};
+    const cstr::GeometryRef end{across.id(), cstr::FeatureType::Point, 1};
+    EXPECT_NEAR(residual(cstr::DistanceConstraint(start, end, 25.0)), 20.0 - 25.0, 1e-12);
+    // A distance read from a variable that came out negative is its size, as
+    // the squared form took it.
+    EXPECT_NEAR(residual(cstr::DistanceConstraint(start, end, -20.0)), 0.0, 1e-12);
 }
