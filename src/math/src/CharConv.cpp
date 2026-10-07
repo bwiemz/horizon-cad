@@ -6,6 +6,7 @@
 
 #include "horizon/math/CharConv.h"
 
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <clocale>
@@ -27,6 +28,18 @@ std::from_chars_result fromChars(const char* first, const char* last, double& va
 #else
     return detail::fromCharsPortable(first, last, value);
 #endif
+}
+
+std::string toDecimalString(double value) {
+    if (std::isnan(value)) return "nan";
+    if (std::isinf(value)) return value < 0.0 ? "-inf" : "inf";
+    // The longest plain decimal a double has is the smallest denormal's: a
+    // sign, "0." and 1074 digits.
+    std::array<char, 1100> buffer{};
+    const auto [end, error] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value,
+                                            std::chars_format::fixed);
+    if (error != std::errc()) return "0";
+    return std::string(buffer.data(), end);
 }
 
 namespace detail {

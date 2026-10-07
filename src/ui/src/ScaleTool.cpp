@@ -4,6 +4,7 @@
 #include <QMouseEvent>
 #include <algorithm>
 #include <cmath>
+#include <system_error>
 
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
@@ -14,6 +15,7 @@
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Intersection.h"
+#include "horizon/math/CharConv.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -144,8 +146,12 @@ bool ScaleTool::keyPressEvent(QKeyEvent* event) {
         if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
             if (!m_factorInput.empty() && m_viewport && m_viewport->document()) {
                 try {
-                    double factor = std::stod(m_factorInput);
-                    if (factor < 1e-6) {
+                    // In the C locale: std::stod follows the one Qt sets from
+                    // the environment, and under de_DE scaled by 1 for "1.5".
+                    double factor = 0.0;
+                    const char* last = m_factorInput.data() + m_factorInput.size();
+                    const auto [end, error] = math::fromChars(m_factorInput.data(), last, factor);
+                    if (error != std::errc() || end != last || factor < 1e-6) {
                         m_factorInput.clear();
                         return true;
                     }

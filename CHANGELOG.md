@@ -122,6 +122,24 @@ work, not "post-1.0".
     degree 1 comes in as a polyline.
   - A polyline bulge too large for an arc comes in as a straight segment,
     not an arc with no centre.
+- **Numbers typed with a point read the same in every language.** Under
+  a German or French locale, where the C library's decimal separator is a
+  comma, an expression read "1.5" as 1 and "x * 2.75" as x * 2, with no
+  error; Scale's typed factor did the same. Numbers are read with a point
+  whatever the locale.
+- **What an expression field keeps reads back.** A plain-number variable
+  given the document's unit was kept as "(count in)", a function as
+  "(sqrt(2) in)" and a small number as "5.0000000000000002e-05", none of
+  which the next build could read: the dialog accepted them and the feature
+  failed. A unit may now follow a name or a call ("count in", "sqrt(2) cm"),
+  numbers are written as plain decimals that read back exactly ("0.00005"),
+  and a long sum is written as one bracket, not one per term, so it reads
+  back however long it is. A variable's plain value is written the same way
+  in Edit ▸ Variables.
+- **A matrix of small scale has an inverse.** Inverting took any matrix
+  whose determinant was under 1e-15 for singular, so a scale of a
+  millionth, or an orthographic view hundreds of metres across, inverted to
+  the identity. Singular is now judged against the matrix's own size.
 - **A solid that runs into itself is refused.** The geometric checks each
   looked at one face or edge at a time, so a solid whose faces pass through
   each other passed them all: a sweep along a path that crosses itself
