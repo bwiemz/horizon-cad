@@ -131,8 +131,9 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftLinearDimension::arrowheadLi
     auto [a, b] = dimLineEndpoints();
     math::Vec2 dir = (b - a).normalized();
 
-    auto arrows = makeArrowhead(a, dir, style.arrowSize, style.arrowAngle);
-    auto arrows2 = makeArrowhead(b, -dir, style.arrowSize, style.arrowAngle);
+    // Each arrow points out along the dimension line to its extension line.
+    auto arrows = makeArrowhead(a, -dir, style.arrowSize, style.arrowAngle);
+    auto arrows2 = makeArrowhead(b, dir, style.arrowSize, style.arrowAngle);
     arrows.insert(arrows.end(), arrows2.begin(), arrows2.end());
     return arrows;
 }

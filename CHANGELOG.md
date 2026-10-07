@@ -132,6 +132,12 @@ work, not "post-1.0".
 - **Offset takes the side of an ellipse the cursor is on.** A cursor
   beside a long, thin ellipse was taken to be inside it, and the offset
   collapsed it.
+- **Dimension and leader arrows point the right way.** A linear or angular
+  dimension's arrows were drawn outside its extension lines, pointing in
+  (>|---|<), and a leader's away from what it points at. They now point
+  out to the extension lines (|<--->|), and a leader's at what it points
+  at; drawing sheets and exports show them so too. An angular dimension
+  can also be picked on its extension lines, not only near its arc.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

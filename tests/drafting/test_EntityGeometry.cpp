@@ -7,8 +7,12 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/drafting/DimensionStyle.h"
+#include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/DraftLeader.h"
+#include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/drafting/Intersection.h"
 
 using hz::math::Vec2;
@@ -145,4 +149,72 @@ TEST(IntersectionTest, ALineJustCrossingOrMissingACircleIsToldApart) {
     const auto ahead = hz::draft::intersectRayCircle(Vec2(1000, 1000), Vec2(0, 2), centre, radius);
     ASSERT_EQ(ahead.size(), 1u) << "from inside, only the way the ray runs";
     EXPECT_TRUE(near(ahead[0], Vec2(1000, 1050)));
+}
+
+// -- Arrowheads ----------------------------------------------------------------
+
+// A dimension's arrows sit inside its extension lines with their points on
+// them, |<---->|; they were drawn outside, pointing in, >|----|<.
+TEST(ArrowheadTest, ALinearDimensionsArrowsPointOutToItsExtensionLines) {
+    const hz::draft::DimensionStyle style;
+    const hz::draft::DraftLinearDimension dim(
+        Vec2(0, 0), Vec2(10, 0), Vec2(5, 5),
+        hz::draft::DraftLinearDimension::Orientation::Horizontal);
+    const Segments arrows = dim.arrowheadLines(style);
+    ASSERT_EQ(arrows.size(), 4u);
+    const double along = style.arrowSize * std::cos(style.arrowAngle);
+    const double across = style.arrowSize * std::sin(style.arrowAngle);
+    for (size_t i = 0; i < 4; ++i) {
+        const Vec2 tip = i < 2 ? Vec2(0, 5) : Vec2(10, 5);
+        const double inward = i < 2 ? along : -along;
+        EXPECT_TRUE(near(arrows[i].first, tip)) << i;
+        EXPECT_TRUE(near(arrows[i].second, tip + Vec2(inward, i % 2 == 0 ? across : -across)) ||
+                    near(arrows[i].second, tip + Vec2(inward, i % 2 == 0 ? -across : across)))
+            << i << ": the wing at (" << arrows[i].second.x << ", " << arrows[i].second.y << ")";
+    }
+}
+
+// An angular dimension's arrows point along its arc out to its two lines.
+TEST(ArrowheadTest, AnAngularDimensionsArrowsPointOutToItsLines) {
+    const hz::draft::DimensionStyle style;
+    const hz::draft::DraftAngularDimension dim(Vec2(0, 0), Vec2(10, 0), Vec2(0, 10), 5.0);
+    const Segments arrows = dim.arrowheadLines(style);
+    ASSERT_EQ(arrows.size(), 4u);
+    for (size_t i = 0; i < 2; ++i) {
+        EXPECT_TRUE(near(arrows[i].first, Vec2(5, 0))) << i;
+        EXPECT_GT(arrows[i].second.y, 1.0) << "the wings within the angle";
+    }
+    for (size_t i = 2; i < 4; ++i) {
+        EXPECT_TRUE(near(arrows[i].first, Vec2(0, 5))) << i;
+        EXPECT_GT(arrows[i].second.x, 1.0) << "the wings within the angle";
+    }
+}
+
+// A leader's arrow points at what it annotates, its first point, from the
+// side the leader comes from.
+TEST(ArrowheadTest, ALeadersArrowPointsAtWhatItAnnotates) {
+    const hz::draft::DimensionStyle style;
+    const hz::draft::DraftLeader leader({Vec2(0, 0), Vec2(5, 5), Vec2(9, 5)}, "Note");
+    const Segments arrows = leader.arrowheadLines(style);
+    ASSERT_EQ(arrows.size(), 2u);
+    const Vec2 back = Vec2(1, 1).normalized();
+    for (const auto& [tip, wing] : arrows) {
+        EXPECT_TRUE(near(tip, Vec2(0, 0)));
+        EXPECT_NEAR((wing - tip).dot(back), style.arrowSize * std::cos(style.arrowAngle), 1e-9)
+            << "the wings back along the leader";
+    }
+}
+
+// -- Picking an angular dimension ----------------------------------------------
+
+// An angular dimension is picked on its extension lines too; only a click at
+// the arc's distance from the vertex reached the test for them.
+TEST(AngularDimensionTest, IsPickedOnItsExtensionLines) {
+    const hz::draft::DraftAngularDimension dim(Vec2(0, 0), Vec2(10, 0), Vec2(0, 10), 5.0);
+    EXPECT_TRUE(dim.hitTest(Vec2(3, 0.05), 0.1)) << "the first line, inside the arc";
+    EXPECT_TRUE(dim.hitTest(Vec2(-0.05, 2), 0.1)) << "the second";
+    EXPECT_TRUE(dim.hitTest(Vec2(5.5, 0.05), 0.1)) << "past the arc, to the overshoot";
+    EXPECT_TRUE(dim.hitTest(Vec2(3.5355, 3.5355), 0.1)) << "the arc";
+    EXPECT_FALSE(dim.hitTest(Vec2(3, 3), 0.1)) << "inside the angle, on nothing";
+    EXPECT_FALSE(dim.hitTest(Vec2(-3.5355, -3.5355), 0.1)) << "the arc's circle, not the arc";
 }
