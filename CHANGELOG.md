@@ -122,6 +122,8 @@ work, not "post-1.0".
     fillet of one chord.
   - Extrude through all at a slant goes through the part. It could say the
     part was not in front of the sketch, or, both ways, stop short of it.
+  - A loft whose sections lie in one plane is refused, and says which: it
+    made a closed shape of no volume.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

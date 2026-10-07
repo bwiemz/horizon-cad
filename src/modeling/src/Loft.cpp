@@ -117,10 +117,35 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
         rings.push_back(std::move(ring));
     }
 
+    // Sections in one plane bound nothing between them: the sides fold flat,
+    // and the two caps were left back to back, a closed shape of no volume
+    // that passed for a solid. Nor can a loft end where it began.
+    double scale = 0.0;
+    for (const auto& ring : rings) {
+        for (const auto& p : ring) scale = std::max(scale, (p - rings.front().front()).length());
+    }
+    const double apart = 1e-9 * std::max(scale, 1.0);
+    for (size_t k = 0; k + 1 < rings.size(); ++k) {
+        const Vec3 normal = sections[k].plane.normal();
+        const Vec3 on = rings[k].front();
+        const auto& next = rings[k + 1];
+        if (std::all_of(next.begin(), next.end(),
+                        [&](const Vec3& p) { return std::abs((p - on).dot(normal)) <= apart; })) {
+            return fail("section " + std::to_string(k + 2) + " is in the plane of section " +
+                        std::to_string(k + 1) + "; a loft joins sections that are apart");
+        }
+    }
+    const Vec3 span = centroid(rings.back()) - centroid(rings.front());
+    if (span.length() <= apart) {
+        return fail(
+            "the last section is centred where the first is; a loft runs from one to "
+            "the other");
+    }
+
     // -----------------------------------------------------------------------
     // 2. Consistent winding + start-index alignment.
     // -----------------------------------------------------------------------
-    const Vec3 loftAxis = (centroid(rings.back()) - centroid(rings.front())).normalized();
+    const Vec3 loftAxis = span * (1.0 / span.length());
 
     for (size_t k = 0; k < rings.size(); ++k) {
         auto& ring = rings[k];
@@ -156,11 +181,7 @@ std::unique_ptr<topo::Solid> Loft::execute(const std::vector<LoftSection>& secti
     // `twistSegments` only decides how closely the facets hug the patch.
     // Each facet records the bilinear patch it approximates.
     // -----------------------------------------------------------------------
-    double scale = 0.0;
-    for (const auto& ring : rings) {
-        for (const auto& p : ring) scale = std::max(scale, (p - rings.front().front()).length());
-    }
-    const double planarTol = 1e-9 * std::max(scale, 1.0);
+    const double planarTol = apart;
     auto isPlanar = [planarTol](const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d) {
         const Vec3 n = (b - a).cross(c - a);
         const double len = n.length();

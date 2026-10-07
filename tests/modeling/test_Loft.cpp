@@ -146,6 +146,38 @@ TEST(LoftTest, DimensionsAndNotesOnASectionAreLeftOut) {
     EXPECT_NEAR(MassPropertiesCalculator::compute(*solid).volume, 160.0, 1e-9);
 }
 
+// Sections in one plane bound no volume: the sides between them fold flat,
+// and what was left (two caps back to back) passed for a closed solid of no
+// volume. Refused, and said.
+TEST(LoftTest, SectionsInOnePlaneAreRefused) {
+    std::string why;
+    std::vector<LoftSection> same = {
+        {squareProfile(4.0), planeAtZ(0.0)},
+        {squareProfile(4.0), planeAtZ(0.0)},
+    };
+    EXPECT_EQ(Loft::execute(same, "loft_flat", Loft::kDefaultTwistSegments, &why), nullptr);
+    EXPECT_NE(why.find("section 2 is in the plane of section 1"), std::string::npos) << why;
+
+    why.clear();
+    std::vector<LoftSection> nested = {
+        {squareProfile(4.0), planeAtZ(0.0)},
+        {squareProfile(8.0), planeAtZ(10.0)},
+        {squareProfile(2.0), planeAtZ(10.0)},
+    };
+    EXPECT_EQ(Loft::execute(nested, "loft_nested", Loft::kDefaultTwistSegments, &why), nullptr);
+    EXPECT_NE(why.find("section 3 is in the plane of section 2"), std::string::npos) << why;
+
+    // Out and back to the plane it started from.
+    why.clear();
+    std::vector<LoftSection> back = {
+        {squareProfile(4.0), planeAtZ(0.0)},
+        {squareProfile(4.0), planeAtZ(10.0)},
+        {squareProfile(4.0), planeAtZ(0.0)},
+    };
+    EXPECT_EQ(Loft::execute(back, "loft_back", Loft::kDefaultTwistSegments, &why), nullptr);
+    EXPECT_FALSE(why.empty());
+}
+
 // ---------------------------------------------------------------------------
 // InvalidInputsRejected
 // ---------------------------------------------------------------------------
