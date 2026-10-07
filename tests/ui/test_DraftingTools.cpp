@@ -19,8 +19,10 @@
 #include "horizon/constraint/Constraint.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLeader.h"
@@ -846,6 +848,63 @@ TEST(DraftingToolsTest, CopyPasteAndDuplicatePlaceCopies) {
     EXPECT_EQ(all<DraftLine>(w).size(), 1u);
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftLine>(w).size(), 2u);
+}
+
+// Pasted into another drawing, what was copied keeps its layers and its
+// blocks: a layer the drawing lacks is added, and so is a block, under its
+// own name, or a new one where the drawing has another block of that name.
+// The copies kept the names of layers the drawing did not have, and could not
+// be picked; a block reference kept the other drawing's block, which the file
+// did not have, and was lost, or bound to another block, when it was read.
+TEST(DraftingToolsTest, PastedIntoAnotherDrawingWhatWasCopiedKeepsItsLayersAndBlocks) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLayer(w, "Walls");
+    addLine(w, Vec2(0, 0), Vec2(4, 0), "Walls");
+    auto door = std::make_shared<hz::draft::BlockDefinition>();
+    door->name = "Door";
+    door->entities.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 2)));
+    w.activeDocument()->draftDocument().blockTable().addBlock(door);
+    auto placed = std::make_shared<hz::draft::DraftBlockRef>(door, Vec2(6, 0));
+    w.activeDocument()->draftDocument().addEntity(placed);
+    select(w, drive, {Vec2(2, 0), Vec2(6, 1)});
+    trigger(w, "action_copy");
+
+    // Another drawing, with a Door of its own.
+    trigger(w, "action_new");
+    hz::doc::Document& target = *w.activeDocument();
+    auto other = std::make_shared<hz::draft::BlockDefinition>();
+    other->name = "Door";
+    other->entities.push_back(std::make_shared<DraftCircle>(Vec2(0, 0), 1.0));
+    target.draftDocument().blockTable().addBlock(other);
+    viewFromTop(drive);
+    trigger(w, "action_paste");
+    drive.click(Vec2(20, 20));
+
+    const auto* walls = target.layerManager().getLayer("Walls");
+    ASSERT_NE(walls, nullptr) << "the layer added";
+    const auto pastedLines = all<DraftLine>(w);
+    ASSERT_EQ(pastedLines.size(), 1u);
+    EXPECT_EQ(pastedLines[0]->layer(), "Walls");
+    const hz::draft::DraftBlockRef* pasted = nullptr;
+    for (const auto& e : target.draftDocument().entities()) {
+        if (const auto* ref = dynamic_cast<const hz::draft::DraftBlockRef*>(e.get())) pasted = ref;
+    }
+    ASSERT_NE(pasted, nullptr);
+    const auto& table = target.draftDocument().blockTable();
+    EXPECT_NE(pasted->blockName(), "Door") << "the drawing's own Door is another block";
+    EXPECT_EQ(table.findBlock(pasted->blockName()), pasted->definition()) << "the drawing's";
+    EXPECT_NE(pasted->definition(), door) << "a copy, not the other drawing's";
+    ASSERT_EQ(pasted->definition()->entities.size(), 1u);
+    EXPECT_NE(dynamic_cast<const DraftLine*>(pasted->definition()->entities[0].get()), nullptr)
+        << "what was copied";
+    EXPECT_EQ(table.findBlock("Door"), other) << "and the drawing's own Door kept";
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(target.layerManager().getLayer("Walls"), nullptr) << "one step, undone whole";
+    EXPECT_EQ(table.size(), 1u);
+    EXPECT_TRUE(target.draftDocument().entities().empty());
 }
 
 // Fillet rounds the corner of two lines with an arc of the typed radius,

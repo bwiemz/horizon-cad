@@ -135,6 +135,13 @@ work, not "post-1.0".
   feature's profile with no rebuild, while a grip edit did not. Extruding
   the drawing unchanged again still takes that sketch, now also after the
   file is reopened.
+- **Paste into another drawing brings the layers and blocks of what was
+  copied.** A layer the drawing lacks is added, and so is a block, renamed
+  where the drawing has a different block of that name. Pasted entities
+  stayed on layers the drawing did not have, and could not be picked; a
+  block reference pointed at the other drawing's block, and was lost, or
+  shown as another block, when the file was read again. Undo takes it all
+  away in one step.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

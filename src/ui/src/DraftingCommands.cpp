@@ -78,7 +78,7 @@ void DraftingCommands::onCopy() {
     for (const auto& entity : m_host.currentDocument()->activeDrawing().entities()) {
         if (sel.isSelected(entity->id())) entities.push_back(entity);
     }
-    m_clipboard.copy(entities);
+    m_clipboard.copy(entities, &m_host.currentDocument()->layerManager());
 }
 
 void DraftingCommands::onCut() {
