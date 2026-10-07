@@ -42,7 +42,8 @@ public:
     /// recurses once per nested bracket, minus sign or power, so an unbounded
     /// input from a file (200 000 minus signs, or "1+1+...+1") would overflow
     /// the stack. Past these limits the input is rejected instead. Both are far
-    /// beyond any design-variable expression a person writes.
+    /// beyond any design-variable expression a person writes. parse() holds to
+    /// both; fromJson() to the count of nodes, which bounds its tree's depth.
     static constexpr int kMaxNestingDepth = 64;  ///< nested (), unary minus, ^
     static constexpr int kMaxNodes = 1024;       ///< numbers, names, operators, calls
 };
@@ -101,6 +102,9 @@ public:
     Op op() const { return m_op; }
     const Expression& left() const { return *m_left; }
     const Expression& right() const { return *m_right; }
+
+    /// How tightly @p op binds: + and - 1, * and / 2, ^ 3.
+    static int precedence(Op op);
 
 private:
     Op m_op;

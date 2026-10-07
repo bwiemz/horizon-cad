@@ -1,5 +1,6 @@
 #include "horizon/math/Mat4.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -218,7 +219,26 @@ Mat4 Mat4::inverse() const {
               s[8] * s[1] * s[6] - s[8] * s[2] * s[5];
 
     double det = s[0] * inv[0] + s[1] * inv[4] + s[2] * inv[8] + s[3] * inv[12];
-    if (std::abs(det) < 1e-15) return identity();
+    // Singular relative to its size: |det| is at most the product of the rows'
+    // lengths, and of the columns' (Hadamard); the smaller bound is the
+    // tighter. Against 1e-15 as it stood, a scale of 1e-6 (det 1e-18) read as
+    // singular and came back as the identity, and an orthographic view some
+    // 600 m across could not be unprojected.
+    double rows = 1.0;
+    double columns = 1.0;
+    for (int i = 0; i < 4; ++i) {
+        double row = 0.0;
+        double column = 0.0;
+        for (int j = 0; j < 4; ++j) {
+            row += m[i][j] * m[i][j];
+            column += m[j][i] * m[j][i];
+        }
+        rows *= std::sqrt(row);
+        columns *= std::sqrt(column);
+    }
+    if (!std::isfinite(det) || !(std::abs(det) > 1e-15 * std::min(rows, columns))) {
+        return identity();
+    }
 
     double invDet = 1.0 / det;
     Mat4 result;
