@@ -2,6 +2,7 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -20,7 +21,35 @@ namespace hz::cstr {
 
 class ConstraintSystem;
 
+/// How a point of an entity moves with the solver's parameters: its partial
+/// derivatives, by column. A line's end is two parameters of the table; an
+/// arc's end is made of four (its centre's two, its radius and its angle),
+/// and a constraint on it must be differentiated by all four.
+struct PointJacobian {
+    struct Term {
+        int column = 0;
+        math::Vec2 d;  ///< d(point) / d(parameter `column`)
+    };
+    std::array<Term, 4> terms{};
+    int count = 0;
+
+    void add(int column, const math::Vec2& d) { terms[static_cast<size_t>(count++)] = {column, d}; }
+
+    /// Add to row @p row of @p jac the derivative of an equation that depends
+    /// on the point as @p weight (its d/d(point.x) and d/d(point.y)).
+    void addTo(Eigen::MatrixXd& jac, int row, const math::Vec2& weight) const {
+        for (int k = 0; k < count; ++k) {
+            const Term& t = terms[static_cast<size_t>(k)];
+            jac(row, t.column) += weight.x * t.d.x + weight.y * t.d.y;
+        }
+    }
+};
+
 /// Maps DraftEntity geometry to a flat parameter vector for the solver.
+///
+/// A ref its entity does not have (a third end of a line, a vertex past a
+/// polyline's last, a circle read as a line) throws std::runtime_error from
+/// every accessor: a hand-edited file can hold one.
 class ParameterTable {
 public:
     ParameterTable() = default;
@@ -35,14 +64,24 @@ public:
 
     /// Get the parameter index for the start of a geometry feature's parameters.
     /// Point: index of [x, y]. Line: index of [startX, startY, endX, endY].
-    /// Circle: index of [centerX, centerY, radius].
+    /// Circle: index of [centerX, centerY, radius]. A feature that is not a
+    /// run of the table's parameters (an arc's end, a rectangle's corner or
+    /// edge, a closed polyline's last segment) throws std::runtime_error:
+    /// pointJacobian() and lineJacobian() say how those move.
     int parameterIndex(const GeometryRef& ref) const;
 
     /// Extract a point position from current parameter values.
     math::Vec2 pointPosition(const GeometryRef& ref) const;
 
-    /// Extract line endpoints from current parameter values.
+    /// How the point pointPosition() gives moves with the parameters.
+    PointJacobian pointJacobian(const GeometryRef& ref) const;
+
+    /// Extract line endpoints from current parameter values. A closed
+    /// polyline's last segment runs from its last point to its first.
     std::pair<math::Vec2, math::Vec2> lineEndpoints(const GeometryRef& ref) const;
+
+    /// How the two ends lineEndpoints() gives move with the parameters.
+    std::pair<PointJacobian, PointJacobian> lineJacobian(const GeometryRef& ref) const;
 
     /// Extract circle center and radius from current parameter values.
     std::pair<math::Vec2, double> circleData(const GeometryRef& ref) const;
@@ -82,6 +121,7 @@ private:
         int startIndex = 0;
         int paramCount = 0;
         std::string entityType;
+        bool closed = false;  ///< a polyline's last point joined to its first
     };
 
     Eigen::VectorXd m_values;
@@ -92,6 +132,15 @@ private:
     std::unordered_map<uint64_t, std::size_t> m_byId;
 
     const EntityParams* findEntityParams(uint64_t entityId) const;
+
+    /// @p ref's entity, or a throw when it is not registered.
+    const EntityParams& entityOf(const GeometryRef& ref) const;
+    /// Point @p index of @p ep, and how it moves if @p jac is given; throws
+    /// when @p ep has no such point.
+    math::Vec2 point(const EntityParams& ep, int index, PointJacobian* jac) const;
+    /// Segment @p index of @p ep, as point() its ends.
+    std::pair<math::Vec2, math::Vec2> segment(const EntityParams& ep, int index, PointJacobian* js,
+                                              PointJacobian* je) const;
 };
 
 }  // namespace hz::cstr

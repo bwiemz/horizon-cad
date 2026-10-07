@@ -34,6 +34,10 @@ work, not "post-1.0".
   and written there, with progress and Cancel, whatever the file's size. A
   failed or cancelled import leaves no files behind.
 - **Undoing a constraint** leaves the drawing as saved (#165).
+- **Sketch constraints that failed for no reason now solve.**
+  - A constraint on an arc's start or end could only move the arc's
+    centre, so most were reported over-constrained. The arc is now turned
+    and sized to meet it.
 - **Installed on clean machines before release.** `horizon --self-test` now
   does what a beta tester is asked to do. It models, edits, saves and reads
   back a part, sends it through STEP, places it in an assembly, and draws and

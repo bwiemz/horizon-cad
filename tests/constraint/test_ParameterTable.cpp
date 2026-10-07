@@ -1,12 +1,17 @@
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/constraint/ParameterTable.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/math/Vec2.h"
 
 using namespace hz;
@@ -117,4 +122,53 @@ TEST(ParameterTable, HasEntity) {
 
     params.registerEntity(*line);
     EXPECT_TRUE(params.hasEntity(line->id()));
+}
+
+// A ref its entity does not have is refused with an exception, as a circle
+// read as a line already was: a third end of a line, a vertex past a
+// polyline's last, an open polyline's closing segment. Each was read from
+// whatever parameters came next, another entity's or none at all.
+TEST(ParameterTable, ARefItsEntityDoesNotHaveThrows) {
+    draft::DraftLine line(math::Vec2{0, 0}, math::Vec2{10, 0});
+    draft::DraftPolyline open({math::Vec2{0, 0}, math::Vec2{5, 0}, math::Vec2{5, 5}});
+    draft::DraftCircle circle(math::Vec2{5, 5}, 3.0);
+    draft::DraftArc arc(math::Vec2{0, 0}, 4.0, 0.0, 2.0);
+    draft::DraftRectangle rect(math::Vec2{0, 0}, math::Vec2{4, 3});
+    cstr::ParameterTable params;
+    // In this order a ref past one entity's end reads the next one's
+    // parameters rather than past the table's.
+    params.registerEntity(line);
+    params.registerEntity(open);
+    params.registerEntity(circle);
+    params.registerEntity(arc);
+    params.registerEntity(rect);
+    using cstr::FeatureType;
+    const auto point = [](const draft::DraftEntity& e, int i) {
+        return cstr::GeometryRef{e.id(), FeatureType::Point, i};
+    };
+    const auto edge = [](const draft::DraftEntity& e, int i) {
+        return cstr::GeometryRef{e.id(), FeatureType::Line, i};
+    };
+    EXPECT_THROW(params.pointPosition(point(line, 2)), std::runtime_error);
+    EXPECT_THROW(params.parameterIndex(point(line, 2)), std::runtime_error);
+    EXPECT_THROW(params.pointPosition(point(open, 3)), std::runtime_error);
+    EXPECT_THROW(params.pointPosition(point(open, -1)), std::runtime_error);
+    EXPECT_THROW(params.pointPosition(point(circle, 1)), std::runtime_error);
+    EXPECT_THROW(params.pointPosition(point(arc, 3)), std::runtime_error);
+    EXPECT_THROW(params.pointPosition(point(rect, 4)), std::runtime_error);
+    EXPECT_THROW(params.lineEndpoints(edge(line, 1)), std::runtime_error);
+    EXPECT_THROW(params.lineEndpoints(edge(open, 2)), std::runtime_error)
+        << "open: no closing segment";
+    EXPECT_THROW(params.lineEndpoints(edge(rect, 4)), std::runtime_error);
+    EXPECT_THROW(params.lineEndpoints(edge(circle, 0)), std::runtime_error);
+    EXPECT_THROW(params.circleData({line.id(), FeatureType::Circle, 0}), std::runtime_error);
+
+    // What each has, it gives.
+    EXPECT_NO_THROW(params.pointPosition(point(line, 1)));
+    EXPECT_NO_THROW(params.pointPosition(point(open, 2)));
+    EXPECT_NO_THROW(params.pointPosition(point(arc, 2)));
+    EXPECT_NO_THROW(params.pointPosition(point(rect, 3)));
+    EXPECT_NO_THROW(params.lineEndpoints(edge(open, 1)));
+    EXPECT_NO_THROW(params.lineEndpoints(edge(rect, 3)));
+    EXPECT_NO_THROW(params.circleData({arc.id(), FeatureType::Circle, 0}));
 }

@@ -25,6 +25,14 @@ static std::vector<uint64_t> uniqueIds(uint64_t a, uint64_t b) {
     return {a, b};
 }
 
+/// Add to row @p row of @p jac the derivative of an equation that depends on
+/// a line only through its direction, end - start, as @p byDirection.
+static void addByDirection(const std::pair<PointJacobian, PointJacobian>& line,
+                           Eigen::MatrixXd& jac, int row, const math::Vec2& byDirection) {
+    line.first.addTo(jac, row, -byDirection);
+    line.second.addTo(jac, row, byDirection);
+}
+
 // ---------------------------------------------------------------------------
 // CoincidentConstraint: pA == pB  (2 eqs)
 // ---------------------------------------------------------------------------
@@ -46,14 +54,16 @@ void CoincidentConstraint::evaluate(const ParameterTable& params, Eigen::VectorX
 
 void CoincidentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                     int offset) const {
-    int iA = params.parameterIndex(m_pointA);
-    int iB = params.parameterIndex(m_pointB);
-    // dF0/d(pA.x) = 1,  dF0/d(pB.x) = -1
-    jac(offset + 0, iA + 0) += 1.0;
-    jac(offset + 0, iB + 0) += -1.0;
-    // dF1/d(pA.y) = 1,  dF1/d(pB.y) = -1
-    jac(offset + 1, iA + 1) += 1.0;
-    jac(offset + 1, iB + 1) += -1.0;
+    // Through each point's own Jacobian: an arc's end moves with its centre,
+    // radius and angle, not as two parameters of its own.
+    const PointJacobian jA = params.pointJacobian(m_pointA);
+    const PointJacobian jB = params.pointJacobian(m_pointB);
+    // dF0/d(pA) = (1, 0),  dF0/d(pB) = (-1, 0)
+    jA.addTo(jac, offset + 0, {1.0, 0.0});
+    jB.addTo(jac, offset + 0, {-1.0, 0.0});
+    // dF1/d(pA) = (0, 1),  dF1/d(pB) = (0, -1)
+    jA.addTo(jac, offset + 1, {0.0, 1.0});
+    jB.addTo(jac, offset + 1, {0.0, -1.0});
 }
 
 std::shared_ptr<Constraint> CoincidentConstraint::clone() const {
@@ -80,10 +90,8 @@ void HorizontalConstraint::evaluate(const ParameterTable& params, Eigen::VectorX
 
 void HorizontalConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                     int offset) const {
-    int iA = params.parameterIndex(m_refA);
-    int iB = params.parameterIndex(m_refB);
-    jac(offset, iA + 1) += 1.0;   // d/d(pA.y)
-    jac(offset, iB + 1) += -1.0;  // d/d(pB.y)
+    params.pointJacobian(m_refA).addTo(jac, offset, {0.0, 1.0});   // d/d(pA.y)
+    params.pointJacobian(m_refB).addTo(jac, offset, {0.0, -1.0});  // d/d(pB.y)
 }
 
 std::shared_ptr<Constraint> HorizontalConstraint::clone() const {
@@ -110,10 +118,8 @@ void VerticalConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd&
 
 void VerticalConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                   int offset) const {
-    int iA = params.parameterIndex(m_refA);
-    int iB = params.parameterIndex(m_refB);
-    jac(offset, iA + 0) += 1.0;   // d/d(pA.x)
-    jac(offset, iB + 0) += -1.0;  // d/d(pB.x)
+    params.pointJacobian(m_refA).addTo(jac, offset, {1.0, 0.0});   // d/d(pA.x)
+    params.pointJacobian(m_refB).addTo(jac, offset, {-1.0, 0.0});  // d/d(pB.x)
 }
 
 std::shared_ptr<Constraint> VerticalConstraint::clone() const {
@@ -148,22 +154,10 @@ void PerpendicularConstraint::jacobian(const ParameterTable& params, Eigen::Matr
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
     double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
 
-    int iA = params.parameterIndex(m_lineA);  // [sAx, sAy, eAx, eAy]
-    int iB = params.parameterIndex(m_lineB);  // [sBx, sBy, eBx, eBy]
-
     // F = dx1*dx2 + dy1*dy2
-    // dF/d(sA.x) = -dx2,  dF/d(sA.y) = -dy2
-    // dF/d(eA.x) = +dx2,  dF/d(eA.y) = +dy2
-    // dF/d(sB.x) = -dx1,  dF/d(sB.y) = -dy1
-    // dF/d(eB.x) = +dx1,  dF/d(eB.y) = +dy1
-    jac(offset, iA + 0) += -dx2;
-    jac(offset, iA + 1) += -dy2;
-    jac(offset, iA + 2) += dx2;
-    jac(offset, iA + 3) += dy2;
-    jac(offset, iB + 0) += -dx1;
-    jac(offset, iB + 1) += -dy1;
-    jac(offset, iB + 2) += dx1;
-    jac(offset, iB + 3) += dy1;
+    // dF/d(d1) = d2,  dF/d(d2) = d1
+    addByDirection(params.lineJacobian(m_lineA), jac, offset, {dx2, dy2});
+    addByDirection(params.lineJacobian(m_lineB), jac, offset, {dx1, dy1});
 }
 
 std::shared_ptr<Constraint> PerpendicularConstraint::clone() const {
@@ -198,22 +192,10 @@ void ParallelConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd&
     double dx1 = eA.x - sA.x, dy1 = eA.y - sA.y;
     double dx2 = eB.x - sB.x, dy2 = eB.y - sB.y;
 
-    int iA = params.parameterIndex(m_lineA);
-    int iB = params.parameterIndex(m_lineB);
-
     // F = dx1*dy2 - dy1*dx2
-    // dF/d(sA.x) = -dy2,  dF/d(sA.y) = +dx2
-    // dF/d(eA.x) = +dy2,  dF/d(eA.y) = -dx2
-    // dF/d(sB.x) = +dy1,  dF/d(sB.y) = -dx1
-    // dF/d(eB.x) = -dy1,  dF/d(eB.y) = +dx1
-    jac(offset, iA + 0) += -dy2;
-    jac(offset, iA + 1) += dx2;
-    jac(offset, iA + 2) += dy2;
-    jac(offset, iA + 3) += -dx2;
-    jac(offset, iB + 0) += dy1;
-    jac(offset, iB + 1) += -dx1;
-    jac(offset, iB + 2) += -dy1;
-    jac(offset, iB + 3) += dx1;
+    // dF/d(d1) = (dy2, -dx2),  dF/d(d2) = (-dy1, dx1)
+    addByDirection(params.lineJacobian(m_lineA), jac, offset, {dy2, -dx2});
+    addByDirection(params.lineJacobian(m_lineB), jac, offset, {-dy1, dx1});
 }
 
 std::shared_ptr<Constraint> ParallelConstraint::clone() const {
@@ -253,7 +235,7 @@ void TangentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& 
     double cross = dcx * dy - dcy * dx;
     double lenSq = dx * dx + dy * dy;
 
-    int iL = params.parameterIndex(m_lineRef);    // [sx, sy, ex, ey]
+    const auto [jS, jE] = params.lineJacobian(m_lineRef);
     int iC = params.parameterIndex(m_circleRef);  // [cx, cy, r]
 
     // F = cross^2 - r^2 * lenSq
@@ -291,10 +273,8 @@ void TangentConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& 
 
     // dF/d(var) = 2*cross*d(cross)/d(var) - r^2*d(lenSq)/d(var)
     double r2 = radius * radius;
-    jac(offset, iL + 0) += 2.0 * cross * dc_dsx - r2 * dl_dsx;
-    jac(offset, iL + 1) += 2.0 * cross * dc_dsy - r2 * dl_dsy;
-    jac(offset, iL + 2) += 2.0 * cross * dc_dex - r2 * dl_dex;
-    jac(offset, iL + 3) += 2.0 * cross * dc_dey - r2 * dl_dey;
+    jS.addTo(jac, offset, {2.0 * cross * dc_dsx - r2 * dl_dsx, 2.0 * cross * dc_dsy - r2 * dl_dsy});
+    jE.addTo(jac, offset, {2.0 * cross * dc_dex - r2 * dl_dex, 2.0 * cross * dc_dey - r2 * dl_dey});
 
     // dF/d(cx) = 2*cross*dy, dF/d(cy) = 2*cross*(-dx)
     jac(offset, iC + 0) += 2.0 * cross * dc_dcx;
@@ -340,19 +320,11 @@ void EqualConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& ja
     if (m_refA.featureType == FeatureType::Line) {
         auto [sA, eA] = params.lineEndpoints(m_refA);
         auto [sB, eB] = params.lineEndpoints(m_refB);
-        int iA = params.parameterIndex(m_refA);
-        int iB = params.parameterIndex(m_refB);
         double dxA = eA.x - sA.x, dyA = eA.y - sA.y;
         double dxB = eB.x - sB.x, dyB = eB.y - sB.y;
-        // F = lenSqA - lenSqB
-        jac(offset, iA + 0) += -2.0 * dxA;
-        jac(offset, iA + 1) += -2.0 * dyA;
-        jac(offset, iA + 2) += 2.0 * dxA;
-        jac(offset, iA + 3) += 2.0 * dyA;
-        jac(offset, iB + 0) += 2.0 * dxB;
-        jac(offset, iB + 1) += 2.0 * dyB;
-        jac(offset, iB + 2) += -2.0 * dxB;
-        jac(offset, iB + 3) += -2.0 * dyB;
+        // F = lenSqA - lenSqB:  dF/d(dA) = 2 dA,  dF/d(dB) = -2 dB
+        addByDirection(params.lineJacobian(m_refA), jac, offset, {2.0 * dxA, 2.0 * dyA});
+        addByDirection(params.lineJacobian(m_refB), jac, offset, {-2.0 * dxB, -2.0 * dyB});
     } else {
         int iA = params.parameterIndex(m_refA);
         int iB = params.parameterIndex(m_refB);
@@ -386,9 +358,9 @@ void FixedConstraint::evaluate(const ParameterTable& params, Eigen::VectorXd& re
 
 void FixedConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& jac,
                                int offset) const {
-    int idx = params.parameterIndex(m_pointRef);
-    jac(offset + 0, idx + 0) += 1.0;
-    jac(offset + 1, idx + 1) += 1.0;
+    const PointJacobian j = params.pointJacobian(m_pointRef);
+    j.addTo(jac, offset + 0, {1.0, 0.0});
+    j.addTo(jac, offset + 1, {0.0, 1.0});
 }
 
 std::shared_ptr<Constraint> FixedConstraint::clone() const {
@@ -421,13 +393,9 @@ void DistanceConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd&
     auto pA = params.pointPosition(m_refA);
     auto pB = params.pointPosition(m_refB);
     double dx = pA.x - pB.x, dy = pA.y - pB.y;
-    int iA = params.parameterIndex(m_refA);
-    int iB = params.parameterIndex(m_refB);
     // F = dx^2 + dy^2 - d^2
-    jac(offset, iA + 0) += 2.0 * dx;
-    jac(offset, iA + 1) += 2.0 * dy;
-    jac(offset, iB + 0) += -2.0 * dx;
-    jac(offset, iB + 1) += -2.0 * dy;
+    params.pointJacobian(m_refA).addTo(jac, offset, {2.0 * dx, 2.0 * dy});
+    params.pointJacobian(m_refB).addTo(jac, offset, {-2.0 * dx, -2.0 * dy});
 }
 
 std::shared_ptr<Constraint> DistanceConstraint::clone() const {
@@ -475,32 +443,14 @@ void AngleConstraint::jacobian(const ParameterTable& params, Eigen::MatrixXd& ja
     double denom = dot * dot + cross * cross;
     if (denom < 1e-30) return;  // Degenerate
 
-    int iA = params.parameterIndex(m_lineA);
-    int iB = params.parameterIndex(m_lineB);
-
     // theta = atan2(cross, dot)
     // d(theta)/d(var) = (dot * d(cross)/d(var) - cross * d(dot)/d(var)) / (dot^2 + cross^2)
-    // d(dot)/d(sA.x) = -dx2,  d(dot)/d(sA.y) = -dy2
-    // d(dot)/d(eA.x) = +dx2,  d(dot)/d(eA.y) = +dy2
-    // d(dot)/d(sB.x) = -dx1,  d(dot)/d(sB.y) = -dy1
-    // d(dot)/d(eB.x) = +dx1,  d(dot)/d(eB.y) = +dy1
-    // d(cross)/d(sA.x) = -dy2, d(cross)/d(sA.y) = +dx2
-    // d(cross)/d(eA.x) = +dy2, d(cross)/d(eA.y) = -dx2
-    // d(cross)/d(sB.x) = +dy1, d(cross)/d(sB.y) = -dx1
-    // d(cross)/d(eB.x) = -dy1, d(cross)/d(eB.y) = +dx1
-
-    auto addJac = [&](int col, double dDot, double dCross) {
-        jac(offset, col) += (dot * dCross - cross * dDot) / denom;
-    };
-
-    addJac(iA + 0, -dx2, -dy2);  // sA.x
-    addJac(iA + 1, -dy2, dx2);   // sA.y
-    addJac(iA + 2, dx2, dy2);    // eA.x
-    addJac(iA + 3, dy2, -dx2);   // eA.y
-    addJac(iB + 0, -dx1, dy1);   // sB.x
-    addJac(iB + 1, -dy1, -dx1);  // sB.y
-    addJac(iB + 2, dx1, -dy1);   // eB.x
-    addJac(iB + 3, dy1, dx1);    // eB.y
+    // d(dot)/d(d1) = d2,            d(dot)/d(d2) = d1
+    // d(cross)/d(d1) = (dy2, -dx2), d(cross)/d(d2) = (-dy1, dx1)
+    const math::Vec2 byD1{(dot * dy2 - cross * dx2) / denom, (-dot * dx2 - cross * dy2) / denom};
+    const math::Vec2 byD2{(-dot * dy1 - cross * dx1) / denom, (dot * dx1 - cross * dy1) / denom};
+    addByDirection(params.lineJacobian(m_lineA), jac, offset, byD1);
+    addByDirection(params.lineJacobian(m_lineB), jac, offset, byD2);
 }
 
 std::shared_ptr<Constraint> AngleConstraint::clone() const {

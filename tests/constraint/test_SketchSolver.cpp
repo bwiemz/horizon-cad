@@ -2,12 +2,14 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/constraint/ParameterTable.h"
 #include "horizon/constraint/SketchSolver.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
@@ -209,4 +211,54 @@ TEST(SketchSolver, AProjectedEdgeIsHeldWhereThePartPutsIt) {
     EXPECT_EQ(dof.totalDOF, 2);
     EXPECT_EQ(dof.entityStatus.at(edge->id()), cstr::EntityDOFStatus::FullyConstrained);
     EXPECT_EQ(dof.entityStatus.at(line->id()), cstr::EntityDOFStatus::Free);
+}
+
+// An arc's ends are met by turning and sizing the arc, not only by moving its
+// centre. Its start held level with its end was over-constrained (residual
+// 9.09), and its end on a point with its centre held (residual 3.74): the
+// Jacobian had the centre's columns alone.
+TEST(SketchSolver, AnArcsEndsAreSolvedWithItsRadiusAndAngles) {
+    {
+        draft::DraftDocument doc;
+        auto arc = std::make_shared<draft::DraftArc>(math::Vec2{0, 0}, 10.0, 0.0, 2.0);
+        doc.addEntity(arc);
+        cstr::ConstraintSystem sys;
+        sys.addConstraint(std::make_shared<cstr::HorizontalConstraint>(
+            cstr::GeometryRef{arc->id(), cstr::FeatureType::Point, 1},
+            cstr::GeometryRef{arc->id(), cstr::FeatureType::Point, 2}));
+        auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+        const auto result = cstr::SketchSolver().solve(params, sys);
+        ASSERT_TRUE(result.status == cstr::SolveStatus::Success ||
+                    result.status == cstr::SolveStatus::UnderConstrained)
+            << result.message;
+        params.applyToEntities(doc.entities());
+        EXPECT_NEAR(arc->startPoint().y, arc->endPoint().y, 1e-6);
+    }
+    {
+        draft::DraftDocument doc;
+        auto arc = std::make_shared<draft::DraftArc>(math::Vec2{0, 0}, 10.0, 0.0, 2.0);
+        auto line = std::make_shared<draft::DraftLine>(math::Vec2{6, 6}, math::Vec2{20, 20});
+        doc.addEntity(arc);
+        doc.addEntity(line);
+        cstr::ConstraintSystem sys;
+        const cstr::GeometryRef centre{arc->id(), cstr::FeatureType::Point, 0};
+        const cstr::GeometryRef end{arc->id(), cstr::FeatureType::Point, 2};
+        const cstr::GeometryRef start{line->id(), cstr::FeatureType::Point, 0};
+        sys.addConstraint(std::make_shared<cstr::FixedConstraint>(centre, math::Vec2{0, 0}));
+        sys.addConstraint(std::make_shared<cstr::FixedConstraint>(start, math::Vec2{6, 6}));
+        sys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(end, start));
+        auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+        const auto result = cstr::SketchSolver().solve(params, sys);
+        ASSERT_TRUE(result.status == cstr::SolveStatus::Success ||
+                    result.status == cstr::SolveStatus::UnderConstrained)
+            << result.message;
+        params.applyToEntities(doc.entities());
+        EXPECT_NEAR(arc->endPoint().x, 6.0, 1e-6);
+        EXPECT_NEAR(arc->endPoint().y, 6.0, 1e-6);
+        EXPECT_NEAR(arc->center().x, 0.0, 1e-9) << "held";
+        EXPECT_NEAR(arc->radius(), std::sqrt(72.0), 1e-6);
+
+        const auto dof = cstr::SketchSolver().analyzeDOF(params, sys);
+        EXPECT_NE(dof.entityStatus.at(arc->id()), cstr::EntityDOFStatus::OverConstrained);
+    }
 }
