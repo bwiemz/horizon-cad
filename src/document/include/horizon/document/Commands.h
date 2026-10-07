@@ -766,4 +766,11 @@ private:
 void adoptClones(draft::DraftDocument& doc,
                  std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
 
+/// Whether @p a and @p b draw the same: entity by entity, the same kind, in
+/// the same places (their snap points: ends, middles, centres, quadrants,
+/// vertices), guides or not alike. What tells a copy of a drawing, or of a
+/// block, from another drawing of its own.
+bool drawSame(const std::vector<std::shared_ptr<draft::DraftEntity>>& a,
+              const std::vector<std::shared_ptr<draft::DraftEntity>>& b);
+
 }  // namespace hz::doc

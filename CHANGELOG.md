@@ -130,6 +130,11 @@ work, not "post-1.0".
   after the undo, a grip drag recorded a step from before it, which put back
   what was undone and lost what could be redone. A tool part way through
   what it makes starts it again.
+- **The sketch Extrude or Revolve makes of the drawing is a copy of it.** It
+  shared the drawing's entities: moving one in the drawing changed the
+  feature's profile with no rebuild, while a grip edit did not. Extruding
+  the drawing unchanged again still takes that sketch, now also after the
+  file is reopened.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

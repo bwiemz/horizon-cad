@@ -1,5 +1,6 @@
 #include "horizon/document/Commands.h"
 
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 
@@ -1370,6 +1371,28 @@ void adoptClones(draft::DraftDocument& doc,
             clone->setGroupId(it->second);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// drawSame
+// ---------------------------------------------------------------------------
+
+bool drawSame(const std::vector<std::shared_ptr<draft::DraftEntity>>& a,
+              const std::vector<std::shared_ptr<draft::DraftEntity>>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (!a[i] || !b[i]) return a[i] == b[i];
+        const draft::DraftEntity& x = *a[i];
+        const draft::DraftEntity& y = *b[i];
+        if (typeid(x) != typeid(y) || x.construction() != y.construction()) return false;
+        const auto xs = x.snapPoints();
+        const auto ys = y.snapPoints();
+        if (xs.size() != ys.size()) return false;
+        for (size_t k = 0; k < xs.size(); ++k) {
+            if (xs[k].distanceTo(ys[k]) > 1e-9) return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace hz::doc

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -826,6 +827,48 @@ TEST(WorkbenchesTest, AnExtrudeTakesTheSketchEditedAndFinishesIt) {
     EXPECT_EQ(part.sketches().size(), 1u) << "no sketch made of the drawing";
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume, 1000.0, 1e-6);
+}
+
+// The drawing extruded is copied into the sketch made of it. The sketch
+// shared the drawing's lines: a Move in the drawing after changed the
+// extrude's profile, with no rebuild, and a grip edit did not. Extruded again
+// unchanged, the drawing takes that sketch again.
+TEST(WorkbenchesTest, ASketchMadeOfTheDrawingIsACopyOfIt) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    const std::vector<hz::math::Vec2> corners = {{0, 0}, {20, 0}, {20, 10}, {0, 10}};
+    std::vector<uint64_t> lines;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        auto line =
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]);
+        lines.push_back(line->id());
+        part.draftDocument().addEntity(line);
+    }
+    hz::ui::PartCommands commands(host);
+    const auto extrude = [&] {
+        return answering(
+            QStringLiteral("Extrude"), [](QDialog& form) { setField(form, "size", 5.0); },
+            [&] { commands.onExtrudeSketch(); });
+    };
+    ASSERT_TRUE(extrude());
+    ASSERT_EQ(part.sketches().size(), 1u);
+    const auto profile = part.sketches().front();
+    ASSERT_EQ(profile->entities().size(), 4u);
+    for (const auto& entity : profile->entities()) {
+        EXPECT_EQ(part.draftDocument().findEntity(entity->id()), nullptr) << "a copy";
+    }
+
+    part.undoStack().push(std::make_unique<hz::doc::MoveEntityCommand>(
+        part.draftDocument(), lines, hz::math::Vec2(0, 3), part.constraintSystem()));
+    const auto* first = dynamic_cast<const hz::draft::DraftLine*>(profile->entities()[0].get());
+    ASSERT_NE(first, nullptr);
+    EXPECT_DOUBLE_EQ(first->start().y, 0.0) << "the profile as it was extruded";
+    part.undoStack().undo();
+
+    ASSERT_TRUE(extrude());
+    EXPECT_EQ(part.sketches().size(), 1u) << "the drawing as it was: the same sketch";
+    EXPECT_EQ(host.added.size(), 2u);
 }
 
 // Extrude again with the sketch chosen in the list, not edited: it is taken

@@ -10,7 +10,9 @@
 #include <numbers>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -130,6 +132,22 @@ void PartCommands::onPrimitiveTorus() {
 // From sketches: Extrude, Revolve, Loft, Sweep and datums
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// Whether @p sketch is on the plane a sketch made of the drawing is: XY,
+/// following no face.
+bool onWrapperPlane(const doc::Sketch& sketch) {
+    const draft::SketchPlane xy;
+    const draft::SketchPlane& plane = sketch.drawnPlane();
+    const auto same = [](const math::Vec3& a, const math::Vec3& b) {
+        return (a - b).length() < 1e-12;
+    };
+    return sketch.face().empty() && same(plane.origin(), xy.origin()) &&
+           same(plane.normal(), xy.normal()) && same(plane.xAxis(), xy.xAxis());
+}
+
+}  // namespace
+
 std::shared_ptr<doc::Sketch> PartCommands::resolveProfileSketch(bool& createdWrapper) {
     createdWrapper = false;
 
@@ -154,16 +172,21 @@ std::shared_ptr<doc::Sketch> PartCommands::resolveProfileSketch(bool& createdWra
 
     // Reuse an existing wrapper sketch when the top-level profile has not
     // changed — repeated extrudes must not accumulate duplicate sketches.
+    // It holds copies, so it is the same drawing, on the plane a wrapper is
+    // made on, that is reused.
     for (const auto& sk : part().sketches()) {
-        if (sk->entities() == shown) return sk;
+        if (onWrapperPlane(*sk) && doc::drawSame(sk->entities(), shown)) return sk;
     }
 
     // Wrap the top-level profile in a sketch so the feature is replayable
     // (parametric history requires a sketch reference). The caller must add
-    // it to the document only once the operation is validated.
+    // it to the document only once the operation is validated. Copies: the
+    // drawing's own entities, shared, moved the feature's profile with every
+    // edit made in the drawing in place, and kept it where a grip edit,
+    // which puts a new entity in the old one's place, left it.
     auto sketch = std::make_shared<doc::Sketch>();
     sketch->setName(tr("Profile %1").arg(part().sketches().size() + 1).toStdString());
-    for (const auto& entity : shown) sketch->addEntity(entity);
+    for (const auto& entity : shown) sketch->addEntity(entity->clone());
     createdWrapper = true;
     return sketch;
 }
