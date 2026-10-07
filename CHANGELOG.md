@@ -116,6 +116,10 @@ work, not "post-1.0".
   and with a comma on a German system ("R12,50") beside lengths written
   with a point. They now take the style's unit and precision, and a point.
   A scale such as 2.5:1 is written with a point too.
+- **A view's label keeps its letters.** A label is up to eight characters
+  as it is typed, but was read back as eight bytes: "Détail-A" lost its A,
+  and "断面図A" came back broken. A label is now eight characters both
+  where it is typed and where it is read.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

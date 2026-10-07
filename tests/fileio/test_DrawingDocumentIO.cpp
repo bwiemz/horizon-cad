@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include <string>
 
 #include "horizon/document/Document.h"
@@ -501,6 +502,48 @@ TEST(DrawingDocumentIOTest, ABrokenSectionOrDetailIsRefused) {
          R"( "label": "A\nBCDEFGHIJKLMNOP"})");
     ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
     EXPECT_EQ(spec.views[1].label, "ABCDEFGH");
+    std::filesystem::remove_all(dir);
+}
+
+// A label is kept to eight characters as it is typed: counted by
+// character, not byte. "Détail-A" lost its "A", and "断面図A" was cut inside
+// "図", which left bytes that are not UTF-8.
+TEST(DrawingDocumentIOTest, ALabelIsCutBetweenCharacters) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_labels";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    const std::string detail = "D\xC3\xA9tail-A";                     // "Détail-A"
+    const std::string word = "\xE6\x96\xAD\xE9\x9D\xA2\xE5\x9B\xB3";  // "断面図"
+    const std::string ruler = "\xF0\x9F\x93\x90";                     // "📐", 2 in UTF-16
+    std::string rulers;
+    for (int i = 0; i < 9; ++i) rulers += ruler;
+    const auto section = [](const std::string& label) {
+        return nlohmann::json{
+            {"role", "section"}, {"source", 0}, {"direction", {1, 0, 0}}, {"label", label}};
+    };
+    nlohmann::json file = {
+        {"part", "box.hzpart"},
+        {"version", 3},
+        {"views",
+         {{{"kind", "front"}},
+          section(detail),
+          section(word + "A"),
+          section(word + word + word),
+          section(rulers)}},
+        {"frames",
+         {{{"role", "section"}, {"label", word + "A"}, {"low", {0, 0}}, {"high", {1, 1}}}}}};
+    write(dwg, file.dump());
+
+    DrawingDocumentSpec spec;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
+    ASSERT_EQ(spec.views.size(), 5u);
+    EXPECT_EQ(spec.views[1].label, detail);
+    EXPECT_EQ(spec.views[2].label, word + "A");
+    EXPECT_EQ(spec.views[3].label, word + word + word.substr(0, 6)) << "eight of nine";
+    EXPECT_EQ(spec.views[4].label, rulers.substr(0, 8 * ruler.size()));
+    ASSERT_EQ(spec.frames.size(), 1u);
+    EXPECT_EQ(spec.frames[0].label, word + "A");
     std::filesystem::remove_all(dir);
 }
 

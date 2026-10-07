@@ -107,14 +107,6 @@ std::optional<DrawingDimensionSpec::Kind> dimensionKindNamed(const std::string& 
     return std::nullopt;
 }
 
-/// A label as a caption can show it: a few characters, no line breaks.
-std::string usableLabel(std::string label) {
-    std::erase_if(label, [](char c) { return c == '\n' || c == '\r'; });
-    constexpr std::size_t kMaxLabel = 8;
-    if (label.size() > kMaxLabel) label.resize(kMaxLabel);
-    return label;
-}
-
 model::StandardView viewNamed(const std::string& name) {
     for (const auto view : {model::StandardView::Front, model::StandardView::Top,
                             model::StandardView::Right, model::StandardView::Isometric}) {
@@ -571,6 +563,22 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
         drawing.views.push_back(std::move(view));
     }
     return drawing;
+}
+
+std::string DrawingDocumentIO::usableLabel(std::string label) {
+    std::erase_if(label, [](char c) { return c == '\n' || c == '\r'; });
+    // Characters, as the label is typed, not bytes: "Détail-A" lost its last
+    // letter, and a cut inside a character left bytes that are not UTF-8
+    // ("断面\xE5\x9B"). A character starts at any byte but a continuation
+    // byte (10xxxxxx).
+    std::size_t characters = 0;
+    for (std::size_t i = 0; i < label.size(); ++i) {
+        if ((static_cast<unsigned char>(label[i]) & 0xC0) != 0x80 && ++characters > kMaxLabel) {
+            label.resize(i);
+            break;
+        }
+    }
+    return label;
 }
 
 std::vector<DrawingViewSpec> DrawingDocumentIO::viewsOf(const model::Drawing& drawing) {
