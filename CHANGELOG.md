@@ -103,6 +103,12 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **DXF files read back as they were saved, and as other programs drew
+  them.**
+  - Reals were written to six decimals, so every ellipse saved came back an
+    open polyline, said to be partial: its whole turn, 2π, read back a little
+    short. Reals are now written so they read back exactly. An ellipse of a
+    whole turn that another program wrote to six decimals is whole too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

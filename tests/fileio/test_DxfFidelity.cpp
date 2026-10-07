@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -540,4 +541,78 @@ TEST(DxfFidelityTest, AThinWidthIsNotWrittenAsNoWidth) {
     ASSERT_NE(back.layerManager().getLayer("None"), nullptr);
     EXPECT_NEAR(back.layerManager().getLayer("None")->lineWidth, 1.0, 1e-12);
     std::filesystem::remove(path);
+}
+
+namespace {
+
+/// @p doc saved as a DXF file named @p name in the temporary directory.
+std::filesystem::path savedAs(const hz::doc::Document& doc, const std::string& name) {
+    const auto path = std::filesystem::temp_directory_path() / name;
+    std::string error;
+    EXPECT_TRUE(hz::io::DxfFormat::save(path.string(), doc, &error)) << error;
+    return path;
+}
+
+}  // namespace
+
+// Reals were written with six decimals. A whole ellipse's end parameter,
+// 2 pi, read back as 6.283185, short of a turn: every ellipse saved came back
+// as an open polyline, reported as partial. Reals are now written so they
+// read back as the same double.
+TEST(DxfFidelityTest, ASavedEllipseComesBackWholeAndRealsExactly) {
+    hz::doc::Document doc;
+    doc.draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftEllipse>(Vec2(8, 8), 3.0, 1.5, 0.4));
+    const Vec2 start(0.1 + 0.2, 1e-7);
+    const Vec2 end(123456.789012345678, -2.0 / 3.0);
+    doc.draftDocument().addEntity(std::make_shared<hz::draft::DraftLine>(start, end));
+    const auto path = savedAs(doc, "hz_dxf_reals.dxf");
+
+    Loaded in(dxf(""));
+    std::string error;
+    ASSERT_TRUE(hz::io::DxfFormat::load(path.string(), in.doc, &error, &in.report)) << error;
+    std::filesystem::remove(path);
+    const auto ellipses = in.all<hz::draft::DraftEllipse>();
+    ASSERT_EQ(ellipses.size(), 1u) << "not an open polyline";
+    EXPECT_TRUE(in.all<hz::draft::DraftPolyline>().empty());
+    EXPECT_TRUE(in.report.approximated.empty());
+    EXPECT_NEAR(ellipses[0]->semiMajor(), 3.0, 1e-12);
+    EXPECT_NEAR(ellipses[0]->semiMinor(), 1.5, 1e-12);
+    EXPECT_NEAR(ellipses[0]->rotation(), 0.4, 1e-12);
+    const auto lines = in.all<hz::draft::DraftLine>();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0]->start().x, start.x);
+    EXPECT_EQ(lines[0]->start().y, start.y) << "1e-7 was written as 0.000000";
+    EXPECT_EQ(lines[0]->end().x, end.x);
+    EXPECT_EQ(lines[0]->end().y, end.y);
+}
+
+// Another program may write a whole turn with six decimals too, or leave the
+// end parameter out, when it is 2 pi. Left out, it defaulted to
+// std::to_string(2 pi): six decimals again, and under a comma-decimal C
+// locale, which Qt sets from the environment, "6,283185", read as 6.
+TEST(DxfFidelityTest, AnEllipseOfAWholeTurnToSixDecimalsOrLeftOutIsWhole) {
+    const std::string text =
+        dxf("0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n4\n21\n0\n40\n0.5\n41\n0\n42\n6.283185\n"
+            "0\nELLIPSE\n8\n0\n10\n20\n20\n0\n11\n4\n21\n0\n40\n0.5\n41\n0\n");
+    {
+        Loaded in(text);
+        ASSERT_TRUE(in.ok) << in.error;
+        EXPECT_EQ(in.all<hz::draft::DraftEllipse>().size(), 2u);
+        EXPECT_TRUE(in.report.approximated.empty());
+    }
+    const char* previous = std::setlocale(LC_NUMERIC, nullptr);
+    const std::string saved = previous ? previous : "C";
+    const char* comma = nullptr;
+    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "ru_RU.UTF-8"}) {
+        if (std::setlocale(LC_NUMERIC, name) != nullptr) {
+            comma = name;
+            break;
+        }
+    }
+    if (comma == nullptr) GTEST_SKIP() << "no comma-decimal locale installed";
+    Loaded in(text);
+    std::setlocale(LC_NUMERIC, saved.c_str());
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_EQ(in.all<hz::draft::DraftEllipse>().size(), 2u) << "under " << comma;
 }

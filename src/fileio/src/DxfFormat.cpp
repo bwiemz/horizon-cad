@@ -1,6 +1,7 @@
 #include "horizon/fileio/DxfFormat.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <cmath>
@@ -71,8 +72,19 @@ void writeGroup(std::ostream& out, int code, int value) {
     out << "  " << code << "\n" << value << "\n";
 }
 
+/// A real, as the shortest text that reads back as the same double, in no
+/// locale (std::to_chars). Six decimals lost what was smaller, and a whole
+/// ellipse's end parameter, 2 pi, read back short of a turn: the ellipse came
+/// back an open polyline. Fixed notation, as DXF files are written: no
+/// exponent for a reader to trip on.
 void writeGroup(std::ostream& out, int code, double value) {
-    out << "  " << code << "\n" << std::fixed << std::setprecision(6) << value << "\n";
+    // Room for any double: a tiny one is "-0.", over 300 zeros and its digits.
+    std::array<char, 400> text{};
+    const auto [end, ec] =
+        std::to_chars(text.data(), text.data() + text.size(), value, std::chars_format::fixed);
+    const size_t length = ec == std::errc{} ? static_cast<size_t>(end - text.data()) : 0;
+    const std::string_view written(text.data(), length);
+    out << "  " << code << "\n" << written << "\n";
 }
 
 int g_handleCounter = 0;
@@ -1282,9 +1294,12 @@ std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& gr
     const double semiMajor = major.length();
     if (semiMajor < 1e-12 || !(ratio > 0.0)) return nullptr;
     const double start = toDouble(findGroup(groups, 41, "0"));
-    double end = toDouble(findGroup(groups, 42, std::to_string(math::kTwoPi)));
+    const std::string endText = findGroup(groups, 42);
+    double end = endText.empty() ? math::kTwoPi : toDouble(endText);
     if (end <= start) end += math::kTwoPi;
-    if (std::abs(end - start - math::kTwoPi) < 1e-9) {
+    // A whole turn, to the six decimals many programs write reals with
+    // (2 pi as 6.283185, at start and end both): within a millionth.
+    if (std::abs(end - start - math::kTwoPi) < 1e-6) {
         return std::make_shared<draft::DraftEllipse>(c, semiMajor, semiMajor * ratio,
                                                      std::atan2(major.y, major.x));
     }
