@@ -616,3 +616,43 @@ TEST(DxfFidelityTest, AnEllipseOfAWholeTurnToSixDecimalsOrLeftOutIsWhole) {
     ASSERT_TRUE(in.ok) << in.error;
     EXPECT_EQ(in.all<hz::draft::DraftEllipse>().size(), 2u) << "under " << comma;
 }
+
+// 20,000 blocks, each inserting the next: 1.9 MB. A block is built inside
+// the one that inserts it, a call deeper each time, and the stack ran out (a
+// worker's stack is smaller still). Blocks are built 64 deep, and an insert
+// deeper than that is reported.
+TEST(DxfFidelityTest, BlocksNestedTooDeepAreReportedNotRecursedInto) {
+    const auto chain = [](int count) {
+        const auto name = [](int k) {
+            char text[16];
+            std::snprintf(text, sizeof text, "B%05d", k);
+            return std::string(text);
+        };
+        std::string blocks;
+        for (int k = 0; k < count; ++k) {
+            blocks += "0\nBLOCK\n8\n0\n2\n" + name(k) + "\n70\n0\n10\n0\n20\n0\n";
+            if (k + 1 < count) {
+                blocks += "0\nINSERT\n8\n0\n2\n" + name(k + 1) + "\n10\n1\n20\n0\n";
+            } else {
+                blocks += "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n1\n21\n0\n";
+            }
+            blocks += "0\nENDBLK\n8\n0\n";
+        }
+        return dxf("0\nINSERT\n8\n0\n2\nB00000\n10\n0\n20\n0\n", blocks);
+    };
+    {
+        Loaded in(chain(64));
+        ASSERT_TRUE(in.ok) << in.error;
+        const auto top = in.doc.draftDocument().blockTable().findBlock("B00000");
+        ASSERT_NE(top, nullptr);
+        ASSERT_EQ(top->entities.size(), 1u) << "64 deep is read whole";
+        const auto* line = dynamic_cast<const hz::draft::DraftLine*>(top->entities[0].get());
+        ASSERT_NE(line, nullptr);
+        EXPECT_TRUE(near(line->start(), Vec2(63, 0)));
+        EXPECT_TRUE(in.report.skipped.empty());
+    }
+    Loaded in(chain(20000));
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_TRUE(contains(in.report.skipped, "(blocks nested more than 64 deep) not read"));
+    EXPECT_EQ(in.all<hz::draft::DraftBlockRef>().size(), 1u);
+}

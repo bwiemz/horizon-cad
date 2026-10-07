@@ -109,6 +109,8 @@ work, not "post-1.0".
     open polyline, said to be partial: its whole turn, 2π, read back a little
     short. Reals are now written so they read back exactly. An ellipse of a
     whole turn that another program wrote to six decimals is whole too.
+  - A file of blocks nested 20,000 deep crashed the import. Blocks are
+    flattened 64 deep, and an insert deeper than that is reported.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

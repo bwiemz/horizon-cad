@@ -1441,6 +1441,10 @@ Entities placeBlock(const draft::BlockDefinition& def, const math::Vec2& at, dou
 
 std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Import& im);
 
+/// How deep blocks are built inside blocks, each a call deeper. Drawings
+/// nest a few deep.
+constexpr size_t kMaxBlockNesting = 64;
+
 /// The drawing entities raws[i] becomes; a POLYLINE takes its VERTEX entities
 /// with it. Advances `i` past what it used. `inBlock` says whether this is a
 /// block's content, where an INSERT is flattened into the block.
@@ -1519,8 +1523,17 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         out.push_back(ellipseEntity(g, im));
     } else if (type == "INSERT") {
         const std::string name = findGroup(g, 2);
-        auto def =
-            inBlock ? buildBlock(name, im) : im.doc.draftDocument().blockTable().findBlock(name);
+        auto def = im.doc.draftDocument().blockTable().findBlock(name);
+        if (!def && inBlock) {
+            // A block inserted in the one being built, and not built yet: it
+            // is built now, a call deeper for each block inside a block.
+            // 20,000 blocks, each inserting the next, ran out of stack.
+            if (im.building.size() >= kMaxBlockNesting) {
+                return unread(" (blocks nested more than " + std::to_string(kMaxBlockNesting) +
+                              " deep)");
+            }
+            def = buildBlock(name, im);
+        }
         if (!def) return unread(" (its block is missing)");
         const math::Vec2 at(toDouble(findGroup(g, 10)), toDouble(findGroup(g, 20)));
         const double sx = toDouble(findGroup(g, 41, "1.0"));
