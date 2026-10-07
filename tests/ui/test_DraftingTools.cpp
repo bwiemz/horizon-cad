@@ -20,6 +20,7 @@
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DraftLine.h"
@@ -394,6 +395,30 @@ TEST(DraftingToolsTest, OffsetCopiesThroughTheCursor) {
     EXPECT_EQ(all<DraftLine>(w).size(), 2u);
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftLine>(w).size(), 3u);
+}
+
+// An ellipse is offset outward when the cursor is outside it. The side was
+// taken from the cursor's distance to the centre against the mean of the two
+// radii, so a cursor beside a long thin ellipse counted as inside it, and the
+// offset collapsed it.
+TEST(DraftingToolsTest, OffsetTakesTheSideOfAnEllipseTheCursorIsOn) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    w.activeDocument()->draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftEllipse>(Vec2(0, 0), 10.0, 1.0));
+
+    trigger(w, "tool_offset");
+    drive.click(Vec2(10, 0));
+    drive.move(Vec2(0, 3));
+    drive.click(Vec2(0, 3));
+    const double gap = landed(drive, Vec2(0, 3)).y - 1.0;
+
+    const auto ellipses = all<hz::draft::DraftEllipse>(w);
+    ASSERT_EQ(ellipses.size(), 2u);
+    EXPECT_NEAR(ellipses[1]->semiMajor(), 10.0 + gap, 1e-3) << "outward";
+    EXPECT_NEAR(ellipses[1]->semiMinor(), 1.0 + gap, 1e-3);
+    EXPECT_NEAR(gap, 2.0, 0.01);
 }
 
 // Break splits a line where the line nearest the click crosses it; the pieces

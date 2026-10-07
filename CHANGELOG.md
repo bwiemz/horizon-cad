@@ -129,6 +129,9 @@ work, not "post-1.0".
 - **A line touching a circle meets it once.** Most lines that touched a
   circle were found to miss it, or to cross it twice at the same point,
   which Trim, Break, Extend and the intersection snap then used.
+- **Offset takes the side of an ellipse the cursor is on.** A cursor
+  beside a long, thin ellipse was taken to be inside it, and the offset
+  collapsed it.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
