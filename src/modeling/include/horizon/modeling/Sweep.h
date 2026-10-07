@@ -27,8 +27,9 @@ namespace hz::model {
 /// Refused (nullptr): a path that doubles back on itself, a profile whose
 /// plane contains the initial sweep direction, a turn tight enough that the
 /// profile reaches past its inside (the band would fold through itself), and
-/// any result the geometric validator rejects.  Twist and guide curves are
-/// not supported.
+/// any result the geometric validator rejects, a path that crosses itself
+/// among them (its faces pass through each other).  Twist and guide curves
+/// are not supported.
 class Sweep {
 public:
     /// Steps per full turn used to sample a circular arc in a path.  A path

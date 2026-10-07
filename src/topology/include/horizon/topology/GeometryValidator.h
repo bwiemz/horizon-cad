@@ -45,6 +45,15 @@ class Solid;
 ///  - **shell closure** — the face area vectors of a closed shell must sum to
 ///    zero.  A non-zero sum means the skin is either open or inconsistently
 ///    oriented.
+///  - **crossing faces** — two faces of one shell must not pass through each
+///    other: no edge of a shell may go through the inside of a flat face of
+///    that shell that it does not touch.  Every check above looks at one
+///    face or edge at a time, so a skin that runs into itself (a sweep whose
+///    path crosses itself, a shell's cavity whose faces cross) passed all of
+///    them.  Only flat faces are looked through, and an edge that touches a
+///    face, rather than passing through it, is not counted. Faces of
+///    different shells are not compared: a part's bodies may overlap until a
+///    Boolean combines them.
 ///  - **edge curve agreement** *(reported, not failing)* — an edge's bound
 ///    NURBS curve should start and end at the edge's vertices.
 ///  - **coincident vertices** *(reported, not failing)* — two distinct vertex
@@ -60,6 +69,9 @@ public:
         int nonPlanarLoops = 0;
         int selfIntersectingLoops = 0;
         int openShells = 0;
+        /// Edges that pass through a flat face of their own shell, each
+        /// edge and face counted once.
+        int crossingFaces = 0;
         int edgeCurveMismatches = 0;  ///< Reported only; does not fail ok().
         int coincidentVertices = 0;   ///< Reported only; does not fail ok().
 
@@ -68,7 +80,7 @@ public:
         bool ok() const {
             return vertexChainErrors == 0 && twinCoincidenceErrors == 0 && degenerateEdges == 0 &&
                    degenerateFaces == 0 && nonPlanarLoops == 0 && selfIntersectingLoops == 0 &&
-                   openShells == 0;
+                   openShells == 0 && crossingFaces == 0;
         }
     };
 

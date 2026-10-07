@@ -444,3 +444,113 @@ TEST(GeometryValidatorTest, ATwistedBilinearFaceIsCurved) {
     Vec3 origin, normal;
     EXPECT_FALSE(GV::facePlane(face, origin, normal));
 }
+
+// ---------------------------------------------------------------------------
+// Faces of one skin crossing each other.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The unit cube as twelve triangles, outward wound: every face flat and
+/// every loop simple however its corners are moved, so moving one shows
+/// what the crossing check alone sees.
+std::unique_ptr<Solid> makeTriangulatedCube(const std::vector<Vec3>& pts) {
+    const std::vector<std::vector<int>> faces = {
+        {0, 3, 2}, {0, 2, 1},  // bottom (-Z)
+        {4, 5, 6}, {4, 6, 7},  // top (+Z)
+        {0, 1, 5}, {0, 5, 4},  // front (-Y)
+        {1, 2, 6}, {1, 6, 5},  // right (+X)
+        {2, 3, 7}, {2, 7, 6},  // back (+Y)
+        {3, 0, 4}, {3, 4, 7},  // left (-X)
+    };
+    return Assembler::build(pts, faces);
+}
+
+std::vector<Vec3> cubeCorners() {
+    return {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
+}
+
+}  // namespace
+
+TEST(GeometryValidatorTest, ATriangulatedCubeHasNoCrossings) {
+    auto cube = makeTriangulatedCube(cubeCorners());
+    ASSERT_TRUE(cube->checkManifold()) << cube->validationReport();
+    const auto issues = GV::check(*cube);
+    EXPECT_EQ(issues.crossingFaces, 0) << GV::report(*cube);
+    EXPECT_TRUE(issues.ok()) << GV::report(*cube);
+}
+
+// One corner pushed down through the bottom: every face is still a flat
+// triangle, the skin still closed and every loop simple, so no other check
+// sees it; but the edges from that corner go through the bottom.
+TEST(GeometryValidatorTest, ACornerPushedThroughTheOppositeFaceIsCaught) {
+    auto pts = cubeCorners();
+    pts[6] = Vec3(0.5, 0.5, -0.5);
+    auto solid = makeTriangulatedCube(pts);
+    ASSERT_TRUE(solid->checkManifold()) << solid->validationReport();
+    ASSERT_TRUE(solid->checkEulerFormula());
+
+    const auto issues = GV::check(*solid);
+    EXPECT_EQ(issues.nonPlanarLoops, 0);
+    EXPECT_EQ(issues.selfIntersectingLoops, 0);
+    EXPECT_EQ(issues.openShells, 0);
+    EXPECT_EQ(issues.degenerateFaces, 0);
+    EXPECT_GT(issues.crossingFaces, 0) << GV::report(*solid);
+    EXPECT_FALSE(issues.ok());
+    EXPECT_FALSE(GV::isGeometricallyValid(*solid));
+    EXPECT_NE(GV::report(*solid).find("Crossing faces"), std::string::npos);
+}
+
+// The same, far out and turned, and a thousandth the size: the check's
+// tolerance follows the faces, as the planarity check's does.
+TEST(GeometryValidatorTest, CrossingsAreFoundAtAnySizeAndPlace) {
+    const Vec3 out(1e6, -2e6, 1.5e6);
+    for (const double size : {1e-3, 1.0, 1e3}) {
+        auto good = cubeCorners();
+        for (Vec3& p : good) p = p * size + out;
+        auto valid = makeTriangulatedCube(good);
+        EXPECT_EQ(GV::check(*valid).crossingFaces, 0) << "size " << size << "\n"
+                                                      << GV::report(*valid);
+
+        auto bad = good;
+        bad[6] = Vec3(0.5, 0.5, -0.5) * size + out;
+        auto crossed = makeTriangulatedCube(bad);
+        EXPECT_GT(GV::check(*crossed).crossingFaces, 0) << "size " << size;
+    }
+}
+
+// A corner pushed only onto the bottom, not through it, touches it: no edge
+// passes through the face, so it is not counted as a crossing.
+TEST(GeometryValidatorTest, ACornerTouchingAFaceIsNotACrossing) {
+    auto pts = cubeCorners();
+    pts[6] = Vec3(0.5, 0.5, 0.0);
+    auto solid = makeTriangulatedCube(pts);
+    EXPECT_EQ(GV::check(*solid).crossingFaces, 0) << GV::report(*solid);
+}
+
+// Two bodies that overlap are two skins, each sound: a part may hold bodies
+// that overlap until a Boolean combines them.
+TEST(GeometryValidatorTest, OverlappingShellsAreNotCrossings) {
+    auto pts = cubeCorners();
+    for (const Vec3& p : cubeCorners()) pts.push_back(p + Vec3(0.5, 0.5, 0.5));
+    std::vector<std::vector<int>> faces = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4},
+                                           {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+    const size_t n = faces.size();
+    for (size_t i = 0; i < n; ++i) {
+        std::vector<int> f = faces[i];
+        for (int& k : f) k += 8;
+        faces.push_back(f);
+    }
+    auto solid = Assembler::build(pts, faces);
+    // The assembler makes one shell; split it in two, a cube each.
+    auto& shells = const_cast<std::deque<Shell>&>(solid->shells());
+    Shell* second = solid->allocShell();
+    second->solid = solid.get();
+    auto& first = shells.front();
+    for (size_t i = n; i < first.faces.size(); ++i) {
+        first.faces[i]->shell = second;
+        second->faces.push_back(first.faces[i]);
+    }
+    first.faces.resize(n);
+    EXPECT_EQ(GV::check(*solid).crossingFaces, 0) << GV::report(*solid);
+}
