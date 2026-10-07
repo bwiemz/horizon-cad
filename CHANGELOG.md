@@ -142,6 +142,11 @@ work, not "post-1.0".
   block reference pointed at the other drawing's block, and was lost, or
   shown as another block, when the file was read again. Undo takes it all
   away in one step.
+- **A feature taken away while its edit form is open is not edited.** A
+  build that finishes meanwhile can withdraw a feature just added that
+  fails; the form then edited the freed feature. Linear and Circular
+  Pattern and Mirror are not added when a feature checked in their form is
+  gone, and say so.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

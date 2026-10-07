@@ -1360,6 +1360,13 @@ std::optional<size_t> FeatureTree::indexOf(const Feature* feature) const {
     return std::nullopt;
 }
 
+std::optional<size_t> FeatureTree::indexOfId(const std::string& featureId) const {
+    for (size_t i = 0; i < m_features.size(); ++i) {
+        if (m_features[i] && m_features[i]->featureID() == featureId) return i;
+    }
+    return std::nullopt;
+}
+
 void FeatureTree::setRollbackIndex(int index) {
     if (index == m_rollbackIndex) return;
     m_rollbackIndex = index;

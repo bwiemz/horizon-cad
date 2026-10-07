@@ -12,6 +12,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -869,6 +870,40 @@ TEST(WorkbenchesTest, ASketchMadeOfTheDrawingIsACopyOfIt) {
     ASSERT_TRUE(extrude());
     EXPECT_EQ(part.sketches().size(), 1u) << "the drawing as it was: the same sketch";
     EXPECT_EQ(host.added.size(), 2u);
+}
+
+// A feature checked in a pattern's form and taken away for good while the
+// form is open (a build that finished withdrew it) is looked for again when
+// the form closes: the pattern is not added. The form's list held the
+// feature, freed by then, and read its ID.
+TEST(WorkbenchesTest, APatternOfAFeatureGoneWhileItsFormIsOpenIsNotAdded) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    part.undoStack().push(std::make_unique<hz::doc::AddFeatureCommand>(
+        part, hz::doc::PrimitiveFeature::makeBox(5, 5, 20), nullptr));
+    ASSERT_TRUE(part.rebuildModel());
+
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Linear Pattern"),
+        [&part](QDialog& form) {
+            auto* list = form.findChild<QListWidget*>(QStringLiteral("features"));
+            ASSERT_NE(list, nullptr);
+            ASSERT_EQ(list->count(), 2);
+            list->item(1)->setCheckState(Qt::Checked);
+            // The second box undone, and a step after it: gone for good.
+            part.undoStack().undo();
+            part.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(
+                part.draftDocument(), std::make_shared<hz::draft::DraftLine>(
+                                          hz::math::Vec2(0, 0), hz::math::Vec2(1, 0))));
+        },
+        [&] { commands.onLinearPattern(); }));
+    EXPECT_TRUE(host.added.empty()) << "not added";
+    EXPECT_EQ(part.featureTree().featureCount(), 1u);
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("gone")))
+        << host.currentStatus().toStdString();
 }
 
 // Extrude again with the sketch chosen in the list, not edited: it is taken

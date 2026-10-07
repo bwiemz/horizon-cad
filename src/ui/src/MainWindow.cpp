@@ -3649,6 +3649,8 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     const auto params = feat->parameters();
     const auto vectors = feat->vectors();
     const bool buildsBody = feat->createsNewBody();
+    const std::string featureId = feat->featureID();
+    const QString featureName = QString::fromStdString(feat->name());
     if (params.empty() && vectors.empty() && !buildsBody) {
         statusBar()->showMessage(
             tr("%1 has nothing to edit").arg(QString::fromStdString(feat->name())));
@@ -3695,7 +3697,7 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                 kept->toString()};
         };
     };
-    const auto expressionOf = [feat](const std::string& name) {
+    const auto expressionOf = [&feat](const std::string& name) {
         const auto found = feat->parameterExpressions().find(name);
         return found != feat->parameterExpressions().end() ? found->second : std::string();
     };
@@ -3822,6 +3824,16 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
     }
     QComboBox* result = buildsBody ? form.operationChoice(feat->operation()) : nullptr;
     if (!form.exec()) return;
+    // A build that finished while the form was open may have taken the
+    // feature away (one just added that failed itself is withdrawn, and
+    // freed): it is found again by its ID, and only edited if it is there.
+    const auto still = m_document->featureTree().indexOfId(featureId);
+    if (!still) {
+        statusBar()->showMessage(tr("%1 is gone: it was not changed").arg(featureName));
+        return;
+    }
+    featureIndex = static_cast<int>(*still);
+    feat = m_document->featureTree().feature(*still);
 
     std::map<std::string, double> changed;
     std::map<std::string, std::string> changedExpressions;  // empty: a number again

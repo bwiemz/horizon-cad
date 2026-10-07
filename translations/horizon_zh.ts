@@ -3746,7 +3746,7 @@ begin building your part.</source>
         <translation type="unfinished">尺寸</translation>
     </message>
     <message>
-        <location line="+2482"/>
+        <location line="+2487"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3790,7 +3790,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2506"/>
+        <location line="-2511"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -4017,14 +4017,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+903"/>
-        <location line="+581"/>
+        <location line="+908"/>
+        <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3031"/>
+        <location line="-3048"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -4045,12 +4045,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2689"/>
+        <location line="+2696"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2683"/>
+        <location line="-2690"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
@@ -4628,12 +4628,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot; 已被其他程序更改，并已重新读取</translation>
     </message>
     <message>
-        <location line="+359"/>
+        <location line="+364"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+753"/>
+        <location line="+755"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -4643,7 +4643,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-729"/>
+        <location line="-731"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">装配体中没有草图：请在零件中绘制草图</translation>
     </message>
@@ -5065,7 +5065,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">未添加 %1：%2</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+29"/>
         <source>%1 has nothing to edit</source>
         <translation type="unfinished">%1 没有可编辑的内容</translation>
     </message>
@@ -5126,7 +5126,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">与所单击的面或边相反</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+41"/>
+        <source>%1 is gone: it was not changed</source>
+        <translation type="unfinished">%1 已不存在：未作更改</translation>
+    </message>
+    <message>
+        <location line="+40"/>
         <source>%1 cannot use the value given for: %2</source>
         <translation type="unfinished">%1 无法使用为以下参数指定的值：%2</translation>
     </message>
@@ -5151,7 +5156,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3047"/>
+        <location line="-3064"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>
@@ -5170,7 +5175,7 @@ Ideal (on the curved surfaces the facets approximate):
 <context>
     <name>hz::ui::PartCommands</name>
     <message>
-        <location filename="../src/ui/src/PartCommands.cpp" line="+45"/>
+        <location filename="../src/ui/src/PartCommands.cpp" line="+48"/>
         <source>%1 works on a part; open or create one</source>
         <translation type="unfinished">%1 用于零件；请打开或创建一个零件</translation>
     </message>
@@ -5181,20 +5186,20 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+219"/>
+        <location line="+240"/>
         <location line="+13"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-231"/>
-        <location line="+219"/>
+        <location line="-252"/>
+        <location line="+240"/>
         <location line="+13"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-230"/>
+        <location line="-251"/>
         <source>Standing along:</source>
         <translation type="unfinished">竖立方向:</translation>
     </message>
@@ -5226,12 +5231,12 @@ Ideal (on the curved surfaces the facets approximate):
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+388"/>
+        <location line="+409"/>
         <source>Radius:</source>
         <translation type="unfinished">半径:</translation>
     </message>
     <message>
-        <location line="-395"/>
+        <location line="-416"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">高度:</translation>
@@ -5272,7 +5277,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">圆管半径:</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location line="+61"/>
         <source>Profile %1</source>
         <translation type="unfinished">轮廓 %1</translation>
     </message>
@@ -5436,12 +5441,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="-155"/>
-        <location line="+386"/>
+        <location line="+414"/>
         <source>Goes:</source>
         <translation type="unfinished">终止条件:</translation>
     </message>
     <message>
-        <location line="-385"/>
+        <location line="-413"/>
         <source>To the distance</source>
         <translation type="unfinished">给定深度</translation>
     </message>
@@ -5452,23 +5457,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+386"/>
+        <location line="+414"/>
         <source>Through all</source>
         <translation type="unfinished">完全贯穿</translation>
     </message>
     <message>
-        <location line="-385"/>
+        <location line="-413"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">完全贯穿（两侧）</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+385"/>
+        <location line="+413"/>
         <source>Up to a face</source>
         <translation type="unfinished">成形到一面</translation>
     </message>
     <message>
-        <location line="-381"/>
+        <location line="-409"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">（零件没有与草图平行的平面）</translation>
     </message>
@@ -5479,12 +5484,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+262"/>
+        <location line="+275"/>
         <source>Direction:</source>
         <translation type="unfinished">方向:</translation>
     </message>
     <message>
-        <location line="-261"/>
+        <location line="-274"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">草图法向</translation>
     </message>
@@ -5611,12 +5616,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">中性面位置:</translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+44"/>
         <source>Repeat only (none: the whole part):</source>
         <translation type="unfinished">仅阵列（不选则阵列整个零件）:</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+28"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">线性阵列</translation>
     </message>
@@ -5627,12 +5632,18 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+2"/>
-        <location line="+19"/>
+        <location line="+24"/>
         <source>Instances:</source>
         <translation type="unfinished">实例数:</translation>
     </message>
     <message>
-        <location line="-7"/>
+        <location line="-18"/>
+        <location line="+25"/>
+        <source>%1 not added: a feature it repeats is gone</source>
+        <translation type="unfinished">未添加 %1：要阵列的特征已不存在</translation>
+    </message>
+    <message>
+        <location line="-14"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">圆周阵列</translation>
     </message>
@@ -5647,7 +5658,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">总角度:</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+22"/>
         <source>Mirror</source>
         <translation type="unfinished">镜像</translation>
     </message>
@@ -5682,7 +5693,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">仅镜像（不选则镜像整个零件）:</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+4"/>
+        <source>%1 not added: a feature it mirrors is gone</source>
+        <translation type="unfinished">未添加 %1：要镜像的特征已不存在</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>Hole</source>
         <translation type="unfinished">孔</translation>
     </message>
