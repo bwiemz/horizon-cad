@@ -522,7 +522,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">Fügen Sie zuerst mindestens zwei Komponenten ein</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">Verknüpfung hinzufügen</translation>

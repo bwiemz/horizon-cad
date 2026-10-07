@@ -522,7 +522,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Inserte primero al menos dos componentes</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">Añadir relación de posición</translation>

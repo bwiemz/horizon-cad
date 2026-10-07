@@ -521,7 +521,7 @@ Details are in the log:
         <translation type="unfinished">请先插入至少两个零部件</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">添加配合</translation>

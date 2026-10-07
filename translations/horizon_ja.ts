@@ -521,7 +521,7 @@ Details are in the log:
         <translation type="unfinished">先に 2 つ以上のコンポーネントを挿入してください</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">合致の追加</translation>

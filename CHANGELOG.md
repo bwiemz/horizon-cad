@@ -147,6 +147,10 @@ work, not "post-1.0".
   fails; the form then edited the freed feature. Linear and Circular
   Pattern and Mirror are not added when a feature checked in their form is
   gone, and say so.
+- **A mate on a datum of a mirrored component** takes the datum mirrored, as
+  the component's faces and edges are. It took the part's own datum, so the
+  other component went where the unmirrored part would have it; Add Mate's
+  list described it so too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

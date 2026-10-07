@@ -521,7 +521,7 @@ Details are in the log:
         <translation type="unfinished">먼저 구성 요소를 두 개 이상 삽입하십시오</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">메이트 추가</translation>
