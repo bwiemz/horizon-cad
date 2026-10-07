@@ -120,6 +120,8 @@ work, not "post-1.0".
   - A very fine chord tolerance gives the finest facets. One under about
     1e-16 of the radius gave the coarsest: a cylinder of three facets, a
     fillet of one chord.
+  - Extrude through all at a slant goes through the part. It could say the
+    part was not in front of the sketch, or, both ways, stop short of it.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
