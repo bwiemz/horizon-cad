@@ -109,6 +109,9 @@ work, not "post-1.0".
   1.4 x 4.2. Turned off the axes, a rectangle now becomes a closed
   polyline through its four corners; a quarter turn, or a mirror in a line
   along an axis or a diagonal, leaves it a rectangle.
+- **Hatching stays inside its boundary.** A hatch line through a corner of
+  the boundary counted the corner twice: it could run across a notch, or
+  be left out.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
