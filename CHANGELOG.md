@@ -111,6 +111,11 @@ work, not "post-1.0".
 - **glTF exports are the right size.** glTF is in metres, and a part went
   out in millimetres: a 50 mm part opened 50 m across in other viewers. It
   now opens at its size.
+- **A sheet's radii and diameters are written as its lengths are.** They
+  were in millimetres to two places, whatever the dimension style said,
+  and with a comma on a German system ("R12,50") beside lengths written
+  with a point. They now take the style's unit and precision, and a point.
+  A scale such as 2.5:1 is written with a point too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
