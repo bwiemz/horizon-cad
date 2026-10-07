@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <regex>
 #include <string>
 
 #include "horizon/math/Constants.h"
@@ -162,4 +163,63 @@ TEST(QuantityTest, APowerOrAMeasureOutOfBoundsIsRefused) {
     EXPECT_FALSE(why.empty());
     EXPECT_FALSE(measured("(wall ^ 12) ^ 12", &why));
     EXPECT_FALSE(measured("1 / (wall ^ 12) / wall", &why));
+}
+
+// What normalized() keeps reads back: a plain-number variable given the
+// document's unit was written "(count in)", which the grammar did not read
+// (a unit could follow only a number or a bracket), nor "(sqrt(2) in)"; and a
+// small number came out as "5.0000000000000002e-05", which it did not read
+// either. Each was accepted when typed and failed the feature at the next
+// build.
+TEST(QuantityTest, WhatIsKeptReadsBackAsTheSameValue) {
+    const struct {
+        const char* typed;
+        QuantityKind kind;
+    } cases[] = {
+        {"count", QuantityKind::Length},
+        {"sqrt(2)", QuantityKind::Length},
+        {"wall + count", QuantityKind::Length},
+        {"count", QuantityKind::Angle},
+        {"wall + 0.00005", QuantityKind::Length},
+        {"0.1 + count", QuantityKind::Length},
+        {"pi", QuantityKind::Angle},
+    };
+    for (const auto& c : cases) {
+        std::string why;
+        const std::string text = kept(c.typed, c.kind, LengthUnit::Inch, &why);
+        ASSERT_FALSE(text.empty()) << c.typed << ": " << why;
+        EXPECT_FALSE(std::regex_search(text, std::regex("[0-9][eE]"))) << text << ": no exponent";
+        const auto again = Expression::parse(text);
+        ASSERT_NE(again, nullptr) << c.typed << " was kept as " << text;
+        const auto typed = Expression::parse(c.typed);
+        const auto keptTree = normalized(*typed, kVariables, c.kind, LengthUnit::Inch);
+        ASSERT_NE(keptTree, nullptr) << c.typed;
+        const auto before = evaluateQuantity(*keptTree, kVariables);
+        const auto read = evaluateQuantity(*again, kVariables);
+        ASSERT_TRUE(before && read) << text;
+        EXPECT_DOUBLE_EQ(got(read).value, got(before).value) << text;
+        EXPECT_EQ(again->toString(), text);
+    }
+    EXPECT_EQ(kept("count", QuantityKind::Length, LengthUnit::Inch), "(count in)");
+    EXPECT_DOUBLE_EQ(got(measured("count in")).value, 4 * 25.4);
+    EXPECT_DOUBLE_EQ(got(measured("sqrt(4) cm")).value, 20.0);
+}
+
+// A sum of many terms is copied, and printed so that it reads back: each
+// term's bracket nested the next, and past 64 terms neither the copy (through
+// JSON, which counted every level against the limit on brackets) nor the
+// printed text read back. normalized() copies the tree, and failed with no
+// reason given.
+TEST(QuantityTest, ALongSumIsCopiedAndReadsBack) {
+    std::string sum = "wall";
+    for (int i = 0; i < 99; ++i) sum += i % 2 == 0 ? " + wall" : " - 1";
+    std::string why;
+    const std::string text = kept(sum, QuantityKind::Length, LengthUnit::Millimetre, &why);
+    ASSERT_FALSE(text.empty()) << why;
+    const auto again = Expression::parse(text);
+    ASSERT_NE(again, nullptr) << text;
+    EXPECT_DOUBLE_EQ(got(evaluateQuantity(*again, kVariables)).value, 51 * 10.0 - 49.0);
+    const auto copied = Expression::fromJson(again->toJson());
+    ASSERT_NE(copied, nullptr);
+    EXPECT_EQ(copied->toString(), text);
 }

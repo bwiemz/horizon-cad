@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QInputDialog>
 #include <QTimer>
+#include <clocale>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -729,6 +730,33 @@ TEST(DraftingToolsTest, ScaleCopiesTheSelectionFromTheClickedBasePoint) {
     EXPECT_EQ(all<DraftCircle>(w).size(), 1u);
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftCircle>(w).size(), 2u);
+}
+
+// A typed factor is read with a point in every locale: under de_DE, where
+// the C library's decimal separator is a comma, "1.5" scaled by 1.
+TEST(DraftingToolsTest, ScaleReadsATypedFactorWithAPointInEveryLocale) {
+    const std::string before = std::setlocale(LC_ALL, nullptr);
+    struct Restore {
+        std::string locale;
+        ~Restore() { std::setlocale(LC_ALL, locale.c_str()); }
+    } restore{before};
+    if (std::setlocale(LC_ALL, "de_DE.UTF-8") == nullptr &&
+        std::setlocale(LC_ALL, "de_DE") == nullptr) {
+        GTEST_SKIP() << "no German locale here";
+    }
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    w.activeDocument()->draftDocument().addEntity(std::make_shared<DraftCircle>(Vec2(2, 0), 1.0));
+    select(w, drive, {Vec2(3, 0)});
+
+    trigger(w, "tool_scale");
+    drive.click(Vec2(0, 0));
+    type(drive, "1.5");
+    const auto circles = all<DraftCircle>(w);
+    ASSERT_EQ(circles.size(), 2u);
+    EXPECT_TRUE(near(circles[1]->center(), Vec2(3, 0)));
+    EXPECT_NEAR(circles[1]->radius(), 1.5, 1e-9);
 }
 
 // Move drags the selection by where the drag went, in one undo step.

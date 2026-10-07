@@ -3,13 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <iomanip>
-#include <locale>
 #include <memory>
 #include <set>
-#include <sstream>
 #include <string_view>
 
+#include "horizon/math/CharConv.h"
 #include "horizon/math/Expression.h"
 
 namespace hz::doc {
@@ -56,10 +54,9 @@ std::map<std::string, std::string> ParameterRegistry::definitions() const {
         if (m_engine.isExpression(name)) {
             out[name] = m_engine.getExpression(name);
         } else {
-            std::ostringstream text;
-            text.imbue(std::locale::classic());
-            text << std::setprecision(17) << value;
-            out[name] = text.str();
+            // As the expression grammar reads it: setprecision(17) wrote
+            // 1e-05 as "1.0000000000000001e-05", which did not read back.
+            out[name] = math::toDecimalString(value);
         }
     }
     return out;
