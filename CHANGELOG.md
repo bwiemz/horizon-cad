@@ -122,6 +122,9 @@ work, not "post-1.0".
   it (a Move of a piece) is redone too: it did nothing. Undone, the block is
   back where it was in the drawing order, not on top; and two references to
   one block, exploded, are two groups, not one.
+- **A group made in a sketch of a reopened file is a group of its own.** The
+  sketch handed out group IDs from 1 again, so the new group took the ID of
+  one read from the file, and the two were selected as one.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
