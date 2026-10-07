@@ -9,6 +9,7 @@
 
 #include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftHatch.h"
+#include "horizon/drafting/Intersection.h"
 
 using hz::math::Vec2;
 using Segments = std::vector<std::pair<Vec2, Vec2>>;
@@ -95,4 +96,53 @@ TEST(EllipseTest, AClickIsMeasuredToTheNearestPointOfTheCurve) {
                  -3 + 80 * std::sin(turn) + 6.5 * std::cos(turn));
     EXPECT_TRUE(turned.hitTest(p, 0.5));
     EXPECT_FALSE(turned.hitTest(p, 0.49));
+}
+
+// -- A line touching a circle --------------------------------------------------
+
+// A line that touches a circle meets it at one point. The test for touching
+// compared a number that grows with the fourth power of the drawing's size to
+// a fixed tiny one, so lines that touched were found to miss, or to cross
+// twice at nearly the same point, most of the time.
+TEST(IntersectionTest, ALineTouchingACircleMeetsItOnce) {
+    int once = 0;
+    for (int k = 0; k < 200; ++k) {
+        const double angle = 0.37 * k + 0.1;
+        const Vec2 centre(123.4 + k, -56.7 + 2.0 * k);
+        const double radius = 17.3 + 0.11 * k;
+        const Vec2 touch = centre + Vec2(std::cos(angle), std::sin(angle)) * radius;
+        const Vec2 along(-std::sin(angle), std::cos(angle));
+        const Vec2 from = touch - along * 14.8;
+        const Vec2 to = touch + along * 25.2;
+
+        const auto onSegment = hz::draft::intersectLineCircle(from, to, centre, radius);
+        const auto onRay = hz::draft::intersectRayCircle(from, along, centre, radius);
+        if (onSegment.size() == 1 && near(onSegment[0], touch, 1e-6) && onRay.size() == 1 &&
+            near(onRay[0], touch, 1e-6)) {
+            ++once;
+        }
+    }
+    EXPECT_EQ(once, 200);
+}
+
+// Lines that cross or miss a circle by a little are still told apart.
+TEST(IntersectionTest, ALineJustCrossingOrMissingACircleIsToldApart) {
+    const Vec2 centre(1000, 1000);
+    const double radius = 50.0;
+    for (const double gap : {1e-6, -1e-6}) {
+        SCOPED_TRACE(gap);
+        const Vec2 from(900, 1050 + gap);
+        const Vec2 to(1100, 1050 + gap);
+        const size_t expected = gap > 0 ? 0u : 2u;
+        EXPECT_EQ(hz::draft::intersectLineCircle(from, to, centre, radius).size(), expected);
+        EXPECT_EQ(hz::draft::intersectRayCircle(from, Vec2(1, 0), centre, radius).size(), expected);
+    }
+    const auto across =
+        hz::draft::intersectLineCircle(Vec2(900, 1000), Vec2(1100, 1000), centre, radius);
+    ASSERT_EQ(across.size(), 2u);
+    EXPECT_TRUE(near(across[0], Vec2(950, 1000)));
+    EXPECT_TRUE(near(across[1], Vec2(1050, 1000)));
+    const auto ahead = hz::draft::intersectRayCircle(Vec2(1000, 1000), Vec2(0, 2), centre, radius);
+    ASSERT_EQ(ahead.size(), 1u) << "from inside, only the way the ray runs";
+    EXPECT_TRUE(near(ahead[0], Vec2(1000, 1050)));
 }
