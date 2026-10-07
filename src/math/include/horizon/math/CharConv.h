@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <string>
 
 namespace hz::math {
 
@@ -10,6 +11,12 @@ namespace hz::math {
 /// space and takes no '+', reads in no locale but the C one, and leaves
 /// @p value as it was on a failure.
 std::from_chars_result fromChars(const char* first, const char* last, double& value);
+
+/// @p value as the shortest plain decimal that reads back as exactly the same
+/// double ("0.1", "0.00005", "12"): never an exponent, which the expression
+/// grammar does not read, and in no locale but the C one ("1,5" under de_DE
+/// is what printf would write). Not finite: "inf", "-inf" or "nan".
+std::string toDecimalString(double value);
 
 namespace detail {
 

@@ -2,12 +2,13 @@
 
 #include <cctype>
 #include <cmath>
-#include <iomanip>
 #include <nlohmann/json.hpp>
-#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
+
+#include "horizon/math/CharConv.h"
 
 namespace hz::math {
 
@@ -26,9 +27,13 @@ std::set<std::string> LiteralExpr::variables() const {
 }
 
 std::string LiteralExpr::toString() const {
-    std::ostringstream ss;
-    ss << std::setprecision(17) << m_value;
-    return ss.str();
+    // Plain decimals, as the tokenizer reads them: the value exactly, never an
+    // exponent ("5.0000000000000002e-05" did not read back), never a comma.
+    // A value that is not finite is written as an expression that makes it.
+    if (std::isnan(m_value)) return "(0 / 0)";
+    if (std::isinf(m_value)) return m_value > 0.0 ? "(1 / 0)" : "(-(1 / 0))";
+    if (std::signbit(m_value)) return "(-" + toDecimalString(-m_value) + ")";
+    return toDecimalString(m_value);
 }
 
 nlohmann::json LiteralExpr::toJson() const {
@@ -103,7 +108,30 @@ std::string BinaryOpExpr::toString() const {
             opChar = '^';
             break;
     }
-    return "(" + m_left->toString() + " " + opChar + " " + m_right->toString() + ")";
+    // A chain of one precedence ("a + b - c", "a * b / c") is written as one
+    // bracket, as parse() reads it back: each link in brackets of its own
+    // nested the chain one bracket deeper per term, and past
+    // kMaxNestingDepth terms the text no longer parsed.
+    std::string left = m_left->toString();
+    const auto* chained = dynamic_cast<const BinaryOpExpr*>(m_left.get());
+    if (chained != nullptr && m_op != Op::Pow && precedence(chained->m_op) == precedence(m_op)) {
+        left = left.substr(1, left.size() - 2);  // its own brackets
+    }
+    return "(" + left + " " + opChar + " " + m_right->toString() + ")";
+}
+
+int BinaryOpExpr::precedence(Op op) {
+    switch (op) {
+        case Op::Add:
+        case Op::Sub:
+            return 1;
+        case Op::Mul:
+        case Op::Div:
+            return 2;
+        case Op::Pow:
+            return 3;
+    }
+    return 0;  // unreachable
 }
 
 nlohmann::json BinaryOpExpr::toJson() const {
@@ -246,88 +274,102 @@ nlohmann::json UnitExpr::toJson() const {
 
 namespace {
 
-/// Expression::fromJson with the tree bounded: `depth` is the current level,
-/// `nodes` counts every node built so far.
-std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& j, int depth, int& nodes) {
-    if (depth > Expression::kMaxNestingDepth || ++nodes > Expression::kMaxNodes) return nullptr;
-    if (!j.is_object() || !j.contains("type")) {
-        return nullptr;
-    }
-
+/// The children @p j names, in order, in @p out; false when @p j is no node
+/// fromJson reads (an unknown type, a field missing, an operator or unit it
+/// does not know). Nothing is built.
+bool childrenOf(const nlohmann::json& j, std::vector<const nlohmann::json*>& out) {
+    if (!j.is_object() || !j.contains("type")) return false;
     const std::string type = j.at("type").get<std::string>();
-
-    if (type == "literal") {
-        if (!j.contains("value")) return nullptr;
-        return std::make_unique<LiteralExpr>(j.at("value").get<double>());
-    }
-
-    if (type == "variable") {
-        if (!j.contains("name")) return nullptr;
-        return std::make_unique<VariableExpr>(j.at("name").get<std::string>());
-    }
-
+    if (type == "literal") return j.contains("value");
+    if (type == "variable") return j.contains("name");
     if (type == "binary") {
-        if (!j.contains("op") || !j.contains("left") || !j.contains("right")) return nullptr;
-        const std::string opStr = j.at("op").get<std::string>();
-        BinaryOpExpr::Op op;
-        if (opStr == "+")
-            op = BinaryOpExpr::Op::Add;
-        else if (opStr == "-")
-            op = BinaryOpExpr::Op::Sub;
-        else if (opStr == "*")
-            op = BinaryOpExpr::Op::Mul;
-        else if (opStr == "/")
-            op = BinaryOpExpr::Op::Div;
-        else if (opStr == "^")
-            op = BinaryOpExpr::Op::Pow;
-        else
-            return nullptr;
-
-        auto left = fromJsonBounded(j.at("left"), depth + 1, nodes);
-        auto right = fromJsonBounded(j.at("right"), depth + 1, nodes);
-        if (!left || !right) return nullptr;
-        return std::make_unique<BinaryOpExpr>(op, std::move(left), std::move(right));
+        if (!j.contains("op") || !j.contains("left") || !j.contains("right")) return false;
+        const std::string op = j.at("op").get<std::string>();
+        if (op != "+" && op != "-" && op != "*" && op != "/" && op != "^") return false;
+        out = {&j.at("left"), &j.at("right")};
+        return true;
     }
-
     if (type == "unary") {
-        if (!j.contains("op") || !j.contains("child")) return nullptr;
-        const std::string opStr = j.at("op").get<std::string>();
-        UnaryOpExpr::Op op;
-        if (opStr == "-")
-            op = UnaryOpExpr::Op::Negate;
-        else
-            return nullptr;
-
-        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
-        if (!child) return nullptr;
-        return std::make_unique<UnaryOpExpr>(op, std::move(child));
+        if (!j.contains("op") || !j.contains("child")) return false;
+        if (j.at("op").get<std::string>() != "-") return false;
+        out = {&j.at("child")};
+        return true;
     }
-
     if (type == "function") {
-        if (!j.contains("name") || !j.contains("args")) return nullptr;
-        const std::string name = j.at("name").get<std::string>();
-        const auto& argsJson = j.at("args");
-        if (!argsJson.is_array()) return nullptr;
-
-        std::vector<std::unique_ptr<Expression>> args;
-        for (const auto& argJson : argsJson) {
-            auto arg = fromJsonBounded(argJson, depth + 1, nodes);
-            if (!arg) return nullptr;
-            args.push_back(std::move(arg));
-        }
-        return std::make_unique<FunctionCallExpr>(name, std::move(args));
+        if (!j.contains("name") || !j.contains("args") || !j.at("args").is_array()) return false;
+        for (const auto& arg : j.at("args")) out.push_back(&arg);
+        return true;
     }
-
     if (type == "unit") {
-        if (!j.contains("unit") || !j.contains("child")) return nullptr;
-        std::string unit = j.at("unit").get<std::string>();
-        if (!UnitExpr::factor(unit)) return nullptr;
-        auto child = fromJsonBounded(j.at("child"), depth + 1, nodes);
-        if (!child) return nullptr;
-        return std::make_unique<UnitExpr>(std::move(child), std::move(unit));
+        if (!j.contains("unit") || !j.contains("child")) return false;
+        if (!UnitExpr::factor(j.at("unit").get<std::string>())) return false;
+        out = {&j.at("child")};
+        return true;
     }
+    return false;  // unknown type
+}
 
-    return nullptr;  // unknown type
+/// The node @p j describes, its children (as childrenOf named them) built.
+std::unique_ptr<Expression> makeNode(const nlohmann::json& j,
+                                     std::vector<std::unique_ptr<Expression>> children) {
+    const std::string type = j.at("type").get<std::string>();
+    if (type == "literal") return std::make_unique<LiteralExpr>(j.at("value").get<double>());
+    if (type == "variable") return std::make_unique<VariableExpr>(j.at("name").get<std::string>());
+    if (type == "binary") {
+        const std::string op = j.at("op").get<std::string>();
+        const BinaryOpExpr::Op kind = op == "+"   ? BinaryOpExpr::Op::Add
+                                      : op == "-" ? BinaryOpExpr::Op::Sub
+                                      : op == "*" ? BinaryOpExpr::Op::Mul
+                                      : op == "/" ? BinaryOpExpr::Op::Div
+                                                  : BinaryOpExpr::Op::Pow;
+        return std::make_unique<BinaryOpExpr>(kind, std::move(children[0]), std::move(children[1]));
+    }
+    if (type == "unary") {
+        return std::make_unique<UnaryOpExpr>(UnaryOpExpr::Op::Negate, std::move(children[0]));
+    }
+    if (type == "function") {
+        return std::make_unique<FunctionCallExpr>(j.at("name").get<std::string>(),
+                                                  std::move(children));
+    }
+    return std::make_unique<UnitExpr>(std::move(children[0]), j.at("unit").get<std::string>());
+}
+
+/// Expression::fromJson, with the tree bounded by Expression::kMaxNodes, as
+/// parse() bounds it. Built from an explicit stack, not by recursing: a long
+/// chain ("1+1+...+1", which parse() reads) is as deep as it is long, and a
+/// file may nest deeper still before the count stops it. Recursing once per
+/// level overflowed Windows' 1 MB stack on a debug build; a bound on the depth
+/// alone (it was kMaxNestingDepth) refused the copy of a 66-term sum that
+/// parse() had read, as parse() counts brackets, minus signs and powers, not
+/// every level.
+std::unique_ptr<Expression> fromJsonBounded(const nlohmann::json& root) {
+    struct Pending {
+        const nlohmann::json* node;
+        std::vector<const nlohmann::json*> children;
+        std::vector<std::unique_ptr<Expression>> built;
+    };
+    std::vector<Pending> stack;
+    int nodes = 0;
+    const auto visit = [&](const nlohmann::json& j) {
+        if (++nodes > Expression::kMaxNodes) return false;
+        Pending pending{&j, {}, {}};
+        if (!childrenOf(j, pending.children)) return false;
+        stack.push_back(std::move(pending));
+        return true;
+    };
+    if (!visit(root)) return nullptr;
+    while (true) {
+        Pending& top = stack.back();
+        if (top.built.size() < top.children.size()) {
+            // Its next child first (visit may move the stack, and `top` with it).
+            if (!visit(*top.children[top.built.size()])) return nullptr;
+            continue;
+        }
+        auto made = makeNode(*top.node, std::move(top.built));
+        stack.pop_back();
+        if (stack.empty()) return made;
+        stack.back().built.push_back(std::move(made));
+    }
 }
 
 }  // namespace
@@ -336,8 +378,7 @@ std::unique_ptr<Expression> Expression::fromJson(const nlohmann::json& j) {
     // A wrong-typed field (a number where the operator belongs) makes
     // json::get throw; the contract is nullptr on any error.
     try {
-        int nodes = 0;
-        return fromJsonBounded(j, 0, nodes);
+        return fromJsonBounded(j);
     } catch (const nlohmann::json::exception&) {
         return nullptr;
     }
@@ -445,12 +486,12 @@ private:
             }
         }
         std::string text = m_input.substr(start, m_pos - start);
+        // In the C locale, whatever the user's: std::stod follows the one Qt
+        // sets from the environment, and under de_DE read "1.5" as 1.
         double val = 0.0;
-        try {
-            val = std::stod(text);
-        } catch (...) {
-            return {TokenType::Error, text, 0.0};
-        }
+        const char* last = text.data() + text.size();
+        const auto [end, error] = fromChars(text.data(), last, val);
+        if (error != std::errc() || end != last) return {TokenType::Error, text, 0.0};
         return {TokenType::Number, text, val};
     }
 
@@ -589,9 +630,12 @@ private:
         return parsePrimary();
     }
 
-    /// @p value in the unit named next, if one is ("2 in", "(a + b) mm");
-    /// else as it is. Phase 155: a unit word after a number was an error
-    /// (nothing multiplies without a sign), so no expression changes meaning.
+    /// @p value in the unit named next, if one is ("2 in", "(a + b) mm",
+    /// "wall in", "sqrt(2) in"); else as it is. Phase 155: a unit word after a
+    /// number was an error (nothing multiplies without a sign), so no
+    /// expression changes meaning; nor after a name or a call, which
+    /// UnitExpr::toString writes for a plain number given the document's unit
+    /// ("(count in)"), and which did not read back.
     std::unique_ptr<Expression> withUnit(std::unique_ptr<Expression> value) {
         if (m_hasError || !value || m_current.type != TokenType::Identifier ||
             !UnitExpr::factor(m_current.text)) {
@@ -602,7 +646,7 @@ private:
         return node<UnitExpr>(std::move(value), std::move(unit));
     }
 
-    // primary = NUMBER unit? | IDENTIFIER '(' args ')' | IDENTIFIER
+    // primary = NUMBER unit? | IDENTIFIER '(' args ')' unit? | IDENTIFIER unit?
     //         | '(' expression ')' unit?
     std::unique_ptr<Expression> parsePrimary() {
         if (m_hasError) return nullptr;
@@ -641,16 +685,16 @@ private:
                 }
 
                 if (!expect(TokenType::RParen)) return nullptr;
-                return node<FunctionCallExpr>(name, std::move(args));
+                return withUnit(node<FunctionCallExpr>(name, std::move(args)));
             }
 
             // Built-in constant: pi
             if (name == "pi") {
-                return node<LiteralExpr>(3.14159265358979323846);
+                return withUnit(node<LiteralExpr>(3.14159265358979323846));
             }
 
             // Variable reference
-            return node<VariableExpr>(name);
+            return withUnit(node<VariableExpr>(name));
         }
 
         // '(' expression ')'
