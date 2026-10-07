@@ -203,7 +203,7 @@ TEST(DrawingDocumentIOTest, AHostileDrawingIsReadOrRefusedNotThrown) {
     write(dwg, R"([1, 2, 3])");
     EXPECT_FALSE(DrawingDocumentIO::load(dwg, spec, drawing, &error));
 
-    write(dwg, R"({"part": "box.hzpart", "version": 1e300, "gap": "wide",
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "gap": "wide",
                    "sheet": {"paper": 3, "margin": -4},
                    "titleBlock": {"title": 7, "width": "x"},
                    "views": [{"kind": 1, "direction": [0, 0], "scale": -2,
@@ -544,6 +544,32 @@ TEST(DrawingDocumentIOTest, ALabelIsCutBetweenCharacters) {
     EXPECT_EQ(spec.views[4].label, rulers.substr(0, 8 * ruler.size()));
     ASSERT_EQ(spec.frames.size(), 1u);
     EXPECT_EQ(spec.frames[0].label, word + "A");
+    std::filesystem::remove_all(dir);
+}
+
+// A drawing from a newer version is refused, as a newer part is: it was read
+// as version 3, without a word, and saving it destroyed what the newer
+// version had written.
+TEST(DrawingDocumentIOTest, ANewerDrawingIsRefusedAndSaysWhich) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_newer";
+    std::filesystem::create_directories(dir);
+    const std::string dwg = (dir / "d.hzdwg").string();
+    DrawingDocumentSpec spec;
+    std::string error;
+
+    write(dwg, R"({"part": "box.hzpart", "version": 4, "views": [{"kind": "front"}]})");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("newer version"), std::string::npos) << error;
+    EXPECT_NE(error.find('4'), std::string::npos) << error;
+
+    // Compared as a number: a version of 1e300 cast to int was undefined.
+    write(dwg, R"({"part": "box.hzpart", "version": 1e300})");
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
+    EXPECT_NE(error.find("newer version"), std::string::npos) << error;
+
+    write(dwg, R"({"part": "box.hzpart", "version": 3, "views": [{"kind": "front"}]})");
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, spec, &error)) << error;
+    EXPECT_EQ(spec.version, 3);
     std::filesystem::remove_all(dir);
 }
 

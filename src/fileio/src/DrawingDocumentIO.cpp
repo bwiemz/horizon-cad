@@ -4,8 +4,10 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <locale>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -277,6 +279,16 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
 
     // Compared as a number: a version of 1e300 cast to int was undefined.
     const double versionNumber = number(root, "version", 1.0);
+    // A newer version's file is refused, as a newer part is (NativeFormat):
+    // read as this version reads it, what the newer one wrote would be lost
+    // without a word, and the next save would destroy it.
+    if (versionNumber > kVersion) {
+        std::ostringstream newer;
+        newer.imbue(std::locale::classic());
+        newer << versionNumber;
+        return fail("it was written by a newer version of Horizon CAD (drawing format " +
+                    newer.str() + "; this version reads up to " + std::to_string(kVersion) + ")");
+    }
     const int version = !std::isfinite(versionNumber) || versionNumber < 2.0 ? 1
                         : versionNumber < 3.0                                ? 2
                                                                              : 3;

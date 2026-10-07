@@ -120,6 +120,10 @@ work, not "post-1.0".
   as it is typed, but was read back as eight bytes: "Détail-A" lost its A,
   and "断面図A" came back broken. A label is now eight characters both
   where it is typed and where it is read.
+- **A drawing sheet from a newer version is refused**, as a part or a 2D
+  drawing from one is, and says which version wrote it. It was read
+  without a word as this version reads it, and saving it destroyed what
+  the newer version had written.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
