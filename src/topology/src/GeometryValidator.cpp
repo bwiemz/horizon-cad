@@ -148,9 +148,10 @@ bool loopSelfIntersects(const std::vector<Vec3>& pts, const Vec3& normal, double
     u = u * (1.0 / ulen);
     const Vec3 v = normal.cross(u);
 
+    // From the loop's first point: small numbers, however far out it is.
     std::vector<std::pair<double, double>> p2(n);
     for (size_t i = 0; i < n; ++i) {
-        p2[i] = {pts[i].dot(u), pts[i].dot(v)};
+        p2[i] = {(pts[i] - pts[0]).dot(u), (pts[i] - pts[0]).dot(v)};
     }
 
     for (size_t i = 0; i < n; ++i) {
@@ -259,7 +260,7 @@ bool readFlatFace(const Face& face, double tol, FlatFace& flat) {
     const Vec3 area = newell(loops.front());
     const double len = area.length();
     const double extent = extentOf(loops.front());
-    flat.tol = tol * std::max(1.0, extent);
+    flat.tol = std::max(tol, GeometryValidator::kDefaultTol * extent);  // as planarity's
     // Narrower than the tolerance: nothing passes through it.
     if (!(len > flat.tol * std::max(extent, tol))) return false;
     flat.shell = face.shell;
@@ -340,6 +341,92 @@ int countCrossings(const Solid& solid, double tol) {
         }
     }
     return crossings;
+}
+
+/// The vertices of a wire, in loop order, walking the next chain once.
+std::vector<const Vertex*> loopVertices(const Wire* wire) {
+    std::vector<const Vertex*> out;
+    if (wire == nullptr || wire->halfEdge == nullptr) return out;
+    const HalfEdge* start = wire->halfEdge;
+    const HalfEdge* cur = start;
+    for (size_t guard = 0; guard < 100000 && cur != nullptr && cur->origin != nullptr; ++guard) {
+        out.push_back(cur->origin);
+        cur = cur->next;
+        if (cur == start) break;
+    }
+    return out;
+}
+
+/// A face's loops in its plane, from @p origin along @p u and @p v.
+using Loop2d = std::vector<std::pair<double, double>>;
+Loop2d inPlane(const std::vector<const Vertex*>& loop, const Vec3& origin, const Vec3& u,
+               const Vec3& v) {
+    Loop2d out;
+    out.reserve(loop.size());
+    for (const Vertex* vertex : loop) {
+        const Vec3 d = vertex->point - origin;
+        out.emplace_back(d.dot(u), d.dot(v));
+    }
+    return out;
+}
+
+/// Whether the outer loop and the holes of a flat face cross one another: a
+/// hole that crosses the outline, or another hole. Segments that share a
+/// vertex touch there and are not counted (a hole may touch its outline at a
+/// point); each loop's own crossings are loopSelfIntersects'.
+bool loopsCross(const std::vector<std::vector<const Vertex*>>& loops,
+                const std::vector<Loop2d>& loops2d, double tol) {
+    for (size_t a = 0; a < loops.size(); ++a) {
+        for (size_t b = a + 1; b < loops.size(); ++b) {
+            const size_t na = loops[a].size();
+            const size_t nb = loops[b].size();
+            for (size_t i = 0; i < na; ++i) {
+                const size_t i2 = (i + 1) % na;
+                for (size_t j = 0; j < nb; ++j) {
+                    const size_t j2 = (j + 1) % nb;
+                    if (loops[a][i] == loops[b][j] || loops[a][i] == loops[b][j2] ||
+                        loops[a][i2] == loops[b][j] || loops[a][i2] == loops[b][j2]) {
+                        continue;
+                    }
+                    if (segmentsCross(loops2d[a][i], loops2d[a][i2], loops2d[b][j], loops2d[b][j2],
+                                      tol)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/// Whether @p hole lies outside @p outer: a corner of it off the outline's
+/// boundary is not inside it (by its crossing number). A hole whose every
+/// corner is on the outline says nothing either way, and is not counted.
+bool holeOutside(const Loop2d& hole, const Loop2d& outer, double tol) {
+    for (const auto& p : hole) {
+        bool inside = false;
+        double distance = std::numeric_limits<double>::infinity();
+        for (size_t i = 0, j = outer.size() - 1; i < outer.size(); j = i++) {
+            const auto& a = outer[i];
+            const auto& b = outer[j];
+            const double dx = b.first - a.first;
+            const double dy = b.second - a.second;
+            const double len2 = dx * dx + dy * dy;
+            const double t =
+                len2 > 0.0
+                    ? std::clamp(((p.first - a.first) * dx + (p.second - a.second) * dy) / len2,
+                                 0.0, 1.0)
+                    : 0.0;
+            distance = std::min(
+                distance, std::hypot(p.first - a.first - t * dx, p.second - a.second - t * dy));
+            if ((a.second > p.second) != (b.second > p.second)) {
+                const double x = a.first + (p.second - a.second) * dx / (b.second - a.second);
+                if (p.first < x) inside = !inside;
+            }
+        }
+        if (distance > tol) return !inside;
+    }
+    return false;
 }
 
 /// Quantized key for the coincident-vertex bucket scan.
@@ -509,6 +596,9 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
     }
 
     // -- Per-face: degeneracy, planarity, self-intersection -------------------
+    // Each loop of a face, its holes as well as its outline: the holes were
+    // never looked at, so one off the face's plane, crossing its outline, or
+    // outside it altogether passed every check.
     for (const auto& face : solid.faces()) {
         const auto pts = loopPoints(face.outerLoop);
         if (pts.size() < 3) {
@@ -520,6 +610,18 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
             ++issues.degenerateFaces;
             continue;
         }
+        std::vector<std::vector<Vec3>> holes;
+        bool degenerate = false;
+        for (const auto* inner : face.innerLoops) {
+            holes.push_back(loopPoints(inner));
+            if (holes.back().size() < 3 || newell(holes.back()).length() < areaTol) {
+                degenerate = true;
+            }
+        }
+        if (degenerate) {
+            ++issues.degenerateFaces;
+            continue;
+        }
 
         Vec3 origin(0, 0, 0);
         Vec3 normal(0, 0, 0);
@@ -527,20 +629,40 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
             continue;  // Curved carrier: planarity does not apply.
         }
 
-        const double planeTol = tol * std::max(1.0, extentOf(pts));
-        bool planar = true;
-        for (const auto& p : pts) {
-            if (std::abs(normal.dot(p - origin)) > planeTol) {
-                planar = false;
-                break;
-            }
-        }
+        // tol, or a ten-millionth of the face (kDefaultTol relative to its
+        // size), whichever is the larger. It was tol times the face's size,
+        // and the feature gate already scales tol with the part: a face 100 m
+        // long in a part that size got a tolerance of 10 mm, and its two long
+        // edges 10 mm apart read as one, a boundary crossing itself.
+        const double planeTol = std::max(tol, kDefaultTol * extentOf(pts));
+        const auto onPlane = [&](const std::vector<Vec3>& loop) {
+            return std::all_of(loop.begin(), loop.end(), [&](const Vec3& p) {
+                return std::abs(normal.dot(p - origin)) <= planeTol;
+            });
+        };
+        const bool planar = onPlane(pts) && std::all_of(holes.begin(), holes.end(), onPlane);
         if (!planar) {
             ++issues.nonPlanarLoops;
             continue;  // A non-planar loop's 2D projection is meaningless.
         }
 
-        if (loopSelfIntersects(pts, normal, planeTol)) {
+        bool crosses = loopSelfIntersects(pts, normal, planeTol);
+        for (const auto& hole : holes)
+            crosses = crosses || loopSelfIntersects(hole, normal, planeTol);
+        if (!holes.empty()) {
+            const Vec3 ref = std::abs(normal.x) < 0.9 ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
+            const Vec3 u = normal.cross(ref).normalized();
+            const Vec3 v = normal.cross(u);
+            std::vector<std::vector<const Vertex*>> loops{loopVertices(face.outerLoop)};
+            for (const auto* inner : face.innerLoops) loops.push_back(loopVertices(inner));
+            std::vector<Loop2d> loops2d;
+            for (const auto& loop : loops) loops2d.push_back(inPlane(loop, pts.front(), u, v));
+            crosses = crosses || loopsCross(loops, loops2d, planeTol);
+            for (size_t k = 1; k < loops2d.size(); ++k) {
+                if (holeOutside(loops2d[k], loops2d.front(), planeTol)) ++issues.strayHoles;
+            }
+        }
+        if (crosses) {
             ++issues.selfIntersectingLoops;
         }
     }
@@ -624,7 +746,9 @@ std::string GeometryValidator::report(const Solid& solid, double tol) {
     line("Degenerate edges", i.degenerateEdges, "zero-length");
     line("Degenerate faces", i.degenerateFaces, "fewer than 3 vertices, or vanishing area");
     line("Non-planar loops", i.nonPlanarLoops, "a vertex lies off its own planar face");
-    line("Self-intersecting loops", i.selfIntersectingLoops, "boundary segments cross");
+    line("Self-intersecting loops", i.selfIntersectingLoops,
+         "boundary segments cross, a hole's or the outline's");
+    line("Stray holes", i.strayHoles, "a hole lies outside its face");
     line("Open shells", i.openShells, "face area vectors do not sum to zero");
     line("Crossing faces", i.crossingFaces,
          "an edge passes through a face of its own shell — the skin runs into itself");

@@ -1408,6 +1408,7 @@ std::string solidProblem(const topo::Solid& solid) {
     const auto issues =
         topo::GeometryValidator::check(solid, tol, topo::GeometryValidator::Scope::FailingOnly);
     if (issues.selfIntersectingLoops > 0) return "a face's boundary crosses itself";
+    if (issues.strayHoles > 0) return "a hole lies outside its face";
     if (issues.crossingFaces > 0) return "it runs into itself: two of its faces cross";
     if (issues.nonPlanarLoops > 0) return "a flat face is not flat";
     if (issues.openShells > 0) return "its skin is not closed";

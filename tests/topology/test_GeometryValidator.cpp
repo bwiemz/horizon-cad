@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -553,4 +554,117 @@ TEST(GeometryValidatorTest, OverlappingShellsAreNotCrossings) {
     }
     first.faces.resize(n);
     EXPECT_EQ(GV::check(*solid).crossingFaces, 0) << GV::report(*solid);
+}
+
+// ---------------------------------------------------------------------------
+// Holes, and the tolerance a part's size gives.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A hole through @p points added to @p face, its half-edges linked round
+/// the loop (and to nothing else: these tests are about the face alone).
+void addHole(Solid& solid, Face& face, const std::vector<Vec3>& points) {
+    std::vector<HalfEdge*> hes;
+    for (const Vec3& p : points) {
+        Vertex* v = solid.allocVertex();
+        v->point = p;
+        HalfEdge* he = solid.allocHalfEdge();
+        he->origin = v;
+        he->face = &face;
+        v->halfEdge = he;
+        hes.push_back(he);
+    }
+    for (size_t i = 0; i < hes.size(); ++i) {
+        hes[i]->next = hes[(i + 1) % hes.size()];
+        hes[(i + 1) % hes.size()]->prev = hes[i];
+    }
+    Wire* wire = solid.allocWire();
+    wire->halfEdge = hes.front();
+    face.innerLoops.push_back(wire);
+}
+
+/// The unit cube's top face (z = 1).
+Face& topOf(Solid& cube) {
+    for (auto& face : cube.faces()) {
+        bool top = true;
+        const HalfEdge* he = face.outerLoop->halfEdge;
+        do {
+            top = top && he->origin->point.z > 0.5;
+            he = he->next;
+        } while (he != face.outerLoop->halfEdge);
+        if (top) return face;
+    }
+    return cube.faces().front();
+}
+
+}  // namespace
+
+// A hole wound against the top face, in it, off its plane, across its
+// outline, outside it: the holes were never looked at.
+TEST(GeometryValidatorTest, AHolesPlaceIsChecked) {
+    const std::vector<Vec3> inside = {
+        {0.25, 0.25, 1}, {0.25, 0.75, 1}, {0.75, 0.75, 1}, {0.75, 0.25, 1}};
+    {
+        auto cube = makeCube();
+        addHole(*cube, topOf(*cube), inside);
+        const auto issues = GV::check(*cube);
+        EXPECT_EQ(issues.strayHoles, 0) << GV::report(*cube);
+        EXPECT_EQ(issues.selfIntersectingLoops, 0) << GV::report(*cube);
+        EXPECT_EQ(issues.nonPlanarLoops, 0) << GV::report(*cube);
+    }
+    {
+        auto cube = makeCube();
+        auto lifted = inside;
+        lifted[1].z = 1.5;
+        addHole(*cube, topOf(*cube), lifted);
+        EXPECT_EQ(GV::check(*cube).nonPlanarLoops, 1) << GV::report(*cube);
+    }
+    {
+        auto cube = makeCube();
+        auto across = inside;
+        for (Vec3& p : across) p.x += 0.5;  // half of it past x = 1
+        addHole(*cube, topOf(*cube), across);
+        EXPECT_EQ(GV::check(*cube).selfIntersectingLoops, 1) << GV::report(*cube);
+    }
+    {
+        auto cube = makeCube();
+        auto outside = inside;
+        for (Vec3& p : outside) p.x += 2.0;
+        addHole(*cube, topOf(*cube), outside);
+        const auto issues = GV::check(*cube);
+        EXPECT_EQ(issues.strayHoles, 1) << GV::report(*cube);
+        EXPECT_FALSE(issues.ok());
+        EXPECT_NE(GV::report(*cube).find("Stray holes"), std::string::npos);
+    }
+    {
+        auto cube = makeCube();
+        addHole(*cube, topOf(*cube), {{0.25, 0.25, 1}, {0.75, 0.25, 1}, {0.5, 0.25, 1}});
+        EXPECT_EQ(GV::check(*cube).degenerateFaces, 1) << "a hole with no area";
+    }
+}
+
+// The feature gate scales the tolerance with the part, and the face checks
+// scaled it again with the face: a plate 100 m by 10 m and 10 mm thick got a
+// tolerance of 10 mm on its long sides, whose two long edges, 10 mm apart,
+// read as one, a boundary crossing itself.
+TEST(GeometryValidatorTest, ALongThinFaceAtThePartsToleranceIsSound) {
+    std::vector<Vec3> pts = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
+                             {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
+    for (Vec3& p : pts) p = Vec3(p.x * 1e5, p.y * 1e4, p.z * 10.0);
+    const std::vector<std::vector<int>> faces = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4},
+                                                 {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+    auto plate = Assembler::build(pts, faces);
+    const double size = (pts[6] - pts[0]).length();
+    const double tol = std::max(GV::kDefaultTol, 1e-9 * size);  // as the feature gate has it
+    const auto issues = GV::check(*plate, tol);
+    EXPECT_EQ(issues.selfIntersectingLoops, 0) << GV::report(*plate, tol);
+    EXPECT_TRUE(issues.ok()) << GV::report(*plate, tol);
+
+    // And a face that is not flat by a millimetre, 100 m across, is caught
+    // there: the tolerance was 10 mm.
+    for (auto& v : plate->vertices()) {
+        if (v.point.x > 1e4 && v.point.y > 1e3 && v.point.z > 5.0) v.point.z += 1.0;
+    }
+    EXPECT_GT(GV::check(*plate, tol).nonPlanarLoops, 0) << GV::report(*plate, tol);
 }
