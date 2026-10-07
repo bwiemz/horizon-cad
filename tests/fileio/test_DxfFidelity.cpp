@@ -938,3 +938,19 @@ TEST(DxfFidelityTest, ASplineThatIsNotAUniformCubicIsReported) {
     ASSERT_EQ(polys.size(), 1u) << "degree 1";
     EXPECT_TRUE(samePoints(polys[0]->points(), {{0, 0}, {1, 2}, {3, 2}, {4, 0}}));
 }
+
+// A bulge of 1e200, squared, is infinite: the arc it made had a centre of NaN,
+// which nothing can draw or pick. Such a segment comes in straight.
+TEST(DxfFidelityTest, ABulgeTooLargeForAnArcIsAStraightSegment) {
+    Loaded in(
+        dxf("0\nLWPOLYLINE\n8\n0\n90\n3\n70\n0\n"
+            "10\n0\n20\n0\n42\n1e200\n10\n10\n20\n0\n42\n1\n10\n10\n20\n2\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto lines = in.all<hz::draft::DraftLine>();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(0, 0)));
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(10, 0)));
+    const auto arcs = in.all<hz::draft::DraftArc>();
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_TRUE(near(arcs[0]->center(), Vec2(10, 1)));
+}

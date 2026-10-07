@@ -982,7 +982,8 @@ void mirrorInYAxis(draft::DraftEntity& entity) {
 }
 
 /// The arc a polyline segment with `bulge` (the tangent of a quarter of its
-/// included angle; positive runs counterclockwise) makes from a to b.
+/// included angle; positive runs counterclockwise) makes from a to b; null
+/// when there is none to make.
 std::shared_ptr<draft::DraftEntity> arcFromBulge(const math::Vec2& a, const math::Vec2& b,
                                                  double bulge) {
     const math::Vec2 chord = b - a;
@@ -992,6 +993,8 @@ std::shared_ptr<draft::DraftEntity> arcFromBulge(const math::Vec2& a, const math
     const double h = d * (1.0 - bulge * bulge) / (4.0 * bulge);
     const math::Vec2 c = (a + b) * 0.5 + left * h;
     const double r = std::abs(d * (1.0 + bulge * bulge) / (4.0 * bulge));
+    // A bulge of 1e200 squares to infinity: no arc, and the centre was NaN.
+    if (!std::isfinite(c.x) || !std::isfinite(c.y) || !std::isfinite(r)) return nullptr;
     const double angA = std::atan2(a.y - c.y, a.x - c.x);
     const double angB = std::atan2(b.y - c.y, b.x - c.x);
     return bulge > 0.0 ? std::make_shared<draft::DraftArc>(c, r, angA, angB)
@@ -1023,11 +1026,8 @@ Entities polylineEntities(const std::vector<PolyVertex>& v, bool closed, const s
         const math::Vec2& a = v[k].p;
         const math::Vec2& b = v[(k + 1) % v.size()].p;
         std::shared_ptr<draft::DraftEntity> piece;
-        if (std::abs(v[k].bulge) > 1e-12) {
-            piece = arcFromBulge(a, b, v[k].bulge);
-        } else if ((b - a).length() > 1e-12) {
-            piece = std::make_shared<draft::DraftLine>(a, b);
-        }
+        if (std::abs(v[k].bulge) > 1e-12) piece = arcFromBulge(a, b, v[k].bulge);
+        if (!piece && (b - a).length() > 1e-12) piece = std::make_shared<draft::DraftLine>(a, b);
         if (!piece) continue;
         piece->setGroupId(group);
         pieces.push_back(std::move(piece));

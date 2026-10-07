@@ -120,6 +120,8 @@ work, not "post-1.0".
     spline from another program that is not a uniform cubic, as most are not,
     is still drawn as one on its control points, and is now reported; one of
     degree 1 comes in as a polyline.
+  - A polyline bulge too large for an arc comes in as a straight segment,
+    not an arc with no centre.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
