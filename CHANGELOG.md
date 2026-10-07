@@ -125,6 +125,11 @@ work, not "post-1.0".
 - **A group made in a sketch of a reopened file is a group of its own.** The
   sketch handed out group IDs from 1 again, so the new group took the ID of
   one read from the file, and the two were selected as one.
+- **Undo or redo in the middle of a drag** puts the drag back first, as
+  Escape does: a grip, a Move, a Stretch, a polyline's vertex. Released
+  after the undo, a grip drag recorded a step from before it, which put back
+  what was undone and lost what could be redone. A tool part way through
+  what it makes starts it again.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

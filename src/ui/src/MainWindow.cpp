@@ -2672,7 +2672,12 @@ void MainWindow::onRedo() {
 void MainWindow::undoOrRedo(bool undo) {
     // A drag under way is put back first (Phase 158): its release would
     // record a step from a snapshot taken before this undo, and undo it.
+    // The same for a tool's: a grip, a move, a stretch, a vertex dragged
+    // (whose release put back what was undone, and threw away what could be
+    // redone), and a tool part way through what it makes, whose points or
+    // entities the undo may take away.
     m_viewport->cancelComponentDrag();
+    if (Tool* tool = m_viewport->activeTool()) tool->cancel();
     const uint64_t revision = m_document->featureTree().revision();
     if (undo) {
         m_document->undoStack().undo();
