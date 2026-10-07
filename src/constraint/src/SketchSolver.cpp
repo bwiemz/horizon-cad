@@ -8,6 +8,8 @@
 #include <map>
 #include <numeric>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -48,6 +50,24 @@ Eigen::MatrixXd SketchSolver::buildJacobian(const ParameterTable& params,
 }
 
 SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& constraints) {
+    // A constraint naming what its entity does not have (a circle read as a
+    // line, a third end of a line) throws from the table. That went out of
+    // every move and edit that solved: a hand-edited file can hold one, and
+    // the constraint tool made them. It is reported instead, the parameters
+    // as they were.
+    const Eigen::VectorXd start = params.values();
+    try {
+        return solveFrom(params, constraints);
+    } catch (const std::runtime_error& e) {
+        params.values() = start;
+        SolveResult result;
+        result.status = SolveStatus::InvalidReference;
+        result.message = std::string("A constraint cannot be read: ") + e.what();
+        return result;
+    }
+}
+
+SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSystem& constraints) {
     SolveResult result;
 
     int m = constraints.totalEquations();
@@ -251,12 +271,20 @@ DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
         const size_t firstRow = equations.size();
         for (int r = 0; r < rows; ++r) equations.push_back(Equation{k, {}});
         // A constraint on something not in the table cannot be met: its
-        // equations stay empty.
+        // equations stay empty. So for one naming what its entity does not
+        // have, which throws: it threw out of every repaint.
         if (!usable) continue;
         for (const auto& [first, count] : ranges) {
             scratch.block(0, first, rows, count).setZero();
         }
-        c.jacobian(params, scratch, 0);
+        try {
+            c.jacobian(params, scratch, 0);
+        } catch (const std::runtime_error&) {
+            for (const auto& [first, count] : ranges) {
+                scratch.block(0, first, rows, count).setZero();
+            }
+            continue;
+        }
         for (const auto& [first, count] : ranges) {
             for (int col = first; col < first + count; ++col) {
                 if (params.isFixed(col)) continue;  // held: a constant here

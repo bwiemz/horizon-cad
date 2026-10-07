@@ -38,6 +38,12 @@ work, not "post-1.0".
   - A constraint on an arc's start or end could only move the arc's
     centre, so most were reported over-constrained. The arc is now turned
     and sized to meet it.
+  - A tangent may be picked circle first. Picked that way, or between two
+    lines, or with Equal between a line and an arc, the constraint used to
+    break every solve after it: moving anything, editing a value, the
+    colours that show what is free. A pair that cannot be held is now
+    refused, and the prompt says why; a file holding one opens without it,
+    and says so.
 - **Installed on clean machines before release.** `horizon --self-test` now
   does what a beta tester is asked to do. It models, edits, saves and reads
   back a part, sends it through STEP, places it in an assembly, and draws and

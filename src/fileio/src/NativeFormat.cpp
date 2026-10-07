@@ -14,10 +14,12 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
+#include "horizon/constraint/ParameterTable.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/BlockTable.h"
@@ -594,6 +596,27 @@ static void constraintsFromJson(const json& array, const draft::DraftDocument& d
         if (const auto at = readAt.find(cid); at != readAt.end()) {
             noteSkipped(report, kind, at->second.first, *at->second.second,
                         "an entity it holds is not in the document");
+        }
+    }
+
+    // And any that names what its entity does not have: a third end of a
+    // line, a circle read as a line. Each loaded, and every solve after
+    // threw at it.
+    const auto table = cstr::ParameterTable::buildFromEntities(drawing.entities(), system);
+    std::vector<std::pair<uint64_t, std::string>> unfit;
+    for (const auto& c : system.constraints()) {
+        Eigen::VectorXd residuals = Eigen::VectorXd::Zero(c->equationCount());
+        try {
+            c->evaluate(table, residuals, 0);
+        } catch (const std::runtime_error& e) {
+            unfit.emplace_back(c->id(), e.what());
+        }
+    }
+    for (const auto& [cid, why] : unfit) {
+        system.removeConstraint(cid);
+        if (const auto at = readAt.find(cid); at != readAt.end()) {
+            noteSkipped(report, kind, at->second.first, *at->second.second,
+                        "it names what its entity does not have (" + why + ")");
         }
     }
 }

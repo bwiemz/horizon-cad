@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <memory>
+#include <vector>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
@@ -260,5 +261,73 @@ TEST(SketchSolver, AnArcsEndsAreSolvedWithItsRadiusAndAngles) {
 
         const auto dof = cstr::SketchSolver().analyzeDOF(params, sys);
         EXPECT_NE(dof.entityStatus.at(arc->id()), cstr::EntityDOFStatus::OverConstrained);
+    }
+}
+
+// A tangent picked circle first is solved as one picked line first.
+TEST(SketchSolver, ATangentPickedCircleFirstIsSolved) {
+    draft::DraftDocument doc;
+    auto line = std::make_shared<draft::DraftLine>(math::Vec2{-10, 0}, math::Vec2{10, 0});
+    auto circle = std::make_shared<draft::DraftCircle>(math::Vec2{0, 8}, 5.0);
+    doc.addEntity(line);
+    doc.addEntity(circle);
+
+    cstr::ConstraintSystem sys;
+    const cstr::GeometryRef start{line->id(), cstr::FeatureType::Point, 0};
+    const cstr::GeometryRef end{line->id(), cstr::FeatureType::Point, 1};
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(start, math::Vec2{-10, 0}));
+    sys.addConstraint(std::make_shared<cstr::FixedConstraint>(end, math::Vec2{10, 0}));
+    sys.addConstraint(std::make_shared<cstr::TangentConstraint>(
+        cstr::GeometryRef{circle->id(), cstr::FeatureType::Circle, 0},
+        cstr::GeometryRef{line->id(), cstr::FeatureType::Line, 0}));
+
+    auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+    cstr::SketchSolver solver;
+    const auto result = solver.solve(params, sys);
+    ASSERT_TRUE(result.status == cstr::SolveStatus::Success ||
+                result.status == cstr::SolveStatus::UnderConstrained)
+        << result.message;
+    params.applyToEntities(doc.entities());
+    EXPECT_NEAR(std::abs(circle->center().y), circle->radius(), 1e-6) << "the line touches it";
+}
+
+// A constraint its entity cannot hold (a circle read as a line, a third end
+// of a line: a hand-edited file) is reported, not thrown. Every solve after
+// it threw, out of the move or edit that ran it, and the analysis out of
+// every repaint.
+TEST(SketchSolver, AConstraintItsEntityCannotHoldIsReportedNotThrown) {
+    draft::DraftDocument doc;
+    auto line = std::make_shared<draft::DraftLine>(math::Vec2{0, 0}, math::Vec2{10, 1});
+    auto circle = std::make_shared<draft::DraftCircle>(math::Vec2{5, 5}, 2.0);
+    doc.addEntity(line);
+    doc.addEntity(circle);
+    const cstr::GeometryRef start{line->id(), cstr::FeatureType::Point, 0};
+    const cstr::GeometryRef end{line->id(), cstr::FeatureType::Point, 1};
+    const cstr::GeometryRef edge{line->id(), cstr::FeatureType::Line, 0};
+
+    const std::vector<std::shared_ptr<cstr::Constraint>> unfit{
+        std::make_shared<cstr::PerpendicularConstraint>(
+            edge, cstr::GeometryRef{circle->id(), cstr::FeatureType::Line, 0}),
+        std::make_shared<cstr::CoincidentConstraint>(
+            start, cstr::GeometryRef{line->id(), cstr::FeatureType::Point, 2}),
+    };
+    for (const auto& bad : unfit) {
+        cstr::ConstraintSystem sys;
+        sys.addConstraint(std::make_shared<cstr::HorizontalConstraint>(start, end));
+        sys.addConstraint(bad);
+        auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+        const Eigen::VectorXd before = params.values();
+
+        cstr::SketchSolver solver;
+        cstr::SolveResult result;
+        ASSERT_NO_THROW(result = solver.solve(params, sys)) << bad->typeName();
+        EXPECT_EQ(result.status, cstr::SolveStatus::InvalidReference) << bad->typeName();
+        EXPECT_FALSE(result.message.empty());
+        EXPECT_EQ(params.values(), before) << "nothing moved";
+
+        cstr::DOFAnalysis dof;
+        ASSERT_NO_THROW(dof = solver.analyzeDOF(params, sys)) << bad->typeName();
+        EXPECT_EQ(dof.entityStatus.at(line->id()), cstr::EntityDOFStatus::OverConstrained)
+            << bad->typeName() << ": it cannot be met";
     }
 }

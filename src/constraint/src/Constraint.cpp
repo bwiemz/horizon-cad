@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <set>
+#include <stdexcept>
+#include <utility>
 
 #include "horizon/constraint/ParameterTable.h"
 
@@ -208,8 +210,17 @@ std::shared_ptr<Constraint> ParallelConstraint::clone() const {
 // F = ((cx-sx)*(ey-sy) - (cy-sy)*(ex-sx))^2 - r^2 * ((ex-sx)^2 + (ey-sy)^2)
 // ---------------------------------------------------------------------------
 
-TangentConstraint::TangentConstraint(const GeometryRef& lineRef, const GeometryRef& circleRef)
-    : m_lineRef(lineRef), m_circleRef(circleRef) {}
+TangentConstraint::TangentConstraint(const GeometryRef& refA, const GeometryRef& refB)
+    : m_lineRef(refA), m_circleRef(refB) {
+    // Picked in either order. Kept as picked, a circle picked first was read
+    // as the line, and every solve threw; refused here, a pair that is not a
+    // line and a circle never reaches one.
+    if (m_lineRef.featureType == FeatureType::Circle) std::swap(m_lineRef, m_circleRef);
+    if (m_lineRef.featureType != FeatureType::Line ||
+        m_circleRef.featureType != FeatureType::Circle) {
+        throw std::invalid_argument("a tangent is between a line and a circle or arc");
+    }
+}
 
 std::vector<uint64_t> TangentConstraint::referencedEntityIds() const {
     return uniqueIds(m_lineRef.entityId, m_circleRef.entityId);
@@ -294,7 +305,13 @@ std::shared_ptr<Constraint> TangentConstraint::clone() const {
 // ---------------------------------------------------------------------------
 
 EqualConstraint::EqualConstraint(const GeometryRef& refA, const GeometryRef& refB)
-    : m_refA(refA), m_refB(refB) {}
+    : m_refA(refA), m_refB(refB) {
+    // Lengths or radii, as the first ref is: a line beside a circle was read
+    // as a second line, and every solve threw.
+    if (refA.featureType != refB.featureType || refA.featureType == FeatureType::Point) {
+        throw std::invalid_argument("equal is between two lines or two circles");
+    }
+}
 
 std::vector<uint64_t> EqualConstraint::referencedEntityIds() const {
     return uniqueIds(m_refA.entityId, m_refB.entityId);

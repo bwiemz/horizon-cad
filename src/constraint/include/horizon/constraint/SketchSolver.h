@@ -18,6 +18,9 @@ enum class SolveStatus {
     FailedToConverge,
     Inconsistent,
     NoConstraints,
+    /// A constraint names what its entity does not have (a circle read as a
+    /// line, a third end of a line): nothing is solved, nor moved.
+    InvalidReference,
 };
 
 struct SolveResult {
@@ -55,6 +58,9 @@ public:
     double tolerance() const { return m_tolerance; }
 
 private:
+    /// solve(), which may throw for a constraint its entity cannot hold.
+    SolveResult solveFrom(ParameterTable& params, const ConstraintSystem& constraints);
+
     Eigen::VectorXd buildResiduals(const ParameterTable& params,
                                    const ConstraintSystem& constraints) const;
     Eigen::MatrixXd buildJacobian(const ParameterTable& params,

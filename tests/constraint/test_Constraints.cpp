@@ -231,3 +231,48 @@ TEST(GeometryRef, ARefThatDoesNotFitItsEntityGivesNothing) {
     EXPECT_FALSE(cstr::lineOf(edge, circle).has_value()) << "a circle has no line";
     EXPECT_THROW(cstr::extractLine(edge, circle), std::runtime_error);
 }
+
+// A tangent is between a line and a circle or arc, picked in either order:
+// the line is put first. It was kept as picked, and a circle picked first was
+// read as a line, which threw at every solve.
+TEST(Constraints, ATangentTakesItsLineAndCircleInEitherOrder) {
+    draft::DraftLine line(math::Vec2(-10, 0), math::Vec2(10, 0));
+    draft::DraftCircle circle(math::Vec2(0, 8), 5.0);
+    const cstr::GeometryRef edge{line.id(), cstr::FeatureType::Line, 0};
+    const cstr::GeometryRef rim{circle.id(), cstr::FeatureType::Circle, 0};
+    const cstr::TangentConstraint forward(edge, rim);
+    const cstr::TangentConstraint reversed(rim, edge);
+    EXPECT_EQ(reversed.lineRef(), edge);
+    EXPECT_EQ(reversed.circleRef(), rim);
+
+    cstr::ParameterTable params;
+    params.registerEntity(line);
+    params.registerEntity(circle);
+    Eigen::VectorXd f = Eigen::VectorXd::Zero(1);
+    Eigen::VectorXd g = Eigen::VectorXd::Zero(1);
+    forward.evaluate(params, f, 0);
+    ASSERT_NO_THROW(reversed.evaluate(params, g, 0));
+    EXPECT_EQ(f(0), g(0));
+}
+
+// Two lines, or two circles, have no tangent here; equal is two lines or two
+// circles (an arc is one). A pair neither can hold is refused when it is
+// made, so none is in a system to throw at its every solve.
+TEST(Constraints, TangentAndEqualRefuseAPairTheyCannotHold) {
+    const cstr::GeometryRef lineA{1, cstr::FeatureType::Line, 0};
+    const cstr::GeometryRef lineB{2, cstr::FeatureType::Line, 0};
+    const cstr::GeometryRef circleA{3, cstr::FeatureType::Circle, 0};
+    const cstr::GeometryRef circleB{4, cstr::FeatureType::Circle, 0};
+    const cstr::GeometryRef end{1, cstr::FeatureType::Point, 1};
+    using Tangent = cstr::TangentConstraint;
+    using Equal = cstr::EqualConstraint;
+    EXPECT_THROW((void)std::make_shared<Tangent>(lineA, lineB), std::invalid_argument);
+    EXPECT_THROW((void)std::make_shared<Tangent>(circleA, circleB), std::invalid_argument);
+    EXPECT_THROW((void)std::make_shared<Tangent>(end, circleA), std::invalid_argument);
+    EXPECT_THROW((void)std::make_shared<Equal>(lineA, circleA), std::invalid_argument);
+    EXPECT_THROW((void)std::make_shared<Equal>(circleA, lineA), std::invalid_argument);
+    EXPECT_THROW((void)std::make_shared<Equal>(end, end), std::invalid_argument);
+    EXPECT_NO_THROW((void)std::make_shared<Tangent>(circleA, lineA));
+    EXPECT_NO_THROW((void)std::make_shared<Equal>(lineA, lineB));
+    EXPECT_NO_THROW((void)std::make_shared<Equal>(circleA, circleB));
+}
