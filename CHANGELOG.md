@@ -112,6 +112,10 @@ work, not "post-1.0".
 - **Hatching stays inside its boundary.** A hatch line through a corner of
   the boundary counted the corner twice: it could run across a notch, or
   be left out.
+- **A short arc's centre snaps.** The snap looked only at entities that
+  reached the cursor, so a point beyond an entity's extent, such as the
+  centre of a short arc or a block's insertion point, could not be snapped
+  to.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
