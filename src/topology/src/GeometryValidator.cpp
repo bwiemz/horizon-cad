@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -13,7 +14,6 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
-#include "horizon/math/RTree.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -169,9 +169,39 @@ bool loopSelfIntersects(const std::vector<Vec3>& pts, const Vec3& normal, double
     return false;
 }
 
-/// A flat face, as the crossing check reads it: its plane, its loops in the
-/// plane's coordinates taken from a corner of it (small numbers, however far
-/// out the part is), the vertices it is bounded by, and its box.
+constexpr double kInf = std::numeric_limits<double>::infinity();
+
+/// An axis-aligned box as the crossing check keeps it: plain numbers, so
+/// that comparing two costs no calls (it compares many).
+struct Box {
+    double lo[3] = {kInf, kInf, kInf};
+    double hi[3] = {-kInf, -kInf, -kInf};
+};
+
+void expand(Box& box, const Vec3& p) {
+    const double c[3] = {p.x, p.y, p.z};
+    for (int k = 0; k < 3; ++k) {
+        if (c[k] < box.lo[k]) box.lo[k] = c[k];
+        if (c[k] > box.hi[k]) box.hi[k] = c[k];
+    }
+}
+
+void expand(Box& box, const Box& other) {
+    for (int k = 0; k < 3; ++k) {
+        if (other.lo[k] < box.lo[k]) box.lo[k] = other.lo[k];
+        if (other.hi[k] > box.hi[k]) box.hi[k] = other.hi[k];
+    }
+}
+
+/// Whether two boxes meet (sides touching count).
+bool meet(const Box& a, const Box& b) {
+    return a.lo[0] <= b.hi[0] && b.lo[0] <= a.hi[0] && a.lo[1] <= b.hi[1] && b.lo[1] <= a.hi[1] &&
+           a.lo[2] <= b.hi[2] && b.lo[2] <= a.hi[2];
+}
+
+/// A flat face, as the crossing check reads it: its plane, its box, and
+/// where its loops and vertices are kept among all the faces' (see
+/// FlatFaces).
 struct FlatFace {
     const Shell* shell = nullptr;
     Vec3 origin;
@@ -179,9 +209,24 @@ struct FlatFace {
     Vec3 u;
     Vec3 v;
     double tol = 0.0;
-    std::vector<std::vector<std::pair<double, double>>> loops;  ///< Outer first.
-    std::vector<const Vertex*> vertices;  ///< Sorted by std::less, for a binary search.
-    math::BoundingBox box;
+    uint32_t firstLoop = 0;  ///< Its loops are FlatFaces::loops[firstLoop, lastLoop), outer first.
+    uint32_t lastLoop = 0;
+    uint32_t firstVertex = 0;  ///< Its vertices are FlatFaces::vertices[firstVertex, lastVertex),
+    uint32_t lastVertex = 0;   ///< sorted by std::less, for a binary search.
+    Box box;
+};
+
+/// Every flat face of a solid, their loops kept together rather than each
+/// in its own allocation: a loop is a run of points in its face's plane, in
+/// coordinates taken from a corner of the face (small numbers, however far
+/// out the part is).
+struct FlatFaces {
+    std::vector<FlatFace> faces;
+    std::vector<std::pair<double, double>> points;
+    std::vector<std::pair<uint32_t, uint32_t>> loops;  ///< Runs of points.
+    std::vector<const Vertex*> vertices;
+    std::vector<Vec3> scratch;  ///< Reused while reading each face.
+    std::vector<std::pair<uint32_t, uint32_t>> scratchLoops;
 };
 
 double segmentDistance2d(const std::pair<double, double>& p, const std::pair<double, double>& a,
@@ -196,12 +241,11 @@ double segmentDistance2d(const std::pair<double, double>& p, const std::pair<dou
     return std::hypot(p.first - (a.first + t * dx), p.second - (a.second + t * dy));
 }
 
-/// Whether @p p is inside @p loop (by its crossing number), lowering
-/// @p distance to its distance from the loop's boundary.
-bool insideLoop(const std::vector<std::pair<double, double>>& loop,
-                const std::pair<double, double>& p, double& distance) {
+/// Whether @p p is inside the loop of @p n points at @p loop (by its
+/// crossing number), lowering @p distance to its distance from the loop.
+bool insideLoop(const std::pair<double, double>* loop, size_t n, const std::pair<double, double>& p,
+                double& distance) {
     bool inside = false;
-    const size_t n = loop.size();
     for (size_t i = 0, j = n - 1; i < n; j = i++) {
         const auto& a = loop[i];
         const auto& b = loop[j];
@@ -218,73 +262,102 @@ bool insideLoop(const std::vector<std::pair<double, double>>& loop,
 /// @p point (on the face's plane) is inside the face, in its outer loop and
 /// none of its holes, and further than the face's tolerance from all of its
 /// boundary.
-bool strictlyInside(const FlatFace& face, const Vec3& point) {
+bool strictlyInside(const FlatFaces& all, const FlatFace& face, const Vec3& point) {
     const Vec3 d = point - face.origin;
     const std::pair<double, double> p{d.dot(face.u), d.dot(face.v)};
     double distance = std::numeric_limits<double>::infinity();
-    if (!insideLoop(face.loops.front(), p, distance)) return false;
-    for (size_t k = 1; k < face.loops.size(); ++k) {
-        if (insideLoop(face.loops[k], p, distance)) return false;
+    for (uint32_t k = face.firstLoop; k < face.lastLoop; ++k) {
+        const auto [first, last] = all.loops[k];
+        const bool inside = insideLoop(all.points.data() + first, last - first, p, distance);
+        // Inside the outer loop, and outside every hole.
+        if (inside != (k == face.firstLoop)) return false;
     }
     return distance > face.tol;
 }
 
-/// The vertices a loop's half-edges start at, in loop order.
-void appendLoopVertices(const Wire* wire, std::vector<const Vertex*>& out) {
-    const HalfEdge* start = wire->halfEdge;
-    const HalfEdge* cur = start;
-    for (size_t guard = 0; guard < 100000 && cur != nullptr; ++guard) {
-        if (cur->origin != nullptr) out.push_back(cur->origin);
-        cur = cur->next;
-        if (cur == start) break;
-    }
-}
-
-/// @p face as the crossing check reads it, or false when it is not one it
-/// reads: a face without area, or one whose loops are not flat (a curved
-/// face, whose inside a plane does not describe).
-bool readFlatFace(const Face& face, double tol, FlatFace& flat) {
+/// Reads @p face into @p all, as the crossing check reads it, or leaves
+/// @p all as it was and returns false when it is not one it reads: a face
+/// without area, or one whose loops are not flat (a curved face, whose
+/// inside a plane does not describe).
+bool readFlatFace(const Face& face, double tol, FlatFaces& all) {
     if (face.outerLoop == nullptr || face.outerLoop->halfEdge == nullptr || face.shell == nullptr) {
         return false;
     }
-    std::vector<const Wire*> wires{face.outerLoop};
-    wires.insert(wires.end(), face.innerLoops.begin(), face.innerLoops.end());
-    std::vector<std::vector<Vec3>> loops;
-    for (const Wire* wire : wires) {
+    // Every loop's corners, one after another in the scratch, outer first.
+    std::vector<Vec3>& pts = all.scratch;
+    std::vector<std::pair<uint32_t, uint32_t>>& runs = all.scratchLoops;
+    pts.clear();
+    runs.clear();
+    const size_t firstVertex = all.vertices.size();
+    const auto rollBack = [&] {
+        all.vertices.resize(firstVertex);
+        return false;
+    };
+    const auto readLoop = [&](const Wire* wire) {
         if (wire == nullptr || wire->halfEdge == nullptr) return false;
-        auto pts = loopPoints(wire);
-        if (pts.size() < 3) return false;
-        loops.push_back(std::move(pts));
-        appendLoopVertices(wire, flat.vertices);
+        const auto first = static_cast<uint32_t>(pts.size());
+        const HalfEdge* start = wire->halfEdge;
+        const HalfEdge* cur = start;
+        // Bounded walk, as loopPoints'.
+        for (size_t guard = 0; guard < 100000 && cur != nullptr; ++guard) {
+            if (cur->origin == nullptr) break;
+            pts.push_back(cur->origin->point);
+            all.vertices.push_back(cur->origin);
+            cur = cur->next;
+            if (cur == start) break;
+        }
+        runs.emplace_back(first, static_cast<uint32_t>(pts.size()));
+        return pts.size() - first >= 3;
+    };
+    if (!readLoop(face.outerLoop)) return rollBack();
+    for (const Wire* wire : face.innerLoops) {
+        if (!readLoop(wire)) return rollBack();
     }
-    const Vec3 area = newell(loops.front());
+
+    // The outer loop's area and extent, as newell() and extentOf() read them.
+    const auto [outerFirst, outerLast] = runs.front();
+    const Vec3& corner = pts[outerFirst];
+    Vec3 area(0, 0, 0);
+    Box extentBox;
+    for (uint32_t i = outerFirst; i < outerLast; ++i) {
+        const uint32_t next = i + 1 < outerLast ? i + 1 : outerFirst;
+        area = area + (pts[i] - corner).cross(pts[next] - corner);
+        expand(extentBox, pts[i]);
+    }
+    area = area * 0.5;
+    const double extent = (Vec3(extentBox.hi[0], extentBox.hi[1], extentBox.hi[2]) -
+                           Vec3(extentBox.lo[0], extentBox.lo[1], extentBox.lo[2]))
+                              .length();
     const double len = area.length();
-    const double extent = extentOf(loops.front());
+
+    FlatFace flat;
     flat.tol = std::max(tol, GeometryValidator::kDefaultTol * extent);  // as planarity's
     // Narrower than the tolerance: nothing passes through it.
-    if (!(len > flat.tol * std::max(extent, tol))) return false;
+    if (!(len > flat.tol * std::max(extent, tol))) return rollBack();
     flat.shell = face.shell;
-    flat.origin = loops.front().front();
+    flat.origin = corner;
     flat.normal = area * (1.0 / len);
-    for (const auto& loop : loops) {
-        for (const auto& p : loop) {
-            if (std::abs(flat.normal.dot(p - flat.origin)) > flat.tol) return false;
-        }
+    for (const Vec3& p : pts) {
+        if (std::abs(flat.normal.dot(p - flat.origin)) > flat.tol) return rollBack();
     }
     const Vec3 ref = std::abs(flat.normal.x) < 0.9 ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
     flat.u = flat.normal.cross(ref).normalized();
     flat.v = flat.normal.cross(flat.u);
-    for (const auto& loop : loops) {
-        std::vector<std::pair<double, double>> inPlane;
-        inPlane.reserve(loop.size());
-        for (const auto& p : loop) {
-            const Vec3 d = p - flat.origin;
-            inPlane.emplace_back(d.dot(flat.u), d.dot(flat.v));
-            flat.box.expand(p);
-        }
-        flat.loops.push_back(std::move(inPlane));
+
+    flat.firstLoop = static_cast<uint32_t>(all.loops.size());
+    const auto offset = static_cast<uint32_t>(all.points.size());
+    for (const auto& [first, last] : runs) all.loops.emplace_back(offset + first, offset + last);
+    flat.lastLoop = static_cast<uint32_t>(all.loops.size());
+    for (const Vec3& p : pts) {
+        const Vec3 d = p - flat.origin;
+        all.points.emplace_back(d.dot(flat.u), d.dot(flat.v));
+        expand(flat.box, p);
     }
-    std::sort(flat.vertices.begin(), flat.vertices.end(), std::less<const Vertex*>());
+    flat.firstVertex = static_cast<uint32_t>(firstVertex);
+    flat.lastVertex = static_cast<uint32_t>(all.vertices.size());
+    std::sort(all.vertices.begin() + static_cast<std::ptrdiff_t>(firstVertex), all.vertices.end(),
+              std::less<const Vertex*>());
+    all.faces.push_back(flat);
     return true;
 }
 
@@ -318,6 +391,115 @@ bool segmentsMeetInside(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3&
     return ((a + d1 * s) - (c + d2 * t)).length() <= eps;
 }
 
+/// Boxes that do not change, indexed once (a linear bounding-volume
+/// hierarchy): put in order along a Z-order curve through their centres, so
+/// that boxes near one another are mostly near in the order, then the order
+/// halved over and over, each part's box holding its members'. Building it
+/// costs one sort; finding the boxes that meet one costs about log n and
+/// those found, with nothing allocated per question (the crossing check asks
+/// once per edge).
+class BoxTree {
+public:
+    explicit BoxTree(std::vector<Box> boxes) : m_boxes(std::move(boxes)) {
+        const size_t n = m_boxes.size();
+        if (n == 0) return;
+        Box centres;
+        for (const Box& b : m_boxes) {
+            expand(centres, Vec3(0.5 * (b.lo[0] + b.hi[0]), 0.5 * (b.lo[1] + b.hi[1]),
+                                 0.5 * (b.lo[2] + b.hi[2])));
+        }
+        std::vector<std::pair<uint64_t, uint32_t>> keyed(n);
+        for (size_t i = 0; i < n; ++i) {
+            const Box& b = m_boxes[i];
+            uint64_t code = 0;
+            for (int k = 0; k < 3; ++k) {
+                const double span = centres.hi[k] - centres.lo[k];
+                double q =
+                    span > 0.0 ? (0.5 * (b.lo[k] + b.hi[k]) - centres.lo[k]) / span * kCells : 0.0;
+                if (!(q >= 0.0)) q = 0.0;  // NaN too
+                if (q > kCells) q = kCells;
+                code |= spread(static_cast<uint64_t>(q)) << k;
+            }
+            keyed[i] = {code, static_cast<uint32_t>(i)};
+        }
+        std::sort(keyed.begin(), keyed.end());
+        m_order.reserve(n);
+        for (const auto& entry : keyed) m_order.push_back(entry.second);
+        m_nodes.reserve(2 * (n / kLeafSize + 1));
+        build(0, static_cast<uint32_t>(n));
+    }
+
+    /// Calls @p visit with the index of every box that meets @p box.
+    template <typename Visit>
+    void forEachMeeting(const Box& box, Visit&& visit) const {
+        if (m_nodes.empty()) return;
+        // Halving 2^32 boxes down to leaves takes under 32 steps, and the
+        // walk keeps at most one more node than the steps it has taken.
+        uint32_t stack[64] = {};
+        size_t top = 0;
+        stack[top++] = 0;
+        while (top > 0) {
+            const Node& node = m_nodes[stack[--top]];
+            if (!meet(node.box, box)) continue;
+            if (node.count > 0) {
+                for (uint32_t k = node.first; k < node.first + node.count; ++k) {
+                    if (meet(m_boxes[m_order[k]], box)) visit(m_order[k]);
+                }
+            } else {
+                stack[top++] = node.second;
+                stack[top++] = node.first;
+            }
+        }
+    }
+
+private:
+    struct Node {
+        Box box;
+        uint32_t first = 0;   ///< A leaf's first entry, or a branch's first part.
+        uint32_t second = 0;  ///< A branch's second part.
+        uint32_t count = 0;   ///< A leaf's entries; none for a branch.
+    };
+    static constexpr uint32_t kLeafSize = 4;
+    static constexpr double kCells = 2097151.0;  ///< 2^21 - 1: three fit a 64-bit code.
+
+    /// The low 21 bits of @p v, two zero bits put after each.
+    static uint64_t spread(uint64_t v) {
+        v &= 0x1fffffULL;
+        v = (v | v << 32U) & 0x1f00000000ffffULL;
+        v = (v | v << 16U) & 0x1f0000ff0000ffULL;
+        v = (v | v << 8U) & 0x100f00f00f00f00fULL;
+        v = (v | v << 4U) & 0x10c30c30c30c30c3ULL;
+        v = (v | v << 2U) & 0x1249249249249249ULL;
+        return v;
+    }
+
+    uint32_t build(uint32_t first, uint32_t last) {
+        const auto index = static_cast<uint32_t>(m_nodes.size());
+        m_nodes.emplace_back();
+        if (last - first <= kLeafSize) {
+            Box box;
+            for (uint32_t k = first; k < last; ++k) expand(box, m_boxes[m_order[k]]);
+            m_nodes[index].box = box;
+            m_nodes[index].first = first;
+            m_nodes[index].count = last - first;
+            return index;
+        }
+        const uint32_t mid = first + (last - first) / 2;
+        const uint32_t left = build(first, mid);
+        const uint32_t right = build(mid, last);
+        Box box = m_nodes[left].box;
+        expand(box, m_nodes[right].box);
+        m_nodes[index].box = box;
+        m_nodes[index].first = left;
+        m_nodes[index].second = right;
+        return index;
+    }
+
+    std::vector<Box> m_boxes;
+    std::vector<uint32_t> m_order;
+    std::vector<Node> m_nodes;
+};
+
 /// Edges that pass through a flat face of their own shell, away from its
 /// boundary, or through another of its edges. Where two faces of one skin
 /// cross, an edge of one of them goes through the other, or (crossing
@@ -327,88 +509,85 @@ bool segmentsMeetInside(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3&
 /// line through the edge meets the face's plane at that vertex, so it can
 /// meet it nowhere else unless it lies in the plane, and an edge lying in a
 /// face's plane touches the face rather than passing through it. An edge
-/// whose end lies on the plane touches it too. Each face is found by its
-/// box, so the cost grows with the edges and the faces near each, not with
-/// their product.
+/// whose end lies on the plane touches it too. The faces and edges near each
+/// edge are found by their boxes, all in one index, so the cost grows with
+/// the edges and what is near each, not with their product.
 int countCrossings(const Solid& solid, double tol) {
-    std::vector<FlatFace> flats;
-    flats.reserve(solid.faceCount());
-    math::RTree<uint32_t> index;
-    for (const auto& face : solid.faces()) {
-        FlatFace flat;
-        if (!readFlatFace(face, tol, flat)) continue;
-        index.insert(static_cast<uint32_t>(flats.size()), flat.box);
-        flats.push_back(std::move(flat));
-    }
-    if (flats.empty()) return 0;
+    FlatFaces flats;
+    flats.faces.reserve(solid.faceCount());
+    for (const auto& face : solid.faces()) readFlatFace(face, tol, flats);
+    if (flats.faces.empty()) return 0;
 
-    int crossings = 0;
-    // Two edges of one shell that meet inside both: faces that cross exactly
-    // edge on edge, which no edge's passing through a face shows (two equal
-    // square sections swept across each other cross only so).
     struct Segment {
         const Vertex* a;
         const Vertex* b;
         const Shell* shell;
+        double eps;  ///< The tolerance it meets another within (segmentsMeetInside's).
     };
     std::vector<Segment> segments;
-    math::RTree<uint32_t> edgeIndex;
+    segments.reserve(solid.edgeCount());
+    // Faces first, then edges (each grown by its tolerance, so that one
+    // passing within it of another is found).
+    std::vector<Box> boxes;
+    boxes.reserve(flats.faces.size() + solid.edgeCount());
+    for (const FlatFace& f : flats.faces) boxes.push_back(f.box);
+    const auto faceCount = static_cast<uint32_t>(boxes.size());
     for (const auto& edge : solid.edges()) {
         const HalfEdge* he = edge.halfEdge;
         if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
             he->twin->origin == nullptr || he->face == nullptr) {
             continue;
         }
-        math::BoundingBox box;
-        box.expand(he->origin->point);
-        box.expand(he->twin->origin->point);
-        edgeIndex.insert(static_cast<uint32_t>(segments.size()), box);
-        segments.push_back({he->origin, he->twin->origin, he->face->shell});
+        const Vec3& a = he->origin->point;
+        const Vec3& b = he->twin->origin->point;
+        const double eps = std::max(tol, GeometryValidator::kDefaultTol * (b - a).length());
+        Box box;
+        expand(box, a);
+        expand(box, b);
+        for (int k = 0; k < 3; ++k) {
+            box.lo[k] -= eps;
+            box.hi[k] += eps;
+        }
+        boxes.push_back(box);
+        segments.push_back({he->origin, he->twin->origin, he->face->shell, eps});
     }
+    std::vector<Box> queries(boxes.begin() + static_cast<std::ptrdiff_t>(faceCount), boxes.end());
+    const BoxTree index(std::move(boxes));
+
+    int crossings = 0;
+    const auto less = std::less<const Vertex*>();
     for (uint32_t i = 0; i < segments.size(); ++i) {
         const Segment& s = segments[i];
-        math::BoundingBox box;
-        box.expand(s.a->point);
-        box.expand(s.b->point);
-        for (const uint32_t j : edgeIndex.query(box)) {
-            if (j <= i) continue;  // each pair once
-            const Segment& o = segments[j];
-            if (o.shell != s.shell || o.a == s.a || o.a == s.b || o.b == s.a || o.b == s.b) {
-                continue;
+        const Vec3& a = s.a->point;
+        const Vec3& b = s.b->point;
+        index.forEachMeeting(queries[i], [&](uint32_t k) {
+            if (k >= faceCount) {
+                // Two edges of one shell that meet inside both: faces that
+                // cross exactly edge on edge, which no edge's passing through
+                // a face shows (two equal square sections swept across each
+                // other cross only so).
+                const uint32_t j = k - faceCount;
+                if (j <= i) return;  // each pair once
+                const Segment& o = segments[j];
+                if (o.shell != s.shell || o.a == s.a || o.a == s.b || o.b == s.a || o.b == s.b) {
+                    return;
+                }
+                if (segmentsMeetInside(a, b, o.a->point, o.b->point, tol)) ++crossings;
+                return;
             }
-            if (segmentsMeetInside(s.a->point, s.b->point, o.a->point, o.b->point, tol)) {
-                ++crossings;
-            }
-        }
-    }
-
-    for (const auto& edge : solid.edges()) {
-        const HalfEdge* he = edge.halfEdge;
-        if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
-            he->twin->origin == nullptr || he->face == nullptr) {
-            continue;
-        }
-        const Vertex* va = he->origin;
-        const Vertex* vb = he->twin->origin;
-        const Vec3 a = va->point;
-        const Vec3 b = vb->point;
-        math::BoundingBox box;
-        box.expand(a);
-        box.expand(b);
-        for (const uint32_t k : index.query(box)) {
-            const FlatFace& f = flats[k];
-            if (f.shell != he->face->shell) continue;
-            const auto less = std::less<const Vertex*>();
-            if (std::binary_search(f.vertices.begin(), f.vertices.end(), va, less) ||
-                std::binary_search(f.vertices.begin(), f.vertices.end(), vb, less)) {
-                continue;
+            const FlatFace& f = flats.faces[k];
+            if (f.shell != s.shell) return;
+            const auto first = flats.vertices.begin() + static_cast<std::ptrdiff_t>(f.firstVertex);
+            const auto last = flats.vertices.begin() + static_cast<std::ptrdiff_t>(f.lastVertex);
+            if (std::binary_search(first, last, s.a, less) ||
+                std::binary_search(first, last, s.b, less)) {
+                return;
             }
             const double da = f.normal.dot(a - f.origin);
             const double db = f.normal.dot(b - f.origin);
             const bool through = (da > f.tol && db < -f.tol) || (da < -f.tol && db > f.tol);
-            if (!through) continue;
-            if (strictlyInside(f, a + (b - a) * (da / (da - db)))) ++crossings;
-        }
+            if (through && strictlyInside(flats, f, a + (b - a) * (da / (da - db)))) ++crossings;
+        });
     }
     return crossings;
 }
@@ -726,6 +905,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
             std::vector<std::vector<const Vertex*>> loops{loopVertices(face.outerLoop)};
             for (const auto* inner : face.innerLoops) loops.push_back(loopVertices(inner));
             std::vector<Loop2d> loops2d;
+            loops2d.reserve(loops.size());
             for (const auto& loop : loops) loops2d.push_back(inPlane(loop, pts.front(), u, v));
             crosses = crosses || loopsCross(loops, loops2d, planeTol);
             for (size_t k = 1; k < loops2d.size(); ++k) {
