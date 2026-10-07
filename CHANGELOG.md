@@ -108,6 +108,9 @@ work, not "post-1.0".
   when it was saved, and its file reopened marked incomplete. They are
   saved now, and so is whether each entity in a block is construction
   geometry, and its group. Files are saved as format version 30.
+- **glTF exports are the right size.** glTF is in metres, and a part went
+  out in millimetres: a 50 mm part opened 50 m across in other viewers. It
+  now opens at its size.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
