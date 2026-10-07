@@ -108,6 +108,9 @@ work, not "post-1.0".
     as Extrude and Revolve do. A circle with its radius dimensioned was
     refused ("a circle cannot be joined to other curves"), and so was a
     profile with a note.
+  - Draft drops the cylinders and circles a part had before it. Shelled, a
+    drafted cylinder's wall was thinner at the top than at the bottom, and
+    mates and the ideal mass properties saw the cylinder as it was.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

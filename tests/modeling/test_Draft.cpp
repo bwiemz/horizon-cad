@@ -3,10 +3,15 @@
 #include <algorithm>
 #include <cmath>
 
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/Draft.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Shell.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 using namespace hz::model;
 using hz::math::Vec3;
@@ -155,4 +160,50 @@ TEST(DraftTest, EachBodyOfAMultiBodyPartDraftsOutward) {
     }
     EXPECT_NEAR(innerLeft, 10.5, 1e-6) << "the left box's inner side drafts outward";
     EXPECT_NEAR(innerRight, 99.5, 1e-6) << "the right box's inner side drafts outward";
+}
+
+// ---------------------------------------------------------------------------
+// A drafted cylinder is a cylinder no longer
+// ---------------------------------------------------------------------------
+
+// Its sides lean, so the cylinder they recorded is dropped, and the circle of
+// the rim that moved: a shell's cavity, a mate and the ideal mass properties
+// read them, and saw the cylinder as it was before the draft. Shelled, its
+// wall was then thinner at the top than at the bottom.
+TEST(DraftTest, ADraftedCylinderForgetsTheCylinderItWas) {
+    const double angle = 5.0 * hz::math::kPi / 180.0;
+    auto drafted = Draft::execute(PrimitiveFactory::makeCylinder(5.0, 10.0), Vec3(0, 0, 1),
+                                  Vec3(0, 0, 0), angle);
+    ASSERT_NE(drafted, nullptr);
+    for (const auto& face : drafted->faces()) {
+        EXPECT_EQ(face.analyticSurface, nullptr) << face.topoId.tag();
+        const auto frame = MateGeometry::frameForFace(face);
+        EXPECT_TRUE(!frame || frame->kind == MateFrameKind::Planar) << face.topoId.tag();
+    }
+    // The rim on the neutral plane has not moved, and keeps its circle.
+    for (const auto& edge : drafted->edges()) {
+        const Vec3& a = edge.halfEdge->origin->point;
+        const Vec3& b = edge.halfEdge->twin->origin->point;
+        const bool still = std::abs(a.z) < 1e-12 && std::abs(b.z) < 1e-12;
+        EXPECT_EQ(edge.analyticCurve != nullptr, still) << edge.topoId.tag();
+    }
+
+    // Shelled 1 thick, open at the top: each side's cavity wall is the side
+    // moved in by 1, so a 32-gon whose inradius is the side's less 1/cos(5°).
+    const auto shelled =
+        Shell::executeOffset(*drafted, 1.0, {hz::topo::TopologyID::make("cylinder", "top")}, "s");
+    ASSERT_TRUE(shelled.ok) << shelled.message;
+    const double n = 32.0;
+    const double t = std::tan(angle);
+    const auto frustum = [&](double inradius, double from, double to) {
+        // A regular n-gon of inradius r has area n r^2 tan(pi/n).
+        const double r0 = inradius + from * t;
+        const double r1 = inradius + to * t;
+        return n * std::tan(hz::math::kPi / n) * (r1 * r1 * r1 - r0 * r0 * r0) / (3.0 * t);
+    };
+    const double side = 5.0 * std::cos(hz::math::kPi / n);
+    const double part = frustum(side, 0.0, 10.0);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*drafted).volume, part, 1e-9);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*shelled.solid).volume,
+                part - frustum(side - 1.0 / std::cos(angle), 1.0, 10.0), 1e-9);
 }
