@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <exception>
@@ -1524,10 +1525,11 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
     } else if (type == "INSERT") {
         const std::string name = findGroup(g, 2);
         auto def = im.doc.draftDocument().blockTable().findBlock(name);
-        if (!def && inBlock) {
-            // A block inserted in the one being built, and not built yet: it
-            // is built now, a call deeper for each block inside a block.
-            // 20,000 blocks, each inserting the next, ran out of stack.
+        if (!def) {
+            // Not built yet: a block inserted in the one being built, or an
+            // anonymous block, built when first inserted. Each block inside a
+            // block is built a call deeper: 20,000 blocks, each inserting the
+            // next, ran out of stack.
             if (im.building.size() >= kMaxBlockNesting) {
                 return unread(" (blocks nested more than " + std::to_string(kMaxBlockNesting) +
                               " deep)");
@@ -1611,6 +1613,19 @@ std::shared_ptr<draft::BlockDefinition> buildBlock(const std::string& name, Impo
     return def;
 }
 
+/// Whether a block holds one of the drawing's layouts rather than something
+/// to insert: *Model_Space, *Paper_Space, *Paper_Space0... ($MODEL_SPACE and
+/// $PAPER_SPACE in R12), whatever their case. Every name starting "*" was
+/// taken for one, which left out the anonymous blocks too: a dynamic block's
+/// instance or an array (*U), whose inserts then said their block was missing.
+bool isLayoutBlock(std::string name) {
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (name.empty() || (name[0] != '*' && name[0] != '$')) return false;
+    return name.compare(1, std::string::npos, "model_space") == 0 ||
+           name.compare(1, 11, "paper_space") == 0;
+}
+
 void parseBlocksSection(DxfStream& in, Import& im) {
     DxfPair pair;
     nextPair(in, pair);
@@ -1634,11 +1649,14 @@ void parseBlocksSection(DxfStream& in, Import& im) {
                 if (pair.code == 0) break;  // ENDBLK's own groups
             }
         }
-        // Model and paper space blocks (names starting "*") hold the
-        // drawing's layouts, not reusable blocks.
-        if (!name.empty() && name[0] != '*') im.blocks[name] = std::move(block);
+        if (!name.empty() && !isLayoutBlock(name)) im.blocks[name] = std::move(block);
     }
-    for (const auto& entry : im.blocks) buildBlock(entry.first, im);
+    // An anonymous block ("*U1", "*D1"...) is built when something inserts
+    // it: a dimension's picture, say, is not a block to insert, and the
+    // dimensions are not read.
+    for (const auto& entry : im.blocks) {
+        if (entry.first[0] != '*') buildBlock(entry.first, im);
+    }
 }
 
 void parseEntitiesSection(DxfStream& in, Import& im) {
@@ -1893,7 +1911,9 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         writeGroup(out, 5, nextHandle());
         writeGroup(out, 8, std::string("0"));
         writeGroup(out, 2, name);
-        writeGroup(out, 70, 0);
+        // A "*" name is an anonymous block's (*U1, read from a DXF), which
+        // says so.
+        writeGroup(out, 70, name[0] == '*' ? 1 : 0);
         writeGroup(out, 10, def->basePoint.x);
         writeGroup(out, 20, def->basePoint.y);
         writeGroup(out, 30, 0.0);

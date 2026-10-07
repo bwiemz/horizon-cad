@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <clocale>
 #include <cmath>
@@ -14,6 +15,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/Document.h"
@@ -553,6 +555,26 @@ std::filesystem::path savedAs(const hz::doc::Document& doc, const std::string& n
     return path;
 }
 
+using Groups = std::vector<std::pair<int, std::string>>;
+
+/// The groups of each entity or table entry of type @p type in the file at
+/// @p path, in the order written.
+std::vector<Groups> recordsIn(const std::filesystem::path& path, const std::string& type) {
+    const std::vector<std::string> lines = linesOf(path);
+    std::vector<Groups> out;
+    bool inside = false;
+    for (size_t k = 0; k + 1 < lines.size(); k += 2) {  // group code, then its value
+        const int code = std::stoi(lines[k]);
+        if (code == 0) {
+            inside = lines[k + 1] == type;
+            if (inside) out.emplace_back();
+        } else if (inside) {
+            out.back().emplace_back(code, lines[k + 1]);
+        }
+    }
+    return out;
+}
+
 }  // namespace
 
 // Reals were written with six decimals. A whole ellipse's end parameter,
@@ -655,4 +677,66 @@ TEST(DxfFidelityTest, BlocksNestedTooDeepAreReportedNotRecursedInto) {
     ASSERT_TRUE(in.ok) << in.error;
     EXPECT_TRUE(contains(in.report.skipped, "(blocks nested more than 64 deep) not read"));
     EXPECT_EQ(in.all<hz::draft::DraftBlockRef>().size(), 1u);
+}
+
+// Every block named "*..." was skipped as a layout (*Model_Space,
+// *Paper_Space). Anonymous blocks are named so too: a dynamic block's
+// instance or an array (*U), a dimension's picture (*D). An insert of one
+// was reported with its block missing. Only the layouts are left out now;
+// an anonymous block is read when something inserts it.
+TEST(DxfFidelityTest, AnAnonymousBlockIsReadAndTheLayoutsAreNot) {
+    const std::string blocks =
+        "0\nBLOCK\n8\n0\n2\n*MODEL_SPACE\n70\n0\n10\n0\n20\n0\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n*Paper_Space\n70\n0\n10\n0\n20\n0\n"
+        "0\nLINE\n8\n0\n67\n1\n10\n0\n20\n0\n11\n420\n21\n0\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n*Paper_Space0\n70\n0\n10\n0\n20\n0\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n$PAPER_SPACE\n70\n0\n10\n0\n20\n0\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n*U1\n70\n1\n10\n0\n20\n0\n"
+        "0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n2\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n*U2\n70\n1\n10\n0\n20\n0\n"
+        "0\nINSERT\n8\n0\n2\n*U1\n10\n5\n20\n0\n0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\n*D1\n70\n1\n10\n0\n20\n0\n"
+        "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n9\n21\n0\n0\nENDBLK\n8\n0\n";
+    Loaded in(
+        dxf("0\nINSERT\n8\n0\n2\n*U1\n10\n10\n20\n0\n"
+            "0\nINSERT\n8\n0\n2\n*U2\n10\n0\n20\n10\n",
+            blocks));
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_FALSE(contains(in.report.skipped, "missing"));
+    ASSERT_EQ(in.all<hz::draft::DraftBlockRef>().size(), 2u);
+    const auto& table = in.doc.draftDocument().blockTable();
+    const auto u1 = table.findBlock("*U1");
+    ASSERT_NE(u1, nullptr);
+    ASSERT_EQ(u1->entities.size(), 1u);
+    EXPECT_NE(dynamic_cast<const hz::draft::DraftCircle*>(u1->entities[0].get()), nullptr);
+    const auto u2 = table.findBlock("*U2");
+    ASSERT_NE(u2, nullptr);
+    ASSERT_EQ(u2->entities.size(), 1u);
+    const auto* inner = dynamic_cast<const hz::draft::DraftCircle*>(u2->entities[0].get());
+    ASSERT_NE(inner, nullptr);
+    EXPECT_TRUE(near(inner->center(), Vec2(5, 0)));
+    for (const char* layout : {"*MODEL_SPACE", "*Paper_Space", "*Paper_Space0", "$PAPER_SPACE"}) {
+        EXPECT_EQ(table.findBlock(layout), nullptr) << layout;
+    }
+    EXPECT_EQ(table.findBlock("*D1"), nullptr) << "nothing read inserts it";
+
+    // Written back as anonymous blocks (70 = 1), which a "*" name must be.
+    const auto path = savedAs(in.doc, "hz_dxf_anonymous.dxf");
+    int anonymous = 0;
+    for (const auto& block : recordsIn(path, "BLOCK")) {
+        const auto name =
+            std::find(block.begin(), block.end(), std::make_pair(2, std::string("*U1")));
+        if (name == block.end()) continue;
+        for (const auto& [code, value] : block) {
+            if (code == 70) anonymous = std::stoi(value) & 1;
+        }
+    }
+    EXPECT_EQ(anonymous, 1);
+    hz::doc::Document back;
+    std::string error;
+    ImportReport report;
+    ASSERT_TRUE(hz::io::DxfFormat::load(path.string(), back, &error, &report)) << error;
+    std::filesystem::remove(path);
+    EXPECT_TRUE(report.skipped.empty());
+    EXPECT_NE(back.draftDocument().blockTable().findBlock("*U1"), nullptr);
 }

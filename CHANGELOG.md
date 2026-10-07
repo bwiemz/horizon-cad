@@ -111,6 +111,8 @@ work, not "post-1.0".
     whole turn that another program wrote to six decimals is whole too.
   - A file of blocks nested 20,000 deep crashed the import. Blocks are
     flattened 64 deep, and an insert deeper than that is reported.
+  - Anonymous blocks, such as a dynamic block's instance or an array
+    (`*U1`), are read. Their inserts were reported with their block missing.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
