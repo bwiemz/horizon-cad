@@ -154,11 +154,28 @@ bool loopSelfIntersects(const std::vector<Vec3>& pts, const Vec3& normal, double
         p2[i] = {(pts[i] - pts[0]).dot(u), (pts[i] - pts[0]).dot(v)};
     }
 
+    // Segments that cross, or come within the tolerance, overlap along u by
+    // it: so each is tested only against those after it in order of their
+    // least u that start before it ends. A 2,048-gon's cap took four million
+    // tests, every pair; a loop's segments overlap few others along a line.
+    std::vector<double> lo(n);
+    std::vector<double> hi(n);
     for (size_t i = 0; i < n; ++i) {
+        const double a = p2[i].first;
+        const double b = p2[(i + 1) % n].first;
+        lo[i] = std::min(a, b);
+        hi[i] = std::max(a, b);
+    }
+    std::vector<size_t> order(n);
+    for (size_t i = 0; i < n; ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&lo](size_t a, size_t b) { return lo[a] < lo[b]; });
+    for (size_t a = 0; a < n; ++a) {
+        const size_t i = order[a];
         const size_t i2 = (i + 1) % n;
-        for (size_t j = i + 1; j < n; ++j) {
+        for (size_t b = a + 1; b < n && lo[order[b]] <= hi[i] + tol; ++b) {
+            const size_t j = order[b];
             const size_t j2 = (j + 1) % n;
-            if (i == j || i2 == j || j2 == i) {
+            if (i2 == j || j2 == i) {
                 continue;  // Shares an endpoint by construction.
             }
             if (segmentsCross(p2[i], p2[i2], p2[j], p2[j2], tol)) {
