@@ -2500,20 +2500,24 @@ std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& fil
         mesh->positions = cache.value("positions", std::vector<float>{});
         mesh->normals = cache.value("normals", std::vector<float>{});
 
-        // Read indices as signed 64-bit first so negative or oversized
-        // values are caught instead of silently wrapping.
-        std::vector<int64_t> rawIndices = cache.value("indices", std::vector<int64_t>{});
-        if (mesh->positions.empty() || rawIndices.empty()) return nullptr;
-        if (mesh->positions.size() % 3 != 0 || rawIndices.size() % 3 != 0) return nullptr;
+        const auto indices = cache.find("indices");
+        if (indices == cache.end() || !indices->is_array()) return nullptr;
+        if (mesh->positions.empty() || indices->empty()) return nullptr;
+        if (mesh->positions.size() % 3 != 0 || indices->size() % 3 != 0) return nullptr;
         if (!mesh->normals.empty() && mesh->normals.size() != mesh->positions.size()) {
             return nullptr;
         }
 
-        const int64_t vertexCount = static_cast<int64_t>(mesh->positions.size() / 3);
-        mesh->indices.reserve(rawIndices.size());
-        for (int64_t index : rawIndices) {
-            if (index < 0 || index >= vertexCount) return nullptr;
-            mesh->indices.push_back(static_cast<uint32_t>(index));
+        // Each index a whole number, as they are written, checked before it
+        // is converted: nlohmann casts a float to an integer as it is, and
+        // one of 1e300 is undefined behaviour.
+        const uint64_t vertexCount = mesh->positions.size() / 3;
+        mesh->indices.reserve(indices->size());
+        for (const json& index : *indices) {
+            if (!index.is_number_unsigned() || index.get<uint64_t>() >= vertexCount) {
+                return nullptr;
+            }
+            mesh->indices.push_back(static_cast<uint32_t>(index.get<uint64_t>()));
         }
         readCachedFaces(cache, *mesh);
         return mesh;

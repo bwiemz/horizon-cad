@@ -128,6 +128,11 @@ work, not "post-1.0".
   control characters, which XML has none of: the SVG was not well-formed,
   and a browser showed none of it. They are left out now, and anything
   else that is not text becomes U+FFFD.
+- **Damaged numbers in a STEP file or a part's cached mesh are refused.**
+  A B-spline's degree of 1E300, or a mesh index of 1e300, was converted to
+  an integer it does not fit, which is undefined behaviour. Such a curve
+  or surface is now refused, and such a cached mesh is not used (the part
+  is built instead). The native fuzz target now reads the cached mesh too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
