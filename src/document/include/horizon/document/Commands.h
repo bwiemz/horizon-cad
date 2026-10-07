@@ -681,6 +681,13 @@ private:
 /// execute() is a no-op on first call.  Undo/redo swaps the snapshots.
 class GripMoveCommand : public Command {
 public:
+    /// One entity's state before and after the edit.
+    struct Edit {
+        uint64_t entityId = 0;
+        std::shared_ptr<draft::DraftEntity> beforeState;
+        std::shared_ptr<draft::DraftEntity> afterState;
+    };
+
     /// \param doc        The document
     /// \param entityId   ID of the entity being grip-edited
     /// \param beforeState  Clone of the entity BEFORE the grip move
@@ -692,17 +699,21 @@ public:
                     std::shared_ptr<draft::DraftEntity> afterState,
                     cstr::ConstraintSystem& constraintSystem,
                     std::function<double(const std::string&)> variableResolver = nullptr);
+    /// Several entities edited at once, as Stretch edits them: they all take
+    /// their after-states, then one solve. A solve after each one moved the
+    /// others, and undo and redo put back states that no longer held.
+    GripMoveCommand(draft::DraftDocument& doc, std::vector<Edit> edits,
+                    cstr::ConstraintSystem& constraintSystem,
+                    std::function<double(const std::string&)> variableResolver = nullptr);
     void execute() override;
     void undo() override;
     std::string description() const override;
 
 private:
-    void applyState(const draft::DraftEntity& state);
+    void applyState(uint64_t entityId, const draft::DraftEntity& state);
 
     draft::DraftDocument& m_doc;
-    uint64_t m_entityId;
-    std::shared_ptr<draft::DraftEntity> m_beforeState;
-    std::shared_ptr<draft::DraftEntity> m_afterState;
+    std::vector<Edit> m_edits;
     cstr::ConstraintSystem& m_constraintSystem;
     std::function<double(const std::string&)> m_variableResolver;
     std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;

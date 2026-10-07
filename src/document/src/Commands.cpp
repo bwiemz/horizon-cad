@@ -1208,10 +1208,14 @@ GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                                  std::shared_ptr<draft::DraftEntity> afterState,
                                  cstr::ConstraintSystem& constraintSystem,
                                  std::function<double(const std::string&)> variableResolver)
+    : GripMoveCommand(doc, {Edit{entityId, std::move(beforeState), std::move(afterState)}},
+                      constraintSystem, std::move(variableResolver)) {}
+
+GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, std::vector<Edit> edits,
+                                 cstr::ConstraintSystem& constraintSystem,
+                                 std::function<double(const std::string&)> variableResolver)
     : m_doc(doc),
-      m_entityId(entityId),
-      m_beforeState(std::move(beforeState)),
-      m_afterState(std::move(afterState)),
+      m_edits(std::move(edits)),
       m_constraintSystem(constraintSystem),
       m_variableResolver(std::move(variableResolver)) {}
 
@@ -1219,7 +1223,7 @@ void GripMoveCommand::execute() {
     if (m_firstExec) {
         // State is already applied by the caller (live grip drag).
         m_firstExec = false;
-        m_doc.updateEntityBounds(m_entityId);
+        for (const auto& edit : m_edits) m_doc.updateEntityBounds(edit.entityId);
 
         // Auto-solve constraints after geometry change.
         m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
@@ -1229,7 +1233,7 @@ void GripMoveCommand::execute() {
         }
         return;
     }
-    applyState(*m_afterState);
+    for (const auto& edit : m_edits) applyState(edit.entityId, *edit.afterState);
 
     // Re-execute stored solve command on redo.
     if (m_solveCmd) {
@@ -1242,22 +1246,22 @@ void GripMoveCommand::undo() {
     if (m_solveCmd) {
         m_solveCmd->undo();
     }
-    applyState(*m_beforeState);
+    for (const auto& edit : m_edits) applyState(edit.entityId, *edit.beforeState);
 }
 
 std::string GripMoveCommand::description() const {
     return "Grip Edit";
 }
 
-void GripMoveCommand::applyState(const draft::DraftEntity& state) {
+void GripMoveCommand::applyState(uint64_t entityId, const draft::DraftEntity& state) {
     auto replacement = state.clone();
-    replacement->setId(m_entityId);
+    replacement->setId(entityId);
     replacement->setLayer(state.layer());
     replacement->setColor(state.color());
     replacement->setLineWidth(state.lineWidth());
     replacement->setLineType(state.lineType());
     replacement->setGroupId(state.groupId());
-    m_doc.replaceEntity(m_entityId, std::move(replacement));
+    m_doc.replaceEntity(entityId, std::move(replacement));
 }
 
 // ---------------------------------------------------------------------------

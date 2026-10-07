@@ -111,6 +111,10 @@ work, not "post-1.0".
   away now takes its constraints with it, as Delete did, and undo brings
   them back. A constraint on an entity that is not there, as an older file
   may have, is left out of the solve.
+- **Stretch on constrained geometry undoes and redoes whole.** It solved
+  the constraints after each stretched entity in turn: undo left the second
+  of two joined lines stretched, and redo broke the constraints. The
+  stretch is now solved once, after all of it.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

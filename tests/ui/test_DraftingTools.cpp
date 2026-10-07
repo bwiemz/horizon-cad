@@ -214,6 +214,53 @@ TEST(DraftingToolsTest, ATrimTakesItsLinesConstraintsAndAMoveAfterIsAStep) {
     EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u) << "back with the line";
 }
 
+// Stretch on lines joined and held by constraints is one solve after the
+// stretch, and undoes and redoes as one. It solved after each line in turn,
+// and undo left the second line stretched.
+TEST(DraftingToolsTest, AStretchOfConstrainedLinesUndoesAndRedoesWhole) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto first = addLine(w, Vec2(0, 0), Vec2(10, 0));
+    auto second = addLine(w, Vec2(10, 0), Vec2(10, 10));
+    auto& constraints = w.activeDocument()->constraintSystem();
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::CoincidentConstraint>(endOf(first, 1), endOf(second, 0)));
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::DistanceConstraint>(endOf(first, 0), endOf(first, 1), 10.0));
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::FixedConstraint>(endOf(first, 0), Vec2(0, 0)));
+
+    trigger(w, "tool_stretch");
+    drive.click(Vec2(8, -2));  // a window round the corner
+    drive.move(Vec2(12, 2));
+    drive.click(Vec2(12, 2));
+    drive.click(Vec2(10, 0));  // from the corner
+    drive.move(Vec2(13, 4));
+    drive.click(Vec2(13, 4));  // to here
+
+    const auto lineAt = [&w](size_t i) { return all<DraftLine>(w)[i]; };
+    const auto holds = [&lineAt] {
+        const DraftLine* a = lineAt(0);
+        const DraftLine* b = lineAt(1);
+        return (a->end() - b->start()).length() < 1e-6 &&
+               std::abs((a->end() - a->start()).length() - 10.0) < 1e-6 &&
+               a->start().length() < 1e-6;
+    };
+    ASSERT_EQ(all<DraftLine>(w).size(), 2u);
+    EXPECT_TRUE(holds()) << "solved once stretched";
+    EXPECT_FALSE(near(lineAt(1)->start(), Vec2(10, 0))) << "and stretched";
+    const Vec2 corner = lineAt(1)->start();
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(near(lineAt(0)->end(), Vec2(10, 0)));
+    EXPECT_TRUE(near(lineAt(1)->start(), Vec2(10, 0))) << "both lines back";
+    EXPECT_TRUE(near(lineAt(1)->end(), Vec2(10, 10)));
+    trigger(w, "action_redo");
+    EXPECT_TRUE(holds()) << "redone as solved";
+    EXPECT_TRUE((lineAt(1)->start() - corner).length() < 1e-9);
+}
+
 // -- Drawing tools -------------------------------------------------------------
 
 // An arc is drawn counter-clockwise from its centre, through the start point's

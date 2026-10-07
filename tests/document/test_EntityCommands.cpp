@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -415,4 +416,46 @@ TEST(EntityCommandsTest, AConstraintOnAMissingEntityIsLeftOutOfTheSolve) {
     EXPECT_TRUE(result.success);
     EXPECT_NEAR(line->start().y, line->end().y, 1e-9) << "the horizontal is solved";
     EXPECT_EQ(constraints.constraints().size(), 2u) << "and the other kept, for what it names";
+}
+
+// Entities edited together, as Stretch edits them, are solved once, after
+// all of them: undo puts each back as it was, and redo solves as it did. A
+// solve after each one moved the others, and undo left the second line
+// stretched.
+TEST(EntityCommandsTest, EntitiesGripEditedTogetherAreSolvedOnce) {
+    hz::doc::Document doc;
+    auto& drawing = doc.draftDocument();
+    auto& constraints = doc.constraintSystem();
+    const JoinedLines lines = joinLines(drawing, constraints);
+    const hz::cstr::GeometryRef start{lines.first->id(), hz::cstr::FeatureType::Point, 0};
+    const hz::cstr::GeometryRef end{lines.first->id(), hz::cstr::FeatureType::Point, 1};
+    constraints.addConstraint(std::make_shared<hz::cstr::DistanceConstraint>(start, end, 10.0));
+    constraints.addConstraint(std::make_shared<hz::cstr::FixedConstraint>(start, Vec2(0, 0)));
+
+    // The corner stretched to (13, 4), as the Stretch tool leaves it.
+    std::vector<hz::doc::GripMoveCommand::Edit> edits;
+    for (const auto& line : {lines.first, lines.second}) {
+        edits.push_back({line->id(), line->clone(), nullptr});
+    }
+    lines.first->setEnd(Vec2(13, 4));
+    lines.second->setStart(Vec2(13, 4));
+    for (auto& edit : edits) edit.afterState = drawing.findEntity(edit.entityId)->clone();
+    doc.undoStack().push(
+        std::make_unique<hz::doc::GripMoveCommand>(drawing, std::move(edits), constraints));
+
+    const auto line = [&drawing](const std::shared_ptr<DraftLine>& l) {
+        return dynamic_cast<const DraftLine*>(drawing.findEntity(l->id()));
+    };
+    const auto holds = [&] {
+        return (line(lines.first)->end() - line(lines.second)->start()).length() < 1e-6 &&
+               std::abs(line(lines.first)->end().length() - 10.0) < 1e-6;
+    };
+    EXPECT_TRUE(holds());
+    const Vec2 corner = line(lines.second)->start();
+    doc.undoStack().undo();
+    EXPECT_EQ((line(lines.first)->end() - Vec2(10, 0)).length(), 0.0);
+    EXPECT_EQ((line(lines.second)->start() - Vec2(10, 0)).length(), 0.0) << "both back";
+    doc.undoStack().redo();
+    EXPECT_TRUE(holds());
+    EXPECT_LT((line(lines.second)->start() - corner).length(), 1e-12);
 }
