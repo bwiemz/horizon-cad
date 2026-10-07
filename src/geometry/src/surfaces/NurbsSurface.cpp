@@ -38,6 +38,11 @@ NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
         throw std::invalid_argument("NurbsSurface degreeV must be in [1, numV-1]");
     }
 
+    // A weight for each control point, in as many rows: with fewer rows the
+    // checks below read past the end.
+    if (static_cast<int>(m_weights.size()) != numU) {
+        throw std::invalid_argument("NurbsSurface needs a row of weights for each row of points");
+    }
     // Validate that all rows have the same number of columns.
     for (int i = 0; i < numU; ++i) {
         if (static_cast<int>(m_controlPoints[i].size()) != numV) {
@@ -46,6 +51,12 @@ NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
         }
         if (static_cast<int>(m_weights[i].size()) != numV) {
             throw std::invalid_argument("NurbsSurface weight rows must all have the same size");
+        }
+        // As for a curve: a weight of zero or less makes NaNs, or a pole.
+        for (const double w : m_weights[i]) {
+            if (!std::isfinite(w) || !(w > 0.0)) {
+                throw std::invalid_argument("NurbsSurface weights must be finite and positive");
+            }
         }
     }
 
@@ -58,6 +69,23 @@ NurbsSurface::NurbsSurface(std::vector<std::vector<math::Vec3>> controlPoints,
     }
     if (static_cast<int>(m_knotsV.size()) != expectedKnotsV) {
         throw std::invalid_argument("NurbsSurface knotsV length must be numV + degreeV + 1");
+    }
+    for (const auto* knots : {&m_knotsU, &m_knotsV}) {
+        for (size_t i = 0; i < knots->size(); ++i) {
+            if (!std::isfinite((*knots)[i]) || (i > 0 && (*knots)[i] < (*knots)[i - 1])) {
+                throw std::invalid_argument("NurbsSurface knots must be finite and non-decreasing");
+            }
+        }
+    }
+    if (!(uMin() < uMax()) || !(vMin() < vMax())) {
+        throw std::invalid_argument("NurbsSurface parameter domain must not be empty");
+    }
+    for (const auto& row : m_controlPoints) {
+        for (const auto& p : row) {
+            if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
+                throw std::invalid_argument("NurbsSurface control points must be finite");
+            }
+        }
     }
 
     // Closed where the two edges coincide: sampled along them, to the
@@ -174,29 +202,19 @@ math::Vec3 NurbsSurface::evaluate(double u, double v) const {
 }
 
 // ---------------------------------------------------------------------------
-// Derivatives — numerical differentiation
+// Derivatives — exact, from evaluateWithDerivatives
 // ---------------------------------------------------------------------------
 
+// They differenced evaluate() 1e-7 apart, so a normal was good to about 1e-7
+// in direction, and at an edge of the domain taken from one side: what a flat
+// face's normal is compared with to decide it is flat (1e-7) was the size of
+// the error in the normals compared.
 math::Vec3 NurbsSurface::derivativeU(double u, double v) const {
-    const double h = 1e-7;
-    const double u0 = std::max(u - h, uMin());
-    const double u1 = std::min(u + h, uMax());
-    const double actualH = u1 - u0;
-    if (actualH < 1e-15) {
-        return {0.0, 0.0, 0.0};
-    }
-    return (evaluate(u1, v) - evaluate(u0, v)) * (1.0 / actualH);
+    return evaluateWithDerivatives(u, v).du;
 }
 
 math::Vec3 NurbsSurface::derivativeV(double u, double v) const {
-    const double h = 1e-7;
-    const double v0 = std::max(v - h, vMin());
-    const double v1 = std::min(v + h, vMax());
-    const double actualH = v1 - v0;
-    if (actualH < 1e-15) {
-        return {0.0, 0.0, 0.0};
-    }
-    return (evaluate(u, v1) - evaluate(u, v0)) * (1.0 / actualH);
+    return evaluateWithDerivatives(u, v).dv;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +301,19 @@ void basisAndDerivatives(const std::vector<double>& knots, int span, int p, doub
 
 SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
     if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
-        return {evaluate(u, v), derivativeU(u, v), derivativeV(u, v)};
+        // Past the fixed arrays: differences of evaluate(), one-sided at an
+        // edge of the domain.
+        constexpr double h = 1e-7;
+        const auto difference = [&](double t, double lo, double hi, auto at) {
+            const double t0 = std::max(t - h, lo);
+            const double t1 = std::min(t + h, hi);
+            return t1 - t0 < 1e-15 ? math::Vec3(0.0, 0.0, 0.0)
+                                   : (at(t1) - at(t0)) * (1.0 / (t1 - t0));
+        };
+        const auto alongU = [&](double t) { return evaluate(t, v); };
+        const auto alongV = [&](double t) { return evaluate(u, t); };
+        return {evaluate(u, v), difference(u, uMin(), uMax(), alongU),
+                difference(v, vMin(), vMax(), alongV)};
     }
     u = std::clamp(u, uMin(), uMax());
     v = std::clamp(v, vMin(), vMax());
@@ -542,8 +572,13 @@ NurbsCurve NurbsSurface::isoCurveV(double v, int numSamples) const {
 // ---------------------------------------------------------------------------
 
 TessellationResult NurbsSurface::tessellate(double tolerance) const {
-    int res = std::max(4, static_cast<int>(10.0 / tolerance));
-    res = std::min(res, 200);
+    // Worked out as a double and clamped before it is an int: 10 / tolerance
+    // for a tolerance of 0, or under about 5e-9, is past what an int holds,
+    // and converting it was undefined (on x86 INT_MIN, so the finest
+    // tolerance gave the coarsest mesh).
+    const double wanted = tolerance > 0.0 ? 10.0 / tolerance : 200.0;
+    const int res =
+        static_cast<int>(std::clamp(std::isfinite(wanted) ? wanted : 200.0, 4.0, 200.0));
 
     const double u0 = uMin();
     const double u1 = uMax();
