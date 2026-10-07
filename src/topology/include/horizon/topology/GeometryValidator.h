@@ -49,7 +49,8 @@ class Solid;
 ///    oriented.
 ///  - **crossing faces** — two faces of one shell must not pass through each
 ///    other: no edge of a shell may go through the inside of a flat face of
-///    that shell that it does not touch.  Every check above looks at one
+///    that shell that it does not touch, nor meet another of its edges at a
+///    point inside both.  Every check above looks at one
 ///    face or edge at a time, so a skin that runs into itself (a sweep whose
 ///    path crosses itself, a shell's cavity whose faces cross) passed all of
 ///    them.  Only flat faces are looked through, and an edge that touches a
@@ -72,8 +73,9 @@ public:
         int selfIntersectingLoops = 0;
         int strayHoles = 0;  ///< Holes lying outside their face's outline.
         int openShells = 0;
-        /// Edges that pass through a flat face of their own shell, each
-        /// edge and face counted once.
+        /// Edges that pass through a flat face of their own shell, or
+        /// through another of its edges: each such edge and face, or pair of
+        /// edges, counted once.
         int crossingFaces = 0;
         int edgeCurveMismatches = 0;  ///< Reported only; does not fail ok().
         int coincidentVertices = 0;   ///< Reported only; does not fail ok().

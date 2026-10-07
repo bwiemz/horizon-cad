@@ -288,9 +288,40 @@ bool readFlatFace(const Face& face, double tol, FlatFace& flat) {
     return true;
 }
 
+/// Whether segments ab and cd meet at a point inside both: within the
+/// tolerance (as a face's, kDefaultTol of their length at least) of each
+/// other there, and further than it from every end. Parallel segments meet
+/// nowhere inside both in a sound solid's way of meeting (they would overlap
+/// along a line), and are not counted here.
+bool segmentsMeetInside(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, double tol) {
+    // Closest points of the two lines (Ericson, Real-Time Collision
+    // Detection 5.1.9), from a: small numbers however far out they are.
+    const Vec3 d1 = b - a;
+    const Vec3 d2 = d - c;
+    const Vec3 r = a - c;
+    const double aa = d1.dot(d1);
+    const double ee = d2.dot(d2);
+    const double bb = d1.dot(d2);
+    const double denom = aa * ee - bb * bb;
+    if (!(aa > 0.0) || !(ee > 0.0) || !(denom > 1e-12 * aa * ee)) return false;  // parallel
+    const double cc = d1.dot(r);
+    const double ff = d2.dot(r);
+    const double s = (bb * ff - cc * ee) / denom;
+    const double t = (aa * ff - bb * cc) / denom;
+    const double la = std::sqrt(aa);
+    const double lc = std::sqrt(ee);
+    const double eps = std::max(tol, GeometryValidator::kDefaultTol * std::max(la, lc));
+    // Inside both, by more than the tolerance from either end.
+    if (s * la <= eps || (1.0 - s) * la <= eps || t * lc <= eps || (1.0 - t) * lc <= eps) {
+        return false;
+    }
+    return ((a + d1 * s) - (c + d2 * t)).length() <= eps;
+}
+
 /// Edges that pass through a flat face of their own shell, away from its
-/// boundary. Where two faces of one skin cross, an edge of one of them goes
-/// through the other, unless they cross exactly edge on edge.
+/// boundary, or through another of its edges. Where two faces of one skin
+/// cross, an edge of one of them goes through the other, or (crossing
+/// exactly edge on edge) through one of its edges.
 ///
 /// An edge that shares a vertex with a face is not tested against it: the
 /// line through the edge meets the face's plane at that vertex, so it can
@@ -312,6 +343,45 @@ int countCrossings(const Solid& solid, double tol) {
     if (flats.empty()) return 0;
 
     int crossings = 0;
+    // Two edges of one shell that meet inside both: faces that cross exactly
+    // edge on edge, which no edge's passing through a face shows (two equal
+    // square sections swept across each other cross only so).
+    struct Segment {
+        const Vertex* a;
+        const Vertex* b;
+        const Shell* shell;
+    };
+    std::vector<Segment> segments;
+    math::RTree<uint32_t> edgeIndex;
+    for (const auto& edge : solid.edges()) {
+        const HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
+            he->twin->origin == nullptr || he->face == nullptr) {
+            continue;
+        }
+        math::BoundingBox box;
+        box.expand(he->origin->point);
+        box.expand(he->twin->origin->point);
+        edgeIndex.insert(static_cast<uint32_t>(segments.size()), box);
+        segments.push_back({he->origin, he->twin->origin, he->face->shell});
+    }
+    for (uint32_t i = 0; i < segments.size(); ++i) {
+        const Segment& s = segments[i];
+        math::BoundingBox box;
+        box.expand(s.a->point);
+        box.expand(s.b->point);
+        for (const uint32_t j : edgeIndex.query(box)) {
+            if (j <= i) continue;  // each pair once
+            const Segment& o = segments[j];
+            if (o.shell != s.shell || o.a == s.a || o.a == s.b || o.b == s.a || o.b == s.b) {
+                continue;
+            }
+            if (segmentsMeetInside(s.a->point, s.b->point, o.a->point, o.b->point, tol)) {
+                ++crossings;
+            }
+        }
+    }
+
     for (const auto& edge : solid.edges()) {
         const HalfEdge* he = edge.halfEdge;
         if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||

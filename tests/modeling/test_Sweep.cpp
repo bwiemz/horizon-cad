@@ -196,6 +196,14 @@ TEST(SweepTest, PathCrossingItselfFarFromAnyTurnRefused) {
               nullptr);
     EXPECT_NE(why.find("runs into itself"), std::string::npos) << why;
 
+    // The legs above meet edge on edge (the sections are equal squares, side
+    // by side); going back across at a slant, the edges go through faces.
+    path.back() = Vec3(-10, 1, 10);
+    why.clear();
+    EXPECT_EQ(Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_slant", 32, 0.0, &why),
+              nullptr);
+    EXPECT_NE(why.find("runs into itself"), std::string::npos) << why;
+
     // Stopping short of the first leg, it is a sound solid.
     path.back() = Vec3(2, 0, 10);
     auto solid = Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_short");
