@@ -737,8 +737,10 @@ int FilletFeature::arcSegments() const {
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                     std::string* reason) const {
     if (!inputSolid) return failWith(reason, "there is no body to fillet");
+    // With a tolerance, each blend is cut for the arc it spans, which is a
+    // quarter turn only at a square edge.
     auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID,
-                                           arcSegments(), naming());
+                                           arcSegments(), naming(), m_chordTolerance);
     if (!result.solid) {
         return failWith(reason, result.errorMessage.empty() ? "the fillet could not be built"
                                                             : result.errorMessage);

@@ -133,7 +133,8 @@ struct FilletEdgeInfo {
     std::optional<Vec3> endFrontNormal;
     std::optional<Vec3> endBackNormal;
 
-    std::vector<FilletStop> stops;  ///< ≥ 2, increasing t; ends define topology.
+    std::vector<FilletStop> stops;                 ///< ≥ 2, increasing t; ends define topology.
+    int segments = FilletOp::kDefaultArcSegments;  ///< chords across its blend arc
 
     /// A mitered end (Phase 94): the blend's end section lies on the plane
     /// through that end's vertex with this normal instead of perpendicular to
@@ -663,7 +664,7 @@ static bool buildMiter(std::vector<FilletEdgeInfo>& filletEdges, const std::vect
 // ---------------------------------------------------------------------------
 
 static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeInfo>& filletEdges,
-                                const std::string& featureID, int arcSegments) {
+                                const std::string& featureID) {
     FilletResult result;
 
     // -- Shared-vertex analysis: three edges → corner blend, two → miter --
@@ -695,6 +696,19 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
             "Vertex blend not supported: " + std::to_string(indices.size()) +
             " selected edges share a vertex (two form a mitered chain, three a corner blend)";
         return result;
+    }
+    // Blends that meet (at a miter, at a corner) share their end sections,
+    // so they are cut into as many chords: the most any of them needs.
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (const auto& [v, indices] : vertexEdges) {
+            int most = 0;
+            for (const size_t i : indices) most = std::max(most, filletEdges[i].segments);
+            for (const size_t i : indices) {
+                changed = changed || filletEdges[i].segments != most;
+                filletEdges[i].segments = most;
+            }
+        }
     }
 
     // An end at a vertex no blend or miter joins lies on the end face there
@@ -732,7 +746,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
     std::vector<std::vector<std::vector<Vec3>>> samples;
     samples.reserve(filletEdges.size());
     for (const auto& fe : filletEdges) {
-        samples.push_back(stopSamples(fe, arcSegments));
+        samples.push_back(stopSamples(fe, fe.segments));
         const auto& first = samples.back().front();
         const auto& last = samples.back().back();
         for (size_t k = 0; k < first.size() && k < last.size(); ++k) {
@@ -1033,7 +1047,7 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
             const auto& fe = filletEdges[k];
             const bool atFront = (fe.v1 == b.vertex);
             const FilletStop& end = atFront ? fe.front() : fe.back();
-            auto chain = arcSamples(end, arcSegments);
+            auto chain = arcSamples(end, fe.segments);
             if (!atFront) {
                 std::reverse(chain.begin(), chain.end());  // quad traverses B_end → A_end
             }
@@ -1373,14 +1387,14 @@ static FilletResult executeCore(const Solid& inputSolid, std::vector<FilletEdgeI
 // Public entry points
 // ---------------------------------------------------------------------------
 
-int FilletOp::arcSegmentsForTolerance(double radius, double tolerance) {
+int FilletOp::arcSegmentsForTolerance(double radius, double tolerance, double sweep) {
     if (!(radius > 0.0) || !(tolerance > 0.0)) {
         return kDefaultArcSegments;
     }
     // A chord spanning angle a on a circle of radius r sags r(1 - cos(a/2)).
     const double ratio = std::max(-1.0, 1.0 - tolerance / radius);
     const double maxChordAngle = 2.0 * std::acos(ratio);
-    const double n = (0.5 * math::kPi) / maxChordAngle;
+    const double n = sweep / maxChordAngle;
     // A budget too fine to tell from nothing at this radius (ratio rounds to
     // 1) makes n infinite, which as an int was the least count, not the most.
     if (!(n < 1024.0)) return 1024;
@@ -1439,7 +1453,7 @@ static std::optional<FilletResult> perBody(const Solid& input, const std::vector
 
 FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<TopologyID>& edgeIds,
                                double radius, const std::string& featureID, int arcSegments,
-                               NamingScheme naming) {
+                               NamingScheme naming, double chordTolerance) {
     FilletResult result;
 
     if (radius <= 0.0) {
@@ -1453,7 +1467,7 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
     if (auto split = perBody(
             inputSolid, edgeIds, featureID,
             [&](const Solid& body, const std::vector<TopologyID>& mine, const std::string& id) {
-                return execute(body, mine, radius, id, arcSegments, naming);
+                return execute(body, mine, radius, id, arcSegments, naming, chordTolerance);
             })) {
         return std::move(*split);
     }
@@ -1485,10 +1499,15 @@ FilletResult FilletOp::execute(const Solid& inputSolid, const std::vector<Topolo
         }
         info.stops.push_back(makeStop(info, 0.0, radius));
         info.stops.push_back(makeStop(info, 1.0, radius));
+        // Its blend spans pi less the angle between its faces: a quarter
+        // turn at a square edge, more at a sharper one.
+        info.segments = chordTolerance > 0.0 ? arcSegmentsForTolerance(radius, chordTolerance,
+                                                                       math::kPi - info.theta)
+                                             : arcSegments;
         filletEdges.push_back(std::move(info));
     }
 
-    FilletResult built = executeCore(inputSolid, filletEdges, featureID, arcSegments);
+    FilletResult built = executeCore(inputSolid, filletEdges, featureID);
     // The edges it did not touch keep their names; it renamed every edge in
     // storage order, so a second fillet on the part's edges lost them.
     if (built.solid && naming == NamingScheme::Stable) {
@@ -1540,10 +1559,11 @@ FilletResult FilletOp::executeVariable(const Solid& inputSolid, const TopologyID
     for (const auto& s : stops) {
         info.stops.push_back(makeStop(info, s.t, s.radius));
     }
+    info.segments = arcSegments;
 
     std::vector<FilletEdgeInfo> filletEdges;
     filletEdges.push_back(std::move(info));
-    return executeCore(inputSolid, filletEdges, featureID, arcSegments);
+    return executeCore(inputSolid, filletEdges, featureID);
 }
 
 }  // namespace hz::model
