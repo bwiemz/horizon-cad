@@ -118,6 +118,10 @@ work, not "post-1.0".
 - **Undoing a layer's rename or removal** puts back on it an entity edited
   since by its grips or in the property panel. The entity stayed on the new
   name, or on 0, a layer that no longer existed, and could not be picked.
+- **Explode undone and redone gives back the same pieces**, so a step after
+  it (a Move of a piece) is redone too: it did nothing. Undone, the block is
+  back where it was in the drawing order, not on top; and two references to
+  one block, exploded, are two groups, not one.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

@@ -766,54 +766,57 @@ ExplodeBlockCommand::ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blo
     : m_doc(doc), m_blockRefId(blockRefId) {}
 
 void ExplodeBlockCommand::execute() {
-    // Find the block reference.
-    if (const auto e = m_doc.sharedEntity(m_blockRefId)) {
-        m_savedBlockRef = e;
-    }
-    auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
-    if (!ref) return;
+    if (!m_savedBlockRef) {
+        // The first time: the pieces, made once and kept, so a redo brings
+        // back the same pieces and what a later step names by their IDs
+        // finds them.
+        m_savedBlockRef = m_doc.sharedEntity(m_blockRefId);
+        auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
+        if (!ref) {
+            m_savedBlockRef.reset();
+            return;
+        }
 
-    // Create transformed copies of all definition entities.
-    m_explodedEntities.clear();
-    for (const auto& defEnt : ref->definition()->entities) {
-        auto worldEnt = defEnt->clone();
-        worldEnt->setSourceEdge({});  // follows no edge of the part (Phase 157)
-        // Apply the block ref transform: mirror, scale, rotate, translate.
-        const math::Vec2& base = ref->definition()->basePoint;
-        if (ref->mirrored()) worldEnt->mirror(base, base + math::Vec2(0.0, 1.0));
-        worldEnt->scale(ref->definition()->basePoint, ref->uniformScale());
-        worldEnt->rotate(ref->definition()->basePoint, ref->rotation());
-        worldEnt->translate(ref->insertPos() - ref->definition()->basePoint);
-        // Inherit layer from block ref if entity is on default layer.
-        if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
-            worldEnt->setLayer(ref->layer());
+        // Create transformed copies of all definition entities.
+        for (const auto& defEnt : ref->definition()->entities) {
+            auto worldEnt = defEnt->clone();
+            // Apply the block ref transform: mirror, scale, rotate, translate.
+            const math::Vec2& base = ref->definition()->basePoint;
+            if (ref->mirrored()) worldEnt->mirror(base, base + math::Vec2(0.0, 1.0));
+            worldEnt->scale(ref->definition()->basePoint, ref->uniformScale());
+            worldEnt->rotate(ref->definition()->basePoint, ref->rotation());
+            worldEnt->translate(ref->insertPos() - ref->definition()->basePoint);
+            // Inherit layer from block ref if entity is on default layer.
+            if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
+                worldEnt->setLayer(ref->layer());
+            }
+            // ByBlock color: if entity color is 0, inherit from block ref.
+            if (worldEnt->color() == 0x00000000) {
+                worldEnt->setColor(ref->color());
+            }
+            // ByBlock lineWidth: if entity lineWidth is 0, inherit from block ref.
+            if (worldEnt->lineWidth() == 0.0) {
+                worldEnt->setLineWidth(ref->lineWidth());
+            }
+            m_explodedEntities.push_back(worldEnt);
         }
-        // ByBlock color: if entity color is 0, inherit from block ref.
-        if (worldEnt->color() == 0x00000000) {
-            worldEnt->setColor(ref->color());
-        }
-        // ByBlock lineWidth: if entity lineWidth is 0, inherit from block ref.
-        if (worldEnt->lineWidth() == 0.0) {
-            worldEnt->setLineWidth(ref->lineWidth());
-        }
-        m_explodedEntities.push_back(worldEnt);
-        m_doc.addEntity(worldEnt);
+        // A group within the block is a group of this drawing's own, one for
+        // each reference exploded (two were one group), and the pieces
+        // follow no edge of the part (Phase 157).
+        adoptClones(m_doc, m_explodedEntities);
     }
 
-    // Remove the block reference.
-    m_doc.removeEntity(m_blockRefId);
+    for (const auto& piece : m_explodedEntities) m_doc.addEntity(piece);
+    m_position = m_doc.removeEntity(m_blockRefId);
 }
 
 void ExplodeBlockCommand::undo() {
-    // Remove exploded entities.
+    if (!m_savedBlockRef) return;
     for (const auto& e : m_explodedEntities) {
         m_doc.removeEntity(e->id());
     }
-    m_explodedEntities.clear();
-    // Restore the block reference.
-    if (m_savedBlockRef) {
-        m_doc.addEntity(m_savedBlockRef);
-    }
+    // The reference back where it was in the drawing order.
+    m_doc.insertEntity(m_position, m_savedBlockRef);
 }
 
 std::string ExplodeBlockCommand::description() const {

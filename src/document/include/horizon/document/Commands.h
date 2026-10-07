@@ -443,7 +443,10 @@ private:
     std::shared_ptr<draft::BlockDefinition> m_definition;
 };
 
-/// Command to explode a block reference into individual entities.
+/// Command to explode a block reference into individual entities. The
+/// pieces are made on the first execute and kept: a redo brings back the
+/// same pieces, under the same IDs. Undo puts the reference back where it
+/// was in the drawing order.
 class ExplodeBlockCommand : public Command {
 public:
     ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blockRefId);
@@ -458,6 +461,7 @@ private:
     uint64_t m_blockRefId;
     std::shared_ptr<draft::DraftEntity> m_savedBlockRef;
     std::vector<std::shared_ptr<draft::DraftEntity>> m_explodedEntities;
+    size_t m_position = draft::DraftDocument::npos;  ///< the reference's, in the drawing order
 };
 
 /// Command to change a block reference's rotation.

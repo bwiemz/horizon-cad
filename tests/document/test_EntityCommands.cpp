@@ -498,3 +498,53 @@ TEST(EntityCommandsTest, UndoingALayerChangeFindsEntitiesAGripEditReplaced) {
         EXPECT_EQ(drawing.findEntity(id)->layer(), rename ? "Outer" : "0");
     }
 }
+
+// Explode undone and redone gives back the same pieces, so the steps after it
+// still find them (a Move's redo moved nothing, its pieces had new IDs);
+// undone, the reference is back where it was drawn; and two references of one
+// block exploded are two groups, not one.
+TEST(EntityCommandsTest, ExplodingIsTheSamePiecesEachTime) {
+    auto pair = std::make_shared<hz::draft::BlockDefinition>();
+    pair->name = "Pair";
+    for (const double y : {0.0, 1.0}) {
+        pair->entities.push_back(std::make_shared<DraftLine>(Vec2(0, y), Vec2(4, y)));
+        pair->entities.back()->setGroupId(7);  // a group within the block
+    }
+    DraftDocument d;
+    d.blockTable().addBlock(pair);
+    fill(d, 1);
+    auto ref = std::make_shared<hz::draft::DraftBlockRef>(pair, Vec2(10, 10));
+    auto other = std::make_shared<hz::draft::DraftBlockRef>(pair, Vec2(20, 10));
+    d.addEntity(ref);
+    d.addEntity(other);
+    fill(d, 1);
+    const auto drawn = ids(d);
+
+    hz::doc::UndoStack stack;
+    hz::cstr::ConstraintSystem constraints;
+    auto explode = std::make_unique<hz::doc::ExplodeBlockCommand>(d, ref->id());
+    auto* exploded = explode.get();
+    stack.push(std::move(explode));
+    const auto pieces = exploded->explodedIds();
+    ASSERT_EQ(pieces.size(), 2u);
+    stack.push(std::make_unique<MoveEntityCommand>(d, std::vector<uint64_t>{pieces[0]}, Vec2(0, 5),
+                                                   constraints));
+    stack.undo();
+    stack.undo();
+    EXPECT_EQ(ids(d), drawn) << "the reference back in its place";
+    stack.redo();
+    EXPECT_EQ(exploded->explodedIds(), pieces) << "the same pieces";
+    stack.redo();
+    const auto* moved = dynamic_cast<const DraftLine*>(d.findEntity(pieces[0]));
+    ASSERT_NE(moved, nullptr);
+    EXPECT_DOUBLE_EQ(moved->start().y, 15.0) << "and the move after it redone on them";
+
+    hz::doc::ExplodeBlockCommand second(d, other->id());
+    second.execute();
+    const uint64_t group = d.findEntity(pieces[0])->groupId();
+    EXPECT_NE(group, 0u) << "a group still";
+    EXPECT_EQ(d.findEntity(pieces[1])->groupId(), group);
+    for (const uint64_t id : second.explodedIds()) {
+        EXPECT_NE(d.findEntity(id)->groupId(), group) << "each reference's pieces their own group";
+    }
+}
