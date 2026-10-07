@@ -127,6 +127,9 @@ work, not "post-1.0".
   - A fillet's chord tolerance holds at an edge of any angle. Each blend was
     cut as if it turned a quarter circle; at a 45° edge it turns 135°, and
     sagged twice the tolerance.
+  - A cone with a negative radius is refused, as a negative cylinder is. It
+    was built with a point there, and recorded a cone with the wrong apex
+    and angle.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

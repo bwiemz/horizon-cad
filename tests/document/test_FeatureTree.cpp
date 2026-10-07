@@ -480,6 +480,16 @@ TEST(FeatureTreeTest, PrimitiveParametricEdit) {
     EXPECT_NEAR(maxX - minX, 8.0, 1e-9);  // edited width took effect on rebuild
 }
 
+// A cone's radius typed as an expression that comes out negative is refused,
+// and said, as a negative cylinder's is.
+TEST(FeatureTreeTest, ANegativeConeRadiusDoesNotBuild) {
+    auto cone = PrimitiveFeature::makeCone(4.0, 2.0, 6.0);
+    ASSERT_TRUE(cone->setParameter("topRadius", -2.0));
+    std::string why;
+    EXPECT_EQ(cone->execute(nullptr, &why), nullptr);
+    EXPECT_NE(why.find("must be positive"), std::string::npos) << why;
+}
+
 // ---------------------------------------------------------------------------
 // FilletFeature — parametric edge rounding on the running solid
 // ---------------------------------------------------------------------------

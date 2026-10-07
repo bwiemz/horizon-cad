@@ -660,10 +660,19 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int seg
 std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
                                                         double height, int segments) {
     constexpr double kRingEps = 1e-12;
+    // A negative radius is no cone. It was built as a point, while the cone
+    // recorded for the side took the signed radius, its apex and angle
+    // wrong; one that is no number made no shape at all.
+    if (!std::isfinite(bottomRadius) || !std::isfinite(topRadius) || bottomRadius < -kRingEps ||
+        topRadius < -kRingEps) {
+        return nullptr;
+    }
+    bottomRadius = std::max(bottomRadius, 0.0);
+    topRadius = std::max(topRadius, 0.0);
     if (bottomRadius <= kRingEps && topRadius <= kRingEps) {
         return nullptr;  // Both ends degenerate: no solid to build.
     }
-    if (height <= kRingEps || segments < 3) {
+    if (!std::isfinite(height) || height <= kRingEps || segments < 3) {
         return nullptr;
     }
 

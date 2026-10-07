@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -326,6 +327,22 @@ TEST(PrimitiveFactoryTest, InvertedSharpConeUsesApexTopology) {
 TEST(PrimitiveFactoryTest, FullyDegenerateConeIsRefused) {
     EXPECT_EQ(PrimitiveFactory::makeCone(0.0, 0.0, 10.0), nullptr);
     EXPECT_EQ(PrimitiveFactory::makeCone(5.0, 2.0, 0.0), nullptr);
+}
+
+// A negative radius is no cone: it was built as a point, and the cone
+// recorded for its side (for mates and the ideal mass properties) took the
+// signed radius, so its apex and angle were wrong. A radius or a height that
+// is no number is refused too.
+TEST(PrimitiveFactoryTest, ANegativeOrNonFiniteConeIsRefused) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_EQ(PrimitiveFactory::makeCone(-2.0, 3.0, 5.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(4.0, -1.0, 5.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(nan, 3.0, 5.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(4.0, inf, 5.0), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(4.0, 2.0, nan), nullptr);
+    EXPECT_EQ(PrimitiveFactory::makeCone(4.0, 2.0, inf), nullptr);
+    EXPECT_NE(PrimitiveFactory::makeCone(4.0, 0.0, 5.0), nullptr) << "zero is a point";
 }
 
 // ---------------------------------------------------------------------------
