@@ -113,6 +113,8 @@ work, not "post-1.0".
     flattened 64 deep, and an insert deeper than that is reported.
   - Anonymous blocks, such as a dynamic block's instance or an array
     (`*U1`), are read. Their inserts were reported with their block missing.
+  - A layout's paper space, its border, title block and viewports, is left
+    out and reported. It was drawn over the model.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

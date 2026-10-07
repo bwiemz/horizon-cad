@@ -28,6 +28,7 @@
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
 
@@ -739,4 +740,27 @@ TEST(DxfFidelityTest, AnAnonymousBlockIsReadAndTheLayoutsAreNot) {
     std::filesystem::remove(path);
     EXPECT_TRUE(report.skipped.empty());
     EXPECT_NE(back.draftDocument().blockTable().findBlock("*U1"), nullptr);
+}
+
+// From R2000 on, the ENTITIES section holds the active layout's paper space
+// entities too, marked 67 = 1: a sheet's border, title block and viewports.
+// They were read into the model, a title block drawn over it. They are left
+// out now, and reported.
+TEST(DxfFidelityTest, PaperSpaceEntitiesAreReportedNotDrawnOverTheModel) {
+    Loaded in(
+        dxf("0\nLINE\n8\n0\n10\n0\n20\n0\n11\n5\n21\n5\n"
+            "0\nLINE\n8\n0\n67\n1\n10\n0\n20\n0\n11\n420\n21\n0\n"
+            "0\nLWPOLYLINE\n8\n0\n67\n1\n90\n2\n70\n0\n10\n0\n20\n0\n10\n1\n20\n1\n"
+            "0\nPOLYLINE\n8\n0\n67\n1\n66\n1\n70\n0\n"
+            "0\nVERTEX\n8\n0\n67\n1\n10\n0\n20\n0\n"
+            "0\nVERTEX\n8\n0\n67\n1\n10\n1\n20\n0\n"
+            "0\nSEQEND\n8\n0\n67\n1\n"
+            "0\nVIEWPORT\n8\n0\n67\n1\n10\n0\n20\n0\n"
+            "0\nTEXT\n8\n0\n67\n0\n10\n0\n20\n0\n40\n2.5\n1\nmodel\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_EQ(in.all<hz::draft::DraftLine>().size(), 1u);
+    EXPECT_TRUE(in.all<hz::draft::DraftPolyline>().empty());
+    EXPECT_EQ(in.all<hz::draft::DraftText>().size(), 1u) << "67 = 0 is the model";
+    EXPECT_TRUE(contains(in.report.skipped, "4 paper space entities"));
+    EXPECT_FALSE(contains(in.report.skipped, "VERTEX")) << "a polyline's vertices go with it";
 }

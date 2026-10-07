@@ -1458,6 +1458,22 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         ++im.notes.unread[{type, where + why}];
         return {};
     };
+    // A POLYLINE left out takes its vertices with it — and nothing after
+    // them, SEQEND or not, so a missing SEQEND cannot swallow what follows.
+    const auto skipVertices = [&] {
+        if (type != "POLYLINE") return;
+        while (i < raws.size() && raws[i].type == "VERTEX") ++i;
+        if (i < raws.size() && raws[i].type == "SEQEND") ++i;
+    };
+
+    // From R2000 on, ENTITIES holds the active layout's paper space too,
+    // marked 67 = 1: a sheet's border, title block and viewports, drawn to
+    // the sheet's scale. Read, they lay over the model.
+    if (!inBlock && toInt(findGroup(g, 67, "0")) == 1) {
+        skipVertices();
+        ++im.notes.unread[{"paper space", " (on a layout, not the model)"}];
+        return {};
+    }
 
     // Entities placed in their object coordinate system. The rest (LINE,
     // SPLINE, ELLIPSE, MTEXT) are in world coordinates by the DXF reference;
@@ -1469,12 +1485,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
     if (kOcsTypes.count(type)) {
         ocs = ocsOf(g);
         if (ocs == Ocs::OutOfPlane) {
-            if (type == "POLYLINE") {
-                // Its vertices go with it — and nothing after them, SEQEND
-                // or not, so a missing SEQEND cannot swallow what follows.
-                while (i < raws.size() && raws[i].type == "VERTEX") ++i;
-                if (i < raws.size() && raws[i].type == "SEQEND") ++i;
-            }
+            skipVertices();
             return unread(" (not in the drawing's plane)");
         }
     }
