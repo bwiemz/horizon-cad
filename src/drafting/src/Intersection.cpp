@@ -36,6 +36,28 @@ static bool angleInArcRange(double angle, double startAngle, double endAngle) {
     return angle >= startAngle - kTol || angle <= endAngle + kTol;
 }
 
+/// Where the line through @p origin along @p dir meets the circle, as
+/// parameters along @p dir: none, one where the line touches the circle, or
+/// two. Whether it touches is told by the line's distance from the centre
+/// against the radius, to within a part in 10^9 of the sizes involved: the
+/// quadratic's discriminant grows with the fourth power of the drawing's
+/// size, and no fixed tolerance on it told a line that touches from one that
+/// just misses or just crosses.
+static std::vector<double> lineCircleParameters(const math::Vec2& origin, const math::Vec2& dir,
+                                                const math::Vec2& center, double radius) {
+    const double lengthSq = dir.dot(dir);
+    if (lengthSq < 1e-300) return {};
+    const double length = std::sqrt(lengthSq);
+    const math::Vec2 f = origin - center;
+    const double foot = -f.dot(dir) / lengthSq;               // nearest the centre
+    const double distance = std::abs(f.cross(dir)) / length;  // from the centre
+    const double tolerance = 1e-9 * std::max(radius, f.length());
+    if (distance > radius + tolerance) return {};
+    if (distance >= radius - tolerance) return {foot};
+    const double half = std::sqrt((radius - distance) * (radius + distance)) / length;
+    return {foot - half, foot + half};
+}
+
 // ---------------------------------------------------------------------------
 // Line-Line
 // ---------------------------------------------------------------------------
@@ -64,32 +86,11 @@ std::vector<math::Vec2> intersectLineLine(const math::Vec2& p1, const math::Vec2
 
 std::vector<math::Vec2> intersectLineCircle(const math::Vec2& p1, const math::Vec2& p2,
                                             const math::Vec2& center, double radius) {
-    math::Vec2 d = p2 - p1;
-    math::Vec2 f = p1 - center;
-
-    double a = d.dot(d);
-    double b = 2.0 * f.dot(d);
-    double c = f.dot(f) - radius * radius;
-
-    double discriminant = b * b - 4.0 * a * c;
-    if (discriminant < -kTol) return {};
-
+    const math::Vec2 d = p2 - p1;
     std::vector<math::Vec2> result;
-    if (discriminant < kTol) {
-        // Tangent.
-        double t = -b / (2.0 * a);
+    for (const double t : lineCircleParameters(p1, d, center, radius)) {
         if (t >= -kTol && t <= 1.0 + kTol) {
             result.push_back(p1 + d * t);
-        }
-    } else {
-        double sqrtDisc = std::sqrt(discriminant);
-        double t1 = (-b - sqrtDisc) / (2.0 * a);
-        double t2 = (-b + sqrtDisc) / (2.0 * a);
-        if (t1 >= -kTol && t1 <= 1.0 + kTol) {
-            result.push_back(p1 + d * t1);
-        }
-        if (t2 >= -kTol && t2 <= 1.0 + kTol) {
-            result.push_back(p1 + d * t2);
         }
     }
     return result;
@@ -343,26 +344,9 @@ std::vector<math::Vec2> intersectRaySegment(const math::Vec2& rayOrigin, const m
 
 std::vector<math::Vec2> intersectRayCircle(const math::Vec2& rayOrigin, const math::Vec2& rayDir,
                                            const math::Vec2& center, double radius) {
-    math::Vec2 f = rayOrigin - center;
-    double a = rayDir.dot(rayDir);
-    double b = 2.0 * f.dot(rayDir);
-    double c = f.dot(f) - radius * radius;
-
-    double discriminant = b * b - 4.0 * a * c;
-    if (discriminant < -kTol) return {};
-
     std::vector<math::Vec2> result;
-    if (discriminant < kTol) {
-        double t = -b / (2.0 * a);
-        if (t >= 0.0) {
-            result.push_back(rayOrigin + rayDir * t);
-        }
-    } else {
-        double sqrtDisc = std::sqrt(discriminant);
-        double t1 = (-b - sqrtDisc) / (2.0 * a);
-        double t2 = (-b + sqrtDisc) / (2.0 * a);
-        if (t1 >= 0.0) result.push_back(rayOrigin + rayDir * t1);
-        if (t2 >= 0.0) result.push_back(rayOrigin + rayDir * t2);
+    for (const double t : lineCircleParameters(rayOrigin, rayDir, center, radius)) {
+        if (t >= 0.0) result.push_back(rayOrigin + rayDir * t);
     }
     return result;
 }

@@ -247,8 +247,7 @@ void MirrorEntityCommand::execute() {
     if (m_mirroredEntities.empty()) {
         for (uint64_t id : m_sourceIds) {
             if (const auto e = m_doc.sharedEntity(id)) {
-                auto mirrored = e->clone();
-                mirrored->mirror(m_axisP1, m_axisP2);
+                auto mirrored = e->mirroredCopy(m_axisP1, m_axisP2);
                 m_mirroredEntities.push_back(mirrored);
             }
         }
@@ -289,8 +288,7 @@ void RotateEntityCommand::execute() {
     if (m_rotatedEntities.empty()) {
         for (uint64_t id : m_sourceIds) {
             if (const auto e = m_doc.sharedEntity(id)) {
-                auto rotated = e->clone();
-                rotated->rotate(m_center, m_angle);
+                auto rotated = e->rotatedCopy(m_center, m_angle);
                 m_rotatedEntities.push_back(rotated);
             }
         }
@@ -780,13 +778,16 @@ void ExplodeBlockCommand::execute() {
 
         // Create transformed copies of all definition entities.
         for (const auto& defEnt : ref->definition()->entities) {
-            auto worldEnt = defEnt->clone();
             // Apply the block ref transform: mirror, scale, rotate, translate.
+            // The mirror and the turn as copies: a rectangle turned off the
+            // axes is a polyline.
             const math::Vec2& base = ref->definition()->basePoint;
-            if (ref->mirrored()) worldEnt->mirror(base, base + math::Vec2(0.0, 1.0));
-            worldEnt->scale(ref->definition()->basePoint, ref->uniformScale());
-            worldEnt->rotate(ref->definition()->basePoint, ref->rotation());
-            worldEnt->translate(ref->insertPos() - ref->definition()->basePoint);
+            auto worldEnt = ref->mirrored()
+                                ? defEnt->mirroredCopy(base, base + math::Vec2(0.0, 1.0))
+                                : defEnt->clone();
+            worldEnt->scale(base, ref->uniformScale());
+            worldEnt = worldEnt->rotatedCopy(base, ref->rotation());
+            worldEnt->translate(ref->insertPos() - base);
             // Inherit layer from block ref if entity is on default layer.
             if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
                 worldEnt->setLayer(ref->layer());

@@ -113,17 +113,16 @@ double OffsetTool::computeDistanceAndSide(int& side) const {
     }
 
     if (auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(m_sourceEntity.get())) {
-        auto pts = ellipse->evaluate(64);
-        double minDist = 1e18;
-        for (const auto& pt : pts) {
-            double d = m_currentPos.distanceTo(pt);
-            if (d < minDist) minDist = d;
-        }
-        // Inside/outside: compare cursor distance to center vs average radius.
-        double distToCenter = m_currentPos.distanceTo(ellipse->center());
-        double avgRadius = (ellipse->semiMajor() + ellipse->semiMinor()) * 0.5;
-        side = (distToCenter >= avgRadius) ? 1 : -1;
-        return minDist;
+        // Inside or outside: in the ellipse's own frame, (x/a)^2 + (y/b)^2
+        // is under 1 inside. (The distance to the centre against the mean
+        // radius took a cursor beside a long thin ellipse for inside it.)
+        const math::Vec2 v = m_currentPos - ellipse->center();
+        const double c = std::cos(ellipse->rotation());
+        const double s = std::sin(ellipse->rotation());
+        const double x = (v.x * c + v.y * s) / ellipse->semiMajor();
+        const double y = (-v.x * s + v.y * c) / ellipse->semiMinor();
+        side = (x * x + y * y >= 1.0) ? 1 : -1;
+        return ellipse->distanceTo(m_currentPos);
     }
 
     side = 1;

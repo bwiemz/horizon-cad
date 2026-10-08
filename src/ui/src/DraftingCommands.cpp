@@ -186,8 +186,7 @@ void DraftingCommands::onPolarArray() {
         const double angle = step * i;
         for (const uint64_t id : ids) {
             if (const auto entity = drawing.sharedEntity(id)) {
-                auto clone = entity->clone();
-                clone->rotate(center, angle);
+                auto clone = entity->rotatedCopy(center, angle);
                 newIds.push_back(clone->id());
                 allClones.push_back(clone);
                 composite->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, clone));

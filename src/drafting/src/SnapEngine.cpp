@@ -115,7 +115,7 @@ SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const SpatialIndex& i
     const math::BoundingBox searchBox(
         math::Vec3(cursorWorld.x - m_snapTolerance, cursorWorld.y - m_snapTolerance, -1e9),
         math::Vec3(cursorWorld.x + m_snapTolerance, cursorWorld.y + m_snapTolerance, 1e9));
-    std::vector<uint64_t> ids = index.query(searchBox);
+    std::vector<uint64_t> ids = index.querySnaps(searchBox);
     if (ids.empty()) return snapAmong(cursorWorld, {});
     std::sort(ids.begin(), ids.end());
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
@@ -139,7 +139,7 @@ SnapResult SnapEngine::snap(const math::Vec2& cursorWorld, const DraftDocument& 
     const math::BoundingBox searchBox(
         math::Vec3(cursorWorld.x - m_snapTolerance, cursorWorld.y - m_snapTolerance, -1e9),
         math::Vec3(cursorWorld.x + m_snapTolerance, cursorWorld.y + m_snapTolerance, 1e9));
-    std::vector<uint64_t> ids = drawing.spatialIndex().query(searchBox);
+    std::vector<uint64_t> ids = drawing.spatialIndex().querySnaps(searchBox);
     // In id order, so the same candidates are weighed in the same order
     // whatever shape the index has.
     std::sort(ids.begin(), ids.end());

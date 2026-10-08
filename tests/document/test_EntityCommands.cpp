@@ -15,9 +15,12 @@
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Constants.h"
 
 using hz::doc::ChangeTextHeightCommand;
 using hz::doc::MoveEntityCommand;
@@ -546,5 +549,103 @@ TEST(EntityCommandsTest, ExplodingIsTheSamePiecesEachTime) {
     EXPECT_EQ(d.findEntity(pieces[1])->groupId(), group);
     for (const uint64_t id : second.explodedIds()) {
         EXPECT_NE(d.findEntity(id)->groupId(), group) << "each reference's pieces their own group";
+    }
+}
+
+// A rectangle's sides run along the axes. Turned by other than a quarter turn,
+// or mirrored in a slanted line, its copy is a closed polyline through the
+// four corners, the same size: taking two opposite corners as a new box made
+// a 4 x 2 rectangle turned 45 degrees a 1.41 x 4.24 one. A quarter turn, or a
+// mirror in an axis or a diagonal, leaves a rectangle.
+TEST(EntityCommandsTest, ARectangleTurnedOrMirroredKeepsItsShape) {
+    using hz::draft::DraftPolyline;
+    using hz::draft::DraftRectangle;
+    const auto near = [](const Vec2& a, const Vec2& b) { return (a - b).length() < 1e-9; };
+    const auto turned = [](const Vec2& p, const Vec2& c, double a) {
+        const Vec2 v = p - c;
+        return Vec2(c.x + v.x * std::cos(a) - v.y * std::sin(a),
+                    c.y + v.x * std::sin(a) + v.y * std::cos(a));
+    };
+
+    DraftDocument d;
+    auto rect = std::make_shared<DraftRectangle>(Vec2(0, 0), Vec2(4, 2));
+    rect->setLineType(2);
+    d.addEntity(rect);
+    const auto corners = rect->corners();
+    hz::doc::UndoStack stack;
+
+    const double eighth = hz::math::kPi / 4.0;
+    stack.push(std::make_unique<hz::doc::RotateEntityCommand>(d, std::vector<uint64_t>{rect->id()},
+                                                              Vec2(2, 1), eighth));
+    ASSERT_EQ(d.entities().size(), 2u);
+    const auto* poly = dynamic_cast<const DraftPolyline*>(d.entities()[1].get());
+    ASSERT_NE(poly, nullptr) << "a rectangle turned 45 degrees is a polyline";
+    EXPECT_TRUE(poly->closed());
+    ASSERT_EQ(poly->points().size(), 4u);
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_TRUE(near(poly->points()[i], turned(corners[i], Vec2(2, 1), eighth))) << i;
+    }
+    EXPECT_NEAR(poly->points()[0].distanceTo(poly->points()[1]), 4.0, 1e-9) << "still 4 long";
+    EXPECT_NEAR(poly->points()[1].distanceTo(poly->points()[2]), 2.0, 1e-9) << "and 2 wide";
+    EXPECT_EQ(poly->lineType(), 2) << "in the rectangle's style";
+
+    stack.push(std::make_unique<hz::doc::RotateEntityCommand>(d, std::vector<uint64_t>{rect->id()},
+                                                              Vec2(2, 1), hz::math::kHalfPi));
+    ASSERT_EQ(d.entities().size(), 3u);
+    const auto* quarter = dynamic_cast<const DraftRectangle*>(d.entities()[2].get());
+    ASSERT_NE(quarter, nullptr) << "a quarter turn leaves a rectangle";
+    EXPECT_TRUE(near(quarter->corners()[0], Vec2(1, -1)));
+    EXPECT_TRUE(near(quarter->corners()[2], Vec2(3, 3)));
+
+    // Mirrored in y = 2x: (x, y) -> ((-3x + 4y) / 5, (4x + 3y) / 5).
+    stack.push(std::make_unique<hz::doc::MirrorEntityCommand>(d, std::vector<uint64_t>{rect->id()},
+                                                              Vec2(0, 0), Vec2(1, 2)));
+    ASSERT_EQ(d.entities().size(), 4u);
+    const auto* image = dynamic_cast<const DraftPolyline*>(d.entities()[3].get());
+    ASSERT_NE(image, nullptr) << "mirrored in a slanted line, a polyline";
+    ASSERT_EQ(image->points().size(), 4u);
+    for (size_t i = 0; i < 4; ++i) {
+        const Vec2& p = corners[i];
+        EXPECT_TRUE(
+            near(image->points()[i], Vec2((-3 * p.x + 4 * p.y) / 5.0, (4 * p.x + 3 * p.y) / 5.0)))
+            << i;
+    }
+
+    stack.push(std::make_unique<hz::doc::MirrorEntityCommand>(d, std::vector<uint64_t>{rect->id()},
+                                                              Vec2(0, 0), Vec2(1, 1)));
+    ASSERT_EQ(d.entities().size(), 5u);
+    const auto* diagonal = dynamic_cast<const DraftRectangle*>(d.entities()[4].get());
+    ASSERT_NE(diagonal, nullptr) << "mirrored in a diagonal, a rectangle";
+    EXPECT_TRUE(near(diagonal->corners()[0], Vec2(0, 0)));
+    EXPECT_TRUE(near(diagonal->corners()[2], Vec2(2, 4)));
+
+    stack.undo();
+    stack.undo();
+    stack.undo();
+    stack.undo();
+    EXPECT_EQ(d.entities().size(), 1u);
+}
+
+// A rectangle in a block placed at an angle explodes into the polyline the
+// block drew, not a box across two of its corners.
+TEST(EntityCommandsTest, ARectangleInATurnedBlockExplodesAsDrawn) {
+    auto plate = std::make_shared<hz::draft::BlockDefinition>();
+    plate->name = "Plate";
+    plate->entities.push_back(std::make_shared<hz::draft::DraftRectangle>(Vec2(0, 0), Vec2(4, 2)));
+    DraftDocument d;
+    d.blockTable().addBlock(plate);
+    auto ref = std::make_shared<hz::draft::DraftBlockRef>(plate, Vec2(10, 10), 0.5, 2.0);
+    d.addEntity(ref);
+    const hz::draft::DraftBlockRef placed = *ref;
+
+    hz::doc::ExplodeBlockCommand explode(d, ref->id());
+    explode.execute();
+    ASSERT_EQ(d.entities().size(), 1u);
+    const auto* poly = dynamic_cast<const hz::draft::DraftPolyline*>(d.entities()[0].get());
+    ASSERT_NE(poly, nullptr);
+    ASSERT_EQ(poly->points().size(), 4u);
+    const auto corners = hz::draft::DraftRectangle(Vec2(0, 0), Vec2(4, 2)).corners();
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_LT(poly->points()[i].distanceTo(placed.transformPoint(corners[i])), 1e-9) << i;
     }
 }
