@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <vector>
 
 #include "horizon/math/Vec3.h"
@@ -37,7 +38,10 @@ public:
 
     // -- Derivatives & Tessellation (Task 2) ---------------------------------
 
-    /// Compute the n-th derivative at parameter @p t via numerical differentiation.
+    /// The n-th derivative at parameter @p t, exactly: from the basis
+    /// functions' derivatives, and the quotient rule for the weights. At an
+    /// end of the domain, the derivative from inside it. Order 0 or less is
+    /// the point itself.
     math::Vec3 derivative(double t, int order = 1) const;
 
     /// Tessellate the curve to a polyline within the given chord tolerance.
@@ -65,8 +69,12 @@ public:
     /// Compute arc length between two parameter values using Simpson's rule.
     double arcLength(double tStart, double tEnd, int segments = 64) const;
 
-    /// Return the parameter at a given arc-length from @p tStart (default: tMin).
-    double parameterAtLength(double length, double tStart = -1.0) const;
+    /// Return the parameter at a given arc-length from @p tStart (default, or
+    /// NaN: tMin). A negative @p tStart is a parameter like any other: -1 as
+    /// the default was, a curve on [-1, 1] measured from its start whatever
+    /// was asked.
+    double parameterAtLength(double length,
+                             double tStart = std::numeric_limits<double>::quiet_NaN()) const;
 
     // -- Conic Factory Functions (Task 5) -----------------------------------
 
