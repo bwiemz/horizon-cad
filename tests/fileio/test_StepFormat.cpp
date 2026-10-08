@@ -725,6 +725,30 @@ TEST(StepFormat, DegreeZeroBSplineIsAnErrorNotAnException) {
         << "the constructor's reason reaches the caller: " << StepFormat::lastError();
 }
 
+// A degree no int holds is refused, a curve's or a surface's: it was cast to
+// int as it was, which is undefined behaviour for 1E300 (the sanitizer build
+// sees it).
+TEST(StepFormat, ADegreeNoIntHoldsIsRefusedNotCast) {
+    for (const char* degree : {"1.E300", "-1.E300", "4294967296.", "2.5"}) {
+        const std::string curve =
+            squareShellWithCurve(std::string("#10 = B_SPLINE_CURVE_WITH_KNOTS('',") + degree +
+                                 ",(#1,#2),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.);");
+        std::vector<std::unique_ptr<hz::topo::Solid>> solids;
+        ASSERT_NO_THROW(solids = StepFormat::fromString(curve, nullptr, nullptr, inMillimetres()));
+        EXPECT_TRUE(solids.empty()) << degree;
+
+        std::string surface = squareShellWithCurve("#10 = LINE('',#1,VECTOR('',#9,1.));");
+        const std::string plane = "#24 = PLANE('',#23);";
+        surface.replace(surface.find(plane), plane.size(),
+                        std::string("#24 = B_SPLINE_SURFACE_WITH_KNOTS('',1,") + degree +
+                            ",((#1,#2),(#4,#3)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),"
+                            "(0.,1.),.UNSPECIFIED.);");
+        ASSERT_NO_THROW(solids =
+                            StepFormat::fromString(surface, nullptr, nullptr, inMillimetres()));
+        EXPECT_TRUE(solids.empty()) << degree;
+    }
+}
+
 TEST(StepFormat, OversizedEntityNumberIsRejected) {
     // 99999999999 does not fit an int; it used to wrap (signed overflow).
     const std::string text =

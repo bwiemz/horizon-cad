@@ -17,7 +17,9 @@ namespace hz::io {
 /// chunk + BIN chunk), so a single file carries geometry and materials.
 ///
 /// Horizon is Z-up; glTF is Y-up. The exporter adds a root node with the
-/// -90° X rotation so models arrive upright in other viewers.
+/// -90° X rotation so models arrive upright in other viewers. Horizon's
+/// meshes are in millimetres, and glTF's in metres: positions are written
+/// scaled to metres.
 class GltfExport {
 public:
     /// One exported object: a tessellated mesh with its material.

@@ -160,6 +160,36 @@ work, not "post-1.0".
   are two knots, not one; an arc of any finite angle is made at once (an
   angle of 1e20 never finished); a tessellation tolerance too fine to
   count is the finest mesh, not the coarsest.
+- **A block keeps everything it was made from.** A block made from a
+  selection with a dimension, a leader or another block in it lost them
+  when it was saved, and its file reopened marked incomplete. They are
+  saved now, and so is whether each entity in a block is construction
+  geometry, and its group. Files are saved as format version 30.
+- **glTF exports are the right size.** glTF is in metres, and a part went
+  out in millimetres: a 50 mm part opened 50 m across in other viewers. It
+  now opens at its size.
+- **A sheet's radii and diameters are written as its lengths are.** They
+  were in millimetres to two places, whatever the dimension style said,
+  and with a comma on a German system ("R12,50") beside lengths written
+  with a point. They now take the style's unit and precision, and a point.
+  A scale such as 2.5:1 is written with a point too.
+- **A view's label keeps its letters.** A label is up to eight characters
+  as it is typed, but was read back as eight bytes: "Détail-A" lost its A,
+  and "断面図A" came back broken. A label is now eight characters both
+  where it is typed and where it is read.
+- **A drawing sheet from a newer version is refused**, as a part or a 2D
+  drawing from one is, and says which version wrote it. It was read
+  without a word as this version reads it, and saving it destroyed what
+  the newer version had written.
+- **SVG exports open whatever their text holds.** A DXF's text can hold
+  control characters, which XML has none of: the SVG was not well-formed,
+  and a browser showed none of it. They are left out now, and anything
+  else that is not text becomes U+FFFD.
+- **Damaged numbers in a STEP file or a part's cached mesh are refused.**
+  A B-spline's degree of 1E300, or a mesh index of 1e300, was converted to
+  an integer it does not fit, which is undefined behaviour. Such a curve
+  or surface is now refused, and such a cached mesh is not used (the part
+  is built instead). The native fuzz target now reads the cached mesh too.
 - **A rectangle turned or mirrored keeps its shape.** Rotate, Mirror, a
   polar array and exploding a block turned two opposite corners and drew
   a box across them: a 4 x 2 rectangle turned 45 degrees came out

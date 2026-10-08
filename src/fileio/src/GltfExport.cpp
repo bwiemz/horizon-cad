@@ -5,6 +5,7 @@
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <vector>
 
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -20,6 +21,8 @@ constexpr uint32_t kGlbMagic = 0x46546C67;  // "glTF"
 constexpr uint32_t kGlbVersion = 2;
 constexpr uint32_t kChunkJson = 0x4E4F534A;  // "JSON"
 constexpr uint32_t kChunkBin = 0x004E4942;   // "BIN\0"
+/// glTF's unit of length is the metre; Horizon models in millimetres.
+constexpr double kMetresPerMillimetre = 0.001;
 
 void appendU32(std::vector<uint8_t>& out, uint32_t value) {
     const size_t at = out.size();
@@ -81,20 +84,28 @@ std::vector<uint8_t> GltfExport::toGlb(const std::vector<Item>& items) {
         if (!indicesInRange) continue;
         anyTriangles = true;
 
+        // In metres: a 50 mm part opened 50 m across. Scaled here rather than
+        // by the root node, so that a reader taking the meshes without their
+        // nodes sizes them right too; the normals keep their directions.
+        std::vector<float> positions(mesh.positions.size());
+        for (size_t i = 0; i < positions.size(); ++i) {
+            positions[i] = static_cast<float>(mesh.positions[i] * kMetresPerMillimetre);
+        }
+
         // Positions accessor needs min/max per the glTF spec.
         float mn[3] = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
                        std::numeric_limits<float>::max()};
         float mx[3] = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
                        std::numeric_limits<float>::lowest()};
         for (size_t v = 0; v < vertexCount; ++v) {
-            for (int c = 0; c < 3; ++c) {
-                mn[c] = std::min(mn[c], mesh.positions[3 * v + c]);
-                mx[c] = std::max(mx[c], mesh.positions[3 * v + c]);
+            for (size_t c = 0; c < 3; ++c) {
+                mn[c] = std::min(mn[c], positions[3 * v + c]);
+                mx[c] = std::max(mx[c], positions[3 * v + c]);
             }
         }
 
-        const int posView = addView(mesh.positions.data(), mesh.positions.size() * sizeof(float),
-                                    34962 /*ARRAY_BUFFER*/);
+        const int posView =
+            addView(positions.data(), positions.size() * sizeof(float), 34962 /*ARRAY_BUFFER*/);
         const int posAccessor = static_cast<int>(accessors.size());
         accessors.push_back({{"bufferView", posView},
                              {"componentType", 5126 /*FLOAT*/},
