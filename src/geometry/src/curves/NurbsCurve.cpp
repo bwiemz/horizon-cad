@@ -4,12 +4,81 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
 namespace hz::geo {
+
+namespace {
+
+/// The p + 1 basis functions that are not zero at @p t, in knot span @p k,
+/// and their derivatives up to order @p n <= p (The NURBS Book, A2.3):
+/// result[r][j] is the r-th derivative of N_{k-p+j, p}(t). Exact, where the
+/// finite differences that stood here were not: at an end of the domain the
+/// second difference's sample beyond it was clamped onto the end, and the
+/// second derivative of a straight line came out a million.
+std::vector<std::vector<double>> basisDerivatives(const std::vector<double>& U, int k, int p,
+                                                  double t, int n) {
+    const auto sz = [](int i) { return static_cast<size_t>(i); };
+    std::vector<std::vector<double>> ndu(sz(p + 1), std::vector<double>(sz(p + 1), 0.0));
+    std::vector<double> left(sz(p + 1), 0.0);
+    std::vector<double> right(sz(p + 1), 0.0);
+    ndu[0][0] = 1.0;
+    for (int j = 1; j <= p; ++j) {
+        left[sz(j)] = t - U[sz(k + 1 - j)];
+        right[sz(j)] = U[sz(k + j)] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; ++r) {
+            ndu[sz(j)][sz(r)] = right[sz(r + 1)] + left[sz(j - r)];  // knot differences
+            const double temp = ndu[sz(r)][sz(j - 1)] / ndu[sz(j)][sz(r)];
+            ndu[sz(r)][sz(j)] = saved + right[sz(r + 1)] * temp;  // basis functions
+            saved = left[sz(j - r)] * temp;
+        }
+        ndu[sz(j)][sz(j)] = saved;
+    }
+
+    std::vector<std::vector<double>> ders(sz(n + 1), std::vector<double>(sz(p + 1), 0.0));
+    for (int j = 0; j <= p; ++j) ders[0][sz(j)] = ndu[sz(j)][sz(p)];
+    std::vector<std::vector<double>> a(2, std::vector<double>(sz(p + 1), 0.0));
+    for (int r = 0; r <= p; ++r) {
+        int s1 = 0;
+        int s2 = 1;
+        a[0][0] = 1.0;
+        for (int d = 1; d <= n; ++d) {
+            double value = 0.0;
+            const int rk = r - d;
+            const int pk = p - d;
+            if (r >= d) {
+                a[sz(s2)][0] = a[sz(s1)][0] / ndu[sz(pk + 1)][sz(rk)];
+                value = a[sz(s2)][0] * ndu[sz(rk)][sz(pk)];
+            }
+            const int j1 = rk >= -1 ? 1 : -rk;
+            const int j2 = r - 1 <= pk ? d - 1 : p - r;
+            for (int j = j1; j <= j2; ++j) {
+                a[sz(s2)][sz(j)] =
+                    (a[sz(s1)][sz(j)] - a[sz(s1)][sz(j - 1)]) / ndu[sz(pk + 1)][sz(rk + j)];
+                value += a[sz(s2)][sz(j)] * ndu[sz(rk + j)][sz(pk)];
+            }
+            if (r <= pk) {
+                a[sz(s2)][sz(d)] = -a[sz(s1)][sz(d - 1)] / ndu[sz(pk + 1)][sz(r)];
+                value += a[sz(s2)][sz(d)] * ndu[sz(r)][sz(pk)];
+            }
+            ders[sz(d)][sz(r)] = value;
+            std::swap(s1, s2);
+        }
+    }
+    double factor = p;
+    for (int d = 1; d <= n; ++d) {
+        for (int j = 0; j <= p; ++j) ders[sz(d)][sz(j)] *= factor;
+        factor *= p - d;
+    }
+    return ders;
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -36,6 +105,27 @@ NurbsCurve::NurbsCurve(std::vector<math::Vec3> controlPoints, std::vector<double
     // Knot vector length must be n + degree + 1.
     if (k != n + m_degree + 1) {
         throw std::invalid_argument("NurbsCurve knot vector length must be n + degree + 1");
+    }
+    // A weight of zero or less puts a pole on the curve, or divides by zero
+    // where it is evaluated: a NaN that spreads silently through everything
+    // built on it. STEP allows only positive weights too.
+    for (const double w : m_weights) {
+        if (!std::isfinite(w) || !(w > 0.0)) {
+            throw std::invalid_argument("NurbsCurve weights must be finite and positive");
+        }
+    }
+    for (const auto& p : m_controlPoints) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
+            throw std::invalid_argument("NurbsCurve control points must be finite");
+        }
+    }
+    for (int i = 0; i < k; ++i) {
+        if (!std::isfinite(m_knots[i]) || (i > 0 && m_knots[i] < m_knots[i - 1])) {
+            throw std::invalid_argument("NurbsCurve knots must be finite and non-decreasing");
+        }
+    }
+    if (!(tMin() < tMax())) {
+        throw std::invalid_argument("NurbsCurve parameter domain must not be empty");
     }
 }
 
@@ -78,9 +168,13 @@ double NurbsCurve::tMax() const {
 int NurbsCurve::findKnotSpan(double t) const {
     const int n = static_cast<int>(m_controlPoints.size());
 
-    // Special case: t at or beyond the end of the domain.
+    // Special case: t at or beyond the end of the domain: the last span that
+    // is not empty, so a curve whose end knot is repeated more than its
+    // degree still has one to evaluate in.
     if (t >= m_knots[n]) {
-        return n - 1;
+        int k = n - 1;
+        while (k > m_degree && !(m_knots[k] < m_knots[k + 1])) --k;
+        return k;
     }
 
     // Linear search from degree to n-1 for the span [knots[i], knots[i+1]).
@@ -124,9 +218,13 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
     for (int r = 1; r <= p; ++r) {
         for (int j = count - 1; j >= r; --j) {
             const int i = k - p + j;  // original control-point index
+            // Positive for every i of a span that is not empty, however close
+            // its knots: against a length tolerance (1e-7) as it was, knots
+            // 1e-8 apart read as one and the curve evaluated to its first
+            // control point between them.
             const double denom = m_knots[i + p + 1 - r] - m_knots[i];
             double alpha = 0.0;
-            if (std::abs(denom) > math::Tolerance::kLinear) {
+            if (denom > 0.0) {
                 alpha = (t - m_knots[i]) / denom;
             }
             const double oneMinusAlpha = 1.0 - alpha;
@@ -143,45 +241,46 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
 }
 
 // ---------------------------------------------------------------------------
-// derivative — numerical differentiation
+// derivative — exact, from the basis functions' derivatives
 // ---------------------------------------------------------------------------
 
 math::Vec3 NurbsCurve::derivative(double t, int order) const {
     if (order <= 0) {
         return evaluate(t);
     }
-    if (order == 1) {
-        const double h = 1e-7;
-        const double t0 = std::max(t - h, tMin());
-        const double t1 = std::min(t + h, tMax());
-        const double actualH = t1 - t0;
-        if (actualH < 1e-15) {
-            return {0.0, 0.0, 0.0};
-        }
-        return (evaluate(t1) - evaluate(t0)) * (1.0 / actualH);
-    }
-    // Higher-order: finite difference of order-1 derivatives.
-    if (order == 2) {
-        const double h = 1e-5;
-        const math::Vec3 fMinus = evaluate(std::max(t - h, tMin()));
-        const math::Vec3 fCenter = evaluate(t);
-        const math::Vec3 fPlus = evaluate(std::min(t + h, tMax()));
-        return (fPlus - fCenter * 2.0 + fMinus) * (1.0 / (h * h));
-    }
-    // For order >= 3, recursively apply finite differences on lower order.
-    const double h = 1e-4;
-    const double tLo = std::max(t - h, tMin());
-    const double tHi = std::min(t + h, tMax());
-    const double actualH = tHi - tLo;
-    if (actualH < 1e-15) {
-        return {0.0, 0.0, 0.0};
-    }
-    return (derivative(tHi, order - 1) - derivative(tLo, order - 1)) * (1.0 / actualH);
-}
+    t = std::clamp(t, tMin(), tMax());
+    const int p = m_degree;
+    const int k = findKnotSpan(t);
 
-// ---------------------------------------------------------------------------
-// tessellate — adaptive midpoint subdivision
-// ---------------------------------------------------------------------------
+    // Derivatives of the curve in homogeneous space, A(t) = sum N_j w_j P_j and
+    // w(t) = sum N_j w_j, from the basis functions' derivatives; a
+    // polynomial's derivatives past its degree are zero.
+    const auto ders = basisDerivatives(m_knots, k, p, t, std::min(order, p));
+    std::vector<math::Vec3> a(static_cast<size_t>(order) + 1, math::Vec3(0.0, 0.0, 0.0));
+    std::vector<double> w(static_cast<size_t>(order) + 1, 0.0);
+    for (size_t r = 0; r < ders.size(); ++r) {
+        for (int j = 0; j <= p; ++j) {
+            const size_t idx = static_cast<size_t>(k - p + j);
+            const double nw = ders[r][static_cast<size_t>(j)] * m_weights[idx];
+            a[r] = a[r] + m_controlPoints[idx] * nw;
+            w[r] += nw;
+        }
+    }
+
+    // The quotient rule for C = A / w, order by order (The NURBS Book, A4.2):
+    // C^(r) = (A^(r) - sum_{i=1..r} binom(r, i) w^(i) C^(r-i)) / w.
+    std::vector<math::Vec3> c(static_cast<size_t>(order) + 1);
+    for (int r = 0; r <= order; ++r) {
+        math::Vec3 v = a[static_cast<size_t>(r)];
+        double binom = 1.0;
+        for (int i = 1; i <= r; ++i) {
+            binom = binom * (r - i + 1) / i;
+            v = v - c[static_cast<size_t>(r - i)] * (binom * w[static_cast<size_t>(i)]);
+        }
+        c[static_cast<size_t>(r)] = v * (1.0 / w[0]);
+    }
+    return c[static_cast<size_t>(order)];
+}
 
 namespace {
 
@@ -453,45 +552,63 @@ double NurbsCurve::closestPoint(const math::Vec3& point, double tol) const {
     const double tLo = tMin();
     const double tHi = tMax();
 
-    // Initial guess: sample at 20 uniform points, pick closest.
-    double bestT = tLo;
-    double bestDistSq = (evaluate(tLo) - point).lengthSquared();
-
+    // Initial guesses: sample at 21 uniform points, and keep the two closest.
+    // Refining only the closest failed at a closed curve's seam: a point just
+    // before it is as close to the sample at the start as to the one at the
+    // end, the start was taken, and Newton's step from there went out of the
+    // domain and was held at the start.
     constexpr int kNumSamples = 20;
-    for (int i = 1; i <= kNumSamples; ++i) {
+    double bestT[2] = {tLo, tLo};
+    double bestDistSq[2] = {std::numeric_limits<double>::infinity(),
+                            std::numeric_limits<double>::infinity()};
+    for (int i = 0; i <= kNumSamples; ++i) {
         const double t = tLo + (tHi - tLo) * static_cast<double>(i) / kNumSamples;
         const double distSq = (evaluate(t) - point).lengthSquared();
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestT = t;
+        if (distSq < bestDistSq[0]) {
+            bestDistSq[1] = bestDistSq[0];
+            bestT[1] = bestT[0];
+            bestDistSq[0] = distSq;
+            bestT[0] = t;
+        } else if (distSq < bestDistSq[1]) {
+            bestDistSq[1] = distSq;
+            bestT[1] = t;
         }
     }
 
-    // Newton iteration.
-    double t = bestT;
-    for (int iter = 0; iter < 50; ++iter) {
-        const math::Vec3 c = evaluate(t);
-        const math::Vec3 dC = derivative(t, 1);
-        const math::Vec3 d2C = derivative(t, 2);
-        const math::Vec3 diff = c - point;
+    // Newton iteration on f(t) = (C(t) - P) . C'(t).
+    const auto refine = [&](double t) {
+        for (int iter = 0; iter < 50; ++iter) {
+            const math::Vec3 c = evaluate(t);
+            const math::Vec3 dC = derivative(t, 1);
+            const math::Vec3 d2C = derivative(t, 2);
+            const math::Vec3 diff = c - point;
 
-        const double f = diff.dot(dC);
-        const double df = dC.dot(dC) + diff.dot(d2C);
+            const double f = diff.dot(dC);
+            const double df = dC.dot(dC) + diff.dot(d2C);
 
-        if (std::abs(df) < 1e-15) {
-            break;
+            if (std::abs(df) < 1e-15) {
+                break;
+            }
+
+            const double delta = f / df;
+            t = t - delta;
+            t = std::clamp(t, tLo, tHi);
+
+            if (std::abs(delta) < tol) {
+                break;
+            }
         }
+        return t;
+    };
 
-        const double delta = f / df;
-        t = t - delta;
-        t = std::clamp(t, tLo, tHi);
-
-        if (std::abs(delta) < tol) {
-            break;
-        }
+    double best = refine(bestT[0]);
+    double bestDist = (evaluate(best) - point).lengthSquared();
+    if (std::isfinite(bestDistSq[1])) {
+        const double other = refine(bestT[1]);
+        const double otherDist = (evaluate(other) - point).lengthSquared();
+        if (otherDist < bestDist) best = other;
     }
-
-    return t;
+    return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -525,9 +642,10 @@ double NurbsCurve::arcLength(double tStart, double tEnd, int segments) const {
 // ---------------------------------------------------------------------------
 
 double NurbsCurve::parameterAtLength(double length, double tStart) const {
-    if (tStart < 0.0) {
+    if (std::isnan(tStart)) {
         tStart = tMin();
     }
+    tStart = std::clamp(tStart, tMin(), tMax());
 
     const double totalLen = arcLength(tStart, tMax());
     if (totalLen < 1e-15) {
@@ -631,6 +749,11 @@ NurbsCurve NurbsCurve::makeArc(const math::Vec3& center, double radius, double s
                                double endAngle, const math::Vec3& normal) {
     // Normalize sweep angle to (0, 2*pi].
     double sweep = endAngle - startAngle;
+    if (!std::isfinite(sweep)) {
+        throw std::invalid_argument("NurbsCurve::makeArc needs finite angles");
+    }
+    // Most of the way first: a turn at a time, an angle of 1e20 took for ever.
+    if (std::abs(sweep) > 1e3) sweep = std::fmod(sweep, math::kTwoPi);
     while (sweep <= 0.0) sweep += math::kTwoPi;
     while (sweep > math::kTwoPi + 1e-12) sweep -= math::kTwoPi;
 
