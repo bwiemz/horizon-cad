@@ -1,11 +1,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <clocale>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDocument.h"
 #include "horizon/drafting/DraftLine.h"
@@ -299,6 +302,51 @@ TEST(DrawingExportTest, CentreLinesRunPastTheOutline) {
     Document without;
     DrawingExport::populate(without, drawing);
     for (const auto& e : without.draftDocument().entities()) EXPECT_NE(e->layer(), "CentreLines");
+}
+
+// A radius or a diameter is written as the sheet's linear dimensions are, in
+// the dimension style's unit and precision, with a point (when a
+// comma-decimal locale is installed, under it). printf's "%.2f" wrote
+// millimetres whatever the style, and "R12,70" under de_DE.
+TEST(DrawingExportTest, RadialDimensionsFollowTheDimensionStyle) {
+    auto cyl = PrimitiveFactory::makeCylinder(12.7, 30.0, 32);
+    Drawing drawing;
+    drawing.views.push_back(DrawingGenerator::makeView(*cyl, hz::model::StandardView::Top));
+    for (const auto& e : cyl->edges()) {
+        hz::model::RadialDimension radius;
+        hz::model::RadialDimension diameter;
+        if (DrawingDimensioner::dimensionRadius(*cyl, e.topoId, false, radius) &&
+            DrawingDimensioner::dimensionRadius(*cyl, e.topoId, true, diameter)) {
+            drawing.views[0].radialDimensions = {radius, diameter};
+            break;
+        }
+    }
+    ASSERT_EQ(drawing.views[0].radialDimensions.size(), 2u);
+
+    Document doc;
+    hz::draft::DimensionStyle style = doc.draftDocument().dimensionStyle();
+    style.unit = "in";
+    style.precision = 3;
+    style.showUnits = true;
+    doc.draftDocument().setDimensionStyle(style);
+    const char* previous = std::setlocale(LC_NUMERIC, nullptr);
+    const std::string saved = previous ? previous : "C";
+    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "ru_RU.UTF-8"}) {
+        if (std::setlocale(LC_NUMERIC, name) != nullptr) break;
+    }
+    DrawingExport::populate(doc, drawing);
+    std::setlocale(LC_NUMERIC, saved.c_str());
+
+    std::vector<std::string> texts;
+    for (const auto& e : doc.draftDocument().entities()) {
+        const auto* text = dynamic_cast<const hz::draft::DraftText*>(e.get());
+        if (text != nullptr && e->layer() == "Dimensions") texts.push_back(text->text());
+    }
+    ASSERT_EQ(texts.size(), 2u);
+    EXPECT_EQ(texts[0], "R0.500\"");
+    EXPECT_EQ(texts[1],
+              "\xE2\x8C\x80"
+              "1.000\"");
 }
 
 // A parts list sits on the title block, as wide as it: its header next to

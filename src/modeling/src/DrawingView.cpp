@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <functional>
+#include <iomanip>
 #include <limits>
+#include <locale>
 #include <numbers>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -249,10 +251,12 @@ std::string DrawingGenerator::scaleName(double scale) {
     const auto whole = [](double v) {
         const double r = std::round(v);
         if (std::abs(v - r) < 1e-9) return std::to_string(static_cast<long long>(r));
-        // Not a standard scale: as few digits as say it ("2.5", not "2.500000").
-        std::array<char, 32> text{};
-        std::snprintf(text.data(), text.size(), "%.4g", v);
-        return std::string(text.data());
+        // Not a standard scale: as few digits as say it ("2.5", not "2.500000"),
+        // with a point. printf followed the C locale Qt sets: "2,5:1".
+        std::ostringstream text;
+        text.imbue(std::locale::classic());
+        text << std::setprecision(4) << v;
+        return text.str();
     };
     if (scale >= 1.0) return whole(scale) + ":1";
     return "1:" + whole(1.0 / scale);
