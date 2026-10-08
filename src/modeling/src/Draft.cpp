@@ -1,7 +1,9 @@
 #include "horizon/modeling/Draft.h"
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -62,6 +64,7 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
 
     // Move each lateral vertex by the mitered offset of its two incident
     // lateral normals, scaled by height * tan(angle).
+    std::unordered_set<const Vertex*> moved;
     for (auto& v : const_cast<std::deque<Vertex>&>(solid->vertices())) {
         auto it = lateralNormals.find(&v);
         if (it == lateralNormals.end() || it->second.size() < 2) continue;
@@ -89,12 +92,22 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
         if (std::abs(denom) < 1e-9) continue;  // opposing faces — undefined miter
         Vec3 offset = (n1 + n2) * (delta / denom);
         v.point += offset;
+        if (offset.length() > 0.0) moved.insert(&v);
     }
+    const auto anyMoved = [&moved](const std::vector<Vertex*>& vertices) {
+        return std::any_of(vertices.begin(), vertices.end(),
+                           [&moved](const Vertex* v) { return moved.count(v) != 0; });
+    };
 
     // Rebind surfaces from the updated vertices so tessellation / mass
     // properties stay consistent.
     for (auto& face : const_cast<std::deque<Face>&>(solid->faces())) {
         auto verts = faceVertices(&face);
+        // A face that has moved leans off the ideal surface it was cut from
+        // (a cylinder's side is now a cone's): what it stood for is gone,
+        // and a shell's cavity, a mate or the ideal mass properties would
+        // read the part as it was before the draft.
+        if (anyMoved(verts)) face.analyticSurface.reset();
         if (verts.size() == 4) {
             face.surface = ringstack::makeBilinearPatch(verts[0]->point, verts[1]->point,
                                                         verts[3]->point, verts[2]->point);
@@ -107,8 +120,14 @@ std::unique_ptr<topo::Solid> Draft::execute(std::unique_ptr<topo::Solid> solid,
         }
     }
 
-    // Rebind edge curves from moved endpoints.
+    // Rebind edge curves from moved endpoints; a rim that moved is no longer
+    // on its circle.
     ringstack::assignEdgeCurves(*solid);
+    for (auto& edge : const_cast<std::deque<Edge>&>(solid->edges())) {
+        const HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr) continue;
+        if (anyMoved({he->origin, he->twin->origin})) edge.analyticCurve.reset();
+    }
 
     return solid;
 }
