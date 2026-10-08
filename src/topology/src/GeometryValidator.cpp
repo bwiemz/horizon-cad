@@ -246,7 +246,11 @@ bool GeometryValidator::facePlane(const Face& face, Vec3& originOut, Vec3& norma
                 haveRef = true;
                 continue;
             }
-            if (n.cross(ref).length() > 1e-7) {
+            // Turned, or turned round: a cylinder sampled at its seam and
+            // half way round has normals exactly opposite, whose cross
+            // product is as small as the same normal's. (Differenced
+            // normals were a little off at the seam, which hid this.)
+            if (n.cross(ref).length() > 1e-7 || n.dot(ref) < 0.0) {
                 return false;  // Curved carrier.
             }
         }
