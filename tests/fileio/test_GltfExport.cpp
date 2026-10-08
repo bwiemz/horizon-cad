@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -101,16 +102,50 @@ TEST(GltfExportTest, AccessorsMatchTessellation) {
     EXPECT_EQ(idx["count"].get<size_t>(), indexCount);
     EXPECT_EQ(idx["componentType"], 5125);  // UNSIGNED_INT
 
-    // Position bounds match the 10×6×4 box.
-    EXPECT_NEAR(pos["min"][0].get<double>(), 0.0, 1e-5);
-    EXPECT_NEAR(pos["max"][0].get<double>(), 10.0, 1e-5);
-    EXPECT_NEAR(pos["max"][1].get<double>(), 6.0, 1e-5);
-    EXPECT_NEAR(pos["max"][2].get<double>(), 4.0, 1e-5);
+    // Position bounds match the 10×6×4 mm box, in metres.
+    EXPECT_NEAR(pos["min"][0].get<double>(), 0.0, 1e-8);
+    EXPECT_NEAR(pos["max"][0].get<double>(), 0.010, 1e-8);
+    EXPECT_NEAR(pos["max"][1].get<double>(), 0.006, 1e-8);
+    EXPECT_NEAR(pos["max"][2].get<double>(), 0.004, 1e-8);
 
     // Normals present with matching count.
     ASSERT_TRUE(prim["attributes"].contains("NORMAL"));
     EXPECT_EQ(root["accessors"][prim["attributes"]["NORMAL"].get<int>()]["count"].get<size_t>(),
               vertexCount);
+}
+
+// glTF is in metres, and a model in millimetres: a 10 mm box opened 10 m
+// across in every viewer. The positions themselves are in metres, and nothing
+// scales them again.
+TEST(GltfExportTest, PositionsAreInMetres) {
+    const GltfExport::Item item = boxItem();
+    const auto glb = GltfExport::toGlb({item});
+    json root;
+    size_t binLength = 0;
+    parseGlb(glb, root, binLength);
+
+    const auto& prim = root["meshes"][0]["primitives"][0];
+    const auto& pos = root["accessors"][prim["attributes"]["POSITION"].get<size_t>()];
+    const auto& view = root["bufferViews"][pos["bufferView"].get<size_t>()];
+    const size_t bin = 20 + readU32(glb, 12) + 8;
+    const size_t at = bin + view["byteOffset"].get<size_t>();
+    ASSERT_EQ(view["byteLength"].get<size_t>(), item.mesh.positions.size() * sizeof(float));
+    for (size_t i = 0; i < item.mesh.positions.size(); ++i) {
+        float written = 0.0f;
+        std::memcpy(&written, glb.data() + at + i * sizeof(float), sizeof written);
+        EXPECT_NEAR(written, item.mesh.positions[i] * 0.001, 1e-8) << "coordinate " << i;
+    }
+
+    // Each node only places: the root turns Z up into Y up, and no more.
+    for (const auto& node : root["nodes"]) {
+        EXPECT_FALSE(node.contains("scale"));
+        if (!node.contains("matrix")) continue;
+        double columnLength = 0.0;
+        for (size_t row = 0; row < 3; ++row) {
+            columnLength += std::pow(node["matrix"][row].get<double>(), 2);
+        }
+        EXPECT_NEAR(columnLength, 1.0, 1e-12);
+    }
 }
 
 TEST(GltfExportTest, MaterialPassthrough) {

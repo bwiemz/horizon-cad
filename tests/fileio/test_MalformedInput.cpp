@@ -6,6 +6,8 @@
 #include <gtest/gtest.h>
 
 #include <clocale>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -18,6 +20,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec3.h"
 
 using hz::doc::Document;
@@ -282,6 +285,28 @@ TEST(MalformedInputTest, InfiniteParameterIsRefusedByTheFeature) {
     EXPECT_FALSE(cylinder->setParameter("segments", std::numeric_limits<double>::infinity()));
     EXPECT_FALSE(cylinder->setParameter("segments", std::numeric_limits<double>::quiet_NaN()));
     EXPECT_EQ(cylinder->segments(), before);
+}
+
+// A part's cached mesh, read for an assembly without building the part: an
+// index that is not a whole number in range leaves the cache unread (the part
+// is built instead). nlohmann cast 1e300 to an integer, which is undefined,
+// and took 0.5 for vertex 0.
+TEST(MalformedInputTest, ACachedMeshIndexThatIsNotAWholeNumberIsRefused) {
+    const auto path = std::filesystem::temp_directory_path() / "hz_malformed_mesh.hzpart";
+    const auto meshWith = [&path](const std::string& indices) {
+        std::ofstream(path) << R"({"version": 29, "type": "hzpart", "entities": [],)"
+                            << R"("tessellationCache": {"positions": [0,0,0, 1,0,0, 0,1,0],)"
+                            << R"("normals": [], "indices": )" << indices << "}}";
+        return NativeFormat::loadPartMesh(path.string());
+    };
+    const auto good = meshWith("[0, 1, 2]");
+    ASSERT_NE(good, nullptr);
+    EXPECT_EQ(good->indices.size(), 3u);
+    for (const char* bad : {"[1e300, 0, 1]", "[-1e300, 0, 1]", "[0.5, 1, 2]", "[-1, 0, 1]",
+                            "[3, 0, 1]", "[\"0\", 1, 2]", "{}"}) {
+        EXPECT_EQ(meshWith(bad), nullptr) << bad;
+    }
+    std::filesystem::remove(path);
 }
 
 // ---------------------------------------------------------------------------

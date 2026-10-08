@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/drafting/DimensionStyle.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftLinearDimension.h"
@@ -353,13 +353,14 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             leader->setLayer(kDimensionLayer);
             doc.addEntity(std::move(leader));
 
-            char buf[64];
-            if (dim.diameter) {
-                std::snprintf(buf, sizeof(buf), "\xE2\x8C\x80%.2f", dim.value * 2.0);
-            } else {
-                std::snprintf(buf, sizeof(buf), "R%.2f", dim.value);
-            }
-            auto text = std::make_shared<draft::DraftText>(textPos, buf, kRadialTextHeight);
+            // In the dimension style's unit and precision, with a point, as
+            // the linear dimensions beside it: printf's "%.2f" was always in
+            // millimetres, and followed the C locale Qt sets ("R12,50").
+            const draft::DimensionStyle& style = doc.draftDocument().dimensionStyle();
+            const std::string value = dim.diameter
+                                          ? "\xE2\x8C\x80" + style.formatLength(dim.value * 2.0)
+                                          : "R" + style.formatLength(dim.value);
+            auto text = std::make_shared<draft::DraftText>(textPos, value, kRadialTextHeight);
             text->setLayer(kDimensionLayer);
             doc.addEntity(std::move(text));
         }

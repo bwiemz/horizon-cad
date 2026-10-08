@@ -52,6 +52,34 @@ TEST(SvgExportTest, APlotIsAPageOfStrokesAndText) {
     EXPECT_NE(svg.find("text-anchor=\"middle\""), std::string::npos);
 }
 
+// Text from a DXF can hold what XML has no character for: \U+0001, a raw
+// 0x0B or 0x0C, U+FFFE, a byte that is not UTF-8. Each made the file not
+// well-formed, and a browser showed none of it. A control character is left
+// out, and the rest is U+FFFD; a tab, a line break and every real character
+// stay as they were.
+TEST(SvgExportTest, TextHoldsOnlyWhatXmlHasCharactersFor) {
+    PlotScene s = scene();
+    s.texts.front().text = std::string(
+                               "a\x01"
+                               "b\x0B\x0C"
+                               "c\t"
+                               "d\x7F") +
+                           "\xEF\xBF\xBE"                   // U+FFFE
+                           "\xFF"                           // not UTF-8
+                           "\xED\xA0\x80"                   // a surrogate, U+D800
+                           "\xE5\x9B\xB3\xF0\x9F\x93\x90";  // "図📐"
+    const std::string svg = hz::io::SvgExport::toString(s, hz::draft::PlotLayout{});
+    const std::string replaced = "\xEF\xBF\xBD";
+    EXPECT_NE(svg.find(">abc\td\x7F" + replaced + replaced + replaced + replaced + replaced +
+                       "\xE5\x9B\xB3\xF0\x9F\x93\x90</text>"),
+              std::string::npos)
+        << svg;
+    for (const char c : svg) {
+        const auto byte = static_cast<unsigned char>(c);
+        EXPECT_TRUE(byte >= 0x20 || c == '\t' || c == '\n' || c == '\r') << int{byte};
+    }
+}
+
 TEST(SvgExportTest, MonochromeIsAllBlack) {
     hz::draft::PlotLayout layout;
     layout.monochrome = true;

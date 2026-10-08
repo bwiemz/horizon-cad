@@ -9,12 +9,16 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftLinearDimension.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -156,6 +160,106 @@ TEST(ImportReportTest, WhatWasDroppedSilentlyIsSaid) {
     EXPECT_TRUE(contains(all, "configuration 2: it has no name")) << all;
     EXPECT_EQ(report.skipped.size(), 4u) << all;
     EXPECT_EQ(doc.leftOut(), report.skipped);
+}
+
+// A block is made from whatever was selected (CreateBlockCommand), and kept
+// only lines, arcs, text and the like: a dimension, a leader or another
+// block's reference in it was written with no type, and its file reopened
+// as read in part. Its construction and group were not written at all.
+TEST(NativeBlockTest, ABlockKeepsEveryKindOfEntityItHolds) {
+    using hz::draft::BlockDefinition;
+    using hz::draft::DraftBlockRef;
+    using hz::draft::DraftLinearDimension;
+    hz::doc::Document doc;
+    auto bolt = std::make_shared<BlockDefinition>();
+    bolt->name = "Bolt";
+    bolt->entities.push_back(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(0, 5)));
+    // Before "Bolt" by name: a block must be read after the blocks it places.
+    auto plate = std::make_shared<BlockDefinition>();
+    plate->name = "Anchor plate";
+    plate->basePoint = Vec2(1, 2);
+    auto dimension = std::make_shared<DraftLinearDimension>(
+        Vec2(0, 0), Vec2(40, 0), Vec2(20, -8), DraftLinearDimension::Orientation::Horizontal);
+    dimension->setTextOverride("40 typ.");
+    auto guide = std::make_shared<hz::draft::DraftLine>(Vec2(0, 10), Vec2(40, 10));
+    guide->setConstruction(true);
+    guide->setGroupId(7);
+    plate->entities = {
+        std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(40, 0)), dimension,
+        std::make_shared<hz::draft::DraftLeader>(std::vector<Vec2>{Vec2(5, 5), Vec2(10, 12)}, "M8"),
+        std::make_shared<DraftBlockRef>(bolt, Vec2(5, 5), 0.25, 2.0), guide};
+    doc.draftDocument().blockTable().addBlock(bolt);
+    doc.draftDocument().blockTable().addBlock(plate);
+    doc.draftDocument().addEntity(std::make_shared<DraftBlockRef>(plate, Vec2(100, 0)));
+
+    hz::doc::Document back;
+    std::string error;
+    ImportReport report;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(doc, false), back, &error, &report))
+        << error;
+    std::string all;
+    for (const auto& line : report.skipped) all += line + "\n";
+    EXPECT_TRUE(report.empty()) << all;
+    EXPECT_FALSE(back.readInPart());
+
+    const auto read = back.draftDocument().blockTable().findBlock("Anchor plate");
+    ASSERT_NE(read, nullptr);
+    ASSERT_EQ(read->entities.size(), 5u);
+    const auto* readDimension = dynamic_cast<const DraftLinearDimension*>(read->entities[1].get());
+    ASSERT_NE(readDimension, nullptr);
+    EXPECT_EQ(readDimension->orientation(), DraftLinearDimension::Orientation::Horizontal);
+    EXPECT_DOUBLE_EQ(readDimension->dimLinePoint().y, -8.0);
+    EXPECT_EQ(readDimension->textOverride(), "40 typ.");
+    const auto* leader = dynamic_cast<const hz::draft::DraftLeader*>(read->entities[2].get());
+    ASSERT_NE(leader, nullptr);
+    EXPECT_EQ(leader->text(), "M8");
+    EXPECT_EQ(leader->points().size(), 2u);
+    const auto* ref = dynamic_cast<const DraftBlockRef*>(read->entities[3].get());
+    ASSERT_NE(ref, nullptr);
+    EXPECT_EQ(ref->definition(), back.draftDocument().blockTable().findBlock("Bolt"));
+    EXPECT_DOUBLE_EQ(ref->rotation(), 0.25);
+    EXPECT_DOUBLE_EQ(ref->uniformScale(), 2.0);
+    EXPECT_TRUE(read->entities[4]->construction());
+    EXPECT_EQ(read->entities[4]->groupId(), 7u);
+    EXPECT_GT(back.draftDocument().nextGroupId(), 7u) << "a new group is not the block's";
+}
+
+// A reference in a block is read only to a block read before it, so no chain
+// of blocks places itself (it would be drawn for ever). One that would, or
+// whose block is missing, is left out, and said.
+TEST(NativeBlockTest, ABlockThatWouldPlaceItselfIsReadWithoutThatReference) {
+    const std::string text = R"({"version": 30, "type": "hcad", "entities": [
+            {"type": "blockRef", "id": 1, "blockName": "C", "insertPos": {"x": 0, "y": 0}}],
+        "blocks": [
+            {"name": "A", "basePoint": {"x": 0, "y": 0}, "entities": [
+                {"type": "line", "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+                {"type": "blockRef", "blockName": "B", "insertPos": {"x": 0, "y": 0}}]},
+            {"name": "B", "basePoint": {"x": 0, "y": 0}, "entities": [
+                {"type": "blockRef", "blockName": "A", "insertPos": {"x": 0, "y": 0}},
+                {"type": "blockRef", "blockName": "B", "insertPos": {"x": 0, "y": 0}}]}]})";
+    hz::doc::Document doc;
+    std::string error;
+    ImportReport report;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(text, doc, &error, &report)) << error;
+    std::string all;
+    for (const auto& line : report.skipped) all += line + "\n";
+    EXPECT_TRUE(contains(all, "block 1 entity 2 (blockRef): its block \"B\" is not defined"))
+        << all;
+    EXPECT_TRUE(contains(all, "block 2 entity 2 (blockRef): its block \"B\" is not defined"))
+        << all;
+    EXPECT_TRUE(contains(all, "entity 1 (blockRef): its block \"C\" is not defined")) << all;
+    EXPECT_EQ(report.skipped.size(), 3u) << all;
+
+    const auto& blocks = doc.draftDocument().blockTable();
+    ASSERT_NE(blocks.findBlock("A"), nullptr);
+    ASSERT_NE(blocks.findBlock("B"), nullptr);
+    EXPECT_EQ(blocks.findBlock("A")->entities.size(), 1u);
+    ASSERT_EQ(blocks.findBlock("B")->entities.size(), 1u);
+    const auto* ref =
+        dynamic_cast<const hz::draft::DraftBlockRef*>(blocks.findBlock("B")->entities[0].get());
+    ASSERT_NE(ref, nullptr);
+    EXPECT_EQ(ref->definition(), blocks.findBlock("A"));
 }
 
 TEST(ImportReportTest, AnAssemblyKeepsWhatItsFileLeftOut) {
