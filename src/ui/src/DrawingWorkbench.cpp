@@ -91,10 +91,10 @@ bool isAssemblyPath(const std::string& path) {
     return QString::fromStdString(path).endsWith(QStringLiteral(".hzasm"), Qt::CaseInsensitive);
 }
 
-/// A label as typed, as a caption shows it: trimmed, a few characters.
+/// A label as typed, as a caption shows it: trimmed, a few characters,
+/// counted as its file counts them when it is read.
 std::string labelFrom(const QString& typed) {
-    constexpr int kMaxLabel = 8;
-    return typed.trimmed().left(kMaxLabel).toStdString();
+    return io::DrawingDocumentIO::usableLabel(typed.trimmed().toStdString());
 }
 
 double distance(const math::Vec2& a, const math::Vec2& b) {
