@@ -24,6 +24,29 @@ math::LengthUnit lengthUnit(const ViewportWidget* viewport) {
                : math::LengthUnit::Millimetre;
 }
 
+/// The way along @p line from @p corner to the part of it clicked at @p click:
+/// the part kept. Clicked at the corner itself, the longer part.
+math::Vec2 keptSide(const draft::DraftLine& line, const math::Vec2& corner,
+                    const math::Vec2& click) {
+    const math::Vec2 along = (line.end() - line.start()).normalized();
+    const double t = (click - corner).dot(along);
+    if (std::abs(t) > 1e-9) return t > 0.0 ? along : -along;
+    return line.end().distanceTo(corner) >= line.start().distanceTo(corner) ? along : -along;
+}
+
+/// @p line cut back to @p cut, keeping its end on the @p kept side: the other
+/// end moves to @p cut, and the line runs the way it did.
+void cutBack(const draft::DraftLine& line, const math::Vec2& kept, const math::Vec2& cut,
+             math::Vec2& start, math::Vec2& end) {
+    if ((line.end() - line.start()).dot(kept) > 0.0) {
+        start = cut;
+        end = line.end();
+    } else {
+        start = line.start();
+        end = cut;
+    }
+}
+
 }  // namespace
 
 void FilletTool::activate(ViewportWidget* viewport) {
@@ -70,15 +93,15 @@ bool FilletTool::computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint6
     double tA = d3.cross(d2) / denom;
     math::Vec2 corner = lineA->start() + d1 * tA;
 
-    // Determine which side of each line the fillet goes on.
-    // The fillet should be on the interior side (toward the other line).
+    // Each line keeps the part on the side of the corner it was clicked on,
+    // and the fillet goes in the corner between the two parts kept: each
+    // line is offset toward the other's.
+    const math::Vec2 keptA = keptSide(*lineA, corner, clickA);
+    const math::Vec2 keptB = keptSide(*lineB, corner, clickB);
     math::Vec2 n1 = d1.normalized().perpendicular();
     math::Vec2 n2 = d2.normalized().perpendicular();
-
-    // Choose perpendicular directions that point toward each other.
-    math::Vec2 midClick = (clickA + clickB) * 0.5;
-    if ((midClick - corner).dot(n1) < 0) n1 = -n1;
-    if ((midClick - corner).dot(n2) < 0) n2 = -n2;
+    if (n1.dot(keptB) < 0) n1 = -n1;
+    if (n2.dot(keptA) < 0) n2 = -n2;
 
     // Offset lines by radius R.
     math::Vec2 offA1 = lineA->start() + n1 * m_radius.value();
@@ -121,27 +144,10 @@ bool FilletTool::computeFillet(uint64_t lineAId, const math::Vec2& clickA, uint6
         arcEndAngle = math::normalizeAngle(angleB);
     }
 
-    // Determine trimmed line endpoints.
-    // For each line, the end closer to the corner gets moved to the tangent point.
-    double distStartA = lineA->start().distanceTo(corner);
-    double distEndA = lineA->end().distanceTo(corner);
-    if (distStartA < distEndA) {
-        trimA_start = tangentA;
-        trimA_end = lineA->end();
-    } else {
-        trimA_start = lineA->start();
-        trimA_end = tangentA;
-    }
-
-    double distStartB = lineB->start().distanceTo(corner);
-    double distEndB = lineB->end().distanceTo(corner);
-    if (distStartB < distEndB) {
-        trimB_start = tangentB;
-        trimB_end = lineB->end();
-    } else {
-        trimB_start = lineB->start();
-        trimB_end = tangentB;
-    }
+    // Each line is cut back to its tangent point from the far side of the
+    // corner (or from the corner, when it does not reach past it).
+    cutBack(*lineA, keptA, tangentA, trimA_start, trimA_end);
+    cutBack(*lineB, keptB, tangentB, trimB_start, trimB_end);
 
     return true;
 }

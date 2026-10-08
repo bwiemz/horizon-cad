@@ -25,6 +25,9 @@ public:
     void rotate(const math::Vec2& center, double angle) override;
     void scale(const math::Vec2& center, double factor) override;
 
+    /// The distance from @p point to the nearest point of the ellipse.
+    double distanceTo(const math::Vec2& point) const;
+
     /// Generate points on the ellipse curve for rendering / intersection.
     std::vector<math::Vec2> evaluate(int segments = 64) const;
 

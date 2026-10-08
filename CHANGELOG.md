@@ -217,6 +217,41 @@ work, not "post-1.0".
   - A cone with a negative radius is refused, as a negative cylinder is. It
     was built with a point there, and recorded a cone with the wrong apex
     and angle.
+- **A rectangle turned or mirrored keeps its shape.** Rotate, Mirror, a
+  polar array and exploding a block turned two opposite corners and drew
+  a box across them: a 4 x 2 rectangle turned 45 degrees came out
+  1.4 x 4.2. Turned off the axes, a rectangle now becomes a closed
+  polyline through its four corners; a quarter turn, or a mirror in a line
+  along an axis or a diagonal, leaves it a rectangle.
+- **Hatching stays inside its boundary.** A hatch line through a corner of
+  the boundary counted the corner twice: it could run across a notch, or
+  be left out.
+- **A short arc's centre snaps.** The snap looked only at entities that
+  reached the cursor, so a point beyond an entity's extent, such as the
+  centre of a short arc or a block's insertion point, could not be snapped
+  to.
+- **Fillet and Chamfer keep the parts of the lines clicked.** Of two lines
+  that cross, each kept the part nearer the crossing, whatever was
+  clicked, so the lines ran away from the arc or the cut.
+- **A linear dimension turned or mirrored measures the same.** A horizontal
+  dimension turned a quarter read the vertical distance, 0 for a level
+  edge. A quarter turn now makes it a vertical one; turned or mirrored off
+  the axes, it is aligned to the turned direction.
+- **A long, thin ellipse is picked where it is.** A click half a unit off
+  an ellipse 200 long and 20 wide was taken to be 2.4 units off, and
+  missed: it is now measured to the nearest point of the curve.
+- **A line touching a circle meets it once.** Most lines that touched a
+  circle were found to miss it, or to cross it twice at the same point,
+  which Trim, Break, Extend and the intersection snap then used.
+- **Offset takes the side of an ellipse the cursor is on.** A cursor
+  beside a long, thin ellipse was taken to be inside it, and the offset
+  collapsed it.
+- **Dimension and leader arrows point the right way.** A linear or angular
+  dimension's arrows were drawn outside its extension lines, pointing in
+  (>|---|<), and a leader's away from what it points at. They now point
+  out to the extension lines (|<--->|), and a leader's at what it points
+  at; drawing sheets and exports show them so too. An angular dimension
+  can also be picked on its extension lines, not only near its arc.
 - **A solid that runs into itself is refused.** The geometric checks each
   looked at one face or edge at a time, so a solid whose faces pass through
   each other passed them all: a sweep along a path that crosses itself

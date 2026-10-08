@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "horizon/math/Constants.h"
 
@@ -26,6 +27,66 @@ static math::Vec2 rotatePoint(const math::Vec2& p, const math::Vec2& center, dou
 
 static math::Vec2 scalePoint(const math::Vec2& p, const math::Vec2& center, double factor) {
     return center + (p - center) * factor;
+}
+
+/// The s >= 0 at which (r0 z0 / (s + r0))^2 + (z1 / (s + 1))^2 = 1, found by
+/// halving the interval it lies in until it cannot be halved: the nearest
+/// point of an ellipse, as D. Eberly finds it ("Distance from a Point to an
+/// Ellipse, an Ellipsoid, or a Hyperellipsoid").
+static double ellipseRoot(double r0, double z0, double z1, double g) {
+    const double n0 = r0 * z0;
+    double s0 = z1 - 1.0;
+    double s1 = g < 0.0 ? 0.0 : std::hypot(n0, z1) - 1.0;
+    double s = 0.0;
+    // Each pass halves the interval; no more passes than a double has bits
+    // of mantissa and exponent.
+    for (int i = 0; i < 1100; ++i) {
+        s = (s0 + s1) * 0.5;
+        if (s == s0 || s == s1) break;
+        const double ratio0 = n0 / (s + r0);
+        const double ratio1 = z1 / (s + 1.0);
+        g = ratio0 * ratio0 + ratio1 * ratio1 - 1.0;
+        if (g > 0.0) {
+            s0 = s;
+        } else if (g < 0.0) {
+            s1 = s;
+        } else {
+            break;
+        }
+    }
+    return s;
+}
+
+/// The distance from (y0, y1), both >= 0, to the ellipse with semi-axes
+/// e0 >= e1 > 0 along x and y. The nearest point is where the normal to the
+/// ellipse passes through (y0, y1): not along the line to the centre, which
+/// on a long thin ellipse is several times as far.
+static double distanceInQuarter(double e0, double e1, double y0, double y1) {
+    if (y1 > 0.0) {
+        if (y0 > 0.0) {
+            const double z0 = y0 / e0;
+            const double z1 = y1 / e1;
+            const double g = z0 * z0 + z1 * z1 - 1.0;
+            if (g == 0.0) return 0.0;
+            const double r0 = (e0 / e1) * (e0 / e1);
+            const double s = ellipseRoot(r0, z0, z1, g);
+            const double x0 = r0 * y0 / (s + r0);
+            const double x1 = y1 / (s + 1.0);
+            return std::hypot(x0 - y0, x1 - y1);
+        }
+        return std::abs(y1 - e1);  // on the short axis: its end
+    }
+    // On the long axis: inside, near enough the centre, the nearest point is
+    // off the axis; else the axis's end.
+    const double numer0 = e0 * y0;
+    const double denom0 = e0 * e0 - e1 * e1;
+    if (numer0 < denom0) {
+        const double xde0 = numer0 / denom0;
+        const double x0 = e0 * xde0;
+        const double x1 = e1 * std::sqrt(1.0 - xde0 * xde0);
+        return std::hypot(x0 - y0, x1);
+    }
+    return std::abs(y0 - e0);
 }
 
 // ---------------------------------------------------------------------------
@@ -71,29 +132,28 @@ math::BoundingBox DraftEllipse::boundingBox() const {
 }
 
 bool DraftEllipse::hitTest(const math::Vec2& point, double tolerance) const {
-    // Transform point into ellipse-local space (un-rotate), then test
-    // distance to the unit-circle-scaled ellipse.
-    double cosR = std::cos(-m_rotation);
-    double sinR = std::sin(-m_rotation);
-    math::Vec2 v = point - m_center;
-    double lx = v.x * cosR - v.y * sinR;
-    double ly = v.x * sinR + v.y * cosR;
-
     // Avoid division by zero for degenerate ellipses.
     if (m_semiMajor < 1e-12 || m_semiMinor < 1e-12) return false;
+    return distanceTo(point) <= tolerance;
+}
 
-    // Approximate distance to ellipse using the implicit equation.
-    // For a point on the ellipse, (lx/a)^2 + (ly/b)^2 = 1.
-    double nx = lx / m_semiMajor;
-    double ny = ly / m_semiMinor;
-    double d = std::sqrt(nx * nx + ny * ny);
-    if (d < 1e-12) return tolerance >= std::min(m_semiMajor, m_semiMinor);
-
-    // Approximate distance to the nearest point on the ellipse.
-    double ex = m_semiMajor * nx / d;
-    double ey = m_semiMinor * ny / d;
-    double dist = std::sqrt((lx - ex) * (lx - ex) + (ly - ey) * (ly - ey));
-    return dist <= tolerance;
+double DraftEllipse::distanceTo(const math::Vec2& point) const {
+    // In the ellipse's own frame (un-rotated), folded into the quarter where
+    // both coordinates are positive: the nearest point is in the same
+    // quarter as the point.
+    const double cosR = std::cos(m_rotation);
+    const double sinR = std::sin(m_rotation);
+    const math::Vec2 v = point - m_center;
+    double x = std::abs(v.x * cosR + v.y * sinR);
+    double y = std::abs(-v.x * sinR + v.y * cosR);
+    double a = std::abs(m_semiMajor);
+    double b = std::abs(m_semiMinor);
+    if (a < b) {
+        std::swap(a, b);
+        std::swap(x, y);
+    }
+    if (b < 1e-12) return std::hypot(std::max(x - a, 0.0), y);  // flat: a segment
+    return distanceInQuarter(a, b, x, y);
 }
 
 std::vector<math::Vec2> DraftEllipse::snapPoints() const {
