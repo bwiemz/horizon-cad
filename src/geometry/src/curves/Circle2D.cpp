@@ -26,6 +26,9 @@ math::Vec2 Circle2D::derivative(double t, int order) const {
         case 4:
             return evaluate(t) - m_center;  // Same as first derivative pattern repeats
         default:
+            // Order 0 or less is the point itself, as for a NURBS curve: it
+            // cycled to order 0 again and recursed until the stack ran out.
+            if (order <= 0) return evaluate(t);
             // For higher orders, cycle with period 4
             return derivative(t, ((order - 1) % 4) + 1);
     }
