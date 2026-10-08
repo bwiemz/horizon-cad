@@ -7,6 +7,7 @@
 
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Queries.h"
 
@@ -98,6 +99,16 @@ std::optional<MateFrame> MateGeometry::frameForFace(const topo::Face& face) {
         MateFrame frame;
         frame.kind = MateFrameKind::Planar;
         frame.direction = normals.front();
+        // Out of the part. The surface's normal follows the way it was laid
+        // out, and a box's bottom, back and left faces, an extrusion's
+        // bottom cap and the sides of a profile drawn clockwise face in: a
+        // Tangent mate put a cylinder inside the box, and a Distance or an
+        // Angle mate measured from the inside. The face's loop, by its
+        // solid's winding, says which side is out.
+        if (face.shell != nullptr && face.shell->solid != nullptr) {
+            const Vec3 out = topo::loopNormal(&face) * outwardSign(*face.shell->solid);
+            if (out.dot(frame.direction) < 0.0) frame.direction = frame.direction * -1.0;
+        }
         // Origin: centroid of the face's vertex loop (more representative
         // than the parameter-space midpoint for trimmed faces).
         auto verts = topo::faceVertices(&face);

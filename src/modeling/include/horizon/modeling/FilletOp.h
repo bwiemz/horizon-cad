@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -66,11 +67,13 @@ public:
     /// tenth of a percent of the exact fillet, and the error falls as 1/n^2.
     static constexpr int kDefaultArcSegments = 8;
 
-    /// Chords across a blend arc needed to keep the chord sagitta of a fillet
-    /// of @p radius within @p tolerance.  Blends span the quarter circle the
-    /// orthogonal corners this op supports produce.  Returns
+    /// Chords across a blend arc of @p sweep radians needed to keep the chord
+    /// sagitta of a fillet of @p radius within @p tolerance.  A blend spans
+    /// pi less the angle between the edge's faces: a quarter turn at a square
+    /// edge (the default), more at a sharper one.  Returns
     /// kDefaultArcSegments for a non-positive radius or tolerance.
-    static int arcSegmentsForTolerance(double radius, double tolerance);
+    static int arcSegmentsForTolerance(double radius, double tolerance,
+                                       double sweep = math::kHalfPi);
 
     /// Fillet the specified edges with a constant radius.
     /// @param inputSolid   The source solid (not modified).
@@ -82,11 +85,16 @@ public:
     ///                     the rest are named after their faces. Otherwise
     ///                     `<featureID>/edge<i>` in storage order, as older
     ///                     documents' fillets were.
+    /// @param chordTolerance  When positive, each blend is cut into the chords
+    ///                     that keep its sag within this, for the arc it
+    ///                     spans (arcSegmentsForTolerance), and @p arcSegments
+    ///                     is not used. Blends that meet share the most.
     /// @return A new solid with fillet faces, or an error message.
     static FilletResult execute(const topo::Solid& inputSolid,
                                 const std::vector<topo::TopologyID>& edgeIds, double radius,
                                 const std::string& featureID, int arcSegments = kDefaultArcSegments,
-                                NamingScheme naming = NamingScheme::Positional);
+                                NamingScheme naming = NamingScheme::Positional,
+                                double chordTolerance = 0.0);
 
     /// Fillet one edge with a radius that varies along it (Phase 61).
     /// @param stops  Radius table covering t = 0 and t = 1 in increasing

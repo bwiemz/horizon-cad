@@ -39,16 +39,20 @@ bool flatSurface(const geo::NurbsSurface& surface) {
 }  // namespace
 
 double outwardSign(const topo::Solid& solid) {
+    // About a corner of the solid's own: about the origin each term grows as
+    // the cube of the distance, and far out (a part a millionth of its
+    // distance across) their rounding outweighed the volume and turned it.
+    const Vec3 o = solid.vertices().empty() ? Vec3() : solid.vertices().front().point;
     double sixVolume = 0.0;
     for (const auto& face : solid.faces()) {
         if (!face.outerLoop || !face.outerLoop->halfEdge) continue;
         const topo::HalfEdge* start = face.outerLoop->halfEdge;
         if (!start->origin || !start->next) continue;
-        const Vec3& p0 = start->origin->point;
+        const Vec3 p0 = start->origin->point - o;
         for (const topo::HalfEdge* he = start->next; he && he->next && he->next != start;
              he = he->next) {
             if (!he->origin || !he->next->origin) break;
-            sixVolume += p0.dot(he->origin->point.cross(he->next->origin->point));
+            sixVolume += p0.dot((he->origin->point - o).cross(he->next->origin->point - o));
         }
     }
     return sixVolume < 0.0 ? -1.0 : 1.0;
