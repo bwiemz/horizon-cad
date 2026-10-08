@@ -872,6 +872,9 @@ TEST(FilletOpTest, ArcSegmentsForToleranceMeetsTheSagBudget) {
     // Nonsense input falls back to the default.
     EXPECT_EQ(FilletOp::arcSegmentsForTolerance(0.0, 0.1), FilletOp::kDefaultArcSegments);
     EXPECT_EQ(FilletOp::arcSegmentsForTolerance(2.0, 0.0), FilletOp::kDefaultArcSegments);
+    // A budget so fine that 1 - tolerance/radius rounds to 1: the most
+    // chords, not one (a chamfer).
+    EXPECT_EQ(FilletOp::arcSegmentsForTolerance(1000.0, 1e-14), 1024);
 }
 
 // A three-edge corner is an eighth of the rolling ball. Its face carried the

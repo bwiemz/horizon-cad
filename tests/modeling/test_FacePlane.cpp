@@ -42,6 +42,22 @@ TEST(FacePlaneTest, ABoxsFacesFaceOutOfIt) {
     EXPECT_NEAR(bottom->origin.z, 0.0, 1e-12);
 }
 
+// A part far from the origin for its size faces out as it does at the
+// origin. Its winding was measured about the origin, where the rounding of
+// each term outweighed the part's own volume and turned the sign.
+TEST(FacePlaneTest, APartFarFromTheOriginFacesOut) {
+    const auto near = PrimitiveFactory::makeBox(1, 1, 1);
+    const Mat4 turn = Mat4::rotationX(0.3) * Mat4::rotationZ(0.7);
+    for (const double far : {1e6, 1e7}) {
+        const Mat4 place = Mat4::translation(Vec3(0.3, 0.7, 0.1) * far) * turn;
+        const auto moved = hz::model::Pattern::transformed(*near, place);
+        EXPECT_EQ(hz::model::outwardSign(*moved), hz::model::outwardSign(*near)) << far;
+        const auto top = planeOfFace(*moved, "box/top");
+        if (!top) FAIL() << "no plane for the top";
+        EXPECT_NEAR(top->normal.dot(turn.transformDirection(Vec3::UnitZ)), 1.0, 1e-9) << far;
+    }
+}
+
 TEST(FacePlaneTest, AFaceThatIsGoneOrCurvedIsSaidSo) {
     const auto box = PrimitiveFactory::makeBox(10, 20, 30);
     std::string why;

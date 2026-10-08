@@ -547,6 +547,9 @@ int PrimitiveFactory::segmentsForTolerance(double radius, double tolerance) {
         return 3;  // Tolerance exceeds the diameter: any polygon will do.
     }
     const double n = math::kPi / std::acos(std::min(1.0, ratio));
+    // A budget too fine to tell from nothing at this radius (ratio rounds to
+    // 1) makes n infinite, which as an int was the least count, not the most.
+    if (!(n < 4096.0)) return 4096;
     return std::clamp(static_cast<int>(std::ceil(n)), 3, 4096);
 }
 
@@ -657,10 +660,19 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int seg
 std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
                                                         double height, int segments) {
     constexpr double kRingEps = 1e-12;
+    // A negative radius is no cone. It was built as a point, while the cone
+    // recorded for the side took the signed radius, its apex and angle
+    // wrong; one that is no number made no shape at all.
+    if (!std::isfinite(bottomRadius) || !std::isfinite(topRadius) || bottomRadius < -kRingEps ||
+        topRadius < -kRingEps) {
+        return nullptr;
+    }
+    bottomRadius = std::max(bottomRadius, 0.0);
+    topRadius = std::max(topRadius, 0.0);
     if (bottomRadius <= kRingEps && topRadius <= kRingEps) {
         return nullptr;  // Both ends degenerate: no solid to build.
     }
-    if (height <= kRingEps || segments < 3) {
+    if (!std::isfinite(height) || height <= kRingEps || segments < 3) {
         return nullptr;
     }
 

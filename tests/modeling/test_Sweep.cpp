@@ -7,6 +7,8 @@
 
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
@@ -272,4 +274,19 @@ TEST(SweepTest, CircularProfileSweepsAFacetedPipe) {
         << GeometryValidator::report(*solid);
     const double area = 0.5 * 24 * std::sin(2.0 * hz::math::kPi / 24);
     EXPECT_NEAR(volumeOf(*solid), area * 18.0, 1e-9);
+}
+
+// A dimension or a note on the profile's sketch is not part of the profile:
+// a circle with its radius dimensioned sweeps as the circle alone.
+TEST(SweepTest, ADimensionedProfileSweepsAsItsShape) {
+    std::vector<std::shared_ptr<DraftEntity>> circle = {
+        std::make_shared<DraftCircle>(Vec2(0, 0), 1.0),
+        std::make_shared<DraftRadialDimension>(Vec2(0, 0), 1.0, Vec2(2, 2), false),
+        std::make_shared<DraftText>(Vec2(-1, 2), "pipe")};
+    std::vector<Vec3> path = {Vec3(0, 0, 0), Vec3(0, 0, 10)};
+    std::string why;
+    auto solid = Sweep::execute(circle, xyPlane(), path, "pipe", 24, 0.0, &why);
+    ASSERT_NE(solid, nullptr) << why;
+    const double area = 0.5 * 24 * std::sin(2.0 * hz::math::kPi / 24);
+    EXPECT_NEAR(volumeOf(*solid), area * 10.0, 1e-9);
 }

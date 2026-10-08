@@ -290,6 +290,13 @@ TEST(RevolveTest, SegmentsForToleranceTightensAsToleranceFalls) {
     }
 }
 
+// A budget so fine that 1 - tolerance/radius rounds to 1: the most steps,
+// not the fewest (the count was infinite, and as an int the least).
+TEST(RevolveTest, TheFinestToleranceGivesTheMostSteps) {
+    EXPECT_EQ(Revolve::segmentsForTolerance(1000.0, 1e-14), 4096);
+    EXPECT_EQ(Revolve::segmentsForTolerance(1.0, 1e-300), 4096);
+}
+
 // ---------------------------------------------------------------------------
 // profileRadius (Phase 90)
 // ---------------------------------------------------------------------------
