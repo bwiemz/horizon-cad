@@ -140,6 +140,26 @@ work, not "post-1.0".
   whose determinant was under 1e-15 for singular, so a scale of a
   millionth, or an orthographic view hundreds of metres across, inverted to
   the identity. Singular is now judged against the matrix's own size.
+- **Curves and surfaces differentiate exactly.** A curve's derivatives
+  were finite differences, and at an end of the curve the second one was
+  wrong by a factor of about a hundred thousand: a straight edge's came
+  out a million. Finding the point of a curve nearest another point then
+  stopped at the end for anything within 2.5% of it, so an edge's own
+  endpoints could fail to lie on it, in drawings and in the mass
+  properties of the part as designed. A surface's normal was good to about
+  1e-7, the size of the test that decides whether a face is flat. Both are
+  now worked out from the basis functions' derivatives, and the nearest
+  point is refined from the two best starting points, so a point just
+  before a closed curve's seam is found where it is.
+- **Curves and surfaces refuse what they cannot be.** A weight of zero or
+  less, a NaN in a control point, knots that go backwards or a domain of no
+  length made a curve that evaluated to NaN, which spread silently; a
+  surface given fewer rows of weights than of points read past the end of
+  them. All are refused when the curve or surface is made, which an
+  imported file's report says. Knots closer together than a ten-millionth
+  are two knots, not one; an arc of any finite angle is made at once (an
+  angle of 1e20 never finished); a tessellation tolerance too fine to
+  count is the finest mesh, not the coarsest.
 - **Modeling fixes.**
   - Sweep and Loft take a sketch with a dimension, text or a hatch on it,
     as Extrude and Revolve do. A circle with its radius dimensioned was
