@@ -190,6 +190,33 @@ work, not "post-1.0".
   an integer it does not fit, which is undefined behaviour. Such a curve
   or surface is now refused, and such a cached mesh is not used (the part
   is built instead). The native fuzz target now reads the cached mesh too.
+- **Modeling fixes.**
+  - Sweep and Loft take a sketch with a dimension, text or a hatch on it,
+    as Extrude and Revolve do. A circle with its radius dimensioned was
+    refused ("a circle cannot be joined to other curves"), and so was a
+    profile with a note.
+  - Draft drops the cylinders and circles a part had before it. Shelled, a
+    drafted cylinder's wall was thinner at the top than at the bottom, and
+    mates and the ideal mass properties saw the cylinder as it was.
+  - Tangent, Distance and Angle mates on a flat face measure from its
+    outside. On a box's bottom, back and left faces, an extrusion's bottom
+    cap and the sides of a profile drawn clockwise they measured from the
+    inside: a cylinder made tangent to a box's left face went into the box.
+    A saved Distance or Angle mate on such a face now measures the other
+    way.
+  - A very fine chord tolerance gives the finest facets. One under about
+    1e-16 of the radius gave the coarsest: a cylinder of three facets, a
+    fillet of one chord.
+  - Extrude through all at a slant goes through the part. It could say the
+    part was not in front of the sketch, or, both ways, stop short of it.
+  - A loft whose sections lie in one plane is refused, and says which: it
+    made a closed shape of no volume.
+  - A fillet's chord tolerance holds at an edge of any angle. Each blend was
+    cut as if it turned a quarter circle; at a 45° edge it turns 135°, and
+    sagged twice the tolerance.
+  - A cone with a negative radius is refused, as a negative cylinder is. It
+    was built with a point there, and recorded a cone with the wrong apex
+    and angle.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

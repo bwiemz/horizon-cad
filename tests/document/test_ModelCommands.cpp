@@ -499,6 +499,27 @@ TEST(ModelCommandsTest, ACutThroughAllGoesThroughThePart) {
         << empty.lastBuildMessage();
 }
 
+// Through all at a slant: how far the part reaches is measured from the
+// sketch's plane, along the direction. Measured straight along the
+// direction, a part above the sketch and behind it sideways was "not in
+// front of the sketch", and both ways cut only the half below the sketch.
+TEST(ModelCommandsTest, ACutThroughAllAtASlantGoesThroughThePart) {
+    const Vec3 slant = Vec3(-1, 0, 1).normalized();
+    for (const auto extent :
+         {ExtrudeFeature::Extent::ThroughAll, ExtrudeFeature::Extent::ThroughAllBoth}) {
+        Document doc;
+        add(doc, extrude(rectangle(80, -15, 110, 15), 10.0, BodyOperation::NewBody));
+        // From the bottom one way, from the middle both ways: a 2 x 2 square
+        // under x = 100, leaning back 10 over the height of the part.
+        const double z = extent == ExtrudeFeature::Extent::ThroughAll ? 0.0 : 5.0;
+        auto cut = std::make_unique<ExtrudeFeature>(squareAt(99, -1, 2, z), slant, 1.0);
+        cut->setExtent(extent);
+        cut->setOperation(BodyOperation::Cut);
+        add(doc, std::move(cut));
+        EXPECT_NEAR(volume(doc), 9000.0 - 40.0, 1e-6) << static_cast<int>(extent);
+    }
+}
+
 // A pattern of a hole repeats the hole, not the part: three holes.
 TEST(ModelCommandsTest, APatternOfAFeatureRepeatsOnlyIt) {
     BoxPart part;

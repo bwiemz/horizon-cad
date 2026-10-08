@@ -496,7 +496,8 @@ public:
     /// faceted across its arc, so this is what decides how much material the
     /// fillet actually removes relative to the exact one.
     /// With a chord tolerance set, this is the count derived from it for the
-    /// fillet radius.
+    /// fillet radius at a square edge; each blend is then cut for the arc it
+    /// spans, so a sharper edge's gets more.
     int arcSegments() const;
     /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
     /// chord count is derived from it and the governing radius on every

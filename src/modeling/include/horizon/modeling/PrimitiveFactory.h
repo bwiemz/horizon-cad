@@ -70,7 +70,8 @@ public:
     /// built with apex topology instead — one n-gon cap plus n triangles —
     /// rather than a ring of zero-length edges around a zero-area cap.
     ///
-    /// Returns nullptr when both radii, or the height, are zero.
+    /// Returns nullptr when both radii, or the height, are zero, and when a
+    /// radius is negative or any of them is not a finite number.
     static std::unique_ptr<topo::Solid> makeCone(double bottomRadius, double topRadius,
                                                  double height, int segments = kDefaultSegments);
 
