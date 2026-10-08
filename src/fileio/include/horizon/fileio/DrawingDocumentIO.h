@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -129,6 +130,14 @@ public:
 
     /// The spec that saves @p drawing as it is laid out.
     static std::vector<DrawingViewSpec> viewsOf(const model::Drawing& drawing);
+
+    /// The most characters a view's label has: a caption shows a few.
+    static constexpr std::size_t kMaxLabel = 8;
+
+    /// @p label, typed or read from a file, as a view's label: no line
+    /// breaks, and at most kMaxLabel characters, counted by code point and
+    /// never cut inside one. @p label is UTF-8.
+    static std::string usableLabel(std::string label);
 };
 
 }  // namespace hz::io

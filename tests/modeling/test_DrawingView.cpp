@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <clocale>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -214,6 +215,22 @@ TEST(DrawingViewTest, TheSheetScaleFollowsThePartsSize) {
     EXPECT_EQ(DrawingGenerator::scaleName(0.01), "1:100");
     EXPECT_EQ(DrawingGenerator::scaleName(1.0), "1:1");
     EXPECT_EQ(DrawingGenerator::scaleName(5.0), "5:1");
+}
+
+// A scale that is not a whole ratio is named with a point, whatever the
+// locale (when a comma-decimal one is installed): printf's "%.4g" followed
+// the C locale Qt sets, and the title block read "2,5:1" under de_DE.
+TEST(DrawingViewTest, AScaleIsNamedWithAPoint) {
+    const char* previous = std::setlocale(LC_NUMERIC, nullptr);
+    const std::string saved = previous ? previous : "C";
+    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "ru_RU.UTF-8"}) {
+        if (std::setlocale(LC_NUMERIC, name) != nullptr) break;
+    }
+    const std::string enlarged = DrawingGenerator::scaleName(2.5);
+    const std::string reduced = DrawingGenerator::scaleName(1.0 / 2.5);
+    std::setlocale(LC_NUMERIC, saved.c_str());
+    EXPECT_EQ(enlarged, "2.5:1");
+    EXPECT_EQ(reduced, "1:2.5");
 }
 
 // A scale the user chose is used as chosen, even where the views do not fit:
