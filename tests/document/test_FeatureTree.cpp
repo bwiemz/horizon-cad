@@ -480,6 +480,16 @@ TEST(FeatureTreeTest, PrimitiveParametricEdit) {
     EXPECT_NEAR(maxX - minX, 8.0, 1e-9);  // edited width took effect on rebuild
 }
 
+// A cone's radius typed as an expression that comes out negative is refused,
+// and said, as a negative cylinder's is.
+TEST(FeatureTreeTest, ANegativeConeRadiusDoesNotBuild) {
+    auto cone = PrimitiveFeature::makeCone(4.0, 2.0, 6.0);
+    ASSERT_TRUE(cone->setParameter("topRadius", -2.0));
+    std::string why;
+    EXPECT_EQ(cone->execute(nullptr, &why), nullptr);
+    EXPECT_NE(why.find("must be positive"), std::string::npos) << why;
+}
+
 // ---------------------------------------------------------------------------
 // FilletFeature — parametric edge rounding on the running solid
 // ---------------------------------------------------------------------------
@@ -867,6 +877,45 @@ TEST(FeatureTreeTest, FilletChordToleranceDerivesTheArcSegments) {
     ASSERT_TRUE(feature.setParameter("arcSegments", 3.0));
     EXPECT_EQ(feature.chordTolerance(), 0.0);
     EXPECT_EQ(feature.arcSegments(), 3);
+}
+
+// A blend spans pi less the angle between its faces, not always a quarter
+// turn. At a 45-degree edge it spans 135 degrees: cut into the chords a
+// quarter turn needs, each sagged twice the budget.
+TEST(FeatureTreeTest, FilletChordToleranceHoldsAtAnyEdgeAngle) {
+    auto triangle = std::make_shared<Sketch>();
+    triangle->addEntity(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    triangle->addEntity(std::make_shared<DraftLine>(Vec2(10, 0), Vec2(0, 10)));
+    triangle->addEntity(std::make_shared<DraftLine>(Vec2(0, 10), Vec2(0, 0)));
+    FeatureTree tree;
+    tree.addFeature(std::make_unique<ExtrudeFeature>(triangle, Vec3(0, 0, 1), 10.0));
+    auto prism = tree.build();
+    ASSERT_NE(prism, nullptr);
+    hz::topo::TopologyID sharp;  // the upright edge at the 45-degree corner
+    for (const auto& e : prism->edges()) {
+        const Vec3& a = e.halfEdge->origin->point;
+        const Vec3& b = e.halfEdge->twin->origin->point;
+        if ((Vec3(a.x, a.y, 0) - Vec3(10, 0, 0)).length() < 1e-9 &&
+            (Vec3(b.x, b.y, 0) - Vec3(10, 0, 0)).length() < 1e-9) {
+            sharp = e.topoId;
+        }
+    }
+    ASSERT_TRUE(sharp.isValid());
+    auto fillet = std::make_unique<FilletFeature>(std::vector<hz::topo::TopologyID>{sharp}, 1.0);
+    ASSERT_TRUE(fillet->setParameter("chordTolerance", 1e-4));
+    tree.addFeature(std::move(fillet));
+    auto rounded = tree.build();
+    ASSERT_NE(rounded, nullptr);
+
+    // The fewest chords across 135 degrees that each sag within 1e-4 ...
+    const double pi = hz::math::kPi;
+    int n = 1;
+    while (1.0 - std::cos(0.75 * pi / (2.0 * n)) > 1e-4) ++n;
+    // ... and the volume they leave: the kite between the edge, the touch
+    // points and the ball's centre, less the n-chord sector of the arc.
+    const double theta = pi / 4.0;
+    const double removed = 1.0 / std::tan(theta / 2.0) - 0.5 * n * std::sin((pi - theta) / n);
+    EXPECT_NEAR(volumeOf(*rounded), 500.0 - 10.0 * removed, 1e-9);
 }
 
 TEST(FeatureTreeTest, SweepChordToleranceSamplesEachArcAtItsOwnRadius) {

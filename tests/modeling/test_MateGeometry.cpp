@@ -8,11 +8,14 @@
 #include <vector>
 
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 
@@ -185,4 +188,111 @@ TEST(MateGeometryTest, AStraightEdgeIsALineAndARoundOneACircle) {
     EXPECT_NEAR(std::abs(circle->direction.z), 1.0, 1e-9);
 
     EXPECT_FALSE(MateGeometry::frameForEdge(*box, "box/nosuch").has_value());
+}
+
+// ---------------------------------------------------------------------------
+// A flat face's frame faces out of its part
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Each flat face of @p solid: its frame's direction leads out of the part,
+/// away from @p inside.
+void expectEveryFlatFaceFacesOut(const hz::topo::Solid& solid, const Vec3& inside) {
+    for (const auto& face : solid.faces()) {
+        const auto frame = MateGeometry::frameForFace(face);
+        if (!frame || frame->kind != MateFrameKind::Planar) continue;
+        EXPECT_GT(frame->direction.dot(frame->origin - inside), 0.0) << face.topoId.tag();
+    }
+}
+
+MateFrame faceFrame(const hz::topo::Solid& solid, const std::string& tag) {
+    const auto* face = MateGeometry::findFace(solid, TopologyID::fromTag(tag));
+    EXPECT_NE(face, nullptr) << tag;
+    const auto frame = face != nullptr ? MateGeometry::frameForFace(*face) : std::nullopt;
+    EXPECT_TRUE(frame.has_value()) << tag;
+    return frame.value_or(MateFrame{});
+}
+
+}  // namespace
+
+// Its direction followed the way its surface was laid out, not the part: a
+// box's bottom, back and left faces, an extrusion's bottom cap and the sides
+// of a profile drawn clockwise faced into it.
+TEST(MateGeometryTest, AFlatFaceFacesOutOfItsPart) {
+    expectEveryFlatFaceFacesOut(*PrimitiveFactory::makeBox(10, 10, 10), Vec3(5, 5, 5));
+    expectEveryFlatFaceFacesOut(*PrimitiveFactory::makeCylinder(3, 10), Vec3(0, 0, 5));
+
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> clockwise;
+    const std::vector<hz::math::Vec2> corners{{0, 0}, {0, 4}, {6, 4}, {6, 0}};
+    for (size_t i = 0; i < corners.size(); ++i) {
+        clockwise.push_back(
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]));
+    }
+    const auto prism =
+        Extrude::execute(clockwise, hz::draft::SketchPlane(), Vec3::UnitZ, 2.0, "prism");
+    ASSERT_NE(prism, nullptr);
+    expectEveryFlatFaceFacesOut(*prism, Vec3(3, 2, 1));
+
+    // A part far from the origin for its size, where measuring its winding
+    // about the origin rounded the wrong way.
+    const Mat4 far =
+        Mat4::translation(Vec3(3e6, 7e6, 1e6)) * Mat4::rotationX(0.3) * Mat4::rotationZ(0.7);
+    const auto moved = Pattern::transformed(*PrimitiveFactory::makeBox(1, 1, 1), far);
+    expectEveryFlatFaceFacesOut(*moved, far.transformPoint(Vec3(0.5, 0.5, 0.5)));
+}
+
+// Mates on the faces of real parts, so on their frames as the assembly reads
+// them: a cylinder tangent to a box's left face went inside the box, and a
+// distance from it was measured into the box.
+TEST(MateGeometryTest, MatesOnFlatFacesKeepThePartsOutsideEachOther) {
+    const auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto cylinder = PrimitiveFactory::makeCylinder(3, 10);
+    SolverComponent base;
+    base.id = 1;
+    base.grounded = true;
+    SolverComponent other;
+    other.id = 2;
+    AssemblySolver solver;
+
+    SolverMate tangent;
+    tangent.type = MateType::Tangent;
+    tangent.componentA = 1;
+    tangent.componentB = 2;
+    tangent.frameA = faceFrame(*box, "box/left");
+    tangent.frameB = faceFrame(*cylinder, "cylinder/side0");
+    other.transform = Mat4::translation(Vec3(-20, 5, 0));
+    auto result = solver.solve({base, other}, {tangent});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    const MateFrame axis = tangent.frameB.transformed(result.transforms.at(2));
+    EXPECT_NEAR(axis.origin.x, -3.0, 1e-6) << "the cylinder beside the box, not in it";
+
+    // Another box 2 to the left of the first: its right face 2 out from the
+    // first's left face.
+    SolverMate apart;
+    apart.type = MateType::Distance;
+    apart.componentA = 1;
+    apart.componentB = 2;
+    apart.frameA = faceFrame(*box, "box/left");
+    apart.frameB = faceFrame(*box, "box/right");
+    apart.value = 2.0;
+    other.transform = Mat4::translation(Vec3(-30, 0, 0));
+    result = solver.solve({base, other}, {apart});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    EXPECT_NEAR(apart.frameB.transformed(result.transforms.at(2)).origin.x, -2.0, 1e-6);
+
+    // A bottom at 180 degrees to a top: the faces turned to each other, the
+    // second box upright on the first, not upside down.
+    SolverMate facing;
+    facing.type = MateType::Angle;
+    facing.componentA = 1;
+    facing.componentB = 2;
+    facing.frameA = faceFrame(*box, "box/top");
+    facing.frameB = faceFrame(*box, "box/bottom");
+    facing.value = std::numbers::pi;
+    other.transform = Mat4::translation(Vec3(0, 0, 20)) * Mat4::rotationX(0.3);
+    result = solver.solve({base, other}, {facing});
+    ASSERT_EQ(result.status, AssemblySolveStatus::Success) << result.message;
+    const MateFrame top = faceFrame(*box, "box/top").transformed(result.transforms.at(2));
+    EXPECT_NEAR(top.direction.z, 1.0, 1e-6) << "upright";
 }

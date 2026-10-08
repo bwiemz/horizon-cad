@@ -161,6 +161,9 @@ int Revolve::segmentsForTolerance(double radius, double tolerance) {
         return 3;  // Tolerance exceeds the diameter: any polygon will do.
     }
     const double n = math::kPi / std::acos(std::min(1.0, ratio));
+    // A budget too fine to tell from nothing at this radius (ratio rounds to
+    // 1) makes n infinite, which as an int was the least count, not the most.
+    if (!(n < 4096.0)) return 4096;
     return std::clamp(static_cast<int>(std::ceil(n)), 3, 4096);
 }
 

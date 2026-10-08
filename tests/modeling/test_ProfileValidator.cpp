@@ -8,9 +8,12 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEllipse.h"
+#include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRadialDimension.h"
 #include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/modeling/ProfileValidator.h"
 
 using namespace hz::model;
@@ -148,6 +151,35 @@ TEST(ProfileValidatorTest, UnsupportedEntitiesAreNamed) {
     auto mixed = ProfileValidator::validate(circleAndLine);
     EXPECT_NE(mixed.errorMessage.find("a circle cannot be joined"), std::string::npos)
         << mixed.errorMessage;
+}
+
+// ---------------------------------------------------------------------------
+// Notes on the sketch are not its shape. The Dimension and Text tools draw
+// into the sketch being edited, so a swept or lofted profile carries them:
+// a dimensioned circle was "a circle joined to other curves", and a note
+// "text that cannot be used in a profile".
+// ---------------------------------------------------------------------------
+
+TEST(ProfileValidatorTest, DimensionsTextAndHatchesAreNotPartOfTheProfile) {
+    std::vector<std::shared_ptr<DraftEntity>> dimensioned{
+        std::make_shared<DraftCircle>(Vec2(0, 0), 3.0),
+        std::make_shared<DraftRadialDimension>(Vec2(0, 0), 3.0, Vec2(5, 5), false)};
+    const auto circle = ProfileValidator::validate(dimensioned);
+    EXPECT_TRUE(circle.isClosed) << circle.errorMessage;
+    EXPECT_EQ(circle.orderedEdges.size(), 1u);
+
+    std::vector<std::shared_ptr<DraftEntity>> noted{
+        std::make_shared<DraftText>(Vec2(1, 1), "note"),
+        std::make_shared<DraftRectangle>(Vec2(0, 0), Vec2(4, 3)),
+        std::make_shared<DraftHatch>(std::vector<Vec2>{{0, 0}, {4, 0}, {4, 3}, {0, 3}})};
+    const auto rectangle = ProfileValidator::validate(noted);
+    EXPECT_TRUE(rectangle.isClosed) << rectangle.errorMessage;
+    EXPECT_EQ(rectangle.orderedEdges.size(), 4u);
+
+    // Notes alone are no profile.
+    std::vector<std::shared_ptr<DraftEntity>> onlyText{
+        std::make_shared<DraftText>(Vec2(1, 1), "note")};
+    EXPECT_EQ(ProfileValidator::validate(onlyText).errorMessage, "the profile is empty");
 }
 
 // ---------------------------------------------------------------------------
