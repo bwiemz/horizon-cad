@@ -42,6 +42,11 @@ private:
     /// Compute the two endpoints of the dimension line.
     std::pair<math::Vec2, math::Vec2> dimLineEndpoints() const;
 
+    /// Before a turn or a mirror that turns the x axis by @p axisTurn: keep
+    /// measuring the same distance. A horizontal or vertical dimension turned
+    /// a quarter turn swaps the two; turned off the axes, it becomes aligned.
+    void keepMeasuringUnder(double axisTurn);
+
     math::Vec2 m_defPoint1;
     math::Vec2 m_defPoint2;
     math::Vec2 m_dimLinePoint;  // user's third click — determines offset

@@ -29,7 +29,13 @@ public:
     /// Re-index @p entity at its current bounding box.
     void update(const std::shared_ptr<DraftEntity>& entity);
 
+    /// The entities whose box meets @p searchBox: what picking and box
+    /// selection look at.
     [[nodiscard]] std::vector<uint64_t> query(const math::BoundingBox& searchBox) const;
+    /// The same, and the entities with a snap point in @p searchBox beyond
+    /// their box: an arc's centre, a block's insertion point. What snapping
+    /// looks at. An id may be listed twice.
+    [[nodiscard]] std::vector<uint64_t> querySnaps(const math::BoundingBox& searchBox) const;
 
     [[nodiscard]] size_t size() const { return m_boxes.size(); }
     [[nodiscard]] bool contains(uint64_t entityId) const { return m_boxes.count(entityId) != 0; }
@@ -40,6 +46,11 @@ public:
 private:
     math::RTree<uint64_t> m_tree;
     std::unordered_map<uint64_t, math::BoundingBox> m_boxes;  ///< the box each id is indexed under
+    /// The few entities with snap points beyond their box, under the box of
+    /// those points: kept apart, so a box selection does not take in an arc
+    /// for crossing its centre.
+    math::RTree<uint64_t> m_snapTree;
+    std::unordered_map<uint64_t, math::BoundingBox> m_snapBoxes;
 };
 
 }  // namespace hz::draft

@@ -199,9 +199,13 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(double scan
             double pa = perp.dot(a);
             double pb = perp.dot(b);
 
-            // Check if scan line crosses this edge.
-            if ((pa - offset) * (pb - offset) > 0.0) continue;  // both on same side
-            if (std::abs(pb - pa) < 1e-14) continue;            // edge parallel to scan line
+            // Check if scan line crosses this edge. Each end of an edge is on
+            // one side of the line or the other, one on it counting as below
+            // (as in pointInPolygon): a line through a corner of the boundary
+            // then crosses it once where the boundary passes on, and twice or
+            // not at all where it turns back, so the crossings pair up into
+            // the pieces inside. An edge along the line is not crossed.
+            if ((pa <= offset) == (pb <= offset)) continue;
 
             // Parameter along edge where intersection occurs.
             double t = (offset - pa) / (pb - pa);

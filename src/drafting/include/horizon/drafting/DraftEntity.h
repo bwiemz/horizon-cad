@@ -83,6 +83,16 @@ public:
     virtual void rotate(const math::Vec2& center, double angle) = 0;
     virtual void scale(const math::Vec2& center, double factor) = 0;
 
+    /// A copy turned by @p angle (radians) about @p center, as Rotate and a
+    /// polar array place it: clone() then rotate(). A kind that cannot take
+    /// every turn gives a copy of another kind: a rectangle's sides run along
+    /// the axes, so one turned off them is copied as a closed polyline.
+    virtual std::shared_ptr<DraftEntity> rotatedCopy(const math::Vec2& center, double angle) const;
+    /// A copy mirrored in the line through @p axisP1 and @p axisP2, as Mirror
+    /// places it: clone() then mirror(), or another kind, as for a turn.
+    virtual std::shared_ptr<DraftEntity> mirroredCopy(const math::Vec2& axisP1,
+                                                      const math::Vec2& axisP2) const;
+
 protected:
     /// What a clone keeps of this beyond its shape: its style, and what it
     /// is (construction, the edge it was projected from). Not its id.

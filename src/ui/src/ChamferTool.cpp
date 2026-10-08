@@ -21,6 +21,29 @@ math::LengthUnit lengthUnit(const ViewportWidget* viewport) {
                : math::LengthUnit::Millimetre;
 }
 
+/// The way along @p line from @p corner to the part of it clicked at @p click:
+/// the part kept. Clicked at the corner itself, the longer part.
+math::Vec2 keptSide(const draft::DraftLine& line, const math::Vec2& corner,
+                    const math::Vec2& click) {
+    const math::Vec2 along = (line.end() - line.start()).normalized();
+    const double t = (click - corner).dot(along);
+    if (std::abs(t) > 1e-9) return t > 0.0 ? along : -along;
+    return line.end().distanceTo(corner) >= line.start().distanceTo(corner) ? along : -along;
+}
+
+/// @p line cut back to @p cut, keeping its end on the @p kept side: the other
+/// end moves to @p cut, and the line runs the way it did.
+void cutBack(const draft::DraftLine& line, const math::Vec2& kept, const math::Vec2& cut,
+             math::Vec2& start, math::Vec2& end) {
+    if ((line.end() - line.start()).dot(kept) > 0.0) {
+        start = cut;
+        end = line.end();
+    } else {
+        start = line.start();
+        end = cut;
+    }
+}
+
 }  // namespace
 
 void ChamferTool::activate(ViewportWidget* viewport) {
@@ -39,8 +62,8 @@ void ChamferTool::deactivate() {
 // Chamfer computation (line-line only)
 // ---------------------------------------------------------------------------
 
-bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/, uint64_t lineBId,
-                                 const math::Vec2& /*clickB*/, math::Vec2& chamferPtA,
+bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& clickA, uint64_t lineBId,
+                                 const math::Vec2& clickB, math::Vec2& chamferPtA,
                                  math::Vec2& chamferPtB, math::Vec2& trimA_start,
                                  math::Vec2& trimA_end, math::Vec2& trimB_start,
                                  math::Vec2& trimB_end) const {
@@ -66,46 +89,15 @@ bool ChamferTool::computeChamfer(uint64_t lineAId, const math::Vec2& /*clickA*/,
     double tA = d3.cross(d2) / denom;
     math::Vec2 corner = lineA->start() + d1 * tA;
 
-    // Compute chamfer points at the chamfer distance from the corner along each line.
-    // Direction away from corner on line A.
-    double lenA = d1.length();
-    if (lenA < 1e-10) return false;
-    math::Vec2 dirA = d1 * (1.0 / lenA);
-
-    double lenB = d2.length();
-    if (lenB < 1e-10) return false;
-    math::Vec2 dirB = d2 * (1.0 / lenB);
-
-    // Determine which direction on each line goes away from the corner.
-    // The line endpoint closer to the corner determines the "toward corner" direction.
-    double distStartA = lineA->start().distanceTo(corner);
-    double distEndA = lineA->end().distanceTo(corner);
-    math::Vec2 awayDirA = (distStartA < distEndA) ? dirA : -dirA;
-
-    double distStartB = lineB->start().distanceTo(corner);
-    double distEndB = lineB->end().distanceTo(corner);
-    math::Vec2 awayDirB = (distStartB < distEndB) ? dirB : -dirB;
-
-    // Chamfer points.
-    chamferPtA = corner + awayDirA * m_distance.value();
-    chamferPtB = corner + awayDirB * m_distance.value();
-
-    // Trim: the endpoint closer to the corner gets moved to the chamfer point.
-    if (distStartA < distEndA) {
-        trimA_start = chamferPtA;
-        trimA_end = lineA->end();
-    } else {
-        trimA_start = lineA->start();
-        trimA_end = chamferPtA;
-    }
-
-    if (distStartB < distEndB) {
-        trimB_start = chamferPtB;
-        trimB_end = lineB->end();
-    } else {
-        trimB_start = lineB->start();
-        trimB_end = chamferPtB;
-    }
+    // Each line keeps the part on the side of the corner it was clicked on,
+    // cut back to the chamfer distance from the corner; the chamfer joins
+    // the two cuts.
+    const math::Vec2 keptA = keptSide(*lineA, corner, clickA);
+    const math::Vec2 keptB = keptSide(*lineB, corner, clickB);
+    chamferPtA = corner + keptA * m_distance.value();
+    chamferPtB = corner + keptB * m_distance.value();
+    cutBack(*lineA, keptA, chamferPtA, trimA_start, trimA_end);
+    cutBack(*lineB, keptB, chamferPtB, trimB_start, trimB_end);
 
     return true;
 }

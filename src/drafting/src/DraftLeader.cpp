@@ -66,8 +66,9 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftLeader::arrowheadLines(
     const DimensionStyle& style) const {
     if (m_points.size() < 2) return {};
 
-    // Arrow at the first point, pointing from second toward first.
-    math::Vec2 dir = (m_points[1] - m_points[0]).normalized();
+    // Arrow at the first point, pointing from second toward first: at what
+    // the leader annotates.
+    math::Vec2 dir = (m_points[0] - m_points[1]).normalized();
     return makeArrowhead(m_points[0], dir, style.arrowSize, style.arrowAngle);
 }
 
