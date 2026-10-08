@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
 
 namespace hz::draft {
@@ -113,6 +116,40 @@ void DraftRectangle::rotate(const math::Vec2& center, double angle) {
 void DraftRectangle::scale(const math::Vec2& center, double factor) {
     m_corner1 = scalePoint(m_corner1, center, factor);
     m_corner2 = scalePoint(m_corner2, center, factor);
+}
+
+/// Whether a turn by @p angle takes the axes onto the axes: a whole number of
+/// quarter turns.
+static bool keepsTheAxes(double angle) {
+    return std::abs(std::remainder(angle, math::kHalfPi)) < 1e-9;
+}
+
+std::shared_ptr<DraftEntity> DraftRectangle::rotatedCopy(const math::Vec2& center,
+                                                         double angle) const {
+    if (keepsTheAxes(angle)) return DraftEntity::rotatedCopy(center, angle);
+    auto points = corners();
+    for (auto& p : points) p = rotatePoint(p, center, angle);
+    return outline(points);
+}
+
+std::shared_ptr<DraftEntity> DraftRectangle::mirroredCopy(const math::Vec2& axisP1,
+                                                          const math::Vec2& axisP2) const {
+    // A mirror in a line at angle a turns the x axis to 2a.
+    const math::Vec2 axis = axisP2 - axisP1;
+    if (keepsTheAxes(2.0 * std::atan2(axis.y, axis.x))) {
+        return DraftEntity::mirroredCopy(axisP1, axisP2);
+    }
+    auto points = corners();
+    for (auto& p : points) p = mirrorPoint(p, axisP1, axisP2);
+    return outline(points);
+}
+
+std::shared_ptr<DraftEntity> DraftRectangle::outline(
+    const std::array<math::Vec2, 4>& points) const {
+    auto poly = std::make_shared<DraftPolyline>(
+        std::vector<math::Vec2>(points.begin(), points.end()), true);
+    copyInto(*poly);
+    return poly;
 }
 
 }  // namespace hz::draft

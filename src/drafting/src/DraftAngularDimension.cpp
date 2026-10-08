@@ -151,13 +151,13 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftAngularDimension::arrowheadL
         sweep = math::kTwoPi - sweep;
     }
 
-    // Arrow at arc start: tangent direction (perpendicular to radial, CCW).
+    // Each arrow points along the arc, out to its line: at the arc's start
+    // clockwise, at its end counter-clockwise.
     math::Vec2 arcStart = m_vertex + math::Vec2{std::cos(a1), std::sin(a1)} * m_arcRadius;
-    math::Vec2 tangent1{-std::sin(a1), std::cos(a1)};  // CCW tangent
+    math::Vec2 tangent1{std::sin(a1), -std::cos(a1)};  // CW tangent
 
-    // Arrow at arc end: tangent direction (perpendicular to radial, CW = inward).
     math::Vec2 arcEnd = m_vertex + math::Vec2{std::cos(a2), std::sin(a2)} * m_arcRadius;
-    math::Vec2 tangent2{std::sin(a2), -std::cos(a2)};  // CW tangent
+    math::Vec2 tangent2{-std::sin(a2), std::cos(a2)};  // CCW tangent
 
     auto arrows = makeArrowhead(arcStart, tangent1, style.arrowSize, style.arrowAngle);
     auto arrows2 = makeArrowhead(arcEnd, tangent2, style.arrowSize, style.arrowAngle);
@@ -196,25 +196,24 @@ math::BoundingBox DraftAngularDimension::boundingBox() const {
 }
 
 bool DraftAngularDimension::hitTest(const math::Vec2& point, double tolerance) const {
-    // Test against the dimension arc.
+    // Test against the dimension arc: at its distance from the vertex, within
+    // the swept range.
     double dist = m_vertex.distanceTo(point);
-    if (std::abs(dist - m_arcRadius) > tolerance) return false;
-
-    // Check if angle is within the swept range.
-    double angle = normalizeAngle(std::atan2(point.y - m_vertex.y, point.x - m_vertex.x));
-    double a1 = normalizeAngle(startAngle());
-    double a2 = normalizeAngle(endAngle());
-    double sweep = a2 - a1;
-    if (sweep < 0.0) sweep += math::kTwoPi;
-    if (sweep > math::kPi) {
-        a1 = a2;
-        sweep = math::kTwoPi - sweep;
+    if (std::abs(dist - m_arcRadius) <= tolerance) {
+        double angle = normalizeAngle(std::atan2(point.y - m_vertex.y, point.x - m_vertex.x));
+        double a1 = normalizeAngle(startAngle());
+        double a2 = normalizeAngle(endAngle());
+        double sweep = a2 - a1;
+        if (sweep < 0.0) sweep += math::kTwoPi;
+        if (sweep > math::kPi) {
+            a1 = a2;
+            sweep = math::kTwoPi - sweep;
+        }
+        if (normalizeAngle(angle - a1) <= sweep) return true;
     }
 
-    double rel = normalizeAngle(angle - a1);
-    if (rel <= sweep) return true;
-
-    // Also test extension lines with default style.
+    // Also test extension lines with default style, which run from near the
+    // vertex to past the arc.
     DimensionStyle defaultStyle;
     for (const auto& [a, b] : extensionLines(defaultStyle)) {
         math::Vec2 seg = b - a;

@@ -17,7 +17,9 @@ std::string DraftDimension::displayText(const DimensionStyle& style) const {
 
 std::vector<std::pair<math::Vec2, math::Vec2>> DraftDimension::makeArrowhead(
     const math::Vec2& tip, const math::Vec2& direction, double size, double halfAngle) {
-    // direction should point away from the measured area (into the arrow).
+    // The arrow points along direction, its tip at tip and its wings behind
+    // it: a dimension's arrows point away from what lies between them, out
+    // to the lines they end on; a leader's, at what it annotates.
     double dirAngle = std::atan2(direction.y, direction.x);
 
     double a1 = dirAngle + math::kPi - halfAngle;

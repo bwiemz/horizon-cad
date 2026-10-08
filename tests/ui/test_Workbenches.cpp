@@ -31,11 +31,14 @@
 #include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
@@ -943,6 +946,49 @@ TEST(WorkbenchesTest, TheDraftingCommandsWorkOnTheSelectionThroughTheirHost) {
     drafting.onPaste();
     ASSERT_NE(host.tool, nullptr);
     EXPECT_EQ(host.tool->name(), "Paste");
+}
+
+// A polar array of a rectangle keeps its shape in every copy: a copy turned
+// off the axes is a closed polyline through the turned corners, and the one
+// turned half round is still a rectangle. Each was a box across two of the
+// turned corners.
+TEST(WorkbenchesTest, APolarArrayKeepsARectanglesShape) {
+    using hz::math::Vec2;
+    StandInHost host;
+    hz::ui::DraftingCommands drafting(host);
+    hz::doc::Document& document = *host.currentDocument();
+    const auto rect = std::make_shared<hz::draft::DraftRectangle>(Vec2(2, 0), Vec2(6, 2));
+    document.activeDrawing().addEntity(rect);
+    host.viewport().selectionManager().select(rect->id());
+
+    // As the form has it: six round the origin.
+    ASSERT_TRUE(answering(
+        "Polar Array", [](QDialog&) {}, [&] { drafting.onPolarArray(); }));
+    const auto& entities = document.activeDrawing().entities();
+    ASSERT_EQ(entities.size(), 6u);
+    const auto corners = rect->corners();
+    for (size_t i = 1; i < 6; ++i) {
+        SCOPED_TRACE(i);
+        const double angle = static_cast<double>(i) * hz::math::kPi / 3.0;
+        const auto turned = [angle](const Vec2& p) {
+            return Vec2(p.x * std::cos(angle) - p.y * std::sin(angle),
+                        p.x * std::sin(angle) + p.y * std::cos(angle));
+        };
+        if (i == 3) {
+            const auto* half = dynamic_cast<const hz::draft::DraftRectangle*>(entities[i].get());
+            ASSERT_NE(half, nullptr) << "half round, a rectangle";
+            EXPECT_LT(half->corners()[0].distanceTo(Vec2(-6, -2)), 1e-9);
+            EXPECT_LT(half->corners()[2].distanceTo(Vec2(-2, 0)), 1e-9);
+            continue;
+        }
+        const auto* poly = dynamic_cast<const hz::draft::DraftPolyline*>(entities[i].get());
+        ASSERT_NE(poly, nullptr);
+        EXPECT_TRUE(poly->closed());
+        ASSERT_EQ(poly->points().size(), 4u);
+        for (size_t k = 0; k < 4; ++k) {
+            EXPECT_LT(poly->points()[k].distanceTo(turned(corners[k])), 1e-9) << k;
+        }
+    }
 }
 
 // Arrays, a block made and exploded, a block inserted, and the dimension

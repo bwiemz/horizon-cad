@@ -102,6 +102,45 @@ TEST(SnappingTest, ABlocksContentSnapsWithItsKinds) {
                    SnapType::Quadrant, Vec2(12, 0)));
 }
 
+// A point to snap to may lie outside what the entity covers: the centre of
+// an arc short of a quarter, the insertion point of a block drawn away from
+// it. The snap through the drawing's index found only entities whose box
+// reached the cursor, so these went unseen; picking and box selection still
+// go by what the entity covers.
+TEST(SnappingTest, ASnapPointOutsideTheEntityIsFound) {
+    auto def = std::make_shared<hz::draft::BlockDefinition>();
+    def->name = "Offset";
+    def->entities.push_back(std::make_shared<hz::draft::DraftCircle>(Vec2(10, 10), 1.0));
+    DraftDocument doc;
+    doc.addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(40, 0), 2.0, hz::math::kPi / 6.0,
+                                                        hz::math::kPi / 3.0));
+    doc.addEntity(std::make_shared<hz::draft::DraftBlockRef>(def, Vec2(60, 0), 0.0, 1.0));
+    const SnapEngine snapper = engine();
+
+    EXPECT_TRUE(at(snapper.snap(Vec2(40.1, 0.1), doc.entities()), SnapType::Center, Vec2(40, 0)))
+        << "the list sees it";
+    EXPECT_TRUE(at(snapper.snap(Vec2(40.1, 0.1), doc.spatialIndex(), doc.entities()),
+                   SnapType::Center, Vec2(40, 0)))
+        << "and so does the index";
+    EXPECT_TRUE(at(snapper.snap(Vec2(40.1, 0.1), doc), SnapType::Center, Vec2(40, 0)));
+    EXPECT_TRUE(at(snapper.snap(Vec2(60.1, 0.1), doc), SnapType::Endpoint, Vec2(60, 0)))
+        << "the block's insertion point";
+
+    const hz::math::BoundingBox aroundCentre(hz::math::Vec3(39.5, -0.5, -1),
+                                             hz::math::Vec3(40.5, 0.5, 1));
+    EXPECT_TRUE(doc.spatialIndex().query(aroundCentre).empty())
+        << "a box over the centre does not cross the arc";
+
+    // Moved, it is found where it went, and not where it was.
+    auto* arc = dynamic_cast<hz::draft::DraftArc*>(doc.entities()[0].get());
+    arc->translate(Vec2(0, 20));
+    doc.updateEntityBounds(arc->id());
+    EXPECT_TRUE(at(snapper.snap(Vec2(40.1, 20.1), doc), SnapType::Center, Vec2(40, 20)));
+    EXPECT_FALSE(at(snapper.snap(Vec2(40.1, 0.1), doc), SnapType::Center, Vec2(40, 0)));
+    doc.removeEntity(arc->id());
+    EXPECT_FALSE(at(snapper.snap(Vec2(40.1, 20.1), doc), SnapType::Center, Vec2(40, 20)));
+}
+
 // Object snaps and the grid snap can each be switched off (F3 and F9): the
 // cursor is then taken where it is, not pulled to a point it was not aimed at.
 TEST(SnappingTest, ObjectAndGridSnapsCanBeSwitchedOff) {
