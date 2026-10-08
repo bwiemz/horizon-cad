@@ -75,20 +75,20 @@ public:
 
     // -- Derivatives & Normal (Task 2) ----------------------------------------
 
-    /// Partial derivative with respect to U at (u, v) via numerical differentiation.
+    /// Partial derivative with respect to U at (u, v): evaluateWithDerivatives'.
     math::Vec3 derivativeU(double u, double v) const;
 
-    /// Partial derivative with respect to V at (u, v) via numerical differentiation.
+    /// Partial derivative with respect to V at (u, v): evaluateWithDerivatives'.
     math::Vec3 derivativeV(double u, double v) const;
 
     /// Unit surface normal at (u, v): normalize(dS/du x dS/dv).
     math::Vec3 normal(double u, double v) const;
 
     /// The point at (u, v) and its partial derivatives, exactly: the rational
-    /// basis differentiated, where derivativeU and derivativeV difference
-    /// evaluate() 1e-7 apart. Allocates nothing up to degree 15 in each
-    /// direction (beyond, it falls back to those). (u, v) is clamped to the
-    /// domain, as evaluate() clamps it.
+    /// basis differentiated. Allocates nothing up to degree 15 in each
+    /// direction (beyond, it differences evaluate() 1e-7 apart, as
+    /// derivativeU and derivativeV once did everywhere). (u, v) is clamped to
+    /// the domain, as evaluate() clamps it.
     SurfacePoint evaluateWithDerivatives(double u, double v) const;
 
     /// Whether the surface closes on itself in u (in v): its edges u = uMin
