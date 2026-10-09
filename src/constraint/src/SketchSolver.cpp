@@ -5,9 +5,12 @@
 #include <Eigen/SparseQR>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -15,6 +18,32 @@
 #include "horizon/constraint/ParameterTable.h"
 
 namespace hz::cstr {
+
+namespace {
+
+/// How many units in the last place of its parameters a met residual may
+/// still be off by: what rounding them, and the arithmetic on them, leaves.
+constexpr double kRoundingUlps = 4.0;
+
+/// Whether residuals @p f are met, to @p tolerance, at parameters @p x with
+/// Jacobian @p j.
+///
+/// Each residual is a length or an angle (see Constraint.cpp), so one
+/// absolute tolerance suits them all at the sizes a sketch is drawn at. Far
+/// from the origin it does not: in survey coordinates (5e6) one unit in the
+/// last place of a coordinate is 9e-10, nine times the tolerance, and a met
+/// coincidence was a failure. So what rounding the parameters can leave in
+/// each residual (the change one unit in the last place of each makes, by
+/// the Jacobian) is taken off it first. Where the sketch is drawn that is
+/// far below the tolerance, and changes nothing.
+bool residualsMet(const Eigen::VectorXd& f, const Eigen::MatrixXd& j, const Eigen::VectorXd& x,
+                  double tolerance) {
+    const double eps = std::numeric_limits<double>::epsilon();
+    const Eigen::VectorXd rounding = kRoundingUlps * eps * (j.cwiseAbs() * x.cwiseAbs());
+    return (f.cwiseAbs() - rounding).cwiseMax(0.0).norm() < tolerance;
+}
+
+}  // namespace
 
 SketchSolver::SketchSolver() = default;
 
@@ -48,6 +77,24 @@ Eigen::MatrixXd SketchSolver::buildJacobian(const ParameterTable& params,
 }
 
 SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& constraints) {
+    // A constraint naming what its entity does not have (a circle read as a
+    // line, a third end of a line) throws from the table. That went out of
+    // every move and edit that solved: a hand-edited file can hold one, and
+    // the constraint tool made them. It is reported instead, the parameters
+    // as they were.
+    const Eigen::VectorXd start = params.values();
+    try {
+        return solveFrom(params, constraints);
+    } catch (const std::runtime_error& e) {
+        params.values() = start;
+        SolveResult result;
+        result.status = SolveStatus::InvalidReference;
+        result.message = std::string("A constraint cannot be read: ") + e.what();
+        return result;
+    }
+}
+
+SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSystem& constraints) {
     SolveResult result;
 
     int m = constraints.totalEquations();
@@ -73,10 +120,10 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
         double currentNorm = F.norm();
         result.residualNorm = currentNorm;
         result.iterations = iter + 1;
+        Eigen::MatrixXd J = buildJacobian(params, constraints);
 
-        if (currentNorm < m_tolerance) {
+        if (residualsMet(F, J, params.values(), m_tolerance)) {
             // Check degrees of freedom
-            Eigen::MatrixXd J = buildJacobian(params, constraints);
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
             const int rank = static_cast<int>(qr.rank());
             result.degreesOfFreedom = n - params.fixedCount() - rank;
@@ -91,8 +138,6 @@ SolveResult SketchSolver::solve(ParameterTable& params, const ConstraintSystem& 
             }
             return result;
         }
-
-        Eigen::MatrixXd J = buildJacobian(params, constraints);
 
         // Gauss-Newton with Levenberg-Marquardt damping:
         // (J^T J + lambda * I) * dx = -J^T F
@@ -251,12 +296,20 @@ DOFAnalysis SketchSolver::analyzeDOF(const ParameterTable& params,
         const size_t firstRow = equations.size();
         for (int r = 0; r < rows; ++r) equations.push_back(Equation{k, {}});
         // A constraint on something not in the table cannot be met: its
-        // equations stay empty.
+        // equations stay empty. So for one naming what its entity does not
+        // have, which throws: it threw out of every repaint.
         if (!usable) continue;
         for (const auto& [first, count] : ranges) {
             scratch.block(0, first, rows, count).setZero();
         }
-        c.jacobian(params, scratch, 0);
+        try {
+            c.jacobian(params, scratch, 0);
+        } catch (const std::runtime_error&) {
+            for (const auto& [first, count] : ranges) {
+                scratch.block(0, first, rows, count).setZero();
+            }
+            continue;
+        }
         for (const auto& [first, count] : ranges) {
             for (int col = first; col < first + count; ++col) {
                 if (params.isFixed(col)) continue;  // held: a constant here

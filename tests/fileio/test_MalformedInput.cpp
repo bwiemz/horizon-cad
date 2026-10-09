@@ -12,11 +12,15 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -197,6 +201,77 @@ TEST(MalformedInputTest, AConstraintThatCannotBeReadSkipsOnlyItself) {
     EXPECT_EQ(back.constraintSystem().constraints().size(), 1u);
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_TRUE(contains(report.skipped[0], "constraint 2")) << report.skipped[0];
+}
+
+// A tangent written circle first (as the constraint tool kept one picked
+// so) loads, line first. A constraint its geometry cannot hold is skipped,
+// and said: a tangent between two lines, equal between a line and a circle,
+// a third end of a line, a circle read as a line. Each loaded, stayed in the
+// system and threw at every solve after the file was opened.
+TEST(MalformedInputTest, AConstraintItsGeometryCannotHoldSkipsOnlyItself) {
+    Document doc;
+    auto a = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(-10, 0), hz::math::Vec2(10, 0));
+    auto b = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(0, 20), hz::math::Vec2(9, 25));
+    auto c = std::make_shared<hz::draft::DraftCircle>(hz::math::Vec2(0, 8), 5.0);
+    doc.draftDocument().addEntity(a);
+    doc.draftDocument().addEntity(b);
+    doc.draftDocument().addEntity(c);
+    using hz::cstr::FeatureType;
+    const hz::cstr::GeometryRef start{a->id(), FeatureType::Point, 0};
+    const hz::cstr::GeometryRef end{a->id(), FeatureType::Point, 1};
+    const hz::cstr::GeometryRef edge{a->id(), FeatureType::Line, 0};
+    const hz::cstr::GeometryRef rim{c->id(), FeatureType::Circle, 0};
+    doc.constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::HorizontalConstraint>(start, end));
+    doc.constraintSystem().addConstraint(std::make_shared<hz::cstr::TangentConstraint>(edge, rim));
+    const json saved = json::parse(NativeFormat::documentToJson(doc, false));
+
+    const auto load = [](const json& root, Document& back, hz::io::ImportReport& report) {
+        std::string error;
+        ASSERT_TRUE(NativeFormat::documentFromJson(root.dump(), back, &error, &report)) << error;
+        EXPECT_EQ(back.draftDocument().entities().size(), 3u);
+        // Whatever loaded can be solved.
+        EXPECT_NO_THROW(hz::doc::ConstraintSolveHelper::solveAndApply(back.draftDocument(),
+                                                                      back.constraintSystem()));
+    };
+
+    json reversed = saved;
+    std::swap(reversed.at("constraints").at(1).at("refA"),
+              reversed.at("constraints").at(1).at("refB"));
+    {
+        Document back;
+        hz::io::ImportReport report;
+        load(reversed, back, report);
+        EXPECT_TRUE(report.skipped.empty());
+        ASSERT_EQ(back.constraintSystem().constraints().size(), 2u);
+        const auto* tangent = dynamic_cast<const hz::cstr::TangentConstraint*>(
+            back.constraintSystem().constraints()[1].get());
+        ASSERT_NE(tangent, nullptr);
+        EXPECT_EQ(tangent->lineRef(), edge);
+        EXPECT_EQ(tangent->circleRef(), rim);
+    }
+
+    const auto ref = [](const hz::draft::DraftEntity& e, const char* feature, int index) {
+        return json{{"entityId", e.id()}, {"featureType", feature}, {"featureIndex", index}};
+    };
+    std::vector<std::pair<std::string, json>> unfit;
+    unfit.emplace_back("two lines", saved);
+    unfit.back().second.at("constraints").at(1)["refB"] = ref(*b, "line", 0);
+    unfit.emplace_back("a line and a circle", saved);
+    unfit.back().second.at("constraints").at(1)["type"] = "equal";
+    unfit.emplace_back("a third end", saved);
+    unfit.back().second.at("constraints").at(1) =
+        json{{"type", "coincident"}, {"refA", ref(*a, "point", 2)}, {"refB", ref(*b, "point", 0)}};
+    unfit.emplace_back("a circle as a line", saved);
+    unfit.back().second.at("constraints").at(1)["type"] = "perpendicular";
+    for (const auto& [what, root] : unfit) {
+        Document back;
+        hz::io::ImportReport report;
+        load(root, back, report);
+        EXPECT_EQ(back.constraintSystem().constraints().size(), 1u) << what;
+        ASSERT_EQ(report.skipped.size(), 1u) << what;
+        EXPECT_TRUE(contains(report.skipped[0], "constraint 2")) << report.skipped[0];
+    }
 }
 
 TEST(MalformedInputTest, BadPatternCountSkipsOnlyItsFeature) {

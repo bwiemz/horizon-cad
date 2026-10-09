@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/math/Vec2.h"
@@ -64,6 +66,10 @@ private:
     /// Whether this mode only requires a single reference (e.g., Fixed).
     bool isSingleRefMode() const;
 
+    /// Why this mode's constraint cannot hold @p first with @p second (a
+    /// tangent between two lines), or nothing when it can.
+    std::string refusal(const cstr::GeometryRef& first, const cstr::GeometryRef& second) const;
+
     Mode m_mode = Mode::Coincident;
     State m_state = State::WaitingForFirst;
 
@@ -71,6 +77,8 @@ private:
     cstr::GeometryRef m_hoveredRef;
     math::Vec2 m_hoveredPos;
     math::Vec2 m_firstPos;
+    /// Why the last pick was not taken, shown before the prompt.
+    std::string m_refusal;
 };
 
 }  // namespace hz::ui

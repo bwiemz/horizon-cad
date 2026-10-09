@@ -7,6 +7,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QInputDialog>
 #include <QTimer>
@@ -36,7 +37,9 @@
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Constants.h"
+#include "horizon/ui/Application.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::draft::DraftArc;
@@ -77,6 +80,21 @@ std::shared_ptr<DraftLine> addLine(MainWindow& w, const Vec2& a, const Vec2& b,
     line->setLayer(layer);
     w.activeDocument()->draftDocument().addEntity(line);
     return line;
+}
+
+/// How many exceptions the application has caught on their way out of an
+/// event handler (and shown in an "Unexpected Error" box).
+int containedExceptions() {
+    const auto* app = qobject_cast<hz::ui::Application*>(QCoreApplication::instance());
+    return app != nullptr ? app->containedExceptionCount() : 0;
+}
+
+/// A circle put straight into the drawing.
+std::shared_ptr<DraftCircle> addCircle(MainWindow& w, const Vec2& centre, double radius) {
+    auto circle = std::make_shared<DraftCircle>(centre, radius);
+    circle->setLayer("0");
+    w.activeDocument()->draftDocument().addEntity(circle);
+    return circle;
 }
 
 void addLayer(MainWindow& w, const std::string& name) {
@@ -183,6 +201,80 @@ TEST(DraftingToolsTest, AConstraintUndoneLeavesTheDrawingAsSaved) {
     trigger(w, "action_redo");
     EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u);
     EXPECT_TRUE(doc.isDirty());
+}
+
+// A tangent may be picked circle first: the line is put first, and the two
+// are made to touch. It was kept as picked, a circle read as a line threw
+// out of the solve, and the constraint, added before it, stayed behind to
+// throw at every solve and repaint after.
+TEST(DraftingToolsTest, ATangentMayBePickedCircleFirst) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto line = addLine(w, Vec2(-20, 0), Vec2(20, 0));
+    auto circle = addCircle(w, Vec2(0, 12), 5.0);
+    hz::doc::Document& doc = *w.activeDocument();
+    hz::test::ModalCloser closer;  // an error shown would wait for an answer
+    const int contained = containedExceptions();
+
+    trigger(w, "action_cstr-tangent");
+    drive.click(Vec2(5, 12));   // the circle
+    drive.click(Vec2(-15, 0));  // the line
+    ASSERT_EQ(doc.constraintSystem().constraints().size(), 1u);
+    const auto* tangent = dynamic_cast<const hz::cstr::TangentConstraint*>(
+        doc.constraintSystem().constraints()[0].get());
+    ASSERT_NE(tangent, nullptr);
+    EXPECT_EQ(tangent->lineRef().entityId, line->id());
+    EXPECT_EQ(tangent->circleRef().entityId, circle->id());
+    const Vec2 d = line->end() - line->start();
+    const double apart = std::abs((circle->center() - line->start()).cross(d)) / d.length();
+    EXPECT_NEAR(apart, circle->radius(), 1e-6) << "solved: the line touches the circle";
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(doc.constraintSystem().constraints().empty());
+    trigger(w, "action_redo");
+    EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u);
+    EXPECT_EQ(containedExceptions(), contained) << "nothing thrown out of a click";
+    EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
+}
+
+// A pair a constraint cannot hold is refused, saying why, and nothing is
+// added: a tangent is between a line and a circle or arc, and equal between
+// two lines or two circles. The first pick stays, for one that fits.
+TEST(DraftingToolsTest, ATangentOrEqualRefusesAPairItCannotHold) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto lineA = addLine(w, Vec2(-20, 0), Vec2(20, 0));
+    auto lineB = addLine(w, Vec2(-20, -15), Vec2(20, -15));
+    addCircle(w, Vec2(0, 12), 5.0);
+    hz::doc::Document& doc = *w.activeDocument();
+    const auto prompt = [&] { return drive.viewport().activeTool()->promptText(); };
+    hz::test::ModalCloser closer;  // an error shown would wait for an answer
+    const int contained = containedExceptions();
+
+    trigger(w, "action_cstr-tangent");
+    drive.click(Vec2(-15, 0));
+    drive.click(Vec2(15, -15));
+    EXPECT_TRUE(doc.constraintSystem().constraints().empty()) << "two lines";
+    EXPECT_NE(prompt().find("circle"), std::string::npos) << prompt();
+    drive.key(Qt::Key_Escape);
+
+    trigger(w, "action_cstr-equal");
+    drive.click(Vec2(-15, 0));
+    drive.click(Vec2(5, 12));
+    EXPECT_TRUE(doc.constraintSystem().constraints().empty()) << "a line and a circle";
+    EXPECT_NE(prompt().find("two lines"), std::string::npos) << prompt();
+    drive.click(Vec2(15, -15));
+    ASSERT_EQ(doc.constraintSystem().constraints().size(), 1u) << "the first line kept";
+    const auto* equal = dynamic_cast<const hz::cstr::EqualConstraint*>(
+        doc.constraintSystem().constraints()[0].get());
+    ASSERT_NE(equal, nullptr);
+    EXPECT_EQ(equal->refA().entityId, lineA->id());
+    EXPECT_EQ(equal->refB().entityId, lineB->id());
+    EXPECT_EQ(prompt().find("two lines"), std::string::npos) << "the refusal is gone";
+    EXPECT_EQ(containedExceptions(), contained) << "nothing thrown out of a click";
+    EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
 }
 
 // Trim takes a line's constraints with it, in its step. Left behind, the

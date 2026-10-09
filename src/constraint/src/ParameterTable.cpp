@@ -1,7 +1,9 @@
 #include "horizon/constraint/ParameterTable.h"
 
+#include <cmath>
 #include <set>
 #include <stdexcept>
+#include <string>
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/drafting/DraftArc.h"
@@ -55,6 +57,7 @@ int ParameterTable::registerEntity(const draft::DraftEntity& entity) {
         int n = static_cast<int>(poly->points().size());
         ep.paramCount = 2 * n;
         ep.entityType = "polyline";
+        ep.closed = poly->closed();
         m_values.conservativeResize(startIdx + 2 * n);
         for (int i = 0; i < n; ++i) {
             m_values(startIdx + 2 * i + 0) = poly->points()[i].x;
@@ -90,151 +93,166 @@ std::pair<int, int> ParameterTable::parameterRange(uint64_t entityId) const {
     return ep ? std::pair<int, int>{ep->startIndex, ep->paramCount} : std::pair<int, int>{0, 0};
 }
 
-int ParameterTable::parameterIndex(const GeometryRef& ref) const {
+namespace {
+
+/// How many points an entity of @p type with @p paramCount parameters has,
+/// in the order its Point features number them.
+int pointCount(const std::string& type, int paramCount) {
+    if (type == "line") return 2;       // start, end
+    if (type == "circle") return 1;     // centre
+    if (type == "arc") return 3;        // centre, start, end
+    if (type == "rectangle") return 4;  // BL, BR, TR, TL
+    if (type == "polyline") return paramCount / 2;
+    return 0;
+}
+
+/// How many segments it has, as its Line features number them: a closed
+/// polyline's last runs back to its first point.
+int segmentCount(const std::string& type, int paramCount, bool closed) {
+    if (type == "line") return 1;
+    if (type == "rectangle") return 4;
+    if (type == "polyline") {
+        const int n = paramCount / 2;
+        return n < 2 ? 0 : (closed ? n : n - 1);
+    }
+    return 0;
+}
+
+std::runtime_error doesNotHave(const std::string& type, uint64_t id, const std::string& what) {
+    return std::runtime_error(type + " " + std::to_string(id) + " has no " + what);
+}
+
+}  // namespace
+
+const ParameterTable::EntityParams& ParameterTable::entityOf(const GeometryRef& ref) const {
     const auto* ep = findEntityParams(ref.entityId);
     if (!ep) {
         throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
                                  " not registered");
     }
+    return *ep;
+}
 
-    int base = ep->startIndex;
+math::Vec2 ParameterTable::point(const EntityParams& ep, int index, PointJacobian* jac) const {
+    if (index < 0 || index >= pointCount(ep.entityType, ep.paramCount)) {
+        throw doesNotHave(ep.entityType, ep.entityId, "point " + std::to_string(index));
+    }
+    const int base = ep.startIndex;
+    // A point that is two of the table's parameters, x then y.
+    const auto pair = [&](int at) {
+        if (jac) {
+            jac->add(at, {1.0, 0.0});
+            jac->add(at + 1, {0.0, 1.0});
+        }
+        return math::Vec2{m_values(at), m_values(at + 1)};
+    };
+    if (ep.entityType == "line" || ep.entityType == "polyline") return pair(base + 2 * index);
+    const bool centre = ep.entityType == "circle" || (ep.entityType == "arc" && index == 0);
+    if (centre) return pair(base);
+    if (ep.entityType == "arc") {
+        // Its start or end: the centre plus the radius at that angle, so it
+        // moves with all four.
+        const double r = m_values(base + 2);
+        const int angleAt = base + (index == 1 ? 3 : 4);
+        const double c = std::cos(m_values(angleAt)), s = std::sin(m_values(angleAt));
+        if (jac) {
+            jac->add(base, {1.0, 0.0});
+            jac->add(base + 1, {0.0, 1.0});
+            jac->add(base + 2, {c, s});
+            jac->add(angleAt, {-r * s, r * c});
+        }
+        return {m_values(base) + r * c, m_values(base + 1) + r * s};
+    }
+    // A rectangle's corner: its x is the left or the right of its two
+    // corners' x, and its y the lower or the upper of their y. Each is the
+    // one parameter it is equal to; corner 1 is taken as the left (lower)
+    // on a tie, so a rectangle with no width can be given one.
+    const bool c1Left = m_values(base) <= m_values(base + 2);
+    const bool c1Low = m_values(base + 1) <= m_values(base + 3);
+    const bool right = index == 1 || index == 2;
+    const bool top = index == 2 || index == 3;
+    const int xAt = base + (right == c1Left ? 2 : 0);
+    const int yAt = base + 1 + (top == c1Low ? 2 : 0);
+    if (jac) {
+        jac->add(xAt, {1.0, 0.0});
+        jac->add(yAt, {0.0, 1.0});
+    }
+    return {m_values(xAt), m_values(yAt)};
+}
+
+std::pair<math::Vec2, math::Vec2> ParameterTable::segment(const EntityParams& ep, int index,
+                                                          PointJacobian* js,
+                                                          PointJacobian* je) const {
+    const int count = segmentCount(ep.entityType, ep.paramCount, ep.closed);
+    if (index < 0 || index >= count) {
+        throw doesNotHave(ep.entityType, ep.entityId, "line " + std::to_string(index));
+    }
+    if (ep.entityType == "line") return {point(ep, 0, js), point(ep, 1, je)};
+    // A rectangle's edge k runs from its corner k to the next; a polyline's
+    // segment i from its point i to the next, the last of a closed one back
+    // to its first.
+    const int points = pointCount(ep.entityType, ep.paramCount);
+    return {point(ep, index, js), point(ep, (index + 1) % points, je)};
+}
+
+int ParameterTable::parameterIndex(const GeometryRef& ref) const {
+    const EntityParams& ep = entityOf(ref);
+    const int base = ep.startIndex;
 
     if (ref.featureType == FeatureType::Point) {
-        if (ep->entityType == "line") {
-            // Point(0) = start [base+0, base+1], Point(1) = end [base+2, base+3]
-            return base + ref.featureIndex * 2;
-        } else if (ep->entityType == "circle") {
-            // Point(0) = center [base+0, base+1]
-            return base;
-        } else if (ep->entityType == "arc") {
-            if (ref.featureIndex == 0) return base;  // center
-            // Point(1) = start point, Point(2) = end point — computed from angles
-            // For solver purposes, arc start/end points are derived, not direct params.
-            // We return the center index; the constraint should use the circle feature instead.
-            return base;
-        } else if (ep->entityType == "rectangle") {
-            // Corner indices map into the 4 params [c1x, c1y, c2x, c2y]
-            // BL=Point(0) => [c1x, c1y], BR=Point(1) => [c2x, c1y] -- not direct params!
-            // For rectangles, only corner1 and corner2 are free params.
-            // Point(0)=BL=corner1, Point(2)=TR=corner2 are direct.
-            // Point(1)=BR and Point(3)=TL are derived.
-            if (ref.featureIndex == 0) return base;      // corner1
-            if (ref.featureIndex == 2) return base + 2;  // corner2
-            // For derived corners, we'd need special handling.
-            // For now, map to the closest independent corner.
-            if (ref.featureIndex == 1) return base;  // BR uses c1y but c2x — complex
-            if (ref.featureIndex == 3) return base;  // TL similar
-            return base;
-        } else if (ep->entityType == "polyline") {
+        point(ep, ref.featureIndex, nullptr);  // throws if it has none
+        if (ep.entityType == "line" || ep.entityType == "polyline") {
             return base + ref.featureIndex * 2;
         }
-    } else if (ref.featureType == FeatureType::Line) {
-        if (ep->entityType == "line") {
-            // Line(0) = the whole line [sx, sy, ex, ey]
-            return base;
-        } else if (ep->entityType == "rectangle") {
-            // Rectangle edges: edge0 = BL→BR, edge1 = BR→TR, etc.
-            // These are derived from corner1/corner2 — return base for now
-            return base;
-        } else if (ep->entityType == "polyline") {
-            // Segment i: [pts[i], pts[i+1]]
-            return base + ref.featureIndex * 2;
-        }
-    } else if (ref.featureType == FeatureType::Circle) {
-        if (ep->entityType == "circle") {
-            return base;  // [cx, cy, r]
-        } else if (ep->entityType == "arc") {
-            return base;  // [cx, cy, r, ...]
-        }
+        const bool centre =
+            ep.entityType == "circle" || (ep.entityType == "arc" && ref.featureIndex == 0);
+        if (centre) return base;
+        throw std::runtime_error(ep.entityType + " " + std::to_string(ep.entityId) + "'s point " +
+                                 std::to_string(ref.featureIndex) +
+                                 " is not two of its parameters: see pointJacobian()");
     }
-
-    return base;  // Fallback
+    if (ref.featureType == FeatureType::Line) {
+        segment(ep, ref.featureIndex, nullptr, nullptr);  // throws if it has none
+        const int n = ep.paramCount / 2;
+        if (ep.entityType == "line") return base;
+        if (ep.entityType == "polyline" && ref.featureIndex < n - 1) {
+            return base + ref.featureIndex * 2;  // [pts[i], pts[i+1]]
+        }
+        throw std::runtime_error(ep.entityType + " " + std::to_string(ep.entityId) + "'s line " +
+                                 std::to_string(ref.featureIndex) +
+                                 " is not four of its parameters: see lineJacobian()");
+    }
+    circleData(ref);  // throws if it has none
+    return base;      // [cx, cy, r]
 }
 
 math::Vec2 ParameterTable::pointPosition(const GeometryRef& ref) const {
-    const auto* ep = findEntityParams(ref.entityId);
-    if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
-                                 " not registered");
-    }
-    int base = ep->startIndex;
+    return point(entityOf(ref), ref.featureIndex, nullptr);
+}
 
-    if (ep->entityType == "line") {
-        int idx = base + ref.featureIndex * 2;
-        return {m_values(idx), m_values(idx + 1)};
-    } else if (ep->entityType == "circle") {
-        return {m_values(base), m_values(base + 1)};
-    } else if (ep->entityType == "arc") {
-        if (ref.featureIndex == 0) return {m_values(base), m_values(base + 1)};
-        // Start/end points derived from center + radius + angle
-        double cx = m_values(base), cy = m_values(base + 1), r = m_values(base + 2);
-        double angle = (ref.featureIndex == 1) ? m_values(base + 3) : m_values(base + 4);
-        return {cx + r * std::cos(angle), cy + r * std::sin(angle)};
-    } else if (ep->entityType == "rectangle") {
-        double c1x = m_values(base), c1y = m_values(base + 1);
-        double c2x = m_values(base + 2), c2y = m_values(base + 3);
-        double minX = std::min(c1x, c2x), minY = std::min(c1y, c2y);
-        double maxX = std::max(c1x, c2x), maxY = std::max(c1y, c2y);
-        switch (ref.featureIndex) {
-            case 0:
-                return {minX, minY};  // BL
-            case 1:
-                return {maxX, minY};  // BR
-            case 2:
-                return {maxX, maxY};  // TR
-            case 3:
-                return {minX, maxY};  // TL
-        }
-    } else if (ep->entityType == "polyline") {
-        int idx = base + ref.featureIndex * 2;
-        return {m_values(idx), m_values(idx + 1)};
-    }
-
-    return {m_values(base), m_values(base + 1)};
+PointJacobian ParameterTable::pointJacobian(const GeometryRef& ref) const {
+    PointJacobian jac;
+    point(entityOf(ref), ref.featureIndex, &jac);
+    return jac;
 }
 
 std::pair<math::Vec2, math::Vec2> ParameterTable::lineEndpoints(const GeometryRef& ref) const {
-    const auto* ep = findEntityParams(ref.entityId);
-    if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
-                                 " not registered");
-    }
-    int base = ep->startIndex;
+    return segment(entityOf(ref), ref.featureIndex, nullptr, nullptr);
+}
 
-    if (ep->entityType == "line") {
-        return {{m_values(base), m_values(base + 1)}, {m_values(base + 2), m_values(base + 3)}};
-    } else if (ep->entityType == "rectangle") {
-        // Reconstruct corners from params
-        double c1x = m_values(base), c1y = m_values(base + 1);
-        double c2x = m_values(base + 2), c2y = m_values(base + 3);
-        double minX = std::min(c1x, c2x), minY = std::min(c1y, c2y);
-        double maxX = std::max(c1x, c2x), maxY = std::max(c1y, c2y);
-        math::Vec2 corners[4] = {{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}};
-        int i = ref.featureIndex;
-        return {corners[i % 4], corners[(i + 1) % 4]};
-    } else if (ep->entityType == "polyline") {
-        int idx = base + ref.featureIndex * 2;
-        math::Vec2 s = {m_values(idx), m_values(idx + 1)};
-        math::Vec2 e = {m_values(idx + 2), m_values(idx + 3)};
-        return {s, e};
-    }
-
-    throw std::runtime_error("lineEndpoints: unsupported entity type " + ep->entityType);
+std::pair<PointJacobian, PointJacobian> ParameterTable::lineJacobian(const GeometryRef& ref) const {
+    std::pair<PointJacobian, PointJacobian> jac;
+    segment(entityOf(ref), ref.featureIndex, &jac.first, &jac.second);
+    return jac;
 }
 
 std::pair<math::Vec2, double> ParameterTable::circleData(const GeometryRef& ref) const {
-    const auto* ep = findEntityParams(ref.entityId);
-    if (!ep) {
-        throw std::runtime_error("ParameterTable: entity " + std::to_string(ref.entityId) +
-                                 " not registered");
+    const EntityParams& ep = entityOf(ref);
+    if ((ep.entityType != "circle" && ep.entityType != "arc") || ref.featureIndex != 0) {
+        throw doesNotHave(ep.entityType, ep.entityId, "circle " + std::to_string(ref.featureIndex));
     }
-    int base = ep->startIndex;
-
-    if (ep->entityType == "circle" || ep->entityType == "arc") {
-        return {{m_values(base), m_values(base + 1)}, m_values(base + 2)};
-    }
-
-    throw std::runtime_error("circleData: unsupported entity type " + ep->entityType);
+    const int base = ep.startIndex;
+    return {{m_values(base), m_values(base + 1)}, m_values(base + 2)};
 }
 
 void ParameterTable::applyToEntities(

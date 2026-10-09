@@ -187,7 +187,9 @@ private:
 /// Line is tangent to circle: |signed_dist(line, center)| == radius (1 equation).
 class TangentConstraint : public Constraint {
 public:
-    TangentConstraint(const GeometryRef& lineRef, const GeometryRef& circleRef);
+    /// A Line and a Circle feature (a circle's or an arc's), in either order:
+    /// the line is kept first. Any other pair throws std::invalid_argument.
+    TangentConstraint(const GeometryRef& refA, const GeometryRef& refB);
     ConstraintType type() const override { return ConstraintType::Tangent; }
     std::string typeName() const override { return "Tangent"; }
     int equationCount() const override { return 1; }
@@ -207,6 +209,8 @@ private:
 /// Two features have equal measure: same length (lines) or same radius (circles).
 class EqualConstraint : public Constraint {
 public:
+    /// Two Line features, or two Circle features (a circle's or an arc's);
+    /// any other pair throws std::invalid_argument.
     EqualConstraint(const GeometryRef& refA, const GeometryRef& refB);
     ConstraintType type() const override { return ConstraintType::Equal; }
     std::string typeName() const override { return "Equal"; }
