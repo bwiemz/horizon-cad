@@ -780,18 +780,9 @@ void AssemblyWorkbench::onAddMate() {
             for (size_t i = 0; i < tree.featureCount(); ++i) {
                 const auto* datum = dynamic_cast<const doc::DatumFeature*>(tree.feature(i));
                 if (datum == nullptr) continue;
-                model::MateFrame frame;
-                if (datum->datumKind() == doc::DatumFeature::DatumKind::Plane) {
-                    frame.kind = model::MateFrameKind::Planar;
-                    frame.direction = datum->asPlane().normal;
-                } else if (datum->datumKind() == doc::DatumFeature::DatumKind::Axis) {
-                    frame.kind = model::MateFrameKind::Line;
-                    frame.direction = datum->asAxis().direction;
-                } else {
-                    frame.kind = model::MateFrameKind::Point;
-                    frame.origin = datum->asPoint().position;
-                }
-                add(frame, QStringLiteral("datum"), datum->featureID());
+                // Where it is in a mirrored component, as its faces are.
+                add(doc::datumFrame(*datum, comp.mirrored), QStringLiteral("datum"),
+                    datum->featureID());
             }
         }
     };

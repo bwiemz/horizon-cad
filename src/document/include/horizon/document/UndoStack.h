@@ -71,20 +71,37 @@ public:
     /// Called after every push, undo, redo, clear and setClean.
     void setChangeCallback(std::function<void()> callback);
 
+    /// Called after each command push() executes, for what must follow any
+    /// change: a command it returns (null for none) is executed next and kept
+    /// in the same step, undone before the command and redone after it. The
+    /// document takes away with it the constraints of entities a step took
+    /// away, whatever the step.
+    void setFollowUp(std::function<std::unique_ptr<Command>()> followUp);
+
 private:
+    /// A command pushed, and what followed it (or null).
+    struct Step {
+        std::unique_ptr<Command> command;
+        std::unique_ptr<Command> followUp;
+
+        void execute() const;
+        void undo() const;
+    };
+
     void notifyChanged();
     /// Drop the oldest steps past the limit.
     void trim();
 
     static constexpr std::size_t kCleanUnreachable = static_cast<std::size_t>(-1);
 
-    std::vector<std::unique_ptr<Command>> m_undoStack;
-    std::vector<std::unique_ptr<Command>> m_redoStack;
+    std::vector<Step> m_undoStack;
+    std::vector<Step> m_redoStack;
     /// Undo depth of the clean state, or kCleanUnreachable.
     std::size_t m_cleanIndex = 0;
     std::uint64_t m_revision = 0;
     std::size_t m_limit = 0;
     std::function<void()> m_onChange;
+    std::function<std::unique_ptr<Command>()> m_followUp;
 };
 
 }  // namespace hz::doc

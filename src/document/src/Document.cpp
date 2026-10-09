@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 
+#include "horizon/document/Commands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/math/Expression.h"
 #include "horizon/math/Quantity.h"
@@ -16,11 +17,40 @@ namespace hz::doc {
 
 namespace {
 std::atomic<std::uint64_t> g_nextSerial{1};
+
+/// Add to @p removal each of @p constraints that names an entity @p drawing
+/// does not have.
+void removeOrphans(const draft::DraftDocument& drawing, cstr::ConstraintSystem& constraints,
+                   CompositeCommand& removal) {
+    for (const auto& constraint : constraints.constraints()) {
+        for (const uint64_t id : constraint->referencedEntityIds()) {
+            if (drawing.findEntity(id) == nullptr) {
+                removal.addCommand(
+                    std::make_unique<RemoveConstraintCommand>(constraints, constraint->id()));
+                break;
+            }
+        }
+    }
+}
 }  // namespace
 
 Document::Document()
     : m_undoStack(std::make_unique<UndoStack>()),
-      m_serial(g_nextSerial.fetch_add(1, std::memory_order_relaxed)) {}
+      m_serial(g_nextSerial.fetch_add(1, std::memory_order_relaxed)) {
+    // Whatever takes an entity away (Trim, Cut, Break, Fillet, Create Block
+    // and the rest, as Delete does) takes its constraints with it, in the
+    // same step, and undo brings them back. Left behind, they named what
+    // was gone, and the next solve stopped there, part way through a Move.
+    m_undoStack->setFollowUp([this]() -> std::unique_ptr<Command> {
+        auto removal = std::make_unique<CompositeCommand>("Remove Constraints");
+        removeOrphans(m_draftDoc, m_constraintSystem, *removal);
+        for (const auto& sketch : m_sketches) {
+            removeOrphans(sketch->drawing(), sketch->constraintSystem(), *removal);
+        }
+        if (removal->empty()) return nullptr;
+        return removal;
+    });
+}
 
 Document::~Document() = default;
 

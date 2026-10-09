@@ -518,6 +518,43 @@ TEST(AssemblyMatesTest, ADatumAxisAndAnEdgeAreMadeOneLine) {
     EXPECT_NEAR(corner.y, 5.0, 1e-6);
 }
 
+// A datum of a mirrored component is mirrored with it, as its faces and
+// edges are: the datum was taken from the part as it is made, so a mate on
+// it put the other component where the unmirrored part's datum would be.
+TEST(AssemblyMatesTest, ADatumOfAMirroredComponentIsMirroredWithIt) {
+    AssemblyDocument asmDoc;
+    auto withDatums = boxPart(10, 10, 10);
+    withDatums->featureTree().addFeature(
+        hz::doc::DatumFeature::makeAxis(hz::model::DatumAxis{Vec3(5, 5, 0), Vec3(0, 0, 1)}));
+    withDatums->featureTree().addFeature(hz::doc::DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(2, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0)}));
+    const std::string axis = withDatums->featureTree().feature(1)->featureID();
+    const std::string plane = withDatums->featureTree().feature(2)->featureID();
+    const uint64_t base = place(asmDoc, withDatums, Vec3(0, 0, 0));
+    asmDoc.component(base)->mirrored = true;
+    const uint64_t other = place(asmDoc, withDatums, Vec3(30, 20, 0));  // the part as it is
+
+    for (const std::string& datum : {axis, plane}) {
+        Mate mate;
+        mate.type = MateType::Coincident;
+        mate.a = {base, hz::topo::TopologyID::fromTag(datum), hz::doc::ReferenceKind::Datum};
+        mate.b = {other, hz::topo::TopologyID::fromTag(datum), hz::doc::ReferenceKind::Datum};
+        asmDoc.addMate(mate);
+    }
+    std::string why;
+    const auto mates = AssemblyMates::gather(asmDoc, &why);
+    if (!mates) FAIL() << why;
+    ASSERT_EQ(mates->mates().size(), 2u);
+    const auto& onAxis = mates->mates()[0];
+    EXPECT_NEAR(onAxis.frameA.origin.x, -5.0, 1e-12) << "the axis mirrored";
+    EXPECT_NEAR(onAxis.frameA.origin.y, 5.0, 1e-12);
+    EXPECT_NEAR(onAxis.frameB.origin.x, 5.0, 1e-12) << "and not where it is not";
+    const auto& onPlane = mates->mates()[1];
+    EXPECT_NEAR(onPlane.frameA.origin.x, -2.0, 1e-12);
+    EXPECT_NEAR(onPlane.frameA.direction.x, -1.0, 1e-12) << "its normal mirrored";
+    EXPECT_NEAR(onPlane.frameB.direction.x, 1.0, 1e-12);
+}
+
 // Phase 161: an exploded view moves where a component is drawn, by each of
 // its steps the component is in, and never where it is placed. Undo puts a
 // view back; a component removed leaves its steps.

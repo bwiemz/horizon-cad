@@ -280,6 +280,73 @@ work, not "post-1.0".
   flat face (or any face with a hole) was refused for "a face's boundary
   crosses itself": the face went to the sewer as one outline bridged out to
   the hole and back. It goes as itself, with its hole.
+- **A solid that runs into itself is refused.** The geometric checks each
+  looked at one face or edge at a time, so a solid whose faces pass through
+  each other passed them all: a sweep along a path that crosses itself
+  away from any one turn, or a shell whose cavity's faces cross. Every
+  feature's result is now checked for an edge passing through a face of
+  its own body, and refused with "it runs into itself: two of its faces
+  cross". Bodies that overlap are not compared: a part's bodies may
+  overlap until a Boolean combines them.
+- **A face's holes are checked.** A hole off its face's plane, crossing
+  the face's outline or another hole, or outside the face altogether
+  passed every check; each is now caught, and a hole outside its face is
+  refused by name.
+- **A large part's faces are held to a tolerance of their size.** The
+  feature gate's tolerance grows with the part, and the face checks grew it
+  again with the face: a plate 100 m by 10 m and 10 mm thick was refused as
+  its first feature ("a face's boundary crosses itself", its two long
+  edges 10 mm apart read as one), and a face a kilometre across could be
+  two metres out of flat. A face is now held to a ten-millionth of its
+  size, as a small part's always were.
+- **An entity's constraints go with it.** Trim, Extend, Break, Fillet,
+  Chamfer, Cut, Create Block and joining polylines took an entity away and
+  left its constraints behind, naming what was gone: the next Move or grip
+  edit stopped part way through its solve, stayed moved with nothing to
+  undo, and left the Move tool stuck in its drag. Whatever takes an entity
+  away now takes its constraints with it, as Delete did, and undo brings
+  them back. A constraint on an entity that is not there, as an older file
+  may have, is left out of the solve.
+- **Stretch on constrained geometry undoes and redoes whole.** It solved
+  the constraints after each stretched entity in turn: undo left the second
+  of two joined lines stretched, and redo broke the constraints. The
+  stretch is now solved once, after all of it.
+- **Undoing a layer's rename or removal** puts back on it an entity edited
+  since by its grips or in the property panel. The entity stayed on the new
+  name, or on 0, a layer that no longer existed, and could not be picked.
+- **Explode undone and redone gives back the same pieces**, so a step after
+  it (a Move of a piece) is redone too: it did nothing. Undone, the block is
+  back where it was in the drawing order, not on top; and two references to
+  one block, exploded, are two groups, not one.
+- **A group made in a sketch of a reopened file is a group of its own.** The
+  sketch handed out group IDs from 1 again, so the new group took the ID of
+  one read from the file, and the two were selected as one.
+- **Undo or redo in the middle of a drag** puts the drag back first, as
+  Escape does: a grip, a Move, a Stretch, a polyline's vertex. Released
+  after the undo, a grip drag recorded a step from before it, which put back
+  what was undone and lost what could be redone. A tool part way through
+  what it makes starts it again.
+- **The sketch Extrude or Revolve makes of the drawing is a copy of it.** It
+  shared the drawing's entities: moving one in the drawing changed the
+  feature's profile with no rebuild, while a grip edit did not. Extruding
+  the drawing unchanged again still takes that sketch, now also after the
+  file is reopened.
+- **Paste into another drawing brings the layers and blocks of what was
+  copied.** A layer the drawing lacks is added, and so is a block, renamed
+  where the drawing has a different block of that name. Pasted entities
+  stayed on layers the drawing did not have, and could not be picked; a
+  block reference pointed at the other drawing's block, and was lost, or
+  shown as another block, when the file was read again. Undo takes it all
+  away in one step.
+- **A feature taken away while its edit form is open is not edited.** A
+  build that finishes meanwhile can withdraw a feature just added that
+  fails; the form then edited the freed feature. Linear and Circular
+  Pattern and Mirror are not added when a feature checked in their form is
+  gone, and say so.
+- **A mate on a datum of a mirrored component** takes the datum mirrored, as
+  the component's faces and edges are. It took the part's own datum, so the
+  other component went where the unmirrored part would have it; Add Mate's
+  list described it so too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 
