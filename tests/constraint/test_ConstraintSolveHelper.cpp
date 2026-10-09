@@ -241,3 +241,31 @@ TEST(ConstraintSolveHelper, ClonePreservesVariableReference) {
     EXPECT_EQ(clonedAngle->variableReference(), "theta");
     EXPECT_NEAR(clonedAngle->dimensionalValue(), 1.57, 1e-9);
 }
+
+// A solve that meets a constraint its entities cannot hold (here two lines
+// read as circles, as a hand-edited file may have them) fails and leaves the
+// drawing alone. It threw, out of the move or edit that ran it.
+TEST(ConstraintSolveHelper, AConstraintItsEntitiesCannotHoldFailsTheSolve) {
+    draft::DraftDocument doc;
+    auto line = std::make_shared<draft::DraftLine>(math::Vec2{0, 0}, math::Vec2{10, 1});
+    auto other = std::make_shared<draft::DraftLine>(math::Vec2{0, 5}, math::Vec2{10, 7});
+    doc.addEntity(line);
+    doc.addEntity(other);
+    cstr::ConstraintSystem sys;
+    sys.addConstraint(std::make_shared<cstr::HorizontalConstraint>(
+        cstr::GeometryRef{line->id(), cstr::FeatureType::Point, 0},
+        cstr::GeometryRef{line->id(), cstr::FeatureType::Point, 1}));
+    // The second line read as a circle.
+    sys.addConstraint(std::make_shared<cstr::EqualConstraint>(
+        cstr::GeometryRef{line->id(), cstr::FeatureType::Circle, 0},
+        cstr::GeometryRef{other->id(), cstr::FeatureType::Circle, 0}));
+
+    doc::ConstraintSolveHelper::SolveAndApplyResult result;
+    ASSERT_NO_THROW(result = doc::ConstraintSolveHelper::solveAndApply(doc, sys));
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.snapshots.empty());
+    EXPECT_NEAR(line->end().y, 1.0, 1e-12) << "untouched";
+    std::unique_ptr<doc::ApplyConstraintSolveCommand> cmd;
+    ASSERT_NO_THROW(cmd = doc::ConstraintSolveHelper::solveAndCreateCommand(doc, sys));
+    EXPECT_EQ(cmd, nullptr);
+}

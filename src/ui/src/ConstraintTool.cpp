@@ -2,6 +2,10 @@
 
 #include <QMouseEvent>
 #include <cmath>
+#include <exception>
+#include <memory>
+#include <optional>
+#include <string>
 
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
@@ -28,12 +32,14 @@ void ConstraintTool::activate(ViewportWidget* viewport) {
     m_state = State::WaitingForFirst;
     m_firstRef = {};
     m_hoveredRef = {};
+    m_refusal.clear();
 }
 
 void ConstraintTool::deactivate() {
     m_state = State::WaitingForFirst;
     m_firstRef = {};
     m_hoveredRef = {};
+    m_refusal.clear();
     Tool::deactivate();
 }
 
@@ -42,6 +48,7 @@ void ConstraintTool::setMode(Mode mode) {
     m_state = State::WaitingForFirst;
     m_firstRef = {};
     m_hoveredRef = {};
+    m_refusal.clear();
 }
 
 bool ConstraintTool::isSingleRefMode() const {
@@ -80,12 +87,29 @@ bool ConstraintTool::isCompatibleFeature(cstr::FeatureType ft) const {
         case Mode::Angle:
             return ft == cstr::FeatureType::Line;
         case Mode::Tangent:
-            // First ref can be line or circle; second must be the other
+            // Either pick can be the line or the circle; refusal() wants one of
+            // each.
             return ft == cstr::FeatureType::Line || ft == cstr::FeatureType::Circle;
         case Mode::Equal:
             return ft == cstr::FeatureType::Line || ft == cstr::FeatureType::Circle;
     }
     return false;
+}
+
+std::string ConstraintTool::refusal(const cstr::GeometryRef& first,
+                                    const cstr::GeometryRef& second) const {
+    using cstr::FeatureType;
+    if (m_mode == Mode::Tangent) {
+        const bool lineAndCircle =
+            (first.featureType == FeatureType::Line && second.featureType == FeatureType::Circle) ||
+            (first.featureType == FeatureType::Circle && second.featureType == FeatureType::Line);
+        if (!lineAndCircle) return "A tangent is between a line and a circle or arc";
+    } else if (m_mode == Mode::Equal) {
+        if (first.featureType != second.featureType) {
+            return "Equal is between two lines or two circles";
+        }
+    }
+    return {};
 }
 
 cstr::GeometryRef ConstraintTool::detectFeature(const math::Vec2& worldPos) const {
@@ -189,6 +213,7 @@ bool ConstraintTool::mousePressEvent(QMouseEvent* event, const math::Vec2& world
     if (!ref.isValid()) return false;
 
     if (m_state == State::WaitingForFirst) {
+        m_refusal.clear();
         m_firstRef = ref;
         m_firstPos = worldPos;
 
@@ -203,6 +228,11 @@ bool ConstraintTool::mousePressEvent(QMouseEvent* event, const math::Vec2& world
     } else if (m_state == State::WaitingForSecond) {
         // Don't allow constraining an entity to itself for same feature
         if (ref == m_firstRef) return false;
+        // A pair the constraint cannot hold is not made, and the prompt says
+        // why. Made, a tangent picked as two lines threw at every solve. The
+        // first pick stays, for a second that fits it.
+        m_refusal = refusal(m_firstRef, ref);
+        if (!m_refusal.empty()) return true;
 
         m_hoveredRef = ref;
         m_hoveredPos = worldPos;
@@ -240,6 +270,7 @@ void ConstraintTool::cancel() {
     m_state = State::WaitingForFirst;
     m_firstRef = {};
     m_hoveredRef = {};
+    m_refusal.clear();
 }
 
 void ConstraintTool::commitConstraint() {
@@ -337,16 +368,28 @@ void ConstraintTool::commitConstraint() {
     csys.addConstraint(constraint);
 
     // Use helper to solve and create apply command.
-    auto resolver = doc.variableResolver();
-    auto solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, csys, resolver);
+    std::unique_ptr<doc::ApplyConstraintSolveCommand> solveCmd;
+    std::optional<std::string> failed;
+    try {
+        auto resolver = doc.variableResolver();
+        solveCmd = doc::ConstraintSolveHelper::solveAndCreateCommand(draftDoc, csys, resolver);
+    } catch (const std::exception& e) {
+        failed = e.what();
+    }
+
+    // Remove the temporary constraint (push re-adds via AddConstraintCommand),
+    // the solve thrown or not: left behind by one that threw, it was met by
+    // every solve and repaint after.
+    csys.removeConstraint(constraint->id());
+    if (failed) {
+        m_refusal = "Not added: " + *failed;
+        return;
+    }
     if (solveCmd) {
         // Undo the solve (push will re-execute via the command).
         solveCmd->undo();
         composite->addCommand(std::move(solveCmd));
     }
-
-    // Remove the temporary constraint (push re-adds via AddConstraintCommand).
-    csys.removeConstraint(constraint->id());
 
     // The command alone marks the change: undone, the document is as it was
     // saved. A setDirty(true) beside it stayed set through the undo.
@@ -393,9 +436,11 @@ std::string ConstraintTool::promptText() const {
     int idx = static_cast<int>(m_mode);
     const char* modeName = (idx >= 0 && idx < 10) ? modeNames[idx] : "constraint";
 
-    if (m_state == State::WaitingForFirst)
-        return std::string("Select first entity for ") + modeName;
-    return std::string("Select second entity for ") + modeName;
+    const std::string prompt =
+        std::string(m_state == State::WaitingForFirst ? "Select first entity for "
+                                                      : "Select second entity for ") +
+        modeName;
+    return m_refusal.empty() ? prompt : m_refusal + ". " + prompt;
 }
 
 bool ConstraintTool::wantsCrosshair() const {

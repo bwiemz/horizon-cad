@@ -34,6 +34,21 @@ work, not "post-1.0".
   and written there, with progress and Cancel, whatever the file's size. A
   failed or cancelled import leaves no files behind.
 - **Undoing a constraint** leaves the drawing as saved (#165).
+- **Sketch constraints that failed for no reason now solve.**
+  - A constraint on an arc's start or end could only move the arc's
+    centre, so most were reported over-constrained. The arc is now turned
+    and sized to meet it.
+  - A tangent may be picked circle first. Picked that way, or between two
+    lines, or with Equal between a line and an arc, the constraint used to
+    break every solve after it: moving anything, editing a value, the
+    colours that show what is free. A pair that cannot be held is now
+    refused, and the prompt says why; a file holding one opens without it,
+    and says so.
+  - Distances, equal lengths, tangents and right angles are met at any
+    size. A distance of 1000, or a line tangent to a circle of radius 50,
+    was often reported as failing to converge, or as inconsistent, and the
+    sketch was left unsolved. A sketch drawn far from the origin, in survey
+    coordinates, solves too.
 - **Installed on clean machines before release.** `horizon --self-test` now
   does what a beta tester is asked to do. It models, edits, saves and reads
   back a part, sends it through STEP, places it in an assembly, and draws and
