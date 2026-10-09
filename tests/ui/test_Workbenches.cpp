@@ -12,6 +12,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -24,6 +25,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -31,11 +33,14 @@
 #include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
@@ -828,6 +833,82 @@ TEST(WorkbenchesTest, AnExtrudeTakesTheSketchEditedAndFinishesIt) {
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume, 1000.0, 1e-6);
 }
 
+// The drawing extruded is copied into the sketch made of it. The sketch
+// shared the drawing's lines: a Move in the drawing after changed the
+// extrude's profile, with no rebuild, and a grip edit did not. Extruded again
+// unchanged, the drawing takes that sketch again.
+TEST(WorkbenchesTest, ASketchMadeOfTheDrawingIsACopyOfIt) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    const std::vector<hz::math::Vec2> corners = {{0, 0}, {20, 0}, {20, 10}, {0, 10}};
+    std::vector<uint64_t> lines;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        auto line =
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]);
+        lines.push_back(line->id());
+        part.draftDocument().addEntity(line);
+    }
+    hz::ui::PartCommands commands(host);
+    const auto extrude = [&] {
+        return answering(
+            QStringLiteral("Extrude"), [](QDialog& form) { setField(form, "size", 5.0); },
+            [&] { commands.onExtrudeSketch(); });
+    };
+    ASSERT_TRUE(extrude());
+    ASSERT_EQ(part.sketches().size(), 1u);
+    const auto profile = part.sketches().front();
+    ASSERT_EQ(profile->entities().size(), 4u);
+    for (const auto& entity : profile->entities()) {
+        EXPECT_EQ(part.draftDocument().findEntity(entity->id()), nullptr) << "a copy";
+    }
+
+    part.undoStack().push(std::make_unique<hz::doc::MoveEntityCommand>(
+        part.draftDocument(), lines, hz::math::Vec2(0, 3), part.constraintSystem()));
+    const auto* first = dynamic_cast<const hz::draft::DraftLine*>(profile->entities()[0].get());
+    ASSERT_NE(first, nullptr);
+    EXPECT_DOUBLE_EQ(first->start().y, 0.0) << "the profile as it was extruded";
+    part.undoStack().undo();
+
+    ASSERT_TRUE(extrude());
+    EXPECT_EQ(part.sketches().size(), 1u) << "the drawing as it was: the same sketch";
+    EXPECT_EQ(host.added.size(), 2u);
+}
+
+// A feature checked in a pattern's form and taken away for good while the
+// form is open (a build that finished withdrew it) is looked for again when
+// the form closes: the pattern is not added. The form's list held the
+// feature, freed by then, and read its ID.
+TEST(WorkbenchesTest, APatternOfAFeatureGoneWhileItsFormIsOpenIsNotAdded) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    part.undoStack().push(std::make_unique<hz::doc::AddFeatureCommand>(
+        part, hz::doc::PrimitiveFeature::makeBox(5, 5, 20), nullptr));
+    ASSERT_TRUE(part.rebuildModel());
+
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Linear Pattern"),
+        [&part](QDialog& form) {
+            auto* list = form.findChild<QListWidget*>(QStringLiteral("features"));
+            ASSERT_NE(list, nullptr);
+            ASSERT_EQ(list->count(), 2);
+            list->item(1)->setCheckState(Qt::Checked);
+            // The second box undone, and a step after it: gone for good.
+            part.undoStack().undo();
+            part.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(
+                part.draftDocument(), std::make_shared<hz::draft::DraftLine>(
+                                          hz::math::Vec2(0, 0), hz::math::Vec2(1, 0))));
+        },
+        [&] { commands.onLinearPattern(); }));
+    EXPECT_TRUE(host.added.empty()) << "not added";
+    EXPECT_EQ(part.featureTree().featureCount(), 1u);
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("gone")))
+        << host.currentStatus().toStdString();
+}
+
 // Extrude again with the sketch chosen in the list, not edited: it is taken
 // as it is, and the extrude cuts it through the first.
 TEST(WorkbenchesTest, AnExtrudeTakesTheSketchChosen) {
@@ -943,6 +1024,49 @@ TEST(WorkbenchesTest, TheDraftingCommandsWorkOnTheSelectionThroughTheirHost) {
     drafting.onPaste();
     ASSERT_NE(host.tool, nullptr);
     EXPECT_EQ(host.tool->name(), "Paste");
+}
+
+// A polar array of a rectangle keeps its shape in every copy: a copy turned
+// off the axes is a closed polyline through the turned corners, and the one
+// turned half round is still a rectangle. Each was a box across two of the
+// turned corners.
+TEST(WorkbenchesTest, APolarArrayKeepsARectanglesShape) {
+    using hz::math::Vec2;
+    StandInHost host;
+    hz::ui::DraftingCommands drafting(host);
+    hz::doc::Document& document = *host.currentDocument();
+    const auto rect = std::make_shared<hz::draft::DraftRectangle>(Vec2(2, 0), Vec2(6, 2));
+    document.activeDrawing().addEntity(rect);
+    host.viewport().selectionManager().select(rect->id());
+
+    // As the form has it: six round the origin.
+    ASSERT_TRUE(answering(
+        "Polar Array", [](QDialog&) {}, [&] { drafting.onPolarArray(); }));
+    const auto& entities = document.activeDrawing().entities();
+    ASSERT_EQ(entities.size(), 6u);
+    const auto corners = rect->corners();
+    for (size_t i = 1; i < 6; ++i) {
+        SCOPED_TRACE(i);
+        const double angle = static_cast<double>(i) * hz::math::kPi / 3.0;
+        const auto turned = [angle](const Vec2& p) {
+            return Vec2(p.x * std::cos(angle) - p.y * std::sin(angle),
+                        p.x * std::sin(angle) + p.y * std::cos(angle));
+        };
+        if (i == 3) {
+            const auto* half = dynamic_cast<const hz::draft::DraftRectangle*>(entities[i].get());
+            ASSERT_NE(half, nullptr) << "half round, a rectangle";
+            EXPECT_LT(half->corners()[0].distanceTo(Vec2(-6, -2)), 1e-9);
+            EXPECT_LT(half->corners()[2].distanceTo(Vec2(-2, 0)), 1e-9);
+            continue;
+        }
+        const auto* poly = dynamic_cast<const hz::draft::DraftPolyline*>(entities[i].get());
+        ASSERT_NE(poly, nullptr);
+        EXPECT_TRUE(poly->closed());
+        ASSERT_EQ(poly->points().size(), 4u);
+        for (size_t k = 0; k < 4; ++k) {
+            EXPECT_LT(poly->points()[k].distanceTo(turned(corners[k])), 1e-9) << k;
+        }
+    }
 }
 
 // Arrays, a block made and exploded, a block inserted, and the dimension

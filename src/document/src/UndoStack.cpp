@@ -7,14 +7,26 @@ namespace hz::doc {
 UndoStack::UndoStack() = default;
 UndoStack::~UndoStack() = default;
 
+void UndoStack::Step::execute() const {
+    command->execute();
+    if (followUp) followUp->execute();
+}
+
+void UndoStack::Step::undo() const {
+    if (followUp) followUp->undo();
+    command->undo();
+}
+
 void UndoStack::push(std::unique_ptr<Command> cmd) {
     cmd->execute();
+    std::unique_ptr<Command> followUp = m_followUp ? m_followUp() : nullptr;
+    if (followUp) followUp->execute();
     // A clean state deeper than the current depth lives in the redo history,
     // which this push discards.
     if (m_cleanIndex != kCleanUnreachable && m_cleanIndex > m_undoStack.size()) {
         m_cleanIndex = kCleanUnreachable;
     }
-    m_undoStack.push_back(std::move(cmd));
+    m_undoStack.push_back({std::move(cmd), std::move(followUp)});
     m_redoStack.clear();
     trim();
     notifyChanged();
@@ -39,27 +51,27 @@ void UndoStack::trim() {
 
 void UndoStack::undo() {
     if (m_undoStack.empty()) return;
-    auto cmd = std::move(m_undoStack.back());
+    Step step = std::move(m_undoStack.back());
     m_undoStack.pop_back();
-    cmd->undo();
-    m_redoStack.push_back(std::move(cmd));
+    step.undo();
+    m_redoStack.push_back(std::move(step));
     notifyChanged();
 }
 
 void UndoStack::redo() {
     if (m_redoStack.empty()) return;
-    auto cmd = std::move(m_redoStack.back());
+    Step step = std::move(m_redoStack.back());
     m_redoStack.pop_back();
-    cmd->execute();
-    m_undoStack.push_back(std::move(cmd));
+    step.execute();
+    m_undoStack.push_back(std::move(step));
     notifyChanged();
 }
 
 bool UndoStack::withdraw(const Command* command) {
-    if (m_undoStack.empty() || m_undoStack.back().get() != command) return false;
-    const auto cmd = std::move(m_undoStack.back());
+    if (m_undoStack.empty() || m_undoStack.back().command.get() != command) return false;
+    const Step step = std::move(m_undoStack.back());
     m_undoStack.pop_back();
-    cmd->undo();
+    step.undo();
     // Saved with the command in it: that state is gone for good.
     if (m_cleanIndex != kCleanUnreachable && m_cleanIndex > m_undoStack.size()) {
         m_cleanIndex = kCleanUnreachable;
@@ -93,6 +105,10 @@ bool UndoStack::isClean() const {
 
 void UndoStack::setChangeCallback(std::function<void()> callback) {
     m_onChange = std::move(callback);
+}
+
+void UndoStack::setFollowUp(std::function<std::unique_ptr<Command>()> followUp) {
+    m_followUp = std::move(followUp);
 }
 
 void UndoStack::notifyChanged() {

@@ -44,6 +44,14 @@ gtest_discover_tests(hz_ui_tests)
 
 # MainWindow tests need a QApplication, and so a platform plugin. They use Qt's
 # offscreen platform so they run headless on every CI runner.
+#
+# Debian's and Ubuntu's Qt leave out Qt6GuiPlugins.cmake, the file that loads
+# Gui's plugin packages, so with their Qt the offscreen plugin's target was
+# never made and every window test was skipped. Its package is there: load it.
+if(NOT TARGET Qt6::QOffscreenIntegrationPlugin AND Qt6Gui_DIR)
+    find_package(Qt6QOffscreenIntegrationPlugin CONFIG QUIET
+                 PATHS "${Qt6Gui_DIR}" NO_DEFAULT_PATH)
+endif()
 if(TARGET Qt6::QOffscreenIntegrationPlugin)
     add_executable(hz_ui_window_tests
         window_tests_main.cpp

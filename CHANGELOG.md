@@ -118,6 +118,222 @@ work, not "post-1.0".
   model, not the solids as read; holds each file to how many curved faces
   its export keeps in facets; and, when an export measures otherwise, lists
   the faces that differ.
+- **DXF files read back as they were saved, and as other programs drew
+  them.**
+  - Reals were written to six decimals, so every ellipse saved came back an
+    open polyline, said to be partial: its whole turn, 2π, read back a little
+    short. Reals are now written so they read back exactly. An ellipse of a
+    whole turn that another program wrote to six decimals is whole too.
+  - A file of blocks nested 20,000 deep crashed the import. Blocks are
+    flattened 64 deep, and an insert deeper than that is reported.
+  - Anonymous blocks, such as a dynamic block's instance or an array
+    (`*U1`), are read. Their inserts were reported with their block missing.
+  - A layout's paper space, its border, title block and viewports, is left
+    out and reported. It was drawn over the model.
+  - A spline is written as the curve Horizon draws. Other programs drew it
+    through its end points, a closed one open, and without its weights. A
+    spline from another program that is not a uniform cubic, as most are not,
+    is still drawn as one on its control points, and is now reported; one of
+    degree 1 comes in as a polyline.
+  - A polyline bulge too large for an arc comes in as a straight segment,
+    not an arc with no centre.
+- **Numbers typed with a point read the same in every language.** Under
+  a German or French locale, where the C library's decimal separator is a
+  comma, an expression read "1.5" as 1 and "x * 2.75" as x * 2, with no
+  error; Scale's typed factor did the same. Numbers are read with a point
+  whatever the locale.
+- **What an expression field keeps reads back.** A plain-number variable
+  given the document's unit was kept as "(count in)", a function as
+  "(sqrt(2) in)" and a small number as "5.0000000000000002e-05", none of
+  which the next build could read: the dialog accepted them and the feature
+  failed. A unit may now follow a name or a call ("count in", "sqrt(2) cm"),
+  numbers are written as plain decimals that read back exactly ("0.00005"),
+  and a long sum is written as one bracket, not one per term, so it reads
+  back however long it is. A variable's plain value is written the same way
+  in Edit ▸ Variables.
+- **A matrix of small scale has an inverse.** Inverting took any matrix
+  whose determinant was under 1e-15 for singular, so a scale of a
+  millionth, or an orthographic view hundreds of metres across, inverted to
+  the identity. Singular is now judged against the matrix's own size.
+- **Curves and surfaces differentiate exactly.** A curve's derivatives
+  were finite differences, and at an end of the curve the second one was
+  wrong by a factor of about a hundred thousand: a straight edge's came
+  out a million. Finding the point of a curve nearest another point then
+  stopped at the end for anything within 2.5% of it, so an edge's own
+  endpoints could fail to lie on it, in drawings and in the mass
+  properties of the part as designed. A surface's normal was good to about
+  1e-7, the size of the test that decides whether a face is flat. Both are
+  now worked out from the basis functions' derivatives, and the nearest
+  point is refined from the two best starting points, so a point just
+  before a closed curve's seam is found where it is.
+- **Curves and surfaces refuse what they cannot be.** A weight of zero or
+  less, a NaN in a control point, knots that go backwards or a domain of no
+  length made a curve that evaluated to NaN, which spread silently; a
+  surface given fewer rows of weights than of points read past the end of
+  them. All are refused when the curve or surface is made, which an
+  imported file's report says. Knots closer together than a ten-millionth
+  are two knots, not one; an arc of any finite angle is made at once (an
+  angle of 1e20 never finished); a tessellation tolerance too fine to
+  count is the finest mesh, not the coarsest.
+- **A block keeps everything it was made from.** A block made from a
+  selection with a dimension, a leader or another block in it lost them
+  when it was saved, and its file reopened marked incomplete. They are
+  saved now, and so is whether each entity in a block is construction
+  geometry, and its group. Files are saved as format version 30.
+- **glTF exports are the right size.** glTF is in metres, and a part went
+  out in millimetres: a 50 mm part opened 50 m across in other viewers. It
+  now opens at its size.
+- **A sheet's radii and diameters are written as its lengths are.** They
+  were in millimetres to two places, whatever the dimension style said,
+  and with a comma on a German system ("R12,50") beside lengths written
+  with a point. They now take the style's unit and precision, and a point.
+  A scale such as 2.5:1 is written with a point too.
+- **A view's label keeps its letters.** A label is up to eight characters
+  as it is typed, but was read back as eight bytes: "Détail-A" lost its A,
+  and "断面図A" came back broken. A label is now eight characters both
+  where it is typed and where it is read.
+- **A drawing sheet from a newer version is refused**, as a part or a 2D
+  drawing from one is, and says which version wrote it. It was read
+  without a word as this version reads it, and saving it destroyed what
+  the newer version had written.
+- **SVG exports open whatever their text holds.** A DXF's text can hold
+  control characters, which XML has none of: the SVG was not well-formed,
+  and a browser showed none of it. They are left out now, and anything
+  else that is not text becomes U+FFFD.
+- **Damaged numbers in a STEP file or a part's cached mesh are refused.**
+  A B-spline's degree of 1E300, or a mesh index of 1e300, was converted to
+  an integer it does not fit, which is undefined behaviour. Such a curve
+  or surface is now refused, and such a cached mesh is not used (the part
+  is built instead). The native fuzz target now reads the cached mesh too.
+- **Modeling fixes.**
+  - Sweep and Loft take a sketch with a dimension, text or a hatch on it,
+    as Extrude and Revolve do. A circle with its radius dimensioned was
+    refused ("a circle cannot be joined to other curves"), and so was a
+    profile with a note.
+  - Draft drops the cylinders and circles a part had before it. Shelled, a
+    drafted cylinder's wall was thinner at the top than at the bottom, and
+    mates and the ideal mass properties saw the cylinder as it was.
+  - Tangent, Distance and Angle mates on a flat face measure from its
+    outside. On a box's bottom, back and left faces, an extrusion's bottom
+    cap and the sides of a profile drawn clockwise they measured from the
+    inside: a cylinder made tangent to a box's left face went into the box.
+    A saved Distance or Angle mate on such a face now measures the other
+    way.
+  - A very fine chord tolerance gives the finest facets. One under about
+    1e-16 of the radius gave the coarsest: a cylinder of three facets, a
+    fillet of one chord.
+  - Extrude through all at a slant goes through the part. It could say the
+    part was not in front of the sketch, or, both ways, stop short of it.
+  - A loft whose sections lie in one plane is refused, and says which: it
+    made a closed shape of no volume.
+  - A fillet's chord tolerance holds at an edge of any angle. Each blend was
+    cut as if it turned a quarter circle; at a 45° edge it turns 135°, and
+    sagged twice the tolerance.
+  - A cone with a negative radius is refused, as a negative cylinder is. It
+    was built with a point there, and recorded a cone with the wrong apex
+    and angle.
+- **A rectangle turned or mirrored keeps its shape.** Rotate, Mirror, a
+  polar array and exploding a block turned two opposite corners and drew
+  a box across them: a 4 x 2 rectangle turned 45 degrees came out
+  1.4 x 4.2. Turned off the axes, a rectangle now becomes a closed
+  polyline through its four corners; a quarter turn, or a mirror in a line
+  along an axis or a diagonal, leaves it a rectangle.
+- **Hatching stays inside its boundary.** A hatch line through a corner of
+  the boundary counted the corner twice: it could run across a notch, or
+  be left out.
+- **A short arc's centre snaps.** The snap looked only at entities that
+  reached the cursor, so a point beyond an entity's extent, such as the
+  centre of a short arc or a block's insertion point, could not be snapped
+  to.
+- **Fillet and Chamfer keep the parts of the lines clicked.** Of two lines
+  that cross, each kept the part nearer the crossing, whatever was
+  clicked, so the lines ran away from the arc or the cut.
+- **A linear dimension turned or mirrored measures the same.** A horizontal
+  dimension turned a quarter read the vertical distance, 0 for a level
+  edge. A quarter turn now makes it a vertical one; turned or mirrored off
+  the axes, it is aligned to the turned direction.
+- **A long, thin ellipse is picked where it is.** A click half a unit off
+  an ellipse 200 long and 20 wide was taken to be 2.4 units off, and
+  missed: it is now measured to the nearest point of the curve.
+- **A line touching a circle meets it once.** Most lines that touched a
+  circle were found to miss it, or to cross it twice at the same point,
+  which Trim, Break, Extend and the intersection snap then used.
+- **Offset takes the side of an ellipse the cursor is on.** A cursor
+  beside a long, thin ellipse was taken to be inside it, and the offset
+  collapsed it.
+- **Dimension and leader arrows point the right way.** A linear or angular
+  dimension's arrows were drawn outside its extension lines, pointing in
+  (>|---|<), and a leader's away from what it points at. They now point
+  out to the extension lines (|<--->|), and a leader's at what it points
+  at; drawing sheets and exports show them so too. An angular dimension
+  can also be picked on its extension lines, not only near its arc.
+- **A solid that runs into itself is refused.** The geometric checks each
+  looked at one face or edge at a time, so a solid whose faces pass through
+  each other passed them all: a sweep along a path that crosses itself
+  away from any one turn, or a shell whose cavity's faces cross. Every
+  feature's result is now checked for an edge passing through a face of
+  its own body, and refused with "it runs into itself: two of its faces
+  cross". Bodies that overlap are not compared: a part's bodies may
+  overlap until a Boolean combines them.
+- **A face's holes are checked.** A hole off its face's plane, crossing
+  the face's outline or another hole, or outside the face altogether
+  passed every check; each is now caught, and a hole outside its face is
+  refused by name.
+- **A large part's faces are held to a tolerance of their size.** The
+  feature gate's tolerance grows with the part, and the face checks grew it
+  again with the face: a plate 100 m by 10 m and 10 mm thick was refused as
+  its first feature ("a face's boundary crosses itself", its two long
+  edges 10 mm apart read as one), and a face a kilometre across could be
+  two metres out of flat. A face is now held to a ten-millionth of its
+  size, as a small part's always were.
+- **An entity's constraints go with it.** Trim, Extend, Break, Fillet,
+  Chamfer, Cut, Create Block and joining polylines took an entity away and
+  left its constraints behind, naming what was gone: the next Move or grip
+  edit stopped part way through its solve, stayed moved with nothing to
+  undo, and left the Move tool stuck in its drag. Whatever takes an entity
+  away now takes its constraints with it, as Delete did, and undo brings
+  them back. A constraint on an entity that is not there, as an older file
+  may have, is left out of the solve.
+- **Stretch on constrained geometry undoes and redoes whole.** It solved
+  the constraints after each stretched entity in turn: undo left the second
+  of two joined lines stretched, and redo broke the constraints. The
+  stretch is now solved once, after all of it.
+- **Undoing a layer's rename or removal** puts back on it an entity edited
+  since by its grips or in the property panel. The entity stayed on the new
+  name, or on 0, a layer that no longer existed, and could not be picked.
+- **Explode undone and redone gives back the same pieces**, so a step after
+  it (a Move of a piece) is redone too: it did nothing. Undone, the block is
+  back where it was in the drawing order, not on top; and two references to
+  one block, exploded, are two groups, not one.
+- **A group made in a sketch of a reopened file is a group of its own.** The
+  sketch handed out group IDs from 1 again, so the new group took the ID of
+  one read from the file, and the two were selected as one.
+- **Undo or redo in the middle of a drag** puts the drag back first, as
+  Escape does: a grip, a Move, a Stretch, a polyline's vertex. Released
+  after the undo, a grip drag recorded a step from before it, which put back
+  what was undone and lost what could be redone. A tool part way through
+  what it makes starts it again.
+- **The sketch Extrude or Revolve makes of the drawing is a copy of it.** It
+  shared the drawing's entities: moving one in the drawing changed the
+  feature's profile with no rebuild, while a grip edit did not. Extruding
+  the drawing unchanged again still takes that sketch, now also after the
+  file is reopened.
+- **Paste into another drawing brings the layers and blocks of what was
+  copied.** A layer the drawing lacks is added, and so is a block, renamed
+  where the drawing has a different block of that name. Pasted entities
+  stayed on layers the drawing did not have, and could not be picked; a
+  block reference pointed at the other drawing's block, and was lost, or
+  shown as another block, when the file was read again. Undo takes it all
+  away in one step.
+- **A feature taken away while its edit form is open is not edited.** A
+  build that finishes meanwhile can withdraw a feature just added that
+  fails; the form then edited the freed feature. Linear and Circular
+  Pattern and Mirror are not added when a feature checked in their form is
+  gone, and say so.
+- **A mate on a datum of a mirrored component** takes the datum mirrored, as
+  the component's faces and edges are. It took the part's own datum, so the
+  other component went where the unmirrored part would have it; Add Mate's
+  list described it so too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

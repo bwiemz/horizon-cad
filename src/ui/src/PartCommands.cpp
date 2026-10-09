@@ -8,9 +8,12 @@
 #include <algorithm>
 #include <map>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
@@ -130,6 +133,22 @@ void PartCommands::onPrimitiveTorus() {
 // From sketches: Extrude, Revolve, Loft, Sweep and datums
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// Whether @p sketch is on the plane a sketch made of the drawing is: XY,
+/// following no face.
+bool onWrapperPlane(const doc::Sketch& sketch) {
+    const draft::SketchPlane xy;
+    const draft::SketchPlane& plane = sketch.drawnPlane();
+    const auto same = [](const math::Vec3& a, const math::Vec3& b) {
+        return (a - b).length() < 1e-12;
+    };
+    return sketch.face().empty() && same(plane.origin(), xy.origin()) &&
+           same(plane.normal(), xy.normal()) && same(plane.xAxis(), xy.xAxis());
+}
+
+}  // namespace
+
 std::shared_ptr<doc::Sketch> PartCommands::resolveProfileSketch(bool& createdWrapper) {
     createdWrapper = false;
 
@@ -154,16 +173,21 @@ std::shared_ptr<doc::Sketch> PartCommands::resolveProfileSketch(bool& createdWra
 
     // Reuse an existing wrapper sketch when the top-level profile has not
     // changed — repeated extrudes must not accumulate duplicate sketches.
+    // It holds copies, so it is the same drawing, on the plane a wrapper is
+    // made on, that is reused.
     for (const auto& sk : part().sketches()) {
-        if (sk->entities() == shown) return sk;
+        if (onWrapperPlane(*sk) && doc::drawSame(sk->entities(), shown)) return sk;
     }
 
     // Wrap the top-level profile in a sketch so the feature is replayable
     // (parametric history requires a sketch reference). The caller must add
-    // it to the document only once the operation is validated.
+    // it to the document only once the operation is validated. Copies: the
+    // drawing's own entities, shared, moved the feature's profile with every
+    // edit made in the drawing in place, and kept it where a grip edit,
+    // which puts a new entity in the old one's place, left it.
     auto sketch = std::make_shared<doc::Sketch>();
     sketch->setName(tr("Profile %1").arg(part().sketches().size() + 1).toStdString());
-    for (const auto& entity : shown) sketch->addEntity(entity);
+    for (const auto& entity : shown) sketch->addEntity(entity->clone());
     createdWrapper = true;
     return sketch;
 }
@@ -561,16 +585,24 @@ void PartCommands::onDraft() {
 
 namespace {
 
+/// A feature a pattern can repeat, as the form lists it: by its name and
+/// ID, never the feature itself, which a build finished while the form is
+/// open may take away.
+struct Target {
+    std::string name;
+    std::string id;
+};
+
 /// The features a pattern can repeat instead of the whole part: those that
 /// add or cut material, active in the build.
-std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree) {
-    std::vector<const doc::Feature*> out;
+std::vector<Target> repeatableFeatures(const doc::FeatureTree& tree) {
+    std::vector<Target> out;
     const int last = tree.rollbackIndex() >= 0 ? tree.rollbackIndex()
                                                : static_cast<int>(tree.featureCount()) - 1;
     for (int i = 0; i <= last; ++i) {
         const doc::Feature* feature = tree.feature(static_cast<size_t>(i));
         if (feature && feature->createsNewBody() && !feature->isSuppressed())
-            out.push_back(feature);
+            out.push_back({feature->name(), feature->featureID()});
     }
     return out;
 }
@@ -578,23 +610,28 @@ std::vector<const doc::Feature*> repeatableFeatures(const doc::FeatureTree& tree
 /// A checklist of @p features for a pattern to repeat (or a mirror to
 /// mirror, said by @p label); the ids of those checked are read with
 /// checkedTargets().
-QListWidget* targetList(FeatureForm& form, const std::vector<const doc::Feature*>& features,
+QListWidget* targetList(FeatureForm& form, const std::vector<Target>& features,
                         const QString& label = PartCommands::tr("Repeat only (none: the whole "
                                                                 "part):")) {
     std::vector<std::pair<QString, QString>> items;
     items.reserve(features.size());
-    for (const doc::Feature* feature : features) {
-        items.emplace_back(QString::fromStdString(feature->name()),
-                           QString::fromStdString(feature->featureID()));
+    for (const Target& feature : features) {
+        items.emplace_back(QString::fromStdString(feature.name),
+                           QString::fromStdString(feature.id));
     }
     return form.checklist(QStringLiteral("features"), label, items);
 }
 
-std::vector<std::string> checkedTargets(const QListWidget* list,
-                                        const std::vector<const doc::Feature*>& features) {
+/// The IDs of the features checked in @p list; nullopt when one of them is
+/// no longer in @p tree (taken away while the form was open).
+std::optional<std::vector<std::string>> checkedTargets(const QListWidget* list,
+                                                       const std::vector<Target>& features,
+                                                       const doc::FeatureTree& tree) {
     std::vector<std::string> ids;
     for (const int row : FeatureForm::checkedRows(list)) {
-        ids.push_back(features[static_cast<size_t>(row)]->featureID());
+        const std::string& id = features[static_cast<size_t>(row)].id;
+        if (!tree.indexOfId(id)) return std::nullopt;
+        ids.push_back(id);
     }
     return ids;
 }
@@ -614,10 +651,15 @@ void PartCommands::onLinearPattern() {
     const auto repeatable = repeatableFeatures(part().featureTree());
     auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
+    const auto chosen = checkedTargets(targets, repeatable, part().featureTree());
+    if (!chosen) {
+        m_host.showStatus(tr("%1 not added: a feature it repeats is gone").arg(verb));
+        return;
+    }
 
     auto pattern = doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
                                                    count->value());
-    pattern->setTargets(checkedTargets(targets, repeatable));
+    pattern->setTargets(*chosen);
     m_host.addFeature(std::move(pattern), verb);
 }
 
@@ -634,6 +676,11 @@ void PartCommands::onCircularPattern() {
     const auto repeatable = repeatableFeatures(part().featureTree());
     auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
+    const auto chosen = checkedTargets(targets, repeatable, part().featureTree());
+    if (!chosen) {
+        m_host.showStatus(tr("%1 not added: a feature it repeats is gone").arg(verb));
+        return;
+    }
 
     // A full turn spaces the instances evenly around it; a partial one puts
     // the first and last at its ends.
@@ -642,7 +689,7 @@ void PartCommands::onCircularPattern() {
     const double step = degrees >= 360.0 ? 360.0 / n : degrees / (n - 1);
     auto pattern = doc::PatternFeature::makeCircular(math::Vec3::Zero, chosenDirection(axis),
                                                      step * std::numbers::pi / 180.0, n);
-    pattern->setTargets(checkedTargets(targets, repeatable));
+    pattern->setTargets(*chosen);
     m_host.addFeature(std::move(pattern), verb);
 }
 
@@ -678,11 +725,16 @@ void PartCommands::onMirror() {
     const auto mirrorable = repeatableFeatures(part().featureTree());
     auto* targets = targetList(form, mirrorable, tr("Mirror only (none: the whole part):"));
     if (!form.exec()) return;
+    const auto chosen = checkedTargets(targets, mirrorable, part().featureTree());
+    if (!chosen) {
+        m_host.showStatus(tr("%1 not added: a feature it mirrors is gone").arg(verb));
+        return;
+    }
 
     const Plane& plane = planes.at(static_cast<size_t>(std::max(which->currentIndex(), 0)));
     auto mirror = doc::MirrorFeature::make(plane.point, plane.normal);
     if (!plane.face.empty()) mirror->setReference("planeFace", plane.face);
-    mirror->setTargets(checkedTargets(targets, mirrorable));
+    mirror->setTargets(*chosen);
     m_host.addFeature(std::move(mirror), verb);
 }
 

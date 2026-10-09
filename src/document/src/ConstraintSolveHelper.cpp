@@ -2,8 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
-
-#include "horizon/constraint/ParameterTable.h"
+#include <exception>
 
 namespace hz::doc {
 
@@ -39,8 +38,9 @@ ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
 
     // Build parameter table from entities referenced by constraints.
     auto paramTable = cstr::ParameterTable::buildFromEntities(entities, csys);
+    const cstr::ConstraintSystem constraints = solvable(paramTable, csys);
 
-    if (paramTable.parameterCount() == 0) {
+    if (paramTable.parameterCount() == 0 || constraints.empty()) {
         result.success = true;
         result.solveResult.status = cstr::SolveStatus::NoConstraints;
         return result;
@@ -48,9 +48,18 @@ ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
 
     // Run the solver. It works on the table alone: the entities are
     // untouched until it has succeeded, so a failure has nothing to undo.
+    // A constraint that does not fit its entity (a line's on a circle, from
+    // a damaged file) fails it: thrown, it left the command that solved
+    // half done.
     const Eigen::VectorXd before = paramTable.values();
     cstr::SketchSolver solver;
-    result.solveResult = solver.solve(paramTable, csys);
+    try {
+        result.solveResult = solver.solve(paramTable, constraints);
+    } catch (const std::exception& e) {
+        result.solveResult = {};
+        result.solveResult.status = cstr::SolveStatus::Inconsistent;
+        result.solveResult.message = e.what();
+    }
     if (!isSolveSuccess(result.solveResult.status)) {
         result.success = false;
         return result;
@@ -79,6 +88,18 @@ ConstraintSolveHelper::SolveAndApplyResult ConstraintSolveHelper::solveAndApply(
     result.success = true;
     result.snapshots = std::move(snapshots);
     return result;
+}
+
+cstr::ConstraintSystem ConstraintSolveHelper::solvable(const cstr::ParameterTable& table,
+                                                       const cstr::ConstraintSystem& csys) {
+    cstr::ConstraintSystem kept;
+    for (const auto& constraint : csys.constraints()) {
+        const auto ids = constraint->referencedEntityIds();
+        const bool whole = std::all_of(ids.begin(), ids.end(),
+                                       [&table](uint64_t id) { return table.hasEntity(id); });
+        if (whole) kept.addConstraint(constraint);
+    }
+    return kept;
 }
 
 std::unique_ptr<ApplyConstraintSolveCommand> ConstraintSolveHelper::solveAndCreateCommand(

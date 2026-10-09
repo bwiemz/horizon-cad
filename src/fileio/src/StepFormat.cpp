@@ -1694,6 +1694,18 @@ private:
         return true;
     }
 
+    /// A B-spline's degree from the file, when it is a whole number an int
+    /// holds; 0 otherwise, which no B-spline has. A real cast to int out of
+    /// its range, as a degree of 1E300, is undefined behaviour.
+    static int degreeFrom(const StepValue& value) {
+        const double d = value.num;
+        if (value.kind != StepValue::Real || !(d >= 0.0 && d <= std::numeric_limits<int>::max()) ||
+            d != std::floor(d)) {
+            return 0;
+        }
+        return static_cast<int>(d);
+    }
+
     static std::vector<double> expandKnots(const StepList& mults, const StepList& knots) {
         // Multiplicities come straight from the file — bound them before
         // allocating, or a single absurd value drives an OOM.
@@ -1725,7 +1737,7 @@ private:
             // Complex instance: B_SPLINE_CURVE(degree, cps, ...) +
             // B_SPLINE_CURVE_WITH_KNOTS(mults, knots, spec).
             if (core->size() < 2 || !(*core)[1].isList()) return nullptr;
-            degree = static_cast<int>((*core)[0].num);
+            degree = degreeFrom((*core)[0]);
             cpList = (*core)[1].items.get();
             if (simple->size() < 2 || !(*simple)[0].isList() || !(*simple)[1].isList()) {
                 return nullptr;
@@ -1738,7 +1750,7 @@ private:
                 !(*simple)[7].isList()) {
                 return nullptr;
             }
-            degree = static_cast<int>((*simple)[1].num);
+            degree = degreeFrom((*simple)[1]);
             cpList = (*simple)[2].items.get();
             multsL = (*simple)[6].items.get();
             knotsL = (*simple)[7].items.get();
@@ -1779,8 +1791,8 @@ private:
 
         if (core != nullptr && simple != nullptr) {
             if (core->size() < 3 || !(*core)[2].isList()) return nullptr;
-            degU = static_cast<int>((*core)[0].num);
-            degV = static_cast<int>((*core)[1].num);
+            degU = degreeFrom((*core)[0]);
+            degV = degreeFrom((*core)[1]);
             net = (*core)[2].items.get();
             if (simple->size() < 4 || !(*simple)[0].isList() || !(*simple)[1].isList() ||
                 !(*simple)[2].isList() || !(*simple)[3].isList()) {
@@ -1794,8 +1806,8 @@ private:
             // ('', degU, degV, net, form, uClosed, vClosed, selfint,
             //  multsU, multsV, knotsU, knotsV, spec).
             if (simple->size() < 12 || !(*simple)[3].isList()) return nullptr;
-            degU = static_cast<int>((*simple)[1].num);
-            degV = static_cast<int>((*simple)[2].num);
+            degU = degreeFrom((*simple)[1]);
+            degV = degreeFrom((*simple)[2]);
             net = (*simple)[3].items.get();
             if (!(*simple)[8].isList() || !(*simple)[9].isList() || !(*simple)[10].isList() ||
                 !(*simple)[11].isList()) {

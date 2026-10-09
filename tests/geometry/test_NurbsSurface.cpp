@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <stdexcept>
+#include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -916,4 +918,61 @@ TEST(NurbsSurfaceTest, APointProjectsToItsFoot) {
     const Vec3 nearPole = Vec3(0.001, 0.002, 1.0).normalized();
     const auto [su, sv] = sphere.project(nearPole * 1.01, 0.3, sphere.vMax() - 0.01);
     EXPECT_LT((sphere.evaluate(su, sv) - nearPole).length(), 1e-9);
+}
+
+// ===========================================================================
+// Exact normals; refused inputs; a tolerance too fine for an int
+// ===========================================================================
+
+// A cylinder's normal is radial at every point, edges and seam included, to
+// rounding: derivativeU and derivativeV differenced evaluate() 1e-7 apart,
+// so a normal was good to about 1e-7 in direction (and taken from one side
+// at an edge), the size of what decides whether a face is flat.
+TEST(NurbsSurfaceTest, ACylindersNormalIsRadialEverywhere) {
+    const auto cyl = NurbsSurface::makeCylinder({0, 0, 0}, {0, 0, 1}, 5.0, 10.0);
+    for (int i = 0; i <= 8; ++i) {
+        for (int j = 0; j <= 4; ++j) {
+            const double u = cyl.uMin() + (cyl.uMax() - cyl.uMin()) * i / 8.0;
+            const double v = cyl.vMin() + (cyl.vMax() - cyl.vMin()) * j / 4.0;
+            const Vec3 p = cyl.evaluate(u, v);
+            const Vec3 radial = Vec3(p.x, p.y, 0.0).normalized();
+            const Vec3 n = cyl.normal(u, v);
+            EXPECT_NEAR(std::abs(n.dot(radial)), 1.0, 1e-13) << u << ", " << v;
+            const SurfacePoint sp = cyl.evaluateWithDerivatives(u, v);
+            EXPECT_NEAR((cyl.derivativeU(u, v) - sp.du).length(), 0.0, 1e-12);
+            EXPECT_NEAR((cyl.derivativeV(u, v) - sp.dv).length(), 0.0, 1e-12);
+        }
+    }
+}
+
+TEST(NurbsSurfaceTest, WeightsThatDoNotFitAreRefused) {
+    const std::vector<std::vector<Vec3>> pts = {
+        {{0, 0, 0}, {0, 1, 0}}, {{1, 0, 0}, {1, 1, 0}}, {{2, 0, 0}, {2, 1, 0}}};
+    const auto knotsU = clampedKnots(3, 1);
+    const auto knotsV = clampedKnots(2, 1);
+    // Two rows of weights for three rows of points read past the end.
+    EXPECT_THROW(NurbsSurface(pts, {{1, 1}, {1, 1}}, knotsU, knotsV, 1, 1), std::invalid_argument);
+    EXPECT_THROW(NurbsSurface(pts, {{1, 1}, {1, 0}, {1, 1}}, knotsU, knotsV, 1, 1),
+                 std::invalid_argument)
+        << "a zero weight";
+    EXPECT_THROW(NurbsSurface(pts, {{1, 1}, {1, -2}, {1, 1}}, knotsU, knotsV, 1, 1),
+                 std::invalid_argument)
+        << "a negative weight";
+    EXPECT_THROW(NurbsSurface(pts, {{1, 1}, {1, 1}, {1, 1}}, {0, 0, 1, 0.5, 1}, knotsV, 1, 1),
+                 std::invalid_argument)
+        << "knots that go back";
+    EXPECT_NO_THROW(NurbsSurface(pts, {{1, 1}, {1, 1}, {1, 1}}, knotsU, knotsV, 1, 1));
+}
+
+// 10 / tolerance for a tolerance of 0, or under about 5e-9, is past an int;
+// converting it was undefined, and on x86 the finest tolerance gave the
+// coarsest mesh. The finest asked for is the finest there is.
+TEST(NurbsSurfaceTest, AVeryFineToleranceGivesTheFinestMesh) {
+    const auto dome =
+        NurbsSurface::makeSphereOctant({0, 0, 0}, 1.0, {1, 0, 0}, {0, 1, 0}, {0, 0, 1});
+    const size_t finest = dome.tessellate(0.05).positions.size();
+    EXPECT_EQ(finest, size_t{201 * 201 * 3});
+    for (const double tol : {1e-9, 0.0, -1.0, 1e-300}) {
+        EXPECT_EQ(dome.tessellate(tol).positions.size(), finest) << tol;
+    }
 }

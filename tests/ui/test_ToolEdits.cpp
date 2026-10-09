@@ -180,6 +180,40 @@ TEST(ToolEditsTest, AnotherToolMidDragPutsTheDragBack) {
     EXPECT_TRUE(all<hz::draft::DraftPolyline>(w).empty()) << "nothing else to undo first";
 }
 
+// Undo or redo in the middle of a drag puts the drag back first, as another
+// tool chosen does. The grip's release recorded a step from the state before
+// the undo: it put back what was undone, and threw away what could be
+// redone.
+TEST(ToolEditsTest, UndoMidDragPutsTheDragBackFirst) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 0));
+    drive.move(Vec2(10, 0));
+    drive.click(Vec2(10, 0));
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 20));
+    drive.move(Vec2(10, 20));
+    drive.click(Vec2(10, 20));
+    ASSERT_EQ(all<hz::draft::DraftLine>(w).size(), 2u);
+
+    trigger(w, "tool_select");
+    drive.click(Vec2(5, 0));
+    drive.press(Vec2(10, 0));
+    drive.dragTo(Vec2(14, 4));
+    ASSERT_TRUE(near(all<hz::draft::DraftLine>(w)[0]->end(), Vec2(14, 4))) << "being dragged";
+    trigger(w, "action_undo");
+    drive.releaseAt(drive.viewport().worldToScreen(Vec2(14, 4)));
+
+    auto lines = all<hz::draft::DraftLine>(w);
+    ASSERT_EQ(lines.size(), 1u) << "the second line undone";
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(10, 0))) << "and the drag put back";
+    trigger(w, "action_redo");
+    lines = all<hz::draft::DraftLine>(w);
+    ASSERT_EQ(lines.size(), 2u) << "still there to redo";
+    EXPECT_TRUE(near(lines[0]->end(), Vec2(10, 0)));
+}
+
 TEST(ToolEditsTest, InsertBlockCanBeStartedAgainWhileItIsActive) {
     MainWindow w;
     auto bolt = std::make_shared<hz::draft::BlockDefinition>();

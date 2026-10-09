@@ -223,9 +223,12 @@ std::unique_ptr<topo::Solid> Sweep::execute(
     }
 
     // A path that crosses itself, or turns tightly enough elsewhere, can still
-    // sew into a shell whose loops are not what the rings describe.  Refuse it
-    // rather than return it.
-    if (!GeometryValidator::check(*solid).ok()) {
+    // sew into a shell whose loops are not what the rings describe, or whose
+    // faces pass through each other far from any one turn.  Refuse it rather
+    // than return it.
+    if (!GeometryValidator::check(*solid, GeometryValidator::kDefaultTol,
+                                  GeometryValidator::Scope::FailingOnly)
+             .ok()) {
         return fail("the path crosses itself or turns too tightly: the shape runs into itself");
     }
 

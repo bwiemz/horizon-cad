@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QInputDialog>
 #include <QTimer>
+#include <clocale>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -19,9 +20,13 @@
 #include "UiTestSupport.h"
 #include "horizon/constraint/Constraint.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/UndoStack.h"
+#include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftAngularDimension.h"
 #include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEllipse.h"
 #include "horizon/drafting/DraftHatch.h"
 #include "horizon/drafting/DraftLeader.h"
 #include "horizon/drafting/DraftLine.h"
@@ -133,6 +138,11 @@ void select(MainWindow& w, ToolDriver& drive, const std::vector<Vec2>& at) {
                       first ? Qt::NoModifier : Qt::ShiftModifier);
         first = false;
     }
+}
+
+/// A point of @p line for a constraint: its start (0) or its end (1).
+hz::cstr::GeometryRef endOf(const std::shared_ptr<DraftLine>& line, int end) {
+    return {line->id(), hz::cstr::FeatureType::Point, end};
 }
 
 /// Answers the next text dialog with @p text.
@@ -265,6 +275,86 @@ TEST(DraftingToolsTest, ATangentOrEqualRefusesAPairItCannotHold) {
     EXPECT_EQ(prompt().find("two lines"), std::string::npos) << "the refusal is gone";
     EXPECT_EQ(containedExceptions(), contained) << "nothing thrown out of a click";
     EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
+}
+
+// Trim takes a line's constraints with it, in its step. Left behind, the
+// joint named a line that was gone: the next Move threw from its solve,
+// mid-command, and stayed moved with no step to undo it.
+TEST(DraftingToolsTest, ATrimTakesItsLinesConstraintsAndAMoveAfterIsAStep) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto first = addLine(w, Vec2(0, 0), Vec2(10, 0));
+    auto second = addLine(w, Vec2(10, 0), Vec2(10, 10));
+    addLine(w, Vec2(3, -5), Vec2(3, 5));  // to trim at
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.constraintSystem().addConstraint(
+        std::make_shared<hz::cstr::CoincidentConstraint>(endOf(first, 1), endOf(second, 0)));
+
+    trigger(w, "tool_trim");
+    drive.click(Vec2(6.5, 0));
+    ASSERT_EQ(doc.draftDocument().findEntity(first->id()), nullptr) << "trimmed";
+    EXPECT_TRUE(doc.constraintSystem().empty()) << "the joint went with the line";
+
+    select(w, drive, {Vec2(10, 5)});
+    trigger(w, "tool_move");
+    const auto steps = doc.undoStack().undoCount();
+    drive.drag(Vec2(10, 5), Vec2(13, 5));
+    EXPECT_TRUE(near(second->start(), Vec2(13, 0)));
+    EXPECT_EQ(doc.undoStack().undoCount(), steps + 1) << "the move is a step";
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(near(second->start(), Vec2(10, 0)));
+    trigger(w, "action_undo");
+    EXPECT_NE(doc.draftDocument().findEntity(first->id()), nullptr);
+    EXPECT_EQ(doc.constraintSystem().constraints().size(), 1u) << "back with the line";
+}
+
+// Stretch on lines joined and held by constraints is one solve after the
+// stretch, and undoes and redoes as one. It solved after each line in turn,
+// and undo left the second line stretched.
+TEST(DraftingToolsTest, AStretchOfConstrainedLinesUndoesAndRedoesWhole) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    auto first = addLine(w, Vec2(0, 0), Vec2(10, 0));
+    auto second = addLine(w, Vec2(10, 0), Vec2(10, 10));
+    auto& constraints = w.activeDocument()->constraintSystem();
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::CoincidentConstraint>(endOf(first, 1), endOf(second, 0)));
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::DistanceConstraint>(endOf(first, 0), endOf(first, 1), 10.0));
+    constraints.addConstraint(
+        std::make_shared<hz::cstr::FixedConstraint>(endOf(first, 0), Vec2(0, 0)));
+
+    trigger(w, "tool_stretch");
+    drive.click(Vec2(8, -2));  // a window round the corner
+    drive.move(Vec2(12, 2));
+    drive.click(Vec2(12, 2));
+    drive.click(Vec2(10, 0));  // from the corner
+    drive.move(Vec2(13, 4));
+    drive.click(Vec2(13, 4));  // to here
+
+    const auto lineAt = [&w](size_t i) { return all<DraftLine>(w)[i]; };
+    const auto holds = [&lineAt] {
+        const DraftLine* a = lineAt(0);
+        const DraftLine* b = lineAt(1);
+        return (a->end() - b->start()).length() < 1e-6 &&
+               std::abs((a->end() - a->start()).length() - 10.0) < 1e-6 &&
+               a->start().length() < 1e-6;
+    };
+    ASSERT_EQ(all<DraftLine>(w).size(), 2u);
+    EXPECT_TRUE(holds()) << "solved once stretched";
+    EXPECT_FALSE(near(lineAt(1)->start(), Vec2(10, 0))) << "and stretched";
+    const Vec2 corner = lineAt(1)->start();
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(near(lineAt(0)->end(), Vec2(10, 0)));
+    EXPECT_TRUE(near(lineAt(1)->start(), Vec2(10, 0))) << "both lines back";
+    EXPECT_TRUE(near(lineAt(1)->end(), Vec2(10, 10)));
+    trigger(w, "action_redo");
+    EXPECT_TRUE(holds()) << "redone as solved";
+    EXPECT_TRUE((lineAt(1)->start() - corner).length() < 1e-9);
 }
 
 // -- Drawing tools -------------------------------------------------------------
@@ -487,6 +577,30 @@ TEST(DraftingToolsTest, OffsetCopiesThroughTheCursor) {
     EXPECT_EQ(all<DraftLine>(w).size(), 2u);
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftLine>(w).size(), 3u);
+}
+
+// An ellipse is offset outward when the cursor is outside it. The side was
+// taken from the cursor's distance to the centre against the mean of the two
+// radii, so a cursor beside a long thin ellipse counted as inside it, and the
+// offset collapsed it.
+TEST(DraftingToolsTest, OffsetTakesTheSideOfAnEllipseTheCursorIsOn) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    w.activeDocument()->draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftEllipse>(Vec2(0, 0), 10.0, 1.0));
+
+    trigger(w, "tool_offset");
+    drive.click(Vec2(10, 0));
+    drive.move(Vec2(0, 3));
+    drive.click(Vec2(0, 3));
+    const double gap = landed(drive, Vec2(0, 3)).y - 1.0;
+
+    const auto ellipses = all<hz::draft::DraftEllipse>(w);
+    ASSERT_EQ(ellipses.size(), 2u);
+    EXPECT_NEAR(ellipses[1]->semiMajor(), 10.0 + gap, 1e-3) << "outward";
+    EXPECT_NEAR(ellipses[1]->semiMinor(), 1.0 + gap, 1e-3);
+    EXPECT_NEAR(gap, 2.0, 0.01);
 }
 
 // Break splits a line where the line nearest the click crosses it; the pieces
@@ -799,6 +913,33 @@ TEST(DraftingToolsTest, ScaleCopiesTheSelectionFromTheClickedBasePoint) {
     EXPECT_EQ(all<DraftCircle>(w).size(), 2u);
 }
 
+// A typed factor is read with a point in every locale: under de_DE, where
+// the C library's decimal separator is a comma, "1.5" scaled by 1.
+TEST(DraftingToolsTest, ScaleReadsATypedFactorWithAPointInEveryLocale) {
+    const std::string before = std::setlocale(LC_ALL, nullptr);
+    struct Restore {
+        std::string locale;
+        ~Restore() { std::setlocale(LC_ALL, locale.c_str()); }
+    } restore{before};
+    if (std::setlocale(LC_ALL, "de_DE.UTF-8") == nullptr &&
+        std::setlocale(LC_ALL, "de_DE") == nullptr) {
+        GTEST_SKIP() << "no German locale here";
+    }
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    w.activeDocument()->draftDocument().addEntity(std::make_shared<DraftCircle>(Vec2(2, 0), 1.0));
+    select(w, drive, {Vec2(3, 0)});
+
+    trigger(w, "tool_scale");
+    drive.click(Vec2(0, 0));
+    type(drive, "1.5");
+    const auto circles = all<DraftCircle>(w);
+    ASSERT_EQ(circles.size(), 2u);
+    EXPECT_TRUE(near(circles[1]->center(), Vec2(3, 0)));
+    EXPECT_NEAR(circles[1]->radius(), 1.5, 1e-9);
+}
+
 // Move drags the selection by where the drag went, in one undo step.
 TEST(DraftingToolsTest, MoveDragsTheSelection) {
     MainWindow w;
@@ -852,6 +993,63 @@ TEST(DraftingToolsTest, CopyPasteAndDuplicatePlaceCopies) {
     EXPECT_EQ(all<DraftLine>(w).size(), 1u);
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftLine>(w).size(), 2u);
+}
+
+// Pasted into another drawing, what was copied keeps its layers and its
+// blocks: a layer the drawing lacks is added, and so is a block, under its
+// own name, or a new one where the drawing has another block of that name.
+// The copies kept the names of layers the drawing did not have, and could not
+// be picked; a block reference kept the other drawing's block, which the file
+// did not have, and was lost, or bound to another block, when it was read.
+TEST(DraftingToolsTest, PastedIntoAnotherDrawingWhatWasCopiedKeepsItsLayersAndBlocks) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLayer(w, "Walls");
+    addLine(w, Vec2(0, 0), Vec2(4, 0), "Walls");
+    auto door = std::make_shared<hz::draft::BlockDefinition>();
+    door->name = "Door";
+    door->entities.push_back(std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 2)));
+    w.activeDocument()->draftDocument().blockTable().addBlock(door);
+    auto placed = std::make_shared<hz::draft::DraftBlockRef>(door, Vec2(6, 0));
+    w.activeDocument()->draftDocument().addEntity(placed);
+    select(w, drive, {Vec2(2, 0), Vec2(6, 1)});
+    trigger(w, "action_copy");
+
+    // Another drawing, with a Door of its own.
+    trigger(w, "action_new");
+    hz::doc::Document& target = *w.activeDocument();
+    auto other = std::make_shared<hz::draft::BlockDefinition>();
+    other->name = "Door";
+    other->entities.push_back(std::make_shared<DraftCircle>(Vec2(0, 0), 1.0));
+    target.draftDocument().blockTable().addBlock(other);
+    viewFromTop(drive);
+    trigger(w, "action_paste");
+    drive.click(Vec2(20, 20));
+
+    const auto* walls = target.layerManager().getLayer("Walls");
+    ASSERT_NE(walls, nullptr) << "the layer added";
+    const auto pastedLines = all<DraftLine>(w);
+    ASSERT_EQ(pastedLines.size(), 1u);
+    EXPECT_EQ(pastedLines[0]->layer(), "Walls");
+    const hz::draft::DraftBlockRef* pasted = nullptr;
+    for (const auto& e : target.draftDocument().entities()) {
+        if (const auto* ref = dynamic_cast<const hz::draft::DraftBlockRef*>(e.get())) pasted = ref;
+    }
+    ASSERT_NE(pasted, nullptr);
+    const auto& table = target.draftDocument().blockTable();
+    EXPECT_NE(pasted->blockName(), "Door") << "the drawing's own Door is another block";
+    EXPECT_EQ(table.findBlock(pasted->blockName()), pasted->definition()) << "the drawing's";
+    EXPECT_NE(pasted->definition(), door) << "a copy, not the other drawing's";
+    ASSERT_EQ(pasted->definition()->entities.size(), 1u);
+    EXPECT_NE(dynamic_cast<const DraftLine*>(pasted->definition()->entities[0].get()), nullptr)
+        << "what was copied";
+    EXPECT_EQ(table.findBlock("Door"), other) << "and the drawing's own Door kept";
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(target.layerManager().getLayer("Walls"), nullptr) << "one step, undone whole";
+    EXPECT_EQ(table.size(), 1u);
+    EXPECT_TRUE(target.draftDocument().entities().empty());
 }
 
 // Fillet rounds the corner of two lines with an arc of the typed radius,
@@ -921,6 +1119,76 @@ TEST(DraftingToolsTest, ChamferCutsTheCornerOfTwoLines) {
     EXPECT_TRUE(near(all<DraftLine>(w)[0]->start(), Vec2(0, 0)));
     trigger(w, "action_redo");
     EXPECT_EQ(all<DraftLine>(w).size(), 3u);
+}
+
+// Of two lines that cross, Fillet keeps the parts clicked: the arc goes in the
+// corner between them, and each line is cut back to it from the other side.
+// It kept the part each line had nearer the crossing instead, so the lines
+// ran away from the arc it drew.
+TEST(DraftingToolsTest, FilletKeepsThePartsOfCrossingLinesThatWereClicked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLine(w, Vec2(-10, 0), Vec2(4, 0));
+    addLine(w, Vec2(0, -10), Vec2(0, 4));
+
+    trigger(w, "tool_fillet");
+    drive.click(Vec2(2.5, 0));
+    drive.click(Vec2(0, 2.5));
+
+    auto lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(1, 0)) && near(lines[0]->end(), Vec2(4, 0)))
+        << "(" << lines[0]->start().x << ", " << lines[0]->start().y << ") - (" << lines[0]->end().x
+        << ", " << lines[0]->end().y << ")";
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    auto arcs = all<DraftArc>(w);
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_TRUE(near(arcs[0]->center(), Vec2(1, 1)));
+
+    // The other way: the long parts, the arc in the opposite corner.
+    trigger(w, "action_undo");
+    trigger(w, "tool_fillet");
+    drive.click(Vec2(-5, 0));
+    drive.click(Vec2(0, -5));
+    lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(-10, 0)) && near(lines[0]->end(), Vec2(-1, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, -10)) && near(lines[1]->end(), Vec2(0, -1)));
+    arcs = all<DraftArc>(w);
+    ASSERT_EQ(arcs.size(), 1u);
+    EXPECT_TRUE(near(arcs[0]->center(), Vec2(-1, -1)));
+}
+
+// Chamfer too: the cut joins the parts clicked. It went by which end of each
+// line was nearer the crossing, whatever was clicked.
+TEST(DraftingToolsTest, ChamferKeepsThePartsOfCrossingLinesThatWereClicked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    viewFromTop(drive);
+    addLine(w, Vec2(-10, 0), Vec2(4, 0));
+    addLine(w, Vec2(0, -10), Vec2(0, 4));
+
+    trigger(w, "tool_chamfer");
+    drive.click(Vec2(2.5, 0));
+    drive.click(Vec2(0, 2.5));
+
+    auto lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(1, 0)) && near(lines[0]->end(), Vec2(4, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    EXPECT_TRUE(near(lines[2]->start(), Vec2(1, 0)) && near(lines[2]->end(), Vec2(0, 1)))
+        << "the cut";
+
+    trigger(w, "action_undo");
+    trigger(w, "tool_chamfer");
+    drive.click(Vec2(-5, 0));
+    drive.click(Vec2(0, 2.5));
+    lines = all<DraftLine>(w);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_TRUE(near(lines[0]->start(), Vec2(-10, 0)) && near(lines[0]->end(), Vec2(-1, 0)));
+    EXPECT_TRUE(near(lines[1]->start(), Vec2(0, 1)) && near(lines[1]->end(), Vec2(0, 4)));
+    EXPECT_TRUE(near(lines[2]->start(), Vec2(-1, 0)) && near(lines[2]->end(), Vec2(0, 1)));
 }
 
 // -- Dimensions ----------------------------------------------------------------

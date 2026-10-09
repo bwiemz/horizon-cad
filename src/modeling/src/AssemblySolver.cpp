@@ -118,9 +118,10 @@ std::optional<Equations> equationsFor(const SolverMate& mate, const MateFrame& f
     switch (mate.type) {
         case MateType::Coincident:
             if (planeLike) {
-                // Normals parallel up to sign (extracted surface normals carry
-                // no guaranteed orientation) + point on plane. The sign-agnostic
-                // cross form also avoids the saddle at a 180° misalignment.
+                // Normals parallel up to sign (a datum plane has no outside,
+                // and a face's frame faces out of its part) + point on plane.
+                // The sign-agnostic cross form also avoids the saddle at a 180°
+                // misalignment.
                 push(eq.rows, cross);
                 eq.rows.push_back(d.dot(a->direction));
                 eq.rank = 3;
@@ -205,7 +206,8 @@ std::optional<Equations> equationsFor(const SolverMate& mate, const MateFrame& f
             return eq;
         case MateType::Tangent:
             // Plane (a) tangent to cylinder (b): axis parallel to the plane,
-            // axis at distance radius from the plane.
+            // axis at distance radius from the plane, on the side it faces
+            // (out of a face's part).
             if (is(Role::Plane, Role::Axis) && b->kind == MateFrameKind::Cylindrical) {
                 eq.rows.push_back(a->direction.dot(b->direction));
                 eq.rows.push_back(d.dot(a->direction) - b->radius);

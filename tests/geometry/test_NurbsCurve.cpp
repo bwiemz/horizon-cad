@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <vector>
 
+#include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
@@ -460,4 +464,124 @@ TEST(NurbsCurveTest, ASegmentIsTheCurveOnItsSpan) {
     const auto fromKnot = cubic.segment(0.3, 1.0);
     EXPECT_LT((fromKnot.evaluate(0.3) - cubic.evaluate(0.3)).length(), 1e-12);
     EXPECT_LT((fromKnot.evaluate(0.8) - cubic.evaluate(0.8)).length(), 1e-9);
+}
+
+// ===========================================================================
+// Exact derivatives (they were finite differences, clamped at the ends)
+// ===========================================================================
+
+// At an end of the domain the second difference's sample beyond it was
+// clamped onto the end, and a straight line's second derivative came out a
+// million; Newton's step in closestPoint then pointed out of the curve, and a
+// point within 2.5% of either end was found at the end.
+TEST(NurbsCurveTest, ALinesSecondDerivativeIsZeroAtItsEnds) {
+    NurbsCurve line({{0, 0, 0}, {10, 0, 0}}, {1.0, 1.0}, bezierKnots(2, 1), 1);
+    for (const double t : {0.0, 0.5, 1.0}) {
+        EXPECT_NEAR((line.derivative(t, 1) - Vec3(10, 0, 0)).length(), 0.0, 1e-12) << t;
+        EXPECT_NEAR(line.derivative(t, 2).length(), 0.0, 1e-12) << t;
+        EXPECT_NEAR(line.derivative(t, 3).length(), 0.0, 1e-12) << t;
+    }
+    EXPECT_NEAR(line.closestPoint(line.evaluate(0.02)), 0.02, 1e-9);
+    EXPECT_NEAR(line.closestPoint(line.evaluate(0.98)), 0.98, 1e-9);
+}
+
+// A polynomial curve's derivatives, against the polynomial's: the quadratic
+// Bezier (0,0) (1,2) (2,0) is C(t) = (2t, 4t(1 - t)).
+TEST(NurbsCurveTest, DerivativesAreThePolynomialsEverywhere) {
+    NurbsCurve arch({{0, 0, 0}, {1, 2, 0}, {2, 0, 0}}, {1.0, 1.0, 1.0}, bezierKnots(3, 2), 2);
+    for (const double t : {0.0, 0.01, 0.3, 0.77, 0.99, 1.0}) {
+        EXPECT_NEAR((arch.derivative(t, 1) - Vec3(2, 4 - 8 * t, 0)).length(), 0.0, 1e-12) << t;
+        EXPECT_NEAR((arch.derivative(t, 2) - Vec3(0, -8, 0)).length(), 0.0, 1e-12) << t;
+        EXPECT_NEAR(arch.derivative(t, 3).length(), 0.0, 1e-12) << t;
+        EXPECT_NEAR((arch.derivative(t, 0) - arch.evaluate(t)).length(), 0.0, 1e-15) << t;
+    }
+    for (const double t : {0.01, 0.02, 0.5, 0.98, 0.99}) {
+        EXPECT_NEAR(arch.closestPoint(arch.evaluate(t)), t, 1e-8) << t;
+    }
+}
+
+// A rational curve's, through the quotient rule: a circle's first derivative
+// is square to its radius, and its second, along the circle's own
+// parameterisation, satisfies |C'|^2 + (C - c) . C'' = 0 (the derivative of
+// (C - c) . C' = 0) at every point, ends and knots included.
+TEST(NurbsCurveTest, ACirclesDerivativesAreExactEverywhere) {
+    const Vec3 c(1, 2, 3);
+    const NurbsCurve circle = NurbsCurve::makeCircle(c, 10.0);
+    for (int i = 0; i <= 40; ++i) {
+        const double t = circle.tMin() + (circle.tMax() - circle.tMin()) * i / 40.0;
+        const Vec3 r = circle.evaluate(t) - c;
+        const Vec3 d1 = circle.derivative(t, 1);
+        const Vec3 d2 = circle.derivative(t, 2);
+        EXPECT_NEAR(r.dot(d1), 0.0, 1e-9 * d1.length() * 10.0) << t;
+        EXPECT_NEAR(d1.dot(d1) + r.dot(d2), 0.0, 1e-9 * d1.dot(d1)) << t;
+    }
+    // Against a central difference inside a span.
+    const double t = 0.1;
+    const double h = 1e-5;
+    const Vec3 fd = (circle.evaluate(t + h) - circle.evaluate(t - h)) * (1.0 / (2 * h));
+    EXPECT_NEAR((circle.derivative(t, 1) - fd).length(), 0.0, 1e-5 * fd.length());
+    EXPECT_NEAR(circle.closestPoint(circle.evaluate(0.01)), 0.01, 1e-8);
+    EXPECT_NEAR(circle.closestPoint(circle.evaluate(0.995)), 0.995, 1e-8);
+}
+
+// Knots closer than a length tolerance are knots still: against 1e-7 the
+// De Boor step took them for one, and the curve evaluated to its first point
+// between them.
+TEST(NurbsCurveTest, CloseKnotsAreStillTwoKnots) {
+    NurbsCurve line({{0, 0, 0}, {10, 0, 0}}, {1.0, 1.0}, {0.0, 0.0, 1e-8, 1e-8}, 1);
+    EXPECT_NEAR((line.evaluate(5e-9) - Vec3(5, 0, 0)).length(), 0.0, 1e-9);
+    EXPECT_NEAR((line.derivative(5e-9, 1) - Vec3(1e9, 0, 0)).length(), 0.0, 1e-3);
+}
+
+TEST(NurbsCurveTest, AWeightOfZeroOrLessIsRefused) {
+    for (const double w : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::infinity()}) {
+        EXPECT_THROW(NurbsCurve({{0, 0, 0}, {10, 0, 0}}, {w, 1.0}, bezierKnots(2, 1), 1),
+                     std::invalid_argument)
+            << w;
+    }
+    EXPECT_THROW(NurbsCurve({{0, 0, 0}, {10, 0, 0}}, {1.0, 1.0}, {0.0, 1.0, 0.5, 1.0}, 1),
+                 std::invalid_argument)
+        << "knots that go back";
+    EXPECT_THROW(NurbsCurve({{0, 0, 0}, {10, 0, 0}}, {1.0, 1.0}, {1.0, 1.0, 1.0, 1.0}, 1),
+                 std::invalid_argument)
+        << "no domain";
+    EXPECT_THROW(NurbsCurve({{0, 0, 0}, {std::numeric_limits<double>::quiet_NaN(), 0, 0}},
+                            {1.0, 1.0}, bezierKnots(2, 1), 1),
+                 std::invalid_argument);
+}
+
+// A negative start is a parameter like any other: -1 was the "from the
+// start" default, so a curve on [-1, 1] was measured from its start
+// whatever was asked.
+TEST(NurbsCurveTest, ParameterAtLengthFromANegativeStart) {
+    NurbsCurve line({{0, 0, 0}, {10, 0, 0}}, {1.0, 1.0}, {-1.0, -1.0, 1.0, 1.0}, 1);
+    EXPECT_NEAR(line.parameterAtLength(2.5, -0.5), 0.0, 1e-6);
+    EXPECT_NEAR(line.parameterAtLength(2.5), -0.5, 1e-6) << "from the start by default";
+}
+
+TEST(NurbsCurveTest, AnArcOfAnyFiniteAngleIsMadeQuickly) {
+    const NurbsCurve arc = NurbsCurve::makeArc(Vec3(0, 0, 0), 1.0, 0.0, 1e20);
+    EXPECT_NEAR(arc.evaluate(arc.tMin()).length(), 1.0, 1e-12);
+    EXPECT_THROW(
+        NurbsCurve::makeArc(Vec3(0, 0, 0), 1.0, 0.0, std::numeric_limits<double>::infinity()),
+        std::invalid_argument);
+    EXPECT_THROW(
+        NurbsCurve::makeArc(Vec3(0, 0, 0), 1.0, std::numeric_limits<double>::quiet_NaN(), 1.0),
+        std::invalid_argument);
+}
+
+// Order 0 or less is the point itself, as for a NURBS curve: Circle2D cycled
+// order 0 back to order 0 and recursed until the stack ran out.
+TEST(Circle2DTest, DerivativeOfOrderZeroIsThePoint) {
+    const Circle2D circle(Vec2(1, 2), 3.0);
+    for (const int order : {0, -1, -5}) {
+        const Vec2 p = circle.derivative(0.7, order);
+        EXPECT_NEAR(p.x, circle.evaluate(0.7).x, 1e-15) << order;
+        EXPECT_NEAR(p.y, circle.evaluate(0.7).y, 1e-15) << order;
+    }
+    const Vec2 fifth = circle.derivative(0.7, 5);
+    const Vec2 first = circle.derivative(0.7, 1);
+    EXPECT_NEAR(fifth.x, first.x, 1e-15);
+    EXPECT_NEAR(fifth.y, first.y, 1e-15);
 }

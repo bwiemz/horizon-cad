@@ -246,11 +246,19 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
                 return failWith(reason, "there is no part before it to go through");
             }
             // How far the part reaches along the direction, from the
-            // sketch, each way, and a little past it at each end.
+            // sketch, each way, and a little past it at each end: how far
+            // the profile travels to reach each corner's height above the
+            // sketch. (Measured straight along a slanted direction, a part
+            // above the sketch but behind it sideways was not in front.)
+            const math::Vec3 n = plane.normal();
+            const double rise = unit.dot(n);  // height gained per length travelled
+            if (std::abs(rise) < 1e-9) {
+                return failWith(reason, "the direction lies in the sketch plane");
+            }
             double lo = std::numeric_limits<double>::infinity();
             double hi = -lo;
             for (const auto& v : context.part->vertices()) {
-                const double along = (v.point - plane.origin()).dot(unit);
+                const double along = (v.point - plane.origin()).dot(n) / rise;
                 lo = std::min(lo, along);
                 hi = std::max(hi, along);
             }
@@ -259,10 +267,11 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
                 if (hi <= 1e-9) {
                     return failWith(reason, "the part is not in front of the sketch that way");
                 }
-                return extrude(plane, hi + margin);
+                return extrude(plane, (hi + margin) / direction.length());
             }
             const double back = std::min(lo, 0.0) - margin;
-            return extrude(moved(unit * back), std::max(hi, 0.0) + margin - back);
+            return extrude(moved(unit * back),
+                           (std::max(hi, 0.0) + margin - back) / direction.length());
         }
         case Extent::UpToFace: {
             // Phase 157: as far as a flat face of the part, parallel to the
@@ -728,8 +737,10 @@ int FilletFeature::arcSegments() const {
 std::unique_ptr<topo::Solid> FilletFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                     std::string* reason) const {
     if (!inputSolid) return failWith(reason, "there is no body to fillet");
+    // With a tolerance, each blend is cut for the arc it spans, which is a
+    // quarter turn only at a square edge.
     auto result = model::FilletOp::execute(*inputSolid, m_edgeIds, m_radius, m_featureID,
-                                           arcSegments(), naming());
+                                           arcSegments(), naming(), m_chordTolerance);
     if (!result.solid) {
         return failWith(reason, result.errorMessage.empty() ? "the fillet could not be built"
                                                             : result.errorMessage);
@@ -1360,6 +1371,13 @@ std::optional<size_t> FeatureTree::indexOf(const Feature* feature) const {
     return std::nullopt;
 }
 
+std::optional<size_t> FeatureTree::indexOfId(const std::string& featureId) const {
+    for (size_t i = 0; i < m_features.size(); ++i) {
+        if (m_features[i] && m_features[i]->featureID() == featureId) return i;
+    }
+    return std::nullopt;
+}
+
 void FeatureTree::setRollbackIndex(int index) {
     if (index == m_rollbackIndex) return;
     m_rollbackIndex = index;
@@ -1391,7 +1409,8 @@ namespace {
 /// Why `solid` is not a valid solid, in the user's terms, or empty when it is.
 /// Both kinds of check: the combinatorial ones (every edge between exactly two
 /// faces, closed loops, counts Euler–Poincaré allows) and the geometric ones
-/// (flat faces flat, no boundary crossing itself, a closed skin; see
+/// (flat faces flat, no boundary crossing itself, no face through another, a
+/// closed skin; see
 /// GeometryValidator), at a tolerance that grows with the part.
 std::string solidProblem(const topo::Solid& solid) {
     if (!solid.checkManifold()) {
@@ -1407,6 +1426,8 @@ std::string solidProblem(const topo::Solid& solid) {
     const auto issues =
         topo::GeometryValidator::check(solid, tol, topo::GeometryValidator::Scope::FailingOnly);
     if (issues.selfIntersectingLoops > 0) return "a face's boundary crosses itself";
+    if (issues.strayHoles > 0) return "a hole lies outside its face";
+    if (issues.crossingFaces > 0) return "it runs into itself: two of its faces cross";
     if (issues.nonPlanarLoops > 0) return "a flat face is not flat";
     if (issues.openShells > 0) return "its skin is not closed";
     if (issues.degenerateFaces > 0) return "a face has no area";

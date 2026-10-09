@@ -367,13 +367,18 @@ ShellResult Shell::executeOffset(const Solid& solid, double thickness,
     }
     // Its linkage is the part's, so the manifold check is no check here: it
     // is the geometry that can go wrong. A loop that crosses itself, or leaves
-    // its plane, is caught; two faces crossing each other is not (no check
-    // in the kernel sees that yet), past the local checks above.
+    // its plane, is caught, and so are two faces crossing each other, past
+    // the local checks above.
     auto hollow = SolidSewer::sew(cavity);
     if (!hollow || !hollow->checkManifold()) {
         return fail("the cavity could not be made from the part's faces");
     }
-    if (!topo::GeometryValidator::isGeometricallyValid(*hollow)) {
+    const auto issues = topo::GeometryValidator::check(
+        *hollow, topo::GeometryValidator::kDefaultTol, topo::GeometryValidator::Scope::FailingOnly);
+    if (issues.crossingFaces > 0) {
+        return fail("the wall is too thick for this part: faces of the cavity run into each other");
+    }
+    if (!issues.ok()) {
         return fail("the wall is too thick for this part: a face of the cavity crosses itself");
     }
     std::string why;

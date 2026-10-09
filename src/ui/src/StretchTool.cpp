@@ -395,20 +395,21 @@ bool StretchTool::mousePressEvent(QMouseEvent* event, const math::Vec2& worldPos
             // The entities are stretched already, from mouseMoveEvent, and
             // stay so: a grip move's first execute takes the state as it
             // finds it (putting the before-states back here undid the
-            // stretch as it was made).
-            auto composite = std::make_unique<doc::CompositeCommand>("Stretch");
-
+            // stretch as it was made). One grip move for them all, solved
+            // once: a solve after each one moved the others, and undo and
+            // redo put back states that no longer held.
+            std::vector<doc::GripMoveCommand::Edit> edits;
             for (auto& se : m_stretchEntities) {
-                for (const auto& entity : doc.entities()) {
-                    if (entity->id() != se.entityId) continue;
-
-                    auto afterClone = entity->clone();
-
-                    auto& cstrSys = m_viewport->document()->activeConstraints();
-                    composite->addCommand(std::make_unique<doc::GripMoveCommand>(
-                        doc, se.entityId, se.beforeClone, afterClone, cstrSys));
-                    break;
+                if (const auto entity = doc.sharedEntity(se.entityId)) {
+                    edits.push_back({se.entityId, se.beforeClone, entity->clone()});
                 }
+            }
+
+            auto composite = std::make_unique<doc::CompositeCommand>("Stretch");
+            if (!edits.empty()) {
+                composite->addCommand(std::make_unique<doc::GripMoveCommand>(
+                    doc, std::move(edits), m_viewport->document()->activeConstraints(),
+                    m_viewport->document()->variableResolver()));
             }
 
             if (!composite->empty()) {

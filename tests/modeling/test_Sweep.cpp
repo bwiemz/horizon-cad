@@ -2,10 +2,13 @@
 
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftRadialDimension.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
@@ -184,6 +187,34 @@ TEST(SweepTest, TurnTighterThanProfileRefused) {
     EXPECT_EQ(Sweep::execute(squareProfile(4.0), xyPlane(), path, "sweep_fold"), nullptr);
 }
 
+// Up, over, down and back across: the last leg passes through the first,
+// though every turn on the way is wide and no face's own boundary crosses
+// itself. The geometric gate looked at each face alone and let it through.
+TEST(SweepTest, PathCrossingItselfFarFromAnyTurnRefused) {
+    std::vector<Vec3> path = {Vec3(0, 0, 0), Vec3(0, 0, 20), Vec3(10, 0, 20), Vec3(10, 0, 10),
+                              Vec3(-10, 0, 10)};
+    std::string why;
+    EXPECT_EQ(Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_cross", 32, 0.0, &why),
+              nullptr);
+    EXPECT_NE(why.find("runs into itself"), std::string::npos) << why;
+
+    // The legs above meet edge on edge (the sections are equal squares, side
+    // by side); going back across at a slant, the edges go through faces.
+    path.back() = Vec3(-10, 1, 10);
+    why.clear();
+    EXPECT_EQ(Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_slant", 32, 0.0, &why),
+              nullptr);
+    EXPECT_NE(why.find("runs into itself"), std::string::npos) << why;
+
+    // Stopping short of the first leg, it is a sound solid.
+    path.back() = Vec3(2, 0, 10);
+    auto solid = Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_short");
+    ASSERT_NE(solid, nullptr);
+    EXPECT_TRUE(GeometryValidator::isGeometricallyValid(*solid))
+        << GeometryValidator::report(*solid);
+    EXPECT_NEAR(volumeOf(*solid), 4.0 * (20.0 + 10.0 + 10.0 + 8.0), 1e-9);
+}
+
 TEST(SweepTest, PathDoublingBackRefused) {
     std::vector<Vec3> path = {Vec3(0, 0, 0), Vec3(0, 0, 10), Vec3(0, 0, 5)};
     EXPECT_EQ(Sweep::execute(squareProfile(2.0), xyPlane(), path, "sweep_back"), nullptr);
@@ -243,4 +274,19 @@ TEST(SweepTest, CircularProfileSweepsAFacetedPipe) {
         << GeometryValidator::report(*solid);
     const double area = 0.5 * 24 * std::sin(2.0 * hz::math::kPi / 24);
     EXPECT_NEAR(volumeOf(*solid), area * 18.0, 1e-9);
+}
+
+// A dimension or a note on the profile's sketch is not part of the profile:
+// a circle with its radius dimensioned sweeps as the circle alone.
+TEST(SweepTest, ADimensionedProfileSweepsAsItsShape) {
+    std::vector<std::shared_ptr<DraftEntity>> circle = {
+        std::make_shared<DraftCircle>(Vec2(0, 0), 1.0),
+        std::make_shared<DraftRadialDimension>(Vec2(0, 0), 1.0, Vec2(2, 2), false),
+        std::make_shared<DraftText>(Vec2(-1, 2), "pipe")};
+    std::vector<Vec3> path = {Vec3(0, 0, 0), Vec3(0, 0, 10)};
+    std::string why;
+    auto solid = Sweep::execute(circle, xyPlane(), path, "pipe", 24, 0.0, &why);
+    ASSERT_NE(solid, nullptr) << why;
+    const double area = 0.5 * 24 * std::sin(2.0 * hz::math::kPi / 24);
+    EXPECT_NEAR(volumeOf(*solid), area * 10.0, 1e-9);
 }

@@ -8,6 +8,7 @@
 #include <QPointF>
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <optional>
 #include <set>
 
@@ -16,6 +17,7 @@
 #include "horizon/constraint/GeometryRef.h"
 #include "horizon/constraint/ParameterTable.h"
 #include "horizon/constraint/SketchSolver.h"
+#include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftArc.h"
@@ -186,7 +188,14 @@ void ViewportRenderer::recomputeDOF(doc::Document* doc) {
 
     auto params = cstr::ParameterTable::buildFromEntities(doc->activeDrawing().entities(), csys);
     cstr::SketchSolver solver;
-    m_dofAnalysis = solver.analyzeDOF(params, csys);
+    // Only what can be solved: a constraint on an entity that is gone, or
+    // one that does not fit its entity, threw out of the paint.
+    try {
+        m_dofAnalysis =
+            solver.analyzeDOF(params, doc::ConstraintSolveHelper::solvable(params, csys));
+    } catch (const std::exception&) {
+        m_dofAnalysis = {};
+    }
     m_dofDirty = false;
 }
 

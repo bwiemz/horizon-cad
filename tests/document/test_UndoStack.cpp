@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <vector>
 
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
@@ -317,4 +318,38 @@ TEST(UndoStackTest, TheOldestStepsGoPastTheLimit) {
     stack.setLimit(0);
     for (int i = 0; i < 10; ++i) stack.push(add(value, 1));
     EXPECT_EQ(stack.undoCount(), 11u) << "no limit";
+}
+
+// What follows a step (the document's: the constraints of what a step took
+// away) is part of it: done after it, undone before it, redone with it, and
+// withdrawn with it.
+TEST(UndoStackTest, AFollowUpIsPartOfItsStep) {
+    int value = 0;
+    int followed = 0;
+    std::vector<int> seen;  // value as the follow-up found it, each time
+    UndoStack stack;
+    stack.setFollowUp([&]() -> std::unique_ptr<Command> {
+        if (value < 10) return nullptr;
+        seen.push_back(value);
+        return add(followed, value);
+    });
+    stack.push(add(value, 1));
+    EXPECT_EQ(followed, 0) << "nothing to follow";
+    auto big = add(value, 10);
+    const Command* step = big.get();
+    stack.push(std::move(big));
+    EXPECT_EQ(followed, 11);
+    EXPECT_EQ(stack.undoCount(), 2u) << "one step";
+
+    stack.undo();
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(followed, 0);
+    stack.redo();
+    EXPECT_EQ(value, 11);
+    EXPECT_EQ(followed, 11);
+    EXPECT_EQ(seen.size(), 1u) << "asked once, when pushed";
+
+    EXPECT_TRUE(stack.withdraw(step)) << "found by the command pushed";
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(followed, 0);
 }

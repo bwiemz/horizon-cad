@@ -28,7 +28,7 @@ enum class MateType {
 
 /// Kind of geometry a mate frame describes.
 enum class MateFrameKind {
-    Planar,       ///< origin = point on plane, direction = plane normal.
+    Planar,       ///< origin = point on plane, direction = plane normal (out of the part).
     Cylindrical,  ///< origin = point on axis, direction = axis, radius set.
     // Phase 160:
     Line,       ///< a straight edge or a datum axis: origin on it, direction along it
@@ -58,9 +58,9 @@ public:
     static const topo::Face* findFace(const topo::Solid& solid, const topo::TopologyID& id);
 
     /// Extract a mate frame from a face (in the part's local coordinates).
-    /// Planar faces yield Planar frames; cylindrical faces yield axis
-    /// frames; spheres and cones (Phase 160) theirs. Returns nullopt for
-    /// unsupported geometry.
+    /// Planar faces yield Planar frames, facing out of the face's solid;
+    /// cylindrical faces yield axis frames; spheres and cones (Phase 160)
+    /// theirs. Returns nullopt for unsupported geometry.
     static std::optional<MateFrame> frameForFace(const topo::Face& face);
 
     /// The frame of the edge named @p edge (a whole edge name,

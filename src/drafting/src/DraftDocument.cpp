@@ -18,6 +18,9 @@ std::uint64_t DraftDocument::Revision::next() {
 
 void DraftDocument::insertEntity(size_t position, std::shared_ptr<DraftEntity> entity) {
     if (!entity) return;
+    // A group it brings (read from a file, into a sketch as into the top
+    // level) is never one nextGroupId() hands out again.
+    if (entity->groupId() != 0) advanceGroupIdCounter(entity->groupId());
     m_revision.bump();
     m_spatialIndex.insert(entity);
     m_byId[entity->id()] = entity;

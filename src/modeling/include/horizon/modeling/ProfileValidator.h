@@ -51,7 +51,9 @@ public:
     ///     with the Rectangle or Polyline tool is a profile like any other;
     ///     `orderedEdges` then holds those segments as DraftLines
     ///   - DraftCircle: always forms a closed loop by itself
-    /// Anything else (an ellipse, a spline, text) is reported by name.
+    /// Text, dimensions, leaders and hatches are notes on the sketch, not its
+    /// shape, and are passed over, as is construction geometry. Anything else
+    /// (an ellipse, a spline) is reported by name.
     ///
     /// @param entities  The profile entities to validate.
     /// @param tolerance Maximum gap between consecutive endpoints.
