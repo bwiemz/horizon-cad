@@ -52,17 +52,52 @@ TopologyID instanceId(const TopologyID& original, int instanceIndex) {
     return original.child("pattern", instanceIndex);
 }
 
+/// Which way a solid's loops are wound, all of them: +1 when they face out of
+/// its material, -1 when in (some builders wind every loop inward: a box
+/// primitive does, a cylinder and the sewer outward), 0 for no faces. Six
+/// times the volume they enclose, about a point of the solid's own (about the
+/// origin, rounding swamped a small part far from it).
+int windingOf(const Solid& solid) {
+    const Vec3* origin = nullptr;
+    double sixVolume = 0.0;
+    const auto loop = [&](const Wire* wire) {
+        if (!wire || !wire->halfEdge || !wire->halfEdge->origin) return;
+        const HalfEdge* start = wire->halfEdge;
+        if (!origin) origin = &start->origin->point;
+        const Vec3 p0 = start->origin->point - *origin;
+        for (const HalfEdge* he = start->next; he && he->next && he->next != start; he = he->next) {
+            if (!he->origin || !he->next->origin) return;
+            sixVolume +=
+                p0.dot((he->origin->point - *origin).cross(he->next->origin->point - *origin));
+        }
+    };
+    for (const auto& face : solid.faces()) {
+        loop(face.outerLoop);
+        for (const Wire* inner : face.innerLoops) loop(inner);
+    }
+    return sixVolume > 0.0 ? 1 : sixVolume < 0.0 ? -1 : 0;
+}
+
 // Deep-clone src — or, given `only`, just those of its shells — into dst with
 // a transform, as a new set of shells. A transform that mirrors (its
 // determinant negative, Phase 162) would turn every loop inside out: each is
 // reversed as it is copied, and each surface with it, so the copy faces out
 // as the original does.
+//
+// With @p outward, the copy is wound facing out, whichever way src is: for a
+// solid gathered from several (collect, append, a pattern's bodies). Every
+// computation that reads a solid's loops (mass properties, the Booleans,
+// which shells are cavities) takes one sign for all of them, so a part of an
+// inward-wound box and an outward-wound cylinder measured the box less the
+// cylinder, and took the cylinder for a cavity in it.
 void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceIndex,
-               const std::vector<const Shell*>* only = nullptr) {
+               const std::vector<const Shell*>* only = nullptr, bool outward = false) {
     const bool mirrors = xform.determinant3() < 0.0;
-    const auto moveSurface = [&xform, mirrors](const geo::NurbsSurface& surface) {
+    // A mirrored copy keeps src's winding (see above), so src says it.
+    const bool flip = mirrors != (outward && windingOf(src) < 0);
+    const auto moveSurface = [&xform, flip](const geo::NurbsSurface& surface) {
         auto moved = transformSurface(surface, xform);
-        return mirrors ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;
+        return flip ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;
     };
     std::unordered_map<const void*, Vertex*> vmap;
     std::unordered_map<const void*, HalfEdge*> hmap;
@@ -170,22 +205,23 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
 
     // Remap all cross-references. (Within one shell of a closed solid every
     // reference stays inside the shell; one that does not is left null.)
-    // Mirrored, each half-edge runs the other way along its edge: from its
-    // old end, its old prev after it. A vertex then leaves by the half-edge
-    // that came into it, and an edge's curve, which runs from its
-    // half-edge's origin, keeps its direction by taking the old twin.
+    // Turned round (mirrored, or wound against dst), each half-edge runs the
+    // other way along its edge: from its old end, its old prev after it. A
+    // vertex then leaves by the half-edge that came into it, and an edge's
+    // curve, which runs from its half-edge's origin, keeps its direction by
+    // taking the old twin.
     for (const auto& v : src.vertices()) {
         Vertex* nv = mapped(vmap, &v);
         if (nv == nullptr) continue;
         const HalfEdge* out = v.halfEdge;
-        nv->halfEdge = mapped(hmap, mirrors && out != nullptr ? out->prev : out);
+        nv->halfEdge = mapped(hmap, flip && out != nullptr ? out->prev : out);
     }
     for (const HalfEdge* h : halfEdges) {
         HalfEdge* nh = hmap[h];
-        nh->origin = mapped(vmap, mirrors && h->next != nullptr ? h->next->origin : h->origin);
+        nh->origin = mapped(vmap, flip && h->next != nullptr ? h->next->origin : h->origin);
         nh->twin = mapped(hmap, h->twin);
-        nh->next = mapped(hmap, mirrors ? h->prev : h->next);
-        nh->prev = mapped(hmap, mirrors ? h->next : h->prev);
+        nh->next = mapped(hmap, flip ? h->prev : h->next);
+        nh->prev = mapped(hmap, flip ? h->next : h->prev);
         nh->edge = mapped(emap, h->edge);
         nh->face = mapped(fmap, h->face);
     }
@@ -193,7 +229,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Edge* ne = mapped(emap, &e);
         if (ne == nullptr) continue;
         const HalfEdge* along = e.halfEdge;
-        if (mirrors && along != nullptr && along->twin != nullptr) along = along->twin;
+        if (flip && along != nullptr && along->twin != nullptr) along = along->twin;
         ne->halfEdge = mapped(hmap, along);
     }
     for (const Wire* w : wires) {
@@ -297,7 +333,7 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
 
     auto result = std::make_unique<Solid>();
     for (const auto& body : bodies) {
-        if (body) cloneInto(*result, *body, Mat4::identity(), 0);
+        if (body) cloneInto(*result, *body, Mat4::identity(), 0, nullptr, true);
     }
     return result;
 }
@@ -320,8 +356,8 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
 
 std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
     auto out = std::make_unique<Solid>();
-    cloneInto(*out, a, Mat4::identity(), 0);
-    cloneInto(*out, b, Mat4::identity(), 0);
+    cloneInto(*out, a, Mat4::identity(), 0, nullptr, true);
+    cloneInto(*out, b, Mat4::identity(), 0, nullptr, true);
     return out;
 }
 
@@ -407,7 +443,7 @@ std::vector<std::unique_ptr<topo::Solid>> Pattern::separate(const topo::Solid& s
 }
 
 void Pattern::append(topo::Solid& into, const topo::Solid& source, const Mat4& xform) {
-    cloneInto(into, source, xform, 0);
+    cloneInto(into, source, xform, 0, nullptr, true);
 }
 
 std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {

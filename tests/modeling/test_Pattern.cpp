@@ -422,3 +422,37 @@ TEST(PatternTest, AMirrorImageJoinsItsOriginal) {
     EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*mirrored))
         << hz::topo::GeometryValidator::report(*mirrored);
 }
+
+// Solids wound either way, gathered into one: each comes in facing out. A box
+// primitive's loops face in and a cylinder's out, and gathered as they were
+// the part measured the box less the cylinder, which every reader of the
+// loops (the Booleans, which shells are cavities) took the same way.
+TEST(PatternTest, SolidsWoundEitherWayAreGatheredFacingOut) {
+    const auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto cylinder = Pattern::transformed(*PrimitiveFactory::makeCylinder(2, 10, 32),
+                                               hz::math::Mat4::translation(Vec3(30, 0, 0)));
+    const double vBox = MassPropertiesCalculator::compute(*box).volume;
+    const double vCylinder = MassPropertiesCalculator::compute(*cylinder).volume;
+
+    const auto both = Pattern::collect(*box, *cylinder);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*both).volume, vBox + vCylinder, 1e-9);
+    EXPECT_EQ(Pattern::bodyShells(*both).size(), 2u) << "two bodies, neither a cavity";
+
+    hz::topo::Solid gathered;
+    Pattern::append(gathered, *cylinder, hz::math::Mat4::identity());
+    Pattern::append(gathered, *box, hz::math::Mat4::identity());
+    // Mirrored, as an assembly places a mirrored component.
+    Pattern::append(
+        gathered, *box,
+        hz::math::Mat4::translation(Vec3(0, 50, 0)) * hz::math::Mat4::scale(Vec3(-1, 1, 1)));
+    EXPECT_NEAR(MassPropertiesCalculator::compute(gathered).volume, 2 * vBox + vCylinder, 1e-9);
+    EXPECT_EQ(Pattern::bodyShells(gathered).size(), 3u);
+
+    // A pattern of a row its own instances merged into (the Boolean winds it
+    // out, where the box it was made of is wound in), gathered as bodies.
+    const auto row = Pattern::linear(*box, Vec3(1, 0, 0), 5.0, 2, {}, NamingScheme::Stable);
+    ASSERT_NE(row, nullptr);
+    const auto rows = Pattern::linear(*row, Vec3(0, 1, 0), 30.0, 2, {}, NamingScheme::Stable);
+    ASSERT_NE(rows, nullptr);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*rows).volume, 2 * 1500.0, 1e-6);
+}

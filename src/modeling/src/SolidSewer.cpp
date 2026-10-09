@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -103,6 +105,57 @@ double loopAreaSq(const std::vector<size_t>& loop, const std::vector<Vec3>& pts)
         n = n + (pts[loop[i]] - p0).cross(pts[loop[i + 1]] - p0);
     }
     return 0.25 * n.dot(n);
+}
+
+/// The unit normal of an outward-wound loop (its area vector, from its first
+/// point), or zero for a loop with no area.
+Vec3 loopNormal(const std::vector<size_t>& loop, const std::vector<Vec3>& pts) {
+    if (loop.size() < 3) return Vec3::Zero;
+    const Vec3& p0 = pts[loop[0]];
+    Vec3 n = Vec3::Zero;
+    for (size_t i = 1; i + 1 < loop.size(); ++i) {
+        n = n + (pts[loop[i]] - p0).cross(pts[loop[i + 1]] - p0);
+    }
+    const double len = n.length();
+    return len > 0.0 ? n * (1.0 / len) : Vec3::Zero;
+}
+
+/// Of the half-edges running back along an edge that several faces share,
+/// the twin of the one in a face of normal @p normal running along @p along:
+/// the face met first turning about the edge from this one into the material
+/// behind it. Two bodies touching along an edge give it four faces, and the
+/// first one found, which pairing took, was as often the other body's: the
+/// sewn solid read as one body, closed, with every count right, and was not
+/// one. Turning into the material pairs each face with its own body's.
+/// @p normals gives each candidate's face normal.
+///
+/// A face of the other body lying back to back on this one (bodies touching
+/// face to face) is met at no turn at all, and its material is the other
+/// body's: it comes last, after a whole turn. Facets of a curved face are
+/// not quite flat, and their normals put such a face a few ten-thousandths
+/// of a radian either side; so a face met within kBackToBack of no turn is
+/// taken for one lying back to back. No solid is that thin at an edge.
+size_t radialTwin(const Vec3& along, const Vec3& normal, const std::vector<Vec3>& normals) {
+    constexpr double kBackToBack = 1e-2;  // radians
+    const Vec3 d = along.normalized();
+    // The way into this face from the edge, and the two axes about the edge.
+    const Vec3 e1 = normal.cross(d).normalized();
+    const Vec3 e2 = d.cross(e1);
+    const Vec3 material = normal * -1.0;
+    const double sense = material.dot(e2) >= 0.0 ? 1.0 : -1.0;
+    size_t best = 0;
+    double bestTurn = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < normals.size(); ++i) {
+        // Into the candidate's face: its edge runs the other way.
+        const Vec3 into = normals[i].cross(d * -1.0);
+        double turn = sense * std::atan2(into.dot(e2), into.dot(e1));
+        while (turn <= kBackToBack) turn += math::kTwoPi;
+        if (turn < bestTurn) {
+            bestTurn = turn;
+            best = i;
+        }
+    }
+    return best;
 }
 
 // -- T-junction elimination ---------------------------------------------------
@@ -358,6 +411,10 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
     }
 
     // 5. Twin pairing + edges.
+    std::unordered_map<const Face*, Vec3> normalOf;
+    for (size_t i = 0; i < built.size(); ++i) {
+        normalOf[built[i].face] = loopNormal(indexed[i].loop, pts);
+    }
     int edgeIndex = 0;
     for (auto& fb : built) {
         for (size_t l = 0; l < fb.loops.size(); ++l) {
@@ -375,13 +432,26 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
 
                 auto it = directed.find(dirKey(loop[(i + 1) % n], loop[i]));
                 if (it != directed.end()) {
+                    std::vector<HalfEdge*> free;
                     for (HalfEdge* candidate : it->second) {
-                        if (candidate->twin == nullptr && candidate != he) {
-                            he->twin = candidate;
-                            candidate->twin = he;
-                            candidate->edge = edge;
-                            break;
+                        if (candidate->twin == nullptr && candidate != he)
+                            free.push_back(candidate);
+                    }
+                    HalfEdge* twin = free.empty() ? nullptr : free.front();
+                    if (free.size() > 1) {
+                        // Faces of several bodies meet at this edge.
+                        std::vector<Vec3> normals;
+                        normals.reserve(free.size());
+                        for (HalfEdge* candidate : free) {
+                            normals.push_back(normalOf.at(candidate->face));
                         }
+                        twin = free[radialTwin(pts[loop[(i + 1) % n]] - pts[loop[i]],
+                                               normalOf.at(fb.face), normals)];
+                    }
+                    if (twin != nullptr) {
+                        he->twin = twin;
+                        twin->twin = he;
+                        twin->edge = edge;
                     }
                 }
             }
@@ -423,6 +493,71 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         }
         shell->faces.push_back(built[i].face);
         built[i].face->shell = shell;
+    }
+
+    // 7. A vertex for each fan of faces round it. Bodies that touch along an
+    // edge or at a point were welded there into one vertex that two shells
+    // share, and a shell that pinches to a point shares one with itself: a
+    // vertex no solid has, which the counts (vertex, edge and face) took for
+    // a solid that is not one, or for no solid at all. The faces round a
+    // vertex are walked from one to the next across their edges; each such
+    // fan after the first takes a copy of the vertex, so what touches there
+    // touches without sharing anything.
+    {
+        // In the order the faces were given, so the copies are made, and
+        // numbered, the same way every time.
+        std::vector<Vertex*> order;
+        std::unordered_map<const Vertex*, std::vector<HalfEdge*>> leaving;
+        for (auto& fb : built) {
+            for (auto& loop : fb.hes) {
+                for (HalfEdge* he : loop) {
+                    auto& out = leaving[he->origin];
+                    if (out.empty()) order.push_back(he->origin);
+                    out.push_back(he);
+                }
+            }
+        }
+        std::unordered_map<const HalfEdge*, bool> seen;
+        for (Vertex* vertex : order) {
+            const auto& outgoing = leaving[vertex];
+            if (outgoing.size() < 2) continue;
+            bool kept = false;
+            for (HalfEdge* first : outgoing) {
+                if (seen[first]) continue;
+                // This fan: from one outgoing half-edge to the next, across
+                // the face before it (into the vertex by its twin, out again
+                // by the twin's next).
+                std::vector<HalfEdge*> fan;
+                for (HalfEdge* he = first; he != nullptr && !seen[he];) {
+                    seen[he] = true;
+                    fan.push_back(he);
+                    he = he->twin != nullptr ? he->twin->next : nullptr;
+                }
+                // And the other way, should the fan be open.
+                for (HalfEdge* he = first->prev != nullptr ? first->prev->twin : nullptr;
+                     he != nullptr && !seen[he];
+                     he = he->prev != nullptr ? he->prev->twin : nullptr) {
+                    seen[he] = true;
+                    fan.push_back(he);
+                }
+                if (!kept) {
+                    kept = true;  // the first fan keeps the vertex
+                    continue;
+                }
+                Vertex* copy = solid->allocVertex();
+                copy->point = vertex->point;
+                for (HalfEdge* he : fan) he->origin = copy;
+            }
+        }
+        // Each vertex's outgoing half-edge is one that starts at it.
+        for (auto& v : solid->vertices()) v.halfEdge = nullptr;
+        for (auto& fb : built) {
+            for (auto& loop : fb.hes) {
+                for (HalfEdge* he : loop) {
+                    if (he->origin->halfEdge == nullptr) he->origin->halfEdge = he;
+                }
+            }
+        }
     }
 
     return solid;

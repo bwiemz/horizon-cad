@@ -252,6 +252,34 @@ work, not "post-1.0".
   out to the extension lines (|<--->|), and a leader's at what it points
   at; drawing sheets and exports show them so too. An angular dimension
   can also be picked on its extension lines, not only near its arc.
+- **A cut through bodies that overlap cuts each of them.** A part's bodies
+  may overlap until a Boolean combines them, but a cut, a join or an
+  intersection took the whole part for one skin, and one body's faces
+  inside the other for its outside: a cut through the overlap lost its
+  walls and was refused, and a pocket there was lost without a word. Where
+  bodies overlap, the feature's body is now combined with each of them on
+  its own; a join takes in every body it reaches.
+- **Bodies that meet only along an edge or at a point stay two bodies.**
+  Joining two boxes that touch along an edge sewed their four faces there
+  together as they were found, as often across the boxes as within one: a
+  part that every check passed as one closed body, and was not. At a
+  corner they shared a vertex, and the part was refused with counts "no
+  solid can have". Each face is now paired with its own body's, by the way
+  round the edge the material lies, and each body keeps its own vertices:
+  two sound bodies, touching. A linear pattern of boxes corner to corner
+  builds.
+- **Bodies of different kinds measure as both.** A box primitive's faces
+  are wound inward and a cylinder's outward, and a part holding one of each
+  as separate bodies measured as the box less the cylinder (Mass
+  Properties said 875 mm³ for a 1000 mm³ box and a 125 mm³ cylinder), and
+  took the cylinder for a cavity in the box, as a STEP export would write
+  it. Bodies gathered into one part, a pattern or an assembly's drawing are
+  now each brought in facing out.
+- **A face with a hole survives a Boolean that does not reach it.** Joined
+  with, or cut by, a body whose box does not meet it, a part with a washer's
+  flat face (or any face with a hole) was refused for "a face's boundary
+  crosses itself": the face went to the sewer as one outline bridged out to
+  the hole and back. It goes as itself, with its hole.
 - **A solid that runs into itself is refused.** The geometric checks each
   looked at one face or edge at a time, so a solid whose faces pass through
   each other passed them all: a sweep along a path that crosses itself
