@@ -19,6 +19,25 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Walking a loop that is not yet closed does not take the application
+  down.** Every walk of a half-edge loop followed `next` to the end of the
+  list without looking, so a loop with a break in it read through a null
+  pointer, and one that ran on into itself was followed forever. Both are
+  ordinary states of a kernel part way through a feature or after an undo:
+  a loop only partly built, or a half-edge a kill left with no `next`. Now a
+  loop reports the half-edges it has, and stops.
+- **Looking at a part from directly above draws it.** `lookAt` built its
+  right-hand axis by crossing the view direction with the up, which for a top
+  view are the same vector, and the axis came out of that as zero: the basis
+  collapsed and every point landed on the eye, so a top view was empty. It
+  now picks an axis across them when they are parallel. A view with no `up`,
+  or with the eye on its target, is answered the same way.
+- **A collapsed scale is not inverted by dividing by it.** A scale with an
+  axis at zero has no inverse, and dividing by it gave infinity one way and
+  not-a-number the other, which went on into a feature's rebuild, where every
+  vertex of its mesh read nan and nothing drew at all. A collapsed axis now
+  stands for itself, and the answer is finite. A mirror still inverts exactly.
+
 - **A file read in part is not saved over (#163).** A native, DXF or
   drawing file with items this version could not read opens marked
   "(incomplete)", and says what was left out. Save goes to Save As, and

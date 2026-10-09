@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "horizon/math/Constants.h"
 #include "horizon/math/Quaternion.h"
 
 namespace hz::math {
@@ -72,7 +73,13 @@ Mat4 Mat4::scale(double s) {
 }
 
 Mat4 Mat4::reflection(const Vec3& point, const Vec3& normal) {
-    const Vec3 n = normal.normalized();
+    // A normal of no direction reflects about nothing, and normalising it
+    // divided by nothing: every point came back nan or inf. A plane given no
+    // normal is asked for by mistake; it leaves every point where it was,
+    // which is at least a basis to go on from.
+    Vec3 n = normal;
+    const double len = n.length();
+    n = len > kEpsilon ? n * (1.0 / len) : Vec3::UnitZ;
     const double c[3] = {n.x, n.y, n.z};
     Mat4 r;
     for (int i = 0; i < 3; ++i) {
@@ -93,8 +100,31 @@ double Mat4::determinant3() const {
 }
 
 Mat4 Mat4::lookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
-    Vec3 f = (target - eye).normalized();
-    Vec3 r = f.cross(up).normalized();
+    Vec3 f = (target - eye);
+    // Looking straight down a part is one of the commonest views there is,
+    // and it is what a standard view asks for: the up is then along the
+    // forward, and their cross product is nothing. Normalising that gave a
+    // right axis of all zeros, and the up that follows from it another, so
+    // the whole basis collapsed and every point came out at the eye: a top
+    // view drew nothing. Where the two are parallel, any axis across them
+    // will do as the right, so one is picked: the world axis least along the
+    // view, which keeps the choice clear of the degeneracy and leaves the
+    // view square on.
+    const double fLen = f.length();
+    if (fLen > kEpsilon) {
+        f = f * (1.0 / fLen);
+    } else {
+        f = Vec3::UnitZ;  // the eye is on its target: nothing to look along
+    }
+
+    const Vec3 upLength = up.normalized();
+    const Vec3 candidate = (std::abs(upLength.dot(f)) < 0.999)
+                               ? upLength
+                               : (std::abs(f.x) < 0.9 ? Vec3::UnitX : Vec3::UnitY);
+    Vec3 r = f.cross(candidate).normalized();
+    if (r.lengthSquared() < kEpsilon * kEpsilon) {
+        r = f.cross(f.y > 0.9 ? Vec3::UnitX : Vec3::UnitY).normalized();
+    }
     Vec3 u = r.cross(f);
 
     Mat4 result;

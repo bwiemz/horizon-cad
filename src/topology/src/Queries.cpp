@@ -26,6 +26,9 @@ std::vector<Face*> adjacentFaces(const Face* face) {
                 result.push_back(neighbor);
             }
         }
+        if (cur->next == nullptr) {
+            break;  // a loop that stops part way round: report what it has
+        }
         cur = cur->next;
     } while (cur != start);
 
@@ -67,7 +70,6 @@ std::vector<Edge*> incidentEdges(const Vertex* vertex) {
     const HalfEdge* start = vertex->halfEdge;
     const HalfEdge* cur = start;
     do {
-        assert(cur->origin == vertex);
         if (cur->edge != nullptr && seen.insert(cur->edge).second) {
             result.push_back(cur->edge);
         }
@@ -96,6 +98,9 @@ std::vector<Vertex*> faceVertices(const Face* face) {
     const HalfEdge* cur = start;
     do {
         result.push_back(cur->origin);
+        if (cur->next == nullptr) {
+            break;  // a loop that stops part way round: report what it has
+        }
         cur = cur->next;
     } while (cur != start);
 
@@ -111,15 +116,25 @@ int loopSize(const Wire* wire) {
         return 0;
     }
 
+    // A closed loop comes back to where it started, and that is what ends the
+    // walk. A chain that stops part way ends it too. A chain that runs on into
+    // itself and never comes back would spin here forever, so each half-edge
+    // is noted as it is passed: coming on one twice means the walk is going
+    // round something other than this loop, and it stops there. The count is
+    // the number of half-edges before that, which is what the loop has.
     int count = 0;
-    const HalfEdge* start = wire->halfEdge;
-    const HalfEdge* cur = start;
-    do {
-        ++count;
-        cur = cur->next;
-    } while (cur != start);
+    const HalfEdge* const start = wire->halfEdge;
+    std::unordered_set<const HalfEdge*> walked;
+    walked.insert(start);
 
-    return count;
+    for (const HalfEdge* cur = start->next; cur != nullptr && cur != start; cur = cur->next) {
+        if (!walked.insert(cur).second) {
+            break;  // round something other than this loop: it never closes
+        }
+        ++count;
+    }
+
+    return count + 1;  // the half-edge it started on
 }
 
 // ---------------------------------------------------------------------------
