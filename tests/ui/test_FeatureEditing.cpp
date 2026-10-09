@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QLineEdit>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTreeWidget>
@@ -23,6 +24,7 @@
 
 #include "UiTestSupport.h"
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
@@ -155,6 +157,45 @@ TEST(FeatureEditingTest, TheEditDialogChangesHowABodyCombines) {
     EXPECT_NEAR(partVolume(doc), 200.0 + 8.0, 1e-6);
     action(w, "action_undo")->trigger();
     EXPECT_NEAR(partVolume(doc), 192.0, 1e-6) << "one step undoes both changes";
+}
+
+// A feature taken away for good while its edit form is open (a build that
+// finishes meanwhile withdraws a feature just added that fails itself) is
+// looked for again when the form closes, and the form's values go nowhere.
+// The window kept the feature from before the form, freed by then, and
+// edited it.
+TEST(FeatureEditingTest, AFeatureGoneWhileItsFormIsOpenIsNotEdited) {
+    MainWindow w;
+    makePlate(w);
+    hz::doc::Document& doc = *w.activeDocument();
+    Panel panel(w);
+    panel.select(1);
+    std::size_t steps = 0;
+    bool seen = false;
+    QTimer answer;
+    QObject::connect(&answer, &QTimer::timeout, [&] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dialog == nullptr || dialog->windowTitle() != QStringLiteral("Edit Extrude")) return;
+        answer.stop();
+        seen = true;
+        // The pocket undone, and a step after it: gone, not to be redone.
+        doc.undoStack().undo();
+        doc.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(
+            doc.draftDocument(), std::make_shared<hz::draft::DraftLine>(Vec2(20, 0), Vec2(30, 0))));
+        steps = doc.undoStack().undoCount();
+        auto* distance = dialog->findChild<QDoubleSpinBox*>(QStringLiteral("distance"));
+        if (distance != nullptr) distance->setValue(4.0);
+        dialog->accept();
+    });
+    answer.start(5);
+    action(*panel.panel, "editFeature")->trigger();
+    ASSERT_TRUE(seen);
+    EXPECT_EQ(doc.undoStack().undoCount(), steps) << "no edit";
+    ASSERT_EQ(doc.featureTree().featureCount(), 1u);
+    EXPECT_DOUBLE_EQ(doc.featureTree().feature(0)->parameters().at("distance"), 2.0)
+        << "nor the plate edited in its place";
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("gone")))
+        << w.statusBar()->currentMessage().toStdString();
 }
 
 TEST(FeatureEditingTest, SuppressAndDeleteFromThePanel) {

@@ -1205,3 +1205,28 @@ TEST(PartFormatTest, AHoleRoundTrips) {
     ASSERT_EQ(report.skipped.size(), 1u);
     EXPECT_NE(report.skipped.front().find("diameter"), std::string::npos) << report.skipped.front();
 }
+
+// A sketch's groups are read with their IDs, and a group made after reading
+// takes one none of them has. The sketch's counter started again at 1, so a
+// new group took an ID read from the file and joined that group.
+TEST(PartFormatTest, ASketchsGroupsKeepTheirIdsApartFromNewOnes) {
+    Document doc;
+    auto sketch = makeRectSketch(10.0, 5.0);
+    doc.addSketch(sketch);
+    for (const auto& entity : sketch->entities()) {
+        entity->setGroupId(sketch->drawing().nextGroupId());
+    }
+
+    const std::string text = NativeFormat::documentToJson(doc, false);
+    Document back;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(text, back, &error)) << error;
+    ASSERT_EQ(back.sketches().size(), 1u);
+    auto& drawing = back.sketches().front()->drawing();
+    ASSERT_EQ(drawing.entities().size(), 4u);
+    const uint64_t fresh = drawing.nextGroupId();
+    for (const auto& entity : drawing.entities()) {
+        EXPECT_NE(entity->groupId(), 0u) << "read with its group";
+        EXPECT_NE(entity->groupId(), fresh) << "a new group is not one of them";
+    }
+}

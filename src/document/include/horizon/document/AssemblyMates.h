@@ -12,6 +12,14 @@
 
 namespace hz::doc {
 
+class DatumFeature;
+
+/// The frame a mate takes of @p datum (Phase 160): a plane's origin and
+/// normal, an axis's origin and direction, a point's position, in its part.
+/// For a component that is @p mirrored, mirrored as its faces and edges are
+/// (ComponentInstance::ownMirror()).
+model::MateFrame datumFrame(const DatumFeature& datum, bool mirrored);
+
 /// An assembly's mates gathered for its solver (Phase 158): each component
 /// where it is, and each mate's frames found once in its components' parts.
 /// Gathered once, it is solved as often as a drag moves, and the faces are

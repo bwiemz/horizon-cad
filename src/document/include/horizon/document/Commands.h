@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -334,7 +335,7 @@ private:
     std::vector<draft::DraftDocument*> m_drawings;
     std::string m_name;
     draft::LayerProperties m_savedProps;
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_movedEntities;  ///< were on it
+    std::unordered_set<uint64_t> m_movedEntities;  ///< IDs of what was on it
     bool m_wasCurrentLayer = false;
 };
 
@@ -391,7 +392,7 @@ private:
     std::string m_from;
     std::string m_to;
     bool m_applied = false;
-    std::vector<std::shared_ptr<draft::DraftEntity>> m_moved;  ///< entities that were on it
+    std::unordered_set<uint64_t> m_moved;  ///< IDs of the entities that were on it
 };
 
 /// Command to set the current drawing layer.
@@ -442,7 +443,10 @@ private:
     std::shared_ptr<draft::BlockDefinition> m_definition;
 };
 
-/// Command to explode a block reference into individual entities.
+/// Command to explode a block reference into individual entities. The
+/// pieces are made on the first execute and kept: a redo brings back the
+/// same pieces, under the same IDs. Undo puts the reference back where it
+/// was in the drawing order.
 class ExplodeBlockCommand : public Command {
 public:
     ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blockRefId);
@@ -457,6 +461,7 @@ private:
     uint64_t m_blockRefId;
     std::shared_ptr<draft::DraftEntity> m_savedBlockRef;
     std::vector<std::shared_ptr<draft::DraftEntity>> m_explodedEntities;
+    size_t m_position = draft::DraftDocument::npos;  ///< the reference's, in the drawing order
 };
 
 /// Command to change a block reference's rotation.
@@ -681,6 +686,13 @@ private:
 /// execute() is a no-op on first call.  Undo/redo swaps the snapshots.
 class GripMoveCommand : public Command {
 public:
+    /// One entity's state before and after the edit.
+    struct Edit {
+        uint64_t entityId = 0;
+        std::shared_ptr<draft::DraftEntity> beforeState;
+        std::shared_ptr<draft::DraftEntity> afterState;
+    };
+
     /// \param doc        The document
     /// \param entityId   ID of the entity being grip-edited
     /// \param beforeState  Clone of the entity BEFORE the grip move
@@ -692,17 +704,21 @@ public:
                     std::shared_ptr<draft::DraftEntity> afterState,
                     cstr::ConstraintSystem& constraintSystem,
                     std::function<double(const std::string&)> variableResolver = nullptr);
+    /// Several entities edited at once, as Stretch edits them: they all take
+    /// their after-states, then one solve. A solve after each one moved the
+    /// others, and undo and redo put back states that no longer held.
+    GripMoveCommand(draft::DraftDocument& doc, std::vector<Edit> edits,
+                    cstr::ConstraintSystem& constraintSystem,
+                    std::function<double(const std::string&)> variableResolver = nullptr);
     void execute() override;
     void undo() override;
     std::string description() const override;
 
 private:
-    void applyState(const draft::DraftEntity& state);
+    void applyState(uint64_t entityId, const draft::DraftEntity& state);
 
     draft::DraftDocument& m_doc;
-    uint64_t m_entityId;
-    std::shared_ptr<draft::DraftEntity> m_beforeState;
-    std::shared_ptr<draft::DraftEntity> m_afterState;
+    std::vector<Edit> m_edits;
     cstr::ConstraintSystem& m_constraintSystem;
     std::function<double(const std::string&)> m_variableResolver;
     std::unique_ptr<ApplyConstraintSolveCommand> m_solveCmd;
@@ -749,5 +765,12 @@ private:
 /// build would draw it back onto the original.
 void adoptClones(draft::DraftDocument& doc,
                  std::vector<std::shared_ptr<draft::DraftEntity>>& clones);
+
+/// Whether @p a and @p b draw the same: entity by entity, the same kind, in
+/// the same places (their snap points: ends, middles, centres, quadrants,
+/// vertices), guides or not alike. What tells a copy of a drawing, or of a
+/// block, from another drawing of its own.
+bool drawSame(const std::vector<std::shared_ptr<draft::DraftEntity>>& a,
+              const std::vector<std::shared_ptr<draft::DraftEntity>>& b);
 
 }  // namespace hz::doc

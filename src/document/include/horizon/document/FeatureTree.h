@@ -962,6 +962,10 @@ public:
 
     /// Where `feature` is in the tree, if it is there.
     std::optional<size_t> indexOf(const Feature* feature) const;
+    /// Where the feature with `featureId` (Feature::featureID()) is, if it
+    /// is there: what finds a feature again after a form has been open, in
+    /// whose event loop a build may have taken it away.
+    std::optional<size_t> indexOfId(const std::string& featureId) const;
 
     /// Number of features in the tree.
     size_t featureCount() const;
