@@ -1,5 +1,6 @@
 #include "horizon/document/Commands.h"
 
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 
@@ -12,6 +13,28 @@
 #include "horizon/drafting/DraftText.h"
 
 namespace hz::doc {
+
+namespace {
+
+/// @p visit for every entity of @p drawings, and of their blocks: what is on
+/// a layer, which the drawings share.
+template <typename Visit>
+void forEachEntity(const std::vector<draft::DraftDocument*>& drawings, const Visit& visit) {
+    for (draft::DraftDocument* drawing : drawings) {
+        for (const auto& entity : drawing->entities()) {
+            if (entity) visit(*entity);
+        }
+        for (const auto& name : drawing->blockTable().blockNames()) {
+            if (const auto block = drawing->blockTable().findBlock(name)) {
+                for (const auto& entity : block->entities) {
+                    if (entity) visit(*entity);
+                }
+            }
+        }
+    }
+}
+
+}  // namespace
 
 // --- AddBlockDefinitionCommand ---
 
@@ -543,20 +566,12 @@ void RemoveLayerCommand::execute() {
 
     // Move entities on this layer to "0", in every drawing and its blocks.
     m_movedEntities.clear();
-    const auto move = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
-        if (entity && entity->layer() == m_name) {
-            m_movedEntities.push_back(entity);
-            entity->setLayer("0");
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_name) {
+            m_movedEntities.insert(entity.id());
+            entity.setLayer("0");
         }
-    };
-    for (draft::DraftDocument* drawing : m_drawings) {
-        for (const auto& e : drawing->entities()) move(e);
-        for (const auto& name : drawing->blockTable().blockNames()) {
-            if (const auto block = drawing->blockTable().findBlock(name)) {
-                for (const auto& e : block->entities) move(e);
-            }
-        }
-    }
+    });
 
     // If this is the current layer, switch to "0" first.
     m_wasCurrentLayer = (m_mgr.currentLayer() == m_name);
@@ -576,8 +591,13 @@ void RemoveLayerCommand::undo() {
         m_mgr.setCurrentLayer(m_name);
     }
 
-    // Restore entity layers.
-    for (const auto& entity : m_movedEntities) entity->setLayer(m_name);
+    // Restore entity layers: by ID, since a grip or property edit since
+    // put a new object in an entity's place.
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == "0" && m_movedEntities.count(entity.id()) != 0) {
+            entity.setLayer(m_name);
+        }
+    });
 }
 
 std::string RemoveLayerCommand::description() const {
@@ -644,26 +664,22 @@ void RenameLayerCommand::execute() {
     m_applied = m_mgr.renameLayer(m_from, m_to);
     m_moved.clear();
     if (!m_applied) return;
-    const auto carry = [this](const std::shared_ptr<draft::DraftEntity>& entity) {
-        if (entity && entity->layer() == m_from) {
-            entity->setLayer(m_to);
-            m_moved.push_back(entity);
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_from) {
+            entity.setLayer(m_to);
+            m_moved.insert(entity.id());
         }
-    };
-    for (draft::DraftDocument* drawing : m_drawings) {
-        for (const auto& entity : drawing->entities()) carry(entity);
-        for (const auto& name : drawing->blockTable().blockNames()) {
-            if (const auto block = drawing->blockTable().findBlock(name)) {
-                for (const auto& entity : block->entities) carry(entity);
-            }
-        }
-    }
+    });
 }
 
 void RenameLayerCommand::undo() {
     if (!m_applied) return;
     m_mgr.renameLayer(m_to, m_from);
-    for (const auto& entity : m_moved) entity->setLayer(m_from);
+    // By ID, since a grip or property edit since put a new object in an
+    // entity's place.
+    forEachEntity(m_drawings, [this](draft::DraftEntity& entity) {
+        if (entity.layer() == m_to && m_moved.count(entity.id()) != 0) entity.setLayer(m_from);
+    });
 }
 
 std::string RenameLayerCommand::description() const {
@@ -749,56 +765,60 @@ ExplodeBlockCommand::ExplodeBlockCommand(draft::DraftDocument& doc, uint64_t blo
     : m_doc(doc), m_blockRefId(blockRefId) {}
 
 void ExplodeBlockCommand::execute() {
-    // Find the block reference.
-    if (const auto e = m_doc.sharedEntity(m_blockRefId)) {
-        m_savedBlockRef = e;
-    }
-    auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
-    if (!ref) return;
+    if (!m_savedBlockRef) {
+        // The first time: the pieces, made once and kept, so a redo brings
+        // back the same pieces and what a later step names by their IDs
+        // finds them.
+        m_savedBlockRef = m_doc.sharedEntity(m_blockRefId);
+        auto* ref = dynamic_cast<draft::DraftBlockRef*>(m_savedBlockRef.get());
+        if (!ref) {
+            m_savedBlockRef.reset();
+            return;
+        }
 
-    // Create transformed copies of all definition entities.
-    m_explodedEntities.clear();
-    for (const auto& defEnt : ref->definition()->entities) {
-        // Apply the block ref transform: mirror, scale, rotate, translate.
-        // The mirror and the turn as copies: a rectangle turned off the axes
-        // is a polyline.
-        const math::Vec2& base = ref->definition()->basePoint;
-        auto worldEnt = ref->mirrored() ? defEnt->mirroredCopy(base, base + math::Vec2(0.0, 1.0))
-                                        : defEnt->clone();
-        worldEnt->scale(base, ref->uniformScale());
-        worldEnt = worldEnt->rotatedCopy(base, ref->rotation());
-        worldEnt->translate(ref->insertPos() - base);
-        worldEnt->setSourceEdge({});  // follows no edge of the part (Phase 157)
-        // Inherit layer from block ref if entity is on default layer.
-        if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
-            worldEnt->setLayer(ref->layer());
+        // Create transformed copies of all definition entities.
+        for (const auto& defEnt : ref->definition()->entities) {
+            // Apply the block ref transform: mirror, scale, rotate, translate.
+            // The mirror and the turn as copies: a rectangle turned off the
+            // axes is a polyline.
+            const math::Vec2& base = ref->definition()->basePoint;
+            auto worldEnt = ref->mirrored()
+                                ? defEnt->mirroredCopy(base, base + math::Vec2(0.0, 1.0))
+                                : defEnt->clone();
+            worldEnt->scale(base, ref->uniformScale());
+            worldEnt = worldEnt->rotatedCopy(base, ref->rotation());
+            worldEnt->translate(ref->insertPos() - base);
+            // Inherit layer from block ref if entity is on default layer.
+            if (worldEnt->layer().empty() || worldEnt->layer() == "0") {
+                worldEnt->setLayer(ref->layer());
+            }
+            // ByBlock color: if entity color is 0, inherit from block ref.
+            if (worldEnt->color() == 0x00000000) {
+                worldEnt->setColor(ref->color());
+            }
+            // ByBlock lineWidth: if entity lineWidth is 0, inherit from block ref.
+            if (worldEnt->lineWidth() == 0.0) {
+                worldEnt->setLineWidth(ref->lineWidth());
+            }
+            m_explodedEntities.push_back(worldEnt);
         }
-        // ByBlock color: if entity color is 0, inherit from block ref.
-        if (worldEnt->color() == 0x00000000) {
-            worldEnt->setColor(ref->color());
-        }
-        // ByBlock lineWidth: if entity lineWidth is 0, inherit from block ref.
-        if (worldEnt->lineWidth() == 0.0) {
-            worldEnt->setLineWidth(ref->lineWidth());
-        }
-        m_explodedEntities.push_back(worldEnt);
-        m_doc.addEntity(worldEnt);
+        // A group within the block is a group of this drawing's own, one for
+        // each reference exploded (two were one group), and the pieces
+        // follow no edge of the part (Phase 157).
+        adoptClones(m_doc, m_explodedEntities);
     }
 
-    // Remove the block reference.
-    m_doc.removeEntity(m_blockRefId);
+    for (const auto& piece : m_explodedEntities) m_doc.addEntity(piece);
+    m_position = m_doc.removeEntity(m_blockRefId);
 }
 
 void ExplodeBlockCommand::undo() {
-    // Remove exploded entities.
+    if (!m_savedBlockRef) return;
     for (const auto& e : m_explodedEntities) {
         m_doc.removeEntity(e->id());
     }
-    m_explodedEntities.clear();
-    // Restore the block reference.
-    if (m_savedBlockRef) {
-        m_doc.addEntity(m_savedBlockRef);
-    }
+    // The reference back where it was in the drawing order.
+    m_doc.insertEntity(m_position, m_savedBlockRef);
 }
 
 std::string ExplodeBlockCommand::description() const {
@@ -1208,10 +1228,14 @@ GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, uint64_t entityId,
                                  std::shared_ptr<draft::DraftEntity> afterState,
                                  cstr::ConstraintSystem& constraintSystem,
                                  std::function<double(const std::string&)> variableResolver)
+    : GripMoveCommand(doc, {Edit{entityId, std::move(beforeState), std::move(afterState)}},
+                      constraintSystem, std::move(variableResolver)) {}
+
+GripMoveCommand::GripMoveCommand(draft::DraftDocument& doc, std::vector<Edit> edits,
+                                 cstr::ConstraintSystem& constraintSystem,
+                                 std::function<double(const std::string&)> variableResolver)
     : m_doc(doc),
-      m_entityId(entityId),
-      m_beforeState(std::move(beforeState)),
-      m_afterState(std::move(afterState)),
+      m_edits(std::move(edits)),
       m_constraintSystem(constraintSystem),
       m_variableResolver(std::move(variableResolver)) {}
 
@@ -1219,7 +1243,7 @@ void GripMoveCommand::execute() {
     if (m_firstExec) {
         // State is already applied by the caller (live grip drag).
         m_firstExec = false;
-        m_doc.updateEntityBounds(m_entityId);
+        for (const auto& edit : m_edits) m_doc.updateEntityBounds(edit.entityId);
 
         // Auto-solve constraints after geometry change.
         m_solveCmd = ConstraintSolveHelper::solveAndCreateCommand(m_doc, m_constraintSystem,
@@ -1229,7 +1253,7 @@ void GripMoveCommand::execute() {
         }
         return;
     }
-    applyState(*m_afterState);
+    for (const auto& edit : m_edits) applyState(edit.entityId, *edit.afterState);
 
     // Re-execute stored solve command on redo.
     if (m_solveCmd) {
@@ -1242,22 +1266,22 @@ void GripMoveCommand::undo() {
     if (m_solveCmd) {
         m_solveCmd->undo();
     }
-    applyState(*m_beforeState);
+    for (const auto& edit : m_edits) applyState(edit.entityId, *edit.beforeState);
 }
 
 std::string GripMoveCommand::description() const {
     return "Grip Edit";
 }
 
-void GripMoveCommand::applyState(const draft::DraftEntity& state) {
+void GripMoveCommand::applyState(uint64_t entityId, const draft::DraftEntity& state) {
     auto replacement = state.clone();
-    replacement->setId(m_entityId);
+    replacement->setId(entityId);
     replacement->setLayer(state.layer());
     replacement->setColor(state.color());
     replacement->setLineWidth(state.lineWidth());
     replacement->setLineType(state.lineType());
     replacement->setGroupId(state.groupId());
-    m_doc.replaceEntity(m_entityId, std::move(replacement));
+    m_doc.replaceEntity(entityId, std::move(replacement));
 }
 
 // ---------------------------------------------------------------------------
@@ -1348,6 +1372,28 @@ void adoptClones(draft::DraftDocument& doc,
             clone->setGroupId(it->second);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// drawSame
+// ---------------------------------------------------------------------------
+
+bool drawSame(const std::vector<std::shared_ptr<draft::DraftEntity>>& a,
+              const std::vector<std::shared_ptr<draft::DraftEntity>>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (!a[i] || !b[i]) return a[i] == b[i];
+        const draft::DraftEntity& x = *a[i];
+        const draft::DraftEntity& y = *b[i];
+        if (typeid(x) != typeid(y) || x.construction() != y.construction()) return false;
+        const auto xs = x.snapPoints();
+        const auto ys = y.snapPoints();
+        if (xs.size() != ys.size()) return false;
+        for (size_t k = 0; k < xs.size(); ++k) {
+            if (xs[k].distanceTo(ys[k]) > 1e-9) return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace hz::doc

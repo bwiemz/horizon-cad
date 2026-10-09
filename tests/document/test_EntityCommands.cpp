@@ -4,8 +4,11 @@
 #include <memory>
 #include <vector>
 
+#include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintSolveHelper.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftArc.h"
@@ -317,6 +320,235 @@ TEST(EntityCommandsTest, ACopyOfAProjectedEdgeFollowsNoEdge) {
         }
         EXPECT_TRUE(entity->sourceEdge().empty()) << "a copy follows no edge";
         EXPECT_TRUE(entity->construction()) << "and is a guide still";
+    }
+}
+
+namespace {
+
+/// Two lines joined end to start, as drawn and constrained by hand.
+struct JoinedLines {
+    std::shared_ptr<DraftLine> first;
+    std::shared_ptr<DraftLine> second;
+    uint64_t joint = 0;
+};
+
+JoinedLines joinLines(DraftDocument& drawing, hz::cstr::ConstraintSystem& constraints) {
+    JoinedLines lines;
+    lines.first = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    lines.second = std::make_shared<DraftLine>(Vec2(10, 0), Vec2(10, 10));
+    drawing.addEntity(lines.first);
+    drawing.addEntity(lines.second);
+    lines.joint = constraints.addConstraint(std::make_shared<hz::cstr::CoincidentConstraint>(
+        hz::cstr::GeometryRef{lines.first->id(), hz::cstr::FeatureType::Point, 1},
+        hz::cstr::GeometryRef{lines.second->id(), hz::cstr::FeatureType::Point, 0}));
+    return lines;
+}
+
+}  // namespace
+
+// Trim, Cut, Break and the rest take an entity away with no thought for its
+// constraints. They go with it, in the same step, and come back on undo: left
+// behind, the next solve stopped at the entity that was gone, and a Move
+// after it moved with no step to undo it.
+TEST(EntityCommandsTest, AnEntityTakenAwayTakesItsConstraints) {
+    hz::doc::Document doc;
+    auto& stack = doc.undoStack();
+    auto& drawing = doc.draftDocument();
+    auto& constraints = doc.constraintSystem();
+    const JoinedLines lines = joinLines(drawing, constraints);
+
+    // As Trim does: the line out, its piece in.
+    auto trim = std::make_unique<hz::doc::CompositeCommand>("Trim");
+    trim->addCommand(std::make_unique<RemoveEntityCommand>(drawing, lines.first->id()));
+    trim->addCommand(std::make_unique<hz::doc::AddEntityCommand>(
+        drawing, std::make_shared<DraftLine>(Vec2(0, 0), Vec2(5, 0))));
+    stack.push(std::move(trim));
+    EXPECT_TRUE(constraints.empty()) << "the joint went with the line";
+    EXPECT_EQ(stack.undoCount(), 1u) << "in one step";
+
+    stack.undo();
+    EXPECT_NE(drawing.findEntity(lines.first->id()), nullptr);
+    EXPECT_NE(constraints.getConstraint(lines.joint), nullptr) << "and came back with it";
+    stack.redo();
+    EXPECT_TRUE(constraints.empty());
+    stack.undo();
+
+    // As Cut does, and a Move after it.
+    stack.push(
+        std::make_unique<RemoveEntitiesCommand>(drawing, std::vector<uint64_t>{lines.first->id()}));
+    EXPECT_TRUE(constraints.empty());
+    const auto before = stack.undoCount();
+    EXPECT_NO_THROW(stack.push(std::make_unique<MoveEntityCommand>(
+        drawing, std::vector<uint64_t>{lines.second->id()}, Vec2(0, 5), constraints)));
+    EXPECT_EQ(stack.undoCount(), before + 1) << "the move is a step";
+    EXPECT_DOUBLE_EQ(lines.second->start().y, 5.0);
+    stack.undo();
+    EXPECT_DOUBLE_EQ(lines.second->start().y, 0.0);
+}
+
+// In a sketch as in the drawing: its constraints are its own.
+TEST(EntityCommandsTest, AnEntityTakenFromASketchTakesItsConstraints) {
+    hz::doc::Document doc;
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    doc.addSketch(sketch);
+    const JoinedLines lines = joinLines(sketch->drawing(), sketch->constraintSystem());
+    doc.undoStack().push(std::make_unique<hz::doc::CreateBlockCommand>(
+        sketch->drawing(), "Corner", std::vector<uint64_t>{lines.second->id()}));
+    EXPECT_TRUE(sketch->constraintSystem().empty());
+    doc.undoStack().undo();
+    EXPECT_NE(sketch->constraintSystem().getConstraint(lines.joint), nullptr);
+}
+
+// A constraint naming an entity that is not there (an older file's, or one
+// read in part) is left out of the solve, never the end of it: the rest are
+// still solved.
+TEST(EntityCommandsTest, AConstraintOnAMissingEntityIsLeftOutOfTheSolve) {
+    DraftDocument drawing;
+    hz::cstr::ConstraintSystem constraints;
+    auto line = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 3));
+    drawing.addEntity(line);
+    constraints.addConstraint(std::make_shared<hz::cstr::CoincidentConstraint>(
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 1},
+        hz::cstr::GeometryRef{line->id() + 1000, hz::cstr::FeatureType::Point, 0}));
+    constraints.addConstraint(std::make_shared<hz::cstr::HorizontalConstraint>(
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 0},
+        hz::cstr::GeometryRef{line->id(), hz::cstr::FeatureType::Point, 1}));
+
+    hz::doc::ConstraintSolveHelper::SolveAndApplyResult result;
+    ASSERT_NO_THROW(result = hz::doc::ConstraintSolveHelper::solveAndApply(drawing, constraints));
+    EXPECT_TRUE(result.success);
+    EXPECT_NEAR(line->start().y, line->end().y, 1e-9) << "the horizontal is solved";
+    EXPECT_EQ(constraints.constraints().size(), 2u) << "and the other kept, for what it names";
+}
+
+// Entities edited together, as Stretch edits them, are solved once, after
+// all of them: undo puts each back as it was, and redo solves as it did. A
+// solve after each one moved the others, and undo left the second line
+// stretched.
+TEST(EntityCommandsTest, EntitiesGripEditedTogetherAreSolvedOnce) {
+    hz::doc::Document doc;
+    auto& drawing = doc.draftDocument();
+    auto& constraints = doc.constraintSystem();
+    const JoinedLines lines = joinLines(drawing, constraints);
+    const hz::cstr::GeometryRef start{lines.first->id(), hz::cstr::FeatureType::Point, 0};
+    const hz::cstr::GeometryRef end{lines.first->id(), hz::cstr::FeatureType::Point, 1};
+    constraints.addConstraint(std::make_shared<hz::cstr::DistanceConstraint>(start, end, 10.0));
+    constraints.addConstraint(std::make_shared<hz::cstr::FixedConstraint>(start, Vec2(0, 0)));
+
+    // The corner stretched to (13, 4), as the Stretch tool leaves it.
+    std::vector<hz::doc::GripMoveCommand::Edit> edits;
+    for (const auto& line : {lines.first, lines.second}) {
+        edits.push_back({line->id(), line->clone(), nullptr});
+    }
+    lines.first->setEnd(Vec2(13, 4));
+    lines.second->setStart(Vec2(13, 4));
+    for (auto& edit : edits) edit.afterState = drawing.findEntity(edit.entityId)->clone();
+    doc.undoStack().push(
+        std::make_unique<hz::doc::GripMoveCommand>(drawing, std::move(edits), constraints));
+
+    const auto line = [&drawing](const std::shared_ptr<DraftLine>& l) {
+        return dynamic_cast<const DraftLine*>(drawing.findEntity(l->id()));
+    };
+    const auto holds = [&] {
+        return (line(lines.first)->end() - line(lines.second)->start()).length() < 1e-6 &&
+               std::abs(line(lines.first)->end().length() - 10.0) < 1e-6;
+    };
+    EXPECT_TRUE(holds());
+    const Vec2 corner = line(lines.second)->start();
+    doc.undoStack().undo();
+    EXPECT_EQ((line(lines.first)->end() - Vec2(10, 0)).length(), 0.0);
+    EXPECT_EQ((line(lines.second)->start() - Vec2(10, 0)).length(), 0.0) << "both back";
+    doc.undoStack().redo();
+    EXPECT_TRUE(holds());
+    EXPECT_LT((line(lines.second)->start() - corner).length(), 1e-12);
+}
+
+// A grip edit puts a new object in the entity's place. Undoing a layer's
+// rename or removal after one found the entity by the object it had moved,
+// no longer in the drawing: the line stayed on a layer that was gone, and
+// could not be picked.
+TEST(EntityCommandsTest, UndoingALayerChangeFindsEntitiesAGripEditReplaced) {
+    for (const bool rename : {true, false}) {
+        SCOPED_TRACE(rename ? "renamed" : "removed");
+        hz::doc::Document doc;
+        auto& layers = doc.layerManager();
+        hz::draft::LayerProperties walls;
+        walls.name = "Walls";
+        layers.addLayer(walls);
+        auto& drawing = doc.draftDocument();
+        auto line = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0));
+        line->setLayer("Walls");
+        drawing.addEntity(line);
+        const uint64_t id = line->id();
+
+        auto& stack = doc.undoStack();
+        if (rename) {
+            stack.push(
+                std::make_unique<hz::doc::RenameLayerCommand>(layers, drawing, "Walls", "Outer"));
+        } else {
+            stack.push(std::make_unique<hz::doc::RemoveLayerCommand>(layers, drawing, "Walls"));
+        }
+        // A grip drag: the line's end moved, then the step that records it.
+        auto before = drawing.findEntity(id)->clone();
+        line->setEnd(Vec2(12, 3));
+        stack.push(std::make_unique<hz::doc::GripMoveCommand>(
+            drawing, id, std::move(before), line->clone(), doc.constraintSystem()));
+        stack.undo();
+        ASSERT_NE(drawing.sharedEntity(id), line) << "the grip's undo put another object there";
+        stack.undo();
+        EXPECT_EQ(drawing.findEntity(id)->layer(), "Walls");
+        stack.redo();
+        EXPECT_EQ(drawing.findEntity(id)->layer(), rename ? "Outer" : "0");
+    }
+}
+
+// Explode undone and redone gives back the same pieces, so the steps after it
+// still find them (a Move's redo moved nothing, its pieces had new IDs);
+// undone, the reference is back where it was drawn; and two references of one
+// block exploded are two groups, not one.
+TEST(EntityCommandsTest, ExplodingIsTheSamePiecesEachTime) {
+    auto pair = std::make_shared<hz::draft::BlockDefinition>();
+    pair->name = "Pair";
+    for (const double y : {0.0, 1.0}) {
+        pair->entities.push_back(std::make_shared<DraftLine>(Vec2(0, y), Vec2(4, y)));
+        pair->entities.back()->setGroupId(7);  // a group within the block
+    }
+    DraftDocument d;
+    d.blockTable().addBlock(pair);
+    fill(d, 1);
+    auto ref = std::make_shared<hz::draft::DraftBlockRef>(pair, Vec2(10, 10));
+    auto other = std::make_shared<hz::draft::DraftBlockRef>(pair, Vec2(20, 10));
+    d.addEntity(ref);
+    d.addEntity(other);
+    fill(d, 1);
+    const auto drawn = ids(d);
+
+    hz::doc::UndoStack stack;
+    hz::cstr::ConstraintSystem constraints;
+    auto explode = std::make_unique<hz::doc::ExplodeBlockCommand>(d, ref->id());
+    auto* exploded = explode.get();
+    stack.push(std::move(explode));
+    const auto pieces = exploded->explodedIds();
+    ASSERT_EQ(pieces.size(), 2u);
+    stack.push(std::make_unique<MoveEntityCommand>(d, std::vector<uint64_t>{pieces[0]}, Vec2(0, 5),
+                                                   constraints));
+    stack.undo();
+    stack.undo();
+    EXPECT_EQ(ids(d), drawn) << "the reference back in its place";
+    stack.redo();
+    EXPECT_EQ(exploded->explodedIds(), pieces) << "the same pieces";
+    stack.redo();
+    const auto* moved = dynamic_cast<const DraftLine*>(d.findEntity(pieces[0]));
+    ASSERT_NE(moved, nullptr);
+    EXPECT_DOUBLE_EQ(moved->start().y, 15.0) << "and the move after it redone on them";
+
+    hz::doc::ExplodeBlockCommand second(d, other->id());
+    second.execute();
+    const uint64_t group = d.findEntity(pieces[0])->groupId();
+    EXPECT_NE(group, 0u) << "a group still";
+    EXPECT_EQ(d.findEntity(pieces[1])->groupId(), group);
+    for (const uint64_t id : second.explodedIds()) {
+        EXPECT_NE(d.findEntity(id)->groupId(), group) << "each reference's pieces their own group";
     }
 }
 

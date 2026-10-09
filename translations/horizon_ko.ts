@@ -521,7 +521,7 @@ Details are in the log:
         <translation type="unfinished">먼저 구성 요소를 두 개 이상 삽입하십시오</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+67"/>
         <location line="+142"/>
         <source>Add Mate</source>
         <translation type="unfinished">메이트 추가</translation>
@@ -3746,7 +3746,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message>
-        <location line="+2482"/>
+        <location line="+2487"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3790,7 +3790,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2506"/>
+        <location line="-2511"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4017,14 +4017,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+986"/>
         <location line="+478"/>
-        <location line="+903"/>
-        <location line="+581"/>
+        <location line="+908"/>
+        <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3031"/>
+        <location line="-3048"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4045,12 +4045,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2689"/>
+        <location line="+2696"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2683"/>
+        <location line="-2690"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -4628,12 +4628,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되어 다시 읽었습니다</translation>
     </message>
     <message>
-        <location line="+359"/>
+        <location line="+364"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+753"/>
+        <location line="+755"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -4643,7 +4643,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-729"/>
+        <location line="-731"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">어셈블리에는 스케치가 없습니다: 부품에서 스케치하십시오</translation>
     </message>
@@ -5065,7 +5065,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">%1을(를) 추가하지 않았습니다: %2</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+29"/>
         <source>%1 has nothing to edit</source>
         <translation type="unfinished">%1에는 편집할 항목이 없습니다</translation>
     </message>
@@ -5126,7 +5126,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">클릭한 면 또는 모서리의 반대 방향</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+41"/>
+        <source>%1 is gone: it was not changed</source>
+        <translation type="unfinished">%1이(가) 더 이상 없습니다: 변경하지 않았습니다</translation>
+    </message>
+    <message>
+        <location line="+40"/>
         <source>%1 cannot use the value given for: %2</source>
         <translation type="unfinished">%1에서 지정한 값을 사용할 수 없는 항목: %2</translation>
     </message>
@@ -5151,7 +5156,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3047"/>
+        <location line="-3064"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
@@ -5170,7 +5175,7 @@ Ideal (on the curved surfaces the facets approximate):
 <context>
     <name>hz::ui::PartCommands</name>
     <message>
-        <location filename="../src/ui/src/PartCommands.cpp" line="+45"/>
+        <location filename="../src/ui/src/PartCommands.cpp" line="+48"/>
         <source>%1 works on a part; open or create one</source>
         <translation type="unfinished">%1은(는) 부품에서 사용합니다. 부품을 열거나 새로 만드십시오</translation>
     </message>
@@ -5181,20 +5186,20 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+219"/>
+        <location line="+240"/>
         <location line="+13"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
     <message>
-        <location line="-231"/>
-        <location line="+219"/>
+        <location line="-252"/>
+        <location line="+240"/>
         <location line="+13"/>
         <source>z:</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-230"/>
+        <location line="-251"/>
         <source>Standing along:</source>
         <translation type="unfinished">세우는 방향:</translation>
     </message>
@@ -5226,12 +5231,12 @@ Ideal (on the curved surfaces the facets approximate):
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+388"/>
+        <location line="+409"/>
         <source>Radius:</source>
         <translation type="unfinished">반지름:</translation>
     </message>
     <message>
-        <location line="-395"/>
+        <location line="-416"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">높이:</translation>
@@ -5272,7 +5277,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">튜브 반지름:</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location line="+61"/>
         <source>Profile %1</source>
         <translation type="unfinished">프로파일 %1</translation>
     </message>
@@ -5436,12 +5441,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="-155"/>
-        <location line="+386"/>
+        <location line="+414"/>
         <source>Goes:</source>
         <translation type="unfinished">종료 조건:</translation>
     </message>
     <message>
-        <location line="-385"/>
+        <location line="-413"/>
         <source>To the distance</source>
         <translation type="unfinished">지정 거리</translation>
     </message>
@@ -5452,23 +5457,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+386"/>
+        <location line="+414"/>
         <source>Through all</source>
         <translation type="unfinished">관통</translation>
     </message>
     <message>
-        <location line="-385"/>
+        <location line="-413"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">양방향 관통</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+385"/>
+        <location line="+413"/>
         <source>Up to a face</source>
         <translation type="unfinished">면까지</translation>
     </message>
     <message>
-        <location line="-381"/>
+        <location line="-409"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(스케치와 평행한 부품의 평평한 면이 없음)</translation>
     </message>
@@ -5479,12 +5484,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+262"/>
+        <location line="+275"/>
         <source>Direction:</source>
         <translation type="unfinished">방향:</translation>
     </message>
     <message>
-        <location line="-261"/>
+        <location line="-274"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">스케치 법선 방향</translation>
     </message>
@@ -5611,12 +5616,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">중립 평면 위치:</translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+44"/>
         <source>Repeat only (none: the whole part):</source>
         <translation type="unfinished">반복할 피처 (없으면 부품 전체):</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+28"/>
         <source>Linear Pattern</source>
         <translation type="unfinished">선형 패턴</translation>
     </message>
@@ -5627,12 +5632,18 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+2"/>
-        <location line="+19"/>
+        <location line="+24"/>
         <source>Instances:</source>
         <translation type="unfinished">인스턴스 수:</translation>
     </message>
     <message>
-        <location line="-7"/>
+        <location line="-18"/>
+        <location line="+25"/>
+        <source>%1 not added: a feature it repeats is gone</source>
+        <translation type="unfinished">%1을(를) 추가하지 않았습니다: 반복할 피처가 더 이상 없습니다</translation>
+    </message>
+    <message>
+        <location line="-14"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">원형 패턴</translation>
     </message>
@@ -5647,7 +5658,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">전체 각도:</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+22"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
@@ -5682,7 +5693,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">대칭할 피처 (없으면 부품 전체):</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+4"/>
+        <source>%1 not added: a feature it mirrors is gone</source>
+        <translation type="unfinished">%1을(를) 추가하지 않았습니다: 대칭할 피처가 더 이상 없습니다</translation>
+    </message>
+    <message>
+        <location line="+12"/>
         <source>Hole</source>
         <translation type="unfinished">구멍</translation>
     </message>

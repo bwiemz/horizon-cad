@@ -252,6 +252,54 @@ work, not "post-1.0".
   out to the extension lines (|<--->|), and a leader's at what it points
   at; drawing sheets and exports show them so too. An angular dimension
   can also be picked on its extension lines, not only near its arc.
+- **An entity's constraints go with it.** Trim, Extend, Break, Fillet,
+  Chamfer, Cut, Create Block and joining polylines took an entity away and
+  left its constraints behind, naming what was gone: the next Move or grip
+  edit stopped part way through its solve, stayed moved with nothing to
+  undo, and left the Move tool stuck in its drag. Whatever takes an entity
+  away now takes its constraints with it, as Delete did, and undo brings
+  them back. A constraint on an entity that is not there, as an older file
+  may have, is left out of the solve.
+- **Stretch on constrained geometry undoes and redoes whole.** It solved
+  the constraints after each stretched entity in turn: undo left the second
+  of two joined lines stretched, and redo broke the constraints. The
+  stretch is now solved once, after all of it.
+- **Undoing a layer's rename or removal** puts back on it an entity edited
+  since by its grips or in the property panel. The entity stayed on the new
+  name, or on 0, a layer that no longer existed, and could not be picked.
+- **Explode undone and redone gives back the same pieces**, so a step after
+  it (a Move of a piece) is redone too: it did nothing. Undone, the block is
+  back where it was in the drawing order, not on top; and two references to
+  one block, exploded, are two groups, not one.
+- **A group made in a sketch of a reopened file is a group of its own.** The
+  sketch handed out group IDs from 1 again, so the new group took the ID of
+  one read from the file, and the two were selected as one.
+- **Undo or redo in the middle of a drag** puts the drag back first, as
+  Escape does: a grip, a Move, a Stretch, a polyline's vertex. Released
+  after the undo, a grip drag recorded a step from before it, which put back
+  what was undone and lost what could be redone. A tool part way through
+  what it makes starts it again.
+- **The sketch Extrude or Revolve makes of the drawing is a copy of it.** It
+  shared the drawing's entities: moving one in the drawing changed the
+  feature's profile with no rebuild, while a grip edit did not. Extruding
+  the drawing unchanged again still takes that sketch, now also after the
+  file is reopened.
+- **Paste into another drawing brings the layers and blocks of what was
+  copied.** A layer the drawing lacks is added, and so is a block, renamed
+  where the drawing has a different block of that name. Pasted entities
+  stayed on layers the drawing did not have, and could not be picked; a
+  block reference pointed at the other drawing's block, and was lost, or
+  shown as another block, when the file was read again. Undo takes it all
+  away in one step.
+- **A feature taken away while its edit form is open is not edited.** A
+  build that finishes meanwhile can withdraw a feature just added that
+  fails; the form then edited the freed feature. Linear and Circular
+  Pattern and Mirror are not added when a feature checked in their form is
+  gone, and say so.
+- **A mate on a datum of a mirrored component** takes the datum mirrored, as
+  the component's faces and edges are. It took the part's own datum, so the
+  other component went where the unmirrored part would have it; Add Mate's
+  list described it so too.
 
 ## Unreleased — Professional workflows, Milestone 19 (Phases 166–169)
 

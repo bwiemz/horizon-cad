@@ -12,6 +12,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMouseEvent>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -24,6 +25,7 @@
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -829,6 +831,82 @@ TEST(WorkbenchesTest, AnExtrudeTakesTheSketchEditedAndFinishesIt) {
     EXPECT_EQ(part.sketches().size(), 1u) << "no sketch made of the drawing";
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume, 1000.0, 1e-6);
+}
+
+// The drawing extruded is copied into the sketch made of it. The sketch
+// shared the drawing's lines: a Move in the drawing after changed the
+// extrude's profile, with no rebuild, and a grip edit did not. Extruded again
+// unchanged, the drawing takes that sketch again.
+TEST(WorkbenchesTest, ASketchMadeOfTheDrawingIsACopyOfIt) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    const std::vector<hz::math::Vec2> corners = {{0, 0}, {20, 0}, {20, 10}, {0, 10}};
+    std::vector<uint64_t> lines;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        auto line =
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]);
+        lines.push_back(line->id());
+        part.draftDocument().addEntity(line);
+    }
+    hz::ui::PartCommands commands(host);
+    const auto extrude = [&] {
+        return answering(
+            QStringLiteral("Extrude"), [](QDialog& form) { setField(form, "size", 5.0); },
+            [&] { commands.onExtrudeSketch(); });
+    };
+    ASSERT_TRUE(extrude());
+    ASSERT_EQ(part.sketches().size(), 1u);
+    const auto profile = part.sketches().front();
+    ASSERT_EQ(profile->entities().size(), 4u);
+    for (const auto& entity : profile->entities()) {
+        EXPECT_EQ(part.draftDocument().findEntity(entity->id()), nullptr) << "a copy";
+    }
+
+    part.undoStack().push(std::make_unique<hz::doc::MoveEntityCommand>(
+        part.draftDocument(), lines, hz::math::Vec2(0, 3), part.constraintSystem()));
+    const auto* first = dynamic_cast<const hz::draft::DraftLine*>(profile->entities()[0].get());
+    ASSERT_NE(first, nullptr);
+    EXPECT_DOUBLE_EQ(first->start().y, 0.0) << "the profile as it was extruded";
+    part.undoStack().undo();
+
+    ASSERT_TRUE(extrude());
+    EXPECT_EQ(part.sketches().size(), 1u) << "the drawing as it was: the same sketch";
+    EXPECT_EQ(host.added.size(), 2u);
+}
+
+// A feature checked in a pattern's form and taken away for good while the
+// form is open (a build that finished withdrew it) is looked for again when
+// the form closes: the pattern is not added. The form's list held the
+// feature, freed by then, and read its ID.
+TEST(WorkbenchesTest, APatternOfAFeatureGoneWhileItsFormIsOpenIsNotAdded) {
+    StandInHost host;
+    hz::doc::Document& part = host.backing;
+    part.setType(hz::doc::DocumentType::Part);
+    part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    part.undoStack().push(std::make_unique<hz::doc::AddFeatureCommand>(
+        part, hz::doc::PrimitiveFeature::makeBox(5, 5, 20), nullptr));
+    ASSERT_TRUE(part.rebuildModel());
+
+    hz::ui::PartCommands commands(host);
+    ASSERT_TRUE(answering(
+        QStringLiteral("Linear Pattern"),
+        [&part](QDialog& form) {
+            auto* list = form.findChild<QListWidget*>(QStringLiteral("features"));
+            ASSERT_NE(list, nullptr);
+            ASSERT_EQ(list->count(), 2);
+            list->item(1)->setCheckState(Qt::Checked);
+            // The second box undone, and a step after it: gone for good.
+            part.undoStack().undo();
+            part.undoStack().push(std::make_unique<hz::doc::AddEntityCommand>(
+                part.draftDocument(), std::make_shared<hz::draft::DraftLine>(
+                                          hz::math::Vec2(0, 0), hz::math::Vec2(1, 0))));
+        },
+        [&] { commands.onLinearPattern(); }));
+    EXPECT_TRUE(host.added.empty()) << "not added";
+    EXPECT_EQ(part.featureTree().featureCount(), 1u);
+    EXPECT_TRUE(host.currentStatus().contains(QStringLiteral("gone")))
+        << host.currentStatus().toStdString();
 }
 
 // Extrude again with the sketch chosen in the list, not edited: it is taken

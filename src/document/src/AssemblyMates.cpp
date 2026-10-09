@@ -25,24 +25,7 @@ std::optional<model::MateFrame> frameOf(const AssemblyDocument& assembly,
         for (size_t i = 0; i < tree.featureCount(); ++i) {
             const auto* datum = dynamic_cast<const DatumFeature*>(tree.feature(i));
             if (datum == nullptr || datum->featureID() != ref.faceId.tag()) continue;
-            model::MateFrame frame;
-            switch (datum->datumKind()) {
-                case DatumFeature::DatumKind::Plane:
-                    frame.kind = model::MateFrameKind::Planar;
-                    frame.origin = datum->asPlane().origin;
-                    frame.direction = datum->asPlane().normal;
-                    break;
-                case DatumFeature::DatumKind::Axis:
-                    frame.kind = model::MateFrameKind::Line;
-                    frame.origin = datum->asAxis().origin;
-                    frame.direction = datum->asAxis().direction;
-                    break;
-                case DatumFeature::DatumKind::Point:
-                    frame.kind = model::MateFrameKind::Point;
-                    frame.origin = datum->asPoint().position;
-                    break;
-            }
-            return frame;
+            return datumFrame(*datum, comp->mirrored);
         }
         return std::nullopt;
     }
@@ -59,6 +42,35 @@ std::optional<model::MateFrame> frameOf(const AssemblyDocument& assembly,
 }
 
 }  // namespace
+
+model::MateFrame datumFrame(const DatumFeature& datum, bool mirrored) {
+    model::MateFrame frame;
+    switch (datum.datumKind()) {
+        case DatumFeature::DatumKind::Plane:
+            frame.kind = model::MateFrameKind::Planar;
+            frame.origin = datum.asPlane().origin;
+            frame.direction = datum.asPlane().normal;
+            break;
+        case DatumFeature::DatumKind::Axis:
+            frame.kind = model::MateFrameKind::Line;
+            frame.origin = datum.asAxis().origin;
+            frame.direction = datum.asAxis().direction;
+            break;
+        case DatumFeature::DatumKind::Point:
+            frame.kind = model::MateFrameKind::Point;
+            frame.origin = datum.asPoint().position;
+            break;
+    }
+    // A mirrored component's faces and edges are its part's mirrored
+    // (Phase 162); its datums are too, or a mate on one put the other
+    // component where the part's own datum is, not its image.
+    if (mirrored) {
+        const math::Mat4 mirror = ComponentInstance::ownMirror();
+        frame.origin = mirror.transformPoint(frame.origin);
+        frame.direction = mirror.transformDirection(frame.direction);
+    }
+    return frame;
+}
 
 std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assembly,
                                                    std::string* why) {
