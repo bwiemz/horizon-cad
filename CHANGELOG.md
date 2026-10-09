@@ -22,10 +22,13 @@ work, not "post-1.0".
 - **Walking a loop that is not yet closed does not take the application
   down.** Every walk of a half-edge loop followed `next` to the end of the
   list without looking, so a loop with a break in it read through a null
-  pointer, and one that ran on into itself was followed forever. Both are
-  ordinary states of a kernel part way through a feature or after an undo:
-  a loop only partly built, or a half-edge a kill left with no `next`. Now a
-  loop reports the half-edges it has, and stops.
+  pointer, and one that ran on into itself was followed forever — the
+  application stopped, with nothing on screen and no way to stop it. Both
+  are ordinary states of a kernel part way through a feature or after an
+  undo: a loop only partly built, or a half-edge a kill left with no `next`.
+  All four walks — a loop's size, the vertices of a face, the faces beside
+  it, the edges at a vertex — now end at the ring's own end, at the break,
+  or at a half-edge met twice, and report what they have.
 - **Looking at a part from directly above draws it.** `lookAt` built its
   right-hand axis by crossing the view direction with the up, which for a top
   view are the same vector, and the axis came out of that as zero: the basis
