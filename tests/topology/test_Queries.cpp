@@ -93,6 +93,39 @@ TEST(QueriesTest, ALoopThatNeverClosesIsCountedNotSpunOn) {
     EXPECT_LE(loopSize(&w), 8) << "bounded by the ring it was given";
 }
 
+// The same chain, through each walk that reads it. They all have to answer:
+// one of them answering by never answering at all is the worst of it, since
+// the application stops answering too.
+TEST(QueriesTest, ALoopThatNeverClosesIsListedNotSpunOn) {
+    HalfEdge chain[8];
+    for (int i = 0; i < 7; ++i) {
+        chain[i].next = &chain[i + 1];
+    }
+    chain[7].next = &chain[2];
+
+    Wire w{};
+    w.halfEdge = &chain[0];
+    Face f{};
+    f.outerLoop = &w;
+
+    EXPECT_LE(faceVertices(&f).size(), 8u) << "bounded by the ring it was given";
+    EXPECT_LE(adjacentFaces(&f).size(), 8u) << "bounded by the ring it was given";
+}
+
+// A vertex whose half-edges lead round a ring that never closes.
+TEST(QueriesTest, TheEdgesAtAVertexOfARingThatNeverClosesAreFound) {
+    HalfEdge chain[8];
+    for (int i = 0; i < 7; ++i) {
+        chain[i].next = &chain[i + 1];
+    }
+    chain[7].next = &chain[2];
+
+    Vertex v{};
+    v.halfEdge = &chain[0];
+
+    EXPECT_LE(incidentEdges(&v).size(), 8u) << "bounded by the ring it was given";
+}
+
 TEST(QueriesTest, ALoopOfOneHalfEdgeIsOneHalfEdge) {
     HalfEdge only{};
     only.next = &only;
