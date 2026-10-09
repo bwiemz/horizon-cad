@@ -21,7 +21,13 @@ namespace hz::model {
 /// One boundary polygon extracted from a B-Rep face: its outer loop, with
 /// any holes bridged in (see BoundaryMesh::keyholePolygon).
 struct BoundaryPolygon {
-    std::vector<math::Vec3> points;              ///< Ordered loop (no closing duplicate).
+    std::vector<math::Vec3> points;  ///< Ordered loop (no closing duplicate).
+    /// A face with holes: its outer loop and its holes apart, each a loop of
+    /// the face's own vertices (holes wound against the outer loop), for a
+    /// caller that keeps the face as it is rather than triangulating it.
+    /// Empty when the face has no holes (`points` is then its outer loop).
+    std::vector<math::Vec3> outer;
+    std::vector<std::vector<math::Vec3>> holes;
     topo::TopologyID topoId;                     ///< Provenance: source face's topology ID.
     std::shared_ptr<geo::NurbsSurface> surface;  ///< Source face surface (may be null).
     /// Source face's ideal surface (topo::Face::analyticSurface; may be null).

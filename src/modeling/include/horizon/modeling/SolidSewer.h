@@ -28,13 +28,13 @@ namespace hz::model {
 /// A watertight, T-junction-free input yields a solid that passes
 /// Solid::checkManifold(), and checkEulerFormula() for any genus.
 ///
-/// Assumes 2-manifold contact: twin pairing greedily matches each directed
-/// half-edge with the first available oppositely-directed one on the same
-/// undirected edge.  Where exactly two faces meet an edge (the normal case)
-/// this is unambiguous; at a non-manifold edge shared by four+ half-edges
-/// (two lobes touching along an edge) the pairing is arbitrary and may not
-/// reflect the true radial order.  Callers who can produce such contacts
-/// (not the current Boolean pipeline) should split them first.
+/// Where exactly two faces meet an edge (the normal case) twin pairing is
+/// unambiguous. Where more do — two bodies touching along an edge, as a Union
+/// of boxes that meet only there makes — each face is paired with the one met
+/// first turning about the edge into the material behind it, its own body's;
+/// and a vertex where shells meet is given to each shell as a copy of its
+/// own. Bodies touching along an edge or at a point come out as separate
+/// shells, each a solid, sharing nothing.
 class SolidSewer {
 public:
     /// Distance below which two input points are the same vertex.

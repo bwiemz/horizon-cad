@@ -35,12 +35,21 @@ BoundingBox boundsOf(const std::vector<BoundaryPolygon>& polygons) {
     return box;
 }
 
-/// Fast paths keep the original loops (and surfaces) instead of fragments.
+/// Fast paths keep the original loops (and surfaces) instead of fragments,
+/// a face's holes among them: its keyhole outline, which the CSG reads as the
+/// face less its holes, sewed into a face with a bridge to each hole, an edge
+/// with the face on both sides, and the result was refused for a boundary
+/// that crosses itself.
 void appendAsInputFaces(const std::vector<BoundaryPolygon>& polygons,
                         std::vector<SolidSewer::InputFace>& out) {
     for (const auto& poly : polygons) {
         SolidSewer::InputFace face;
-        face.points = poly.points;
+        const bool holed = !poly.holes.empty() && std::all_of(poly.holes.begin(), poly.holes.end(),
+                                                              [](const std::vector<Vec3>& hole) {
+                                                                  return hole.size() >= 3;
+                                                              });
+        face.points = holed ? poly.outer : poly.points;
+        if (holed) face.holes = poly.holes;
         face.topoId = poly.topoId;
         face.surface = poly.surface;
         face.analyticSurface = poly.analyticSurface;
@@ -114,6 +123,8 @@ std::unique_ptr<topo::Solid> sewChecked(const std::vector<SolidSewer::InputFace>
     auto solid = SolidSewer::sew(faces, weldTol);
     if (!solid || solid->faceCount() == 0) return nullptr;
     if (!solid->checkManifold()) return nullptr;
+    // As the header promises: counts a solid can have.
+    if (!solid->checkEulerFormula()) return nullptr;
     return solid;
 }
 
