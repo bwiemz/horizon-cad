@@ -53,10 +53,9 @@ public:
     /// single body. Refuses, with a message: a corner where four or more
     /// faces meet whose offsets do not meet in a point; a face on another
     /// kind of surface; a face opened in part; and a wall too thick for the
-    /// part (a face or hole of the cavity collapses, an edge turns over, or
-    /// a face's loop crosses itself). Two faces of the cavity crossing each
-    /// other past those local checks is not detected: no check in the
-    /// kernel sees faces crossing yet.
+    /// part (a face or hole of the cavity collapses, an edge turns over, a
+    /// face's loop crosses itself, or two faces of the cavity run into each
+    /// other).
     static ShellResult executeOffset(const topo::Solid& solid, double thickness,
                                      const std::vector<topo::TopologyID>& openFaceIds,
                                      const std::string& featureID,
