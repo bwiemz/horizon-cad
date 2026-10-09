@@ -17,15 +17,20 @@
 #include <numbers>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "../PortableRandom.h"
 #include "../TimeLimits.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 
@@ -227,6 +232,154 @@ TEST(BooleanRobustnessTest, FacesInExactContactAreSound) {
         BooleanOp::execute(*a, *whole, BooleanType::Union, nullptr, NamingScheme::Stable);
     ASSERT_NE(joined, nullptr);
     EXPECT_NEAR(volumeOf(*joined), 2000.0, 1e-7);
+}
+
+// Boxes that meet only along an edge, or at a corner. The edge's four faces
+// were paired as they were found, as often across the two boxes as within
+// one, and the corner's vertex was shared by both: a union that read as one
+// closed body with every count right (or, at a corner, as counts no solid
+// has), and was not one. It is two bodies now, each sound, sharing nothing.
+TEST(BooleanRobustnessTest, BoxesMeetingAlongAnEdgeOrAtAPointAreTwoBodies) {
+    const auto a = PrimitiveFactory::makeBox(10, 10, 10);
+    const struct {
+        Vec3 at;
+        const char* what;
+    } cases[] = {{Vec3(10, 10, 0), "along an edge"}, {Vec3(10, 10, 10), "at a corner"}};
+    for (const auto& c : cases) {
+        const auto b = moved(*PrimitiveFactory::makeBox(10, 10, 10), Mat4::translation(c.at));
+        for (const NamingScheme naming : {NamingScheme::Stable, NamingScheme::Positional}) {
+            std::string why;
+            const auto joined = BooleanOp::execute(*a, *b, BooleanType::Union, &why, naming);
+            ASSERT_NE(joined, nullptr) << c.what << ": " << why;
+            EXPECT_EQ(joined->shellCount(), 2u) << c.what;
+            EXPECT_EQ(joined->vertexCount(), 16u) << c.what << ": no vertex shared";
+            EXPECT_TRUE(joined->isValid()) << c.what << ": " << joined->validationReport();
+            EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*joined))
+                << c.what << ": " << hz::topo::GeometryValidator::report(*joined);
+            // Each shell's half-edges twin within it.
+            for (const auto& face : joined->faces()) {
+                const hz::topo::HalfEdge* start = face.outerLoop->halfEdge;
+                const hz::topo::HalfEdge* he = start;
+                do {
+                    ASSERT_NE(he->twin, nullptr);
+                    EXPECT_EQ(he->twin->face->shell, face.shell) << c.what;
+                    he = he->next;
+                } while (he != start);
+            }
+            EXPECT_NEAR(volumeOf(*joined), 2000.0, 1e-7) << c.what;
+        }
+        expectSound(*a, *b, 10.0, c.what);
+    }
+}
+
+// Bodies touching face to face, sewn together (as faceting a STEP file of
+// touching bodies sews them): the face of the one lying back to back on the
+// other's is met at no turn about their edges, and on faces not quite flat
+// (a curved face's facets) a hair either side of none. Taken first, it sewed
+// the two bodies into one shell; it is taken last, and they are two. Each
+// box's contact face is the same quad, its far corner a thousandth off the
+// plane, its loop started at each corner in turn, in either order.
+TEST(BooleanRobustnessTest, BodiesTouchingFaceToFaceAreSewnApart) {
+    using Face = hz::model::SolidSewer::InputFace;
+    const auto turned = [](const std::vector<Vec3>& loop, int start) {
+        std::vector<Vec3> out;
+        for (size_t i = 0; i < loop.size(); ++i) {
+            out.push_back(loop[(i + static_cast<size_t>(start)) % loop.size()]);
+        }
+        return out;
+    };
+    // A box's faces, outward wound, from its corners (bottom 0-3, top 4-7).
+    const auto box = [&turned](const std::vector<Vec3>& c, int bottomStart, int topStart) {
+        std::vector<Face> faces(6);
+        faces[0].points = turned({c[0], c[3], c[2], c[1]}, bottomStart);
+        faces[1].points = turned({c[4], c[5], c[6], c[7]}, topStart);
+        faces[2].points = {c[0], c[1], c[5], c[4]};
+        faces[3].points = {c[1], c[2], c[6], c[5]};
+        faces[4].points = {c[2], c[3], c[7], c[6]};
+        faces[5].points = {c[3], c[0], c[4], c[7]};
+        return faces;
+    };
+    for (const double off : {1e-3, -1e-3}) {
+        const Vec3 corner(1, 1, 1 + off);  // shared by both contact faces
+        const std::vector<Vec3> lower = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
+                                         {0, 0, 1}, {1, 0, 1}, corner,    {0, 1, 1}};
+        const std::vector<Vec3> upper = {{0, 0, 1}, {1, 0, 1}, corner,    {0, 1, 1},
+                                         {0, 0, 2}, {1, 0, 2}, {1, 1, 2}, {0, 1, 2}};
+        for (int start = 0; start < 16; ++start) {
+            for (const bool lowerFirst : {true, false}) {
+                const auto a = box(lower, 0, start % 4);
+                const auto b = box(upper, start / 4, 0);
+                std::vector<Face> faces = lowerFirst ? a : b;
+                const auto& rest = lowerFirst ? b : a;
+                faces.insert(faces.end(), rest.begin(), rest.end());
+                const auto sewn = hz::model::SolidSewer::sew(faces);
+                ASSERT_NE(sewn, nullptr);
+                const std::string what = "off " + std::to_string(off) + ", starts " +
+                                         std::to_string(start) +
+                                         (lowerFirst ? ", lower first" : ", upper first");
+                ASSERT_EQ(sewn->shellCount(), 2u) << what;
+                for (const auto& shell : sewn->shells()) EXPECT_EQ(shell.faces.size(), 6u) << what;
+                EXPECT_TRUE(sewn->isValid()) << what << "\n" << sewn->validationReport();
+            }
+        }
+    }
+}
+
+// A pattern merges instances whose boxes meet; boxes in a row edge to edge
+// are as many bodies, each sound.
+TEST(BooleanRobustnessTest, APatternOfBoxesEdgeToEdgeBuilds) {
+    const auto box = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto row = Pattern::linear(*box, Vec3(1, 1, 0).normalized(), 10.0 * std::sqrt(2.0), 3, {},
+                                     NamingScheme::Stable);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->shellCount(), 3u);
+    EXPECT_TRUE(row->isValid()) << row->validationReport();
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*row))
+        << hz::topo::GeometryValidator::report(*row);
+    EXPECT_NEAR(volumeOf(*row), 3000.0, 1e-6);
+}
+
+// A face with a hole, kept as it is on a path that splits nothing: its
+// keyhole outline, a bridge out to the hole and back, was sewn into a face
+// with a bridge edge it bounded on both sides, and the union of a holed
+// plate with a box that does not reach it was refused for a boundary that
+// crosses itself.
+TEST(BooleanRobustnessTest, AHoledFaceIsKeptWhereNothingIsCut) {
+    // A washer: a rectangle off the axis turned a whole turn, its flat ends
+    // each one face with the bore a hole in it.
+    std::vector<std::shared_ptr<hz::draft::DraftEntity>> profile;
+    const std::vector<hz::math::Vec2> corners = {{5, 0}, {10, 0}, {10, 2}, {5, 2}};
+    for (size_t i = 0; i < corners.size(); ++i) {
+        profile.push_back(
+            std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % corners.size()]));
+    }
+    const auto holed = hz::model::Revolve::execute(profile, hz::draft::SketchPlane(), Vec3(0, 0, 0),
+                                                   Vec3(0, 1, 0), 2.0 * std::numbers::pi, "washer",
+                                                   32, 0.0, nullptr, NamingScheme::Stable);
+    ASSERT_NE(holed, nullptr);
+    size_t holes = 0;
+    for (const auto& face : holed->faces()) holes += face.innerLoops.size();
+    ASSERT_EQ(holes, 2u) << "the washer's two flat ends have the bore in them";
+
+    const auto far = moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(50, 0, 0)));
+    for (const NamingScheme naming : {NamingScheme::Stable, NamingScheme::Positional}) {
+        std::string why;
+        const auto joined = BooleanOp::execute(*holed, *far, BooleanType::Union, &why, naming);
+        ASSERT_NE(joined, nullptr) << why;
+        EXPECT_TRUE(joined->isValid()) << joined->validationReport();
+        EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*joined))
+            << hz::topo::GeometryValidator::report(*joined);
+        size_t kept = 0;
+        for (const auto& face : joined->faces()) kept += face.innerLoops.size();
+        EXPECT_EQ(kept, holes) << "each hole is a hole still";
+        EXPECT_NEAR(volumeOf(*joined), volumeOf(*holed) + 8.0, 1e-7);
+
+        const auto cut = BooleanOp::execute(*holed, *far, BooleanType::Subtract, &why, naming);
+        ASSERT_NE(cut, nullptr) << why;
+        EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*cut))
+            << hz::topo::GeometryValidator::report(*cut);
+        EXPECT_NEAR(volumeOf(*cut), volumeOf(*holed), 1e-7);
+    }
 }
 
 // A plate with 81 holes cut at once: its top and bottom are put back

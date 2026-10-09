@@ -383,8 +383,11 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
         for (const auto* v : verts) poly.points.push_back(v->point);
         if (!face.innerLoops.empty()) {
             std::vector<std::vector<Vec3>> holes;
+            poly.outer = poly.points;
             for (const topo::Wire* inner : face.innerLoops) {
-                if (inner) holes.push_back(loopPoints(*inner, true));
+                if (!inner) continue;
+                holes.push_back(loopPoints(*inner, true));
+                poly.holes.push_back(loopPoints(*inner, false));
             }
             poly.points = keyholePolygon(poly.points, std::move(holes));
         }
@@ -399,6 +402,8 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     if (signedVolume(polygons) < 0.0) {
         for (auto& poly : polygons) {
             std::reverse(poly.points.begin(), poly.points.end());
+            std::reverse(poly.outer.begin(), poly.outer.end());
+            for (auto& hole : poly.holes) std::reverse(hole.begin(), hole.end());
         }
     }
 
