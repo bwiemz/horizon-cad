@@ -19,6 +19,19 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The spatial index builds as well for a flat model as for a spread one.**
+  The R-tree chose where to put an entry by the room a node takes, measured
+  in x and y and not at all in z. For a model flat in one axis — a part in a
+  plane, a section view's cut, a drawing — every node measured zero, so every
+  candidate looked the same and entries went wherever they came first rather
+  than wherever they fitted. It now measures all three axes, which for the
+  same 20,000 points takes 2,250 nodes against 2,272 for the same points
+  spread in x. The three sizes are summed rather than multiplied, and the
+  comment says why: multiplying looks right and is not, since every 2D entity
+  is flat in z by construction, so the product is zero for a whole drawing's
+  index at once — measured at nearly three times the nodes needed, and two
+  and a half times the time to answer a query.
+
 - **Walking a loop that is not yet closed does not take the application
   down.** Every walk of a half-edge loop followed `next` to the end of the
   list without looking, so a loop with a break in it read through a null
