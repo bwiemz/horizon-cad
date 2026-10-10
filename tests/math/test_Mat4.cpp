@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat3.h"
 #include "horizon/math/Mat4.h"
@@ -259,4 +261,68 @@ TEST(Mat3Test, ASmallScaleHasAnInverse) {
     Mat3 singular = Mat3::identity();
     singular.m[1][1] = 0.0;
     EXPECT_EQ(singular.inverse().m[1][1], 1.0) << "the identity, as before";
+}
+
+// ---------------------------------------------------------------------------
+// lookAt when the up vector is along the view direction
+// ---------------------------------------------------------------------------
+// Looking straight down at a part is one of the most common views there is,
+// and it is what a standard view asks for. The right vector is the forward
+// crossed with the up, which is then the zero vector; the basis collapsed and
+// every point came out at the origin, so a top view drew nothing at all.
+TEST(Mat4Test, LookAtDownZStillHasAnOrthonormalBasis) {
+    const Mat4 m = Mat4::lookAt(Vec3(0, 0, 0), Vec3(0, 0, 1), Vec3(0, 0, 1));
+
+    const Vec3 right = m.transformDirection(Vec3(1, 0, 0));
+    const Vec3 up = m.transformDirection(Vec3(0, 1, 0));
+
+    EXPECT_NEAR(right.length(), 1.0, 1e-9) << "the right axis collapsed";
+    EXPECT_NEAR(up.length(), 1.0, 1e-9) << "the up axis collapsed";
+    EXPECT_NEAR(right.dot(up), 0.0, 1e-9);
+}
+
+TEST(Mat4Test, LookAtDownZPlacesAPointAheadOfTheEye) {
+    const Mat4 m = Mat4::lookAt(Vec3(0, 0, 0), Vec3(0, 0, 1), Vec3(0, 0, 1));
+    const Vec3 p = m.transformPoint(Vec3(5.0, 5.0, 10.0));
+    // Ten units along the view direction, with the axes off the origin.
+    EXPECT_GT(p.length(), 1.0);
+}
+
+// The same holds for the other way up, and for the opposite direction.
+TEST(Mat4Test, LookAtAlongUpVectorInEitherDirectionStillHasABasis) {
+    for (const Vec3 target : {Vec3(0, 0, -1), Vec3(0, 1, 0), Vec3(1, 0, 0)}) {
+        const Mat4 m = Mat4::lookAt(Vec3::Zero, target, target);
+        EXPECT_NEAR(m.transformDirection(Vec3(1, 0, 0)).length(), 1.0, 1e-9)
+            << "target " << target.x << "," << target.y << "," << target.z;
+        EXPECT_NEAR(m.transformDirection(Vec3(0, 1, 0)).length(), 1.0, 1e-9)
+            << "target " << target.x << "," << target.y << "," << target.z;
+    }
+}
+
+// A view with the eye on its target has no direction; it must not produce nan.
+TEST(Mat4Test, LookAtWithTheEyeOnItsTargetStaysFinite) {
+    const Mat4 m = Mat4::lookAt(Vec3(1, 2, 3), Vec3(1, 2, 3), Vec3(0, 0, 1));
+    const Vec3 p = m.transformPoint(Vec3::Zero);
+    EXPECT_TRUE(std::isfinite(p.x));
+    EXPECT_TRUE(std::isfinite(p.y));
+    EXPECT_TRUE(std::isfinite(p.z));
+}
+
+// A zero up vector is no up vector, and must be treated as no up vector.
+TEST(Mat4Test, LookAtWithAZeroUpStaysFinite) {
+    const Mat4 m = Mat4::lookAt(Vec3::Zero, Vec3(0, 0, 1), Vec3::Zero);
+    const Vec3 p = m.transformPoint(Vec3(1, 1, 1));
+    EXPECT_TRUE(std::isfinite(p.x));
+    EXPECT_TRUE(std::isfinite(p.y));
+    EXPECT_TRUE(std::isfinite(p.z));
+    EXPECT_NEAR(m.transformDirection(Vec3(1, 0, 0)).length(), 1.0, 1e-9);
+}
+
+// reflection() normalises its normal, so a zero normal must not divide by zero.
+TEST(Mat4Test, ReflectionWithAZeroNormalStaysFinite) {
+    const Mat4 m = Mat4::reflection(Vec3(1, 2, 3), Vec3::Zero);
+    const Vec3 p = m.transformPoint(Vec3(4, 5, 6));
+    EXPECT_TRUE(std::isfinite(p.x)) << p.x;
+    EXPECT_TRUE(std::isfinite(p.y)) << p.y;
+    EXPECT_TRUE(std::isfinite(p.z)) << p.z;
 }

@@ -1,5 +1,9 @@
 #include "horizon/math/Transform.h"
 
+#include <cmath>
+
+#include "horizon/math/Tolerance.h"
+
 namespace hz::math {
 
 const Transform Transform::Identity = Transform();
@@ -19,7 +23,15 @@ Mat4 Transform::toMatrix() const {
 
 Transform Transform::inverse() const {
     Quaternion invRot = m_rotation.inverse();
-    Vec3 invScale = {1.0 / m_scale.x, 1.0 / m_scale.y, 1.0 / m_scale.z};
+    // A scale has no inverse once an axis is collapsed to nothing: dividing by
+    // it gave inf on the way in, and nan on the way back, and the nan went on
+    // into the feature's rebuild, where every vertex of its mesh read nan and
+    // nothing drew at all. A collapsed axis stands for itself, so the answer
+    // is finite and says plainly that this transform cannot be undone.
+    const auto reciprocal = [](double s) {
+        return std::abs(s) > Tolerance::kLinear ? 1.0 / s : (s < 0.0 ? -1.0 : 1.0);
+    };
+    Vec3 invScale = {reciprocal(m_scale.x), reciprocal(m_scale.y), reciprocal(m_scale.z)};
     Vec3 invTrans = invRot.rotate(Vec3{-m_translation.x * invScale.x, -m_translation.y * invScale.y,
                                        -m_translation.z * invScale.z});
     return {invTrans, invRot, invScale};

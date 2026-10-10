@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "horizon/math/Constants.h"
 #include "horizon/math/Transform.h"
 
@@ -142,4 +144,74 @@ TEST(TransformTest, DefaultConstructorIsIdentity) {
     EXPECT_NEAR(t.scale().x, 1.0, 1e-10);
     EXPECT_NEAR(t.scale().y, 1.0, 1e-10);
     EXPECT_NEAR(t.scale().z, 1.0, 1e-10);
+}
+
+// ---------------------------------------------------------------------------
+// 10. A degenerate scale inverts to no answer, not to inf and nan
+// ---------------------------------------------------------------------------
+// A mirror (a negative scale) is a legitimate feature and must invert exactly.
+// A collapsed axis is not: it has no inverse at all. Dividing by it gave inf
+// on the way in and nan on the way back, and the nan went on into a feature's
+// rebuild, where every mesh vertex read nan and nothing drew.
+TEST(TransformTest, AMirrorInvertsExactly) {
+    Transform t(Vec3(1.0, -2.0, 3.0), Quaternion::fromAxisAngle(Vec3::UnitZ, 0.7),
+                Vec3(-1.0, -1.0, -1.0));
+    const Vec3 p(4.0, 5.0, 6.0);
+    const Vec3 back = t.inverse().transformPoint(t.transformPoint(p));
+    EXPECT_NEAR(back.x, p.x, 1e-9);
+    EXPECT_NEAR(back.y, p.y, 1e-9);
+    EXPECT_NEAR(back.z, p.z, 1e-9);
+}
+
+// A scale with no rotation in it undoes exactly, however unequal it is: each
+// axis is divided by its own scale, which needs nothing of the rotation.
+TEST(TransformTest, AnUnequalScaleWithNoRotationInvertsExactly) {
+    Transform t(Vec3(1.0, 2.0, 3.0), Quaternion::Identity, Vec3(2.0, 3.0, 4.0));
+    const Vec3 p(10.0, 20.0, 30.0);
+    const Vec3 back = t.inverse().transformPoint(t.transformPoint(p));
+    EXPECT_NEAR(back.x, p.x, 1e-9);
+    EXPECT_NEAR(back.y, p.y, 1e-9);
+    EXPECT_NEAR(back.z, p.z, 1e-9);
+}
+
+// A transform of no scale and a rotation is undone by the reverse rotation.
+TEST(TransformTest, ARotationAndTranslationWithNoScaleInvertExactly) {
+    Transform t(Vec3(1.0, -2.0, 3.0), Quaternion::fromAxisAngle(Vec3::UnitZ, 0.7),
+                Vec3(1.0, 1.0, 1.0));
+    const Vec3 p(4.0, 5.0, 6.0);
+    const Vec3 back = t.inverse().transformPoint(t.transformPoint(p));
+    EXPECT_NEAR(back.x, p.x, 1e-9);
+    EXPECT_NEAR(back.y, p.y, 1e-9);
+    EXPECT_NEAR(back.z, p.z, 1e-9);
+}
+
+TEST(TransformTest, ACollapsedAxisInvertsToSomethingFinite) {
+    Transform t(Vec3(1.0, 2.0, 3.0), Quaternion::Identity, Vec3(0.0, 1.0, 1.0));
+    const Vec3 back = t.inverse().transformPoint(t.transformPoint(Vec3(1.0, 1.0, 1.0)));
+    EXPECT_TRUE(std::isfinite(back.x)) << back.x;
+    EXPECT_TRUE(std::isfinite(back.y)) << back.y;
+    EXPECT_TRUE(std::isfinite(back.z)) << back.z;
+}
+
+TEST(TransformTest, AnExactlyZeroScaleInvertsToSomethingFinite) {
+    Transform t(Vec3(1.0, 2.0, 3.0), Quaternion::Identity, Vec3(0.0, 0.0, 0.0));
+    const Transform inv = t.inverse();
+    EXPECT_TRUE(std::isfinite(inv.scale().x)) << inv.scale().x;
+    EXPECT_TRUE(std::isfinite(inv.translation().x)) << inv.translation().x;
+    const Vec3 back = inv.transformPoint(t.transformPoint(Vec3(1.0, 1.0, 1.0)));
+    EXPECT_TRUE(std::isfinite(back.x)) << back.x;
+    EXPECT_TRUE(std::isfinite(back.y)) << back.y;
+    EXPECT_TRUE(std::isfinite(back.z)) << back.z;
+}
+
+// Composition of a transform with one that collapses an axis is still finite.
+TEST(TransformTest, ComposingWithACollapsedScaleStaysFinite) {
+    const Transform collapsed(Vec3::Zero, Quaternion::Identity, Vec3(0.0, 1.0, 1.0));
+    const Transform composed =
+        Transform(Vec3(1, 2, 3), Quaternion::Identity, Vec3(2, 2, 2)) * collapsed;
+    EXPECT_TRUE(std::isfinite(composed.scale().x)) << composed.scale().x;
+    const Vec3 p = composed.transformPoint(Vec3(1.0, 2.0, 3.0));
+    EXPECT_TRUE(std::isfinite(p.x)) << p.x;
+    EXPECT_TRUE(std::isfinite(p.y)) << p.y;
+    EXPECT_TRUE(std::isfinite(p.z)) << p.z;
 }
