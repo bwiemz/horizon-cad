@@ -19,6 +19,19 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Sewing a solid no longer depends on the order its faces arrive in.**
+  Welding asked each position whether it was within the tolerance of the ones
+  already seen, which is not the same question as whether two positions are
+  the same vertex: A and B within the tolerance, and B and C within it, and
+  A and C not, welded A to B and left C on its own — while arriving in another
+  order left two pairs. A Boolean hands faces to the sewer in whatever order
+  its split produced them, so the same two solids could sew to different
+  vertex counts. Every position is now gathered first and joined by union-find,
+  so which of them are one vertex is settled by the set and not by the order,
+  and each joined group takes its position from its first member. Three
+  positions a tolerance apart from their neighbours now make one vertex rather
+  than one, two or three of them.
+
 - **The spatial index builds as well for a flat model as for a spread one.**
   The R-tree chose where to put an entry by the room a node takes, measured
   in x and y and not at all in z. For a model flat in one axis — a part in a
