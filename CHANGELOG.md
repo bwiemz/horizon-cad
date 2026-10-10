@@ -19,6 +19,32 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Sewing a solid no longer depends on the order its faces arrive in.**
+  Welding asked each position whether it was within the tolerance of the ones
+  already seen, which is not the same question as whether two positions are
+  the same vertex: A and B within the tolerance, and B and C within it, and
+  A and C not, welded A to B and left C on its own — while arriving in another
+  order left two pairs. A Boolean hands faces to the sewer in whatever order
+  its split produced them, so the same two solids could sew to different
+  vertex counts. Every position is now gathered first and joined by union-find,
+  so which of them are one vertex is settled by the set and not by the order,
+  and each joined group takes its position from its first member. Three
+  positions a tolerance apart from their neighbours now make one vertex rather
+  than one, two or three of them.
+
+- **The spatial index builds as well for a flat model as for a spread one.**
+  The R-tree chose where to put an entry by the room a node takes, measured
+  in x and y and not at all in z. For a model flat in one axis — a part in a
+  plane, a section view's cut, a drawing — every node measured zero, so every
+  candidate looked the same and entries went wherever they came first rather
+  than wherever they fitted. It now measures all three axes, which for the
+  same 20,000 points takes 2,250 nodes against 2,272 for the same points
+  spread in x. The three sizes are summed rather than multiplied, and the
+  comment says why: multiplying looks right and is not, since every 2D entity
+  is flat in z by construction, so the product is zero for a whole drawing's
+  index at once — measured at nearly three times the nodes needed, and two
+  and a half times the time to answer a query.
+
 - **Walking a loop that is not yet closed does not take the application
   down.** Every walk of a half-edge loop followed `next` to the end of the
   list without looking, so a loop with a break in it read through a null
