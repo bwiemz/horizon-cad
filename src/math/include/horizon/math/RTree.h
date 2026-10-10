@@ -270,8 +270,23 @@ private:
     /// Compute 2D area of a bounding box (x * y, ignoring z).
     static double bboxArea(const BoundingBox& bb) {
         if (!bb.isValid()) return 0.0;
-        Vec3 s = bb.size();
-        return s.x * s.y;
+        // How much room a node takes, which is its size along every axis it is
+        // spread on. Measured in x and y alone it is worth nothing whenever
+        // the entries are flat in z — a part modelled in one plane, a section
+        // view's cut — and every candidate then measures the same, so where an
+        // entry went is decided by which came first rather than by which
+        // fitted. The tree came out an eleventh looser than the same points
+        // spread in x.
+        //
+        // The three sizes are summed, not multiplied. Multiplying them looks
+        // right and is not: every 2D entity is flat in z by construction, its
+        // bounding box having zero extent there, so the product is zero for
+        // all of them at once and a drawing's whole spatial index is built on
+        // a measure that says every node is empty. That is a hundred times
+        // slower than the sum, which for the same reason never reaches zero:
+        // a node has room on some axis or it would not be here.
+        const Vec3 s = bb.size();
+        return s.x + s.y + s.z;
     }
 
     /// Compute the 2D area enlargement needed to include `addition` in `base`.
