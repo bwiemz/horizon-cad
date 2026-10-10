@@ -34,33 +34,106 @@ struct CellKeyHash {
 };
 
 /// Merges positions closer than `tol` and hands out stable indices.
+///
+/// Welded by union-find over every point seen, so which points are one vertex
+/// does not depend on the order they arrived in. Welding each point against
+/// those before it was order-dependent and not transitive: A and B within the
+/// tolerance, B and C within it, A and C not, welds A to B and leaves C on
+/// its own — while C first leaves two pairs. A Boolean hands faces to the
+/// sewer in whatever order its split produced them, so the same two solids
+/// welded to different vertex counts, and a solid's face said it had more
+/// vertices than it did.
+///
+/// Every point within the tolerance of another is a cluster, and the cluster
+/// is one vertex at the position nearest the origin among its members, so the
+/// choice is the same whichever way round the points came.
 class VertexWelder {
 public:
     explicit VertexWelder(double tol) : m_tol(tol), m_cell(tol * 2.0) {}
 
-    size_t index(const Vec3& p) {
-        const CellKey base = keyFor(p);
-        for (int dx = -1; dx <= 1; ++dx) {
-            for (int dy = -1; dy <= 1; ++dy) {
-                for (int dz = -1; dz <= 1; ++dz) {
-                    const CellKey k{base.x + dx, base.y + dy, base.z + dz};
-                    auto it = m_grid.find(k);
-                    if (it == m_grid.end()) continue;
-                    for (size_t idx : it->second) {
-                        if (m_points[idx].distanceTo(p) <= m_tol) return idx;
+    /// Every position the faces named, one index each, before welding.
+    size_t gather(const Vec3& p) {
+        const size_t idx = m_gathered.size();
+        m_gathered.push_back(p);
+        return idx;
+    }
+
+    /// Weld, and hand back each gathered index as the index of the vertex it
+    /// belongs to. Call once, after every position has been gathered.
+    void weld() {
+        const size_t n = m_gathered.size();
+        m_parent.resize(n);
+        for (size_t i = 0; i < n; ++i) {
+            m_parent[i] = i;
+        }
+
+        // Each point against those in the cells around it, by index, so every
+        // pair within the tolerance is joined however they were gathered.
+        std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> grid;
+        for (size_t i = 0; i < n; ++i) {
+            grid[keyFor(m_gathered[i])].push_back(i);
+        }
+        for (size_t i = 0; i < n; ++i) {
+            const CellKey base = keyFor(m_gathered[i]);
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dz = -1; dz <= 1; ++dz) {
+                        auto it = grid.find(CellKey{base.x + dx, base.y + dy, base.z + dz});
+                        if (it == grid.end()) continue;
+                        for (const size_t j : it->second) {
+                            if (j > i && m_gathered[i].distanceTo(m_gathered[j]) <= m_tol) {
+                                join(i, j);
+                            }
+                        }
                     }
                 }
             }
         }
-        const size_t idx = m_points.size();
-        m_points.push_back(p);
-        m_grid[base].push_back(idx);
-        return idx;
+
+        // One vertex per cluster, taken at the first of its members, and every
+        // member handed that vertex's index. First by gathered index, so the
+        // choice is the same whichever order the points arrived in.
+        m_points.clear();
+        m_pointOfCluster.clear();
+        m_weldedTo.resize(n);
+        for (size_t i = 0; i < n; ++i) {
+            const size_t root = find(i);
+            const auto [it, fresh] = m_pointOfCluster.try_emplace(root, m_points.size());
+            if (fresh) {
+                m_points.push_back(m_gathered[i]);
+            }
+            m_weldedTo[i] = it->second;
+        }
     }
+
+    /// The welded index of a gathered one. Only valid after weld().
+    size_t index(size_t gathered) const { return m_weldedTo[gathered]; }
 
     const std::vector<Vec3>& points() const { return m_points; }
 
 private:
+    size_t find(size_t i) {
+        while (m_parent[i] != i) {
+            m_parent[i] = m_parent[m_parent[i]];  // halve the path
+            i = m_parent[i];
+        }
+        return i;
+    }
+
+    void join(size_t a, size_t b) {
+        const size_t ra = find(a);
+        const size_t rb = find(b);
+        if (ra != rb) {
+            // The lower root wins, so the choice does not depend on the order
+            // the pairs were found in either.
+            if (ra < rb) {
+                m_parent[rb] = ra;
+            } else {
+                m_parent[ra] = rb;
+            }
+        }
+    }
+
     CellKey keyFor(const Vec3& p) const {
         return {static_cast<int64_t>(std::floor(p.x / m_cell)),
                 static_cast<int64_t>(std::floor(p.y / m_cell)),
@@ -69,8 +142,11 @@ private:
 
     double m_tol;
     double m_cell;
+    std::vector<Vec3> m_gathered;
     std::vector<Vec3> m_points;
-    std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> m_grid;
+    std::vector<size_t> m_parent;
+    std::vector<size_t> m_weldedTo;
+    std::unordered_map<size_t, size_t> m_pointOfCluster;
 };
 
 struct IndexedFace {
@@ -300,7 +376,7 @@ std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
 std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces, double weldTol) {
     using namespace hz::topo;
 
-    // 1. Weld vertices and index the face loops.
+    // 1. Gather every position the faces name, weld them, and index the loops.
     VertexWelder welder(weldTol);
     std::vector<IndexedFace> indexed;
     indexed.reserve(faces.size());
@@ -308,20 +384,34 @@ std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces
         if (face.points.size() < 3) continue;
         IndexedFace f;
         f.loop.reserve(face.points.size());
-        for (const auto& p : face.points) f.loop.push_back(welder.index(p));
-        dedupeLoop(f.loop);
+        for (const auto& p : face.points) f.loop.push_back(welder.gather(p));
         for (const auto& hole : face.holes) {
             std::vector<size_t> loop;
             loop.reserve(hole.size());
-            for (const auto& p : hole) loop.push_back(welder.index(p));
-            dedupeLoop(loop);
-            if (loop.size() >= 3) f.holes.push_back(std::move(loop));
+            for (const auto& p : hole) loop.push_back(welder.gather(p));
+            f.holes.push_back(std::move(loop));
         }
         f.topoId = face.topoId;
         f.surface = face.surface;
         f.analyticSurface = face.analyticSurface;
-        if (f.loop.size() >= 3) indexed.push_back(std::move(f));
+        indexed.push_back(std::move(f));
     }
+    // Once every position is in, so which of them are one vertex is settled by
+    // the set rather than by the order they arrived in.
+    welder.weld();
+    for (IndexedFace& f : indexed) {
+        for (size_t& i : f.loop) i = welder.index(i);
+        dedupeLoop(f.loop);
+        for (auto& hole : f.holes) {
+            for (size_t& i : hole) i = welder.index(i);
+            dedupeLoop(hole);
+            if (hole.size() < 3) hole.clear();
+        }
+        std::erase_if(f.holes, [](const auto& h) { return h.size() < 3; });
+    }
+    indexed.erase(std::remove_if(indexed.begin(), indexed.end(),
+                                 [](const IndexedFace& f) { return f.loop.size() < 3; }),
+                  indexed.end());
     const std::vector<Vec3>& pts = welder.points();
 
     // 2. Drop degenerate (near zero-area) faces.
