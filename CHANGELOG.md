@@ -19,6 +19,14 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A surface's normal at a pole or an apex is the one it comes to.** Where
+  a surface comes to a point, as a sphere does at its poles and a cone at its
+  apex, its two tangents vanish or lie along each other and give no normal,
+  and `NurbsSurface::normal` answered a fixed +Z there: right at a sphere's
+  north pole, backwards at its south pole, and off by about 75° at a cone's
+  apex. It now takes the normal a step into the surface. It also judges a
+  point degenerate against the tangents' own size, not a fixed 1e-12, so a
+  very small surface is no longer taken to come to a point everywhere.
 - **Walking a loop that is not yet closed does not take the application
   down.** Every walk of a half-edge loop followed `next` to the end of the
   list without looking, so a loop with a break in it read through a null

@@ -802,6 +802,29 @@ TEST(NurbsSurfaceTest, ExactDerivativesAgreeWithTheSurface) {
     }
 }
 
+// Where the surface comes to a point (a sphere's poles, a cone's apex) its
+// tangents vanish or are parallel, and its normal is the one it comes to:
+// the normal just beside the point, whichever way that faces. Not a fixed +Z,
+// which is wrong at a south pole, and at every pole of a turned sphere.
+TEST(NurbsSurfaceTest, TheNormalAtAPoleIsTheOneBesideIt) {
+    const auto sphere = NurbsSurface::makeSphere(Vec3(1, 2, 3), 2.0);
+    const auto cone = NurbsSurface::makeCone(Vec3(0, 0, 0), Vec3(1, 0, 0), 0.5, 4.0);
+    for (const NurbsSurface* s : {&sphere, &cone}) {
+        const double du = 1e-4 * (s->uMax() - s->uMin());
+        const double dv = 1e-4 * (s->vMax() - s->vMin());
+        for (const double u : {s->uMin() + 0.3 * (s->uMax() - s->uMin()),
+                               s->uMin() + 0.8 * (s->uMax() - s->uMin())}) {
+            for (const double v : {s->vMin(), s->vMax()}) {
+                const auto at = s->evaluateWithDerivatives(u, v);
+                if (at.du.cross(at.dv).length() > 1e-9) continue;  // no pole here
+                const double inside = v == s->vMin() ? v + dv : v - dv;
+                const Vec3 beside = s->normal(u + du, inside);
+                EXPECT_GT(s->normal(u, v).dot(beside), 0.99) << "at v = " << v;
+            }
+        }
+    }
+}
+
 TEST(NurbsSurfaceTest, AClosedSurfaceKnowsItsSeam) {
     const auto cylinder = NurbsSurface::makeCylinder(Vec3(), Vec3(0, 0, 1), 2.0, 3.0);
     EXPECT_TRUE(cylinder.closedU());
