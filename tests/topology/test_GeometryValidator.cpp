@@ -9,6 +9,7 @@
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/topology/EulerOps.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -123,6 +124,43 @@ std::unique_ptr<Solid> makeCube() {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// A face split and joined again by the Euler operators.
+// ---------------------------------------------------------------------------
+
+// A face split by an edge across it and joined again by killing that edge
+// (MEF, then KEF) leaves the solid it was: as many vertices, edges and faces,
+// closed, and sound to every geometric check. The edge and face the kill took
+// stay in the solid's storage, which pointers into it need, and count for
+// nothing.
+TEST(GeometryValidatorTest, AFaceSplitAndJoinedAgainIsTheSolidItWas) {
+    auto cube = makeCube();
+    Face* top = &const_cast<std::deque<Face>&>(cube->faces())[1];
+    HalfEdge* from = nullptr;  // at (0, 0, 1)
+    HalfEdge* to = nullptr;    // at (1, 1, 1)
+    HalfEdge* he = top->outerLoop->halfEdge;
+    do {
+        if ((he->origin->point - Vec3(0, 0, 1)).length() < 1e-12) from = he;
+        if ((he->origin->point - Vec3(1, 1, 1)).length() < 1e-12) to = he;
+        he = he->next;
+    } while (he != top->outerLoop->halfEdge);
+    ASSERT_NE(from, nullptr);
+    ASSERT_NE(to, nullptr);
+
+    const auto split = euler::makeEdgeFace(*cube, from, to);
+    ASSERT_EQ(cube->faceCount(), 7u);
+    euler::killEdgeFace(*cube, split.edge);
+
+    EXPECT_EQ(cube->vertexCount(), 8u);
+    EXPECT_EQ(cube->edgeCount(), 12u);
+    EXPECT_EQ(cube->faceCount(), 6u);
+    EXPECT_TRUE(cube->checkManifold()) << cube->validationReport();
+    EXPECT_TRUE(cube->checkEulerFormula()) << cube->validationReport();
+    const GV::Issues issues = GV::check(*cube);
+    EXPECT_TRUE(issues.ok()) << GV::report(*cube);
+    EXPECT_EQ(issues.degenerateFaces, 0) << "the face the kill took is no face";
+}
 
 // ---------------------------------------------------------------------------
 // A well-formed solid passes every check.

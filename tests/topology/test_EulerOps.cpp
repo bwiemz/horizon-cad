@@ -380,6 +380,49 @@ TEST(EulerOpsTest, BuildAndTearDownTriangle) {
     EXPECT_EQ(v0->halfEdge, nullptr);
 }
 
+// What a kill takes stays in the solid's storage (pointers into it must stay
+// good) but no longer counts: a triangle built and torn down again is the one
+// vertex and face it started from, closed, and as Euler's formula says.
+TEST(EulerOpsTest, ATriangleTornDownCountsOnlyWhatIsLeft) {
+    Solid solid;
+    auto [v0, f, s] = euler::makeVertexFaceSolid(solid, Vec3(0, 0, 0));
+    auto [e01, v1] = euler::makeEdgeVertex(solid, nullptr, f, Vec3(1, 0, 0));
+    auto [e12, v2] = euler::makeEdgeVertex(solid, e01->halfEdge->twin, f, Vec3(0.5, 1, 0));
+    auto [e20, f2] = euler::makeEdgeFace(solid, e12->halfEdge->twin, e01->halfEdge);
+
+    euler::killEdgeFace(solid, e20);
+    EXPECT_EQ(solid.vertexCount(), 3u);
+    EXPECT_EQ(solid.edgeCount(), 2u);
+    EXPECT_EQ(solid.faceCount(), 1u);
+    EXPECT_TRUE(solid.checkManifold()) << solid.validationReport();
+    EXPECT_TRUE(solid.checkEulerFormula()) << solid.validationReport();
+
+    euler::killEdgeVertex(solid, e12);
+    euler::killEdgeVertex(solid, e01);
+    EXPECT_EQ(solid.vertexCount(), 1u);
+    EXPECT_EQ(solid.edgeCount(), 0u);
+    EXPECT_EQ(solid.faceCount(), 1u);
+    EXPECT_TRUE(solid.checkManifold()) << solid.validationReport();
+    EXPECT_TRUE(solid.checkEulerFormula()) << solid.validationReport();
+}
+
+// The first edge of a second shell starts at that shell's own vertex, not at
+// a vertex an earlier kill took (which has no edge either).
+TEST(EulerOpsTest, AFirstEdgeStartsAtItsShellsVertexNotAKilledOne) {
+    Solid solid;
+    auto [v0, f0, s0] = euler::makeVertexFaceSolid(solid, Vec3(0, 0, 0));
+    auto [e01, v1] = euler::makeEdgeVertex(solid, nullptr, f0, Vec3(1, 0, 0));
+    auto [e12, v2] = euler::makeEdgeVertex(solid, e01->halfEdge->twin, f0, Vec3(1, 1, 0));
+    euler::killEdgeVertex(solid, e12);  // v2 goes
+
+    auto [w0, g0, t0] = euler::makeVertexFaceSolid(solid, Vec3(5, 5, 5));
+    auto [d01, w1] = euler::makeEdgeVertex(solid, nullptr, g0, Vec3(6, 5, 5));
+    EXPECT_EQ(d01->halfEdge->origin, w0) << "from the second shell's own vertex";
+    EXPECT_EQ(solid.vertexCount(), 4u);
+    EXPECT_TRUE(solid.checkManifold()) << solid.validationReport();
+    EXPECT_TRUE(solid.checkEulerFormula()) << solid.validationReport();
+}
+
 // ===========================================================================
 // Task 4: Topological Query Function Tests
 // ===========================================================================

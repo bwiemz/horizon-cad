@@ -73,7 +73,7 @@ MEVResult makeEdgeVertex(Solid& solid, HalfEdge* he, Face* face, const math::Vec
         // first vertex in the solid if this is the first edge.
         Vertex* vExisting = nullptr;
         for (auto& v : const_cast<std::deque<Vertex>&>(solid.vertices())) {
-            if (v.halfEdge == nullptr) {
+            if (v.alive && v.halfEdge == nullptr) {
                 vExisting = &v;
                 break;
             }
@@ -216,8 +216,8 @@ MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
 // killEdgeVertex (KEV) — reverse of MEV
 // ---------------------------------------------------------------------------
 
-// Killed elements are tombstoned (their links nulled) rather than erased from
-// the solid's storage, so the solid itself is not touched.
+// Killed elements are tombstoned (unlinked, and marked dead) rather than
+// erased from the solid's storage, so pointers into it stay good.
 void killEdgeVertex(Solid& /*solid*/, Edge* edge) {
     assert(edge != nullptr);
 
@@ -290,31 +290,10 @@ void killEdgeVertex(Solid& /*solid*/, Edge* edge) {
         }
     }
 
-    // We don't actually deallocate from the pool (deque); the entities remain
-    // but are effectively dead.  For the purposes of Euler counting we need to
-    // remove them from the "live" counts.  Since Solid uses deque size for
-    // counting, we currently rely on the caller understanding that the pool
-    // grows monotonically.  In a production system we'd use a free-list.
-    //
-    // For now we mark the removed entities so validation can skip them.
-    // Actually, the task spec says pool-based (no removal). The Euler formula
-    // is checked by counting deque sizes.  So we need a way to "truly remove"
-    // entities. Let's do the simple approach: we won't remove from pools
-    // (that would invalidate pointers). Instead we note that the test spec
-    // says we verify Euler after the BUILD sequence, not after kill ops.
-    //
-    // However, the spec asks us to implement KEV/KEF.  The real question is:
-    // can we remove from a deque while keeping other pointers valid?
-    // Answer: NO — erasing from the middle of a deque invalidates pointers.
-    // For a correct implementation, we'd need an entity status flag or a
-    // pool with stable addresses + free list.  Since the solid already uses
-    // deque (stable on push_back), let's mark dead entities with a sentinel.
-    //
-    // We'll null out pointers to signal "dead" and note that edgeCount() etc
-    // would need to be updated to skip dead entities for production use.
-    // For the tests in this phase, we focus on the forward build operators.
-
-    // Null out the removed half-edges and edge so manifold check skips them.
+    // What is removed stays in the solid's pools: erasing from a deque would
+    // move the entities after it, and every pointer into them with it. It is
+    // tombstoned instead: unlinked, and marked dead, which the solid's counts
+    // and checks skip.
     heOut->origin = nullptr;
     heOut->twin = nullptr;
     heOut->next = nullptr;
@@ -332,7 +311,11 @@ void killEdgeVertex(Solid& /*solid*/, Edge* edge) {
     edge->halfEdge = nullptr;
 
     vRemove->halfEdge = nullptr;
-    vRemove->point = math::Vec3(0, 0, 0);
+
+    heOut->alive = false;
+    heIn->alive = false;
+    edge->alive = false;
+    vRemove->alive = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +395,11 @@ void killEdgeFace(Solid& /*solid*/, Edge* edge) {
 
     removeFace->outerLoop = nullptr;
     removeFace->shell = nullptr;
+
+    heA->alive = false;
+    heB->alive = false;
+    edge->alive = false;
+    removeFace->alive = false;
 }
 
 }  // namespace hz::topo::euler

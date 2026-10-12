@@ -1,5 +1,6 @@
 #include "horizon/topology/Solid.h"
 
+#include <algorithm>
 #include <sstream>
 #include <unordered_set>
 
@@ -63,16 +64,27 @@ const std::deque<Shell>& Solid::shells() const {
     return m_shells;
 }
 
+namespace {
+
+/// The entities of @p pool an Euler kill has not taken.
+template <typename T>
+size_t liveIn(const std::deque<T>& pool) {
+    return static_cast<size_t>(
+        std::count_if(pool.begin(), pool.end(), [](const T& entity) { return entity.alive; }));
+}
+
+}  // namespace
+
 size_t Solid::vertexCount() const {
-    return m_vertices.size();
+    return liveIn(m_vertices);
 }
 
 size_t Solid::edgeCount() const {
-    return m_edges.size();
+    return liveIn(m_edges);
 }
 
 size_t Solid::faceCount() const {
-    return m_faces.size();
+    return liveIn(m_faces);
 }
 
 size_t Solid::shellCount() const {
@@ -87,9 +99,11 @@ bool Solid::isValid() const {
 
 int Solid::eulerCharacteristicLessRings() const {
     int rings = 0;
-    for (const auto& face : m_faces) rings += static_cast<int>(face.innerLoops.size());
-    return static_cast<int>(m_vertices.size()) - static_cast<int>(m_edges.size()) +
-           static_cast<int>(m_faces.size()) - rings;
+    for (const auto& face : m_faces) {
+        if (face.alive) rings += static_cast<int>(face.innerLoops.size());
+    }
+    return static_cast<int>(vertexCount()) - static_cast<int>(edgeCount()) +
+           static_cast<int>(faceCount()) - rings;
 }
 
 bool Solid::checkEulerFormula() const {
@@ -111,6 +125,7 @@ int Solid::genus() const {
 bool Solid::checkManifold() const {
     // 1) Every half-edge must have a twin, and twins must be reciprocal.
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         if (he.twin == nullptr) {
             return false;
         }
@@ -121,6 +136,7 @@ bool Solid::checkManifold() const {
 
     // 2) Every half-edge loop (next chain) must be closed.
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         const HalfEdge* cursor = &he;
         size_t limit = m_halfEdges.size();
         size_t count = 0;
@@ -138,6 +154,7 @@ bool Solid::checkManifold() const {
 
     // 3) Every half-edge's prev must be consistent with next.
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         if (he.next == nullptr || he.next->prev != &he) {
             return false;
         }
@@ -145,6 +162,7 @@ bool Solid::checkManifold() const {
 
     // 4) Every edge must have exactly two half-edges.
     for (const auto& edge : m_edges) {
+        if (!edge.alive) continue;
         if (edge.halfEdge == nullptr) {
             return false;
         }
@@ -164,9 +182,9 @@ std::string Solid::validationReport() const {
 
     // Euler formula
     {
-        const auto V = static_cast<int>(m_vertices.size());
-        const auto E = static_cast<int>(m_edges.size());
-        const auto F = static_cast<int>(m_faces.size());
+        const auto V = static_cast<int>(vertexCount());
+        const auto E = static_cast<int>(edgeCount());
+        const auto F = static_cast<int>(faceCount());
         const auto S = static_cast<int>(m_shells.size());
         const int x = eulerCharacteristicLessRings();
         const int R = V - E + F - x;
@@ -186,12 +204,14 @@ std::string Solid::validationReport() const {
     int prevErrors = 0;
 
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         if (he.twin == nullptr || he.twin->twin != &he) {
             ++twinErrors;
         }
     }
 
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         const HalfEdge* cursor = &he;
         size_t limit = m_halfEdges.size();
         size_t count = 0;
@@ -214,6 +234,7 @@ std::string Solid::validationReport() const {
     }
 
     for (const auto& he : m_halfEdges) {
+        if (!he.alive) continue;
         if (he.next == nullptr || he.next->prev != &he) {
             ++prevErrors;
         }
