@@ -19,6 +19,19 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A solid an Euler kill has worked on counts and checks what is left.**
+  The kill operators (`killEdgeVertex`, `killEdgeFace`) leave what they
+  remove in the solid's storage, because erasing it would move everything
+  after it and every pointer into that. But the solid's counts read the
+  storage's size, and its checks read every entity in it, so after any kill
+  `checkManifold()` was false for good, and a face split and joined again
+  counted 13 edges and 7 faces where the box has 12 and 6, its taken face
+  read as degenerate. A removed vertex was also the first a new shell's
+  first edge could start from. What a kill takes is now marked dead: the
+  counts, the manifold and Euler checks, the validation report and the
+  geometric validator skip it, and a first edge starts at a live vertex. No
+  feature uses the kill operators yet; this is what one will need.
+
 - **Sewing a solid no longer depends on the order its faces arrive in.**
   Welding asked each position whether it was within the tolerance of the ones
   already seen, which is not the same question as whether two positions are

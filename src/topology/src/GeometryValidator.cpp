@@ -532,7 +532,9 @@ private:
 int countCrossings(const Solid& solid, double tol) {
     FlatFaces flats;
     flats.faces.reserve(solid.faceCount());
-    for (const auto& face : solid.faces()) readFlatFace(face, tol, flats);
+    for (const auto& face : solid.faces()) {
+        if (face.alive) readFlatFace(face, tol, flats);
+    }
     if (flats.faces.empty()) return 0;
 
     struct Segment {
@@ -550,6 +552,7 @@ int countCrossings(const Solid& solid, double tol) {
     for (const FlatFace& f : flats.faces) boxes.push_back(f.box);
     const auto faceCount = static_cast<uint32_t>(boxes.size());
     for (const auto& edge : solid.edges()) {
+        if (!edge.alive) continue;
         const HalfEdge* he = edge.halfEdge;
         if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
             he->twin->origin == nullptr || he->face == nullptr) {
@@ -802,6 +805,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
 
     // -- Per-half-edge: vertex chain and twin coincidence --------------------
     for (const auto& face : solid.faces()) {
+        if (!face.alive) continue;
         std::vector<const Wire*> wires;
         if (face.outerLoop != nullptr) {
             wires.push_back(face.outerLoop);
@@ -832,6 +836,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
 
     // -- Per-edge: twin endpoints span one segment; non-degenerate -----------
     for (const auto& edge : solid.edges()) {
+        if (!edge.alive) continue;
         const HalfEdge* he = edge.halfEdge;
         if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
             he->twin->origin == nullptr) {
@@ -870,6 +875,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
     // never looked at, so one off the face's plane, crossing its outline, or
     // outside it altogether passed every check.
     for (const auto& face : solid.faces()) {
+        if (!face.alive) continue;
         const auto pts = loopPoints(face.outerLoop);
         if (pts.size() < 3) {
             ++issues.degenerateFaces;
@@ -943,6 +949,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
         std::map<const Shell*, Vec3> sums;
         std::map<const Shell*, double> scales;
         for (const auto& face : solid.faces()) {
+            if (!face.alive) continue;
             Vec3 a = newell(loopPoints(face.outerLoop));
             for (const auto* inner : face.innerLoops) {
                 a = a + newell(loopPoints(inner));
@@ -966,6 +973,7 @@ GeometryValidator::Issues GeometryValidator::check(const Solid& solid, double to
         const double cell = std::max(tol, 1e-12);
         std::map<CellKey, std::vector<const Vertex*>> buckets;
         for (const auto& v : solid.vertices()) {
+            if (!v.alive) continue;
             const CellKey k{static_cast<int64_t>(std::floor(v.point.x / cell)),
                             static_cast<int64_t>(std::floor(v.point.y / cell)),
                             static_cast<int64_t>(std::floor(v.point.z / cell))};
