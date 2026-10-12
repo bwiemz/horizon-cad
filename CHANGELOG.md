@@ -29,6 +29,14 @@ work, not "post-1.0".
   All four walks — a loop's size, the vertices of a face, the faces beside
   it, the edges at a vertex — now end at the ring's own end, at the break,
   or at a half-edge met twice, and report what they have.
+- **A sound loop is walked as cheaply as it was before.** Ending a walk at
+  a half-edge met twice noted every half-edge it passed in a set built
+  afresh for each walk, and a drawing's projection asks for the normal of a
+  face once per edge on its rim: a 2048-facet cylinder's projection went
+  from 0.7 s to 2.7 s in a Linux debug build, and from 2.8 s to 16 s in a
+  Windows one, past the test's limit. Two walkers, one twice as fast, now
+  tell whether a chain ends by itself, with nothing allocated; only one
+  that runs on into itself is read with a set, as before.
 - **Looking at a part from directly above draws it.** `lookAt` built its
   right-hand axis by crossing the view direction with the up, which for a top
   view are the same vector, and the axis came out of that as zero: the basis

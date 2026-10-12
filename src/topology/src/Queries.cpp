@@ -8,34 +8,75 @@ namespace hz::topo {
 
 namespace {
 
-/// Every half-edge of @p wire's loop, in order, up to the point the walk has to
-/// stop.
+/// Whether the chain that @p step follows from @p start ends by itself: by
+/// coming back round to @p start, as a ring does, or at a half-edge with
+/// nothing after it, as a loop only partly built does. Either way it can be
+/// read without noting what it passes.
+///
+/// Two walkers go along it, one twice as fast. On a chain that ends by itself,
+/// the fast one reaches the start or the end first. On one that runs on into
+/// itself and never comes back, neither ever happens, and the fast one comes
+/// up behind the slow one instead. Nothing is allocated. Every loop query
+/// asks this, and a drawing's projection asks for the normal of a
+/// 2048-sided cap once per edge on its rim: a set of every half-edge passed,
+/// built afresh each time, made that projection several times slower.
+template <typename Step>
+bool endsByItself(const HalfEdge* const start, Step step) {
+    const HalfEdge* slow = start;
+    const HalfEdge* fast = start;
+    for (;;) {
+        for (int i = 0; i < 2; ++i) {
+            fast = step(fast);
+            if (fast == nullptr || fast == start) {
+                return true;
+            }
+        }
+        slow = step(slow);
+        if (slow == fast) {
+            return false;  // caught up from behind: it runs on into itself
+        }
+    }
+}
+
+/// Hands @p visit every half-edge of the chain @p step follows from @p start,
+/// in order, up to the point the walk has to stop.
 ///
 /// A half-edge loop is a ring: it ends by coming back to where it started. A
 /// loop that stops part way round — one only partly built, or one whose
 /// half-edge a kill has left with no `next` — ends there instead, and is read
 /// as far as it goes. A chain that runs on into itself and never comes back
-/// would have no end at all, so each half-edge passed is noted, and coming on
-/// one a second time ends the walk. That is what a ring is made of, so it
-/// costs one insertion per half-edge and changes what a sound loop returns not
-/// at all. Without it, such a chain was followed forever: the application
-/// stopped, with nothing on screen and no way to stop it.
-std::vector<const HalfEdge*> walkLoop(const Wire* wire) {
-    std::vector<const HalfEdge*> chain;
-    if (wire == nullptr || wire->halfEdge == nullptr) {
-        return chain;
+/// would have no end at all, so there each half-edge passed is noted, and
+/// coming on one a second time ends the walk. Without that, such a chain was
+/// followed forever: the application stopped, with nothing on screen and no
+/// way to stop it. A chain that ends by itself is read straight through, so
+/// what a sound loop costs and returns is what it did before.
+template <typename Step, typename Visit>
+void walkChain(const HalfEdge* const start, Step step, Visit visit) {
+    if (start == nullptr) {
+        return;
     }
-    const HalfEdge* const start = wire->halfEdge;
+    if (endsByItself(start, step)) {
+        const HalfEdge* cur = start;
+        do {
+            visit(cur);
+            cur = step(cur);
+        } while (cur != nullptr && cur != start);
+        return;
+    }
     std::unordered_set<const HalfEdge*> seen;
-    const HalfEdge* cur = start;
-    while (cur != nullptr && seen.insert(cur).second) {
-        chain.push_back(cur);
-        cur = cur->next;
-        if (cur == start) {
-            break;  // back round to where the loop began: it is closed
-        }
+    for (const HalfEdge* cur = start; cur != nullptr && seen.insert(cur).second; cur = step(cur)) {
+        visit(cur);
     }
-    return chain;
+}
+
+/// Every half-edge of @p wire's loop, as walkChain reads it.
+template <typename Visit>
+void walkLoop(const Wire* wire, Visit visit) {
+    if (wire == nullptr) {
+        return;
+    }
+    walkChain(
+        wire->halfEdge, [](const HalfEdge* he) { return he->next; }, visit);
 }
 
 }  // namespace
@@ -51,14 +92,14 @@ std::vector<Face*> adjacentFaces(const Face* face) {
     }
 
     std::unordered_set<Face*> seen;
-    for (const HalfEdge* cur : walkLoop(face->outerLoop)) {
+    walkLoop(face->outerLoop, [&](const HalfEdge* cur) {
         if (cur->twin != nullptr && cur->twin->face != nullptr && cur->twin->face != face) {
             Face* neighbor = cur->twin->face;
             if (seen.insert(neighbor).second) {
                 result.push_back(neighbor);
             }
         }
-    }
+    });
 
     return result;
 }
@@ -99,20 +140,15 @@ std::vector<Edge*> incidentEdges(const Vertex* vertex) {
     // with nothing after it, and a ring that never comes back to it is noted
     // and stopped rather than walked forever.
     std::unordered_set<Edge*> seen;
-    std::unordered_set<const HalfEdge*> walked;
-    const HalfEdge* const start = vertex->halfEdge;
-    const HalfEdge* cur = start;
-    while (cur != nullptr && walked.insert(cur).second) {
-        if (cur->edge != nullptr && seen.insert(cur->edge).second) {
-            result.push_back(cur->edge);
-        }
-        // Move to the next outgoing half-edge from this vertex.
+    walkChain(
+        vertex->halfEdge,
         // cur->twin goes to the other end; cur->twin->next starts from our vertex again.
-        cur = cur->twin != nullptr ? cur->twin->next : nullptr;
-        if (cur == start) {
-            break;  // back to where the fan began: it is closed
-        }
-    }
+        [](const HalfEdge* cur) { return cur->twin != nullptr ? cur->twin->next : nullptr; },
+        [&](const HalfEdge* cur) {
+            if (cur->edge != nullptr && seen.insert(cur->edge).second) {
+                result.push_back(cur->edge);
+            }
+        });
 
     return result;
 }
@@ -127,11 +163,7 @@ std::vector<Vertex*> faceVertices(const Face* face) {
         return result;
     }
 
-    const std::vector<const HalfEdge*> chain = walkLoop(face->outerLoop);
-    result.reserve(chain.size());
-    for (const HalfEdge* cur : chain) {
-        result.push_back(cur->origin);
-    }
+    walkLoop(face->outerLoop, [&result](const HalfEdge* cur) { result.push_back(cur->origin); });
 
     return result;
 }
@@ -141,7 +173,9 @@ std::vector<Vertex*> faceVertices(const Face* face) {
 // ---------------------------------------------------------------------------
 
 int loopSize(const Wire* wire) {
-    return static_cast<int>(walkLoop(wire).size());
+    int count = 0;
+    walkLoop(wire, [&count](const HalfEdge*) { ++count; });
+    return count;
 }
 
 // ---------------------------------------------------------------------------
