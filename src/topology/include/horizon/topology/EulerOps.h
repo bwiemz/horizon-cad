@@ -28,6 +28,13 @@ struct MEFResult {
 
 /// Euler operators — the ONLY safe way to modify B-Rep topology.
 ///
+/// The kill operators (KEV, KEF) leave what they remove in the solid's
+/// storage, unlinked and with `alive` false, because erasing it would move
+/// what comes after it and every pointer into that. The solid's counts,
+/// checkManifold, checkEulerFormula and GeometryValidator skip it; any other
+/// code that walks a solid's vertices, edges or faces must too, while a
+/// solid holds dead entities.
+///
 /// Every operator preserves the Euler-Poincare formula:
 ///     V - E + F = 2(S - H)
 namespace euler {
