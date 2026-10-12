@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A surface's normal at a pole or an apex is the one it comes to.** Where
+  a surface comes to a point, as a sphere does at its poles and a cone at its
+  apex, its two tangents vanish or lie along each other and give no normal,
+  and `NurbsSurface::normal` answered a fixed +Z there: right at a sphere's
+  north pole, backwards at its south pole, and off by about 75° at a cone's
+  apex. It now takes the normal a step into the surface. It also judges a
+  point degenerate against the tangents' own size, not a fixed 1e-12, so a
+  very small surface is no longer taken to come to a point everywhere.
+
 - **A solid an Euler kill has worked on counts and checks what is left.**
   The kill operators (`killEdgeVertex`, `killEdgeFace`) leave what they
   remove in the solid's storage, because erasing it would move everything

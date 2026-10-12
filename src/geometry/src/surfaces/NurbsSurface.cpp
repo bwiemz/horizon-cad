@@ -222,14 +222,30 @@ math::Vec3 NurbsSurface::derivativeV(double u, double v) const {
 // ---------------------------------------------------------------------------
 
 math::Vec3 NurbsSurface::normal(double u, double v) const {
-    const math::Vec3 du = derivativeU(u, v);
-    const math::Vec3 dv = derivativeV(u, v);
-    const math::Vec3 n = du.cross(dv);
-    const double len = n.length();
-    if (len < 1e-12) {
-        return math::Vec3::UnitZ;
-    }
-    return n * (1.0 / len);
+    // The unit normal at (uu, vv), unless the surface comes to a point there
+    // (a pole, an apex): its tangents vanish or lie along each other, measured
+    // against the longer, so a small surface is judged as a large one.
+    const auto unitAt = [this](double uu, double vv, math::Vec3& n) {
+        const math::Vec3 du = derivativeU(uu, vv);
+        const math::Vec3 dv = derivativeV(uu, vv);
+        const math::Vec3 cross = du.cross(dv);
+        const double len = cross.length();
+        const double scale = std::max(du.length(), dv.length());
+        if (!(len > 1e-9 * scale * scale) || !(len > 0.0)) return false;
+        n = cross * (1.0 / len);
+        return true;
+    };
+    math::Vec3 n;
+    if (unitAt(u, v, n)) return n;
+    // Where it comes to a point, its normal is the one it comes to: the
+    // normal a step into the surface (a fixed +Z was the wrong way at a south
+    // pole, and anywhere at a turned one).
+    const double su = 1e-6 * (uMax() - uMin());
+    const double sv = 1e-6 * (vMax() - vMin());
+    const double uIn = u > 0.5 * (uMin() + uMax()) ? u - su : u + su;
+    const double vIn = v > 0.5 * (vMin() + vMax()) ? v - sv : v + sv;
+    if (unitAt(u, vIn, n) || unitAt(uIn, v, n) || unitAt(uIn, vIn, n)) return n;
+    return math::Vec3::UnitZ;  // nothing near it is a surface either
 }
 
 // ---------------------------------------------------------------------------
