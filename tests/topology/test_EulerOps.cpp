@@ -406,6 +406,27 @@ TEST(EulerOpsTest, ATriangleTornDownCountsOnlyWhatIsLeft) {
     EXPECT_TRUE(solid.checkEulerFormula()) << solid.validationReport();
 }
 
+// A vertex may be at any half-edge out of it; one at a half-edge of the edge
+// a face-joining kill takes is moved to another, living one, not left at the
+// dead one, where a walk from the vertex would end.
+TEST(EulerOpsTest, AVertexAtTheEdgeAKillTakesIsMovedOff) {
+    Solid solid;
+    auto [v0, f, s] = euler::makeVertexFaceSolid(solid, Vec3(0, 0, 0));
+    auto [e01, v1] = euler::makeEdgeVertex(solid, nullptr, f, Vec3(1, 0, 0));
+    auto [e12, v2] = euler::makeEdgeVertex(solid, e01->halfEdge->twin, f, Vec3(0.5, 1, 0));
+    auto [e20, f2] = euler::makeEdgeFace(solid, e12->halfEdge->twin, e01->halfEdge);
+    // Each end of the new edge at its half-edge out of it.
+    for (HalfEdge* he : {e20->halfEdge, e20->halfEdge->twin}) he->origin->halfEdge = he;
+
+    euler::killEdgeFace(solid, e20);
+    for (const Vertex& v : solid.vertices()) {
+        if (!v.alive) continue;
+        ASSERT_NE(v.halfEdge, nullptr);
+        EXPECT_TRUE(v.halfEdge->alive) << "a vertex left at a half-edge the kill took";
+        EXPECT_EQ(v.halfEdge->origin, &v);
+    }
+}
+
 // The first edge of a second shell starts at that shell's own vertex, not at
 // a vertex an earlier kill took (which has no edge either).
 TEST(EulerOpsTest, AFirstEdgeStartsAtItsShellsVertexNotAKilledOne) {

@@ -160,6 +160,13 @@ TEST(GeometryValidatorTest, AFaceSplitAndJoinedAgainIsTheSolidItWas) {
     const GV::Issues issues = GV::check(*cube);
     EXPECT_TRUE(issues.ok()) << GV::report(*cube);
     EXPECT_EQ(issues.degenerateFaces, 0) << "the face the kill took is no face";
+    // Each vertex still leads into the solid: by a living half-edge out of it.
+    for (const Vertex& v : cube->vertices()) {
+        if (!v.alive) continue;
+        ASSERT_NE(v.halfEdge, nullptr);
+        EXPECT_TRUE(v.halfEdge->alive) << "a vertex at a half-edge the kill took";
+        EXPECT_EQ(v.halfEdge->origin, &v);
+    }
 }
 
 // ---------------------------------------------------------------------------

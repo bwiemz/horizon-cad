@@ -363,6 +363,11 @@ void killEdgeFace(Solid& /*solid*/, Edge* edge) {
     bPrev->next = aNext;
     aNext->prev = bPrev;
 
+    // A vertex at a half-edge that goes moves to the one that now leaves it in
+    // the merged loop: bNext starts where heA started, aNext where heB did.
+    if (heA->origin != nullptr && heA->origin->halfEdge == heA) heA->origin->halfEdge = bNext;
+    if (heB->origin != nullptr && heB->origin->halfEdge == heB) heB->origin->halfEdge = aNext;
+
     // Update keepFace's wire.
     if (keepFace->outerLoop != nullptr) {
         if (keepFace->outerLoop->halfEdge == heA) {
