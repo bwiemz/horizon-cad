@@ -138,13 +138,16 @@ TEST(ExportLimitsTest, WhatDxfCannotHoldIsLeftOutAndSaid) {
     drawing.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(nan, 0), Vec2(5, 0)));
     drawing.addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), inf));
     drawing.addEntity(std::make_shared<hz::draft::DraftText>(Vec2(0, 0), "x", nan));
+    auto wide = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    wide->setLineWidth(inf);  // a width that is no number: left out, not narrowed
+    drawing.addEntity(wide);
     drawing.addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(9, 9), 2.0));
 
     TempFile file("left-out.dxf");
     DxfWriteReport report;
     std::string error;
     ASSERT_TRUE(DxfFormat::save(file.str(), doc, &error, &report)) << error;
-    EXPECT_EQ(report.leftOut.size(), 8u);
+    EXPECT_EQ(report.leftOut.size(), 9u);
     for (const auto& why : report.leftOut) EXPECT_EQ(why.rfind("entity ", 0), 0u) << why;
     const std::string text = file.text();
     for (const char* bad : {"nan", "inf", "NaN", "Inf"}) {
@@ -233,12 +236,14 @@ TEST(ExportLimitsTest, ADxfValueThatIsNotANumberIsDamage) {
         "0\nCIRCLE\n8\n0\n10\n1\n20\n1\n40\ninf\n"       // not finite
         "0\nCIRCLE\n8\n0\n10\n1\n20\n1\n40\nwide\n"      // a word
         "0\nCIRCLE\n8\n0\n10\n3\n20\n3\n40\n2\n"         // whole, no z
+        "0\nCIRCLE\n8\n0\n10\n1\n20\n1\n40\n12.5oops\n"  // a number, then junk
+        "0\nCIRCLE\n8\n0\n10\n4\n20\n4\n40\n1.5  \r\n"   // trailing blanks: whole
         "0\nENDSEC\n0\nEOF\n";
     Document doc;
     ImportReport report;
     std::string error;
     ASSERT_TRUE(DxfFormat::loadFromString(dxf, doc, &error, &report)) << error;
-    EXPECT_EQ(doc.draftDocument().entities().size(), 2u);
+    EXPECT_EQ(doc.draftDocument().entities().size(), 3u) << "the line and two circles";
     ASSERT_FALSE(report.skipped.empty());
     std::string all;
     for (const auto& line : report.skipped) all += line + "\n";

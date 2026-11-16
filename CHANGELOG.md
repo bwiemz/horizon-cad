@@ -19,6 +19,17 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Review fixes.** A two-direction pattern's second count is a count in
+  any unit (in an inch document, 2 rows were read as 50.8). The work of
+  building a convex body's tree counts against a Boolean's limit and stops
+  when it is cancelled, as its cuts do. Exploding a polyline or rectangle
+  takes its constraints with it. Delete Duplicates finds a copy within the
+  tolerance however its numbers round, and a closed outline drawn from
+  another corner or the other way round. A whole-part pattern that cannot
+  be joined says why. A DXF value with junk after its number ("12.5oops")
+  is damage, not 12.5, and an entity whose width is no number is left out
+  of a DXF export and said, not written narrower.
+
 - **A rebuild stops when you move on.** A build stopped only between
   features, and the window waited for the feature it was in: a pattern of
   overlapping cylinders of many facets could hold it for many minutes after

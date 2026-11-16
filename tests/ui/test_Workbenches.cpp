@@ -24,6 +24,8 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/constraint/Constraint.h"
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
@@ -1146,6 +1148,10 @@ TEST(WorkbenchesTest, ExplodeTakesOutlinesApartIntoTheirSides) {
     drawing.addEntity(open);
     drawing.addEntity(rect);
     drawing.addEntity(loose);
+    // A vertex of the polyline held where it is: the constraint goes with
+    // the polyline, as Delete takes it, not left holding nothing.
+    document.activeConstraints().addConstraint(std::make_shared<hz::cstr::FixedConstraint>(
+        hz::cstr::GeometryRef{open->id(), hz::cstr::FeatureType::Point, 0}, Vec2(0, 0)));
     auto& sel = host.viewport().selectionManager();
     sel.select(open->id());
     sel.select(rect->id());
@@ -1169,7 +1175,11 @@ TEST(WorkbenchesTest, ExplodeTakesOutlinesApartIntoTheirSides) {
     }
     EXPECT_EQ(onWalls, 2u);
     EXPECT_EQ(sel.selectedIds().size(), 6u) << "the sides, selected";
+    EXPECT_TRUE(document.activeConstraints().constraintsForEntity(open->id()).empty())
+        << "the outline's constraint went with it";
+    EXPECT_EQ(document.activeConstraints().constraints().size(), 0u);
 
     document.undoStack().undo();
     EXPECT_EQ(drawing.entities().size(), 3u) << "one step";
+    EXPECT_EQ(document.activeConstraints().constraints().size(), 1u) << "and its constraint back";
 }

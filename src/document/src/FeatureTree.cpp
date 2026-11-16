@@ -66,7 +66,11 @@ std::vector<std::string> Feature::parameterChoices(const std::string& name) cons
 
 Feature::ParameterKind Feature::parameterKind(const std::string& name) const {
     if (name == "angle") return ParameterKind::Angle;
-    if (name == "segments" || name == "arcSegments" || name == "count") return ParameterKind::Count;
+    // A pattern's count along its second direction is a count, not a length:
+    // read as one, 2 in an inch document was 50.8 rows.
+    if (name == "segments" || name == "arcSegments" || name == "count" || name == "count2") {
+        return ParameterKind::Count;
+    }
     if (name == "operation") return ParameterKind::Choice;
     return ParameterKind::Length;
 }
@@ -1023,17 +1027,25 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
                                          ? model::NamingScheme::Stable
                                          : model::NamingScheme::Positional;
     std::unique_ptr<topo::Solid> solid;
+    std::string why;
     if (m_kind == Kind::Circular) {
         solid = model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count,
-                                         m_suppressed, join, m_together);
+                                         m_suppressed, join, m_together, &why);
     } else if (m_count2 > 1) {
         solid = model::Pattern::grid(*inputSolid, m_vecA, m_scalar, m_count, m_vecC, m_scalar2,
-                                     m_count2, m_suppressed, join, m_together);
+                                     m_count2, m_suppressed, join, m_together, &why);
     } else {
         solid = model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join,
-                                       m_together);
+                                       m_together, &why);
     }
-    if (!solid) return failWith(reason, "overlapping instances could not be merged into one body");
+    // Why the instances would not join, which may say what to change (too
+    // many facets: a coarser chord tolerance).
+    if (!solid) {
+        return failWith(reason,
+                        why.empty()
+                            ? "overlapping instances could not be merged into one body"
+                            : "overlapping instances could not be merged into one body: " + why);
+    }
     return solid;
 }
 

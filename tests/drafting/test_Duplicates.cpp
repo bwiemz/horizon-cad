@@ -99,3 +99,23 @@ TEST(DuplicatesTest, ManyAreFoundQuickly) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     EXPECT_LT(seconds, 30.0) << "a generous bound for any build";
 }
+
+// Within the tolerance across the edge of the grid the copies are filed on:
+// found, as within one cell. And a closed outline drawn from another corner,
+// or the other way round, is the same outline; so is a rectangle given by
+// its other corners.
+TEST(DuplicatesTest, NearCopiesAndClosedOutlinesAreFoundHoweverPlaced) {
+    using namespace hz::draft;
+    auto a = make<DraftLine>(Vec2(1.9, 0), Vec2(5, 0));
+    auto b = make<DraftLine>(Vec2(2.1, 0), Vec2(5, 0.2));
+    EXPECT_EQ(duplicateEntities({a, b}, 1.0), std::vector<uint64_t>{b->id()});
+    EXPECT_TRUE(duplicateEntities({a, b}, 0.1).empty()) << "0.2 apart: not within 0.1";
+
+    auto square = make<DraftPolyline>(std::vector<Vec2>{{0, 0}, {2, 0}, {2, 2}, {0, 2}}, true);
+    auto fromAnother = make<DraftPolyline>(std::vector<Vec2>{{2, 2}, {0, 2}, {0, 0}, {2, 0}}, true);
+    auto clockwise = make<DraftPolyline>(std::vector<Vec2>{{0, 2}, {2, 2}, {2, 0}, {0, 0}}, true);
+    auto rect = make<DraftRectangle>(Vec2(5, 5), Vec2(8, 7));
+    auto rectOther = make<DraftRectangle>(Vec2(8, 7), Vec2(5, 5));
+    EXPECT_EQ(duplicateEntities({square, fromAnother, clockwise, rect, rectOther}, 1e-9),
+              (std::vector<uint64_t>{fromAnother->id(), clockwise->id(), rectOther->id()}));
+}

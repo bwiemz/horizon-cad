@@ -299,7 +299,7 @@ bool samePlace(const Mat4& a, const Mat4& b) {
 
 std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector<Mat4>& transforms,
                                           const std::vector<int>& suppressed, NamingScheme naming,
-                                          bool together) {
+                                          bool together, std::string* reason) {
     std::unordered_set<int> skip(suppressed.begin(), suppressed.end());
     if (together) {
         // A copy where another already is adds nothing to their union: a
@@ -393,8 +393,7 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
                         cloneInto(*tool, *instances[i], Mat4::identity(), 0, nullptr, true);
                     }
                 }
-                auto merged =
-                    BooleanOp::execute(*group, *tool, BooleanType::Union, nullptr, naming);
+                auto merged = BooleanOp::execute(*group, *tool, BooleanType::Union, reason, naming);
                 if (!merged) return nullptr;
                 group = std::move(merged);
                 left = std::move(later);
@@ -409,7 +408,7 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
                 continue;
             }
             auto merged = BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union,
-                                             nullptr, naming);
+                                             reason, naming);
             if (!merged) return nullptr;
             bodies[root] = std::move(merged);
         }
@@ -427,7 +426,8 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
 std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Vec3& direction,
                                              double spacing, int count,
                                              const std::vector<int>& suppressed,
-                                             NamingScheme naming, bool together) {
+                                             NamingScheme naming, bool together,
+                                             std::string* reason) {
     if (count < 1) return nullptr;
     Vec3 dir = direction.normalized();
     std::vector<Mat4> transforms;
@@ -435,14 +435,14 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     for (int k = 0; k < count; ++k) {
         transforms.push_back(Mat4::translation(dir * (spacing * k)));
     }
-    return buildPattern(source, transforms, suppressed, naming, together);
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
 }
 
 std::unique_ptr<topo::Solid> Pattern::grid(const topo::Solid& source, const Vec3& direction,
                                            double spacing, int count, const Vec3& direction2,
                                            double spacing2, int count2,
                                            const std::vector<int>& suppressed, NamingScheme naming,
-                                           bool together) {
+                                           bool together, std::string* reason) {
     if (count < 1 || count2 < 1) return nullptr;
     const Vec3 dir = direction.normalized();
     const Vec3 dir2 = direction2.normalized();
@@ -454,7 +454,7 @@ std::unique_ptr<topo::Solid> Pattern::grid(const topo::Solid& source, const Vec3
                 Mat4::translation(dir * (spacing * column) + dir2 * (spacing2 * row)));
         }
     }
-    return buildPattern(source, transforms, suppressed, naming, together);
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
 }
 
 std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
@@ -558,7 +558,8 @@ std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, con
 std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const Vec3& axisPoint,
                                                const Vec3& axisDir, double angleStepRad, int count,
                                                const std::vector<int>& suppressed,
-                                               NamingScheme naming, bool together) {
+                                               NamingScheme naming, bool together,
+                                               std::string* reason) {
     if (count < 1) return nullptr;
     Vec3 axis = axisDir.normalized();
     std::vector<Mat4> transforms;
@@ -569,7 +570,7 @@ std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const 
         Mat4 rot = Mat4::rotation(Quaternion::fromAxisAngle(axis, angleStepRad * k));
         transforms.push_back(fromOrigin * rot * toOrigin);
     }
-    return buildPattern(source, transforms, suppressed, naming, together);
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
 }
 
 }  // namespace hz::model

@@ -42,14 +42,33 @@ void put(std::vector<double>& out, const Vec2& p) {
 }
 
 /// @p points as they run, or backward when that reads first: an open path
-/// drawn from either end is the same path.
+/// drawn from either end is the same path. A closed one is read from its
+/// lowest corner, either way round: the same outline drawn from another
+/// corner, or clockwise, is the same outline.
 std::vector<Vec2> eitherWay(const std::vector<Vec2>& points, bool closed) {
-    if (closed || points.size() < 2) return points;
-    std::vector<Vec2> back(points.rbegin(), points.rend());
-    return std::lexicographical_compare(back.begin(), back.end(), points.begin(), points.end(),
-                                        before)
-               ? back
-               : points;
+    const size_t n = points.size();
+    if (n < 2) return points;
+    if (!closed) {
+        std::vector<Vec2> back(points.rbegin(), points.rend());
+        return std::lexicographical_compare(back.begin(), back.end(), points.begin(), points.end(),
+                                            before)
+                   ? back
+                   : points;
+    }
+    const size_t lowest = static_cast<size_t>(
+        std::min_element(points.begin(), points.end(), before) - points.begin());
+    std::vector<Vec2> forward;
+    std::vector<Vec2> backward;
+    forward.reserve(n);
+    backward.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        forward.push_back(points[(lowest + i) % n]);
+        backward.push_back(points[(lowest + n - i) % n]);
+    }
+    return std::lexicographical_compare(backward.begin(), backward.end(), forward.begin(),
+                                        forward.end(), before)
+               ? backward
+               : forward;
 }
 
 std::optional<Key> keyOf(const DraftEntity& entity) {
@@ -77,7 +96,8 @@ std::optional<Key> keyOf(const DraftEntity& entity) {
         key.exact += poly->closed() ? "\nclosed" : "\nopen";
         for (const Vec2& p : eitherWay(poly->points(), poly->closed())) put(shape, p);
     } else if (const auto* rect = dynamic_cast<const DraftRectangle*>(&entity)) {
-        for (const Vec2& p : rect->corners()) put(shape, p);
+        const auto corners = rect->corners();
+        for (const Vec2& p : eitherWay({corners.begin(), corners.end()}, true)) put(shape, p);
     } else if (const auto* ellipse = dynamic_cast<const DraftEllipse*>(&entity)) {
         put(shape, ellipse->center());
         // The ends of its axes: either end of each, the same ellipse.
@@ -115,35 +135,47 @@ std::optional<Key> keyOf(const DraftEntity& entity) {
 std::vector<uint64_t> duplicateEntities(const std::vector<std::shared_ptr<DraftEntity>>& entities,
                                         double tolerance) {
     const double tol = tolerance > 0.0 && std::isfinite(tolerance) ? tolerance : 1e-12;
-    // Each entity filed by its exact part and its shape on a grid of the
-    // tolerance: a copy made as a copy is, its numbers the same, is filed
-    // with the first. Within a file, each is checked against those kept.
+    // Each entity kept is filed by its exact part and by where its shape
+    // starts (its first two numbers) on a grid of the tolerance; each is
+    // looked for in its own cell and the eight around it, so one within the
+    // tolerance across a cell's edge is found too, and checked number by
+    // number against those filed there.
     struct Kept {
         std::vector<double> shape;
+    };
+    const double cell = 4.0 * tol;
+    const auto cellOf = [cell](double v) { return static_cast<long long>(std::floor(v / cell)); };
+    const auto fileOf = [](const std::string& exact, long long cx, long long cy) {
+        return exact + ' ' + std::to_string(cx) + ' ' + std::to_string(cy);
     };
     std::unordered_map<std::string, std::vector<Kept>> files;
     std::vector<uint64_t> copies;
     for (const auto& entity : entities) {
         if (!entity) continue;
         const auto key = keyOf(*entity);
-        if (!key) continue;
-        std::string file = key->exact;
-        for (const double v : key->shape) {
-            file += ' ';
-            file += std::to_string(std::llround(v / (4.0 * tol)));
-        }
-        auto& kept = files[file];
-        const bool copy = std::any_of(kept.begin(), kept.end(), [&](const Kept& k) {
-            if (k.shape.size() != key->shape.size()) return false;
-            for (size_t i = 0; i < k.shape.size(); ++i) {
-                if (!(std::abs(k.shape[i] - key->shape[i]) <= tol)) return false;
+        if (!key || key->shape.size() < 2) continue;
+        const auto& shape = key->shape;
+        const long long cx = cellOf(shape[0]);
+        const long long cy = cellOf(shape[1]);
+        const auto same = [&](const Kept& k) {
+            if (k.shape.size() != shape.size()) return false;
+            for (size_t i = 0; i < shape.size(); ++i) {
+                if (!(std::abs(k.shape[i] - shape[i]) <= tol)) return false;
             }
             return true;
-        });
+        };
+        bool copy = false;
+        for (long long dx = -1; dx <= 1 && !copy; ++dx) {
+            for (long long dy = -1; dy <= 1 && !copy; ++dy) {
+                const auto found = files.find(fileOf(key->exact, cx + dx, cy + dy));
+                copy = found != files.end() &&
+                       std::any_of(found->second.begin(), found->second.end(), same);
+            }
+        }
         if (copy) {
             copies.push_back(entity->id());
         } else {
-            kept.push_back({key->shape});
+            files[fileOf(key->exact, cx, cy)].push_back({shape});
         }
     }
     return copies;
