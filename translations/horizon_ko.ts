@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
         <source>Dimension Style</source>
         <translation type="unfinished">치수 스타일</translation>
     </message>
@@ -1324,14 +1324,14 @@ Details are in the log:
         <translation type="unfinished">정의된 블록이 없습니다. 먼저 블록을 만드십시오.</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+62"/>
         <source>Explode</source>
         <translation type="unfinished">분해</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Select one or more block references to explode.</source>
-        <translation type="unfinished">분해할 블록 참조를 하나 이상 선택하십시오.</translation>
+        <source>Select block references, polylines or rectangles to explode.</source>
+        <translation type="unfinished">분해할 블록 참조, 폴리선 또는 직사각형을 선택하십시오.</translation>
     </message>
 </context>
 <context>

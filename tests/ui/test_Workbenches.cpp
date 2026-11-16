@@ -1123,3 +1123,53 @@ TEST(WorkbenchesTest, TheDraftingFormsWorkThroughTheirHost) {
     document.undoStack().undo();
     EXPECT_DOUBLE_EQ(document.activeDrawing().dimensionStyle().textHeight, was);
 }
+
+// Explode takes a polyline and a rectangle apart into their sides, each a
+// line with the outline's layer and colour, as AutoCAD's EXPLODE does; a
+// corner given twice makes no side, and an open polyline has no closing
+// one. One step undoes it all, and the sides are what is selected.
+TEST(WorkbenchesTest, ExplodeTakesOutlinesApartIntoTheirSides) {
+    using hz::math::Vec2;
+    StandInHost host;
+    hz::ui::DraftingCommands drafting(host);
+    hz::doc::Document& document = *host.currentDocument();
+    auto& drawing = document.activeDrawing();
+    hz::draft::LayerProperties walls;
+    walls.name = "Walls";
+    document.layerManager().addLayer(walls);
+    auto open = std::make_shared<hz::draft::DraftPolyline>(
+        std::vector<Vec2>{{0, 0}, {5, 0}, {5, 0}, {5, 5}}, false);
+    open->setLayer("Walls");
+    open->setColor(0xFFFF0000);
+    auto rect = std::make_shared<hz::draft::DraftRectangle>(Vec2(10, 0), Vec2(14, 3));
+    auto loose = std::make_shared<hz::draft::DraftLine>(Vec2(0, 9), Vec2(1, 9));
+    drawing.addEntity(open);
+    drawing.addEntity(rect);
+    drawing.addEntity(loose);
+    auto& sel = host.viewport().selectionManager();
+    sel.select(open->id());
+    sel.select(rect->id());
+
+    drafting.onExplode();
+    std::vector<const hz::draft::DraftLine*> lines;
+    for (const auto& entity : drawing.entities()) {
+        if (const auto* line = dynamic_cast<const hz::draft::DraftLine*>(entity.get())) {
+            lines.push_back(line);
+        }
+        EXPECT_EQ(dynamic_cast<const hz::draft::DraftPolyline*>(entity.get()), nullptr);
+        EXPECT_EQ(dynamic_cast<const hz::draft::DraftRectangle*>(entity.get()), nullptr);
+    }
+    ASSERT_EQ(lines.size(), 1u + 2u + 4u) << "the line, the polyline's two sides, the four";
+    size_t onWalls = 0;
+    for (const auto* line : lines) {
+        if (line->layer() == "Walls") {
+            ++onWalls;
+            EXPECT_EQ(line->color(), 0xFFFF0000u);
+        }
+    }
+    EXPECT_EQ(onWalls, 2u);
+    EXPECT_EQ(sel.selectedIds().size(), 6u) << "the sides, selected";
+
+    document.undoStack().undo();
+    EXPECT_EQ(drawing.entities().size(), 3u) << "one step";
+}

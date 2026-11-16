@@ -15,6 +15,9 @@
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
@@ -321,7 +324,9 @@ void DraftingCommands::onExplode() {
     doc::Document& document = *m_host.currentDocument();
     auto& drawing = document.activeDrawing();
 
-    // The block references among the selection.
+    // The block references among the selection, and the polylines and
+    // rectangles on layers that can be edited, which come apart into their
+    // sides, as AutoCAD's EXPLODE takes them apart.
     std::vector<uint64_t> blockRefIds;
     for (const auto& entity : drawing.entities()) {
         if (sel.isSelected(entity->id()) &&
@@ -329,9 +334,42 @@ void DraftingCommands::onExplode() {
             blockRefIds.push_back(entity->id());
         }
     }
-    if (blockRefIds.empty()) {
-        QMessageBox::information(m_host.dialogParent(), tr("Explode"),
-                                 tr("Select one or more block references to explode."));
+    std::vector<uint64_t> outlineIds;
+    std::vector<std::shared_ptr<draft::DraftEntity>> sides;
+    for (const uint64_t id : editableSelection()) {
+        const auto entity = drawing.sharedEntity(id);
+        if (!entity) continue;
+        std::vector<math::Vec2> corners;
+        bool closed = false;
+        if (const auto* poly = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
+            corners = poly->points();
+            closed = poly->closed();
+        } else if (const auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
+            const auto c = rect->corners();
+            corners.assign(c.begin(), c.end());
+            closed = true;
+        } else {
+            continue;
+        }
+        const size_t count = corners.size();
+        const size_t segments = closed ? count : (count > 0 ? count - 1 : 0);
+        std::vector<std::shared_ptr<draft::DraftEntity>> made;
+        for (size_t i = 0; i < segments; ++i) {
+            const math::Vec2& a = corners[i];
+            const math::Vec2& b = corners[(i + 1) % count];
+            if (a.distanceTo(b) <= 0.0) continue;  // a corner given twice: no side
+            auto line = std::make_shared<draft::DraftLine>(a, b);
+            line->copyStyleFrom(*entity);
+            made.push_back(std::move(line));
+        }
+        if (made.empty()) continue;  // a point: nothing to take apart
+        outlineIds.push_back(id);
+        sides.insert(sides.end(), made.begin(), made.end());
+    }
+    if (blockRefIds.empty() && outlineIds.empty()) {
+        QMessageBox::information(
+            m_host.dialogParent(), tr("Explode"),
+            tr("Select block references, polylines or rectangles to explode."));
         return;
     }
     auto composite = std::make_unique<doc::CompositeCommand>("Explode");
@@ -341,14 +379,21 @@ void DraftingCommands::onExplode() {
         explodeCmds.push_back(cmd.get());
         composite->addCommand(std::move(cmd));
     }
+    if (!outlineIds.empty()) {
+        composite->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, outlineIds));
+        for (const auto& side : sides) {
+            composite->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, side));
+        }
+    }
     document.undoStack().push(std::move(composite));
 
-    // What they held, selected.
+    // What they held, and the sides, selected.
     std::vector<uint64_t> exploded;
     for (auto* cmd : explodeCmds) {
         const auto& ids = cmd->explodedIds();
         exploded.insert(exploded.end(), ids.begin(), ids.end());
     }
+    for (const auto& side : sides) exploded.push_back(side->id());
     selectOnly(exploded);
 }
 

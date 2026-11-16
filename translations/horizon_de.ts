@@ -1229,7 +1229,7 @@ Details stehen im Protokoll:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Bemaßungsstil</translation>
     </message>
@@ -1326,14 +1326,14 @@ Details stehen im Protokoll:
         <translation type="unfinished">Keine Blöcke definiert. Erstellen Sie zuerst einen Block.</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+62"/>
         <source>Explode</source>
         <translation type="unfinished">Auflösen</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Select one or more block references to explode.</source>
-        <translation type="unfinished">Wählen Sie eine oder mehrere Blockreferenzen zum Auflösen aus.</translation>
+        <source>Select block references, polylines or rectangles to explode.</source>
+        <translation type="unfinished">Wählen Sie Blockreferenzen, Polylinien oder Rechtecke zum Auflösen aus.</translation>
     </message>
 </context>
 <context>
