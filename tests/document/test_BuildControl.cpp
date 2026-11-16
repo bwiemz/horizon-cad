@@ -3,13 +3,18 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/modeling/MassProperties.h"
 
 using hz::doc::BuildControl;
 using hz::doc::Document;
+using hz::doc::PatternFeature;
 using hz::doc::PrimitiveFeature;
+using hz::math::Vec3;
 
 namespace {
 
@@ -47,4 +52,31 @@ TEST(BuildControlTest, ACancelledBuildStopsAndLeavesTheModelAsItWas) {
 
     EXPECT_TRUE(doc.applyBuild(std::move(result)));
     EXPECT_NEAR(volumeOf(doc), 24.0, 1e-9) << "the last completed model stays";
+}
+
+// A build cancelled in a long feature stops in it, not at its end: a pattern
+// of 40 overlapping cylinders of 1,024 facets, joined for tens of seconds,
+// stops within moments of the cancel, where the window waited it out.
+TEST(BuildControlTest, ABuildCancelledInALongFeatureStopsInIt) {
+    Document doc;
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    ASSERT_TRUE(cylinder->setParameter("segments", 1024));
+    doc.featureTree().addFeature(std::move(cylinder));
+    auto grid = PatternFeature::makeLinear(Vec3(1, 0, 0), 7.0, 8);
+    ASSERT_TRUE(grid->setSecondDirection(Vec3(0, 1, 0), 7.0, 5));
+    doc.featureTree().addFeature(std::move(grid));
+
+    BuildControl control;
+    hz::doc::BuildResult result;
+    std::thread worker([&] { result = doc.featureTree().buildWithDiagnostics(&control); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const auto asked = std::chrono::steady_clock::now();
+    control.cancel = true;
+    worker.join();
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - asked).count();
+    EXPECT_TRUE(result.cancelled);
+    EXPECT_EQ(result.solid, nullptr);
+    // The pattern alone takes over 20 s optimized; stopped, a moment.
+    EXPECT_LT(seconds, 5.0);
 }

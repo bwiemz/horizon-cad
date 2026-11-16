@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -75,6 +76,21 @@ public:
 private:
     std::size_t m_savedWork;
     std::size_t m_savedSplits;
+};
+
+/// While it lives, each Boolean run on this thread stops as soon as
+/// @p cancelled is set, failing with the reason "cancelled", rather than at
+/// its end: a rebuild of a part of tens of thousands of facets could run
+/// for minutes after the user had moved on, and the window waited for it.
+class BooleanCancellation {
+public:
+    explicit BooleanCancellation(const std::atomic<bool>* cancelled);
+    ~BooleanCancellation();
+    BooleanCancellation(const BooleanCancellation&) = delete;
+    BooleanCancellation& operator=(const BooleanCancellation&) = delete;
+
+private:
+    const std::atomic<bool>* m_saved;
 };
 
 }  // namespace hz::model

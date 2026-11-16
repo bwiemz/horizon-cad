@@ -64,6 +64,8 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
         fragments =
             csgExecute(csgPieces(polysA, true, tol.plane), csgPieces(polysB, false, tol.plane),
                        BooleanType::Intersect, tol.plane, CsgFragments::Fewest);
+    } catch (const CsgCancelled&) {
+        return false;  // the check stops before the next pair
     } catch (const CsgTooComplex&) {
         // Too finely faceted, through and through, to work out in time:
         // their boxes overlap, and they are reported, to be looked at, not
@@ -78,6 +80,8 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
 std::vector<InterferencePair> InterferenceChecker::check(
     const std::vector<const topo::Solid*>& solids, const std::atomic<bool>* cancelled) {
     std::vector<InterferencePair> pairs;
+    // A pair of many facets stops as soon as the check is cancelled.
+    const BooleanCancellation stop(cancelled);
 
     // Broad phase: index every valid solid's AABB in an R*-tree.
     std::vector<BoundingBox> bounds(solids.size());

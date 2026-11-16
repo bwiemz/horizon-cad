@@ -67,6 +67,7 @@ struct Budget {
     std::size_t workLimit = std::numeric_limits<std::size_t>::max();
     std::size_t splits = 0;
     std::size_t splitLimit = std::numeric_limits<std::size_t>::max();
+    const std::atomic<bool>* cancelled = nullptr;
 };
 thread_local Budget t_budget;
 
@@ -81,6 +82,7 @@ public:
         t_budget.splitLimit = set.splits != 0
                                   ? set.splits
                                   : std::max(kCsgSplitLimit, kCsgSplitsPerPolygon * polygons);
+        t_budget.cancelled = set.cancelled;
     }
     ~BudgetScope() { t_budget = m_saved; }
     BudgetScope(const BudgetScope&) = delete;
@@ -97,9 +99,16 @@ void splitPolygon(const Plane& plane, double eps, Poly&& poly, std::vector<Poly>
                   std::vector<Poly>& back) {
     const auto& pts = poly.data.points;
     const size_t n = pts.size();
+    const std::size_t before = t_budget.work;
     t_budget.work += n;
     if (t_budget.work > t_budget.workLimit) {
         throw CsgTooComplex("cutting them would take far longer than any part needs");
+    }
+    // Asked now and then whether what it runs for still wants it: every
+    // 65,536 corners, a few milliseconds' work.
+    if ((before >> 16) != (t_budget.work >> 16) && t_budget.cancelled != nullptr &&
+        t_budget.cancelled->load(std::memory_order_relaxed)) {
+        throw CsgCancelled();
     }
 
     int polygonType = 0;

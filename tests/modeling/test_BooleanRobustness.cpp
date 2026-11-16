@@ -10,6 +10,7 @@
 #include <pthread.h>
 #endif
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -637,4 +638,26 @@ TEST(BooleanRobustnessTest, ACutTooLargeToMakeIsRefusedWithAReason) {
         BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
     ASSERT_NE(result, nullptr) << "the limits are lifted with their scope: " << why;
     EXPECT_TRUE(result->isValid());
+}
+
+// A Boolean whose work is cancelled stops, saying so: here cancelled before
+// it begins, so it stops at its first check. Out of the cancellation's
+// scope, the same Boolean runs to its end.
+TEST(BooleanRobustnessTest, ACancelledBooleanStopsSayingSo) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 2048);
+    const auto drill =
+        moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, 2048), Mat4::translation(Vec3(1, 0, -10)));
+    std::atomic<bool> cancelled{true};
+    {
+        const hz::model::BooleanCancellation stop(&cancelled);
+        std::string why;
+        EXPECT_EQ(
+            BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable),
+            nullptr);
+        EXPECT_EQ(why, "cancelled");
+    }
+    std::string why;
+    EXPECT_NE(BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable),
+              nullptr)
+        << why;
 }

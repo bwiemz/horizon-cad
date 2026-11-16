@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -97,15 +98,25 @@ inline constexpr std::size_t kCsgWorkPerPolygon = 20'000;
 inline constexpr std::size_t kCsgSplitLimit = 4'000'000;
 inline constexpr std::size_t kCsgSplitsPerPolygon = 20;
 
+/// A CSG stopped because what it runs for was cancelled (a rebuild the
+/// user has moved on from): thrown by csgExecute, never for anything about
+/// the bodies.
+class CsgCancelled : public std::runtime_error {
+public:
+    CsgCancelled() : std::runtime_error("cancelled") {}
+};
+
 /// The limits set on this thread in place of those above (BooleanWorkLimits),
-/// zero where none is.
+/// zero where none is, and the flag that cancels it (BooleanCancellation).
 struct CsgLimits {
     std::size_t work = 0;
     std::size_t splits = 0;
+    const std::atomic<bool>* cancelled = nullptr;
 };
 CsgLimits& csgLimitsOnThisThread();
 
-/// Throws CsgTooComplex beyond the limits above.
+/// Throws CsgTooComplex beyond the limits above, and CsgCancelled once the
+/// cancellation flag set on this thread is set.
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
                                    double planeEps = kCsgPlaneEps,

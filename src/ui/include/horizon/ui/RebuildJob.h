@@ -32,8 +32,9 @@ public:
     static Stamp stampOf(const doc::Document& doc);
 
     explicit RebuildJob(const doc::Document& doc);
-    /// Cancels the job and waits for the worker to stop: after the feature
-    /// it is in, since a build stops only between features.
+    /// Cancels the job and waits for the worker to stop: between features,
+    /// or within a Boolean (model::BooleanCancellation), a few milliseconds
+    /// after.
     ~RebuildJob();
 
     RebuildJob(const RebuildJob&) = delete;
@@ -44,7 +45,7 @@ public:
     /// thread can be had, the build runs here instead (startWorker).
     void start(std::function<void()> onFinished = {});
 
-    /// Ask the build to stop at the next feature.
+    /// Ask the build to stop: at the next feature, or in the Boolean it is in.
     void cancel() { m_control.cancel = true; }
 
     bool finished() const { return m_finished.load(); }

@@ -19,6 +19,20 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A rebuild stops when you move on.** A build stopped only between
+  features, and the window waited for the feature it was in: a pattern of
+  overlapping cylinders of many facets could hold it for many minutes after
+  an edit. A Boolean now stops within moments of its build being cancelled,
+  and so does an interference check.
+
+- **Whole-part patterns whose copies overlap join faster.** The copies were
+  joined one at a time, each time to all that had been joined: they are now
+  joined in rounds, each round every copy clear of the others in it at once,
+  and a copy exactly where another is (a pattern of no spacing) is left out.
+  A grid of 40 overlapping cylinders of 1,024 facets takes half the time,
+  the same body. As for copies cut together, a pattern from an older file is
+  joined as it was.
+
 - **Linear patterns in two directions.** A Linear Pattern can have a second
   direction, with its own spacing and number of instances, as SolidWorks'
   Direction 2: each row repeated along it, for a grid. A plate of holes is
