@@ -113,7 +113,7 @@ TEST(EntityCommandsTest, UndoingACopyOfManyTakesThemOutTogether) {
 #ifdef NDEBUG
     EXPECT_LT(seconds, 1.0);
 #else
-    EXPECT_LT(seconds, 5.0) << "unoptimized: a generous bound";
+    EXPECT_LT(seconds, 5.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
 #endif
 #else
     (void)seconds;

@@ -91,7 +91,7 @@ TEST(LargeProfileTest, FiftyThousandPointsExtrudeQuickly) {
 #ifdef NDEBUG
     EXPECT_LT(seconds, 3.0);
 #else
-    EXPECT_LT(seconds, 30.0) << "unoptimized: a generous bound";
+    EXPECT_LT(seconds, 30.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
 #endif
 #else
     (void)seconds;
@@ -120,7 +120,7 @@ TEST(LargeProfileTest, ALargeFaceIsTriangulatedWhole) {
 #ifdef NDEBUG
     EXPECT_LT(seconds, 5.0);
 #else
-    EXPECT_LT(seconds, 60.0) << "unoptimized: a generous bound";
+    EXPECT_LT(seconds, 60.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
 #endif
 #else
     (void)seconds;
@@ -148,7 +148,7 @@ TEST(LargeProfileTest, APrismOfTenThousandSidesIsCut) {
 #ifdef NDEBUG
     EXPECT_LT(seconds, 6.0);
 #else
-    EXPECT_LT(seconds, 60.0) << "unoptimized: a generous bound";
+    EXPECT_LT(seconds, 60.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
 #endif
 #else
     (void)seconds;
