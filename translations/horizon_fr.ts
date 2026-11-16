@@ -2536,7 +2536,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+770"/>
+        <location line="+789"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2720,14 +2720,14 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-720"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-739"/>
         <location line="+1"/>
-        <location line="+1072"/>
+        <location line="+1091"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1005"/>
+        <location line="-1024"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -2922,7 +2922,22 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">&amp;Isométrique</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+8"/>
+        <source>Zoom to &amp;Selection</source>
+        <translation type="unfinished">Zoom sur la &amp;sélection</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Zoom &amp;In</source>
+        <translation type="unfinished">Zoom &amp;avant</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Zoom O&amp;ut</source>
+        <translation type="unfinished">Zoom a&amp;rrière</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>&amp;Orthographic</source>
         <translation type="unfinished">&amp;Orthographique</translation>
     </message>
@@ -3804,7 +3819,12 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+1092"/>
+        <location line="+435"/>
+        <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
+        <translation type="unfinished">Rien de sélectionné pour zoomer : Tout afficher (F) montre tout</translation>
+    </message>
+    <message>
+        <location line="+673"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3850,7 +3870,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2528"/>
+        <location line="-2544"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -4077,14 +4097,14 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+10"/>
         <location line="+987"/>
         <location line="+488"/>
-        <location line="+914"/>
+        <location line="+930"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3065"/>
+        <location line="-3081"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -4105,12 +4125,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2713"/>
+        <location line="+2729"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2707"/>
+        <location line="-2723"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -4690,7 +4710,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">&quot;%1&quot; a été modifié par un autre programme et a été relu</translation>
     </message>
     <message>
-        <location line="+370"/>
+        <location line="+386"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X : %1  Y : %2</translation>
     </message>
@@ -5221,7 +5241,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3081"/>
+        <location line="-3097"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

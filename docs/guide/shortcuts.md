@@ -17,6 +17,8 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 | **Ctrl+G**, **Ctrl+Shift+G** | Group, Ungroup |
 | **Ctrl+,** | Preferences |
 | **F** | Fit all in the view |
+| **Shift+F** | Zoom to the selection |
+| **Ctrl++**, **Ctrl+-** | Zoom in, zoom out |
 | **Space** | Select tool |
 | **Escape** | Cancel the tool's current step |
 | **Delete** | Delete the selection |
