@@ -522,6 +522,25 @@ void MainWindow::createMenus() {
     // The ribbon's Fit All, with its shortcut, takes this place
     // (completeMenusFromRibbon): one action, not two.
     m_viewFitAllPlaceholder = viewMenu->addSeparator();
+    // Zooms by command, as well as by the wheel: to what is selected, and in
+    // and out a step at a time about the middle of the view.
+    auto* zoomSelection =
+        viewMenu->addAction(tr("Zoom to &Selection"), this, &MainWindow::onZoomToSelection);
+    zoomSelection->setObjectName(QStringLiteral("action_zoom_selection"));
+    zoomSelection->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F));
+    auto* zoomIn = viewMenu->addAction(tr("Zoom &In"), this, [this] {
+        m_viewport->camera().zoom(1.0 / 1.25);
+        m_viewport->update();
+    });
+    zoomIn->setObjectName(QStringLiteral("action_zoom_in"));
+    zoomIn->setShortcut(QKeySequence::ZoomIn);
+    auto* zoomOut = viewMenu->addAction(tr("Zoom O&ut"), this, [this] {
+        m_viewport->camera().zoom(1.25);
+        m_viewport->update();
+    });
+    zoomOut->setObjectName(QStringLiteral("action_zoom_out"));
+    zoomOut->setShortcut(QKeySequence::ZoomOut);
+    viewMenu->addSeparator();
     auto* ortho = viewMenu->addAction(tr("&Orthographic"));
     ortho->setObjectName(QStringLiteral("action_view_ortho"));
     ortho->setCheckable(true);
@@ -2758,6 +2777,22 @@ void MainWindow::onFitAll() {
     } else {
         m_viewport->camera().setIsometricView();
     }
+    m_viewport->update();
+}
+
+void MainWindow::onZoomToSelection() {
+    math::BoundingBox bbox;
+    const auto& selection = m_viewport->selectionManager();
+    for (const auto& entity : m_document->activeDrawing().entities()) {
+        if (!selection.isSelected(entity->id())) continue;
+        const auto box = entity->boundingBox();
+        if (box.isValid()) bbox.expand(box);
+    }
+    if (!bbox.isValid()) {
+        m_statusPrompt->setText(tr("Nothing selected to zoom to: Fit All (F) shows everything"));
+        return;
+    }
+    m_viewport->camera().fitAll(bbox);
     m_viewport->update();
 }
 

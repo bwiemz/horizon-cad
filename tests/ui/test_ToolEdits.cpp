@@ -638,3 +638,37 @@ TEST(ToolEditsTest, APolygonsCornersAreOnItsCircle) {
         PolygonTool::corners(Vec2(0, 0), Vec2(std::numeric_limits<double>::infinity(), 0), 6)
             .empty());
 }
+
+// The view zooms by command too (Phase 168): to what is selected, filling
+// the view with it wherever it is and however small, and in and out a step
+// at a time; with nothing selected, it says so and stays.
+TEST(ToolEditsTest, TheViewZoomsToTheSelectionAndInAndOut) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& view = drive.viewport();
+    auto& drawing = w.activeDocument()->draftDocument();
+    auto speck = std::make_shared<hz::draft::DraftCircle>(Vec2(5000, -3000), 0.01);
+    drawing.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    drawing.addEntity(speck);
+
+    const auto eyeBefore = view.camera().eye();
+    trigger(w, "action_zoom_selection");
+    EXPECT_NEAR((view.camera().eye() - eyeBefore).length(), 0.0, 1e-12) << "nothing selected";
+
+    view.selectionManager().select(speck->id());
+    trigger(w, "action_zoom_selection");
+    const QPointF centre = view.worldToScreen(Vec2(5000, -3000));
+    EXPECT_NEAR(centre.x(), view.width() / 2.0, 2.0);
+    EXPECT_NEAR(centre.y(), view.height() / 2.0, 2.0);
+    const double across = std::abs(view.worldToScreen(Vec2(5000.01, -3000)).x() - centre.x());
+    EXPECT_GT(across, 0.1 * view.height()) << "the speck fills much of the view";
+
+    const double distance = (view.camera().eye() - view.camera().target()).length();
+    trigger(w, "action_zoom_in");
+    EXPECT_NEAR((view.camera().eye() - view.camera().target()).length(), distance / 1.25,
+                1e-9 * distance);
+    trigger(w, "action_zoom_out");
+    trigger(w, "action_zoom_out");
+    EXPECT_NEAR((view.camera().eye() - view.camera().target()).length(), distance * 1.25,
+                1e-9 * distance);
+}

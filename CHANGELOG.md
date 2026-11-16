@@ -19,6 +19,11 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Zoom by command.** View ▸ Zoom to Selection (**Shift+F**) fits the
+  view to what is selected in the drawing, however small or far off; Zoom
+  In and Zoom Out (**Ctrl++**, **Ctrl+-**) zoom a step at a time about the
+  middle of the view. Only the wheel and Fit All zoomed before.
+
 - **Explode takes a polyline or a rectangle apart.** Block ▸ Explode took
   apart only block references; it now also turns selected polylines and
   rectangles into the lines of their sides, as AutoCAD's EXPLODE does, each

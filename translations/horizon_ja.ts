@@ -2525,7 +2525,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+770"/>
+        <location line="+789"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2709,14 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-720"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-739"/>
         <location line="+1"/>
-        <location line="+1072"/>
+        <location line="+1091"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1005"/>
+        <location line="-1024"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -2911,7 +2911,22 @@ begin building your part.</source>
         <translation type="unfinished">等角投影(&amp;I)</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+8"/>
+        <source>Zoom to &amp;Selection</source>
+        <translation type="unfinished">選択範囲にズーム(&amp;S)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Zoom &amp;In</source>
+        <translation type="unfinished">拡大(&amp;I)</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Zoom O&amp;ut</source>
+        <translation type="unfinished">縮小(&amp;U)</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>&amp;Orthographic</source>
         <translation type="unfinished">平行投影(&amp;O)</translation>
     </message>
@@ -3792,7 +3807,12 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+1092"/>
+        <location line="+435"/>
+        <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
+        <translation type="unfinished">ズームする対象が選択されていません。全体表示 (F) ですべてを表示します</translation>
+    </message>
+    <message>
+        <location line="+673"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3836,7 +3856,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2528"/>
+        <location line="-2544"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -4063,14 +4083,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+987"/>
         <location line="+488"/>
-        <location line="+914"/>
+        <location line="+930"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3065"/>
+        <location line="-3081"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -4091,12 +4111,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2713"/>
+        <location line="+2729"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2707"/>
+        <location line="-2723"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -4674,7 +4694,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot; がほかのプログラムによって変更されたため、再読み込みしました</translation>
     </message>
     <message>
-        <location line="+370"/>
+        <location line="+386"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
@@ -5202,7 +5222,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3081"/>
+        <location line="-3097"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
