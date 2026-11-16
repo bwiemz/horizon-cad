@@ -15,7 +15,7 @@
 namespace hz::ui {
 
 void ViewportInputHandler::handleMousePress(QMouseEvent* event, ViewportWidget* viewport) {
-    m_lastMousePos = event->pos();
+    m_lastMousePos = event->position();
 
     if (event->button() == Qt::MiddleButton) {
         if (event->modifiers() & Qt::ShiftModifier) {
@@ -40,13 +40,15 @@ void ViewportInputHandler::handleMousePress(QMouseEvent* event, ViewportWidget* 
 }
 
 void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* viewport) {
-    QPoint delta = event->pos() - m_lastMousePos;
+    // In doubles: a point far out of the view is a whole pixel position
+    // past what an int holds, and the difference of two overflowed.
+    const QPointF delta = event->position() - m_lastMousePos;
 
     if (m_orbiting) {
         double yaw = static_cast<double>(delta.x()) * 0.005;
         double pitch = static_cast<double>(delta.y()) * 0.005;
         viewport->camera().orbit(yaw, pitch);
-        m_lastMousePos = event->pos();
+        m_lastMousePos = event->position();
         viewport->update();
         return;
     }
@@ -55,7 +57,7 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
         double dx = static_cast<double>(delta.x()) * 0.01;
         double dy = static_cast<double>(delta.y()) * 0.01;
         viewport->camera().pan(dx, -dy);  // negate Y because screen Y is flipped
-        m_lastMousePos = event->pos();
+        m_lastMousePos = event->position();
         viewport->update();
         return;
     }
@@ -75,7 +77,7 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
         }
     }
 
-    m_lastMousePos = event->pos();
+    m_lastMousePos = event->position();
 }
 
 void ViewportInputHandler::handleMouseRelease(QMouseEvent* event, ViewportWidget* viewport) {
