@@ -19,6 +19,23 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Linear patterns in two directions.** A Linear Pattern can have a second
+  direction, with its own spacing and number of instances, as SolidWorks'
+  Direction 2: each row repeated along it, for a grid. A plate of holes is
+  one hole and one pattern; a pattern could not repeat another, so a grid
+  could not be made at all. The edit form shows the second direction's count
+  and spacing as any other parameter.
+
+- **Patterns of many copies are fast.** A pattern cut or joined each copy to
+  the part in turn, rebuilding, merging and sewing all of it each time: a
+  plate of 100 holes took 13 s, and 400 minutes. Copies clear of one another
+  are now combined with the part in one go: 100 holes in 0.6 s, 400 in 5 s.
+  The part is the same, but the faces the copies split are cut into other
+  pieces, so a pattern read from an older file still combines its copies in
+  turn, and what refers to its faces' pieces and edges finds them as before.
+  Files are now written as version 31: an older build would build one row of
+  a grid.
+
 - **Delete Duplicates.** Edit ▸ Delete Duplicates takes out every entity
   that repeats one before it, as AutoCAD's OVERKILL does: the same kind,
   layer, colour, width and line type, and the same shape whichever way round

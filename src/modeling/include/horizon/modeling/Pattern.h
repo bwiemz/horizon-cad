@@ -37,6 +37,16 @@ public:
                                                int count, const std::vector<int>& suppressed = {},
                                                NamingScheme naming = NamingScheme::Positional);
 
+    /// Linear pattern in two directions (SolidWorks' Direction 1 and 2): a
+    /// grid of @p count by @p count2 instances, @p spacing apart along
+    /// @p direction and @p spacing2 along @p direction2. Instance k is
+    /// column k % count of row k / count, as @p suppressed numbers them.
+    static std::unique_ptr<topo::Solid> grid(const topo::Solid& source, const math::Vec3& direction,
+                                             double spacing, int count,
+                                             const math::Vec3& direction2, double spacing2,
+                                             int count2, const std::vector<int>& suppressed = {},
+                                             NamingScheme naming = NamingScheme::Positional);
+
     /// Both solids' shells in one solid, as separate bodies: no Boolean, so
     /// shared material is not merged (use BooleanOp for that). Topology IDs
     /// are kept. Each is copied wound facing out, as `append` and a

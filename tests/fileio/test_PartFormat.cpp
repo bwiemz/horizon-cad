@@ -980,6 +980,57 @@ TEST(PartFormatTest, ASuppressedFeatureStaysSuppressed) {
     EXPECT_EQ(loaded.solid()->shellCount(), 1u) << "the suppressed pattern adds nothing";
 }
 
+// A pattern in two directions comes back a grid: its second direction,
+// spacing and count, and an instance suppressed in a later row.
+TEST(PartFormatTest, APatternInTwoDirectionsRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = makeRectSketch(2.0, 2.0);
+    original.addSketch(sketch);
+    original.featureTree().addFeature(std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0));
+    auto grid = PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3, {4});
+    ASSERT_TRUE(grid->setSecondDirection(Vec3(0, 1, 0), 6.0, 2));
+    original.featureTree().addFeature(std::move(grid));
+    ASSERT_TRUE(original.rebuildModel()) << original.lastBuildMessage();
+    EXPECT_EQ(original.solid()->shellCount(), 5u) << "3 by 2, one left out";
+
+    Document loaded;
+    std::string error;
+    ASSERT_TRUE(NativeFormat::documentFromJson(NativeFormat::documentToJson(original, false),
+                                               loaded, &error))
+        << error;
+    const auto* pat = dynamic_cast<const PatternFeature*>(loaded.featureTree().feature(1));
+    ASSERT_NE(pat, nullptr);
+    EXPECT_EQ(pat->count(), 3);
+    EXPECT_EQ(pat->secondCount(), 2);
+    EXPECT_DOUBLE_EQ(pat->secondSpacing(), 6.0);
+    EXPECT_NEAR(pat->secondDirection().y, 1.0, 1e-12);
+    ASSERT_EQ(pat->suppressedInstances(), std::vector<int>{4}) << "an instance of the second row";
+    ASSERT_TRUE(loaded.rebuildModel()) << loaded.lastBuildMessage();
+    EXPECT_EQ(loaded.solid()->shellCount(), 5u);
+
+    EXPECT_TRUE(pat->combinesTogether()) << "kept as it was made";
+
+    // A pattern of one row is written as it always was: no second direction.
+    Document row;
+    row.featureTree().addFeature(PatternFeature::makeLinear(Vec3(1, 0, 0), 5.0, 3));
+    auto json = nlohmann::json::parse(NativeFormat::documentToJson(row, false));
+    EXPECT_FALSE(json.at("featureTree").at(0).contains("count2"));
+
+    // One from a file made before copies were combined together combines
+    // them in turn, as it was built then, and is written so again.
+    json.at("featureTree").at(0).erase("together");
+    Document older;
+    ASSERT_TRUE(NativeFormat::documentFromJson(json.dump(), older, &error)) << error;
+    const auto* old = dynamic_cast<const PatternFeature*>(older.featureTree().feature(0));
+    ASSERT_NE(old, nullptr);
+    EXPECT_FALSE(old->combinesTogether());
+    EXPECT_FALSE(nlohmann::json::parse(NativeFormat::documentToJson(older, false))
+                     .at("featureTree")
+                     .at(0)
+                     .contains("together"));
+}
+
 TEST(PartFormatTest, AFeatureSuppressionOfTheWrongTypeSkipsOnlyThatFeature) {
     Document original;
     original.setType(DocumentType::Part);
