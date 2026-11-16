@@ -43,7 +43,7 @@ what is solid and what is not yet.
 A drafting workspace of its own (`.hcad`, and DXF), and the tools sketches are drawn with.
 
 #### Drawing Tools
-- **Line** (chaining), **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polyline** (multi-click; closed with Polyline Edit)
+- **Line** (chaining), **Circle** (center-radius), **Arc** (3-click), **Rectangle** (2-corner), **Polygon** (regular, 3 to 1,024 sides), **Polyline** (multi-click; closed with Polyline Edit)
 - **Ellipse** (center + semi-axes), **Spline** (cubic B-spline with control points)
 - **Text** (standalone text entities of one line or several, with height, rotation, alignment)
 - **Hatch** (boundary fill: solid, parallel lines, or cross-hatch)

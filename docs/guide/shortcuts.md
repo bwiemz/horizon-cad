@@ -39,6 +39,7 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 | **A** | Arc | **Shift+S** | Scale |
 | **R** | Rectangle | **Shift+M** | Mirror |
 | **P** | Polyline | **O** | Offset |
+| **Shift+P** | Polygon | | |
 | **S** | Spline | **X** | Trim |
 | **E** | Ellipse | **Shift+E** | Extend |
 | **T** | Text | **B** | Break |

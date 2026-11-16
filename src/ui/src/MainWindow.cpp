@@ -118,6 +118,7 @@
 #include "horizon/ui/PartCommands.h"
 #include "horizon/ui/PasteTool.h"
 #include "horizon/ui/PdfExport.h"
+#include "horizon/ui/PolygonTool.h"
 #include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PreferencesDialog.h"
@@ -676,6 +677,7 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Circle"), this, &MainWindow::onCircleTool);
     toolsMenu->addAction(tr("&Arc"), this, &MainWindow::onArcTool);
     toolsMenu->addAction(tr("&Rectangle"), this, &MainWindow::onRectangleTool);
+    toolsMenu->addAction(tr("Pol&ygon"), this, &MainWindow::onPolygonTool);
     toolsMenu->addAction(tr("&Polyline"), this, &MainWindow::onPolylineTool);
     toolsMenu->addAction(tr("&Text"), this, &MainWindow::onTextTool);
     toolsMenu->addAction(tr("&Spline"), this, &MainWindow::onSplineTool);
@@ -878,6 +880,8 @@ void MainWindow::createRibbonBar() {
     addToolAction(g, "line", tr("Line"), &MainWindow::onLineTool, QKeySequence(Qt::Key_L));
     addToolAction(g, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
                   QKeySequence(Qt::Key_R));
+    addToolAction(g, "polygon", tr("Polygon"), &MainWindow::onPolygonTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_P));
     addToolAction(g, "circle", tr("Circle"), &MainWindow::onCircleTool, QKeySequence(Qt::Key_C));
     addToolAction(g, "arc", tr("Arc"), &MainWindow::onArcTool, QKeySequence(Qt::Key_A));
 
@@ -1157,6 +1161,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<SplineTool>());
     m_toolManager->registerTool(std::make_unique<HatchTool>());
     m_toolManager->registerTool(std::make_unique<EllipseTool>());
+    m_toolManager->registerTool(std::make_unique<PolygonTool>());
     m_toolManager->registerTool(std::make_unique<MeasureDistanceTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAngleTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAreaTool>());
@@ -2922,6 +2927,12 @@ void MainWindow::onHatchTool() {
 
 void MainWindow::onEllipseTool() {
     m_toolManager->setActiveTool("Ellipse");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onPolygonTool() {
+    m_toolManager->setActiveTool("Polygon");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
 }

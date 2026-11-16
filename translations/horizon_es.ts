@@ -2495,7 +2495,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+371"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -2536,7 +2536,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
     <message>
-        <location line="+767"/>
+        <location line="+770"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2720,14 +2720,14 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">En la cara</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-717"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-720"/>
         <location line="+1"/>
-        <location line="+1068"/>
+        <location line="+1072"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dibujo 1</translation>
     </message>
     <message>
-        <location line="-1001"/>
+        <location line="-1005"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
@@ -3233,6 +3233,11 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
+        <source>Pol&amp;ygon</source>
+        <translation type="unfinished">Pol&amp;ígono</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>&amp;Polyline</source>
         <translation type="unfinished">&amp;Polilínea</translation>
     </message>
@@ -3607,24 +3612,24 @@ empezar a construir su pieza.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+202"/>
+        <location line="+204"/>
         <source>Select</source>
         <translation type="unfinished">Seleccionar</translation>
     </message>
     <message>
-        <location line="-199"/>
+        <location line="-201"/>
         <source>Fit All</source>
         <translation type="unfinished">Ajustar todo</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+7"/>
+        <location line="+9"/>
         <location line="+6"/>
         <source>Draw</source>
         <translation type="unfinished">Dibujar</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-15"/>
         <source>Basic</source>
         <translation type="unfinished">Básico</translation>
     </message>
@@ -3637,6 +3642,11 @@ empezar a construir su pieza.</translation>
         <location line="+1"/>
         <source>Rectangle</source>
         <translation type="unfinished">Rectángulo</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Polygon</source>
+        <translation type="unfinished">Polígono</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -3786,7 +3796,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Cotas</translation>
     </message>
     <message numerus="yes">
-        <location line="+1411"/>
+        <location line="+1412"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
@@ -3794,7 +3804,7 @@ empezar a construir su pieza.</translation>
         </translation>
     </message>
     <message>
-        <location line="+1086"/>
+        <location line="+1092"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3840,7 +3850,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2521"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4065,16 +4075,16 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+986"/>
+        <location line="+987"/>
         <location line="+488"/>
-        <location line="+908"/>
+        <location line="+914"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3058"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -4095,17 +4105,17 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2706"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2700"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
     <message>
-        <location line="+311"/>
+        <location line="+312"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (recuperado)</translation>
     </message>
@@ -4680,7 +4690,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">&quot;%1&quot; ha sido modificado por otro programa, y se ha vuelto a leer</translation>
     </message>
     <message>
-        <location line="+364"/>
+        <location line="+370"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
@@ -5211,7 +5221,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3074"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>

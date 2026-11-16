@@ -227,6 +227,7 @@ private slots:
     void onSplineTool();
     void onHatchTool();
     void onEllipseTool();
+    void onPolygonTool();
 
     void onMeasureDistanceTool();
     void onMeasureAngleTool();
