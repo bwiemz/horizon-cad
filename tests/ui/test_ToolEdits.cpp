@@ -672,3 +672,48 @@ TEST(ToolEditsTest, TheViewZoomsToTheSelectionAndInAndOut) {
     EXPECT_NEAR((view.camera().eye() - view.camera().target()).length(), distance * 1.25,
                 1e-9 * distance);
 }
+
+// Edit ▸ Select All (Ctrl+A) takes everything a box round the drawing would:
+// what is on a hidden or locked layer stays out, as it does from a box. Then
+// Delete takes what is selected, as one step undone whole.
+TEST(ToolEditsTest, SelectAllTakesWhatABoxRoundEverythingWould) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& view = drive.viewport();
+    auto* doc = w.activeDocument();
+    auto& drawing = doc->draftDocument();
+    for (const char* name : {"Hidden", "Locked"}) {
+        hz::draft::LayerProperties props;
+        props.name = name;
+        props.visible = std::string(name) != "Hidden";
+        props.locked = std::string(name) == "Locked";
+        doc->layerManager().addLayer(props);
+    }
+    std::vector<uint64_t> free;
+    for (int i = 0; i < 5; ++i) {
+        auto line = std::make_shared<hz::draft::DraftLine>(Vec2(i, 0), Vec2(i, 1));
+        drawing.addEntity(line);
+        free.push_back(line->id());
+    }
+    auto hidden = std::make_shared<hz::draft::DraftCircle>(Vec2(0, 5), 1.0);
+    hidden->setLayer("Hidden");
+    auto locked = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 1.0);
+    locked->setLayer("Locked");
+    drawing.addEntity(hidden);
+    drawing.addEntity(locked);
+
+    auto* selectAll = w.findChild<QAction*>(QStringLiteral("action_select_all"));
+    ASSERT_NE(selectAll, nullptr);
+    EXPECT_EQ(selectAll->shortcut(), QKeySequence(QKeySequence::SelectAll));
+    selectAll->trigger();
+    auto& sel = view.selectionManager();
+    EXPECT_EQ(sel.count(), free.size());
+    for (uint64_t id : free) EXPECT_TRUE(sel.isSelected(id));
+    EXPECT_FALSE(sel.isSelected(hidden->id()));
+    EXPECT_FALSE(sel.isSelected(locked->id()));
+
+    drive.key(Qt::Key_Delete);
+    EXPECT_EQ(drawing.entities().size(), 2u) << "the hidden and the locked are kept";
+    trigger(w, "action_undo");
+    EXPECT_EQ(drawing.entities().size(), 7u) << "one step undone whole";
+}

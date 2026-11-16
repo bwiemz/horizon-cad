@@ -88,8 +88,9 @@ With the Select tool (**Space**):
 **Rect Array** and **Polar Array** copy the selection in rows and columns,
 or around a centre, from a dialog.
 
-On the Edit menu: **Duplicate** (**Ctrl+D**) copies the selection beside
-itself. **Copy** and **Paste** place copies with each click until you change
+On the Edit menu: **Select All** (**Ctrl+A**) selects everything on the
+layers that are shown and unlocked, as a box round the whole drawing would.
+**Duplicate** (**Ctrl+D**) copies the selection beside itself. **Copy** and **Paste** place copies with each click until you change
 tool. **Group** (**Ctrl+G**) makes the selection select as one;
 **Ungroup** (**Ctrl+Shift+G**) undoes that.
 

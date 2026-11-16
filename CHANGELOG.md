@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Select All.** Edit ▸ Select All (**Ctrl+A**) selects everything in the
+  drawing on a layer that is shown and unlocked, as a box round all of it
+  would; there was no way to select everything but to drag round it.
+
+- **Undoing a large copy is quick.** Undoing Duplicate, Mirror, Rotate or
+  Scale with copies, or a block's Explode, took the copies out one at a
+  time, each sought through the drawing: undoing a copy of 50,000 entities
+  took seconds, and of 200,000 most of a minute. They are taken out
+  together now, in a fraction of a second.
+
 - **Zoom by command.** View ▸ Zoom to Selection (**Shift+F**) fits the
   view to what is selected in the drawing, however small or far off; Zoom
   In and Zoom Out (**Ctrl++**, **Ctrl+-**) zoom a step at a time about the

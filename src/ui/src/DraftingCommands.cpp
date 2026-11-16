@@ -105,6 +105,19 @@ void DraftingCommands::onPaste() {
     m_host.runTool(std::make_unique<PasteTool>(&m_clipboard));
 }
 
+void DraftingCommands::onSelectAll() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    const auto& layers = document->layerManager();
+    std::vector<uint64_t> ids;
+    for (const auto& entity : document->activeDrawing().entities()) {
+        const auto* layer = layers.getLayer(entity->layer());
+        if (!layer || !layer->visible || layer->locked) continue;
+        ids.push_back(entity->id());
+    }
+    selectOnly(ids);
+}
+
 void DraftingCommands::onGroupEntities() {
     if (m_host.viewport().selectionManager().selectedIds().size() < 2) return;
     const std::vector<uint64_t> ids = editableSelection();

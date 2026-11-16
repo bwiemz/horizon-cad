@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+227"/>
         <source>Dimension Style</source>
         <translation type="unfinished">치수 스타일</translation>
     </message>
@@ -2494,12 +2494,12 @@ begin building your part.</source>
         <translation>편집(&amp;E)</translation>
     </message>
     <message>
-        <location line="+52"/>
+        <location line="+57"/>
         <source>&amp;View</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-128"/>
+        <location line="-133"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
@@ -2525,7 +2525,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+789"/>
+        <location line="+794"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2709,14 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-739"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-744"/>
         <location line="+1"/>
-        <location line="+1091"/>
+        <location line="+1096"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1024"/>
+        <location line="-1029"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2827,6 +2827,11 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+6"/>
+        <source>Select &amp;All</source>
+        <translation type="unfinished">모두 선택(&amp;A)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>&amp;Duplicate</source>
         <translation type="unfinished">복제(&amp;D)</translation>
     </message>

@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+227"/>
         <source>Dimension Style</source>
         <translation type="unfinished">寸法スタイル</translation>
     </message>
@@ -2494,12 +2494,12 @@ begin building your part.</source>
         <translation>編集(&amp;E)</translation>
     </message>
     <message>
-        <location line="+52"/>
+        <location line="+57"/>
         <source>&amp;View</source>
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location line="-128"/>
+        <location line="-133"/>
         <source>&amp;New Drawing</source>
         <translation>新規図面(&amp;N)</translation>
     </message>
@@ -2525,7 +2525,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+789"/>
+        <location line="+794"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2709,14 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-739"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-744"/>
         <location line="+1"/>
-        <location line="+1091"/>
+        <location line="+1096"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1024"/>
+        <location line="-1029"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -2827,6 +2827,11 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+6"/>
+        <source>Select &amp;All</source>
+        <translation type="unfinished">すべて選択(&amp;A)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>&amp;Duplicate</source>
         <translation type="unfinished">複製(&amp;D)</translation>
     </message>
