@@ -16,6 +16,17 @@ namespace hz::doc {
 
 namespace {
 
+/// @p added, each put in the drawing by a command, taken out together: one
+/// at a time, each looked through the drawing from its end and the rest
+/// moved up behind it, and undoing a copy of 50,000 entities took seconds.
+void removeAdded(draft::DraftDocument& doc,
+                 const std::vector<std::shared_ptr<draft::DraftEntity>>& added) {
+    std::vector<uint64_t> ids;
+    ids.reserve(added.size());
+    for (const auto& entity : added) ids.push_back(entity->id());
+    doc.removeEntities(ids);
+}
+
 /// @p visit for every entity of @p drawings, and of their blocks: what is on
 /// a layer, which the drawings share.
 template <typename Visit>
@@ -218,9 +229,7 @@ void DuplicateEntityCommand::execute() {
 }
 
 void DuplicateEntityCommand::undo() {
-    for (const auto& clone : m_clones) {
-        m_doc.removeEntity(clone->id());
-    }
+    removeAdded(m_doc, m_clones);
 }
 
 std::string DuplicateEntityCommand::description() const {
@@ -259,9 +268,7 @@ void MirrorEntityCommand::execute() {
 }
 
 void MirrorEntityCommand::undo() {
-    for (const auto& e : m_mirroredEntities) {
-        m_doc.removeEntity(e->id());
-    }
+    removeAdded(m_doc, m_mirroredEntities);
 }
 
 std::string MirrorEntityCommand::description() const {
@@ -300,9 +307,7 @@ void RotateEntityCommand::execute() {
 }
 
 void RotateEntityCommand::undo() {
-    for (const auto& e : m_rotatedEntities) {
-        m_doc.removeEntity(e->id());
-    }
+    removeAdded(m_doc, m_rotatedEntities);
 }
 
 std::string RotateEntityCommand::description() const {
@@ -342,9 +347,7 @@ void ScaleEntityCommand::execute() {
 }
 
 void ScaleEntityCommand::undo() {
-    for (const auto& e : m_scaledEntities) {
-        m_doc.removeEntity(e->id());
-    }
+    removeAdded(m_doc, m_scaledEntities);
 }
 
 std::string ScaleEntityCommand::description() const {
@@ -814,9 +817,7 @@ void ExplodeBlockCommand::execute() {
 
 void ExplodeBlockCommand::undo() {
     if (!m_savedBlockRef) return;
-    for (const auto& e : m_explodedEntities) {
-        m_doc.removeEntity(e->id());
-    }
+    removeAdded(m_doc, m_explodedEntities);
     // The reference back where it was in the drawing order.
     m_doc.insertEntity(m_position, m_savedBlockRef);
 }
