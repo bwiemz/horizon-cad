@@ -19,6 +19,12 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A DXF entity with a value that is not a number is reported, not
+  moved.** A coordinate, radius or scale written as "nan", "inf" or a word
+  was read as 0, and the entity drawn where it never was (a line from the
+  origin, a circle of no size). It is now left out as damaged, and the
+  import says so. A value that is missing is still its default.
+
 - **Polygon.** A regular polygon of 3 to 1,024 sides, as AutoCAD's POLYGON
   and SolidWorks' sketch Polygon draw one (Draw ▸ Polygon, **Shift+P**):
   the centre, then a corner, which sets its size and how it is turned, each
