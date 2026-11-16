@@ -212,3 +212,26 @@ TEST(ExportLimitsTest, ManyLayersAndEntitiesComeBackWhole) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     EXPECT_LT(seconds, 60.0) << "a generous bound, for an unoptimized build";
 }
+
+// A DXF value that is there and is not a number ("nan", "inf", a word) makes
+// its entity damaged, said, where it was read as 0 and the entity drawn
+// somewhere it never was. A value missing is the default, as ever.
+TEST(ExportLimitsTest, ADxfValueThatIsNotANumberIsDamage) {
+    const std::string dxf =
+        "0\nSECTION\n2\nENTITIES\n"
+        "0\nLINE\n8\n0\n10\n0\n20\n0\n11\n5\n21\n0\n"    // whole
+        "0\nLINE\n8\n0\n10\nnan\n20\n0\n11\n5\n21\n0\n"  // not a number
+        "0\nCIRCLE\n8\n0\n10\n1\n20\n1\n40\ninf\n"       // not finite
+        "0\nCIRCLE\n8\n0\n10\n1\n20\n1\n40\nwide\n"      // a word
+        "0\nCIRCLE\n8\n0\n10\n3\n20\n3\n40\n2\n"         // whole, no z
+        "0\nENDSEC\n0\nEOF\n";
+    Document doc;
+    ImportReport report;
+    std::string error;
+    ASSERT_TRUE(DxfFormat::loadFromString(dxf, doc, &error, &report)) << error;
+    EXPECT_EQ(doc.draftDocument().entities().size(), 2u);
+    ASSERT_FALSE(report.skipped.empty());
+    std::string all;
+    for (const auto& line : report.skipped) all += line + "\n";
+    EXPECT_NE(all.find("not a number"), std::string::npos) << all;
+}

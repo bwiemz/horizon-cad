@@ -553,11 +553,18 @@ void trim(std::string& s) {
 /// Numbers are parsed with from_chars (math::fromChars for a double, as Apple's
 /// libc++ has no floating-point one): std::stod follows the C locale,
 /// which Qt sets from the environment on Unix, so under de_DE "1.5" read as 1.
+/// How many values toDouble has been given that are there but are not a
+/// finite number ("nan", "inf", "1e999", a word): an entity read with one is
+/// damaged, not drawn with 0 in its place (readEntity).
+thread_local size_t t_badNumbers = 0;
+
 double toDouble(std::string_view s) {
     if (!s.empty() && s.front() == '+') s.remove_prefix(1);  // from_chars rejects '+'
     double value = 0.0;
     const auto [ptr, ec] = math::fromChars(s.data(), s.data() + s.size(), value);
-    return ec == std::errc{} && std::isfinite(value) ? value : 0.0;
+    if (ec == std::errc{} && std::isfinite(value)) return value;
+    if (!s.empty()) ++t_badNumbers;  // there, and not a number; missing is 0
+    return 0.0;
 }
 
 int toInt(std::string_view s) {
@@ -1541,6 +1548,9 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
         ++im.notes.unread[{type, where + why}];
         return {};
     };
+    // A value of its own that is not a finite number, read since this point.
+    size_t badBefore = t_badNumbers;
+    const auto readABadNumber = [&] { return t_badNumbers != badBefore; };
     // A POLYLINE left out takes its vertices with it — and nothing after
     // them, SEQEND or not, so a missing SEQEND cannot swallow what follows.
     const auto skipVertices = [&] {
@@ -1631,6 +1641,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
             def = buildBlock(name, im);
         }
         if (!def) return unread(" (its block is missing)");
+        badBefore = t_badNumbers;  // the block's own were the block's to report
         const math::Vec2 at(toDouble(findGroup(g, 10)), toDouble(findGroup(g, 20)));
         const double sx = toDouble(findGroup(g, 41, "1.0"));
         const double sy = toDouble(findGroup(g, 42, "1.0"));
@@ -1642,6 +1653,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
             !inBlock && ocs == Ocs::Plane && std::abs(sy) > 0.0 && std::isfinite(sx) &&
             std::isfinite(sy) &&
             std::abs(std::abs(sx) - std::abs(sy)) <= 1e-12 * std::max(std::abs(sy), 1.0);
+        if (readABadNumber()) return unread(" (damaged: a value in it is not a number)");
         if (plainRef) {
             auto ref = std::make_shared<draft::DraftBlockRef>(
                 def, at, sy < 0.0 ? rotation + math::kPi : rotation, std::abs(sy));
@@ -1677,6 +1689,7 @@ Entities readEntity(const std::vector<RawEntity>& raws, size_t& i, Import& im, b
 
     out.erase(std::remove(out.begin(), out.end(), nullptr), out.end());
     if (out.empty()) return unread(" (damaged)");
+    if (readABadNumber()) return unread(" (damaged: a value in it is not a number)");
     for (auto& piece : out) {
         applyCommonProps(piece, g);
         if (ocs == Ocs::Mirrored) mirrorInYAxis(*piece);
