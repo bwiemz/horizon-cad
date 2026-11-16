@@ -1025,12 +1025,13 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
     std::unique_ptr<topo::Solid> solid;
     if (m_kind == Kind::Circular) {
         solid = model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count,
-                                         m_suppressed, join);
+                                         m_suppressed, join, m_together);
     } else if (m_count2 > 1) {
         solid = model::Pattern::grid(*inputSolid, m_vecA, m_scalar, m_count, m_vecC, m_scalar2,
-                                     m_count2, m_suppressed, join);
+                                     m_count2, m_suppressed, join, m_together);
     } else {
-        solid = model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join);
+        solid = model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join,
+                                       m_together);
     }
     if (!solid) return failWith(reason, "overlapping instances could not be merged into one body");
     return solid;
@@ -2353,6 +2354,9 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             if (projected.empty()) result.projections.erase(id);
         }
     };
+    // A Boolean in it stops as soon as the build is cancelled, not only the
+    // build between features.
+    const model::BooleanCancellation stop(control != nullptr ? &control->cancel : nullptr);
     for (int i = 0; i < limit; ++i) {
         if (control) {
             if (control->cancel) {

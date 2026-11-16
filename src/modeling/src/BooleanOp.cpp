@@ -212,6 +212,9 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
                                         CsgFragments::Fewest)
                            : csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false),
                                         type, tol.plane);
+    } catch (const CsgCancelled&) {
+        if (reason) *reason = "cancelled";
+        return nullptr;
     } catch (const CsgTooComplex& e) {
         // Said, and nothing else changed, where it ran for an hour or until
         // memory ran out.
@@ -268,6 +271,15 @@ BooleanWorkLimits::BooleanWorkLimits(std::size_t work, std::size_t splits) {
     m_savedSplits = limits.splits;
     if (work != 0) limits.work = work;
     if (splits != 0) limits.splits = splits;
+}
+
+BooleanCancellation::BooleanCancellation(const std::atomic<bool>* cancelled)
+    : m_saved(csgLimitsOnThisThread().cancelled) {
+    csgLimitsOnThisThread().cancelled = cancelled;
+}
+
+BooleanCancellation::~BooleanCancellation() {
+    csgLimitsOnThisThread().cancelled = m_saved;
 }
 
 BooleanWorkLimits::~BooleanWorkLimits() {
