@@ -494,6 +494,10 @@ void MainWindow::createMenus() {
     editMenu->addSeparator();
     editMenu->addAction(tr("P&urge Unused"), m_drafting.get(), &DraftingCommands::onPurge)
         ->setObjectName(QStringLiteral("action_purge"));
+    editMenu
+        ->addAction(tr("D&elete Duplicates"), m_drafting.get(),
+                    &DraftingCommands::onDeleteDuplicates)
+        ->setObjectName(QStringLiteral("action_delete_duplicates"));
 
     editMenu->addSeparator();
     editMenu->addAction(tr("Document &Units..."), this, &MainWindow::onDocumentUnits)

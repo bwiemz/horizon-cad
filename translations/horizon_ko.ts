@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+128"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+132"/>
         <source>Nothing to purge: every layer and block is in use.</source>
         <translation type="unfinished">정리할 항목이 없습니다: 모든 레이어와 블록이 사용 중입니다.</translation>
     </message>
@@ -1243,6 +1243,23 @@ Details are in the log:
         <source>%n unused block(s).</source>
         <translation type="unfinished">
             <numerusform>사용하지 않는 블록 %n개.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>No duplicates in the drawing.</source>
+        <translation type="unfinished">도면에 중복이 없습니다.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>No duplicates in the selection.</source>
+        <translation type="unfinished">선택 항목에 중복이 없습니다.</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+19"/>
+        <source>Deleted %n duplicate(s).</source>
+        <translation type="unfinished">
+            <numerusform>중복 %n개를 삭제했습니다.</numerusform>
         </translation>
     </message>
     <message>
@@ -2513,12 +2530,12 @@ begin building your part.</source>
         <translation>편집(&amp;E)</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+65"/>
         <source>&amp;View</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-137"/>
+        <location line="-141"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
@@ -2544,7 +2561,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+801"/>
+        <location line="+805"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2728,14 +2745,14 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-751"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-755"/>
         <location line="+1"/>
-        <location line="+1104"/>
+        <location line="+1108"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1037"/>
+        <location line="-1041"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2885,7 +2902,12 @@ begin building your part.</source>
         <translation type="unfinished">사용하지 않는 항목 정리(&amp;U)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+3"/>
+        <source>D&amp;elete Duplicates</source>
+        <translation type="unfinished">중복 삭제(&amp;E)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Document &amp;Units...</source>
         <translation type="unfinished">문서 단위(&amp;U)...</translation>
     </message>

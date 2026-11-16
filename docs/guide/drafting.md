@@ -133,6 +133,14 @@ inserts, in one step you can undo. Layer "0" and the current layer stay, as
 does a layer or block that only a sketch or a kept block uses. A DXF from
 elsewhere often brings thousands of empty layers; this takes them out.
 
+**Edit ▸ Delete Duplicates** takes out every entity that repeats one before
+it, as AutoCAD's OVERKILL does: the same kind, on the same layer, in the same
+colour, width and line type, and the same shape, whichever way round it was
+drawn (a line from either end, an open polyline either way). It works on the
+selection, or on the whole drawing when nothing is selected, keeps the first
+of each, and is one step to undo. A copy pasted on itself breaks the closed
+outline a sketch needs to extrude; this mends it.
+
 ## Blocks
 
 - **Block ▸ Create Block...** turns the selection into a named block, with a

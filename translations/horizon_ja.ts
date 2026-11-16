@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+128"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+132"/>
         <source>Nothing to purge: every layer and block is in use.</source>
         <translation type="unfinished">削除するものはありません: すべての画層とブロックが使用中です。</translation>
     </message>
@@ -1243,6 +1243,23 @@ Details are in the log:
         <source>%n unused block(s).</source>
         <translation type="unfinished">
             <numerusform>未使用のブロック %n 個。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>No duplicates in the drawing.</source>
+        <translation type="unfinished">図面に重複はありません。</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>No duplicates in the selection.</source>
+        <translation type="unfinished">選択に重複はありません。</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+19"/>
+        <source>Deleted %n duplicate(s).</source>
+        <translation type="unfinished">
+            <numerusform>重複を %n 個削除しました。</numerusform>
         </translation>
     </message>
     <message>
@@ -2513,12 +2530,12 @@ begin building your part.</source>
         <translation>編集(&amp;E)</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+65"/>
         <source>&amp;View</source>
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location line="-137"/>
+        <location line="-141"/>
         <source>&amp;New Drawing</source>
         <translation>新規図面(&amp;N)</translation>
     </message>
@@ -2544,7 +2561,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+801"/>
+        <location line="+805"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2728,14 +2745,14 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-751"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-755"/>
         <location line="+1"/>
-        <location line="+1104"/>
+        <location line="+1108"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1037"/>
+        <location line="-1041"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -2885,7 +2902,12 @@ begin building your part.</source>
         <translation type="unfinished">未使用を削除(&amp;U)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+3"/>
+        <source>D&amp;elete Duplicates</source>
+        <translation type="unfinished">重複を削除(&amp;E)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Document &amp;Units...</source>
         <translation type="unfinished">ドキュメントの単位(&amp;U)...</translation>
     </message>

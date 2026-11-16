@@ -19,6 +19,13 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Delete Duplicates.** Edit ▸ Delete Duplicates takes out every entity
+  that repeats one before it, as AutoCAD's OVERKILL does: the same kind,
+  layer, colour, width and line type, and the same shape whichever way round
+  it was drawn. It works on the selection, or the whole drawing when nothing
+  is selected, in one step to undo; a line drawn twice, which a DXF from
+  elsewhere often holds, broke the closed outline a sketch needs to extrude.
+
 - **Purge Unused.** Edit ▸ Purge Unused takes out every layer nothing is on
   and every block nothing inserts, as AutoCAD's PURGE does, in one step to
   undo: a DXF from elsewhere often carries thousands of empty layers. A
