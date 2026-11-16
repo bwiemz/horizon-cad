@@ -19,6 +19,44 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A part of tens of thousands of facets is modelled in seconds.** A
+  profile traced from a scan or a DXF contour, a spline flattened finely, a
+  cylinder of 4,096 facets: every step from the sketch to the cut solid took
+  time in the square of the point count or worse, and memory with it.
+  - Extruding a profile of 50,000 points took 221 s, and checking the result
+    142 s more; it now takes under a second. Building the prism looked up
+    each half-edge by walking the whole face and told the large face its
+    half-edges at every cut (`makeEdgeFaceUnlabelled` now leaves that to one
+    pass at the end); the profile's checks compared every segment with every
+    other, and found each next curve by trying all of them; `Solid::isValid`
+    walked each face's loop once from each of its half-edges.
+  - A hole through a cylinder of 4,096 facets took 48 s; it takes about 3.
+    Each cap, fanned into slivers, was cut by every plane of the other into
+    1.9 million fragments, merged back after. A convex face now goes into the
+    cut whole, what lies clear of the other operand's box is not cut, and
+    what is left is not cut again along the first operand's planes.
+  - A prism of 10,000 sides with a wavy outline less a box took 291 s, and
+    one of 30,000 ran out of memory; they take 2 s and 15 s. The cut's tree
+    tested every node for convexity, at a cost in the square of its size,
+    and the side faces' planes cut through every sliver of the triangulated
+    cap. The largest faces now go into the tree first, and convexity is
+    tested again only once a list has halved.
+  - A face of 30,000 corners is triangulated in a second, not in minutes,
+    into exactly the triangles it was: each ear is tested against the points
+    that could lie in it, found on a grid.
+  - Those cuts gave the same parts, and give them still: the faster paths
+    are taken only where the pieces of each face are merged back after. A
+    document saved before persistent naming, whose references were made
+    against the pieces, has them cut as before.
+
+- **A face of many facets meets the face beside it corner to corner.** A
+  curve faceted finely turns so little at each corner, near where it bends
+  from one way to the other, that a merged face's outline ran straight
+  through the corners within the tolerance and dropped them. The facets
+  beside it then met the middle of its edges, and the cut did not sew: a
+  prism of 25,000 sides less a box failed. A corner that another face keeps
+  is now kept.
+
 - **The view shows a part of any size, zoomed however far.** The clip planes
   were fixed at 0.1 and 10,000, so a part larger than about ten metres, or
   smaller than a tenth of a millimetre, vanished as soon as it was fitted,

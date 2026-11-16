@@ -12,6 +12,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/math/RTree.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SolidSewer.h"
@@ -100,14 +101,32 @@ void inheritEdgeIdeals(topo::Solid& result, const topo::Solid& a, const topo::So
         if (t < -1e-9 || t > 1.0 + 1e-9) return false;
         return (s.p + d * t - x).length() <= tol;
     };
+    // The sources by where they are: a result edge is tried only against
+    // those it could lie along. Every pair was tried, and a part of a few
+    // thousand facets has tens of thousands of each.
+    math::RTree<size_t> index;
+    for (size_t i = 0; i < sources.size(); ++i) {
+        BoundingBox box;
+        box.expand(sources[i].p);
+        box.expand(sources[i].q);
+        index.insert(i, box);
+    }
     for (auto& e : const_cast<std::deque<topo::Edge>&>(result.edges())) {
         if (!e.halfEdge || !e.halfEdge->twin) continue;
         const Vec3 x = e.halfEdge->origin->point;
         const Vec3 y = e.halfEdge->twin->origin->point;
         const double tol = 1e-7 * std::max(1.0, (y - x).length());
-        for (const auto& s : sources) {
-            if (onSegment(x, s, tol) && onSegment(y, s, tol)) {
-                e.analyticCurve = s.curve;
+        BoundingBox reach;
+        reach.expand(x);
+        reach.expand(y);
+        reach.expand(reach.min() - Vec3(tol, tol, tol));
+        reach.expand(reach.max() + Vec3(tol, tol, tol));
+        std::vector<size_t> near = index.query(reach);
+        // The first source it lies along, in their order, as before.
+        std::sort(near.begin(), near.end());
+        for (const size_t i : near) {
+            if (onSegment(x, sources[i], tol) && onSegment(y, sources[i], tol)) {
+                e.analyticCurve = sources[i].curve;
                 break;
             }
         }
@@ -182,9 +201,16 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
         }
     }
 
+    // Faces whose fragments are merged back are taken whole where they are
+    // convex; references by position were made against the triangulated
+    // fragments, and keep them.
+    const bool merged = namesFromGeometry(naming);
     auto fragments =
-        csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type, tol.plane);
-    if (namesFromGeometry(naming) && !fragments.empty()) {
+        merged
+            ? csgExecute(csgPieces(polysA, true, tol.plane), csgPieces(polysB, false, tol.plane),
+                         type, tol.plane, CsgFragments::Fewest)
+            : csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type, tol.plane);
+    if (merged && !fragments.empty()) {
         // The CSG works on triangles and leaves every face in pieces, even a
         // face the cut never reached; put each face back together.
         fragments = mergeFragments(std::move(fragments), tol.plane);

@@ -134,9 +134,15 @@ bool Solid::checkManifold() const {
         }
     }
 
-    // 2) Every half-edge loop (next chain) must be closed.
+    // 2) Every half-edge loop (next chain) must be closed. Each loop is
+    // walked once, not once from each of its half-edges: a face of 50,000
+    // edges took that many walks round it, and the check most of a minute.
+    // A walk that comes to a half-edge of a loop already walked round never
+    // comes back to where it started.
+    std::unordered_set<const HalfEdge*> walked;
+    walked.reserve(m_halfEdges.size());
     for (const auto& he : m_halfEdges) {
-        if (!he.alive) continue;
+        if (!he.alive || walked.count(&he) != 0) continue;
         const HalfEdge* cursor = &he;
         size_t limit = m_halfEdges.size();
         size_t count = 0;
@@ -144,11 +150,13 @@ bool Solid::checkManifold() const {
             if (cursor->next == nullptr) {
                 return false;
             }
+            walked.insert(cursor);
             cursor = cursor->next;
             ++count;
             if (count > limit) {
                 return false;  // Infinite loop.
             }
+            if (cursor != &he && walked.count(cursor) != 0) return false;
         } while (cursor != &he);
     }
 

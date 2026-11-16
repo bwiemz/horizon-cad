@@ -497,3 +497,64 @@ TEST(BooleanRobustnessTest, AFinelyFacetedPinCutsQuickly) {
     (void)seconds;
 #endif
 }
+
+// A part of many facets cut by another: a hole through a cylinder of 2,048
+// facets, made with another as fine. Each cap, fanned into slivers, was cut
+// by every plane of the other into hundreds of thousands of fragments, merged
+// back after: 10 s in a build with some optimisation, where it now takes
+// under one. A convex face now goes into the cut whole, what lies clear of
+// the other operand is not cut, and what is left is not cut again.
+TEST(BooleanRobustnessTest, ACylinderOfManyFacetsIsBoredQuickly) {
+    constexpr int kFacets = 2048;
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, kFacets);
+    const auto drill = moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, kFacets),
+                             Mat4::translation(Vec3(0, 0, -10)));
+    const auto start = std::chrono::steady_clock::now();
+    std::string why;
+    const auto result =
+        BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    ASSERT_NE(result, nullptr) << why;
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result))
+        << hz::topo::GeometryValidator::report(*result);
+    // Two inscribed polygons' areas apart, through the rod's height.
+    const double ring = 0.5 * kFacets * (100.0 - 16.0) * std::sin(2.0 * std::numbers::pi / kFacets);
+    EXPECT_NEAR(volumeOf(*result), 20.0 * ring, 1e-6);
+    // The rod's sides, the bore's sides, and each ring cap in two: a face
+    // has one loop, so a cap with a hole is cut through it (FragmentMerge).
+    // As many faces as the cut made before it was faster.
+    EXPECT_EQ(result->faces().size(), static_cast<size_t>(2 * kFacets + 4));
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.5);
+#else
+    EXPECT_LT(seconds, 15.0) << "unoptimized: a generous bound";
+#endif
+#else
+    (void)seconds;
+#endif
+}
+
+// The faster cut is the same cut: for a cylinder through a box at a slant,
+// with faces that are not all convex once a hole is in them, the pieces
+// merged agree with the volume the operands give, three ways.
+TEST(BooleanRobustnessTest, ACutOfFewerPiecesConservesVolume) {
+    const auto box = PrimitiveFactory::makeBox(20, 20, 10);
+    const auto pin = moved(
+        *PrimitiveFactory::makeCylinder(4.0, 30.0, 96),
+        Mat4::translation(Vec3(10, 10, -8)) *
+            Mat4::rotation(hz::math::Quaternion::fromAxisAngle(Vec3(1, 1, 0).normalized(), 0.3)));
+    expectSound(*box, *pin, 20.0, "slanted pin");
+    // Bored, then bored again across the first hole: faces with holes, and
+    // faces no longer convex, go in as triangles.
+    const auto bored =
+        BooleanOp::execute(*box, *pin, BooleanType::Subtract, nullptr, NamingScheme::Stable);
+    ASSERT_NE(bored, nullptr);
+    const auto cross = moved(
+        *PrimitiveFactory::makeCylinder(3.0, 30.0, 64),
+        Mat4::translation(Vec3(-5, 10, 5)) * Mat4::rotation(hz::math::Quaternion::fromAxisAngle(
+                                                 Vec3(0, 1, 0), std::numbers::pi / 2)));
+    expectSound(*bored, *cross, 20.0, "cross-bored");
+}

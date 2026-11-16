@@ -57,8 +57,11 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
     BoundingBox both = ba;
     both.expand(bb);
     const CsgTolerance tol = CsgTolerance::of(both.min(), both.max());
-    const auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false),
-                                      BooleanType::Intersect, tol.plane);
+    // Only the volume counts, not how the faces are cut up: convex faces go
+    // in whole (csgPieces), and parts of many facets are checked in time.
+    const auto fragments =
+        csgExecute(csgPieces(polysA, true, tol.plane), csgPieces(polysB, false, tol.plane),
+                   BooleanType::Intersect, tol.plane, CsgFragments::Fewest);
     if (fragments.empty()) return false;
     const double extent = (both.max() - both.min()).length();
     return std::abs(csgVolume(fragments)) > kMinInterferenceFraction * extent * extent * extent;
