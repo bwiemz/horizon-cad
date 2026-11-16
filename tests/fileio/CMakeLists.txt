@@ -16,6 +16,7 @@ add_executable(hz_fileio_tests
     test_GltfExport.cpp
     test_ImportExport.cpp
     test_DxfFidelity.cpp
+    test_ExportLimits.cpp
     test_SvgExport.cpp
     test_DxfText.cpp
     test_DrawingExport.cpp

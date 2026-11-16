@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -56,6 +57,22 @@ using dxf::argbToAci;
 // DXF Group Code Writer
 // ===========================================================================
 
+/// What the writer has met while writing one entity: a number that is not
+/// finite, which no DXF reader takes ("nan", "inf"), and the layer names the
+/// file gives the drawing's layers. Per thread: an export on a worker does not
+/// share them with one on another.
+thread_local bool t_wroteNonFinite = false;
+thread_local const std::map<std::string, std::string>* t_layerNames = nullptr;
+
+/// The name the file gives layer @p name (dxfLayerNames).
+const std::string& dxfLayer(const std::string& name) {
+    if (t_layerNames != nullptr) {
+        const auto it = t_layerNames->find(name);
+        if (it != t_layerNames->end()) return it->second;
+    }
+    return name;
+}
+
 void writeGroup(std::ostream& out, int code, const std::string& value) {
     // A line break inside a value would end it early and shift every group
     // after it, so none is written. Text values encode theirs as ^J first.
@@ -79,6 +96,11 @@ void writeGroup(std::ostream& out, int code, int value) {
 /// back an open polyline. Fixed notation, as DXF files are written: no
 /// exponent for a reader to trip on.
 void writeGroup(std::ostream& out, int code, double value) {
+    // Not a number a reader takes: noted, and the entity left out (save()).
+    if (!std::isfinite(value)) {
+        t_wroteNonFinite = true;
+        value = 0.0;
+    }
     // Room for any double: a tiny one is "-0.", over 300 zeros and its digits.
     std::array<char, 400> text{};
     const auto [end, ec] =
@@ -88,7 +110,7 @@ void writeGroup(std::ostream& out, int code, double value) {
     out << "  " << code << "\n" << written << "\n";
 }
 
-int g_handleCounter = 0;
+thread_local int g_handleCounter = 0;
 
 std::string nextHandle() {
     std::ostringstream ss;
@@ -118,7 +140,7 @@ int dxfLineweight(double widthMm) {
 
 void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
     writeGroup(out, 5, nextHandle());
-    writeGroup(out, 8, entity.layer());
+    writeGroup(out, 8, dxfLayer(entity.layer()));
     uint32_t c = entity.color();
     if (c != 0x00000000) {
         writeGroup(out, 62, argbToAci(c));
@@ -1794,17 +1816,161 @@ void convertUnits(Import& im) {
 // Public API: save
 // ===========================================================================
 
-bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std::string* error) {
+namespace {
+
+/// A layer name DXF takes: none of the characters it does not allow in one
+/// (AutoCAD refuses < > / \ " : ; ? * | = ` and control characters in one,
+/// and a file with them), not empty, not ending in a space, and at most 255 bytes, cut
+/// between characters. Every name is told apart from the others without
+/// regard to case, as DXF tells them: "Walls" and "walls" are one layer
+/// there.
+std::map<std::string, std::string> dxfLayerNames(const std::vector<std::string>& names,
+                                                 DxfWriteReport* report) {
+    static const std::string kNotAllowed = "<>/\\\":;?*|=`";
+    const auto folded = [](std::string name) {
+        for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return name;
+    };
+    // A name DXF takes as it is, or the nearest it does.
+    const auto allowed = [](const std::string& name) {
+        std::string fixed;
+        for (const char c : name) {
+            const auto u = static_cast<unsigned char>(c);
+            if (c == '\n' || c == '\r') {
+                fixed += ' ';  // a line break, as the writer always wrote one
+            } else {
+                fixed +=
+                    (u < 0x20 || u == 0x7F || kNotAllowed.find(c) != std::string::npos) ? '_' : c;
+            }
+        }
+        while (!fixed.empty() && fixed.back() == ' ') fixed.pop_back();
+        if (fixed.size() > 250) {
+            fixed.resize(250);
+            // Not in the middle of a character's bytes.
+            while (!fixed.empty() && (static_cast<unsigned char>(fixed.back()) & 0xC0) == 0x80) {
+                fixed.pop_back();
+            }
+            if (!fixed.empty() && (static_cast<unsigned char>(fixed.back()) & 0x80) != 0) {
+                fixed.pop_back();
+            }
+        }
+        return fixed.empty() ? std::string("Layer") : fixed;
+    };
+    std::map<std::string, std::string> out;
+    std::set<std::string> taken;
+    // "0" as it is: every reader has it. Then every name DXF takes as it is,
+    // first come where two differ only in case; then the rest, renamed clear
+    // of them all.
+    out["0"] = "0";
+    taken.insert("0");
+    std::vector<std::string> toRename;
+    for (const std::string& name : names) {
+        if (name == "0") continue;
+        if (allowed(name) == name && taken.insert(folded(name)).second) {
+            out[name] = name;
+        } else {
+            toRename.push_back(name);
+        }
+    }
+    for (const std::string& name : toRename) {
+        const std::string fixed = allowed(name);
+        std::string unique = fixed;
+        for (int n = 2; taken.count(folded(unique)) != 0; ++n) {
+            unique = fixed + "_" + std::to_string(n);
+        }
+        taken.insert(folded(unique));
+        out[name] = unique;
+        if (report != nullptr) {
+            report->renamed.push_back("layer \"" + name + "\" as \"" + unique + "\"");
+        }
+    }
+    return out;
+}
+
+/// Why @p entity cannot be written as DXF holds it, if it cannot: a circle
+/// or arc of no radius, a polyline of fewer than two points, an ellipse with
+/// an axis of no length. Readers refuse such an entity, and some the whole
+/// file with it.
+std::optional<std::string> notWritable(const draft::DraftEntity& entity) {
+    if (const auto* circle = dynamic_cast<const draft::DraftCircle*>(&entity)) {
+        if (!(circle->radius() > 0.0)) return "a circle with no radius";
+    } else if (const auto* arc = dynamic_cast<const draft::DraftArc*>(&entity)) {
+        if (!(arc->radius() > 0.0)) return "an arc with no radius";
+    } else if (const auto* poly = dynamic_cast<const draft::DraftPolyline*>(&entity)) {
+        if (poly->points().size() < 2) return "a polyline of fewer than two points";
+    } else if (const auto* spline = dynamic_cast<const draft::DraftSpline*>(&entity)) {
+        if (spline->controlPoints().size() < 2) return "a spline of fewer than two points";
+    } else if (const auto* ellipse = dynamic_cast<const draft::DraftEllipse*>(&entity)) {
+        if (!(ellipse->semiMajor() > 0.0) || !(ellipse->semiMinor() > 0.0)) {
+            return "an ellipse with an axis of no length";
+        }
+    }
+    return std::nullopt;
+}
+
+/// @p entity written to @p out, unless it cannot be written as it is: then
+/// nothing is written, and why is noted in @p report as entity @p index.
+void writeEntityChecked(std::ostream& out, const draft::DraftEntity& entity,
+                        const draft::DimensionStyle& dimStyle, const std::string& where,
+                        DxfWriteReport* report) {
+    std::optional<std::string> why = notWritable(entity);
+    if (!why) {
+        std::ostringstream one;
+        t_wroteNonFinite = false;
+        writeEntity(one, entity, dimStyle);
+        if (!t_wroteNonFinite) {
+            out << one.str();
+            return;
+        }
+        why = "a value that is not a finite number";
+    }
+    if (report != nullptr) report->leftOut.push_back(where + ": " + *why);
+}
+
+}  // namespace
+
+bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std::string* error,
+                     DxfWriteReport* report) {
     // Build the whole file in memory, then replace the target atomically.
     std::ostringstream out;
 
     g_handleCounter = 0x100;
 
-    // Compute bounding box for header.
+    // Every layer's name as the file has it: the drawing's layers, and any
+    // an entity names that the drawing does not hold.
+    std::vector<std::string> layerNames = doc.layerManager().layerNames();
+    {
+        std::set<std::string> known(layerNames.begin(), layerNames.end());
+        const auto note = [&](const draft::DraftEntity& entity) {
+            if (known.insert(entity.layer()).second) layerNames.push_back(entity.layer());
+        };
+        for (const auto& entity : doc.draftDocument().entities()) note(*entity);
+        for (const auto& name : doc.draftDocument().blockTable().blockNames()) {
+            if (auto def = doc.draftDocument().blockTable().findBlock(name)) {
+                for (const auto& entity : def->entities) note(*entity);
+            }
+        }
+    }
+    const std::map<std::string, std::string> fileLayerNames = dxfLayerNames(layerNames, report);
+    struct LayerNamesInUse {
+        explicit LayerNamesInUse(const std::map<std::string, std::string>& names) {
+            t_layerNames = &names;
+        }
+        ~LayerNamesInUse() { t_layerNames = nullptr; }
+        LayerNamesInUse(const LayerNamesInUse&) = delete;
+        LayerNamesInUse& operator=(const LayerNamesInUse&) = delete;
+    } inUse(fileLayerNames);
+
+    // Compute bounding box for header: of what is written, where it is.
     math::BoundingBox bbox;
     for (const auto& entity : doc.draftDocument().entities()) {
         auto eb = entity->boundingBox();
-        if (eb.isValid()) bbox.expand(eb);
+        const auto finite = [](const math::Vec3& v) {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        if (eb.isValid() && finite(eb.min()) && finite(eb.max()) && !notWritable(*entity)) {
+            bbox.expand(eb);
+        }
     }
     if (!bbox.isValid()) {
         bbox.expand(math::Vec3(0, 0, 0));
@@ -1941,14 +2107,21 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
     writeGroup(out, 0, std::string("ENDTAB"));
 
     // LAYER table.
-    auto layerNames = doc.layerManager().layerNames();
+    // The drawing's layers, and any its entities name that it does not hold,
+    // as the defaults: a reader is not left to make one up.
+    std::vector<std::pair<std::string, draft::LayerProperties>> tableLayers;
+    for (const auto& name : layerNames) {
+        const auto* lp = doc.layerManager().getLayer(name);
+        draft::LayerProperties props = lp != nullptr ? *lp : draft::LayerProperties{};
+        if (!std::isfinite(props.lineWidth)) props.lineWidth = 1.0;
+        tableLayers.emplace_back(dxfLayer(name), props);
+    }
     writeGroup(out, 0, std::string("TABLE"));
     writeGroup(out, 2, std::string("LAYER"));
     writeGroup(out, 5, nextHandle());
-    writeGroup(out, 70, static_cast<int>(layerNames.size()));
-    for (const auto& name : layerNames) {
-        const auto* lp = doc.layerManager().getLayer(name);
-        if (!lp) continue;
+    writeGroup(out, 70, static_cast<int>(tableLayers.size()));
+    for (const auto& [name, props] : tableLayers) {
+        const auto* lp = &props;
         writeGroup(out, 0, std::string("LAYER"));
         writeGroup(out, 5, nextHandle());
         writeGroup(out, 2, name);
@@ -1990,8 +2163,12 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         writeGroup(out, 20, def->basePoint.y);
         writeGroup(out, 30, 0.0);
         draft::DimensionStyle dummyStyle;
+        size_t index = 0;
         for (const auto& subEntity : def->entities) {
-            writeEntity(out, *subEntity, dummyStyle);
+            ++index;
+            writeEntityChecked(out, *subEntity, dummyStyle,
+                               "entity " + std::to_string(index) + " of block \"" + name + "\"",
+                               report);
         }
         writeGroup(out, 0, std::string("ENDBLK"));
         writeGroup(out, 5, nextHandle());
@@ -2003,8 +2180,10 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
     writeGroup(out, 0, std::string("SECTION"));
     writeGroup(out, 2, std::string("ENTITIES"));
     const auto& dimStyle = doc.draftDocument().dimensionStyle();
+    size_t index = 0;
     for (const auto& entity : doc.draftDocument().entities()) {
-        writeEntity(out, *entity, dimStyle);
+        ++index;
+        writeEntityChecked(out, *entity, dimStyle, "entity " + std::to_string(index), report);
     }
     writeGroup(out, 0, std::string("ENDSEC"));
 

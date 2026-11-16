@@ -4,7 +4,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/src/ConstraintTool.cpp" line="+295"/>
+        <location filename="../src/ui/src/ConstraintTool.cpp" line="+326"/>
         <source>Distance Constraint</source>
         <translation type="unfinished">Restricción de distancia</translation>
     </message>
@@ -1229,7 +1229,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+212"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Estilo de cota</translation>
     </message>
@@ -1883,13 +1883,13 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+170"/>
+        <location line="+198"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exportar %1</translation>
     </message>
     <message>
-        <location line="-201"/>
+        <location line="-229"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -1906,23 +1906,23 @@ Los detalles están en el registro:
         <location line="+28"/>
         <location line="+52"/>
         <location line="+17"/>
-        <location line="+17"/>
-        <location line="+103"/>
+        <location line="+18"/>
+        <location line="+130"/>
         <source>Could not export</source>
         <translation type="unfinished">No se pudo exportar</translation>
     </message>
     <message>
-        <location line="-213"/>
+        <location line="-241"/>
         <location line="+28"/>
         <location line="+51"/>
         <location line="+18"/>
-        <location line="+16"/>
-        <location line="+103"/>
+        <location line="+17"/>
+        <location line="+130"/>
         <source>Exported %1.</source>
         <translation type="unfinished">Se exportó %1.</translation>
     </message>
     <message>
-        <location line="-207"/>
+        <location line="-235"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">La exportación STEP escribe los componentes de un ensamblaje; no se puede leer ninguna de las piezas de este</translation>
     </message>
@@ -1938,11 +1938,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+3"/>
+        <location line="+79"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omitido: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="+8"/>
+        <location line="-71"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n cara curva se escribió como sus facetas, no sobre su superficie.</numerusform>
@@ -2005,7 +2006,38 @@ Los detalles están en el registro:
         <translation type="unfinished">Archivos DXF (*.dxf)</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+19"/>
+        <source>Renamed: %1</source>
+        <translation type="unfinished">Renombrado: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>%n entity(s) could not be written as DXF holds them, and were left out.</source>
+        <translation type="unfinished">
+            <numerusform>%n entidad no se pudo escribir tal como la admite DXF y se omitió.</numerusform>
+            <numerusform>%n entidades no se pudieron escribir tal como las admite DXF y se omitieron.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+4"/>
+        <source>%n layer(s) were written under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>%n capa se escribió con un nombre que DXF admite.</numerusform>
+            <numerusform>%n capas se escribieron con un nombre que DXF admite.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Export DXF</source>
+        <translation type="unfinished">Exportar DXF</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The drawing itself is unchanged.</source>
+        <translation type="unfinished">El dibujo en sí no cambia.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>PDF</source>
         <translation type="unfinished">PDF</translation>
     </message>
@@ -2463,7 +2495,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+371"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -3654,7 +3686,6 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+11"/>
         <location line="+61"/>
         <source>Modify</source>
@@ -3754,8 +3785,16 @@ empezar a construir su pieza.</translation>
         <source>Dimensions</source>
         <translation type="unfinished">Cotas</translation>
     </message>
+    <message numerus="yes">
+        <location line="+1411"/>
+        <source>File saved; %n layer(s) under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
+            <numerusform>Archivo guardado; %n capas con un nombre que DXF admite.</numerusform>
+        </translation>
+    </message>
     <message>
-        <location line="+2487"/>
+        <location line="+1086"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3801,7 +3840,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2511"/>
+        <location line="-2521"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4027,7 +4066,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+3"/>
         <location line="+10"/>
         <location line="+986"/>
-        <location line="+478"/>
+        <location line="+488"/>
         <location line="+908"/>
         <location line="+593"/>
         <location line="+13"/>
@@ -4035,7 +4074,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3048"/>
+        <location line="-3058"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -4056,12 +4095,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2696"/>
+        <location line="+2706"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2690"/>
+        <location line="-2700"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
@@ -4471,22 +4510,22 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     <message>
         <location line="+7"/>
         <location line="+12"/>
-        <location line="+34"/>
+        <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">No se pudo guardar</translation>
     </message>
     <message>
-        <location line="-27"/>
+        <location line="-37"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">Dibujo guardado.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+22"/>
         <source>File saved.</source>
         <translation type="unfinished">Archivo guardado.</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+25"/>
         <source>The reason is unknown; see the log for details.</source>
         <translation type="unfinished">Se desconoce el motivo; consulte el registro para más detalles.</translation>
     </message>
@@ -5172,7 +5211,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3064"/>
+        <location line="-3074"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>
@@ -6341,7 +6380,7 @@ ver y editar sus propiedades.</translation>
         <translation type="unfinished">El dibujo o el modelo, tal como se muestra. Trabaje en él desde los menús, la cinta de opciones y los métodos abreviados de teclado.</translation>
     </message>
     <message>
-        <location line="+446"/>
+        <location line="+448"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">El controlador gráfico ofrece OpenGL %1.%2; Horizon CAD necesita 3.3.</translation>
     </message>

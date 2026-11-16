@@ -2305,8 +2305,9 @@ bool MainWindow::saveActiveDocument() {
     std::string path = m_document->filePath();
     bool ok = false;
     std::string error;
+    io::DxfWriteReport dxfReport;
     if (QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive)) {
-        ok = io::DxfFormat::save(path, *m_document, &error);
+        ok = io::DxfFormat::save(path, *m_document, &error, &dxfReport);
     } else {
         // Make sure parts carry a fresh tessellation cache for lightweight
         // assembly loading. A solid may be there and still be out of date:
@@ -2323,6 +2324,15 @@ bool MainWindow::saveActiveDocument() {
         updateWindowTitle();
         // The assemblies placing it show it as saved.
         refreshUsersOf(path);
+        // What the DXF could not hold as the drawing has it: entities left
+        // out, said at every save; layers renamed, which every save of the
+        // drawing will rename again, in the status bar.
+        if (!dxfReport.leftOut.empty()) {
+            ExchangeCommands::showDxfWriteReport(dxfReport, this);
+        } else if (!dxfReport.renamed.empty()) {
+            m_statusPrompt->setText(tr("File saved; %n layer(s) under a name DXF allows.", nullptr,
+                                       static_cast<int>(dxfReport.renamed.size())));
+        }
         return true;
     }
     reportFileError(tr("Could not save"), path, error);

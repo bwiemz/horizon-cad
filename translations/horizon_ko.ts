@@ -4,7 +4,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/src/ConstraintTool.cpp" line="+295"/>
+        <location filename="../src/ui/src/ConstraintTool.cpp" line="+326"/>
         <source>Distance Constraint</source>
         <translation type="unfinished">거리 구속</translation>
     </message>
@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+212"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
         <source>Dimension Style</source>
         <translation type="unfinished">치수 스타일</translation>
     </message>
@@ -1876,13 +1876,13 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+170"/>
+        <location line="+198"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 내보내기</translation>
     </message>
     <message>
-        <location line="-201"/>
+        <location line="-229"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -1899,23 +1899,23 @@ Details are in the log:
         <location line="+28"/>
         <location line="+52"/>
         <location line="+17"/>
-        <location line="+17"/>
-        <location line="+103"/>
+        <location line="+18"/>
+        <location line="+130"/>
         <source>Could not export</source>
         <translation type="unfinished">내보낼 수 없음</translation>
     </message>
     <message>
-        <location line="-213"/>
+        <location line="-241"/>
         <location line="+28"/>
         <location line="+51"/>
         <location line="+18"/>
-        <location line="+16"/>
-        <location line="+103"/>
+        <location line="+17"/>
+        <location line="+130"/>
         <source>Exported %1.</source>
         <translation type="unfinished">%1을(를) 내보냈습니다.</translation>
     </message>
     <message>
-        <location line="-207"/>
+        <location line="-235"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">STEP 내보내기는 어셈블리의 구성 요소를 기록합니다. 이 어셈블리의 부품을 하나도 읽을 수 없습니다</translation>
     </message>
@@ -1931,11 +1931,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+3"/>
+        <location line="+79"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="+8"/>
+        <location line="-71"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>곡면 %n개를 곡면 자체가 아닌 패싯으로 기록했습니다.</numerusform>
@@ -1996,7 +1997,36 @@ Details are in the log:
         <translation type="unfinished">DXF 파일 (*.dxf)</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+19"/>
+        <source>Renamed: %1</source>
+        <translation type="unfinished">이름 변경됨: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>%n entity(s) could not be written as DXF holds them, and were left out.</source>
+        <translation type="unfinished">
+            <numerusform>엔티티 %n개를 DXF가 담을 수 있는 형태로 기록할 수 없어 생략했습니다.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+4"/>
+        <source>%n layer(s) were written under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>레이어 %n개를 DXF에서 허용하는 이름으로 기록했습니다.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Export DXF</source>
+        <translation type="unfinished">DXF 내보내기</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The drawing itself is unchanged.</source>
+        <translation type="unfinished">도면 자체는 바뀌지 않았습니다.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>PDF</source>
         <translation type="unfinished">PDF</translation>
     </message>
@@ -2454,7 +2484,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+371"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -3645,7 +3675,6 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+11"/>
         <location line="+61"/>
         <source>Modify</source>
@@ -3745,8 +3774,15 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">치수</translation>
     </message>
+    <message numerus="yes">
+        <location line="+1411"/>
+        <source>File saved; %n layer(s) under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
+        </translation>
+    </message>
     <message>
-        <location line="+2487"/>
+        <location line="+1086"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3790,7 +3826,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2511"/>
+        <location line="-2521"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4016,7 +4052,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+3"/>
         <location line="+10"/>
         <location line="+986"/>
-        <location line="+478"/>
+        <location line="+488"/>
         <location line="+908"/>
         <location line="+593"/>
         <location line="+13"/>
@@ -4024,7 +4060,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3048"/>
+        <location line="-3058"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4045,12 +4081,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2696"/>
+        <location line="+2706"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2690"/>
+        <location line="-2700"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -4458,22 +4494,22 @@ Its error is not estimated: it was measured once, not refined.</source>
     <message>
         <location line="+7"/>
         <location line="+12"/>
-        <location line="+34"/>
+        <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">저장할 수 없음</translation>
     </message>
     <message>
-        <location line="-27"/>
+        <location line="-37"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">도면을 저장했습니다.</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+22"/>
         <source>File saved.</source>
         <translation type="unfinished">파일을 저장했습니다.</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+25"/>
         <source>The reason is unknown; see the log for details.</source>
         <translation type="unfinished">원인을 알 수 없습니다. 자세한 내용은 로그를 참조하십시오.</translation>
     </message>
@@ -5156,7 +5192,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3064"/>
+        <location line="-3074"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
@@ -6325,7 +6361,7 @@ view and edit its properties.</source>
         <translation type="unfinished">표시된 도면 또는 모델입니다. 메뉴, 리본, 바로 가기 키로 작업합니다.</translation>
     </message>
     <message>
-        <location line="+446"/>
+        <location line="+448"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">그래픽 드라이버가 OpenGL %1.%2을(를) 제공합니다. Horizon CAD에는 3.3이 필요합니다.</translation>
     </message>
