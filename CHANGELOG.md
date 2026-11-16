@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **No feature takes a size that is not a finite number.** An extrusion's
+  distance, a revolve's angle, a shell's thickness, a fillet's radius and a
+  chamfer's distance were held only to be more than nothing, so infinity
+  passed; a draft's angle, a pattern's spacing and every primitive's sizes
+  were not held to anything. A value from a file, a design table or a
+  script that was not a finite number built a part whose every point was
+  undefined, and saved, a part that could not be read back. Each now
+  refuses it, as an expression already did.
+
 - **A DXF export opens in other CAD programs, whatever the drawing holds.**
   Layer names went out as they were, and DXF refuses some: those with
   `< > / \ " : ; ? * | = `` or control characters, an empty name, two names
