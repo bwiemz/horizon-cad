@@ -114,6 +114,7 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"polyline", drawPolyline},
         {"ellipse", drawEllipse},
         {"polygon", drawPolygon},
+        {"match-properties", drawMatchProperties},
         {"spline", drawSpline},
         {"text", drawText},
         {"hatch", drawHatch},
@@ -523,6 +524,25 @@ QIcon IconGenerator::drawEllipse(int s) {
     p.setBrush(Qt::NoBrush);
     p.drawEllipse(QPointF(12, 12), 9, 6);
     drawDot(p, 12, 12, 2.0, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawMatchProperties(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A brush: its handle down to the left, its bristles up to the right,
+    // over a stroke of the paint it carries.
+    p.setPen(primaryPen(2.0));
+    p.drawLine(QPointF(4, 20), QPointF(12, 12));
+    p.setBrush(kAccent);
+    p.setPen(Qt::NoPen);
+    QPolygonF bristles;
+    bristles << QPointF(11, 9) << QPointF(15, 13) << QPointF(21, 7) << QPointF(17, 3);
+    p.drawPolygon(bristles);
+    p.setPen(QPen(kAccent, 2.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(13, 20), QPointF(21, 20));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

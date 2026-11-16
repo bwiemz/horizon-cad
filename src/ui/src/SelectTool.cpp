@@ -245,17 +245,17 @@ bool SelectTool::mouseReleaseEvent(QMouseEvent* event, const math::Vec2& worldPo
             math::Vec3(worldPos.x + tolerance, worldPos.y + tolerance, 1e9));
         auto candidateIds = doc.spatialIndex().query(searchBox);
 
+        // Each found by its id: looking for each through the whole drawing
+        // made a click in a crowded corner of a large one slow.
         for (uint64_t candId : candidateIds) {
-            for (const auto& entity : doc.entities()) {
-                if (entity->id() != candId) continue;
-                const auto* lp = layerMgr.getLayer(entity->layer());
-                if (!lp || !lp->visible || lp->locked) break;
-                if (entity->hitTest(worldPos, tolerance)) {
-                    hitId = entity->id();
-                }
+            const draft::DraftEntity* entity = doc.findEntity(candId);
+            if (entity == nullptr) continue;
+            const auto* lp = layerMgr.getLayer(entity->layer());
+            if (!lp || !lp->visible || lp->locked) continue;
+            if (entity->hitTest(worldPos, tolerance)) {
+                hitId = entity->id();
                 break;
             }
-            if (hitId != 0) break;
         }
     }
 

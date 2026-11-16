@@ -717,3 +717,67 @@ TEST(ToolEditsTest, SelectAllTakesWhatABoxRoundEverythingWould) {
     trigger(w, "action_undo");
     EXPECT_EQ(drawing.entities().size(), 7u) << "one step undone whole";
 }
+
+// Match Properties: click an entity, then each that is to look like it. Each
+// click is one step to undo, and gives the layer, colour, width and line type
+// together; what is on a locked layer is not changed, though the first may
+// be on one.
+TEST(ToolEditsTest, MatchPropertiesGivesOnesStyleToOthers) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto* doc = w.activeDocument();
+    auto& drawing = doc->draftDocument();
+    for (const char* name : {"Walls", "Locked"}) {
+        hz::draft::LayerProperties props;
+        props.name = name;
+        props.locked = std::string(name) == "Locked";
+        doc->layerManager().addLayer(props);
+    }
+    auto source = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    source->setLayer("Locked");
+    source->setColor(0xFFFF0000u);
+    source->setLineWidth(0.7);
+    source->setLineType(2);
+    auto target = std::make_shared<hz::draft::DraftCircle>(Vec2(0, 20), 5.0);
+    target->setLayer("Walls");
+    auto held = std::make_shared<hz::draft::DraftLine>(Vec2(0, 40), Vec2(10, 40));
+    held->setLayer("Locked");
+    drawing.addEntity(source);
+    drawing.addEntity(target);
+    drawing.addEntity(held);
+    const uint32_t heldColor = held->color();
+
+    trigger(w, "tool_match-properties");
+    auto& view = drive.viewport();
+    drive.click(Vec2(5, 0));   // the source, on a locked layer: only read
+    drive.click(Vec2(5, 20));  // a point of the circle
+    EXPECT_EQ(target->layer(), "Locked");
+    EXPECT_EQ(target->color(), 0xFFFF0000u);
+    EXPECT_DOUBLE_EQ(target->lineWidth(), 0.7);
+    EXPECT_EQ(target->lineType(), 2);
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(target->layer(), "Walls") << "one step undone whole";
+    EXPECT_NE(target->color(), 0xFFFF0000u);
+    EXPECT_EQ(target->lineType(), 0);
+    trigger(w, "action_redo");
+    EXPECT_EQ(target->color(), 0xFFFF0000u);
+
+    source->setColor(0xFF00FF00u);  // a locked one is never changed
+    held->setLayer("Locked");
+    drive.click(Vec2(5, 40));
+    EXPECT_EQ(held->color(), heldColor);
+
+    // Escape picks another first; with one selected as it starts, that one
+    // is the first.
+    drive.key(Qt::Key_Escape);
+    view.selectionManager().clearSelection();
+    view.selectionManager().select(target->id());
+    trigger(w, "tool_select");
+    trigger(w, "tool_match-properties");
+    auto source2 = std::make_shared<hz::draft::DraftLine>(Vec2(30, 0), Vec2(40, 0));
+    drawing.addEntity(source2);
+    drive.click(Vec2(35, 0));
+    EXPECT_EQ(source2->color(), 0xFFFF0000u) << "the selected circle was the first";
+    EXPECT_EQ(source2->layer(), "Locked");
+}

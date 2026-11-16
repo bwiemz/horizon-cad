@@ -84,6 +84,7 @@ With the Select tool (**Space**):
 | Chamfer | | Click two lines. For a distance other than the one shown, type it and press **Enter** first. |
 | Stretch | **W** | Click two corners of a crossing window, then a base point and where it goes. Points inside the window move. |
 | Polyline Edit | | Click a polyline. Drag a vertex to move it; press **A** and click a segment to add a vertex, **D** and click a vertex to remove it, **C** to close or open it, **J** and click another polyline to join them. **Enter** finishes. |
+| Match Properties | | Click the entity to copy from, then each entity to change: each takes its layer, colour, width and line type, one undo step apiece. With one entity selected as you start, that one is copied from. **Escape** picks another; the one copied from may be on a locked layer. |
 
 **Rect Array** and **Polar Array** copy the selection in rows and columns,
 or around a centre, from a dialog.

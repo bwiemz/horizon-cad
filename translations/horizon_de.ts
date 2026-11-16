@@ -2495,7 +2495,7 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+373"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
@@ -2536,7 +2536,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">%1 schließen</translation>
     </message>
     <message>
-        <location line="+794"/>
+        <location line="+796"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2720,14 +2720,14 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">In die Fläche</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-744"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
-        <location line="+1096"/>
+        <location line="+1099"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-1029"/>
+        <location line="-1032"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -3342,6 +3342,11 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Polylinie &amp;bearbeiten</translation>
     </message>
     <message>
+        <location line="+1"/>
+        <source>Matc&amp;h Properties</source>
+        <translation type="unfinished">&amp;Eigenschaften anpassen</translation>
+    </message>
+    <message>
         <location line="+2"/>
         <source>Rectangular &amp;Array</source>
         <translation type="unfinished">Rechteckige &amp;Anordnung</translation>
@@ -3632,12 +3637,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+204"/>
+        <location line="+205"/>
         <source>Select</source>
         <translation type="unfinished">Auswählen</translation>
     </message>
     <message>
-        <location line="-201"/>
+        <location line="-202"/>
         <source>Fit All</source>
         <translation type="unfinished">Alles anzeigen</translation>
     </message>
@@ -3716,13 +3721,13 @@ um Ihr Teil aufzubauen.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+11"/>
+        <location line="+12"/>
         <location line="+61"/>
         <source>Modify</source>
         <translation type="unfinished">Ändern</translation>
     </message>
     <message>
-        <location line="-81"/>
+        <location line="-82"/>
         <source>Transform</source>
         <translation type="unfinished">Transformieren</translation>
     </message>
@@ -3743,12 +3748,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+86"/>
+        <location line="+87"/>
         <source>Mirror</source>
         <translation type="unfinished">Spiegeln</translation>
     </message>
     <message>
-        <location line="-82"/>
+        <location line="-83"/>
         <source>Trim</source>
         <translation type="unfinished">Stutzen</translation>
     </message>
@@ -3764,18 +3769,18 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+68"/>
+        <location line="+69"/>
         <source>Fillet</source>
         <translation type="unfinished">Verrundung</translation>
     </message>
     <message>
-        <location line="-67"/>
-        <location line="+68"/>
+        <location line="-68"/>
+        <location line="+69"/>
         <source>Chamfer</source>
         <translation type="unfinished">Fase</translation>
     </message>
     <message>
-        <location line="-67"/>
+        <location line="-68"/>
         <source>Break</source>
         <translation type="unfinished">Brechen</translation>
     </message>
@@ -3788,6 +3793,11 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+1"/>
         <source>PL Edit</source>
         <translation type="unfinished">PL bearbeiten</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Match Properties</source>
+        <translation type="unfinished">Eigenschaften anpassen</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -3816,7 +3826,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
     <message numerus="yes">
-        <location line="+1412"/>
+        <location line="+1413"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Datei gespeichert; %n Layer unter einem Namen, den DXF zulässt.</numerusform>
@@ -3829,7 +3839,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Nichts ausgewählt zum Zoomen: Alles anzeigen (F) zeigt alles</translation>
     </message>
     <message>
-        <location line="+673"/>
+        <location line="+679"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3875,7 +3885,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="-2544"/>
+        <location line="-2551"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4100,16 +4110,16 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+987"/>
+        <location line="+988"/>
         <location line="+488"/>
-        <location line="+930"/>
+        <location line="+936"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-3081"/>
+        <location line="-3088"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -4130,17 +4140,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2729"/>
+        <location line="+2736"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-2723"/>
+        <location line="-2730"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+312"/>
+        <location line="+313"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -4715,7 +4725,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert und erneut eingelesen</translation>
     </message>
     <message>
-        <location line="+386"/>
+        <location line="+392"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
@@ -5246,7 +5256,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-3097"/>
+        <location line="-3104"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>

@@ -108,6 +108,7 @@
 #include "horizon/ui/LineTool.h"
 #include "horizon/ui/LinearDimensionTool.h"
 #include "horizon/ui/LocaleManager.h"
+#include "horizon/ui/MatchPropertiesTool.h"
 #include "horizon/ui/MeasureAngleTool.h"
 #include "horizon/ui/MeasureAreaTool.h"
 #include "horizon/ui/MeasureDistanceTool.h"
@@ -722,6 +723,7 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
     toolsMenu->addAction(tr("Polyline Ed&it"), this, &MainWindow::onPolylineEditTool);
+    toolsMenu->addAction(tr("Matc&h Properties"), this, &MainWindow::onMatchPropertiesTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), m_drafting.get(),
                          &DraftingCommands::onRectangularArray);
@@ -939,6 +941,8 @@ void MainWindow::createRibbonBar() {
     addToolAction(g, "break", tr("Break"), &MainWindow::onBreakTool, QKeySequence(Qt::Key_B));
     addToolAction(g, "stretch", tr("Stretch"), &MainWindow::onStretchTool, QKeySequence(Qt::Key_W));
     addToolAction(g, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
+    addToolAction(g, "match-properties", tr("Match Properties"),
+                  &MainWindow::onMatchPropertiesTool);
 
     g = group(tr("Modify"), tr("Array"));
     addAction(g, "rect-array", tr("Rect Array"), m_drafting.get(),
@@ -1186,6 +1190,7 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<HatchTool>());
     m_toolManager->registerTool(std::make_unique<EllipseTool>());
     m_toolManager->registerTool(std::make_unique<PolygonTool>());
+    m_toolManager->registerTool(std::make_unique<MatchPropertiesTool>());
     m_toolManager->registerTool(std::make_unique<MeasureDistanceTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAngleTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAreaTool>());
@@ -2973,6 +2978,12 @@ void MainWindow::onEllipseTool() {
 
 void MainWindow::onPolygonTool() {
     m_toolManager->setActiveTool("Polygon");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onMatchPropertiesTool() {
+    m_toolManager->setActiveTool("Match Properties");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
 }

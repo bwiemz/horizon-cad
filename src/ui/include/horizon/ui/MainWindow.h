@@ -230,6 +230,7 @@ private slots:
     void onHatchTool();
     void onEllipseTool();
     void onPolygonTool();
+    void onMatchPropertiesTool();
 
     void onMeasureDistanceTool();
     void onMeasureAngleTool();

@@ -19,6 +19,12 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Match Properties.** Tools ▸ Match Properties (Modify on the ribbon), as
+  AutoCAD's MATCHPROP: click an entity, then each entity that is to look
+  like it, and each takes its layer, colour, width and line type in one
+  step to undo. A click to select used to search the whole drawing for each
+  entity near the pointer; it now finds them by their id, as this does.
+
 - **Select All.** Edit ▸ Select All (**Ctrl+A**) selects everything in the
   drawing on a layer that is shown and unlocked, as a box round all of it
   would; there was no way to select everything but to drag round it.

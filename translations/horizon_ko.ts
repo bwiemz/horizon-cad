@@ -2484,7 +2484,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+373"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -2525,7 +2525,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+794"/>
+        <location line="+796"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2709,14 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-744"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
-        <location line="+1096"/>
+        <location line="+1099"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1029"/>
+        <location line="-1032"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -3331,6 +3331,11 @@ begin building your part.</source>
         <translation type="unfinished">폴리선 편집(&amp;I)</translation>
     </message>
     <message>
+        <location line="+1"/>
+        <source>Matc&amp;h Properties</source>
+        <translation type="unfinished">특성 일치(&amp;H)</translation>
+    </message>
+    <message>
         <location line="+2"/>
         <source>Rectangular &amp;Array</source>
         <translation type="unfinished">직사각형 배열(&amp;A)</translation>
@@ -3621,12 +3626,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+204"/>
+        <location line="+205"/>
         <source>Select</source>
         <translation type="unfinished">선택</translation>
     </message>
     <message>
-        <location line="-201"/>
+        <location line="-202"/>
         <source>Fit All</source>
         <translation type="unfinished">전체 맞춤</translation>
     </message>
@@ -3705,13 +3710,13 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+11"/>
+        <location line="+12"/>
         <location line="+61"/>
         <source>Modify</source>
         <translation type="unfinished">수정</translation>
     </message>
     <message>
-        <location line="-81"/>
+        <location line="-82"/>
         <source>Transform</source>
         <translation type="unfinished">변환</translation>
     </message>
@@ -3732,12 +3737,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+86"/>
+        <location line="+87"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-82"/>
+        <location line="-83"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3753,18 +3758,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+68"/>
+        <location line="+69"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-67"/>
-        <location line="+68"/>
+        <location line="-68"/>
+        <location line="+69"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-67"/>
+        <location line="-68"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3777,6 +3782,11 @@ begin building your part.</source>
         <location line="+1"/>
         <source>PL Edit</source>
         <translation type="unfinished">폴리선 편집</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Match Properties</source>
+        <translation type="unfinished">특성 일치</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -3805,7 +3815,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message numerus="yes">
-        <location line="+1412"/>
+        <location line="+1413"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
@@ -3817,7 +3827,7 @@ begin building your part.</source>
         <translation type="unfinished">확대/축소할 선택 항목이 없습니다. 전체 맞춤(F)은 전체를 표시합니다</translation>
     </message>
     <message>
-        <location line="+673"/>
+        <location line="+679"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3861,7 +3871,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2544"/>
+        <location line="-2551"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4086,16 +4096,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+987"/>
+        <location line="+988"/>
         <location line="+488"/>
-        <location line="+930"/>
+        <location line="+936"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3081"/>
+        <location line="-3088"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4116,17 +4126,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2729"/>
+        <location line="+2736"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2723"/>
+        <location line="-2730"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+312"/>
+        <location line="+313"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -4699,7 +4709,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되어 다시 읽었습니다</translation>
     </message>
     <message>
-        <location line="+386"/>
+        <location line="+392"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
@@ -5227,7 +5237,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3097"/>
+        <location line="-3104"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

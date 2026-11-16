@@ -51,9 +51,9 @@ A drafting workspace of its own (`.hcad`, and DXF), and the tools sketches are d
 - Points typed while drawing and dimensioning: `x,y`, `@dx,dy`, `@length<angle`, or a length toward the cursor
 
 #### Editing Tools
-- Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, and Shift multi-select
+- Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, Shift multi-select, and Select All (Ctrl+A)
 - **Entity grouping** (Ctrl+G / Ctrl+Shift+G) — lightweight selection groups without block overhead
-- Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale
+- Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale, Match Properties
 - Copy, cut and paste within Horizon CAD (Ctrl+C/X/V; not the system clipboard)
 - Rectangular and Polar array operations
 - Polyline editing (add/remove vertices, toggle closed, join polylines)
