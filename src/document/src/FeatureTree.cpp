@@ -135,7 +135,7 @@ std::map<std::string, double> ExtrudeFeature::parameters() const {
 }
 
 bool ExtrudeFeature::setParameter(const std::string& name, double value) {
-    if (name == "distance" && value > 0.0) {
+    if (name == "distance" && std::isfinite(value) && value > 0.0) {
         m_distance = value;
         return true;
     }
@@ -328,7 +328,7 @@ std::map<std::string, double> RevolveFeature::parameters() const {
 }
 
 bool RevolveFeature::setParameter(const std::string& name, double value) {
-    if (name == "angle" && value > 0.0) {
+    if (name == "angle" && std::isfinite(value) && value > 0.0) {
         m_angle = value;
         return true;
     }
@@ -590,7 +590,7 @@ std::map<std::string, double> DraftFeature::parameters() const {
 }
 
 bool DraftFeature::setParameter(const std::string& name, double value) {
-    if (name == "angle") {
+    if (name == "angle" && std::isfinite(value)) {
         m_angle = value;
         return true;
     }
@@ -653,7 +653,7 @@ std::map<std::string, double> ShellFeature::parameters() const {
 }
 
 bool ShellFeature::setParameter(const std::string& name, double value) {
-    if (name == "thickness" && value > 0.0) {
+    if (name == "thickness" && std::isfinite(value) && value > 0.0) {
         m_thickness = value;
         return true;
     }
@@ -714,7 +714,7 @@ std::map<std::string, double> FilletFeature::parameters() const {
 }
 
 bool FilletFeature::setParameter(const std::string& name, double value) {
-    if (name == "radius" && value > 0.0) {
+    if (name == "radius" && std::isfinite(value) && value > 0.0) {
         m_radius = value;
         return true;
     }
@@ -779,7 +779,7 @@ std::map<std::string, double> ChamferFeature::parameters() const {
 }
 
 bool ChamferFeature::setParameter(const std::string& name, double value) {
-    if (name == "distance" && value > 0.0) {
+    if (name == "distance" && std::isfinite(value) && value > 0.0) {
         m_distance = value;
         return true;
     }
@@ -949,7 +949,7 @@ std::map<std::string, double> PatternFeature::parameters() const {
 
 bool PatternFeature::setParameter(const std::string& name, double value) {
     if (name == "count") return countParameter(value, 1, kMaxPatternCount, m_count);
-    if (name == "spacing") {
+    if (name == "spacing" && std::isfinite(value)) {
         m_scalar = value;
         return true;
     }
@@ -1114,6 +1114,9 @@ bool PrimitiveFeature::setParameter(const std::string& name, double value) {
     if (name == "chordTolerance") {
         return isFaceted() && setChordTolerance(m_chordTolerance, value);
     }
+    // A size that is not a finite number makes no solid, only one whose
+    // every point is undefined.
+    if (!std::isfinite(value)) return false;
     switch (m_kind) {
         case Kind::Box:
             if (name == "width") return (m_p0 = value, true);
