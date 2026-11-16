@@ -565,6 +565,10 @@ TEST(ModelCommandsTest, APatternInTwoDirectionsMakesAGrid) {
     auto grid = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 3.0, 3);
     ASSERT_TRUE(grid->setSecondDirection(Vec3(0, 1, 0), 3.0, 3));
     EXPECT_EQ(grid->instanceCount(), 9);
+    // Its count is a count in any unit: read as a length, 2 rows in an inch
+    // document were 50.8.
+    EXPECT_EQ(grid->parameterKind("count2"), Feature::ParameterKind::Count);
+    EXPECT_EQ(grid->parameterKind("spacing2"), Feature::ParameterKind::Length);
     const Vec3 last = grid->instanceTransform(8).transformPoint(Vec3());
     EXPECT_NEAR(last.x, 6.0, 1e-12);
     EXPECT_NEAR(last.y, 6.0, 1e-12);

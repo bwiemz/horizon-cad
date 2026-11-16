@@ -661,3 +661,38 @@ TEST(BooleanRobustnessTest, ACancelledBooleanStopsSayingSo) {
               nullptr)
         << why;
 }
+
+// The work of building a convex body's tree counts as its cuts do: a
+// cylinder of 4,096 facets, its tree a chain of as many planes, each
+// checked against its every point, and a box that barely meets it. Its cuts
+// take about 10 million corners and its chain several times that: under a
+// limit of 20 million the union is refused (it was made, the chain's work
+// uncounted, uncancellable); without one it is made. A whole-part pattern
+// refused so says why, with its remedy.
+TEST(BooleanRobustnessTest, AConvexBodysTreeCountsAgainstTheLimit) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 4096);
+    const auto corner =
+        moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(9.5, -1, 5)));
+    {
+        const hz::model::BooleanWorkLimits limits(20'000'000, 0);
+        std::string why;
+        EXPECT_EQ(BooleanOp::execute(*rod, *corner, BooleanType::Union, &why, NamingScheme::Stable),
+                  nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+    }
+    {
+        // Three overlapping cylinders of 1,024 facets: each join's cuts
+        // take under half a million corners, its chain millions.
+        const hz::model::BooleanWorkLimits limits(2'000'000, 0);
+        const auto ring = PrimitiveFactory::makeCylinder(5.0, 10.0, 1024);
+        std::string why;
+        const auto pattern =
+            Pattern::linear(*ring, Vec3(1, 0, 0), 4.0, 3, {}, NamingScheme::Stable, true, &why);
+        EXPECT_EQ(pattern, nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+    }
+    std::string why;
+    EXPECT_NE(BooleanOp::execute(*rod, *corner, BooleanType::Union, &why, NamingScheme::Stable),
+              nullptr)
+        << why;
+}

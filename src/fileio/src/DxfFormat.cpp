@@ -152,7 +152,12 @@ void writeCommonProps(std::ostream& out, const draft::DraftEntity& entity) {
             out, 6,
             std::string(draft::lineTypeDxfName(static_cast<draft::LineType>(entity.lineType()))));
     }
-    if (entity.lineWidth() > 0.0) {
+    if (!std::isfinite(entity.lineWidth())) {
+        // A width that is no number: the entity is left out and said
+        // (writeEntityChecked), as for any value that is not finite, not
+        // written with another width without a word.
+        t_wroteNonFinite = true;
+    } else if (entity.lineWidth() > 0.0) {
         writeGroup(out, 370, dxfLineweight(entity.lineWidth()));
     }
 }
@@ -560,9 +565,13 @@ thread_local size_t t_badNumbers = 0;
 
 double toDouble(std::string_view s) {
     if (!s.empty() && s.front() == '+') s.remove_prefix(1);  // from_chars rejects '+'
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) {
+        s.remove_suffix(1);
+    }
     double value = 0.0;
     const auto [ptr, ec] = math::fromChars(s.data(), s.data() + s.size(), value);
-    if (ec == std::errc{} && std::isfinite(value)) return value;
+    // All of it a number: "12.5oops" is damaged, not 12.5.
+    if (ec == std::errc{} && ptr == s.data() + s.size() && std::isfinite(value)) return value;
     if (!s.empty()) ++t_badNumbers;  // there, and not a number; missing is 0
     return 0.0;
 }
@@ -2154,7 +2163,10 @@ bool DxfFormat::save(const std::string& filePath, const doc::Document& doc, std:
         // default width (1.0, what an unset weight reads as) says "default",
         // as does one with no width, which the reader reads as the default.
         const bool defaultWidth = lp->lineWidth <= 0.0 || std::abs(lp->lineWidth - 1.0) < 1e-9;
-        writeGroup(out, 370, defaultWidth ? -3 : dxfLineweight(lp->lineWidth));
+        // A layer's width that is no number is the default (-3).
+        writeGroup(
+            out, 370,
+            defaultWidth || !std::isfinite(lp->lineWidth) ? -3 : dxfLineweight(lp->lineWidth));
     }
     writeGroup(out, 0, std::string("ENDTAB"));
     writeGroup(out, 0, std::string("ENDSEC"));

@@ -36,12 +36,14 @@ public:
     /// instances clear of one another, each round one Boolean, and a copy
     /// where an earlier one is is left out: the same body, in a fraction of
     /// the time for many copies, but with the faces they split cut into
-    /// other pieces, and so named otherwise.
+    /// other pieces, and so named otherwise. @p reason, when given, says why
+    /// there is no result: why the Boolean joining two instances failed.
     static std::unique_ptr<topo::Solid> linear(const topo::Solid& source,
                                                const math::Vec3& direction, double spacing,
                                                int count, const std::vector<int>& suppressed = {},
                                                NamingScheme naming = NamingScheme::Positional,
-                                               bool together = false);
+                                               bool together = false,
+                                               std::string* reason = nullptr);
 
     /// Linear pattern in two directions (SolidWorks' Direction 1 and 2): a
     /// grid of @p count by @p count2 instances, @p spacing apart along
@@ -52,7 +54,7 @@ public:
                                              const math::Vec3& direction2, double spacing2,
                                              int count2, const std::vector<int>& suppressed = {},
                                              NamingScheme naming = NamingScheme::Positional,
-                                             bool together = false);
+                                             bool together = false, std::string* reason = nullptr);
 
     /// Both solids' shells in one solid, as separate bodies: no Boolean, so
     /// shared material is not merged (use BooleanOp for that). Topology IDs
@@ -97,7 +99,8 @@ public:
                                                  const math::Vec3& axisDir, double angleStepRad,
                                                  int count, const std::vector<int>& suppressed = {},
                                                  NamingScheme naming = NamingScheme::Positional,
-                                                 bool together = false);
+                                                 bool together = false,
+                                                 std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

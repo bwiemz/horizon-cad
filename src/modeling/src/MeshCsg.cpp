@@ -92,6 +92,22 @@ private:
     Budget m_saved;
 };
 
+/// @p n more polygon corners tested against a plane, charged to the
+/// running csgExecute: past its limit, it stops (CsgTooComplex); asked now
+/// and then, every 65,536 corners, a few milliseconds' work, whether what it
+/// runs for still wants it (CsgCancelled).
+void chargeWork(std::size_t n) {
+    const std::size_t before = t_budget.work;
+    t_budget.work += n;
+    if (t_budget.work > t_budget.workLimit) {
+        throw CsgTooComplex("cutting them would take far longer than any part needs");
+    }
+    if ((before >> 16) != (t_budget.work >> 16) && t_budget.cancelled != nullptr &&
+        t_budget.cancelled->load(std::memory_order_relaxed)) {
+        throw CsgCancelled();
+    }
+}
+
 /// Split `poly` by `plane` into the four output buckets (csg.js algorithm),
 /// moved there whole when it does not cross it.
 void splitPolygon(const Plane& plane, double eps, Poly&& poly, std::vector<Poly>& coplanarFront,
@@ -99,17 +115,7 @@ void splitPolygon(const Plane& plane, double eps, Poly&& poly, std::vector<Poly>
                   std::vector<Poly>& back) {
     const auto& pts = poly.data.points;
     const size_t n = pts.size();
-    const std::size_t before = t_budget.work;
-    t_budget.work += n;
-    if (t_budget.work > t_budget.workLimit) {
-        throw CsgTooComplex("cutting them would take far longer than any part needs");
-    }
-    // Asked now and then whether what it runs for still wants it: every
-    // 65,536 corners, a few milliseconds' work.
-    if ((before >> 16) != (t_budget.work >> 16) && t_budget.cancelled != nullptr &&
-        t_budget.cancelled->load(std::memory_order_relaxed)) {
-        throw CsgCancelled();
-    }
+    chargeWork(n);
 
     int polygonType = 0;
     std::vector<int> types(n);
@@ -383,9 +389,12 @@ private:
         // into the same tree.)
         constexpr size_t kSamples = 16;
         const size_t stride = std::max<size_t>(1, list.size() / kSamples);
+        // Its work charged as a split's is: for a convex body of many
+        // facets, each of these loops is in the square of their number.
         for (size_t i = 0; i < list.size(); i += stride) {
             const Plane& plane = list[i].plane;
             for (const auto& poly : list) {
+                chargeWork(poly.data.points.size());
                 for (const Vec3& p : poly.data.points) {
                     if (plane.normal.dot(p) - plane.w > m_eps) return false;
                 }
@@ -393,6 +402,7 @@ private:
         }
         // In a plane as splitPolygon judges it: every point within m_eps.
         const auto inPlane = [this](const Plane& plane, const Poly& poly) {
+            chargeWork(poly.data.points.size());
             for (const Vec3& p : poly.data.points) {
                 if (std::abs(plane.normal.dot(p) - plane.w) > m_eps) return false;
             }
@@ -420,6 +430,7 @@ private:
                                  }),
                      points.end());
         for (const Plane& plane : planes) {
+            chargeWork(points.size());
             for (const Vec3& p : points) {
                 if (plane.normal.dot(p) - plane.w > m_eps) return false;
             }

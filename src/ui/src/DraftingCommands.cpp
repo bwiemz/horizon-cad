@@ -38,6 +38,26 @@
 
 namespace hz::ui {
 
+namespace {
+
+/// Into @p step, the removal of every constraint of @p constraints on one of
+/// @p ids, each once: a constraint on an entity gone constrains nothing, and
+/// stays in the sketch's list, saved with it.
+void removeConstraintsOn(doc::CompositeCommand& step, cstr::ConstraintSystem& constraints,
+                         const std::vector<uint64_t>& ids) {
+    std::set<uint64_t> removed;
+    for (const uint64_t id : ids) {
+        for (const auto* constraint : constraints.constraintsForEntity(id)) {
+            if (removed.insert(constraint->id()).second) {
+                step.addCommand(
+                    std::make_unique<doc::RemoveConstraintCommand>(constraints, constraint->id()));
+            }
+        }
+    }
+}
+
+}  // namespace
+
 DraftingCommands::DraftingCommands(WorkbenchHost& host, QObject* parent)
     : QObject(parent), m_host(host) {}
 
@@ -171,16 +191,7 @@ void DraftingCommands::onDeleteDuplicates() {
     }
     // Their constraints with them, as Delete takes them.
     auto step = std::make_unique<doc::CompositeCommand>("Delete Duplicates");
-    auto& constraints = document->activeConstraints();
-    std::set<uint64_t> removedConstraints;
-    for (const uint64_t id : copies) {
-        for (const auto* constraint : constraints.constraintsForEntity(id)) {
-            if (removedConstraints.insert(constraint->id()).second) {
-                step->addCommand(
-                    std::make_unique<doc::RemoveConstraintCommand>(constraints, constraint->id()));
-            }
-        }
-    }
+    removeConstraintsOn(*step, document->activeConstraints(), copies);
     step->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, copies));
     document->undoStack().push(std::move(step));
     selectOnly({});
@@ -463,6 +474,9 @@ void DraftingCommands::onExplode() {
         composite->addCommand(std::move(cmd));
     }
     if (!outlineIds.empty()) {
+        // A constraint on an outline (a vertex held, a side horizontal)
+        // goes with it, as Delete takes it: its lines are new entities.
+        removeConstraintsOn(*composite, document.activeConstraints(), outlineIds);
         composite->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, outlineIds));
         for (const auto& side : sides) {
             composite->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, side));

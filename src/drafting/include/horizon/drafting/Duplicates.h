@@ -12,7 +12,8 @@ namespace hz::draft {
 /// OVERKILL, "delete duplicate objects"): the same kind, on the same layer,
 /// in the same colour, width and line type, and the same shape to within
 /// @p tolerance, whichever way round it was drawn (a line from either end,
-/// an open polyline either way). The first of each kept, their ids are
+/// an open polyline either way, a closed one or a rectangle from any corner
+/// and either way round). The first of each kept, their ids are
 /// returned in drawing order. Lines, circles, arcs, polylines, rectangles,
 /// ellipses, splines and texts are compared; anything else (a dimension, a
 /// hatch, a block reference) is never taken for a copy.
