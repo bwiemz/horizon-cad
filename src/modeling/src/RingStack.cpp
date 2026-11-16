@@ -232,9 +232,12 @@ SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntit
 
     // A profile of two corners (a lens: two gentle arcs between the same two
     // points) is no polygon if each arc is one chord, the same chord: its
-    // arcs are two chords or more.
+    // arcs are two chords or more. Only whether there are more than two
+    // counts, so the count stops at three: a profile of thousands of corners
+    // was compared corner with corner.
     std::vector<Vec2> corners;
     for (const auto& ent : orderedEdges) {
+        if (corners.size() > 2) break;
         std::array<Vec2, 2> ends{};
         if (auto* line = dynamic_cast<draft::DraftLine*>(ent.get())) {
             ends = {line->start(), line->end()};

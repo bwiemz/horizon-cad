@@ -3,7 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
+#include <unordered_map>
 #include <utility>
+
+#include "horizon/math/BoundingBox.h"
 
 namespace hz::model {
 
@@ -145,12 +149,44 @@ public:
             if (node.hasPlane) node.plane.flip();
             std::swap(node.front, node.back);
         }
+        m_inverted = !m_inverted;
     }
+
+    /// The box the tree's solid lies in, as built, for clipPolygons to pass
+    /// over what lies clear of it. Without one, everything is clipped.
+    void setBounds(const math::BoundingBox& bounds) { m_bounds = bounds; }
 
     /// @p list less what lies inside this tree's solid (behind a leaf's
     /// plane), split where it crosses.
     std::vector<Poly> clipPolygons(std::vector<Poly> list) const {
         std::vector<Poly> out;
+        // A polygon clear of the solid's box by more than the on-plane band
+        // lies outside the solid, near none of its planes: kept whole, or,
+        // when the tree is the solid's outside, dropped whole. The tree
+        // would only have cut it into pieces on the same side.
+        std::vector<Poly> clear;
+        if (m_bounds.isValid()) {
+            const Vec3 low = m_bounds.min() - Vec3(m_eps, m_eps, m_eps);
+            const Vec3 high = m_bounds.max() + Vec3(m_eps, m_eps, m_eps);
+            const auto beyond = [&low, &high](const Poly& poly) {
+                const auto& pts = poly.data.points;
+                const auto all = [&pts](auto test) {
+                    return std::all_of(pts.begin(), pts.end(), test);
+                };
+                return all([&](const Vec3& p) { return p.x < low.x; }) ||
+                       all([&](const Vec3& p) { return p.x > high.x; }) ||
+                       all([&](const Vec3& p) { return p.y < low.y; }) ||
+                       all([&](const Vec3& p) { return p.y > high.y; }) ||
+                       all([&](const Vec3& p) { return p.z < low.z; }) ||
+                       all([&](const Vec3& p) { return p.z > high.z; });
+            };
+            const auto split = std::stable_partition(
+                list.begin(), list.end(), [&beyond](const Poly& poly) { return !beyond(poly); });
+            if (!m_inverted) {
+                clear.assign(std::make_move_iterator(split), std::make_move_iterator(list.end()));
+            }
+            list.erase(split, list.end());
+        }
         std::vector<std::pair<int, std::vector<Poly>>> stack;
         stack.emplace_back(0, std::move(list));
         while (!stack.empty()) {
@@ -175,6 +211,8 @@ public:
                            std::make_move_iterator(f.end()));
             }
         }
+        out.insert(out.end(), std::make_move_iterator(clear.begin()),
+                   std::make_move_iterator(clear.end()));
         return out;
     }
 
@@ -200,17 +238,31 @@ public:
     /// Add @p list to the tree, splitting it by the planes it meets and
     /// growing nodes where it reaches a leaf.
     void build(std::vector<Poly> list) {
-        std::vector<std::pair<int, std::vector<Poly>>> stack;
-        stack.emplace_back(0, std::move(list));
+        // Each list with the size a chain is tried at below it: after one
+        // that was not convex, only once a list is half its size.
+        struct Pending {
+            int index;
+            std::vector<Poly> polys;
+            size_t tryChainUpTo;
+        };
+        std::vector<Pending> stack;
+        stack.push_back({0, std::move(list), std::numeric_limits<size_t>::max()});
         while (!stack.empty()) {
-            auto [index, polys] = std::move(stack.back());
+            auto [index, polys, tryChainUpTo] = std::move(stack.back());
             stack.pop_back();
             if (polys.empty()) continue;
             if (!m_nodes[static_cast<size_t>(index)].hasPlane) {
                 // A new node given a convex set: the chain, in one pass
                 // (Phase 165). Few polygons are built as ever: the check
-                // would cost more than it saves.
-                if (polys.size() >= kChainAtLeast && buildChain(index, polys)) continue;
+                // would cost more than it saves. The tree is the same
+                // either way, so where the chain is tried is only a matter
+                // of time: a solid not convex fails the check at every
+                // node, and tried at each, a prism of 10,000 sides with a
+                // wavy outline took minutes to cut.
+                if (polys.size() >= kChainAtLeast && polys.size() <= tryChainUpTo) {
+                    if (buildChain(index, polys)) continue;
+                    tryChainUpTo = polys.size() / 2;
+                }
                 m_nodes[static_cast<size_t>(index)].plane = polys[0].plane;
                 m_nodes[static_cast<size_t>(index)].hasPlane = true;
             }
@@ -226,10 +278,10 @@ public:
             // The front before the back, as the recursion built them: the
             // back pushed first. (A new node can move the array: index it.)
             if (!backList.empty()) {
-                stack.emplace_back(childOf(index, false), std::move(backList));
+                stack.push_back({childOf(index, false), std::move(backList), tryChainUpTo});
             }
             if (!frontList.empty()) {
-                stack.emplace_back(childOf(index, true), std::move(frontList));
+                stack.push_back({childOf(index, true), std::move(frontList), tryChainUpTo});
             }
         }
     }
@@ -249,6 +301,21 @@ private:
     /// the chain only if no point is in front of a node's plane; else nothing
     /// is made, and build() builds it as ever.
     bool buildChain(int index, std::vector<Poly>& list) {
+        // Not convex, found cheaply: a point in front of the plane of one of
+        // a few polygons spread through the list. (Their own planes, which
+        // may differ from the planes the chain would take; a set refused
+        // here that the full check passes is only built the slower way,
+        // into the same tree.)
+        constexpr size_t kSamples = 16;
+        const size_t stride = std::max<size_t>(1, list.size() / kSamples);
+        for (size_t i = 0; i < list.size(); i += stride) {
+            const Plane& plane = list[i].plane;
+            for (const auto& poly : list) {
+                for (const Vec3& p : poly.data.points) {
+                    if (plane.normal.dot(p) - plane.w > m_eps) return false;
+                }
+            }
+        }
         // In a plane as splitPolygon judges it: every point within m_eps.
         const auto inPlane = [this](const Plane& plane, const Poly& poly) {
             for (const Vec3& p : poly.data.points) {
@@ -320,8 +387,36 @@ private:
     }
 
     double m_eps;
-    std::vector<Node> m_nodes;  ///< the root first
+    std::vector<Node> m_nodes;   ///< the root first
+    math::BoundingBox m_bounds;  ///< the solid's, when given (setBounds)
+    bool m_inverted = false;     ///< the tree is the solid's outside
 };
+
+/// @p polys with the pieces of the faces cut into the most pieces first,
+/// each face's pieces still in their order. A node of the tree takes its
+/// plane from the first polygon it is given: a face of many pieces (a
+/// non-convex cap, triangulated) taken first keeps them all at one node,
+/// where taken after the side faces each side's plane cut through every
+/// sliver of it that it crossed, into pieces in number the square of the
+/// sides, and memory ran out.
+std::vector<Poly> largestFacesFirst(std::vector<Poly> polys) {
+    std::unordered_map<std::string, size_t> pieces;
+    for (const auto& poly : polys) {
+        if (poly.data.topoId.isValid()) ++pieces[poly.data.topoId.tag()];
+    }
+    std::vector<size_t> count(polys.size(), 1);
+    for (size_t i = 0; i < polys.size(); ++i) {
+        if (polys[i].data.topoId.isValid()) count[i] = pieces[polys[i].data.topoId.tag()];
+    }
+    std::vector<size_t> order(polys.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(),
+                     [&count](size_t a, size_t b) { return count[a] > count[b]; });
+    std::vector<Poly> out;
+    out.reserve(polys.size());
+    for (const size_t i : order) out.push_back(std::move(polys[i]));
+    return out;
+}
 
 std::vector<Poly> toPolys(const std::vector<CsgPolygon>& in) {
     std::vector<Poly> out;
@@ -350,11 +445,23 @@ CsgTolerance CsgTolerance::of(const Vec3& low, const Vec3& high) {
 
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
-                                   double planeEps) {
+                                   double planeEps, CsgFragments fragments) {
     Bsp nodeA(planeEps);
     Bsp nodeB(planeEps);
-    nodeA.build(toPolys(a));
-    nodeB.build(toPolys(b));
+    const bool fewest = fragments == CsgFragments::Fewest;
+    nodeA.build(fewest ? largestFacesFirst(toPolys(a)) : toPolys(a));
+    nodeB.build(fewest ? largestFacesFirst(toPolys(b)) : toPolys(b));
+    if (fewest) {
+        const auto bounds = [](const std::vector<CsgPolygon>& polygons) {
+            math::BoundingBox box;
+            for (const auto& poly : polygons) {
+                for (const Vec3& p : poly.points) box.expand(p);
+            }
+            return box;
+        };
+        nodeA.setBounds(bounds(a));
+        nodeB.setBounds(bounds(b));
+    }
 
     switch (type) {
         case BooleanType::Union:
@@ -381,12 +488,25 @@ std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
             break;
     }
 
-    nodeA.build(nodeB.allPolygons());
-    if (type != BooleanType::Union) {
-        nodeA.invert();
+    std::vector<Poly> merged;
+    if (fewest) {
+        // What is left of each, together. Building B's into A's tree, as
+        // csg.js does, only cuts them further along A's planes, which costs
+        // as much as the clipping did, for pieces merged back after.
+        merged = nodeA.allPolygons();
+        std::vector<Poly> fromB = nodeB.allPolygons();
+        merged.insert(merged.end(), std::make_move_iterator(fromB.begin()),
+                      std::make_move_iterator(fromB.end()));
+        if (type != BooleanType::Union) {
+            for (auto& poly : merged) poly.flip();
+        }
+    } else {
+        nodeA.build(nodeB.allPolygons());
+        if (type != BooleanType::Union) {
+            nodeA.invert();
+        }
+        merged = nodeA.allPolygons();
     }
-
-    std::vector<Poly> merged = nodeA.allPolygons();
 
     std::vector<CsgPolygon> result;
     result.reserve(merged.size());
@@ -394,6 +514,61 @@ std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
         result.push_back(std::move(poly.data));
     }
     return result;
+}
+
+namespace {
+
+/// Whether @p points make a convex polygon the CSG can take whole: flat to
+/// well within @p planeEps, every corner turning the same way, going round
+/// once, and no edge of no length. Anything less is triangulated.
+bool convexAndFlat(const std::vector<Vec3>& points, double planeEps) {
+    const size_t n = points.size();
+    if (n < 4) return false;  // a triangle is taken whole anyway
+    const Plane plane = Plane::fromPolygon(points);
+    if (!plane.ok) return false;
+    for (const Vec3& p : points) {
+        if (!(std::abs(plane.normal.dot(p) - plane.w) <= 0.25 * planeEps)) return false;
+    }
+    double turning = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const Vec3 e1 = points[(i + 1) % n] - points[i];
+        const Vec3 e2 = points[(i + 2) % n] - points[(i + 1) % n];
+        if (e1.lengthSquared() == 0.0 || e2.lengthSquared() == 0.0) return false;
+        const double sine = plane.normal.dot(e1.cross(e2));
+        if (sine < 0.0) return false;  // a reflex corner
+        turning += std::atan2(sine, e1.dot(e2));
+    }
+    // Round once, not twice (a star drawn without lifting the pen).
+    constexpr double kTwoPi = 6.283185307179586;
+    return std::abs(turning - kTwoPi) < 1e-6;
+}
+
+}  // namespace
+
+std::vector<CsgPolygon> csgPieces(const std::vector<BoundaryPolygon>& polygons, bool fromA,
+                                  double planeEps) {
+    std::vector<CsgPolygon> out;
+    out.reserve(polygons.size() * 2);
+    for (const auto& poly : polygons) {
+        if (poly.holes.empty() && convexAndFlat(poly.points, planeEps)) {
+            CsgPolygon p;
+            p.points = poly.points;
+            p.topoId = poly.topoId;
+            p.surface = nullptr;
+            p.fromA = fromA;
+            out.push_back(std::move(p));
+            continue;
+        }
+        for (const auto& tri : BoundaryMesh::triangulatePolygon(poly.points)) {
+            CsgPolygon p;
+            p.points.assign(tri.begin(), tri.end());
+            p.topoId = poly.topoId;
+            p.surface = nullptr;
+            p.fromA = fromA;
+            out.push_back(std::move(p));
+        }
+    }
+    return out;
 }
 
 std::vector<CsgPolygon> csgTriangles(const std::vector<BoundaryPolygon>& polygons, bool fromA) {

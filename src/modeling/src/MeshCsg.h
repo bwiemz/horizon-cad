@@ -60,12 +60,35 @@ struct CsgPolygon {
 /// its facet count: a cylinder of 2,048 facets takes seconds in a debug
 /// build. (A plane chosen from a sample to split least and balance most was
 /// tried: 8% slower on that cylinder, and no faster on a plate of 81 pins.)
+///
+/// With CsgFragments::Fewest, for a caller that merges the fragments of each
+/// face back together (FragmentMerge) or wants only the volume, the work and
+/// the pieces that make no difference to the result are left out: a polygon
+/// clear of the other operand's box is not clipped to it, and what is left
+/// of B is not built into A's tree, which only cut it along A's planes. The
+/// same surface comes back, in fewer pieces. AsTree keeps csg.js's pieces,
+/// which references made by position were made against.
+enum class CsgFragments { AsTree, Fewest };
+
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
-                                   double planeEps = kCsgPlaneEps);
+                                   double planeEps = kCsgPlaneEps,
+                                   CsgFragments fragments = CsgFragments::AsTree);
 
 /// Triangulate boundary polygons into the convex fragments the BSP needs.
 std::vector<CsgPolygon> csgTriangles(const std::vector<BoundaryPolygon>& polygons, bool fromA);
+
+/// The convex fragments the BSP needs, with each face that is already convex
+/// and flat (to well within @p planeEps) and has no hole taken whole, and
+/// the rest triangulated. A face of many sides (a cylinder's cap of 4,096)
+/// fanned into slivers was cut by every plane of the other operand into
+/// millions of fragments, which then had to be merged back: a hole through
+/// such a cylinder took most of a minute. The pieces differ from
+/// csgTriangles' only in how a face is cut up, so they are for a Boolean
+/// that merges the fragments of each face back together (FragmentMerge);
+/// one that keeps them, for references made by position, triangulates.
+std::vector<CsgPolygon> csgPieces(const std::vector<BoundaryPolygon>& polygons, bool fromA,
+                                  double planeEps);
 
 /// Signed volume enclosed by a fragment set (divergence theorem over fan
 /// triangles).  Positive for an outward-oriented closed boundary.

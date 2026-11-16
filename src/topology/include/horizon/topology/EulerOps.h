@@ -65,6 +65,18 @@ MEVResult makeEdgeVertex(Solid& solid, HalfEdge* he, Face* face, const math::Vec
 /// Delta: V+0, E+1, F+1 → Euler delta = 0.
 MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2);
 
+/// makeEdgeFace for a run of cuts that each take a small face off a large one
+/// (a prism's sides, one by one, off what is left of its outline), where
+/// telling the new face's half-edges their face would walk the large loop
+/// at every cut. Here only the new edge's two halves are told; the caller
+/// names the face @p he1 and @p he2 are on (the half-edges may not know it
+/// yet), and once the run is done calls labelLoop on each face it made or
+/// cut. The faces, edges and loops are those makeEdgeFace makes.
+MEFResult makeEdgeFaceUnlabelled(Solid& solid, Face* face, HalfEdge* he1, HalfEdge* he2);
+
+/// Tell every half-edge of @p face's outer loop that it is on @p face.
+void labelLoop(Face* face);
+
 /// Reverse of makeEdgeVertex — remove an edge and one of its vertices.
 /// The edge's half-edges are spliced out of the face loop and the target
 /// vertex (the one that becomes dangling) is conceptually merged away.
