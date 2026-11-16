@@ -354,6 +354,25 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     return buildPattern(source, transforms, suppressed, naming);
 }
 
+std::unique_ptr<topo::Solid> Pattern::grid(const topo::Solid& source, const Vec3& direction,
+                                           double spacing, int count, const Vec3& direction2,
+                                           double spacing2, int count2,
+                                           const std::vector<int>& suppressed,
+                                           NamingScheme naming) {
+    if (count < 1 || count2 < 1) return nullptr;
+    const Vec3 dir = direction.normalized();
+    const Vec3 dir2 = direction2.normalized();
+    std::vector<Mat4> transforms;
+    transforms.reserve(static_cast<size_t>(count) * static_cast<size_t>(count2));
+    for (int row = 0; row < count2; ++row) {
+        for (int column = 0; column < count; ++column) {
+            transforms.push_back(
+                Mat4::translation(dir * (spacing * column) + dir2 * (spacing2 * row)));
+        }
+    }
+    return buildPattern(source, transforms, suppressed, naming);
+}
+
 std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
     auto out = std::make_unique<Solid>();
     cloneInto(*out, a, Mat4::identity(), 0, nullptr, true);

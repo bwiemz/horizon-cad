@@ -1250,12 +1250,12 @@ Details stehen im Protokoll:
         </translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+28"/>
         <source>No duplicates in the drawing.</source>
         <translation type="unfinished">Keine Duplikate in der Zeichnung.</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+0"/>
         <source>No duplicates in the selection.</source>
         <translation type="unfinished">Keine Duplikate in der Auswahl.</translation>
     </message>
@@ -2560,12 +2560,12 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+48"/>
-        <location line="+84"/>
+        <location line="+87"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">Normale %1 bei %2</translation>
     </message>
     <message>
-        <location line="-78"/>
+        <location line="-81"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">eine gekrümmte Fläche aus %1 Facetten, um %2</translation>
     </message>
@@ -2637,6 +2637,21 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+1"/>
         <source>Spacing</source>
         <translation type="unfinished">Abstand</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Count, second direction</source>
+        <translation type="unfinished">Anzahl, zweite Richtung</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Spacing, second direction</source>
+        <translation type="unfinished">Abstand, zweite Richtung</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Second direction</source>
+        <translation type="unfinished">Zweite Richtung</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -5590,12 +5605,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="-155"/>
-        <location line="+414"/>
+        <location line="+438"/>
         <source>Goes:</source>
         <translation type="unfinished">Ausdehnung:</translation>
     </message>
     <message>
-        <location line="-413"/>
+        <location line="-437"/>
         <source>To the distance</source>
         <translation type="unfinished">Bis zum Abstand</translation>
     </message>
@@ -5606,23 +5621,23 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+414"/>
+        <location line="+438"/>
         <source>Through all</source>
         <translation type="unfinished">Durch alles</translation>
     </message>
     <message>
-        <location line="-413"/>
+        <location line="-437"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">Durch alles, beidseitig</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+413"/>
+        <location line="+437"/>
         <source>Up to a face</source>
         <translation type="unfinished">Bis zu einer Fläche</translation>
     </message>
     <message>
-        <location line="-409"/>
+        <location line="-433"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(keine ebene Fläche des Teils ist parallel zur Skizze)</translation>
     </message>
@@ -5781,18 +5796,43 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+2"/>
-        <location line="+24"/>
+        <location line="+48"/>
         <source>Instances:</source>
         <translation type="unfinished">Instanzen:</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+25"/>
+        <location line="-44"/>
+        <source>Second direction:</source>
+        <translation type="unfinished">Zweite Richtung:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Second spacing:</source>
+        <translation type="unfinished">Zweiter Abstand:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Instances along it (1: none):</source>
+        <translation type="unfinished">Exemplare entlang (1: keine):</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location line="+41"/>
         <source>%1 not added: a feature it repeats is gone</source>
         <translation type="unfinished">%1 nicht hinzugefügt: ein zu wiederholendes Feature ist nicht mehr vorhanden</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-35"/>
+        <source>%1 not added: its second direction runs along its first</source>
+        <translation type="unfinished">%1 nicht hinzugefügt: Die zweite Richtung verläuft entlang der ersten</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>%1 not added: more than %2 instances in all</source>
+        <translation type="unfinished">%1 nicht hinzugefügt: insgesamt mehr als %2 Exemplare</translation>
+    </message>
+    <message>
+        <location line="+17"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Kreisförmiges Muster</translation>
     </message>

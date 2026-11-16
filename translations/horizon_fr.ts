@@ -1250,12 +1250,12 @@ Les détails figurent dans le journal :
         </translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+28"/>
         <source>No duplicates in the drawing.</source>
         <translation type="unfinished">Aucun doublon dans le dessin.</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+0"/>
         <source>No duplicates in the selection.</source>
         <translation type="unfinished">Aucun doublon dans la sélection.</translation>
     </message>
@@ -2560,12 +2560,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+48"/>
-        <location line="+84"/>
+        <location line="+87"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">normale %1, en %2</translation>
     </message>
     <message>
-        <location line="-78"/>
+        <location line="-81"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">une face courbe de %1 facettes, autour de %2</translation>
     </message>
@@ -2637,6 +2637,21 @@ commencer à construire votre pièce.</translation>
         <location line="+1"/>
         <source>Spacing</source>
         <translation type="unfinished">Espacement</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Count, second direction</source>
+        <translation type="unfinished">Nombre, seconde direction</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Spacing, second direction</source>
+        <translation type="unfinished">Espacement, seconde direction</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Second direction</source>
+        <translation type="unfinished">Seconde direction</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -5590,12 +5605,12 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="-155"/>
-        <location line="+414"/>
+        <location line="+438"/>
         <source>Goes:</source>
         <translation type="unfinished">Étendue :</translation>
     </message>
     <message>
-        <location line="-413"/>
+        <location line="-437"/>
         <source>To the distance</source>
         <translation type="unfinished">Jusqu&apos;à la distance</translation>
     </message>
@@ -5606,23 +5621,23 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+0"/>
-        <location line="+414"/>
+        <location line="+438"/>
         <source>Through all</source>
         <translation type="unfinished">À travers tout</translation>
     </message>
     <message>
-        <location line="-413"/>
+        <location line="-437"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">À travers tout, des deux côtés</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+413"/>
+        <location line="+437"/>
         <source>Up to a face</source>
         <translation type="unfinished">Jusqu&apos;à une face</translation>
     </message>
     <message>
-        <location line="-409"/>
+        <location line="-433"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(aucune face plane de la pièce n&apos;est parallèle à l&apos;esquisse)</translation>
     </message>
@@ -5781,18 +5796,43 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+2"/>
-        <location line="+24"/>
+        <location line="+48"/>
         <source>Instances:</source>
         <translation type="unfinished">Occurrences :</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+25"/>
+        <location line="-44"/>
+        <source>Second direction:</source>
+        <translation type="unfinished">Seconde direction :</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Second spacing:</source>
+        <translation type="unfinished">Second espacement :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Instances along it (1: none):</source>
+        <translation type="unfinished">Occurrences le long (1 : aucune) :</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location line="+41"/>
         <source>%1 not added: a feature it repeats is gone</source>
         <translation type="unfinished">Fonction %1 non ajoutée : une fonction qu&apos;elle répète n&apos;existe plus</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-35"/>
+        <source>%1 not added: its second direction runs along its first</source>
+        <translation type="unfinished">%1 non ajouté : sa seconde direction suit la première</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>%1 not added: more than %2 instances in all</source>
+        <translation type="unfinished">%1 non ajouté : plus de %2 occurrences au total</translation>
+    </message>
+    <message>
+        <location line="+17"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Répétition circulaire</translation>
     </message>
