@@ -19,6 +19,18 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The view shows a part of any size, zoomed however far.** The clip planes
+  were fixed at 0.1 and 10,000, so a part larger than about ten metres, or
+  smaller than a tenth of a millimetre, vanished as soon as it was fitted,
+  and a drawing vanished when zoomed far enough out; they now follow the
+  view. A wheel turned fast enough zoomed by a factor of nothing or less,
+  and the view collapsed or turned inside out; each notch now zooms by a
+  tenth, compounded, within the limits a view projects at. The grid is
+  drawn in powers of ten that suit the zoom, instead of a plane solid with
+  lines zoomed out and none zoomed in; and text is drawn at its size, where
+  it was held between 8 and 200 points, so a drawing zoomed out was covered
+  in text and one zoomed in had text smaller than its dimension lines.
+
 - **A surface's normal at a pole or an apex is the one it comes to.** Where
   a surface comes to a point, as a sphere does at its poles and a cone at its
   apex, its two tangents vanish or lie along each other and give no normal,

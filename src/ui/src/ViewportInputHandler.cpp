@@ -4,6 +4,8 @@
 #include <QMouseEvent>
 #include <QOpenGLWidget>
 #include <QWheelEvent>
+#include <algorithm>
+#include <cmath>
 
 #include "horizon/document/Document.h"
 #include "horizon/ui/Tool.h"
@@ -100,8 +102,13 @@ void ViewportInputHandler::handleWheel(QWheelEvent* event, ViewportWidget* viewp
     math::Vec2 worldBefore = viewport->worldPositionAtCursor(
         static_cast<int>(event->position().x()), static_cast<int>(event->position().y()));
 
-    double delta = event->angleDelta().y() / 120.0;
-    double factor = 1.0 + delta * 0.1;
+    // Each notch zooms by a tenth, compounded: a wheel spun fast, or a
+    // trackpad that reports many notches at once, zooms further but always
+    // by a factor above nothing. A step of 1 + 0.1 * notches reached zero at
+    // ten notches, and turned the view inside out past them.
+    const double delta = std::clamp(event->angleDelta().y() / 120.0, -50.0, 50.0);
+    if (delta == 0.0) return;
+    const double factor = std::pow(1.1, delta);
     viewport->camera().zoom(factor);
 
     math::Vec2 worldAfter = viewport->worldPositionAtCursor(
