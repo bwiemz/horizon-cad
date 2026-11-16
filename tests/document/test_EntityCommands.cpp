@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
@@ -86,6 +88,36 @@ TEST(EntityCommandsTest, RemovingManyIsOneStepThatUndoesInPlace) {
     remove.execute();
     remove.undo();
     EXPECT_EQ(ids(d), all) << "repeatable";
+}
+
+// A copy of many entities undone takes them out together. One at a time,
+// each was looked for from the drawing's end and the rest moved up behind
+// it: undoing a copy of 50,000 took seconds, and of 200,000 most of a
+// minute. The drawing is left as it was, in its order, and the copies can
+// be put back.
+TEST(EntityCommandsTest, UndoingACopyOfManyTakesThemOutTogether) {
+    DraftDocument d;
+    const auto all = fill(d, 100'000);
+    hz::doc::DuplicateEntityCommand copy(d, all, Vec2(1, -1));
+    copy.execute();
+    ASSERT_EQ(d.entities().size(), 200'000u);
+    const auto start = std::chrono::steady_clock::now();
+    copy.undo();
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_EQ(ids(d), all);
+    for (uint64_t id : copy.clonedIds()) EXPECT_EQ(d.findEntity(id), nullptr);
+    copy.execute();
+    EXPECT_EQ(d.entities().size(), 200'000u) << "and redone";
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.0);
+#else
+    EXPECT_LT(seconds, 5.0) << "unoptimized: a generous bound";
+#endif
+#else
+    (void)seconds;
+#endif
 }
 
 // A move re-indexes what it moved, and undo re-indexes it back, without
