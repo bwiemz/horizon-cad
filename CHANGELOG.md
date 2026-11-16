@@ -19,6 +19,25 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Patterns and mirrors of finely faceted bodies.** Each instance of a
+  pattern was joined by cutting every face of the part along the planes of
+  the next instance, however far off: a pattern of eight cylinders of 4,096
+  facets took most of two minutes. A face clear of every face of the other
+  body is now kept or left out whole, by where one point of it lies, and
+  only faces near it are cut; a face with a notch in it goes in as a few
+  convex pieces, not a triangle for each corner. The pattern takes a third
+  of the time. Where two such bodies overlap through and through (that
+  pattern and its mirror image), the cut could run for hours and use
+  gigabytes until memory ran out; past many times the work any part in the
+  tests needs, it now stops, and the feature fails saying that the bodies
+  have too many facets to combine and that a coarser chord tolerance makes
+  fewer. An interference check that cannot finish reports the pair rather
+  than passing it.
+
+- **A drag from far off the view.** The Select tool measured how far the
+  pointer had moved in whole pixels squared, which overflowed for a point
+  tens of thousands of pixels away (a click put far out of the view).
+
 - **Match Properties.** Tools ▸ Match Properties (Modify on the ribbon), as
   AutoCAD's MATCHPROP: click an entity, then each entity that is to look
   like it, and each takes its layer, colour, width and line type in one

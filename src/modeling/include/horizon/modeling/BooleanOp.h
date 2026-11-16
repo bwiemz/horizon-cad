@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -56,6 +57,24 @@ public:
                                                 const topo::Solid& solidB, BooleanType type,
                                                 std::string* reason = nullptr,
                                                 NamingScheme naming = NamingScheme::Positional);
+};
+
+/// Limits on the work of each Boolean run on this thread while it lives, in
+/// place of the defaults: for a preview that should give up sooner, and for
+/// tests. A Boolean over its limits fails, saying so, rather than going on
+/// for an hour or until memory runs out. @p work: how many polygon corners
+/// it may test against a plane; @p splits: how many times it may cut a
+/// polygon in two. Zero leaves that limit as it was.
+class BooleanWorkLimits {
+public:
+    BooleanWorkLimits(std::size_t work, std::size_t splits);
+    ~BooleanWorkLimits();
+    BooleanWorkLimits(const BooleanWorkLimits&) = delete;
+    BooleanWorkLimits& operator=(const BooleanWorkLimits&) = delete;
+
+private:
+    std::size_t m_savedWork;
+    std::size_t m_savedSplits;
 };
 
 }  // namespace hz::model

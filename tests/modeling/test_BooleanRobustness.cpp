@@ -26,6 +26,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -530,7 +531,9 @@ TEST(BooleanRobustnessTest, ACylinderOfManyFacetsIsBoredQuickly) {
 #ifdef NDEBUG
     EXPECT_LT(seconds, 1.5);
 #else
-    EXPECT_LT(seconds, 15.0) << "unoptimized: a generous bound";
+    // CI's debug build runs it unoptimized, four tests at a time: 15 s
+    // there. It took 48 s optimized before the cut was made faster.
+    EXPECT_LT(seconds, 45.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
 #endif
 #else
     (void)seconds;
@@ -557,4 +560,81 @@ TEST(BooleanRobustnessTest, ACutOfFewerPiecesConservesVolume) {
         Mat4::translation(Vec3(-5, 10, 5)) * Mat4::rotation(hz::math::Quaternion::fromAxisAngle(
                                                  Vec3(0, 1, 0), std::numbers::pi / 2)));
     expectSound(*bored, *cross, 20.0, "cross-bored");
+}
+
+// A pattern of finely faceted cylinders, each overlapping the one before:
+// each union cut every face of the part along the planes of the next
+// cylinder, however far off, and eight of 4,096 facets took most of two
+// minutes. A face clear of every face of the other body is kept or left out
+// whole now, by where one point of it lies. Each step joins soundly, and
+// the last, three ways, conserves volume.
+TEST(BooleanRobustnessTest, APatternOfOverlappingCylindersJoinsSoundly) {
+    constexpr int kFacets = 512;
+    constexpr int kCount = 6;
+    const auto cylinder = PrimitiveFactory::makeCylinder(5.0, 10.0, kFacets);
+    std::unique_ptr<hz::topo::Solid> part = moved(*cylinder, Mat4::translation(Vec3()));
+    for (int i = 1; i < kCount; ++i) {
+        const auto next = moved(*cylinder, Mat4::translation(Vec3(3.0 * i, 1.0 * i, 0.5 * i)));
+        if (i == kCount - 1) expectSound(*part, *next, 30.0, "the last of the pattern");
+        std::string why;
+        auto joined =
+            BooleanOp::execute(*part, *next, BooleanType::Union, &why, NamingScheme::Stable);
+        ASSERT_NE(joined, nullptr) << "instance " << i << ": " << why;
+        EXPECT_TRUE(joined->isValid()) << joined->validationReport();
+        EXPECT_GT(volumeOf(*joined), volumeOf(*part));
+        part = std::move(joined);
+    }
+}
+
+// Pieces clear of the other body, kept or left out whole: a box inside
+// another touches none of its faces, and a box in the notch of an L lies
+// in its bounds but outside it. Each combines three ways, conserving volume.
+TEST(BooleanRobustnessTest, BodiesNearNoFaceOfEachOtherCombineSoundly) {
+    const auto outer = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto inner = moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(4, 4, 4)));
+    expectSound(*outer, *inner, 10.0, "a box inside a box");
+    std::string why;
+    const auto joined =
+        BooleanOp::execute(*outer, *inner, BooleanType::Union, &why, NamingScheme::Stable);
+    ASSERT_NE(joined, nullptr) << why;
+    EXPECT_NEAR(volumeOf(*joined), 1000.0, 1e-9) << "the inner box is inside: nothing added";
+    const auto common =
+        BooleanOp::execute(*outer, *inner, BooleanType::Intersect, &why, NamingScheme::Stable);
+    ASSERT_NE(common, nullptr) << why;
+    EXPECT_NEAR(volumeOf(*common), 8.0, 1e-9);
+
+    // An L: two boxes joined, and a third in its notch, within its bounds.
+    const auto foot = PrimitiveFactory::makeBox(10, 3, 3);
+    const auto leg = PrimitiveFactory::makeBox(3, 10, 3);
+    const auto ell =
+        BooleanOp::execute(*foot, *leg, BooleanType::Union, &why, NamingScheme::Stable);
+    ASSERT_NE(ell, nullptr) << why;
+    const auto notch =
+        moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(6, 6, 0.5)));
+    expectSound(*ell, *notch, 10.0, "a box in the notch of an L");
+}
+
+// Bodies too finely faceted to combine in time are refused, saying why,
+// where the cut ran on for an hour or until memory ran out; and an
+// interference check that cannot finish reports the pair, to be looked at,
+// rather than passing it as clear. (Here, under limits far below the
+// defaults, a small cut does.)
+TEST(BooleanRobustnessTest, ACutTooLargeToMakeIsRefusedWithAReason) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 256);
+    const auto drill =
+        moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, 256), Mat4::translation(Vec3(1, 0, -10)));
+    {
+        const hz::model::BooleanWorkLimits limits(20'000, 100);
+        std::string why;
+        const auto result =
+            BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+        EXPECT_EQ(result, nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+        EXPECT_TRUE(hz::model::InterferenceChecker::solidsInterfere(*rod, *drill));
+    }
+    std::string why;
+    const auto result =
+        BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+    ASSERT_NE(result, nullptr) << "the limits are lifted with their scope: " << why;
+    EXPECT_TRUE(result->isValid());
 }

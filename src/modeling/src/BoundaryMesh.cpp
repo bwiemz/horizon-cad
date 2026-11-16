@@ -252,19 +252,20 @@ std::vector<Vec3> BoundaryMesh::keyholePolygon(const std::vector<Vec3>& outer,
     return poly;
 }
 
-std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vector<Vec3>& points) {
-    std::vector<std::array<Vec3, 3>> tris;
+std::vector<std::array<size_t, 3>> BoundaryMesh::triangulatePolygonCorners(
+    const std::vector<Vec3>& points) {
+    std::vector<std::array<size_t, 3>> tris;
     const size_t n = points.size();
     if (n < 3) return tris;
     if (n == 3) {
-        tris.push_back({points[0], points[1], points[2]});
+        tris.push_back({0, 1, 2});
         return tris;
     }
 
     Basis2D basis = planeBasis(points);
     if (!basis.valid) {
         // Degenerate normal — emit a fan and let downstream drop zero-area triangles.
-        for (size_t i = 1; i + 1 < n; ++i) tris.push_back({points[0], points[i], points[i + 1]});
+        for (size_t i = 1; i + 1 < n; ++i) tris.push_back({0, i, i + 1});
         return tris;
     }
 
@@ -299,9 +300,9 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
     auto emit = [&](size_t a, size_t b, size_t c) {
         // Preserve the caller's original winding.
         if (reversed) {
-            tris.push_back({points[c], points[b], points[a]});
+            tris.push_back({c, b, a});
         } else {
-            tris.push_back({points[a], points[b], points[c]});
+            tris.push_back({a, b, c});
         }
     };
 
@@ -440,6 +441,14 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
         }
     }
     if (left == 3) emit(order[first], order[nextOf[first]], order[nextOf[nextOf[first]]]);
+    return tris;
+}
+
+std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vector<Vec3>& points) {
+    std::vector<std::array<Vec3, 3>> tris;
+    const auto corners = triangulatePolygonCorners(points);
+    tris.reserve(corners.size());
+    for (const auto& [a, b, c] : corners) tris.push_back({points[a], points[b], points[c]});
     return tris;
 }
 
