@@ -457,6 +457,11 @@ void MainWindow::createMenus() {
 
     editMenu->addSeparator();
 
+    QAction* selectAllAction =
+        editMenu->addAction(tr("Select &All"), m_drafting.get(), &DraftingCommands::onSelectAll);
+    selectAllAction->setShortcut(QKeySequence::SelectAll);
+    selectAllAction->setObjectName(QStringLiteral("action_select_all"));
+
     QAction* duplicateAction =
         editMenu->addAction(tr("&Duplicate"), m_drafting.get(), &DraftingCommands::onDuplicate);
     duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));

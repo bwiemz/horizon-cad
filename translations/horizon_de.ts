@@ -1229,7 +1229,7 @@ Details stehen im Protokoll:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+227"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Bemaßungsstil</translation>
     </message>
@@ -2505,12 +2505,12 @@ um Ihr Teil aufzubauen.</translation>
         <translation>&amp;Bearbeiten</translation>
     </message>
     <message>
-        <location line="+52"/>
+        <location line="+57"/>
         <source>&amp;View</source>
         <translation>&amp;Ansicht</translation>
     </message>
     <message>
-        <location line="-128"/>
+        <location line="-133"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Neue Zeichnung</translation>
     </message>
@@ -2536,7 +2536,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">%1 schließen</translation>
     </message>
     <message>
-        <location line="+789"/>
+        <location line="+794"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2720,14 +2720,14 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">In die Fläche</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-739"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-744"/>
         <location line="+1"/>
-        <location line="+1091"/>
+        <location line="+1096"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-1024"/>
+        <location line="-1029"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -2838,6 +2838,11 @@ um Ihr Teil aufzubauen.</translation>
     </message>
     <message>
         <location line="+6"/>
+        <source>Select &amp;All</source>
+        <translation type="unfinished">&amp;Alles auswählen</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>&amp;Duplicate</source>
         <translation type="unfinished">&amp;Duplizieren</translation>
     </message>

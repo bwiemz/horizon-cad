@@ -31,6 +31,9 @@ public:
     void onCut();
     /// The Paste tool, when something is copied.
     void onPaste();
+    /// Everything in the active drawing on a layer that is shown and
+    /// unlocked, selected: what a box round all of it would take.
+    void onSelectAll();
     void onGroupEntities();
     void onUngroupEntities();
 

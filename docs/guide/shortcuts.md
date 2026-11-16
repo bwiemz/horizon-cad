@@ -13,6 +13,7 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 | **Ctrl+S** | Save |
 | **Ctrl+Z** | Undo |
 | **Ctrl+Y** or **Ctrl+Shift+Z** | Redo (depends on the system) |
+| **Ctrl+A** | Select all (on layers shown and unlocked) |
 | **Ctrl+D** | Duplicate |
 | **Ctrl+G**, **Ctrl+Shift+G** | Group, Ungroup |
 | **Ctrl+,** | Preferences |
