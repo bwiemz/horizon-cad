@@ -141,6 +141,11 @@ static std::string jsonMessage(const std::exception& e) {
         const auto end = what.find("] ");
         if (end != std::string::npos) what.erase(0, end + 2);
     }
+    // A number written as null: JSON has no NaN or infinity, and a value
+    // that was one when it was saved comes back as nothing.
+    if (what.find("must be number, but is null") != std::string::npos) {
+        return "a number in it is missing (it was not a finite number when it was saved)";
+    }
     return what;
 }
 

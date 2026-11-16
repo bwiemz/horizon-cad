@@ -19,6 +19,26 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A DXF export opens in other CAD programs, whatever the drawing holds.**
+  Layer names went out as they were, and DXF refuses some: those with
+  `< > / \ " : ; ? * | = `` or control characters, an empty name, two names
+  that differ only in case, a name over 255 bytes. A file with one is
+  refused by AutoCAD and others. Each is now written under the nearest name
+  DXF takes, apart from the rest, and the export says which. Entities DXF
+  cannot hold (a circle or arc with no radius, a polyline or spline of one
+  point, an ellipse with no width), and any value that is not a finite
+  number, written as "nan" or "inf", which readers take for a damaged file,
+  are left out and listed, where they were written. Saving a drawing as DXF
+  says what it left out; a layer renamed is noted in the status bar. A
+  layer an entity names that the drawing does not hold is written to the
+  file's table, not left to the reader to make up.
+
+- **A number saved as nothing says so.** JSON has no NaN or infinity, so a
+  value that was one when saved is written as null, and the entity holding
+  it was left out of the load with JSON's "type must be number, but is
+  null". The report now says a number in it was not a finite number when it
+  was saved.
+
 - **A part of tens of thousands of facets is modelled in seconds.** A
   profile traced from a scan or a DXF contour, a spline flattened finely, a
   cylinder of 4,096 facets: every step from the sketch to the cut solid took

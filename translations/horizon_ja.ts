@@ -4,7 +4,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/src/ConstraintTool.cpp" line="+295"/>
+        <location filename="../src/ui/src/ConstraintTool.cpp" line="+326"/>
         <source>Distance Constraint</source>
         <translation type="unfinished">距離拘束</translation>
     </message>
@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+212"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
         <source>Dimension Style</source>
         <translation type="unfinished">寸法スタイル</translation>
     </message>
@@ -1876,13 +1876,13 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+170"/>
+        <location line="+198"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 のエクスポート</translation>
     </message>
     <message>
-        <location line="-201"/>
+        <location line="-229"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -1899,23 +1899,23 @@ Details are in the log:
         <location line="+28"/>
         <location line="+52"/>
         <location line="+17"/>
-        <location line="+17"/>
-        <location line="+103"/>
+        <location line="+18"/>
+        <location line="+130"/>
         <source>Could not export</source>
         <translation type="unfinished">エクスポートできませんでした</translation>
     </message>
     <message>
-        <location line="-213"/>
+        <location line="-241"/>
         <location line="+28"/>
         <location line="+51"/>
         <location line="+18"/>
-        <location line="+16"/>
-        <location line="+103"/>
+        <location line="+17"/>
+        <location line="+130"/>
         <source>Exported %1.</source>
         <translation type="unfinished">%1 をエクスポートしました。</translation>
     </message>
     <message>
-        <location line="-207"/>
+        <location line="-235"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">STEP エクスポートはアセンブリのコンポーネントを書き出しますが、このアセンブリの部品を 1 つも読み込めません</translation>
     </message>
@@ -1931,11 +1931,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+3"/>
+        <location line="+79"/>
         <source>Left out: %1</source>
         <translation type="unfinished">除外: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="+8"/>
+        <location line="-71"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n 個の曲面は、曲面としてではなくファセットとして書き出されました。</numerusform>
@@ -1996,7 +1997,36 @@ Details are in the log:
         <translation type="unfinished">DXF ファイル (*.dxf)</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+19"/>
+        <source>Renamed: %1</source>
+        <translation type="unfinished">名前を変更: %1</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+6"/>
+        <source>%n entity(s) could not be written as DXF holds them, and were left out.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個のエンティティは DXF で表せる形で書き出せなかったため、除外しました。</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+4"/>
+        <source>%n layer(s) were written under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>%n 個の画層を DXF で使える名前で書き出しました。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Export DXF</source>
+        <translation type="unfinished">DXF のエクスポート</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The drawing itself is unchanged.</source>
+        <translation type="unfinished">図面そのものは変更されていません。</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>PDF</source>
         <translation type="unfinished">PDF</translation>
     </message>
@@ -2454,7 +2484,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+371"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
@@ -3645,7 +3675,6 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+11"/>
         <location line="+61"/>
         <source>Modify</source>
@@ -3745,8 +3774,15 @@ begin building your part.</source>
         <source>Dimensions</source>
         <translation type="unfinished">寸法</translation>
     </message>
+    <message numerus="yes">
+        <location line="+1411"/>
+        <source>File saved; %n layer(s) under a name DXF allows.</source>
+        <translation type="unfinished">
+            <numerusform>ファイルを保存しました。%n 個の画層は DXF で使える名前にしました。</numerusform>
+        </translation>
+    </message>
     <message>
-        <location line="+2487"/>
+        <location line="+1086"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3790,7 +3826,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2511"/>
+        <location line="-2521"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -4016,7 +4052,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+3"/>
         <location line="+10"/>
         <location line="+986"/>
-        <location line="+478"/>
+        <location line="+488"/>
         <location line="+908"/>
         <location line="+593"/>
         <location line="+13"/>
@@ -4024,7 +4060,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3048"/>
+        <location line="-3058"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -4045,12 +4081,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2696"/>
+        <location line="+2706"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2690"/>
+        <location line="-2700"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -4458,22 +4494,22 @@ Its error is not estimated: it was measured once, not refined.</source>
     <message>
         <location line="+7"/>
         <location line="+12"/>
-        <location line="+34"/>
+        <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">保存できませんでした</translation>
     </message>
     <message>
-        <location line="-27"/>
+        <location line="-37"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">図面を保存しました。</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+22"/>
         <source>File saved.</source>
         <translation type="unfinished">ファイルを保存しました。</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+25"/>
         <source>The reason is unknown; see the log for details.</source>
         <translation type="unfinished">原因は不明です。詳細はログを参照してください。</translation>
     </message>
@@ -5156,7 +5192,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3064"/>
+        <location line="-3074"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
@@ -6325,7 +6361,7 @@ view and edit its properties.</source>
         <translation type="unfinished">表示されている図面またはモデル。メニュー、リボン、キーボード ショートカットから操作します。</translation>
     </message>
     <message>
-        <location line="+446"/>
+        <location line="+448"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">グラフィックス ドライバーが提供するのは OpenGL %1.%2 です。Horizon CAD には 3.3 が必要です。</translation>
     </message>
