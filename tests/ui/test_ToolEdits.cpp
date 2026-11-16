@@ -807,3 +807,36 @@ TEST(ToolEditsTest, PurgeUnusedTakesOutEmptyLayers) {
     EXPECT_EQ(doc->layerManager().layerNames().size(), 2u) << "nothing more to purge";
     EXPECT_FALSE(doc->undoStack().canRedo());
 }
+
+// Edit ▸ Delete Duplicates takes out each copy, as one step, keeping the
+// first; with a selection, only among what is selected.
+TEST(ToolEditsTest, DeleteDuplicatesKeepsTheFirstOfEach) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& drawing = w.activeDocument()->draftDocument();
+    auto first = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    auto again = std::make_shared<hz::draft::DraftLine>(Vec2(10, 0), Vec2(0, 0));
+    auto circle = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0);
+    auto circleAgain = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0);
+    for (const std::shared_ptr<hz::draft::DraftEntity>& e :
+         std::vector<std::shared_ptr<hz::draft::DraftEntity>>{first, again, circle, circleAgain}) {
+        drawing.addEntity(e);
+    }
+
+    // Only the circles selected: only their copy goes.
+    auto& sel = drive.viewport().selectionManager();
+    sel.select(circle->id());
+    sel.select(circleAgain->id());
+    trigger(w, "action_delete_duplicates");
+    EXPECT_EQ(drawing.entities().size(), 3u);
+    EXPECT_EQ(drawing.findEntity(circleAgain->id()), nullptr);
+
+    // Nothing selected: the whole drawing.
+    sel.clearSelection();
+    trigger(w, "action_delete_duplicates");
+    EXPECT_EQ(drawing.entities().size(), 2u);
+    EXPECT_NE(drawing.findEntity(first->id()), nullptr) << "the first kept";
+    EXPECT_EQ(drawing.findEntity(again->id()), nullptr);
+    trigger(w, "action_undo");
+    EXPECT_EQ(drawing.entities().size(), 3u) << "one step undone whole";
+}

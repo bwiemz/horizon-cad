@@ -11,13 +11,17 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/Duplicates.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
@@ -134,6 +138,53 @@ void DraftingCommands::onPurge() {
     m_host.refreshPanels();
     m_host.showStatus(tr("Purged %n unused layer(s)", nullptr, layers) + QStringLiteral(", ") +
                           tr("%n unused block(s).", nullptr, blocks),
+                      8000);
+}
+
+void DraftingCommands::onDeleteDuplicates() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    auto& drawing = document->activeDrawing();
+    const auto& layers = document->layerManager();
+    const auto& sel = m_host.viewport().selectionManager();
+    const bool all = sel.empty();
+    std::vector<std::shared_ptr<draft::DraftEntity>> among;
+    math::BoundingBox extent;
+    for (const auto& entity : drawing.entities()) {
+        if (!all && !sel.isSelected(entity->id())) continue;
+        const auto* layer = layers.getLayer(entity->layer());
+        if (!layer || !layer->visible || layer->locked) continue;
+        among.push_back(entity);
+        const auto box = entity->boundingBox();
+        if (box.isValid()) extent.expand(box);
+    }
+    // To within a billionth of what is compared: copies made as copies are
+    // the same to the last digit, and a drawing's own rounding is far less.
+    const double size = extent.isValid() ? (extent.max() - extent.min()).length() : 1.0;
+    const std::vector<uint64_t> copies =
+        draft::duplicateEntities(among, 1e-9 * std::max(size, 1e-3));
+    if (copies.empty()) {
+        m_host.showStatus(
+            all ? tr("No duplicates in the drawing.") : tr("No duplicates in the selection."),
+            5000);
+        return;
+    }
+    // Their constraints with them, as Delete takes them.
+    auto step = std::make_unique<doc::CompositeCommand>("Delete Duplicates");
+    auto& constraints = document->activeConstraints();
+    std::set<uint64_t> removedConstraints;
+    for (const uint64_t id : copies) {
+        for (const auto* constraint : constraints.constraintsForEntity(id)) {
+            if (removedConstraints.insert(constraint->id()).second) {
+                step->addCommand(
+                    std::make_unique<doc::RemoveConstraintCommand>(constraints, constraint->id()));
+            }
+        }
+    }
+    step->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, copies));
+    document->undoStack().push(std::move(step));
+    selectOnly({});
+    m_host.showStatus(tr("Deleted %n duplicate(s).", nullptr, static_cast<int>(copies.size())),
                       8000);
 }
 

@@ -1229,7 +1229,7 @@ Les détails figurent dans le journal :
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+128"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+132"/>
         <source>Nothing to purge: every layer and block is in use.</source>
         <translation type="unfinished">Rien à purger : tous les calques et blocs sont utilisés.</translation>
     </message>
@@ -1247,6 +1247,24 @@ Les détails figurent dans le journal :
         <translation type="unfinished">
             <numerusform>%n bloc inutilisé.</numerusform>
             <numerusform>%n blocs inutilisés.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>No duplicates in the drawing.</source>
+        <translation type="unfinished">Aucun doublon dans le dessin.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>No duplicates in the selection.</source>
+        <translation type="unfinished">Aucun doublon dans la sélection.</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+19"/>
+        <source>Deleted %n duplicate(s).</source>
+        <translation type="unfinished">
+            <numerusform>%n doublon effacé.</numerusform>
+            <numerusform>%n doublons effacés.</numerusform>
         </translation>
     </message>
     <message>
@@ -2526,12 +2544,12 @@ commencer à construire votre pièce.</translation>
         <translation>&amp;Édition</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+65"/>
         <source>&amp;View</source>
         <translation>&amp;Affichage</translation>
     </message>
     <message>
-        <location line="-137"/>
+        <location line="-141"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Nouveau dessin</translation>
     </message>
@@ -2557,7 +2575,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+801"/>
+        <location line="+805"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2741,14 +2759,14 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-751"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-755"/>
         <location line="+1"/>
-        <location line="+1104"/>
+        <location line="+1108"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1037"/>
+        <location line="-1041"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -2898,7 +2916,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">&amp;Purger les inutilisés</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+3"/>
+        <source>D&amp;elete Duplicates</source>
+        <translation type="unfinished">&amp;Effacer les doublons</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Document &amp;Units...</source>
         <translation type="unfinished">&amp;Unités du document...</translation>
     </message>

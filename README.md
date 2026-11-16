@@ -54,6 +54,7 @@ A drafting workspace of its own (`.hcad`, and DXF), and the tools sketches are d
 - Select with **window/crossing box selection** (left-to-right = enclosed only, right-to-left = overlapping), click, Shift multi-select, and Select All (Ctrl+A)
 - **Entity grouping** (Ctrl+G / Ctrl+Shift+G) — lightweight selection groups without block overhead
 - Move, Duplicate, Offset, Trim, Fillet, Chamfer, Break, Extend, Stretch, Mirror, Rotate, Scale, Match Properties
+- Purge Unused (empty layers, blocks nothing inserts) and Delete Duplicates (entities drawn twice)
 - Copy, cut and paste within Horizon CAD (Ctrl+C/X/V; not the system clipboard)
 - Rectangular and Polar array operations
 - Polyline editing (add/remove vertices, toggle closed, join polylines)

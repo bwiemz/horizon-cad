@@ -37,6 +37,10 @@ public:
     /// The layers nothing is on and the blocks nothing inserts, taken out as
     /// one step (PurgeCommand), and said in the status bar.
     void onPurge();
+    /// Entities that repeat one before them (draft::duplicateEntities),
+    /// taken out as one step: of the selection, or of the whole drawing
+    /// when nothing is selected, on layers shown and unlocked.
+    void onDeleteDuplicates();
     void onGroupEntities();
     void onUngroupEntities();
 
