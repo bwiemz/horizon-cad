@@ -118,6 +118,25 @@ void DraftingCommands::onSelectAll() {
     selectOnly(ids);
 }
 
+void DraftingCommands::onPurge() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    auto purge =
+        std::make_unique<doc::PurgeCommand>(document->layerManager(), document->drawings());
+    purge->plan();
+    if (purge->purgesNothing()) {
+        m_host.showStatus(tr("Nothing to purge: every layer and block is in use."), 5000);
+        return;
+    }
+    const auto layers = static_cast<int>(purge->layersPurged());
+    const auto blocks = static_cast<int>(purge->blocksPurged());
+    document->undoStack().push(std::move(purge));
+    m_host.refreshPanels();
+    m_host.showStatus(tr("Purged %n unused layer(s)", nullptr, layers) + QStringLiteral(", ") +
+                          tr("%n unused block(s).", nullptr, blocks),
+                      8000);
+}
+
 void DraftingCommands::onGroupEntities() {
     if (m_host.viewport().selectionManager().selectedIds().size() < 2) return;
     const std::vector<uint64_t> ids = editableSelection();

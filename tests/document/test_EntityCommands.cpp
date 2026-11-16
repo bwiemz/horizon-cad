@@ -11,6 +11,7 @@
 #include "horizon/document/Commands.h"
 #include "horizon/document/ConstraintSolveHelper.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftArc.h"
@@ -680,4 +681,78 @@ TEST(EntityCommandsTest, ARectangleInATurnedBlockExplodesAsDrawn) {
     for (size_t i = 0; i < 4; ++i) {
         EXPECT_LT(poly->points()[i].distanceTo(placed.transformPoint(corners[i])), 1e-9) << i;
     }
+}
+
+// Purge takes out the layers nothing is on and the blocks nothing inserts,
+// in one step: a block only an unused block inserts goes with it, and so
+// does a layer only an unused block's entities are on. "0", the current
+// layer, a layer a sketch's entity or a kept block's entity is on, and a
+// block inserted only from within another inserted block, stay.
+TEST(EntityCommandsTest, PurgeTakesWhatNothingUses) {
+    hz::doc::Document doc;
+    auto& layers = doc.layerManager();
+    for (const char* name :
+         {"Empty", "Current", "InSketch", "InKeptBlock", "InUnusedBlock", "OnTop"}) {
+        hz::draft::LayerProperties props;
+        props.name = name;
+        layers.addLayer(props);
+    }
+    layers.setCurrentLayer("Current");
+    auto& drawing = doc.draftDocument();
+    auto top = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    top->setLayer("OnTop");
+    drawing.addEntity(top);
+
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    auto inSketch = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(0, 1));
+    inSketch->setLayer("InSketch");
+    sketch->drawing().addEntity(inSketch);
+    doc.addSketch(sketch);
+
+    // Inner is inserted only by Outer, which the drawing inserts: both kept.
+    // Orphan inserts Lost; neither is inserted from the drawing: both go.
+    const auto block = [](const char* name, std::shared_ptr<hz::draft::DraftEntity> entity) {
+        auto def = std::make_shared<hz::draft::BlockDefinition>();
+        def->name = name;
+        def->entities.push_back(std::move(entity));
+        return def;
+    };
+    auto keptLine = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(2, 2));
+    keptLine->setLayer("InKeptBlock");
+    auto inner = block("Inner", keptLine);
+    auto outer = block("Outer", std::make_shared<hz::draft::DraftBlockRef>(inner, Vec2(0, 0)));
+    auto lostLine = std::make_shared<DraftLine>(Vec2(0, 0), Vec2(3, 3));
+    lostLine->setLayer("InUnusedBlock");
+    auto lost = block("Lost", lostLine);
+    auto orphan = block("Orphan", std::make_shared<hz::draft::DraftBlockRef>(lost, Vec2(0, 0)));
+    for (const auto& def : {inner, outer, lost, orphan}) drawing.blockTable().addBlock(def);
+    drawing.addEntity(std::make_shared<hz::draft::DraftBlockRef>(outer, Vec2(5, 5)));
+
+    hz::doc::PurgeCommand purge(layers, doc.drawings());
+    purge.plan();
+    EXPECT_EQ(purge.layersPurged(), 2u) << "Empty and InUnusedBlock";
+    EXPECT_EQ(purge.blocksPurged(), 2u) << "Orphan and Lost";
+    purge.execute();
+    for (const char* kept : {"0", "Current", "InSketch", "InKeptBlock", "OnTop"}) {
+        EXPECT_NE(layers.getLayer(kept), nullptr) << kept;
+    }
+    EXPECT_EQ(layers.getLayer("Empty"), nullptr);
+    EXPECT_EQ(layers.getLayer("InUnusedBlock"), nullptr);
+    EXPECT_NE(drawing.blockTable().findBlock("Outer"), nullptr);
+    EXPECT_NE(drawing.blockTable().findBlock("Inner"), nullptr);
+    EXPECT_EQ(drawing.blockTable().findBlock("Orphan"), nullptr);
+    EXPECT_EQ(drawing.blockTable().findBlock("Lost"), nullptr);
+
+    purge.undo();
+    EXPECT_NE(layers.getLayer("Empty"), nullptr);
+    EXPECT_NE(layers.getLayer("InUnusedBlock"), nullptr);
+    EXPECT_EQ(drawing.blockTable().findBlock("Orphan"), orphan);
+    EXPECT_EQ(drawing.blockTable().findBlock("Lost"), lost);
+    purge.execute();  // redo: the same
+    EXPECT_EQ(layers.getLayer("Empty"), nullptr);
+    EXPECT_EQ(drawing.blockTable().findBlock("Lost"), nullptr);
+
+    hz::doc::PurgeCommand again(layers, doc.drawings());
+    again.plan();
+    EXPECT_TRUE(again.purgesNothing()) << "a second purge finds nothing";
 }

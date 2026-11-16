@@ -127,6 +127,12 @@ another layer moves its geometry to "0".
 An entity's colour, width and line type are ByLayer (taken from its layer)
 until you set them in Properties.
 
+**Edit ▸ Purge Unused** clears out what a drawing carries but does not use,
+as AutoCAD's PURGE does: every layer nothing is on and every block nothing
+inserts, in one step you can undo. Layer "0" and the current layer stay, as
+does a layer or block that only a sketch or a kept block uses. A DXF from
+elsewhere often brings thousands of empty layers; this takes them out.
+
 ## Blocks
 
 - **Block ▸ Create Block...** turns the selection into a named block, with a
