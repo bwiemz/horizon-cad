@@ -781,3 +781,29 @@ TEST(ToolEditsTest, MatchPropertiesGivesOnesStyleToOthers) {
     EXPECT_EQ(source2->color(), 0xFFFF0000u) << "the selected circle was the first";
     EXPECT_EQ(source2->layer(), "Locked");
 }
+
+// Edit ▸ Purge Unused takes out the layers nothing is on, as one step, and
+// says so; with nothing to take, it changes nothing and says that.
+TEST(ToolEditsTest, PurgeUnusedTakesOutEmptyLayers) {
+    MainWindow w;
+    auto* doc = w.activeDocument();
+    for (int i = 0; i < 50; ++i) {
+        hz::draft::LayerProperties props;
+        props.name = "Imported " + std::to_string(i);
+        doc->layerManager().addLayer(props);
+    }
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    line->setLayer("Imported 7");
+    doc->draftDocument().addEntity(line);
+    const size_t before = doc->layerManager().layerNames().size();
+
+    trigger(w, "action_purge");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), 2u) << "0 and the one in use";
+    EXPECT_NE(doc->layerManager().getLayer("Imported 7"), nullptr);
+    trigger(w, "action_undo");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), before) << "one step undone whole";
+    trigger(w, "action_redo");
+    trigger(w, "action_purge");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), 2u) << "nothing more to purge";
+    EXPECT_FALSE(doc->undoStack().canRedo());
+}

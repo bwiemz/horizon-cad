@@ -19,6 +19,17 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Purge Unused.** Edit ▸ Purge Unused takes out every layer nothing is on
+  and every block nothing inserts, as AutoCAD's PURGE does, in one step to
+  undo: a DXF from elsewhere often carries thousands of empty layers. A
+  block only an unused block inserts goes with it, and so does a layer only
+  such a block's entities are on; layer "0" and the current layer stay.
+
+- **The view's pointer far off the view.** The orbit and pan measured the
+  pointer's move in whole pixels, which overflowed for a point far out of
+  the view (found by the tool-sequence walk under UBSan, 80 seeds of 1,000
+  steps); they measure it in fractions of a pixel now.
+
 - **Patterns and mirrors of finely faceted bodies.** Each instance of a
   pattern was joined by cutting every face of the part along the planes of
   the next instance, however far off: a pattern of eight cylinders of 4,096

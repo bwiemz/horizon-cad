@@ -34,6 +34,9 @@ public:
     /// Everything in the active drawing on a layer that is shown and
     /// unlocked, selected: what a box round all of it would take.
     void onSelectAll();
+    /// The layers nothing is on and the blocks nothing inserts, taken out as
+    /// one step (PurgeCommand), and said in the status bar.
+    void onPurge();
     void onGroupEntities();
     void onUngroupEntities();
 

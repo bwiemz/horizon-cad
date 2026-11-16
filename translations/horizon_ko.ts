@@ -10,7 +10,7 @@
     </message>
     <message>
         <location line="+3"/>
-        <location filename="../src/ui/src/SelectTool.cpp" line="+406"/>
+        <location filename="../src/ui/src/SelectTool.cpp" line="+409"/>
         <source>Distance:</source>
         <translation type="unfinished">거리:</translation>
     </message>
@@ -1227,7 +1227,26 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+227"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+128"/>
+        <source>Nothing to purge: every layer and block is in use.</source>
+        <translation type="unfinished">정리할 항목이 없습니다: 모든 레이어와 블록이 사용 중입니다.</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+7"/>
+        <source>Purged %n unused layer(s)</source>
+        <translation type="unfinished">
+            <numerusform>사용하지 않는 레이어 %n개 정리</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+1"/>
+        <source>%n unused block(s).</source>
+        <translation type="unfinished">
+            <numerusform>사용하지 않는 블록 %n개.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+110"/>
         <source>Dimension Style</source>
         <translation type="unfinished">치수 스타일</translation>
     </message>
@@ -2360,7 +2379,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::LayerPanel</name>
     <message>
-        <location filename="../src/ui/src/LayerPanel.cpp" line="+25"/>
+        <location filename="../src/ui/src/LayerPanel.cpp" line="+28"/>
         <location line="+10"/>
         <source>Layers</source>
         <translation type="unfinished">레이어</translation>
@@ -2416,7 +2435,7 @@ begin building your part.</source>
         <translation type="unfinished">색상...</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+70"/>
         <source>New Layer</source>
         <translation type="unfinished">새 레이어</translation>
     </message>
@@ -2494,12 +2513,12 @@ begin building your part.</source>
         <translation>편집(&amp;E)</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+61"/>
         <source>&amp;View</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-133"/>
+        <location line="-137"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
@@ -2525,7 +2544,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+796"/>
+        <location line="+801"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2728,14 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-751"/>
         <location line="+1"/>
-        <location line="+1099"/>
+        <location line="+1104"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1032"/>
+        <location line="-1037"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -2859,6 +2878,11 @@ begin building your part.</source>
         <location line="+4"/>
         <source>U&amp;ngroup</source>
         <translation type="unfinished">그룹 해제(&amp;N)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>P&amp;urge Unused</source>
+        <translation type="unfinished">사용하지 않는 항목 정리(&amp;U)</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -3626,12 +3650,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+205"/>
+        <location line="+206"/>
         <source>Select</source>
         <translation type="unfinished">선택</translation>
     </message>
     <message>
-        <location line="-202"/>
+        <location line="-203"/>
         <source>Fit All</source>
         <translation type="unfinished">전체 맞춤</translation>
     </message>
@@ -3710,13 +3734,13 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+12"/>
+        <location line="+13"/>
         <location line="+61"/>
         <source>Modify</source>
         <translation type="unfinished">수정</translation>
     </message>
     <message>
-        <location line="-82"/>
+        <location line="-83"/>
         <source>Transform</source>
         <translation type="unfinished">변환</translation>
     </message>
@@ -3737,12 +3761,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+87"/>
+        <location line="+88"/>
         <source>Mirror</source>
         <translation type="unfinished">대칭</translation>
     </message>
     <message>
-        <location line="-83"/>
+        <location line="-84"/>
         <source>Trim</source>
         <translation type="unfinished">자르기</translation>
     </message>
@@ -3758,18 +3782,18 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+69"/>
+        <location line="+70"/>
         <source>Fillet</source>
         <translation type="unfinished">필렛</translation>
     </message>
     <message>
-        <location line="-68"/>
-        <location line="+69"/>
+        <location line="-69"/>
+        <location line="+70"/>
         <source>Chamfer</source>
         <translation type="unfinished">모따기</translation>
     </message>
     <message>
-        <location line="-68"/>
+        <location line="-69"/>
         <source>Break</source>
         <translation type="unfinished">끊기</translation>
     </message>
@@ -3789,7 +3813,7 @@ begin building your part.</source>
         <translation type="unfinished">특성 일치</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Array</source>
         <translation type="unfinished">배열</translation>
     </message>
@@ -6013,7 +6037,7 @@ Ideal (on the curved surfaces the facets approximate):
 <context>
     <name>hz::ui::PropertyPanel</name>
     <message>
-        <location filename="../src/ui/src/PropertyPanel.cpp" line="+50"/>
+        <location filename="../src/ui/src/PropertyPanel.cpp" line="+51"/>
         <source>Properties</source>
         <translation type="unfinished">속성</translation>
     </message>
@@ -6296,7 +6320,7 @@ view and edit its properties.</source>
         <translation type="unfinished">활성 레이어:  %1</translation>
     </message>
     <message>
-        <location line="+101"/>
+        <location line="+111"/>
         <source>%1 entities</source>
         <translation type="unfinished">개체 %1개</translation>
     </message>

@@ -1,5 +1,6 @@
 #include "horizon/document/Commands.h"
 
+#include <string>
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
@@ -605,6 +606,73 @@ void RemoveLayerCommand::undo() {
 
 std::string RemoveLayerCommand::description() const {
     return "Remove Layer";
+}
+
+// --- PurgeCommand ---
+
+PurgeCommand::PurgeCommand(draft::LayerManager& layers, std::vector<draft::DraftDocument*> drawings)
+    : m_layerMgr(layers), m_drawings(std::move(drawings)) {}
+
+void PurgeCommand::plan() {
+    if (m_planned) return;
+    m_planned = true;
+    std::unordered_set<std::string> layersInUse;
+    for (draft::DraftDocument* drawing : m_drawings) {
+        // The blocks the drawing inserts, and those they insert in turn.
+        const auto& table = drawing->blockTable();
+        std::unordered_set<std::string> inserted;
+        std::vector<std::string> pending;
+        const auto insertsFrom = [&](const std::vector<std::shared_ptr<draft::DraftEntity>>& in) {
+            for (const auto& entity : in) {
+                const auto* ref = dynamic_cast<const draft::DraftBlockRef*>(entity.get());
+                if (ref != nullptr && ref->definition() &&
+                    inserted.insert(ref->blockName()).second) {
+                    pending.push_back(ref->blockName());
+                }
+            }
+        };
+        insertsFrom(drawing->entities());
+        while (!pending.empty()) {
+            const std::string name = pending.back();
+            pending.pop_back();
+            if (const auto block = table.findBlock(name)) insertsFrom(block->entities);
+        }
+        for (const auto& entity : drawing->entities()) {
+            if (entity) layersInUse.insert(entity->layer());
+        }
+        for (const std::string& name : table.blockNames()) {
+            const auto block = table.findBlock(name);
+            if (!block) continue;
+            if (inserted.count(name) == 0) {
+                m_blocks.emplace_back(drawing, block);
+                continue;
+            }
+            for (const auto& entity : block->entities) {
+                if (entity) layersInUse.insert(entity->layer());
+            }
+        }
+    }
+    for (const std::string& name : m_layerMgr.layerNames()) {
+        if (name == "0" || name == m_layerMgr.currentLayer() || layersInUse.count(name) != 0) {
+            continue;
+        }
+        if (const auto* props = m_layerMgr.getLayer(name)) m_layers.push_back(*props);
+    }
+}
+
+void PurgeCommand::execute() {
+    if (!m_planned) plan();
+    for (const auto& [drawing, block] : m_blocks) drawing->blockTable().removeBlock(block->name);
+    for (const auto& props : m_layers) m_layerMgr.removeLayer(props.name);
+}
+
+void PurgeCommand::undo() {
+    for (const auto& props : m_layers) m_layerMgr.addLayer(props);
+    for (const auto& [drawing, block] : m_blocks) drawing->blockTable().addBlock(block);
+}
+
+std::string PurgeCommand::description() const {
+    return "Purge";
 }
 
 // --- ModifyLayerCommand ---

@@ -492,6 +492,10 @@ void MainWindow::createMenus() {
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
 
     editMenu->addSeparator();
+    editMenu->addAction(tr("P&urge Unused"), m_drafting.get(), &DraftingCommands::onPurge)
+        ->setObjectName(QStringLiteral("action_purge"));
+
+    editMenu->addSeparator();
     editMenu->addAction(tr("Document &Units..."), this, &MainWindow::onDocumentUnits)
         ->setObjectName(QStringLiteral("action_document_units"));
     editMenu->addAction(tr("&Variables..."), this, &MainWindow::onVariables)
