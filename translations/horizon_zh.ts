@@ -1227,7 +1227,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
         <source>Dimension Style</source>
         <translation type="unfinished">尺寸样式</translation>
     </message>
@@ -1324,14 +1324,14 @@ Details are in the log:
         <translation type="unfinished">未定义任何块。请先创建块。</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+62"/>
         <source>Explode</source>
         <translation type="unfinished">分解</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Select one or more block references to explode.</source>
-        <translation type="unfinished">请选择一个或多个要分解的块参照。</translation>
+        <source>Select block references, polylines or rectangles to explode.</source>
+        <translation type="unfinished">请选择要分解的块参照、多段线或矩形。</translation>
     </message>
 </context>
 <context>

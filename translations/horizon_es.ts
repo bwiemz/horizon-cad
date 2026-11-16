@@ -1229,7 +1229,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+214"/>
         <source>Dimension Style</source>
         <translation type="unfinished">Estilo de cota</translation>
     </message>
@@ -1326,14 +1326,14 @@ Los detalles están en el registro:
         <translation type="unfinished">No hay bloques definidos. Cree primero un bloque.</translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+62"/>
         <source>Explode</source>
         <translation type="unfinished">Descomponer</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Select one or more block references to explode.</source>
-        <translation type="unfinished">Seleccione una o más referencias a bloque para descomponer.</translation>
+        <source>Select block references, polylines or rectangles to explode.</source>
+        <translation type="unfinished">Seleccione referencias a bloques, polilíneas o rectángulos para descomponer.</translation>
     </message>
 </context>
 <context>

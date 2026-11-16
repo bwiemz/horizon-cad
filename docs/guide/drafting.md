@@ -131,4 +131,4 @@ until you set them in Properties.
   base point, and puts one copy of it where the geometry was.
 - **Block ▸ Insert Block...** places copies of a block, at a rotation and
   scale, with each click.
-- **Block ▸ Explode** turns selected blocks back into geometry.
+- **Block ▸ Explode** turns selected blocks back into geometry, and selected polylines and rectangles into the lines of their sides.

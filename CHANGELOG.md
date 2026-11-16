@@ -19,6 +19,11 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Explode takes a polyline or a rectangle apart.** Block ▸ Explode took
+  apart only block references; it now also turns selected polylines and
+  rectangles into the lines of their sides, as AutoCAD's EXPLODE does, each
+  with the outline's layer, colour and line style, in one step to undo.
+
 - **A DXF entity with a value that is not a number is reported, not
   moved.** A coordinate, radius or scale written as "nan", "inf" or a word
   was read as 0, and the entity drawn where it never was (a line from the
