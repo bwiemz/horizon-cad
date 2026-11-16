@@ -2484,7 +2484,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+371"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
@@ -2525,7 +2525,7 @@ begin building your part.</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+767"/>
+        <location line="+770"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2709,14 +2709,14 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-717"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-720"/>
         <location line="+1"/>
-        <location line="+1068"/>
+        <location line="+1072"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1001"/>
+        <location line="-1005"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -3222,6 +3222,11 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
+        <source>Pol&amp;ygon</source>
+        <translation type="unfinished">正多边形(&amp;Y)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>&amp;Polyline</source>
         <translation type="unfinished">多段线(&amp;P)</translation>
     </message>
@@ -3596,24 +3601,24 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+202"/>
+        <location line="+204"/>
         <source>Select</source>
         <translation type="unfinished">选择</translation>
     </message>
     <message>
-        <location line="-199"/>
+        <location line="-201"/>
         <source>Fit All</source>
         <translation type="unfinished">整屏显示</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+7"/>
+        <location line="+9"/>
         <location line="+6"/>
         <source>Draw</source>
         <translation type="unfinished">绘图</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-15"/>
         <source>Basic</source>
         <translation type="unfinished">基本</translation>
     </message>
@@ -3626,6 +3631,11 @@ begin building your part.</source>
         <location line="+1"/>
         <source>Rectangle</source>
         <translation type="unfinished">矩形</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Polygon</source>
+        <translation type="unfinished">正多边形</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -3775,14 +3785,14 @@ begin building your part.</source>
         <translation type="unfinished">尺寸</translation>
     </message>
     <message numerus="yes">
-        <location line="+1411"/>
+        <location line="+1412"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>文件已保存；%n 个图层使用了 DXF 允许的名称。</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+1086"/>
+        <location line="+1092"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3826,7 +3836,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2521"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -4051,16 +4061,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+986"/>
+        <location line="+987"/>
         <location line="+488"/>
-        <location line="+908"/>
+        <location line="+914"/>
         <location line="+593"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3058"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -4081,17 +4091,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2706"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2700"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+311"/>
+        <location line="+312"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -4664,7 +4674,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot; 已被其他程序更改，并已重新读取</translation>
     </message>
     <message>
-        <location line="+364"/>
+        <location line="+370"/>
         <source>X: %1  Y: %2</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
@@ -5192,7 +5202,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3074"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

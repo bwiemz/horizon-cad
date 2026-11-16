@@ -9,7 +9,7 @@ edited (see [Sketches and constraints](sketches.md)).
 
 Every drawing tool takes points by clicking. You can also type a point and
 press **Enter**; it counts as a click there. Tools that take typed points:
-Line, Circle, Arc, Rectangle, Polyline, Spline, Ellipse, and the linear
+Line, Circle, Arc, Rectangle, Polygon, Polyline, Spline, Ellipse, and the linear
 dimensions.
 
 | Type | To place the point |
@@ -50,6 +50,7 @@ Nothing on a hidden or locked layer is snapped to, selected or changed.
 | Circle | **C** | Click the centre, then a point on the circle, or type the radius and press **Enter**. |
 | Arc | **A** | Click the centre, then the start (this sets the radius), then the end. The arc runs counter-clockwise. |
 | Rectangle | **R** | Click one corner, then the opposite one (or type `@width,height`). |
+| Polygon | **Shift+P** | A regular polygon. Click the centre, then a corner, which sets its size and how it is turned (or type the distance to a corner). **Up** and **Down** add and take away a side, with **Shift** ten at a time, from 3 to 1,024; the next polygon has as many. It is a closed polyline, which extrudes into a prism: a hexagon for a nut. |
 | Polyline | **P** | Click the vertices; finish with **Enter** or a double-click. **Escape** discards it. |
 | Spline | **S** | Click four or more control points; finish with **Enter** or a double-click. |
 | Ellipse | **E** | Click the centre, the end of the major axis, then a point that sets the minor radius. |

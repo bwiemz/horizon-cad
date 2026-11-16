@@ -113,6 +113,7 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"rectangle", drawRectangle},
         {"polyline", drawPolyline},
         {"ellipse", drawEllipse},
+        {"polygon", drawPolygon},
         {"spline", drawSpline},
         {"text", drawText},
         {"hatch", drawHatch},
@@ -521,6 +522,24 @@ QIcon IconGenerator::drawEllipse(int s) {
     p.setPen(primaryPen(2.0));
     p.setBrush(Qt::NoBrush);
     p.drawEllipse(QPointF(12, 12), 9, 6);
+    drawDot(p, 12, 12, 2.0, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawPolygon(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    p.setPen(primaryPen(2.0));
+    p.setBrush(Qt::NoBrush);
+    // A hexagon, a corner up, its centre marked.
+    QPolygonF hexagon;
+    for (int k = 0; k < 6; ++k) {
+        const double angle = M_PI / 2.0 + k * M_PI / 3.0;
+        hexagon << QPointF(12 + 9 * std::cos(angle), 12 - 9 * std::sin(angle));
+    }
+    p.drawPolygon(hexagon);
     drawDot(p, 12, 12, 2.0, kAccent);
     p.end();
     return QIcon(QPixmap::fromImage(img));

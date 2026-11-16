@@ -19,6 +19,13 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Polygon.** A regular polygon of 3 to 1,024 sides, as AutoCAD's POLYGON
+  and SolidWorks' sketch Polygon draw one (Draw ▸ Polygon, **Shift+P**):
+  the centre, then a corner, which sets its size and how it is turned, each
+  clicked or typed. **Up** and **Down** add and take away a side (with
+  **Shift**, ten); the next polygon has as many. It is one closed polyline,
+  so a hexagon extrudes into a nut.
+
 - **No feature takes a size that is not a finite number.** An extrusion's
   distance, a revolve's angle, a shell's thickness, a fillet's radius and a
   chamfer's distance were held only to be more than nothing, so infinity

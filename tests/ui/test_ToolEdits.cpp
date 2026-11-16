@@ -4,9 +4,12 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QKeyEvent>
 #include <QLabel>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +28,7 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/PolygonTool.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -568,4 +572,69 @@ TEST(ToolEditsTest, ALineWithNoLengthTakesOneFromThePanel) {
     const auto lines = all<hz::draft::DraftLine>(w);
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_TRUE(near(lines[0]->end(), Vec2(8, 3)));
+}
+
+// A regular polygon (Phase 168): Up and Down change how many sides, the
+// centre and a corner place it, and it is one closed polyline, every corner
+// as far from the centre, undone in one step. The count is kept for the
+// next, between 3 and 1,024.
+TEST(ToolEditsTest, APolygonIsDrawnWithTheSidesAsked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_polygon");
+    auto& view = drive.viewport();
+    ASSERT_NE(view.activeTool(), nullptr);
+    ASSERT_EQ(view.activeTool()->name(), "Polygon");
+    drive.key(Qt::Key_Up);
+    drive.key(Qt::Key_Up);  // eight
+    drive.click(Vec2(0, 0));
+    drive.click(Vec2(10, 0));
+    auto polygons = all<hz::draft::DraftPolyline>(w);
+    ASSERT_EQ(polygons.size(), 1u);
+    EXPECT_TRUE(polygons[0]->closed());
+    ASSERT_EQ(polygons[0]->points().size(), 8u);
+    for (const Vec2& corner : polygons[0]->points()) {
+        EXPECT_NEAR(corner.length(), 10.0, 1e-9);
+    }
+    EXPECT_TRUE(near(polygons[0]->points().front(), Vec2(10, 0))) << "a corner where clicked";
+
+    // Shift takes ten at a time, and no fewer than three are left.
+    QKeyEvent shiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
+    QCoreApplication::sendEvent(&view, &shiftDown);
+    QCoreApplication::sendEvent(&view, &shiftDown);
+    drive.click(Vec2(30, 0));
+    drive.click(Vec2(30, 5));
+    polygons = all<hz::draft::DraftPolyline>(w);
+    ASSERT_EQ(polygons.size(), 2u);
+    EXPECT_EQ(polygons[1]->points().size(), 3u);
+
+    // A corner on the centre is no polygon: nothing, and the tool waits.
+    drive.click(Vec2(50, 0));
+    drive.click(Vec2(50, 0));
+    EXPECT_EQ(all<hz::draft::DraftPolyline>(w).size(), 2u);
+    drive.key(Qt::Key_Escape);
+
+    w.activeDocument()->undoStack().undo();
+    EXPECT_EQ(all<hz::draft::DraftPolyline>(w).size(), 1u) << "one step each";
+}
+
+// The polygon's corners, worked out: as many as asked within the limits, on
+// the circle through the corner given, and none for a corner on the centre
+// or one that is not a finite number.
+TEST(ToolEditsTest, APolygonsCornersAreOnItsCircle) {
+    using hz::ui::PolygonTool;
+    const auto hexagon = PolygonTool::corners(Vec2(1, 2), Vec2(4, 6), 6);
+    ASSERT_EQ(hexagon.size(), 6u);
+    for (size_t i = 0; i < hexagon.size(); ++i) {
+        EXPECT_NEAR((hexagon[i] - Vec2(1, 2)).length(), 5.0, 1e-12);
+        const Vec2 side = hexagon[(i + 1) % 6] - hexagon[i];
+        EXPECT_NEAR(side.length(), 5.0, 1e-9) << "a hexagon's side is its radius";
+    }
+    EXPECT_EQ(PolygonTool::corners(Vec2(0, 0), Vec2(1, 0), 2).size(), 3u);
+    EXPECT_EQ(PolygonTool::corners(Vec2(0, 0), Vec2(1, 0), 100'000).size(),
+              static_cast<size_t>(PolygonTool::kMostSides));
+    EXPECT_TRUE(PolygonTool::corners(Vec2(3, 3), Vec2(3, 3), 6).empty());
+    EXPECT_TRUE(
+        PolygonTool::corners(Vec2(0, 0), Vec2(std::numeric_limits<double>::infinity(), 0), 6)
+            .empty());
 }
