@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -210,7 +211,15 @@ TEST(ExportLimitsTest, ManyLayersAndEntitiesComeBackWhole) {
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    EXPECT_LT(seconds, 60.0) << "a generous bound, for an unoptimized build";
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 20.0);
+#else
+    EXPECT_LT(seconds, 120.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#else
+    (void)seconds;
+#endif
 }
 
 // A DXF value that is there and is not a number ("nan", "inf", a word) makes

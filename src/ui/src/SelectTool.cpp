@@ -123,11 +123,14 @@ bool SelectTool::mouseMoveEvent(QMouseEvent* event, const math::Vec2& worldPos) 
     // --- Box selection drag ---
     if (m_leftButtonDown && (event->buttons() & Qt::LeftButton)) {
         QPoint screenPos = event->pos();
-        int dx = screenPos.x() - m_dragStartScreen.x();
-        int dy = screenPos.y() - m_dragStartScreen.y();
-        int dist2 = dx * dx + dy * dy;
+        // In doubles: a point far off the view (a click put far out, a
+        // drag from a corner of a large screen) is tens of thousands of
+        // pixels away, and its square overflowed an int.
+        const double dx = static_cast<double>(screenPos.x()) - m_dragStartScreen.x();
+        const double dy = static_cast<double>(screenPos.y()) - m_dragStartScreen.y();
+        const double dist2 = dx * dx + dy * dy;
 
-        if (!m_draggingBox && dist2 >= kDragThreshold * kDragThreshold) {
+        if (!m_draggingBox && dist2 >= static_cast<double>(kDragThreshold) * kDragThreshold) {
             m_draggingBox = true;
         }
 
