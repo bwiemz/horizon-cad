@@ -205,11 +205,24 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     // convex; references by position were made against the triangulated
     // fragments, and keep them.
     const bool merged = namesFromGeometry(naming);
-    auto fragments =
-        merged
-            ? csgExecute(csgPieces(polysA, true, tol.plane), csgPieces(polysB, false, tol.plane),
-                         type, tol.plane, CsgFragments::Fewest)
-            : csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false), type, tol.plane);
+    std::vector<CsgPolygon> fragments;
+    try {
+        fragments = merged ? csgExecute(csgPieces(polysA, true, tol.plane),
+                                        csgPieces(polysB, false, tol.plane), type, tol.plane,
+                                        CsgFragments::Fewest)
+                           : csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false),
+                                        type, tol.plane);
+    } catch (const CsgTooComplex& e) {
+        // Said, and nothing else changed, where it ran for an hour or until
+        // memory ran out.
+        if (reason) {
+            *reason = std::string(
+                          "the bodies have too many facets to combine where they "
+                          "overlap: ") +
+                      e.what() + ". A coarser chord tolerance makes fewer.";
+        }
+        return nullptr;
+    }
     if (merged && !fragments.empty()) {
         // The CSG works on triangles and leaves every face in pieces, even a
         // face the cut never reached; put each face back together.
@@ -247,6 +260,20 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     // treated as on-plane coincident, so healing must reach that far.
     // sewChecked enforces the checkManifold() contract for this path too.
     return sewn(sewChecked(faces, tol.plane));
+}
+
+BooleanWorkLimits::BooleanWorkLimits(std::size_t work, std::size_t splits) {
+    CsgLimits& limits = csgLimitsOnThisThread();
+    m_savedWork = limits.work;
+    m_savedSplits = limits.splits;
+    if (work != 0) limits.work = work;
+    if (splits != 0) limits.splits = splits;
+}
+
+BooleanWorkLimits::~BooleanWorkLimits() {
+    CsgLimits& limits = csgLimitsOnThisThread();
+    limits.work = m_savedWork;
+    limits.splits = m_savedSplits;
 }
 
 }  // namespace hz::model

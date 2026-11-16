@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "horizon/math/Vec3.h"
@@ -67,9 +69,43 @@ struct CsgPolygon {
 /// clear of the other operand's box is not clipped to it, and what is left
 /// of B is not built into A's tree, which only cut it along A's planes. The
 /// same surface comes back, in fewer pieces. AsTree keeps csg.js's pieces,
-/// which references made by position were made against.
+/// which references made by position were made against. Fewest also keeps
+/// whole, or leaves out whole, every polygon clear of each polygon of the
+/// other operand, and cuts non-convex faces into few convex pieces, not
+/// triangles.
 enum class CsgFragments { AsTree, Fewest };
 
+/// A CSG that would take far more work, or leave far more pieces, than any
+/// part needs: thrown by csgExecute rather than going on for an hour, or
+/// until memory runs out. Two bodies of tens of thousands of facets that
+/// overlap through and through (a pattern of finely faceted cylinders and
+/// its mirror image) cut every facet of each along the planes of thousands
+/// of the other's. The limits are many times what the largest cut in the
+/// tests takes.
+class CsgTooComplex : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+/// How many polygon corners csgExecute may test against a plane, at least:
+/// about fifteen times the most a cut in the tests takes (a prism of 25,000
+/// sides less a box), and a minute or two of work. More for more polygons.
+inline constexpr std::size_t kCsgWorkLimit = 4'000'000'000;
+inline constexpr std::size_t kCsgWorkPerPolygon = 20'000;
+/// How many times it may split a polygon in two, at least: a few gigabytes
+/// of pieces. More for more polygons.
+inline constexpr std::size_t kCsgSplitLimit = 4'000'000;
+inline constexpr std::size_t kCsgSplitsPerPolygon = 20;
+
+/// The limits set on this thread in place of those above (BooleanWorkLimits),
+/// zero where none is.
+struct CsgLimits {
+    std::size_t work = 0;
+    std::size_t splits = 0;
+};
+CsgLimits& csgLimitsOnThisThread();
+
+/// Throws CsgTooComplex beyond the limits above.
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
                                    double planeEps = kCsgPlaneEps,
