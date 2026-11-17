@@ -530,7 +530,10 @@ TEST(BooleanRobustnessTest, ACylinderOfManyFacetsIsBoredQuickly) {
     EXPECT_EQ(result->faces().size(), static_cast<size_t>(2 * kFacets + 4));
 #if HZ_TIME_LIMITS
 #ifdef NDEBUG
-    EXPECT_LT(seconds, 1.5);
+    // About 0.7 s alone; CI's release build, four tests at a time on two
+    // cores, once took more than 1.5. It took 48 s before the cut was made
+    // faster, which this still tells apart.
+    EXPECT_LT(seconds, 5.0);
 #else
     // CI's debug build runs it unoptimized, four tests at a time: 15 s
     // there. It took 48 s optimized before the cut was made faster.
