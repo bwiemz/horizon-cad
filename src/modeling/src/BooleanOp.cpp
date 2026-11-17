@@ -215,6 +215,12 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     } catch (const CsgCancelled&) {
         if (reason) *reason = "cancelled";
         return nullptr;
+    } catch (const CsgSeriesTooLong& e) {
+        if (reason) {
+            *reason = std::string("the copies are too many to combine where they overlap: ") +
+                      e.what() + ". Fewer copies, or copies clear of one another, take far less.";
+        }
+        return nullptr;
     } catch (const CsgTooComplex& e) {
         // Said, and nothing else changed, where it ran for an hour or until
         // memory ran out.
@@ -280,6 +286,21 @@ BooleanCancellation::BooleanCancellation(const std::atomic<bool>* cancelled)
 
 BooleanCancellation::~BooleanCancellation() {
     csgLimitsOnThisThread().cancelled = m_saved;
+}
+
+BooleanSeries::BooleanSeries(std::size_t work) {
+    CsgLimits& limits = csgLimitsOnThisThread();
+    if (limits.seriesWork != nullptr) return;  // the outer series counts
+    m_outermost = true;
+    limits.seriesWork = &m_work;
+    limits.seriesLimit = work;
+}
+
+BooleanSeries::~BooleanSeries() {
+    if (!m_outermost) return;
+    CsgLimits& limits = csgLimitsOnThisThread();
+    limits.seriesWork = nullptr;
+    limits.seriesLimit = 0;
 }
 
 BooleanWorkLimits::~BooleanWorkLimits() {

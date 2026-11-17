@@ -68,28 +68,51 @@ struct Budget {
     std::size_t splits = 0;
     std::size_t splitLimit = std::numeric_limits<std::size_t>::max();
     const std::atomic<bool>* cancelled = nullptr;
+    bool seriesLimits = false;  ///< workLimit is what its series has left
 };
 thread_local Budget t_budget;
 
-/// csgExecute's limits for @p polygons, set for as long as it runs.
+constexpr const char* kSeriesTooLong = "joining them all would take far longer than any part needs";
+
+/// csgExecute's limits for @p polygons, set for as long as it runs, and
+/// its work charged to the series it is part of.
 class BudgetScope {
 public:
     explicit BudgetScope(std::size_t polygons) : m_saved(t_budget) {
-        t_budget = Budget{};
         const CsgLimits& set = csgLimitsOnThisThread();
-        t_budget.workLimit =
+        const std::size_t own =
             set.work != 0 ? set.work : std::max(kCsgWorkLimit, kCsgWorkPerPolygon * polygons);
+        std::size_t left = own;
+        if (set.seriesWork != nullptr) {
+            // Its input first: a join of one more copy to a body of a
+            // million polygons reads, merges and sews all of them.
+            const std::size_t cap =
+                set.seriesLimit != 0
+                    ? set.seriesLimit
+                    : std::max(kCsgSeriesWorkLimit, 2 * kCsgWorkPerPolygon * polygons);
+            *set.seriesWork += kCsgSeriesWorkPerPolygon * polygons;
+            if (*set.seriesWork > cap) throw CsgSeriesTooLong(kSeriesTooLong);
+            left = cap - *set.seriesWork;
+            m_series = set.seriesWork;
+        }
+        t_budget = Budget{};
+        t_budget.workLimit = std::min(own, left);
+        t_budget.seriesLimits = left < own;
         t_budget.splitLimit = set.splits != 0
                                   ? set.splits
                                   : std::max(kCsgSplitLimit, kCsgSplitsPerPolygon * polygons);
         t_budget.cancelled = set.cancelled;
     }
-    ~BudgetScope() { t_budget = m_saved; }
+    ~BudgetScope() {
+        if (m_series != nullptr) *m_series += t_budget.work;
+        t_budget = m_saved;
+    }
     BudgetScope(const BudgetScope&) = delete;
     BudgetScope& operator=(const BudgetScope&) = delete;
 
 private:
     Budget m_saved;
+    std::size_t* m_series = nullptr;
 };
 
 /// @p n more polygon corners tested against a plane, charged to the
@@ -100,6 +123,7 @@ void chargeWork(std::size_t n) {
     const std::size_t before = t_budget.work;
     t_budget.work += n;
     if (t_budget.work > t_budget.workLimit) {
+        if (t_budget.seriesLimits) throw CsgSeriesTooLong(kSeriesTooLong);
         throw CsgTooComplex("cutting them would take far longer than any part needs");
     }
     if ((before >> 16) != (t_budget.work >> 16) && t_budget.cancelled != nullptr &&

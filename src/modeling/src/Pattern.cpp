@@ -300,6 +300,9 @@ bool samePlace(const Mat4& a, const Mat4& b) {
 std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector<Mat4>& transforms,
                                           const std::vector<int>& suppressed, NamingScheme naming,
                                           bool together, std::string* reason) {
+    // Its joins share one budget: 10,000 copies that all overlap, each join
+    // well within its own limits, took hours.
+    const BooleanSeries series;
     std::unordered_set<int> skip(suppressed.begin(), suppressed.end());
     if (together) {
         // A copy where another already is adds nothing to their union: a
