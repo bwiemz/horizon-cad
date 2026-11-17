@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <vector>
 
 #include "../TimeLimits.h"
 #include "horizon/constraint/Constraint.h"
@@ -165,4 +166,71 @@ TEST(DOFAnalysisTest, ALargeSketchIsAnalysedQuickly) {
     // 84 ms here; CI's Windows runner, with four tests at once, is slower.
     EXPECT_LT(ms, 3000.0);
 #endif
+}
+
+// A cluster of more than a hundred parameters is ranked sparsely: a
+// staircase of 60 lines, each joined to the next, horizontal and vertical in
+// turn, each its length, and the first point held, is fully constrained.
+// Once a constraint is said again, or another implied by the rest is added,
+// the cluster is over-constrained, as the dense rank of the whole Jacobian
+// says; and a free direction left is found as one. (On random sparse
+// matrices, Eigen's SparseQR, which ranked such clusters, missed
+// dependences that a dense SVD found.)
+TEST(DOFAnalysisTest, ALargeClustersRankIsTheDenseOne) {
+    for (int variant = 0; variant < 4; ++variant) {
+        draft::DraftDocument doc;
+        cstr::ConstraintSystem sys;
+        std::vector<std::shared_ptr<draft::DraftLine>> lines;
+        Vec2 at(0, 0);
+        for (int i = 0; i < 60; ++i) {
+            const double length = 2.0 + (i % 5);
+            const Vec2 to = i % 2 == 0 ? at + Vec2(length, 0) : at + Vec2(0, length);
+            lines.push_back(line(doc, at, to));
+            at = to;
+        }
+        sys.addConstraint(
+            std::make_shared<cstr::FixedConstraint>(point(lines[0]->id(), 0), Vec2(0, 0)));
+        for (int i = 0; i < 60; ++i) {
+            const auto id = lines[static_cast<size_t>(i)]->id();
+            // Variant 3: line 30 is left without its length.
+            if (variant != 3 || i != 30) {
+                sys.addConstraint(std::make_shared<cstr::DistanceConstraint>(
+                    point(id, 0), point(id, 1), 2.0 + (i % 5)));
+            }
+            if (i % 2 == 0) {
+                sys.addConstraint(
+                    std::make_shared<cstr::HorizontalConstraint>(point(id, 0), point(id, 1)));
+            } else {
+                sys.addConstraint(
+                    std::make_shared<cstr::VerticalConstraint>(point(id, 0), point(id, 1)));
+            }
+            if (i + 1 < 60) {
+                sys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(
+                    point(id, 1), point(lines[static_cast<size_t>(i + 1)]->id(), 0)));
+            }
+        }
+        if (variant == 1) {  // line 20's horizontal, again
+            const auto id = lines[20]->id();
+            sys.addConstraint(
+                std::make_shared<cstr::HorizontalConstraint>(point(id, 0), point(id, 1)));
+        } else if (variant == 2) {  // line 40's start, held where the rest puts it
+            sys.addConstraint(std::make_shared<cstr::FixedConstraint>(point(lines[40]->id(), 0),
+                                                                      lines[40]->start()));
+        }
+        const auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+        const auto analysis = cstr::SketchSolver().analyzeDOF(params, sys);
+        const int dense = denseRank(params, sys);
+        EXPECT_EQ(analysis.totalDOF, params.parameterCount() - dense) << "variant " << variant;
+        const auto status = analysis.entityStatus.at(lines[45]->id());
+        if (variant == 0) {
+            EXPECT_EQ(analysis.totalDOF, 0);
+            EXPECT_EQ(status, cstr::EntityDOFStatus::FullyConstrained);
+        } else if (variant == 3) {
+            EXPECT_EQ(analysis.totalDOF, 1);
+            EXPECT_EQ(status, cstr::EntityDOFStatus::Free) << "it moves with line 30";
+        } else {
+            EXPECT_EQ(analysis.totalDOF, 0) << "variant " << variant;
+            EXPECT_EQ(status, cstr::EntityDOFStatus::OverConstrained) << "variant " << variant;
+        }
+    }
 }

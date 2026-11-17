@@ -1,10 +1,14 @@
 #define _USE_MATH_DEFINES
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/constraint/GeometryRef.h"
@@ -469,4 +473,98 @@ TEST(SketchSolver, AChainIsSolvedFarFromTheOrigin) {
         }
         EXPECT_EQ(failed, 0) << "of 40, at " << far;
     }
+}
+
+namespace {
+
+/// A staircase of @p steps lines, each joined to the next end to start,
+/// horizontal and vertical in turn, each 2 + (i % 5) long and its first
+/// point fixed at the origin: one answer, drawn a little off it. Returns
+/// how far the solved corners are from that answer, at most, and the
+/// solve's result.
+std::pair<double, cstr::SolveResult> solveStaircase(int steps, double* seconds = nullptr) {
+    draft::DraftDocument doc;
+    std::vector<std::shared_ptr<draft::DraftLine>> lines;
+    std::vector<math::Vec2> corners{math::Vec2(0, 0)};
+    for (int i = 0; i < steps; ++i) {
+        const double length = 2.0 + (i % 5);
+        const math::Vec2 from = corners.back();
+        corners.push_back(i % 2 == 0 ? from + math::Vec2(length, 0) : from + math::Vec2(0, length));
+        const math::Vec2 off(0.05 * ((i % 3) - 1), 0.04 * ((i % 4) - 1.5));
+        auto line = std::make_shared<draft::DraftLine>(from + off, corners.back() - off);
+        doc.addEntity(line);
+        lines.push_back(line);
+    }
+    cstr::ConstraintSystem sys;
+    const auto point = [](const auto& line, int which) {
+        return cstr::GeometryRef{line->id(), cstr::FeatureType::Point, which};
+    };
+    sys.addConstraint(
+        std::make_shared<cstr::FixedConstraint>(point(lines[0], 0), math::Vec2(0, 0)));
+    for (int i = 0; i < steps; ++i) {
+        const auto& line = lines[static_cast<size_t>(i)];
+        if (i % 2 == 0) {
+            sys.addConstraint(
+                std::make_shared<cstr::HorizontalConstraint>(point(line, 0), point(line, 1)));
+        } else {
+            sys.addConstraint(
+                std::make_shared<cstr::VerticalConstraint>(point(line, 0), point(line, 1)));
+        }
+        sys.addConstraint(std::make_shared<cstr::DistanceConstraint>(point(line, 0), point(line, 1),
+                                                                     2.0 + (i % 5)));
+        if (i + 1 < steps) {
+            sys.addConstraint(std::make_shared<cstr::CoincidentConstraint>(
+                point(line, 1), point(lines[static_cast<size_t>(i + 1)], 0)));
+        }
+    }
+    auto params = cstr::ParameterTable::buildFromEntities(doc.entities(), sys);
+    cstr::SketchSolver solver;
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = solver.solve(params, sys);
+    if (seconds) {
+        *seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    }
+    params.applyToEntities(doc.entities());
+    double worst = 0.0;
+    for (int i = 0; i < steps; ++i) {
+        const auto& line = lines[static_cast<size_t>(i)];
+        worst = std::max(worst, (line->start() - corners[static_cast<size_t>(i)]).length());
+        worst = std::max(worst, (line->end() - corners[static_cast<size_t>(i + 1)]).length());
+    }
+    return {worst, result};
+}
+
+}  // namespace
+
+// A sketch of a few hundred parameters is solved with its Jacobian sparse,
+// and comes to the same answer as a small one, solved densely as before:
+// every corner of a staircase where its constraints put it, and nothing
+// left free.
+TEST(SketchSolver, ALargeSketchSolvesAsASmallOneDoes) {
+    for (const int steps : {12, 150}) {  // 48 parameters, then 600
+        const auto [worst, result] = solveStaircase(steps);
+        EXPECT_EQ(result.status, cstr::SolveStatus::Success) << steps << ": " << result.message;
+        EXPECT_EQ(result.degreesOfFreedom, 0) << steps;
+        EXPECT_LT(worst, 1e-9) << steps;
+    }
+}
+
+// A thousand lines, every one constrained, solve in a fraction of a
+// second. Solved densely, each step factored a 4,000 x 4,000 matrix: 200
+// lines took 1.6 s, 400 fifteen, and a thousand minutes, at every move of
+// any of them.
+TEST(SketchSolver, AThousandConstrainedLinesSolveQuickly) {
+    double seconds = 0.0;
+    const auto [worst, result] = solveStaircase(1000, &seconds);
+    EXPECT_EQ(result.status, cstr::SolveStatus::Success) << result.message;
+    EXPECT_LT(worst, 1e-9);
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 2.0);
+#else
+    EXPECT_LT(seconds, 10.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#else
+    (void)seconds;
+#endif
 }
