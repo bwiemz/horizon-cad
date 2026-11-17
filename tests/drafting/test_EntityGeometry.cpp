@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <utility>
 #include <vector>
 
@@ -72,6 +73,71 @@ TEST(HatchTest, ALineThroughTwoCornersIsDrawn) {
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_TRUE(near(lines[0].first, Vec2(-1, 0)));
     EXPECT_TRUE(near(lines[0].second, Vec2(1, 0)));
+}
+
+// A hatch too fine for 2,000 lines across drew nothing at all, in the view
+// or a plot: a solid fill 300 wide (its lines a tenth of a unit apart), or
+// lines a hundredth apart across 100. It is drawn at the finest that keeps
+// to 2,000.
+TEST(HatchTest, AHatchTooFineIsDrawnAtItsFinest) {
+    const std::vector<Vec2> wide{{0, 0}, {300, 0}, {300, 100}, {0, 100}};
+    const hz::draft::DraftHatch solid(wide, hz::draft::HatchPattern::Solid, 0.0, 1.0);
+    const auto fill = solid.generateHatchLines();
+    EXPECT_GE(fill.size(), 900u);
+    EXPECT_LE(fill.size(), 2001u);
+    const hz::draft::DraftHatch fine(wide, hz::draft::HatchPattern::Lines, 0.0, 0.01);
+    const auto lines = fine.generateHatchLines();
+    EXPECT_GE(lines.size(), 1999u);
+    EXPECT_LE(lines.size(), 2001u);
+    for (const auto& [a, b] : lines) {
+        EXPECT_NEAR(a.x, 0.0, 1e-9);
+        EXPECT_NEAR(b.x, 300.0, 1e-9);
+    }
+}
+
+// A solid fill is at least fifty lines across, however small: a unit square
+// was one line, a tenth of the spacing apart.
+TEST(HatchTest, ASmallSolidFillIsFilled) {
+    const hz::draft::DraftHatch solid({{0, 0}, {1, 0}, {1, 1}, {0, 1}},
+                                      hz::draft::HatchPattern::Solid, 0.0, 1.0);
+    EXPECT_GE(solid.generateHatchLines().size(), 49u);
+}
+
+// Far from the origin an offset kept what a step of the spacing added:
+// where doubles are 4 apart, a step of 1 added nothing, and the hatch never
+// finished. It is measured from its outline now, and drawn where it is, as
+// near as doubles there allow (16 apart in x).
+TEST(HatchTest, AHatchFarFromTheOriginIsDrawnThere) {
+    const Vec2 far(1e17, -3e16);
+    const hz::draft::DraftHatch hatch(
+        {far, far + Vec2(1024, 0), far + Vec2(1024, 64), far + Vec2(0, 64)},
+        hz::draft::HatchPattern::Lines, 0.0, 1.0);
+    const auto lines = hatch.generateHatchLines();
+    ASSERT_EQ(lines.size(), 64u);
+    for (const auto& [a, b] : lines) {
+        EXPECT_NEAR(a.x, far.x, 64.0);
+        EXPECT_NEAR(b.x - a.x, 1024.0, 64.0);
+        EXPECT_NEAR(a.y, far.y + 32.0, 40.0);
+    }
+}
+
+// A boundary of many points is swept: each line meets only the edges that
+// span it. A circle of 20,000 sides, hatched every half unit, is forty
+// chords, each where the circle is.
+TEST(HatchTest, AManySidedBoundaryIsHatchedAcross) {
+    std::vector<Vec2> circle;
+    for (int i = 0; i < 20000; ++i) {
+        const double t = 2.0 * std::numbers::pi * i / 20000.0;
+        circle.emplace_back(10.0 * std::cos(t), 10.0 * std::sin(t));
+    }
+    const hz::draft::DraftHatch hatch(circle, hz::draft::HatchPattern::Lines, 0.0, 0.5);
+    const auto lines = hatch.generateHatchLines();
+    ASSERT_EQ(lines.size(), 40u);
+    for (const auto& [a, b] : lines) {
+        const double half = std::sqrt(100.0 - a.y * a.y);
+        EXPECT_NEAR(a.x, -half, 1e-3);
+        EXPECT_NEAR(b.x, half, 1e-3);
+    }
 }
 
 // -- Picking an ellipse --------------------------------------------------------
