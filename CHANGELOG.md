@@ -22,7 +22,7 @@ work, not "post-1.0".
 - **Sketches of hundreds of constrained lines stay quick.** The solver
   factored a dense matrix of every parameter by every other at each step,
   and it solves at every move and edit: a closed chain of 200 lines, equal
-  and joined end to end, took 1.6 s, 400 lines fifteen, and a thousand
+  and joined end to end, took 1.5 s, 400 lines 13 s, and a thousand four
   minutes. A sketch of more than 200 parameters is now solved sparsely, a
   thousand constrained lines in a few hundredths of a second, to the same
   answer; a smaller one is solved as before. Counting a sketch's free
