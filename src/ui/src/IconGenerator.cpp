@@ -113,6 +113,8 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"rectangle", drawRectangle},
         {"polyline", drawPolyline},
         {"ellipse", drawEllipse},
+        {"polygon", drawPolygon},
+        {"match-properties", drawMatchProperties},
         {"spline", drawSpline},
         {"text", drawText},
         {"hatch", drawHatch},
@@ -521,6 +523,43 @@ QIcon IconGenerator::drawEllipse(int s) {
     p.setPen(primaryPen(2.0));
     p.setBrush(Qt::NoBrush);
     p.drawEllipse(QPointF(12, 12), 9, 6);
+    drawDot(p, 12, 12, 2.0, kAccent);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawMatchProperties(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A brush: its handle down to the left, its bristles up to the right,
+    // over a stroke of the paint it carries.
+    p.setPen(primaryPen(2.0));
+    p.drawLine(QPointF(4, 20), QPointF(12, 12));
+    p.setBrush(kAccent);
+    p.setPen(Qt::NoPen);
+    QPolygonF bristles;
+    bristles << QPointF(11, 9) << QPointF(15, 13) << QPointF(21, 7) << QPointF(17, 3);
+    p.drawPolygon(bristles);
+    p.setPen(QPen(kAccent, 2.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(13, 20), QPointF(21, 20));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawPolygon(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    p.setPen(primaryPen(2.0));
+    p.setBrush(Qt::NoBrush);
+    // A hexagon, a corner up, its centre marked.
+    QPolygonF hexagon;
+    for (int k = 0; k < 6; ++k) {
+        const double angle = M_PI / 2.0 + k * M_PI / 3.0;
+        hexagon << QPointF(12 + 9 * std::cos(angle), 12 - 9 * std::sin(angle));
+    }
+    p.drawPolygon(hexagon);
     drawDot(p, 12, 12, 2.0, kAccent);
     p.end();
     return QIcon(QPixmap::fromImage(img));

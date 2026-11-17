@@ -196,6 +196,8 @@ private slots:
     void onViewRight();
     void onViewIsometric();
     void onFitAll();
+    /// The view fitted to what is selected in the drawing.
+    void onZoomToSelection();
 
     void onSelectTool();
     void onLineTool();
@@ -227,6 +229,8 @@ private slots:
     void onSplineTool();
     void onHatchTool();
     void onEllipseTool();
+    void onPolygonTool();
+    void onMatchPropertiesTool();
 
     void onMeasureDistanceTool();
     void onMeasureAngleTool();

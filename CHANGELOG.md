@@ -19,6 +19,234 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Hatches are drawn at any size.** A hatch too fine for 2,000 lines
+  across drew nothing but its outline, in the view and in PDF and SVG
+  plots: a solid fill more than 200 wide (its lines a tenth of a unit
+  apart), or lines a hundredth apart across 100. It is drawn at the finest
+  that keeps to 2,000 lines. A small solid fill is at least fifty lines
+  across, where a unit square was one. A hatch far from the origin (survey
+  coordinates) is measured from its own outline: at 1e17 a fine one never
+  finished drawing. And a boundary of many points is swept, each line
+  meeting only the edges that span it.
+
+- **Sketches of hundreds of constrained lines stay quick.** The solver
+  factored a dense matrix of every parameter by every other at each step,
+  and it solves at every move and edit: a closed chain of 200 lines, equal
+  and joined end to end, took 1.5 s, 400 lines 13 s, and a thousand four
+  minutes. A sketch of more than 200 parameters is now solved sparsely, a
+  thousand constrained lines in a few hundredths of a second, to the same
+  answer; a smaller one is solved as before. Counting a sketch's free
+  directions, which colours it after every edit, no longer takes seconds
+  for one long chain of constraints either, and finds a redundant
+  constraint in it as a dense count does.
+
+- **A pattern of thousands of overlapping copies stops, saying why.** Each
+  join to the growing body stayed within its own limits, and all of them
+  together could run for hours: a circular pattern of 10,000 copies, each
+  crossing every other, never finished. A pattern's joins now share one
+  budget, which counts the body each join reads and sews back as well as
+  what it cuts; past it, the pattern fails saying the copies are too many
+  to combine where they overlap, and that fewer copies, or copies clear of
+  one another, take far less. It is about five times what a pattern of
+  eight overlapping cylinders of 4,096 facets needs.
+
+- **Review fixes.** A two-direction pattern's second count is a count in
+  any unit (in an inch document, 2 rows were read as 50.8). The work of
+  building a convex body's tree counts against a Boolean's limit and stops
+  when it is cancelled, as its cuts do. Exploding a polyline or rectangle
+  takes its constraints with it. Delete Duplicates finds a copy within the
+  tolerance however its numbers round, and a closed outline drawn from
+  another corner or the other way round. A whole-part pattern that cannot
+  be joined says why. A DXF value with junk after its number ("12.5oops")
+  is damage, not 12.5, and an entity whose width is no number is left out
+  of a DXF export and said, not written narrower.
+
+- **A rebuild stops when you move on.** A build stopped only between
+  features, and the window waited for the feature it was in: a pattern of
+  overlapping cylinders of many facets could hold it for many minutes after
+  an edit. A Boolean now stops within moments of its build being cancelled,
+  and so does an interference check.
+
+- **Whole-part patterns whose copies overlap join faster.** The copies were
+  joined one at a time, each time to all that had been joined: they are now
+  joined in rounds, each round every copy clear of the others in it at once,
+  and a copy exactly where another is (a pattern of no spacing) is left out.
+  A grid of 40 overlapping cylinders of 1,024 facets takes half the time,
+  the same body. As for copies cut together, a pattern from an older file is
+  joined as it was.
+
+- **Linear patterns in two directions.** A Linear Pattern can have a second
+  direction, with its own spacing and number of instances, as SolidWorks'
+  Direction 2: each row repeated along it, for a grid. A plate of holes is
+  one hole and one pattern; a pattern could not repeat another, so a grid
+  could not be made at all. The edit form shows the second direction's count
+  and spacing as any other parameter.
+
+- **Patterns of many copies are fast.** A pattern cut or joined each copy to
+  the part in turn, rebuilding, merging and sewing all of it each time: a
+  plate of 100 holes took 13 s, and 400 minutes. Copies clear of one another
+  are now combined with the part in one go: 100 holes in 0.6 s, 400 in 5 s.
+  The part is the same, but the faces the copies split are cut into other
+  pieces, so a pattern read from an older file still combines its copies in
+  turn, and what refers to its faces' pieces and edges finds them as before.
+  Files are now written as version 31: an older build would build one row of
+  a grid.
+
+- **Delete Duplicates.** Edit ▸ Delete Duplicates takes out every entity
+  that repeats one before it, as AutoCAD's OVERKILL does: the same kind,
+  layer, colour, width and line type, and the same shape whichever way round
+  it was drawn. It works on the selection, or the whole drawing when nothing
+  is selected, in one step to undo; a line drawn twice, which a DXF from
+  elsewhere often holds, broke the closed outline a sketch needs to extrude.
+
+- **Purge Unused.** Edit ▸ Purge Unused takes out every layer nothing is on
+  and every block nothing inserts, as AutoCAD's PURGE does, in one step to
+  undo: a DXF from elsewhere often carries thousands of empty layers. A
+  block only an unused block inserts goes with it, and so does a layer only
+  such a block's entities are on; layer "0" and the current layer stay.
+
+- **The view's pointer far off the view.** The orbit and pan measured the
+  pointer's move in whole pixels, which overflowed for a point far out of
+  the view (found by the tool-sequence walk under UBSan, 80 seeds of 1,000
+  steps); they measure it in fractions of a pixel now.
+
+- **Patterns and mirrors of finely faceted bodies.** Each instance of a
+  pattern was joined by cutting every face of the part along the planes of
+  the next instance, however far off: a pattern of eight cylinders of 4,096
+  facets took most of two minutes. A face clear of every face of the other
+  body is now kept or left out whole, by where one point of it lies, and
+  only faces near it are cut; a face with a notch in it goes in as a few
+  convex pieces, not a triangle for each corner. The pattern takes a third
+  of the time. Where two such bodies overlap through and through (that
+  pattern and its mirror image), the cut could run for hours and use
+  gigabytes until memory ran out; past many times the work any part in the
+  tests needs, it now stops, and the feature fails saying that the bodies
+  have too many facets to combine and that a coarser chord tolerance makes
+  fewer. An interference check that cannot finish reports the pair rather
+  than passing it.
+
+- **A drag from far off the view.** The Select tool measured how far the
+  pointer had moved in whole pixels squared, which overflowed for a point
+  tens of thousands of pixels away (a click put far out of the view).
+
+- **Match Properties.** Tools ▸ Match Properties (Modify on the ribbon), as
+  AutoCAD's MATCHPROP: click an entity, then each entity that is to look
+  like it, and each takes its layer, colour, width and line type in one
+  step to undo. A click to select used to search the whole drawing for each
+  entity near the pointer; it now finds them by their id, as this does.
+
+- **Select All.** Edit ▸ Select All (**Ctrl+A**) selects everything in the
+  drawing on a layer that is shown and unlocked, as a box round all of it
+  would; there was no way to select everything but to drag round it.
+
+- **Undoing a large copy is quick.** Undoing Duplicate, Mirror, Rotate or
+  Scale with copies, or a block's Explode, took the copies out one at a
+  time, each sought through the drawing: undoing a copy of 50,000 entities
+  took seconds, and of 200,000 most of a minute. They are taken out
+  together now, in a fraction of a second.
+
+- **Zoom by command.** View ▸ Zoom to Selection (**Shift+F**) fits the
+  view to what is selected in the drawing, however small or far off; Zoom
+  In and Zoom Out (**Ctrl++**, **Ctrl+-**) zoom a step at a time about the
+  middle of the view. Only the wheel and Fit All zoomed before.
+
+- **Explode takes a polyline or a rectangle apart.** Block ▸ Explode took
+  apart only block references; it now also turns selected polylines and
+  rectangles into the lines of their sides, as AutoCAD's EXPLODE does, each
+  with the outline's layer, colour and line style, in one step to undo.
+
+- **A DXF entity with a value that is not a number is reported, not
+  moved.** A coordinate, radius or scale written as "nan", "inf" or a word
+  was read as 0, and the entity drawn where it never was (a line from the
+  origin, a circle of no size). It is now left out as damaged, and the
+  import says so. A value that is missing is still its default.
+
+- **Polygon.** A regular polygon of 3 to 1,024 sides, as AutoCAD's POLYGON
+  and SolidWorks' sketch Polygon draw one (Draw ▸ Polygon, **Shift+P**):
+  the centre, then a corner, which sets its size and how it is turned, each
+  clicked or typed. **Up** and **Down** add and take away a side (with
+  **Shift**, ten); the next polygon has as many. It is one closed polyline,
+  so a hexagon extrudes into a nut.
+
+- **No feature takes a size that is not a finite number.** An extrusion's
+  distance, a revolve's angle, a shell's thickness, a fillet's radius and a
+  chamfer's distance were held only to be more than nothing, so infinity
+  passed; a draft's angle, a pattern's spacing and every primitive's sizes
+  were not held to anything. A value from a file, a design table or a
+  script that was not a finite number built a part whose every point was
+  undefined, and saved, a part that could not be read back. Each now
+  refuses it, as an expression already did.
+
+- **A DXF export opens in other CAD programs, whatever the drawing holds.**
+  Layer names went out as they were, and DXF refuses some: those with
+  `< > / \ " : ; ? * | = `` or control characters, an empty name, two names
+  that differ only in case, a name over 255 bytes. A file with one is
+  refused by AutoCAD and others. Each is now written under the nearest name
+  DXF takes, apart from the rest, and the export says which. Entities DXF
+  cannot hold (a circle or arc with no radius, a polyline or spline of one
+  point, an ellipse with no width), and any value that is not a finite
+  number, written as "nan" or "inf", which readers take for a damaged file,
+  are left out and listed, where they were written. Saving a drawing as DXF
+  says what it left out; a layer renamed is noted in the status bar. A
+  layer an entity names that the drawing does not hold is written to the
+  file's table, not left to the reader to make up.
+
+- **A number saved as nothing says so.** JSON has no NaN or infinity, so a
+  value that was one when saved is written as null, and the entity holding
+  it was left out of the load with JSON's "type must be number, but is
+  null". The report now says a number in it was not a finite number when it
+  was saved.
+
+- **A part of tens of thousands of facets is modelled in seconds.** A
+  profile traced from a scan or a DXF contour, a spline flattened finely, a
+  cylinder of 4,096 facets: every step from the sketch to the cut solid took
+  time in the square of the point count or worse, and memory with it.
+  - Extruding a profile of 50,000 points took 221 s, and checking the result
+    142 s more; it now takes under a second. Building the prism looked up
+    each half-edge by walking the whole face and told the large face its
+    half-edges at every cut (`makeEdgeFaceUnlabelled` now leaves that to one
+    pass at the end); the profile's checks compared every segment with every
+    other, and found each next curve by trying all of them; `Solid::isValid`
+    walked each face's loop once from each of its half-edges.
+  - A hole through a cylinder of 4,096 facets took 48 s; it takes about 3.
+    Each cap, fanned into slivers, was cut by every plane of the other into
+    1.9 million fragments, merged back after. A convex face now goes into the
+    cut whole, what lies clear of the other operand's box is not cut, and
+    what is left is not cut again along the first operand's planes.
+  - A prism of 10,000 sides with a wavy outline less a box took 291 s, and
+    one of 30,000 ran out of memory; they take 2 s and 15 s. The cut's tree
+    tested every node for convexity, at a cost in the square of its size,
+    and the side faces' planes cut through every sliver of the triangulated
+    cap. The largest faces now go into the tree first, and convexity is
+    tested again only once a list has halved.
+  - A face of 30,000 corners is triangulated in a second, not in minutes,
+    into exactly the triangles it was: each ear is tested against the points
+    that could lie in it, found on a grid.
+  - Those cuts gave the same parts, and give them still: the faster paths
+    are taken only where the pieces of each face are merged back after. A
+    document saved before persistent naming, whose references were made
+    against the pieces, has them cut as before.
+
+- **A face of many facets meets the face beside it corner to corner.** A
+  curve faceted finely turns so little at each corner, near where it bends
+  from one way to the other, that a merged face's outline ran straight
+  through the corners within the tolerance and dropped them. The facets
+  beside it then met the middle of its edges, and the cut did not sew: a
+  prism of 25,000 sides less a box failed. A corner that another face keeps
+  is now kept.
+
+- **The view shows a part of any size, zoomed however far.** The clip planes
+  were fixed at 0.1 and 10,000, so a part larger than about ten metres, or
+  smaller than a tenth of a millimetre, vanished as soon as it was fitted,
+  and a drawing vanished when zoomed far enough out; they now follow the
+  view. A wheel turned fast enough zoomed by a factor of nothing or less,
+  and the view collapsed or turned inside out; each notch now zooms by a
+  tenth, compounded, within the limits a view projects at. The grid is
+  drawn in powers of ten that suit the zoom, instead of a plane solid with
+  lines zoomed out and none zoomed in; and text is drawn at its size, where
+  it was held between 8 and 200 points, so a drawing zoomed out was covered
+  in text and one zoomed in had text smaller than its dimension lines.
+
 - **A surface's normal at a pole or an apex is the one it comes to.** Where
   a surface comes to a point, as a sphere does at its poles and a cone at its
   apex, its two tangents vanish or lie along each other and give no normal,

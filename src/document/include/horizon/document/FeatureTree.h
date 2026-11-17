@@ -612,6 +612,29 @@ public:
     /// Where instance @p k is moved to from instance 0.
     math::Mat4 instanceTransform(int k) const;
 
+    /// A linear pattern's second direction (SolidWorks' Direction 2): the
+    /// first direction's row repeated @p count times, @p spacing apart along
+    /// @p direction, making a grid. A count of 1 is none, as before. The
+    /// grid's instances together are held to kMaxPatternCount: the count is
+    /// cut to fit. False, and nothing changed, for a circular pattern or a
+    /// direction or spacing that is not a finite number.
+    bool setSecondDirection(const math::Vec3& direction, double spacing, int count);
+    const math::Vec3& secondDirection() const { return m_vecC; }
+    double secondSpacing() const { return m_scalar2; }
+    int secondCount() const { return m_count2; }
+    /// Whether copies clear of one another are combined with the part
+    /// together, in one Boolean, rather than each in turn: the same part,
+    /// in a fraction of the time for many copies, but split faces are cut
+    /// into other pieces, and their pieces and edges named otherwise. A
+    /// pattern made now does; one read from a file made before does not,
+    /// so that what refers to its names finds them as it did.
+    bool combinesTogether() const { return m_together; }
+    void setCombinesTogether(bool together) { m_together = together; }
+    /// How many instances in all, the first among them: count() by
+    /// secondCount() for a grid. Instance k of a grid is column
+    /// k % count() of row k / count().
+    int instanceCount() const { return m_count * m_count2; }
+
     Kind kind() const { return m_kind; }
     const math::Vec3& vecA() const { return m_vecA; }
     const math::Vec3& vecB() const { return m_vecB; }
@@ -630,6 +653,10 @@ private:
     math::Vec3 m_vecB;    ///< Linear: unused. Circular: axis direction.
     double m_scalar = 0;  ///< Linear: spacing. Circular: angle step (rad).
     int m_count = 1;
+    math::Vec3 m_vecC = math::Vec3::UnitY;  ///< Linear: the second direction.
+    double m_scalar2 = 0;                   ///< Linear: the second spacing.
+    int m_count2 = 1;                       ///< Linear: rows of the first; 1 is none.
+    bool m_together = true;                 ///< see combinesTogether()
     std::vector<int> m_suppressed;
     std::string m_featureID;
 

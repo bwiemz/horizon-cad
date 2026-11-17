@@ -61,32 +61,51 @@ void Camera::orbit(double deltaYaw, double deltaPitch) {
 }
 
 void Camera::pan(double deltaX, double deltaY) {
+    // A pan measured off a degenerate view (a ray parallel to the plane it
+    // was cast at) is not a distance: moving by it would leave the camera at
+    // infinity, and every view after it blank.
+    if (!std::isfinite(deltaX) || !std::isfinite(deltaY)) return;
+
     // Pan in the camera's local right and up directions
     math::Vec3 forward = (m_target - m_eye).normalized();
     math::Vec3 right = forward.cross(m_up).normalized();
     math::Vec3 up = right.cross(forward).normalized();
 
     math::Vec3 offset = right * deltaX + up * deltaY;
-    m_eye += offset;
-    m_target += offset;
+    const math::Vec3 eye = m_eye + offset;
+    const math::Vec3 target = m_target + offset;
+    const auto finite = [](const math::Vec3& v) {
+        return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+    };
+    if (!finite(eye) || !finite(target)) return;
+    m_eye = eye;
+    m_target = target;
 }
 
 void Camera::zoom(double factor) {
-    // Move eye closer to / farther from target
+    // A factor of nothing, or less, or not a number, is no zoom: a wheel
+    // turned fast enough asked for one, and the view collapsed or turned
+    // inside out.
+    if (!std::isfinite(factor) || factor <= 0.0) return;
+
+    // Move eye closer to / farther from target, within the distances a view
+    // projects at.
     math::Vec3 dir = m_eye - m_target;
     double dist = dir.length();
-    double newDist = dist * factor;
-    // Clamp minimum distance
-    newDist = std::max(newDist, 0.01);
-
-    if (dist > 1e-10) {
-        m_eye = m_target + dir * (newDist / dist);
+    double ratio = factor;
+    if (dist > 1e-300 && std::isfinite(dist)) {
+        const double newDist = std::clamp(dist * factor, kMinDistance, kMaxDistance);
+        ratio = newDist / dist;
+        m_eye = m_target + dir * ratio;
     }
 
-    // Also adjust ortho size if in ortho mode
+    // Also adjust ortho size if in ortho mode, by as much as the distance
+    // changed, and within the same limits.
     if (m_projType == ProjectionType::Orthographic) {
-        m_orthoWidth *= factor;
-        m_orthoHeight *= factor;
+        const double height = std::clamp(m_orthoHeight * ratio, kMinDistance, kMaxDistance);
+        const double change = m_orthoHeight > 0.0 ? height / m_orthoHeight : 1.0;
+        m_orthoHeight = height;
+        m_orthoWidth *= change;
     }
 }
 
@@ -95,7 +114,17 @@ void Camera::fitAll(const math::BoundingBox& bbox) {
 
     math::Vec3 center = bbox.center();
     double diag = bbox.diagonal();
+    // A box with an infinite or undefined corner has no size to fit.
+    if (!std::isfinite(diag) || !std::isfinite(center.x) || !std::isfinite(center.y) ||
+        !std::isfinite(center.z)) {
+        return;
+    }
+    // A point, or a box smaller than the camera comes to, is shown at the
+    // nearest the camera comes; the largest, at the farthest. A part a
+    // thousandth of a millimetre across is fitted as it is, not as a
+    // millimetre.
     if (diag < 1e-10) diag = 1.0;
+    diag = std::clamp(diag, kMinDistance, kMaxDistance / 2.0);
 
     // Keep the current viewing direction but adjust distance
     math::Vec3 dir = (m_eye - m_target).normalized();
@@ -121,7 +150,7 @@ void Camera::fitAll(const math::BoundingBox& bbox) {
     }
 
     m_target = center;
-    m_eye = center + dir * distance;
+    m_eye = center + dir * std::clamp(distance, kMinDistance, kMaxDistance);
 }
 
 void Camera::setFrontView() {
@@ -185,13 +214,41 @@ math::Mat4 Camera::viewMatrix() const {
     return math::Mat4::lookAt(m_eye, m_target, m_up);
 }
 
+namespace {
+
+/// How far in front of the camera, and how far beyond it, automatic planes
+/// reach, in multiples of the distance to the target. A depth buffer of 24
+/// bits then still parts surfaces a hundred-thousandth of that distance
+/// apart at the target, and a part a thousand times larger than the view is
+/// deep is drawn whole.
+constexpr double kNearFraction = 0.005;
+constexpr double kFarMultiple = 1000.0;
+
+}  // namespace
+
+double Camera::nearPlane() const {
+    if (!m_autoClip) return m_near;
+    const double dist = std::clamp((m_eye - m_target).length(), kMinDistance, kMaxDistance);
+    if (m_projType == ProjectionType::Perspective) return dist * kNearFraction;
+    // An orthographic view shows what is behind the camera as well: only the
+    // direction it looks in counts, not where along it the camera stands.
+    return -kFarMultiple * std::max({dist, m_orthoWidth, m_orthoHeight});
+}
+
+double Camera::farPlane() const {
+    if (!m_autoClip) return m_far;
+    const double dist = std::clamp((m_eye - m_target).length(), kMinDistance, kMaxDistance);
+    if (m_projType == ProjectionType::Perspective) return dist * kFarMultiple;
+    return dist + kFarMultiple * std::max({dist, m_orthoWidth, m_orthoHeight});
+}
+
 math::Mat4 Camera::projectionMatrix() const {
     if (m_projType == ProjectionType::Perspective) {
-        return math::Mat4::perspective(m_fov * math::kDegToRad, m_aspect, m_near, m_far);
+        return math::Mat4::perspective(m_fov * math::kDegToRad, m_aspect, nearPlane(), farPlane());
     } else {
         double hw = m_orthoWidth * 0.5;
         double hh = m_orthoHeight * 0.5;
-        return math::Mat4::ortho(-hw, hw, -hh, hh, m_near, m_far);
+        return math::Mat4::ortho(-hw, hw, -hh, hh, nearPlane(), farPlane());
     }
 }
 

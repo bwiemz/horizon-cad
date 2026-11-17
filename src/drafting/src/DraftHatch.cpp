@@ -150,50 +150,75 @@ bool DraftHatch::pointInPolygon(const math::Vec2& point) const {
 
 std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(double scanAngle,
                                                                      double scanSpacing) const {
-    if (m_boundary.size() < 3 || scanSpacing < 0.001) return {};
+    if (m_boundary.size() < 3 || !(scanSpacing > 0.0) || !std::isfinite(scanSpacing)) return {};
 
     // Direction along the hatch lines and perpendicular (scan direction).
     math::Vec2 dir = {std::cos(scanAngle), std::sin(scanAngle)};
     math::Vec2 perp = {-dir.y, dir.x};
 
+    // Measured from the boundary's first point: far from the origin (a
+    // survey's coordinates) an offset there kept what a step of the spacing
+    // added, and at 1e17 a step of 0.001 added nothing and never ended.
+    const math::Vec2 origin = m_boundary[0];
+    const size_t n = m_boundary.size();
+    std::vector<math::Vec2> local(n);
+    for (size_t i = 0; i < n; ++i) local[i] = m_boundary[i] - origin;
+
     // Project all boundary points onto the perpendicular to find scan range.
-    double minProj = perp.dot(m_boundary[0]);
-    double maxProj = minProj;
-    for (size_t i = 1; i < m_boundary.size(); ++i) {
-        double proj = perp.dot(m_boundary[i]);
-        minProj = std::min(minProj, proj);
-        maxProj = std::max(maxProj, proj);
+    double minProj = 0.0;
+    double maxProj = 0.0;
+    for (const math::Vec2& p : local) {
+        minProj = std::min(minProj, perp.dot(p));
+        maxProj = std::max(maxProj, perp.dot(p));
     }
+    const double range = maxProj - minProj;
+    if (!std::isfinite(range) || range <= 0.0) return {};
 
-    // Also find extent along the direction for scan line length.
-    double minDir = dir.dot(m_boundary[0]);
-    double maxDir = minDir;
-    for (size_t i = 1; i < m_boundary.size(); ++i) {
-        double d = dir.dot(m_boundary[i]);
-        minDir = std::min(minDir, d);
-        maxDir = std::max(maxDir, d);
+    // At most kMaxLines across: a spacing too fine for that is drawn at the
+    // finest that keeps to it. A hatch past it drew nothing at all, in the
+    // view or a plot: a solid fill 300 wide, at its tenth of a unit apart.
+    constexpr double kMaxLines = 2000.0;
+    const double spacing = std::max(scanSpacing, range / kMaxLines);
+    const auto count = static_cast<long>(std::ceil(range / spacing));
+
+    // The edges by the lowest of their ends' offsets, swept: a line looks
+    // only at the edges that span it, not at all of them (a boundary of
+    // 100,000 points by 2,000 lines).
+    struct Edge {
+        double low;
+        double high;
+        size_t from;
+    };
+    std::vector<Edge> edges(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double pa = perp.dot(local[i]);
+        const double pb = perp.dot(local[(i + 1) % n]);
+        edges[i] = {std::min(pa, pb), std::max(pa, pb), i};
     }
-
-    // Limit number of scan lines to prevent performance issues.
-    double range = maxProj - minProj;
-    int maxLines = 2000;
-    if (range / scanSpacing > maxLines) return {};
+    std::sort(edges.begin(), edges.end(),
+              [](const Edge& a, const Edge& b) { return a.low < b.low; });
+    std::vector<Edge> active;
+    size_t next = 0;
 
     std::vector<std::pair<math::Vec2, math::Vec2>> result;
-    size_t n = m_boundary.size();
-
-    for (double offset = minProj + scanSpacing * 0.5; offset < maxProj; offset += scanSpacing) {
+    std::vector<double> intersections;
+    for (long line = 0; line < count; ++line) {
+        const double offset = minProj + (static_cast<double>(line) + 0.5) * spacing;
+        if (offset >= maxProj) break;
         // Origin of the scan line: a point at distance 'offset' along perp.
         // The scan line runs in direction 'dir'.
-        // lineP = perp * offset (relative to origin)
-        // Points on line: lineP + t * dir
+        while (next < edges.size() && edges[next].low <= offset) active.push_back(edges[next++]);
+        active.erase(std::remove_if(active.begin(), active.end(),
+                                    [offset](const Edge& e) { return e.high < offset; }),
+                     active.end());
 
-        // Find intersections of this scan line with all boundary edges.
-        std::vector<double> intersections;
-        for (size_t i = 0; i < n; ++i) {
-            size_t j = (i + 1) % n;
-            const auto& a = m_boundary[i];
-            const auto& b = m_boundary[j];
+        // Find intersections of this scan line with the edges spanning it.
+        intersections.clear();
+        for (const Edge& edge : active) {
+            const size_t i = edge.from;
+            const size_t j = (i + 1) % n;
+            const auto& a = local[i];
+            const auto& b = local[j];
 
             // Projection of edge endpoints onto perp.
             double pa = perp.dot(a);
@@ -218,8 +243,8 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::scanLines(double scan
         // Sort intersections and pair them up.
         std::sort(intersections.begin(), intersections.end());
         for (size_t k = 0; k + 1 < intersections.size(); k += 2) {
-            math::Vec2 p1 = perp * offset + dir * intersections[k];
-            math::Vec2 p2 = perp * offset + dir * intersections[k + 1];
+            math::Vec2 p1 = origin + perp * offset + dir * intersections[k];
+            math::Vec2 p2 = origin + perp * offset + dir * intersections[k + 1];
             result.emplace_back(p1, p2);
         }
     }
@@ -232,8 +257,12 @@ std::vector<std::pair<math::Vec2, math::Vec2>> DraftHatch::generateHatchLines() 
 
     double effectiveSpacing = m_spacing;
     if (m_pattern == HatchPattern::Solid) {
-        // Dense lines for solid fill.
-        effectiveSpacing = std::max(m_spacing * 0.1, 0.05);
+        // Dense lines for a fill: a tenth of the spacing, and at least fifty
+        // across, however small it is (it was a line or two across a hatch
+        // a unit wide). scanLines() keeps a large one to its most.
+        const math::BoundingBox box = boundingBox();
+        const double across = std::max(box.max().x - box.min().x, box.max().y - box.min().y);
+        effectiveSpacing = std::min(m_spacing * 0.1, across / 50.0);
     }
 
     auto lines = scanLines(m_angle, effectiveSpacing);

@@ -57,8 +57,21 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
     BoundingBox both = ba;
     both.expand(bb);
     const CsgTolerance tol = CsgTolerance::of(both.min(), both.max());
-    const auto fragments = csgExecute(csgTriangles(polysA, true), csgTriangles(polysB, false),
-                                      BooleanType::Intersect, tol.plane);
+    // Only the volume counts, not how the faces are cut up: convex faces go
+    // in whole (csgPieces), and parts of many facets are checked in time.
+    std::vector<CsgPolygon> fragments;
+    try {
+        fragments =
+            csgExecute(csgPieces(polysA, true, tol.plane), csgPieces(polysB, false, tol.plane),
+                       BooleanType::Intersect, tol.plane, CsgFragments::Fewest);
+    } catch (const CsgCancelled&) {
+        return false;  // the check stops before the next pair
+    } catch (const CsgTooComplex&) {
+        // Too finely faceted, through and through, to work out in time:
+        // their boxes overlap, and they are reported, to be looked at, not
+        // passed as clear.
+        return true;
+    }
     if (fragments.empty()) return false;
     const double extent = (both.max() - both.min()).length();
     return std::abs(csgVolume(fragments)) > kMinInterferenceFraction * extent * extent * extent;
@@ -67,6 +80,8 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
 std::vector<InterferencePair> InterferenceChecker::check(
     const std::vector<const topo::Solid*>& solids, const std::atomic<bool>* cancelled) {
     std::vector<InterferencePair> pairs;
+    // A pair of many facets stops as soon as the check is cancelled.
+    const BooleanCancellation stop(cancelled);
 
     // Broad phase: index every valid solid's AABB in an R*-tree.
     std::vector<BoundingBox> bounds(solids.size());

@@ -1,6 +1,9 @@
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "horizon/math/Vec3.h"
@@ -60,12 +63,106 @@ struct CsgPolygon {
 /// its facet count: a cylinder of 2,048 facets takes seconds in a debug
 /// build. (A plane chosen from a sample to split least and balance most was
 /// tried: 8% slower on that cylinder, and no faster on a plate of 81 pins.)
+///
+/// With CsgFragments::Fewest, for a caller that merges the fragments of each
+/// face back together (FragmentMerge) or wants only the volume, the work and
+/// the pieces that make no difference to the result are left out: a polygon
+/// clear of the other operand's box is not clipped to it, and what is left
+/// of B is not built into A's tree, which only cut it along A's planes. The
+/// same surface comes back, in fewer pieces. AsTree keeps csg.js's pieces,
+/// which references made by position were made against. Fewest also keeps
+/// whole, or leaves out whole, every polygon clear of each polygon of the
+/// other operand, and cuts non-convex faces into few convex pieces, not
+/// triangles.
+enum class CsgFragments { AsTree, Fewest };
+
+/// A CSG that would take far more work, or leave far more pieces, than any
+/// part needs: thrown by csgExecute rather than going on for an hour, or
+/// until memory runs out. Two bodies of tens of thousands of facets that
+/// overlap through and through (a pattern of finely faceted cylinders and
+/// its mirror image) cut every facet of each along the planes of thousands
+/// of the other's. The limits are many times what the largest cut in the
+/// tests takes.
+class CsgTooComplex : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+/// How many polygon corners csgExecute may test against a plane, at least:
+/// about fifteen times the most a cut in the tests takes (a prism of 25,000
+/// sides less a box), and a minute or two of work. More for more polygons.
+inline constexpr std::size_t kCsgWorkLimit = 4'000'000'000;
+inline constexpr std::size_t kCsgWorkPerPolygon = 20'000;
+/// How many times it may split a polygon in two, at least: a few gigabytes
+/// of pieces. More for more polygons.
+inline constexpr std::size_t kCsgSplitLimit = 4'000'000;
+inline constexpr std::size_t kCsgSplitsPerPolygon = 20;
+
+/// A CSG stopped because the Booleans of one series (BooleanSeries) have
+/// together done all the work they may: a pattern of thousands of copies
+/// that overlap one another joins them one at a time, each join well within
+/// its own limits, and all of them for hours.
+class CsgSeriesTooLong : public CsgTooComplex {
+public:
+    using CsgTooComplex::CsgTooComplex;
+};
+
+/// How many polygon corners the Booleans of one series may test against a
+/// plane together, at least: about five times what a whole-part pattern of
+/// eight overlapping cylinders of 4,096 facets takes, joined one at a time
+/// (1.7 billion, 20 s in a debug build), and a few minutes' work. More
+/// where one of its Booleans is given more polygons: twice what that one
+/// may do.
+inline constexpr std::size_t kCsgSeriesWorkLimit = 2 * kCsgWorkLimit;
+/// Charged to the series for each polygon given to each of its Booleans:
+/// reading it, merging its pieces and sewing them back, which a series of
+/// joins to a growing body does again each time, even where little is cut.
+/// About what testing 2,000 corners costs, measured on such patterns.
+inline constexpr std::size_t kCsgSeriesWorkPerPolygon = 2000;
+
+/// A CSG stopped because what it runs for was cancelled (a rebuild the
+/// user has moved on from): thrown by csgExecute, never for anything about
+/// the bodies.
+class CsgCancelled : public std::runtime_error {
+public:
+    CsgCancelled() : std::runtime_error("cancelled") {}
+};
+
+/// The limits set on this thread in place of those above (BooleanWorkLimits),
+/// zero where none is, the flag that cancels it (BooleanCancellation), and
+/// the work of the series it is part of and that series' limit
+/// (BooleanSeries), null where it is part of none and zero for the
+/// default.
+struct CsgLimits {
+    std::size_t work = 0;
+    std::size_t splits = 0;
+    const std::atomic<bool>* cancelled = nullptr;
+    std::size_t* seriesWork = nullptr;
+    std::size_t seriesLimit = 0;
+};
+CsgLimits& csgLimitsOnThisThread();
+
+/// Throws CsgTooComplex beyond the limits above, and CsgCancelled once the
+/// cancellation flag set on this thread is set.
 std::vector<CsgPolygon> csgExecute(const std::vector<CsgPolygon>& a,
                                    const std::vector<CsgPolygon>& b, BooleanType type,
-                                   double planeEps = kCsgPlaneEps);
+                                   double planeEps = kCsgPlaneEps,
+                                   CsgFragments fragments = CsgFragments::AsTree);
 
 /// Triangulate boundary polygons into the convex fragments the BSP needs.
 std::vector<CsgPolygon> csgTriangles(const std::vector<BoundaryPolygon>& polygons, bool fromA);
+
+/// The convex fragments the BSP needs, with each face that is already convex
+/// and flat (to well within @p planeEps) and has no hole taken whole, and
+/// the rest triangulated. A face of many sides (a cylinder's cap of 4,096)
+/// fanned into slivers was cut by every plane of the other operand into
+/// millions of fragments, which then had to be merged back: a hole through
+/// such a cylinder took most of a minute. The pieces differ from
+/// csgTriangles' only in how a face is cut up, so they are for a Boolean
+/// that merges the fragments of each face back together (FragmentMerge);
+/// one that keeps them, for references made by position, triangulates.
+std::vector<CsgPolygon> csgPieces(const std::vector<BoundaryPolygon>& polygons, bool fromA,
+                                  double planeEps);
 
 /// Signed volume enclosed by a fragment set (divergence theorem over fan
 /// triangles).  Positive for an outward-oriented closed boundary.
