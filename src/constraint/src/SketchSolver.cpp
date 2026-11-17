@@ -50,8 +50,9 @@ bool residualsMet(const Eigen::VectorXd& f, const Jacobian& j, const Eigen::Vect
 
 /// Above this many parameters a sketch is solved with its Jacobian sparse
 /// (SketchSolver::solveSparse). A dense step factors an n x n matrix: a
-/// closed chain of 200 lines, equal and joined end to end, took 1.6 s to
-/// solve and 400 lines fifteen, at every move of any of them.
+/// closed chain of 200 lines, equal and joined end to end, took 1.5 s to
+/// solve, 400 lines 13 s and 1,000 four minutes, at every move of any of
+/// them.
 constexpr int kDenseSolveParameters = 200;
 
 /// The Jacobian, sparse: each constraint's equations in the columns of the

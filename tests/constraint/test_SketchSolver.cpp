@@ -550,9 +550,9 @@ TEST(SketchSolver, ALargeSketchSolvesAsASmallOneDoes) {
 }
 
 // A thousand lines, every one constrained, solve in a fraction of a
-// second. Solved densely, each step factored a 4,000 x 4,000 matrix: 200
-// lines took 1.6 s, 400 fifteen, and a thousand minutes, at every move of
-// any of them.
+// second. Solved densely, each step factored a 4,000 x 4,000 matrix: a
+// closed chain of 200 equal lines took 1.5 s, of 400 13 s, and of a
+// thousand four minutes, at every move of any of them.
 TEST(SketchSolver, AThousandConstrainedLinesSolveQuickly) {
     double seconds = 0.0;
     const auto [worst, result] = solveStaircase(1000, &seconds);
