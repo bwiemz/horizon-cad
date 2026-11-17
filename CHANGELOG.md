@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Hatches are drawn at any size.** A hatch too fine for 2,000 lines
+  across drew nothing but its outline, in the view and in PDF and SVG
+  plots: a solid fill more than 200 wide (its lines a tenth of a unit
+  apart), or lines a hundredth apart across 100. It is drawn at the finest
+  that keeps to 2,000 lines. A small solid fill is at least fifty lines
+  across, where a unit square was one. A hatch far from the origin (survey
+  coordinates) is measured from its own outline: at 1e17 a fine one never
+  finished drawing. And a boundary of many points is swept, each line
+  meeting only the edges that span it.
+
 - **Sketches of hundreds of constrained lines stay quick.** The solver
   factored a dense matrix of every parameter by every other at each step,
   and it solves at every move and edit: a closed chain of 200 lines, equal
