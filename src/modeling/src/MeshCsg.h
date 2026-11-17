@@ -98,6 +98,28 @@ inline constexpr std::size_t kCsgWorkPerPolygon = 20'000;
 inline constexpr std::size_t kCsgSplitLimit = 4'000'000;
 inline constexpr std::size_t kCsgSplitsPerPolygon = 20;
 
+/// A CSG stopped because the Booleans of one series (BooleanSeries) have
+/// together done all the work they may: a pattern of thousands of copies
+/// that overlap one another joins them one at a time, each join well within
+/// its own limits, and all of them for hours.
+class CsgSeriesTooLong : public CsgTooComplex {
+public:
+    using CsgTooComplex::CsgTooComplex;
+};
+
+/// How many polygon corners the Booleans of one series may test against a
+/// plane together, at least: about five times what a whole-part pattern of
+/// eight overlapping cylinders of 4,096 facets takes, joined one at a time
+/// (1.7 billion, 20 s in a debug build), and a few minutes' work. More
+/// where one of its Booleans is given more polygons: twice what that one
+/// may do.
+inline constexpr std::size_t kCsgSeriesWorkLimit = 2 * kCsgWorkLimit;
+/// Charged to the series for each polygon given to each of its Booleans:
+/// reading it, merging its pieces and sewing them back, which a series of
+/// joins to a growing body does again each time, even where little is cut.
+/// About what testing 2,000 corners costs, measured on such patterns.
+inline constexpr std::size_t kCsgSeriesWorkPerPolygon = 2000;
+
 /// A CSG stopped because what it runs for was cancelled (a rebuild the
 /// user has moved on from): thrown by csgExecute, never for anything about
 /// the bodies.
@@ -107,11 +129,16 @@ public:
 };
 
 /// The limits set on this thread in place of those above (BooleanWorkLimits),
-/// zero where none is, and the flag that cancels it (BooleanCancellation).
+/// zero where none is, the flag that cancels it (BooleanCancellation), and
+/// the work of the series it is part of and that series' limit
+/// (BooleanSeries), null where it is part of none and zero for the
+/// default.
 struct CsgLimits {
     std::size_t work = 0;
     std::size_t splits = 0;
     const std::atomic<bool>* cancelled = nullptr;
+    std::size_t* seriesWork = nullptr;
+    std::size_t seriesLimit = 0;
 };
 CsgLimits& csgLimitsOnThisThread();
 

@@ -1807,6 +1807,9 @@ math::Mat4 PatternFeature::instanceTransform(int k) const {
 std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& context,
                                                        std::unique_ptr<topo::Solid> inputSolid,
                                                        std::string* reason) const {
+    // The cuts or joins of all its copies share one budget: 10,000 copies,
+    // each well within its own limits, took hours.
+    const model::BooleanSeries series;
     if (m_targets.empty()) return execute(std::move(inputSolid), reason);
     if (!inputSolid) return failWith(reason, "there is no body to pattern");
     std::unique_ptr<topo::Solid> part = std::move(inputSolid);

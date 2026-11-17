@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A pattern of thousands of overlapping copies stops, saying why.** Each
+  join to the growing body stayed within its own limits, and all of them
+  together could run for hours: a circular pattern of 10,000 copies, each
+  crossing every other, never finished. A pattern's joins now share one
+  budget, which counts the body each join reads and sews back as well as
+  what it cuts; past it, the pattern fails saying the copies are too many
+  to combine where they overlap, and that fewer copies, or copies clear of
+  one another, take far less. It is about five times what a pattern of
+  eight overlapping cylinders of 4,096 facets needs.
+
 - **Review fixes.** A two-direction pattern's second count is a count in
   any unit (in an inch document, 2 rows were read as 50.8). The work of
   building a convex body's tree counts against a Boolean's limit and stops

@@ -699,3 +699,41 @@ TEST(BooleanRobustnessTest, AConvexBodysTreeCountsAgainstTheLimit) {
               nullptr)
         << why;
 }
+
+// Copies that all overlap one another are joined one at a time, each to all
+// joined before: 10,000 of them (the model fuzzer, seed 168), each join
+// well within its own limits, ran for hours. A pattern's joins share one
+// budget, which the polygons each is given count against as well as those
+// it cuts: under a small one, twelve such copies are refused, saying why;
+// under the default, they are joined.
+TEST(BooleanRobustnessTest, APatternsJoinsShareOneBudget) {
+    // A bar across the axis, turned by a step no whole number of which is
+    // a turn: every copy crosses every other, and none is where another is.
+    const auto bar =
+        moved(*PrimitiveFactory::makeBox(10, 1, 1), Mat4::translation(Vec3(-5, -0.5, 0)));
+    {
+        // One join is far within the budget below.
+        const hz::model::BooleanWorkLimits limits(1'000'000, 0);
+        const auto turned =
+            moved(*bar, Mat4::rotation(hz::math::Quaternion::fromAxisAngle(Vec3(0, 0, 1), 1.0)));
+        std::string why;
+        EXPECT_NE(BooleanOp::execute(*bar, *turned, BooleanType::Union, &why, NamingScheme::Stable),
+                  nullptr)
+            << why;
+    }
+    {
+        const hz::model::BooleanSeries series(1'000'000);
+        std::string why;
+        EXPECT_EQ(Pattern::circular(*bar, Vec3(0, 0, 0), Vec3(0, 0, 1), 1.0, 12, {},
+                                    NamingScheme::Stable, true, &why),
+                  nullptr);
+        EXPECT_NE(why.find("copies are too many"), std::string::npos) << why;
+    }
+    const hz::model::BooleanSeries series;
+    std::string why;
+    const auto pattern = Pattern::circular(*bar, Vec3(0, 0, 0), Vec3(0, 0, 1), 1.0, 12, {},
+                                           NamingScheme::Stable, true, &why);
+    ASSERT_NE(pattern, nullptr) << why;
+    EXPECT_TRUE(pattern->isValid()) << pattern->validationReport();
+    EXPECT_GT(series.work(), 1'000'000U) << "the joins of the pattern are charged to it";
+}
