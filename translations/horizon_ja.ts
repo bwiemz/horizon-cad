@@ -4238,12 +4238,7 @@ begin building your part.</source>
         <translation type="unfinished">寸法</translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">アシスタントは部品と図面で使用でき、アセンブリでは使用できません</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">アシスタントは部品と図面で使用でき、図面シートでは使用できません</translation>
     </message>

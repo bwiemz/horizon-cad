@@ -21,8 +21,10 @@ class HttpTransport;
 }  // namespace hz::ai
 
 namespace hz::doc {
+class AssemblyDocument;
 class Document;
-}
+class DocumentManager;
+}  // namespace hz::doc
 
 namespace hz::ui {
 
@@ -49,6 +51,9 @@ public:
         /// {"faces": [...], "edges": [...], "drawing_entities": [...]}. Unset:
         /// no such tool.
         std::function<nlohmann::json()> selection;
+        /// An assembly tool changed the assembly (its mates solved): the
+        /// view and the assembly tree are shown again.
+        std::function<void()> assemblyChanged;
     };
     void setHost(Host host) { m_host = std::move(host); }
 
@@ -56,6 +61,12 @@ public:
     /// with @p why shown. A request under way is stopped.
     void setDocument(std::shared_ptr<doc::Document> document, const QString& name,
                      const QString& why = {});
+    /// Work on the assembly @p assembly, called @p name: its tab's document
+    /// @p backing carries its undo steps, and @p documents reads its parts.
+    /// The assembly tools take the part and drawing tools' place.
+    void setAssembly(std::shared_ptr<doc::Document> backing,
+                     std::shared_ptr<doc::AssemblyDocument> assembly,
+                     doc::DocumentManager& documents, const QString& name);
 
     /// Talk through @p transport (a test's) instead of the network. Starts a
     /// new conversation.
@@ -88,6 +99,11 @@ private:
     friend class Observer;
 
     void openSettings();
+    /// What setDocument and setAssembly share: @p assembly null for a part
+    /// or a drawing.
+    void bind(std::shared_ptr<doc::Document> document,
+              std::shared_ptr<doc::AssemblyDocument> assembly, doc::DocumentManager* documents,
+              const QString& name, const QString& why);
     void rebindTools();
     void applyConfig();
     void updateState();
@@ -103,6 +119,10 @@ private:
     Host m_host;
     AiSettings m_settings;
     std::shared_ptr<doc::Document> m_document;
+    /// The assembly worked on, when the tab shows one (m_document then its
+    /// tab's document), and what reads its parts.
+    std::shared_ptr<doc::AssemblyDocument> m_assembly;
+    doc::DocumentManager* m_documents = nullptr;
     /// The document the conversation last worked on: compared, never used.
     const doc::Document* m_conversationDocument = nullptr;
     QString m_documentName;

@@ -19,6 +19,19 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The AI assistant works on assemblies.** In an assembly's tab it has
+  assembly tools instead of the part's: what the assembly holds (components,
+  mates, patterns, the part files in its folder), inserting a part or a
+  subassembly by its file, placing and turning a component, mates of every
+  kind between the faces, edges and datums it lists (or top, bottom, front,
+  back, left and right, and what is selected), editing and deleting them,
+  component patterns, the interference check and the bill of materials. Each
+  change is one undo step, its mates solved as the Assembly menu solves them,
+  and a change they cannot hold is not made. Fixed: a Fixed mate added as an
+  assembly's first mate was refused as "did not converge".
+- **A first extrude asked to go "through all"** (which small local models do
+  again and again) is made blind by its distance, and says so; a missing
+  distance is asked for with an example.
 - **The AI tools reach the rest of the modeller.** Loft (profiles on
   parallel planes), sweep (a profile along a path), draft, combining separate
   bodies (union, subtract, intersect), datum planes, axes and points (and

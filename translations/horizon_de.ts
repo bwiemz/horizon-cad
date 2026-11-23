@@ -4253,12 +4253,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Bemaßungen</translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">Der Assistent arbeitet mit Teilen und Zeichnungen, nicht mit Baugruppen</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">Der Assistent arbeitet mit Teilen und Zeichnungen, nicht mit Zeichnungsblättern</translation>
     </message>

@@ -261,7 +261,13 @@ MainWindow::MainWindow(QWidget* parent)
                             onSelectionChanged();
                             m_viewport->update();
                         },
-                        [this] { onUndo(); }, [this] { return assistantSelection(); }});
+                        [this] { onUndo(); }, [this] { return assistantSelection(); },
+                        [this] {
+                            // As an Assembly menu command leaves it: the scene,
+                            // and with it the assembly tree.
+                            rebuildScene();
+                            updateWindowTitle();
+                        }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
@@ -364,7 +370,21 @@ nlohmann::json MainWindow::assistantSelection() const {
     // name, an edge by its logical id (list_faces, list_edges).
     nlohmann::json faces = nlohmann::json::array();
     nlohmann::json edges = nlohmann::json::array();
+    // An assembly's components, each with what was clicked on it as
+    // list_component_geometry names it ("face:...", "edge:...").
+    nlohmann::json components = nlohmann::json::array();
     for (const auto& pick : m_viewport->modelSelection()) {
+        if (pick.owner != 0 && m_assembly && m_assembly->component(pick.owner)) {
+            nlohmann::json picked = {{"component", pick.owner}};
+            if (!pick.tag.empty()) {
+                picked["geometry"] = pick.edge ? "edge:" + model::wholeEdgeName(pick.tag)
+                                               : "face:" + model::logicalFace(pick.tag);
+            }
+            if (std::find(components.begin(), components.end(), picked) == components.end()) {
+                components.push_back(std::move(picked));
+            }
+            continue;
+        }
         if (pick.owner != 0 || pick.tag.empty()) continue;  // a component, or a whole body
         if (pick.edge) {
             const std::string id = model::logicalEdge(pick.tag);
@@ -378,6 +398,7 @@ nlohmann::json MainWindow::assistantSelection() const {
     nlohmann::json entities = nlohmann::json::array();
     for (const uint64_t id : m_viewport->selectionManager().selectedIds()) entities.push_back(id);
     nlohmann::json out = {{"faces", std::move(faces)}, {"edges", std::move(edges)}};
+    if (m_assembly) out["components"] = std::move(components);
     // Entities are of the drawing the window edits: a sketch's when one is.
     out[m_document->editedSketch() ? "sketch_entities" : "drawing_entities"] = std::move(entities);
     return out;
@@ -1284,8 +1305,8 @@ void MainWindow::activateTabDocument() {
     updateWindowTitle();
     if (m_aiPanel) {
         if (m_assembly) {
-            m_aiPanel->setDocument(nullptr, tab->title,
-                                   tr("The assistant works on parts and drawings, not assemblies"));
+            // Its tab's document carries its undo steps.
+            m_aiPanel->setAssembly(m_document, m_assembly, documents(), tab->title);
         } else if (m_drawings && m_drawings->isSheet(m_document.get())) {
             // A sheet keeps its views and annotations, not features: what
             // the assistant would add to it would not be saved.

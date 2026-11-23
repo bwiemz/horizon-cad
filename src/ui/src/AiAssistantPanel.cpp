@@ -316,7 +316,23 @@ void AiAssistantPanel::applyConfig() {
 
 void AiAssistantPanel::setDocument(std::shared_ptr<doc::Document> document, const QString& name,
                                    const QString& why) {
-    if (document == m_document && name == m_documentName && why == m_unavailable) return;
+    bind(std::move(document), nullptr, nullptr, name, why);
+}
+
+void AiAssistantPanel::setAssembly(std::shared_ptr<doc::Document> backing,
+                                   std::shared_ptr<doc::AssemblyDocument> assembly,
+                                   doc::DocumentManager& documents, const QString& name) {
+    bind(std::move(backing), std::move(assembly), &documents, name, {});
+}
+
+void AiAssistantPanel::bind(std::shared_ptr<doc::Document> document,
+                            std::shared_ptr<doc::AssemblyDocument> assembly,
+                            doc::DocumentManager* documents, const QString& name,
+                            const QString& why) {
+    if (document == m_document && assembly == m_assembly && documents == m_documents &&
+        name == m_documentName && why == m_unavailable) {
+        return;
+    }
     // The conversation was about another document (even with an assembly,
     // and so no document, shown between).
     const bool switched = document != nullptr && m_conversationDocument != nullptr &&
@@ -326,6 +342,8 @@ void AiAssistantPanel::setDocument(std::shared_ptr<doc::Document> document, cons
         appendNote(tr("Stopped: the document changed."));
     }
     m_document = std::move(document);
+    m_assembly = m_document ? std::move(assembly) : nullptr;
+    m_documents = m_assembly ? documents : nullptr;
     if (m_document) m_conversationDocument = m_document.get();
     m_documentName = name;
     m_unavailable = why;
@@ -350,13 +368,23 @@ void AiAssistantPanel::rebindTools() {
     hooks.drawingChanged = [this] {
         if (m_host.drawingChanged) m_host.drawingChanged();
     };
-    ai::registerCadTools(m_tools, *m_document, std::move(hooks));
+    if (m_assembly && m_documents) {
+        ai::AssemblyToolHooks assemblyHooks;
+        assemblyHooks.assemblyChanged = [this] {
+            if (m_host.assemblyChanged) m_host.assemblyChanged();
+        };
+        ai::registerAssemblyTools(m_tools, *m_assembly, *m_document, *m_documents,
+                                  std::move(assemblyHooks));
+    } else {
+        ai::registerCadTools(m_tools, *m_document, std::move(hooks));
+    }
     if (m_host.selection) {
         m_tools.add({"get_selection",
                      "What the user has selected in the window: faces and edges of the part (ids "
-                     "and names as list_faces and list_edges give them) and drawing entities "
-                     "(ids). Call it when the user says \"this\", \"these\", \"here\" or \"the "
-                     "selected...\".",
+                     "and names as list_faces and list_edges give them), components of an "
+                     "assembly (with what was clicked on each, as list_component_geometry names "
+                     "it) and drawing entities (ids). Call it when the user says \"this\", "
+                     "\"these\", \"here\" or \"the selected...\".",
                      json{{"type", "object"}, {"properties", json::object()}}},
                     ai::ToolAccess::Read, [this](const json&) {
                         return ai::ToolResult::ok(m_host.selection ? m_host.selection() : json());

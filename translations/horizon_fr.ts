@@ -4253,12 +4253,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">L&apos;assistant travaille sur les pièces et les dessins, pas sur les assemblages</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">L&apos;assistant travaille sur les pièces et les dessins, pas sur les mises en plan</translation>
     </message>

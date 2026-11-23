@@ -4238,12 +4238,7 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">어시스턴트는 어셈블리가 아니라 부품과 도면에서 작동합니다</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">어시스턴트는 도면 시트가 아니라 부품과 도면에서 작동합니다</translation>
     </message>

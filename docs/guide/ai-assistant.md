@@ -80,7 +80,7 @@ and Undo This Response takes them back. **New** starts a new conversation.
 
 ## What it can do
 
-It works on the active part or drawing:
+It works on the active part, drawing or assembly. In a part or a drawing:
 
 - **Sketches** of lines, polylines, rectangles, circles, arcs, slots and
   polygons, on the XY, XZ or YZ plane, on a flat face of the part, or on any
@@ -95,8 +95,22 @@ It works on the active part or drawing:
 - **2D drawing**: shapes and text on layers. It can move, copy, rotate,
   scale, mirror and delete them. It leaves hidden and locked layers alone.
 
-It does not work on assemblies or drawing sheets yet. It cannot open, save
-or export files.
+In an assembly:
+
+- **Components**: it places part and assembly files (by name, from the
+  assembly's folder, once it is saved), moves and turns them, renames,
+  suppresses and removes them, and repeats them in linear and circular
+  patterns.
+- **Mates**: fixed, coincident, concentric, distance, angle, parallel,
+  perpendicular and tangent, between faces, edges and datums it names, or
+  the faces you select. Each is solved as it is added; one the others cannot
+  hold is not added, and it says why.
+- **Checking it**: which components interfere, and by how much, and the bill
+  of materials.
+
+Each of these is one undo step, as the Assembly menu's commands are.
+
+It does not work on drawing sheets yet. It cannot open, save or export files.
 
 ## Automating from outside
 
